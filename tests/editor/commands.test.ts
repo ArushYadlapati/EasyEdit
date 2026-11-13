@@ -429,6 +429,39 @@ describe("runners", () => {
     expect(added(plain)).toMatchObject({ type: "image", duration: 90 });
   });
 
+  it("addMedia says whether it worked and can leave the selection alone", () => {
+    const store = makeStore();
+    store.getState().select(["x1"]);
+    const before = store.getState().selection;
+    expect(addMedia(store, assetView({ durationMs: 2_000 }), { frame: 90, trackId: "v1", select: false })).toBe(true);
+    const added = store.getState().doc.tracks.find((t) => t.id === "v1")!.clips.find((c) => c.start === 90);
+    expect(added).toMatchObject({ type: "video", duration: 60 });
+    expect(store.getState().selection).toBe(before);
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["add media"]);
+
+    // By default the clip is selected.
+    expect(addMedia(store, assetView({ durationMs: 2_000 }), { frame: 300, trackId: "v1" })).toBe(true);
+    expect(findClip(store.getState().doc, store.getState().selection.clipIds[0])!.clip).toMatchObject({ start: 300 });
+
+    const notices = noticesOf(store);
+    expect(addMedia(store, assetView({ removed: true }), { frame: 90, trackId: "v1" })).toBe(false);
+    expect(notices).toEqual([MESSAGES.mediaNotReady]);
+    expect(store.getState().queue).toHaveLength(2);
+
+    // A viewer, and a clip with no room, are refused too.
+    expect(addMedia(makeStore({ canEdit: false }), assetView())).toBe(false);
+    const full = makeStore();
+    while (full.getState().doc.tracks.length < LIMITS.tracksPerProject) addTrack(full, "audio"); // none takes a video
+    expect(addMedia(full, assetView({ durationMs: 2_000 }), { frame: 0, trackId: "v1" })).toBe(false);
+    expect(full.getState().notice).toMatchObject({ text: MESSAGES.noRoom });
+    // An edit the project refuses: one clip more than a track may hold.
+    const doc = sampleDoc();
+    doc.tracks[0].clips = Array.from({ length: LIMITS.clipsPerTrack }, (_, i) => video(`k${i}`, i, 1));
+    const crowded = makeStore({ doc });
+    expect(addMedia(crowded, assetView({ durationMs: 2_000 }), { frame: 2_000, trackId: "v1" })).toBe(false);
+    expect(crowded.getState().queue).toEqual([]);
+  });
+
   it("do nothing for a viewer, with no message", () => {
     const store = makeStore({ canEdit: false });
     const st = () => store.getState();

@@ -2,6 +2,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import type { LibraryStore } from "@/lib/media/library-store";
 import type { AssetView } from "@/lib/media/types";
 import type { UploadQueue } from "@/lib/media/upload-queue";
+import { TRACK_ACCEPTS, type MediaClip, type TimelineDoc } from "@/lib/timeline";
 import type { EditorStore } from "./store";
 
 // The type a library item of this page carries while it is dragged; its data is the asset's id. Lower case, as
@@ -22,6 +23,13 @@ export function dragKind(types: readonly string[], hasAsset: boolean): DragKind 
 // Whether a drag carries files, and not text or a part of the page.
 export function carriesFiles(types: readonly string[]): boolean {
   return types.includes("Files");
+}
+
+// The track a clip dropped on a row would like: that row when it exists and takes the clip, else none, and placement
+// chooses (below the last row, over the ruler, or on a row of another kind).
+export function dropTrack(doc: TimelineDoc, rowTrackId: string | null, type: MediaClip["type"]): string | null {
+  const row = doc.tracks.find((t) => t.id === rowTrackId);
+  return row && TRACK_ACCEPTS[row.kind].includes(type) ? row.id : null;
 }
 
 // What is dragged over the editor, for an editor only.

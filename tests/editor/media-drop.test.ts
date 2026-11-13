@@ -1,9 +1,9 @@
 import { expect, it } from "vitest";
-import { ASSET_DRAG_TYPE, carriesFiles, createMediaDrop, dragKind } from "@/lib/editor/media-drop";
+import { ASSET_DRAG_TYPE, carriesFiles, createMediaDrop, dragKind, dropTrack } from "@/lib/editor/media-drop";
 import { createLibraryStore } from "@/lib/media/library-store";
 import type { MediaApi } from "@/lib/media/api";
 import { assetView } from "../helpers/media-services";
-import { makeStore } from "./fixtures";
+import { makeStore, sampleDoc } from "./fixtures";
 
 const never = <T,>() => new Promise<T>(() => {});
 const api: MediaApi = {
@@ -81,4 +81,14 @@ it("stopping ends the watch of the editor", () => {
   drop.setIncoming("files");
   store.getState().revokeEditing();
   expect(drop.state.getState().incoming).toBe("files");
+});
+
+it("dropTrack keeps a clip on the dropped row only when the row takes it", () => {
+  const doc = sampleDoc();
+  expect(dropTrack(doc, "v1", "video")).toBe("v1");
+  expect(dropTrack(doc, "t1", "video")).toBe(null);
+  expect(dropTrack(doc, "v1", "audio")).toBe(null);
+  expect(dropTrack(doc, null, "video")).toBe(null);
+  expect(dropTrack(doc, "gone", "video")).toBe(null);
+  expect(dropTrack(doc, "a1", "audio")).toBe("a1");
 });

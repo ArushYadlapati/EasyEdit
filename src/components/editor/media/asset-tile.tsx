@@ -1,16 +1,18 @@
 "use client";
 
 import { Ellipsis, Music } from "lucide-react";
-import { memo, useEffect, useId, useRef, useState, type MouseEvent } from "react";
+import { memo, useEffect, useId, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { FADE, FOCUS_RING, DISABLED, cx } from "@/components/ui/cx";
 import { Menu, type MenuItem } from "@/components/ui/menu";
+import { ASSET_DRAG_TYPE } from "@/lib/editor/media-drop";
 import { assetMenu, rightClickEntries } from "@/lib/editor/menus";
 import { MEDIA_MESSAGES, formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS, playbackFileFor } from "@/lib/media/playback";
 import type { AssetView } from "@/lib/media/types";
 import { useToMenuItems } from "../menu-items";
 import { useIsMac } from "../use-shortcuts";
+import { useMediaDrop } from "./media-context";
 import { usePoster } from "./use-poster";
 
 export type AssetAction = "rename" | "event" | "remove";
@@ -48,14 +50,15 @@ type AssetTileProps = {
 };
 
 // One asset of the library: its still picture, name, length (or "Image") and who uploaded it. Clicking it adds it to
-// the timeline; More renames it, sets its event or removes it. A right-click offers both; on a Mac a Ctrl+click is
-// that right-click, so it adds nothing.
+// the timeline, and an editor can drag it there; More renames it, sets its event or removes it. A right-click offers
+// both; on a Mac a Ctrl+click is that right-click, so it adds nothing.
 export const AssetTile = memo(function AssetTile({ asset, canEdit, watch, onAdd, onAction }: AssetTileProps) {
   const box = useRef<HTMLLIElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useContextMenu();
   const toItems = useToMenuItems();
   const isMac = useIsMac();
+  const drop = useMediaDrop();
   const [inView, setInView] = useState(false);
   useEffect(() => (box.current ? watch(box.current, setInView) : undefined), [watch]);
   const poster = usePoster(asset, inView);
@@ -85,6 +88,13 @@ export const AssetTile = memo(function AssetTile({ asset, canEdit, watch, onAdd,
     });
   }
 
+  // The drag carries only the asset's id, under this page's own type: nothing another app would take.
+  function onDragStart(e: DragEvent<HTMLButtonElement>) {
+    e.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
+    e.dataTransfer.effectAllowed = "copy";
+    drop?.startAssetDrag(asset);
+  }
+
   return (
     <li ref={box} className="flex min-w-0 items-center gap-1" onContextMenu={onContextMenu}>
       <button
@@ -93,6 +103,8 @@ export const AssetTile = memo(function AssetTile({ asset, canEdit, watch, onAdd,
         data-edit-control
         data-asset-id={asset.id}
         disabled={!canEdit}
+        draggable={canEdit}
+        onDragStart={onDragStart}
         aria-label={`Add ${asset.name} to the timeline`}
         aria-describedby={note ? `${detailsId} ${noteId}` : detailsId}
         className={cx("flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left enabled:hover:bg-ed-hover", FOCUS_RING, FADE, DISABLED)}
@@ -105,7 +117,7 @@ export const AssetTile = memo(function AssetTile({ asset, canEdit, watch, onAdd,
             <Music aria-hidden />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element -- a blob address made in this page; next/image cannot load one.
-            poster && <img src={poster} alt="" className="size-full object-cover" />
+            poster && <img src={poster} alt="" draggable={false} className="size-full object-cover" />
           )}
         </span>
         <span className="flex min-w-0 flex-1 flex-col">

@@ -5,6 +5,7 @@ import { MediaProvider, type MediaServices } from "@/components/editor/media/med
 import { LANE_GUTTER } from "@/components/editor/timeline/playhead";
 import { Timeline } from "@/components/editor/timeline/timeline";
 import { HEADER_WIDTH, ROW_HEIGHT, RULER_HEIGHT } from "@/lib/editor/geometry";
+import type { SettingsStore } from "@/lib/editor/settings";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import { makeStore } from "../editor/fixtures";
 import { act, fireEvent, render, screen } from "./dom";
@@ -43,11 +44,15 @@ export function installTimelineStubs(): void {
   });
 }
 
-// Renders EditorProvider > wrap(MediaProvider? > Timeline); MediaProvider only when media is given.
-export function renderTimeline(store: EditorStore = makeStore(), opts: { media?: MediaServices; wrap?(timeline: ReactNode): ReactNode } = {}) {
-  const { media, wrap = (timeline: ReactNode) => timeline } = opts;
+// Renders EditorProvider > wrap(MediaProvider? > Timeline); MediaProvider only when media is given. settings: the
+// preferences the provider hands out, else its own defaults.
+export function renderTimeline(
+  store: EditorStore = makeStore(),
+  opts: { media?: MediaServices; settings?: SettingsStore; wrap?(timeline: ReactNode): ReactNode } = {},
+) {
+  const { media, settings, wrap = (timeline: ReactNode) => timeline } = opts;
   const view = render(
-    <EditorProvider store={store}>
+    <EditorProvider store={store} settings={settings}>
       {wrap(
         media ? (
           <MediaProvider services={media}>

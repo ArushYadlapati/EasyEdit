@@ -40,22 +40,23 @@ export function addText(store: EditorStore, preset: TextPreset, seconds?: number
   if (result.ok) state.select(placement.clipIds);
 }
 
-// Puts a clip of a library asset at the frame given, else the playhead, and selects it. The clip would like the track
-// given, else the selected track when that track takes it; placeClips finds where it goes. A still image lasts
-// stillSeconds (Settings), else the default; a video or audio clip runs to the end of its media.
+// Puts a clip of a library asset at the frame given, else the playhead, and selects it unless select is false. The
+// clip would like the track given (null: none), else the selected track when that track takes it; placeClips finds
+// where it goes. A still image lasts stillSeconds (Settings), else the default; a video or audio clip runs to the end
+// of its media. Returns whether the clip went in.
 export function addMedia(
   store: EditorStore,
   asset: AssetView,
-  opts: { frame?: number; trackId?: string | null; stillSeconds?: number } = {},
-): void {
+  opts: { frame?: number; trackId?: string | null; stillSeconds?: number; select?: boolean } = {},
+): boolean {
   const state = store.getState();
-  if (!state.canEdit) return;
+  if (!state.canEdit) return false;
   // For video and audio durationSeconds would cap the length, so only an image is given one.
   const length = { durationSeconds: asset.kind === "image" ? opts.stillSeconds : undefined };
   const clip = asset.status === "ready" && !asset.removed ? mediaClipFor(asset, opts.frame ?? state.playhead, state.doc.fps, length) : null;
   if (!clip) {
     state.notify("info", MESSAGES.mediaNotReady);
-    return;
+    return false;
   }
   const selected = state.doc.tracks.find((t) => t.id === state.selection.trackId);
   const trackId = opts.trackId !== undefined ? opts.trackId : selected && TRACK_ACCEPTS[selected.kind].includes(clip.type) ? selected.id : null;
@@ -63,10 +64,11 @@ export function addMedia(
   const placement = placeClips(state.doc, [{ clip: { ...clip, id: "new" }, trackId }], () => nanoid(10));
   if (!placement.ok) {
     state.notify("error", MESSAGES.noRoom);
-    return;
+    return false;
   }
   const result = state.edit(placement.ops, "add media");
-  if (result.ok) state.select(placement.clipIds);
+  if (result.ok && opts.select !== false) state.select(placement.clipIds);
+  return result.ok;
 }
 
 // The runners below edit the project. For a viewer they do nothing and say nothing.
