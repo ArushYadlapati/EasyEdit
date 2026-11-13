@@ -4,10 +4,11 @@ import { EditorProvider } from "@/components/editor/context";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { LeftPanel } from "@/components/editor/left-panel";
 import { MediaProvider } from "@/components/editor/media/media-context";
+import { createMediaDrop } from "@/lib/editor/media-drop";
 import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
 import { findClip } from "@/lib/editor/store";
 import { makeStore } from "../editor/fixtures";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { act, cleanup, fireEvent, render, screen } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 
 const NAMES = ["Add title", "Add subtitle", "Add lower third"];
@@ -109,4 +110,74 @@ it("on a Mac, Ctrl+click on a preset adds nothing", () => {
   expect(store.getState().queue).toEqual([]);
   fireEvent.click(screen.getByRole("button", { name: "Add title" }));
   expect(store.getState().queue.map((e) => e.label)).toEqual(["add text"]);
+});
+
+function withDrop(options: { canEdit?: boolean; setUp?: boolean } = {}) {
+  const store = makeStore({ canEdit: options.canEdit ?? true });
+  const media = pretendMediaServices([]);
+  media.library.setState({ setUp: options.setUp ?? true });
+  const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
+  render(
+    <EditorProvider store={store}>
+      <MediaProvider services={media} drop={drop}>
+        <LeftPanel />
+      </MediaProvider>
+    </EditorProvider>,
+  );
+  return { store, media, drop };
+}
+
+const selectedTab = () => screen.getAllByRole("tab").find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent;
+const DRAG_LINE = "You can also drag files here or onto the timeline.";
+
+it("a file over the window shows the Media tab and its drop text", () => {
+  const { drop } = withDrop();
+  expect(selectedTab()).toBe("Text");
+  act(() => drop.setIncoming("files"));
+  expect(selectedTab()).toBe("Media");
+  expect(screen.getByText("Drop to upload")).toBeTruthy();
+  expect(screen.getByRole("tabpanel").className).toContain("outline-ed-accent");
+  // The panel stays on Media once the file has gone.
+  act(() => drop.setIncoming(null));
+  expect(selectedTab()).toBe("Media");
+  expect(screen.queryByText("Drop to upload")).toBeNull();
+  expect(screen.getByRole("tabpanel").className).not.toContain("outline-ed-accent");
+  // A library item dragged in does not switch the tab.
+  fireEvent.click(screen.getByRole("tab", { name: "Text" }));
+  act(() => drop.setIncoming("asset"));
+  expect(selectedTab()).toBe("Text");
+});
+
+it("without uploads set up the tab still switches, with no drop text", () => {
+  const { drop } = withDrop({ setUp: false });
+  act(() => drop.setIncoming("files"));
+  expect(selectedTab()).toBe("Media");
+  expect(screen.queryByText("Drop to upload")).toBeNull();
+});
+
+it("a viewer's Media tab shows no drop text", () => {
+  const { drop } = withDrop({ canEdit: false });
+  fireEvent.click(screen.getByRole("tab", { name: "Media" }));
+  act(() => drop.setIncoming("files"));
+  expect(screen.queryByText("Drop to upload")).toBeNull();
+  expect(screen.getByRole("tabpanel").className).not.toContain("outline-ed-accent");
+});
+
+it("the Media tab says files can be dragged in", () => {
+  withDrop();
+  fireEvent.click(screen.getByRole("tab", { name: "Media" }));
+  const line = screen.getByText(DRAG_LINE);
+  expect(line.className).toBe("text-[13px] leading-5 text-ed-muted");
+  // Under the Upload button.
+  expect(line.previousElementSibling).toBe(screen.getByRole("button", { name: "Upload" }));
+  cleanup();
+
+  withDrop({ canEdit: false });
+  fireEvent.click(screen.getByRole("tab", { name: "Media" }));
+  expect(screen.queryByText(DRAG_LINE)).toBeNull();
+  cleanup();
+
+  withDrop({ setUp: false });
+  fireEvent.click(screen.getByRole("tab", { name: "Media" }));
+  expect(screen.queryByText(DRAG_LINE)).toBeNull();
 });

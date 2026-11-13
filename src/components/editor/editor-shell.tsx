@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createProjectApi } from "@/lib/editor/api";
 import { createClipboard } from "@/lib/editor/clipboard";
 import type { Layout } from "@/lib/editor/layout";
+import { carriesFiles, createMediaDrop } from "@/lib/editor/media-drop";
 import {
   DEFAULT_PREFS, PREFS_COOKIE, createSettingsStore, formatPrefs, parsePrefs, type Prefs, type SettingsSave,
 } from "@/lib/editor/settings";
@@ -13,6 +14,7 @@ import type { EditorInit } from "@/lib/editor/types";
 import { docAssetIds } from "@/lib/media/library-store";
 import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser-prefs";
 import { EditorProvider } from "./context";
+import { watchDrags } from "./drag-watch";
 import { EditorScreen } from "./editor-screen";
 import { MediaProvider, createMediaServices } from "./media/media-context";
 
@@ -34,7 +36,7 @@ const quietly = (work: Promise<void>) => void work.catch(() => {});
 // unsent changes or running uploads. The panel sizes and the preferences come from the browser's cookies, which the
 // page read; the keymap is read from local storage once the editor is on screen.
 export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; layout?: Layout; prefs?: Prefs }) {
-  const [{ store, api, sync, clipboard, media, settings, savePrefs }] = useState(() => {
+  const [{ store, api, sync, clipboard, media, drop, settings, savePrefs }] = useState(() => {
     const store = createEditorStore(initial, { view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones } });
     const api = createProjectApi(initial.projectId);
     const sync = createSync({ store, api, isVisible: () => document.visibilityState === "visible" });
@@ -44,7 +46,9 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       writePrefsCookie(formatPrefs({ ...chosen, snapping, safeZones: showSafeZones }));
     };
     const settings = createSettingsStore({ prefs }, { prefs: savePrefs, keymap: (k) => writeKeymap(localStore, k) });
-    return { store, api, sync, clipboard: createClipboard(localStore), media: createMediaServices(), settings, savePrefs };
+    const media = createMediaServices();
+    const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
+    return { store, api, sync, clipboard: createClipboard(localStore), media, drop, settings, savePrefs };
   });
 
   useEffect(() => {
@@ -103,11 +107,28 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       else window.removeEventListener("beforeunload", onBeforeUnload);
     };
     const capture = { capture: true, passive: true };
-    // A file dropped anywhere but the Media tab does nothing; the browser would open it in place of the editor. The
-    // tab handles its own drops first. A drag of text or of something on the page is left alone.
-    const onFileDrag = (event: DragEvent) => {
-      if (event.defaultPrevented || ![...(event.dataTransfer?.types ?? [])].includes("Files")) return;
+    // Whether this person may drop anything now: an editor of a project that is still there.
+    const allowed = () => {
+      const { canEdit, status } = store.getState();
+      return canEdit && status !== "deleted";
+    };
+    // A file drag that nothing in the editor took: the places that take files (the Media tab, and in time the
+    // timeline and the preview) handle their own first and prevent the default. Anywhere else, such as the inspector,
+    // the top row or the transport, a dropped file goes to the library only, for an editor with uploads set up while
+    // no dialog is open; otherwise it is refused. Either way the browser never opens it in place of the editor. A drag
+    // of text or of something on the page is left alone.
+    const takesFiles = () => allowed() && library.getState().setUp && document.querySelector("dialog[open]") === null;
+    const unhandledFiles = (event: DragEvent) => !event.defaultPrevented && carriesFiles([...(event.dataTransfer?.types ?? [])]);
+    const onFileDragOver = (event: DragEvent) => {
+      if (!unhandledFiles(event)) return;
       event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = takesFiles() ? "copy" : "none";
+    };
+    const onFileDrop = (event: DragEvent) => {
+      if (!unhandledFiles(event)) return;
+      event.preventDefault();
+      const files = [...(event.dataTransfer?.files ?? [])];
+      if (takesFiles() && files.length > 0) queue.add(files);
     };
 
     // The browser's own menu is kept for text fields and links; elsewhere a right-click opens the editor's menu or
@@ -120,6 +141,8 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       event.preventDefault();
     };
 
+    const stopDrop = drop.start();
+    const stopWatching = watchDrags(window, drop, allowed);
     sync.start();
     quietly(library.getState().refresh("open"));
     quietly(library.getState().ensure(docAssetIds(store.getState().doc)));
@@ -132,8 +155,8 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
     window.addEventListener("focus", onFocus);
     window.addEventListener("pointerdown", onActivity, capture);
     window.addEventListener("keydown", onActivity, capture);
-    window.addEventListener("dragover", onFileDrag);
-    window.addEventListener("drop", onFileDrag);
+    window.addEventListener("dragover", onFileDragOver);
+    window.addEventListener("drop", onFileDrop);
     window.addEventListener("contextmenu", onContextMenu);
     guardUnload(unsaved());
     const unsubscribe = store.subscribe((state, before) => {
@@ -151,8 +174,8 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("pointerdown", onActivity, capture);
       window.removeEventListener("keydown", onActivity, capture);
-      window.removeEventListener("dragover", onFileDrag);
-      window.removeEventListener("drop", onFileDrag);
+      window.removeEventListener("dragover", onFileDragOver);
+      window.removeEventListener("drop", onFileDrop);
       window.removeEventListener("contextmenu", onContextMenu);
       unsubscribe();
       unsubscribeLibrary();
@@ -161,13 +184,15 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       // the page, so the edits still queued are sent first. Uploads stop where they are: an unfinished
       // one stays on the server, and is taken up when the same file is chosen again.
       sync.stopWhenSent();
+      stopWatching();
+      stopDrop();
       media.dispose();
     };
-  }, [store, sync, media]);
+  }, [store, sync, media, drop]);
 
   return (
     <EditorProvider store={store} api={api} clipboard={clipboard} settings={settings}>
-      <MediaProvider services={media}>
+      <MediaProvider services={media} drop={drop}>
         <EditorScreen initialLayout={layout} />
       </MediaProvider>
     </EditorProvider>

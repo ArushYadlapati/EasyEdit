@@ -19,12 +19,15 @@ import {
 import { viewDoc } from "@/lib/editor/store";
 import { docDuration, type Track } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
+import { useLibrary, useMediaDrop, useMediaDropState } from "../media/media-context";
 import { LANE_GUTTER, PlayheadLine } from "./playhead";
 import { Ruler } from "./ruler";
 import { Toolbar } from "./toolbar";
 import { CLIP_HEIGHT, CLIP_TOP } from "./clip-view";
 import { TrackRow, useLaneMenu } from "./track-row";
+import { UploadPlaceholders } from "./upload-placeholders";
 import { TimelineDragContext, useTimelineDrag, type DragView } from "./use-clip-drag";
+import { useTimelineDrop, type DropHover } from "./use-timeline-drop";
 
 const OVERSCAN_PX = 200; // clips this far outside the visible area are rendered too
 const WINDOW_STEP_PX = 100; // the rendered range moves in steps, so scrolling re-renders rows only now and then
@@ -57,6 +60,13 @@ export function Timeline() {
   const fitRequest = useEditor((s) => s.fitRequest);
   const canEdit = useEditor((s) => s.canEdit);
   const selection = useEditor((s) => s.selection);
+  const incoming = useMediaDropState((s) => s.incoming, null);
+  const setUp = useLibrary((s) => s.setUp);
+  const hasDrop = useMediaDrop() !== null;
+  // Files can be dragged onto it only where there is a drop to take them.
+  const takesFiles = canEdit && setUp && hasDrop;
+  // Lit while something it would take is dragged over the window: a library item, or files when uploads are set up.
+  const armed = canEdit && (incoming === "asset" || (incoming === "files" && setUp));
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const [scrollStart, setScrollStart] = useState(0);
@@ -75,6 +85,9 @@ export function Timeline() {
   const toFrame = (scrollStart - LANE_GUTTER + WINDOW_STEP_PX + viewportPx + OVERSCAN_PX) / zoom;
   const drag = useTimelineDrag(store, scrollRef, rowsRef, zoom);
   const openLaneMenu = useLaneMenu(drag);
+  const { hover, handlers: dropHandlers } = useTimelineDrop(drag);
+  // A library item over the timeline itself: the tint grows stronger.
+  const over = useStore(hover, (h) => h !== null);
 
   useEffect(() => {
     if (zoom !== storedZoom) store.getState().setZoom(zoom);
@@ -179,8 +192,8 @@ export function Timeline() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Toolbar duration={duration} fps={fps} />
-      <div className="relative min-h-0 flex-1">
-        <div ref={scrollRef} onScroll={onScroll} className={cx("absolute inset-0 overflow-auto overscroll-contain", DRAG_CURSOR)}>
+      <div data-drop={over ? "over" : armed ? "armed" : "idle"} className="relative min-h-0 flex-1">
+        <div ref={scrollRef} onScroll={onScroll} {...dropHandlers} className={cx("absolute inset-0 overflow-auto overscroll-contain", DRAG_CURSOR)}>
           <div className="relative min-h-full" style={{ width }} onContextMenu={onContentContextMenu}>
             <Ruler zoom={zoom} fps={fps} fromFrame={fromFrame} toFrame={toFrame} max={frames} end={duration} onScrub={onScrub} />
             <TimelineDragContext value={drag}>
@@ -198,7 +211,8 @@ export function Timeline() {
                     divider={track.kind !== "audio" && rows[i + 1]?.kind === "audio"}
                   />
                 ))}
-                <DragOverlay view={drag.view} rows={rows} zoom={zoom} />
+                <UploadPlaceholders />
+                <DragOverlay view={drag.view} hover={hover} rows={rows} zoom={zoom} />
               </div>
             </TimelineDragContext>
             <PlayheadLine zoom={zoom} />
@@ -209,19 +223,41 @@ export function Timeline() {
             className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-center text-[13px] leading-5 text-ed-muted"
             style={{ left: HEADER_WIDTH, top: RULER_HEIGHT }}
           >
-            {canEdit ? "Nothing on the timeline yet. Add text or media from the panel on the left." : "Nothing on the timeline yet."}
+            {takesFiles
+              ? "Nothing on the timeline yet. Add text or media from the panel on the left, or drag files here."
+              : canEdit
+                ? "Nothing on the timeline yet. Add text or media from the panel on the left."
+                : "Nothing on the timeline yet."}
           </p>
         )}
+        {/* The drop look: an outline and a light tint over the whole timeline, stronger while an item is over it. It
+            never takes the pointer, or it would become the drag's target. */}
+        <div
+          aria-hidden
+          className={cx(
+            "pointer-events-none absolute inset-0 rounded-[4px] outline-2 -outline-offset-2 outline-ed-accent",
+            over ? "bg-ed-accent-weak" : "bg-ed-accent-weak/50",
+            // Above the sticky ruler (z-30) and track headers (z-20): it comes after the scroller, so it paints over them.
+            "z-30",
+            "transition-opacity duration-120 motion-reduce:transition-none",
+            armed || over ? "opacity-100" : "opacity-0",
+          )}
+        />
       </div>
     </div>
   );
 }
 
 // Drawn over the rows during a drag: the snap guide, where clips would land when the drop is not
-// allowed, the box of a box selection, and a dragged track's tint and the line where it would go
-// (none when it would stay on its row). Only this re-renders as they change.
-function DragOverlay({ view, rows, zoom }: { view: StoreApi<DragView>; rows: Track[]; zoom: number }) {
-  const { guide, ghost, box, track } = useStore(view);
+// allowed, the box of a box selection, a dragged track's tint and the line where it would go
+// (none when it would stay on its row), and where a library item dragged in would land: a box of its length, or a
+// line where files (or an item with no length) would start, on its row or, below the last row, across them all. Only
+// this re-renders as they change.
+function DragOverlay({ view, hover, rows, zoom }: { view: StoreApi<DragView>; hover: StoreApi<DropHover | null>; rows: Track[]; zoom: number }) {
+  const { guide: dragGuide, ghost, box, track } = useStore(view);
+  const incoming = useStore(hover);
+  const guide = dragGuide ?? incoming?.guide ?? null;
+  const incomingRow = incoming ? rows.findIndex((t) => t.id === incoming.trackId) : -1;
   const moves = track !== null && (track.slot > track.fromRow ? track.slot - 1 : track.slot) !== track.fromRow;
   const x = (frame: number) => HEADER_WIDTH + LANE_GUTTER + frameToPx(frame, zoom);
   return (
@@ -239,6 +275,31 @@ function DragOverlay({ view, rows, zoom }: { view: StoreApi<DragView>; rows: Tra
           />
         );
       })}
+      {incoming && incoming.duration !== null && incomingRow >= 0 && (
+        <div
+          aria-hidden
+          data-drop-ghost
+          className="pointer-events-none absolute z-10 rounded-[4px] border border-dashed border-ed-accent bg-ed-accent-weak"
+          style={{
+            left: x(incoming.start),
+            top: incomingRow * ROW_HEIGHT + CLIP_TOP,
+            width: Math.max(2, frameToPx(incoming.duration, zoom)),
+            height: CLIP_HEIGHT,
+          }}
+        />
+      )}
+      {incoming && incoming.duration === null && (
+        <div
+          aria-hidden
+          data-drop-line
+          className="pointer-events-none absolute z-10 w-0.5 bg-ed-accent"
+          style={{
+            left: x(incoming.start) - 1,
+            top: incomingRow >= 0 ? incomingRow * ROW_HEIGHT : 0,
+            height: incomingRow >= 0 ? ROW_HEIGHT : rows.length * ROW_HEIGHT,
+          }}
+        />
+      )}
       {guide !== null && <div aria-hidden data-snap-guide className="pointer-events-none absolute inset-y-0 z-10 border-l border-ed-accent" style={{ left: x(guide) }} />}
       {box && (
         <div

@@ -72,6 +72,7 @@ export type TimelineDrag = {
   pressRows(e: Pointer): void;
   pressTrack(e: ReactPointerEvent | PointerEvent, trackId: string): void;
   pointAt(clientX: number, clientY: number): TimelinePoint;
+  scrollNear(clientX: number): void; // one step of the sideways autoscroll, for a pointer near either side of the lanes
   dispose(): void;
 };
 
@@ -413,6 +414,10 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
       const shown = displayRows(store.getState().doc);
       const row = Math.floor(yInRows(clientY) / ROW_HEIGHT);
       return { frame, trackId: row >= 0 && row < shown.length ? shown[row].id : null };
+    },
+    // A drag from outside the timeline sends dragover over and over, so each one is a step.
+    scrollNear(clientX) {
+      autoscroll(clientX);
     },
     dispose() {
       end(false);

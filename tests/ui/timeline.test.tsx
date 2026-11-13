@@ -6,6 +6,7 @@ import { MediaProvider, type MediaServices } from "@/components/editor/media/med
 import { ClipView } from "@/components/editor/timeline/clip-view";
 import { Timeline } from "@/components/editor/timeline/timeline";
 import { HEADER_WIDTH, MAX_CONTENT_PX, formatTimecode } from "@/lib/editor/geometry";
+import { createMediaDrop, type Incoming } from "@/lib/editor/media-drop";
 import type { MediaFiles } from "@/lib/media/media-files";
 import type { AssetView } from "@/lib/media/types";
 import { createEmptyDoc } from "@/lib/timeline";
@@ -397,4 +398,69 @@ it("an empty timeline says where clips come from, and only an editor is told to 
   unmount();
   setup(makeStore({ doc: createEmptyDoc("short_9x16"), canEdit: false }));
   expect(screen.getByText("Nothing on the timeline yet.")).toBeTruthy();
+});
+
+it("the empty timeline tells an editor files can be dragged onto it", () => {
+  const cases: { canEdit: boolean; setUp: boolean; sentence: string }[] = [
+    { canEdit: true, setUp: true, sentence: "Nothing on the timeline yet. Add text or media from the panel on the left, or drag files here." },
+    { canEdit: true, setUp: false, sentence: "Nothing on the timeline yet. Add text or media from the panel on the left." },
+    { canEdit: false, setUp: true, sentence: "Nothing on the timeline yet." },
+  ];
+  for (const { canEdit, setUp, sentence } of cases) {
+    const store = makeStore({ doc: createEmptyDoc("short_9x16"), canEdit });
+    const media = pretendMediaServices([]);
+    media.library.setState({ setUp });
+    const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
+    const view = render(
+      <EditorProvider store={store}>
+        <MediaProvider services={media} drop={drop}>
+          <Timeline />
+        </MediaProvider>
+      </EditorProvider>,
+    );
+    expect(screen.getByText(sentence)).toBeTruthy();
+    view.unmount();
+  }
+  // Without a drop nothing can be dragged onto it, so it does not say so.
+  const { unmount } = setup(makeStore({ doc: createEmptyDoc("short_9x16") }), pretendMediaServices([]));
+  expect(screen.getByText("Nothing on the timeline yet. Add text or media from the panel on the left.")).toBeTruthy();
+  unmount();
+});
+
+it("lights up for what it would take: a library item, or files once uploads are set up, for an editor", () => {
+  const cases: { canEdit: boolean; setUp: boolean; incoming: Incoming; drop: string }[] = [
+    { canEdit: true, setUp: true, incoming: null, drop: "idle" },
+    { canEdit: true, setUp: true, incoming: "files", drop: "armed" },
+    { canEdit: true, setUp: false, incoming: "files", drop: "idle" },
+    { canEdit: true, setUp: false, incoming: "asset", drop: "armed" },
+    { canEdit: false, setUp: true, incoming: "files", drop: "idle" },
+    { canEdit: false, setUp: true, incoming: "asset", drop: "idle" },
+  ];
+  for (const { canEdit, setUp, incoming, drop: expected } of cases) {
+    const store = makeStore({ canEdit });
+    const media = pretendMediaServices([]);
+    media.library.setState({ setUp });
+    const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
+    drop.setIncoming(incoming);
+    const view = render(
+      <EditorProvider store={store}>
+        <MediaProvider services={media} drop={drop}>
+          <Timeline />
+        </MediaProvider>
+      </EditorProvider>,
+    );
+    const wrapper = view.container.querySelector<HTMLElement>("[data-drop]")!;
+    expect(wrapper.dataset.drop, JSON.stringify({ canEdit, setUp, incoming })).toBe(expected);
+    const glow = wrapper.lastElementChild!;
+    expect(glow.className).toContain("pointer-events-none absolute inset-0 rounded-[4px] outline-2 -outline-offset-2 outline-ed-accent bg-ed-accent-weak/50");
+    // Above the sticky ruler (z-30) and the track headers (z-20), so the outline shows on all four sides.
+    expect(glow.classList.contains("z-30")).toBe(true);
+    expect(glow.classList.contains(expected === "armed" ? "opacity-100" : "opacity-0")).toBe(true);
+    view.unmount();
+  }
+});
+
+it("without a drop the timeline never lights up", () => {
+  const { container } = setup(makeStore(), pretendMediaServices([]));
+  expect(container.querySelector<HTMLElement>("[data-drop]")!.dataset.drop).toBe("idle");
 });

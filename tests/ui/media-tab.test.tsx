@@ -7,13 +7,16 @@ import { MediaProvider, useMedia, type MediaServices } from "@/components/editor
 import type { MediaApi, MediaFailure, MediaResult } from "@/lib/media/api";
 import { createLibraryStore } from "@/lib/media/library-store";
 import type { MediaFiles } from "@/lib/media/media-files";
+import { ASSET_DRAG_TYPE, createMediaDrop, type MediaDrop } from "@/lib/editor/media-drop";
 import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
 import { MEDIA_MESSAGES, formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import type { AssetView, UploadItem } from "@/lib/media/types";
 import type { UploadQueue } from "@/lib/media/upload-queue";
+import { findClip } from "@/lib/editor/store";
 import { makeStore } from "../editor/fixtures";
 import { act, fireEvent, render, renderHook, screen, within } from "../helpers/dom";
+import { dragEvent } from "../helpers/drag-events";
 
 const asset = (over: Partial<AssetView>): AssetView => ({
   id: "x",
@@ -91,7 +94,7 @@ function pretendQueue() {
 
 const never = <T,>() => new Promise<T>(() => {});
 
-function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boolean; files?: MediaFiles; settings?: SettingsStore } = {}) {
+function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boolean; files?: MediaFiles; settings?: SettingsStore; drop?: MediaDrop } = {}) {
   const { api, answers } = pretendApi(options.listed ?? [FIELD, PHOTO], options.setUp);
   const library = createLibraryStore({ api });
   const queue = pretendQueue();
@@ -101,7 +104,7 @@ function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boole
   const view = render(
     <EditorProvider store={store} settings={options.settings}>
       <ContextMenuProvider>
-        <MediaProvider services={services}>
+        <MediaProvider services={services} drop={options.drop}>
           <LeftPanel />
         </MediaProvider>
       </ContextMenuProvider>
@@ -538,6 +541,43 @@ describe("who may change what", () => {
     expect(added[0]).toMatchObject({ type: "image", assetId: "i1", start: 200 });
     expect(store.getState().selection.clipIds).toEqual([added[0].id]);
     expect(store.getState().queue).toMatchObject([{ label: "add media" }]);
+  });
+});
+
+describe("dragging a tile", () => {
+  it("a tile can be dragged by an editor and not by a viewer", async () => {
+    vi.stubGlobal("IntersectionObserver", undefined); // every row counts as in view, so its poster is read
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:poster-v1");
+    const get = vi.fn(async () => ({ ok: true as const, blob: new Blob(["jpeg"]) }));
+    const { view } = setup({ files: { get, put: async () => {} } });
+    await openMedia();
+    expect(row("field").getAttribute("draggable")).toBe("true");
+    expect(row("field").querySelector("img")!.getAttribute("draggable")).toBe("false"); // the poster is no file to drag out
+    view.unmount();
+
+    setup({ canEdit: false });
+    await openMedia();
+    expect(row("field").getAttribute("draggable")).toBe("false");
+  });
+
+  it("dragstart carries the asset id", async () => {
+    const A = asset({ id: "a", name: "climb", durationMs: 2_000 });
+    const store = makeStore();
+    const drop = createMediaDrop({ store, library: createLibraryStore({ api: pretendApi([]).api }), queue: pretendQueue() });
+    const { store: editor } = setup({ listed: [A], drop });
+    await openMedia();
+    const event = dragEvent("dragstart");
+    const transfer = (event as unknown as { dataTransfer: DataTransfer }).dataTransfer; // the type does not name it
+    const setData = vi.spyOn(transfer, "setData");
+    fireEvent(row("climb"), event);
+    expect(setData.mock.calls).toEqual([[ASSET_DRAG_TYPE, "a"]]); // nothing else: no text for other apps to take
+    expect(transfer.effectAllowed).toBe("copy");
+    expect(drop.state.getState().asset!.id).toBe("a");
+    // A click still adds it at the playhead.
+    act(() => editor.getState().seek(200));
+    fireEvent.click(row("climb"));
+    expect(editor.getState().queue.map((e) => e.label)).toEqual(["add media"]);
+    expect(findClip(editor.getState().doc, editor.getState().selection.clipIds[0])!.clip).toMatchObject({ assetId: "a", start: 200 });
   });
 });
 
