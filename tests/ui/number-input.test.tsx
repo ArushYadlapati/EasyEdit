@@ -194,6 +194,18 @@ describe("drag a value to change it", () => {
     expect(input.value).toBe("90.1");
   });
 
+  it("a key pressed past the limit continues from the limit", () => {
+    const { input, press, move } = setup({ max: 100 });
+    press();
+    move(200);
+    frame();
+    expect(input.value).toBe("100");
+    move(200, { ctrlKey: true });
+    move(190, { ctrlKey: true });
+    frame();
+    expect(input.value).toBe("99");
+  });
+
   it("a value that cannot apply is not shown", () => {
     const { input, onCommit, move, release, drag } = setup({}, (v) => (v !== null && v >= 60 ? false : undefined));
     drag(9);

@@ -255,8 +255,9 @@ export function NumberInput({
     if (!s || event.pointerId !== s.pointerId) return;
     const fine = event.metaKey || event.ctrlKey;
     if (event.shiftKey !== s.shift || fine !== s.fine) {
-      // A key changed: the movement so far keeps the scale it had.
-      s.origin = at(s);
+      // A key changed: the movement so far keeps the scale it had, from the value shown (an overshoot past the
+      // limit is dropped, so the new scale moves the value at once).
+      s.origin = between(at(s), s.lo, s.hi);
       s.originX = s.x;
     }
     s.x = event.clientX;
