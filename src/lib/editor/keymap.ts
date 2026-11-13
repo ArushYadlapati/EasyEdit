@@ -85,7 +85,7 @@ const BROWSER = new Set([
   "Mod+W", "Mod+Shift+W", "Mod+T", "Mod+Shift+T", "Mod+N", "Mod+Shift+N", "Mod+Q", "Mod+R", "Mod+Shift+R", "Mod+L", "Mod+H", "Mod+M",
   "Mod+Tab", "Mod+Shift+Tab", ..."0123456789".split("").map((digit) => `Mod+${digit}`), "Mod+=", "Mod+-", "Mod++",
   "Mod+Shift+I", "Mod+Shift+J", "Mod+Shift+C", "Mod+Alt+I",
-  "F1", "F5", "F6", "F7", "F10", "F11", "F12", "Alt+F4",
+  "F1", "F5", "F6", "F7", "F10", "F11", "F12", "Alt+F4", "Mod+PageUp", "Mod+PageDown", "Mod+F4",
 ]);
 
 // Why a key can't be a shortcut, or null. Escape with or without modifiers, Tab and Enter move focus

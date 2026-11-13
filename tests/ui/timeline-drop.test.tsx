@@ -12,8 +12,9 @@ import { findClip, type EditorStore } from "@/lib/editor/store";
 import type { AssetView, UploadItem } from "@/lib/media/types";
 import type { Clip } from "@/lib/timeline";
 import { makeStore, noticesOf, text, video } from "../editor/fixtures";
-import { act, fireEvent } from "../helpers/dom";
+import { act, fireEvent, within } from "../helpers/dom";
 import { dragEvent } from "../helpers/drag-events";
+import { rect } from "../helpers/layout";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 import { LANE_LEFT, ZOOM, installTimelineStubs, renderTimeline, x, y } from "../helpers/timeline-harness";
 
@@ -343,6 +344,20 @@ it("a drop below the last row has no wished track: placement chooses", () => {
   expect(added()[0].track.id).toBe("v2");
 });
 
+it("with the rows scrolled down, a drop over the ruler has no wished track", () => {
+  // Rows top to bottom: cap, t1, v2, v1, a1; both video rows are free at 400, and placement chooses v2.
+  const doc = makeStore().getState().doc;
+  const v2 = { id: "v2", kind: "video" as const, name: "Video 2", muted: false, hidden: false, locked: false, clips: [] };
+  doc.tracks = [doc.tracks[0], v2, ...doc.tracks.slice(1)];
+  const { dropOn, added, scroller, rows } = open({ store: makeStore({ doc }) });
+  dragging(VIDEO);
+  // Scrolled down, the rows' top has slid up under the sticky ruler: half way down the ruler is v1's row.
+  rows.getBoundingClientRect = () => rect(0, RULER_HEIGHT - 4 * ROW_HEIGHT, 1400, 5 * ROW_HEIGHT);
+  dropOn(scroller, x(400), RULER_HEIGHT / 2, "a");
+  expect(added()[0].track.id).toBe("v2");
+  expect(added()[0].clip.start).toBe(400);
+});
+
 // Files from the computer. A dragover carries no files (browsers keep them until the drop); reads counts any look.
 function fileOver(target: Element, clientX: number, clientY: number) {
   const event = dragEvent("dragover", { clientX, clientY, types: ["Files"] });
@@ -433,6 +448,25 @@ it("a dropped file shows a placeholder until its upload lands, then the clip", a
   const landed = st().doc.tracks.find((t) => t.id === "v1")!.clips.find((c) => c.type === "video" && c.assetId === "n1");
   expect(landed).toMatchObject({ start: 90, duration: 60 });
   expect(st().selection.clipIds).not.toContain(landed!.id);
+});
+
+it("the empty timeline's sentence hides while a dropped file waits to land", async () => {
+  const doc = makeStore().getState().doc;
+  for (const track of doc.tracks) track.clips = [];
+  const { lane, placeholders, view } = open({ store: makeStore({ doc }) });
+  const sentence = "Nothing on the timeline yet. Add text or media from the panel on the left, or drag files here.";
+  const shown = () => within(view.container).queryByText(sentence);
+  expect(shown()).not.toBeNull();
+  fileOver(lane(2), x(90), y(2));
+  fileDrop(lane(2), x(90), y(2), [file("climb.mov")]);
+  await setUploads([upload("climb.mov")]);
+  expect(placeholders()).toHaveLength(1);
+  expect(shown()).toBeNull();
+  // Cancelled, the group closes and the empty timeline says so again.
+  await setUploads([]);
+  await flush();
+  expect(placeholders()).toEqual([]);
+  expect(shown()).not.toBeNull();
 });
 
 it("a placeholder whose upload is in but has not landed reads just its name", async () => {

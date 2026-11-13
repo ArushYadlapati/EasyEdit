@@ -178,6 +178,14 @@ it("Escape keeps the old name, and blur saves", async () => {
   await waitFor(() => expect(store.getState().name).toBe("Finals"));
 });
 
+it("on a Mac a Ctrl+click on the project name opens no field", () => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  const { open } = showName();
+  fireEvent.click(screen.getByRole("button", { name: "Qual recap" }), { ctrlKey: true });
+  expect(screen.queryByRole("textbox", { name: "Project name" })).toBeNull();
+  expect(open()).toBeTruthy();
+});
+
 it("a viewer sees the name as a heading with no button", () => {
   showName({ canEdit: false });
   expect(screen.getByRole("heading", { name: "Qual recap" }).getAttribute("title")).toBe("Qual recap");

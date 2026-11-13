@@ -407,13 +407,16 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
       begin({ ...press(e), kind: "track", trackId, toRow: null, shown: "" });
     },
     // The frame and track under a point on screen. Left of the lanes in view (under the track
-    // headers) counts as their first frame in view; above or below the rows there is no track.
+    // headers) counts as their first frame in view; over the ruler, or above or below the rows,
+    // there is no track, even where a scrolled row lies hidden under the ruler.
     pointAt(clientX, clientY) {
-      const lanesLeft = (scroller?.getBoundingClientRect().left ?? 0) + HEADER_WIDTH;
+      const area = scroller?.getBoundingClientRect();
+      const lanesLeft = (area?.left ?? 0) + HEADER_WIDTH;
       const frame = Math.round(frameAt(Math.max(clientX, lanesLeft)));
       const shown = displayRows(store.getState().doc);
       const row = Math.floor(yInRows(clientY) / ROW_HEIGHT);
-      return { frame, trackId: row >= 0 && row < shown.length ? shown[row].id : null };
+      const overRuler = area !== undefined && clientY < area.top + RULER_HEIGHT;
+      return { frame, trackId: !overRuler && row >= 0 && row < shown.length ? shown[row].id : null };
     },
     // A drag from outside the timeline sends dragover over and over, so each one is a step.
     scrollNear(clientX) {

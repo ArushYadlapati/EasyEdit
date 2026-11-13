@@ -6,6 +6,7 @@ import { InlineEdit } from "@/components/ui/inline-edit";
 import { renameFromEditor } from "@/lib/editor/project-name";
 import { LIMITS } from "@/lib/limits";
 import { useEditor, useEditorApi, useEditorStore } from "./context";
+import { useIsMac } from "./use-shortcuts";
 
 // The project's name in the top bar. An editor clicks it to rename the project in place; a viewer,
 // or anyone on a deleted project, sees it as plain text.
@@ -15,6 +16,7 @@ export function ProjectName(): ReactNode {
   const name = useEditor((s) => s.name);
   const canRename = useEditor((s) => s.canEdit && s.status !== "deleted");
   const [editing, setEditing] = useState(false);
+  const isMac = useIsMac();
   const renaming = editing && canRename;
   const button = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false); // a key ended the rename, so focus goes back to the name
@@ -54,7 +56,10 @@ export function ProjectName(): ReactNode {
         ref={button}
         type="button"
         title={name}
-        onClick={() => setEditing(true)}
+        onClick={(e) => {
+          if (isMac && e.ctrlKey) return; // a right-click on a Mac
+          setEditing(true);
+        }}
         className={cx(
           "h-7 max-w-full truncate rounded-md px-1.5 text-left text-sm leading-5 font-semibold text-ed-text hover:bg-ed-hover",
           FOCUS_RING,

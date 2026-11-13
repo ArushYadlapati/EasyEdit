@@ -747,6 +747,29 @@ describe("moving, turning and resizing on the preview", () => {
     expect(patchOf(st())).toEqual({ transform: { rotation: 90 } });
   });
 
+  it("a click on the rotate handle changes nothing, even near a quarter turn", () => {
+    let { st } = show({ over: { doc: withTransform(sampleDoc(), "x1", { rotation: 2 }) }, selected: ["x1"] });
+    pressHandle("rotate", 486, 492.8);
+    release(486, 492.8);
+    expect(st().queue).toEqual([]);
+    expect(st().gesture).toBeNull();
+    expect(transformOf(st(), "x1").rotation).toBe(2);
+    document.body.innerHTML = "";
+    ({ st } = show({ over: { doc: withTransform(sampleDoc(), "x1", { rotation: 2 }) }, selected: ["x1"] }));
+    pressHandle("rotate", 486, 492.8);
+    move(487, 492.8);
+    frame();
+    release(487, 492.8);
+    expect(st().queue).toEqual([]);
+    expect(transformOf(st(), "x1").rotation).toBe(2);
+    document.body.innerHTML = "";
+    ({ st } = show({ over: { doc: withTransform(sampleDoc(), "x1", { rotation: 7 }) }, selected: ["x1"] }));
+    pressHandle("rotate", 486, 492.8, { shiftKey: true });
+    release(486, 492.8, { shiftKey: true });
+    expect(st().queue).toEqual([]);
+    expect(transformOf(st(), "x1").rotation).toBe(7);
+  });
+
   it("a right-click on a handle opens its clip's menu", () => {
     // The rotate handle is 24 CSS px above x1, where a press would reach the video behind it.
     const { st } = show({ selected: ["x1"] });
@@ -1287,6 +1310,21 @@ describe("cropping on the preview", () => {
     expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(false);
     expect(st().cropArmed).toBeNull();
   });
+
+  it("a click on a handle keeps Crop armed", () => {
+    const { st } = show({ selected: ["c1"] });
+    act(() => st().setCropArmed("c1"));
+    pressHandle("w", 216, 536);
+    release(216, 536);
+    expect(st().cropArmed).toBe("c1");
+    expect(st().queue).toEqual([]);
+    pressHandle("w", 216, 536);
+    move(270, 536);
+    frame();
+    release(270, 536);
+    expect(labelsOf(st())).toEqual(["crop"]);
+    expect(st().cropArmed).toBeNull();
+  });
 });
 
 // The in-place box over x1 at k = 0.5: its centre, project (540, 960), is overlay (286, 496).
@@ -1315,6 +1353,15 @@ describe("typing text in place", () => {
     expect(box.hasAttribute("data-edit-control")).toBe(false);
     expect(box.maxLength).toBe(2000);
     expect(box.closest("[data-canvas-overlay]")).toBe(overlay());
+  });
+
+  it("the box takes focus without scrolling the board", () => {
+    show();
+    const focus = vi.spyOn(HTMLTextAreaElement.prototype, "focus");
+    doubleClick(...TEXT);
+    expect(focus).toHaveBeenCalled();
+    expect(focus.mock.calls).toEqual(focus.mock.calls.map(() => [{ preventScroll: true }]));
+    expect(document.activeElement).toBe(textBox());
   });
 
   it("the box lies over the text in its font, size, weight, colour and alignment", () => {
@@ -1405,6 +1452,22 @@ describe("typing text in place", () => {
     expect(textOf(st(), "x1")).toBe("hey");
     expect(textBox()).toBeNull();
     expect(st().textEditId).toBeNull();
+  });
+
+  it("switching to another window keeps the box open and saves what was typed", () => {
+    const { st } = show();
+    doubleClick(...TEXT);
+    fireEvent.change(textBox()!, { target: { value: "hey" } });
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    fireEvent.blur(textBox()!);
+    expect(textBox()).not.toBeNull();
+    expect(st().textEditId).toBe("x1");
+    expect(labelsOf(st())).toEqual(["text edit"]);
+    expect(textOf(st(), "x1")).toBe("hey");
+    hasFocus.mockReturnValue(true);
+    fireEvent.blur(textBox()!);
+    expect(textBox()).toBeNull();
+    expect(labelsOf(st())).toEqual(["text edit"]);
   });
 
   it("when the box closes by a key, focus goes back to what had it", () => {

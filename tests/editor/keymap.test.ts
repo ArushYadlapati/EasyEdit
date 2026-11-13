@@ -84,6 +84,7 @@ describe("reading keys", () => {
     expect(recordKey(key("s", { metaKey: true }), PC)).toEqual({ refused: "The Windows key can't be part of a shortcut." });
     expect(recordKey(key("r", { ctrlKey: true }), PC)).toEqual({ refused: "That key belongs to the browser. Pick another key." });
     expect(recordKey(key("F5"), PC)).toEqual({ refused: "That key belongs to the browser. Pick another key." });
+    expect(recordKey(key("PageDown", { ctrlKey: true }), PC)).toEqual({ refused: "That key belongs to the browser. Pick another key." });
     expect(recordKey(key("F10", { shiftKey: true }), PC)).toEqual({ refused: REFUSED.menus });
     expect(recordKey(key("Enter"), PC)).toEqual({ refused: REFUSED.moves });
     expect(recordKey(key("Tab", { shiftKey: true }), PC)).toEqual({ refused: REFUSED.moves });
@@ -116,7 +117,7 @@ describe("reading keys", () => {
       "Mod+W", "Mod+Shift+W", "Mod+T", "Mod+Shift+T", "Mod+N", "Mod+Shift+N", "Mod+Q", "Mod+R", "Mod+Shift+R", "Mod+L", "Mod+H", "Mod+M",
       "Mod+Tab", "Mod+Shift+Tab", "Mod+0", "Mod+1", "Mod+2", "Mod+3", "Mod+4", "Mod+5", "Mod+6", "Mod+7", "Mod+8", "Mod+9",
       "Mod+=", "Mod+-", "Mod++", "Mod+Shift+I", "Mod+Shift+J", "Mod+Shift+C", "Mod+Alt+I",
-      "F1", "F5", "F6", "F7", "F10", "F11", "F12", "Alt+F4",
+      "F1", "F5", "F6", "F7", "F10", "F11", "F12", "Alt+F4", "Mod+PageUp", "Mod+PageDown", "Mod+F4",
     ];
     for (const combo of browser) {
       expect(refusalFor(combo, false), combo).toBe(REFUSED.browser);

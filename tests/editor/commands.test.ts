@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  addMedia, addText, addTrack, armCrop, copySelection, cutSelection, deleteSelection, duplicateSelection, duplicateTrack, goToEdge, moveTrack,
-  nudgeSelection, paste, removeTrack, renameTrack, reorderTrack, resetCrop, selectAll, splitAtPlayhead, toggleTrack,
+  addMedia, addText, addTrack, armCrop, copySelection, cutSelection, deleteSelection, duplicateSelection, duplicateTrack, editTextInPlace, goToEdge,
+  moveTrack, nudgeSelection, paste, removeTrack, renameTrack, reorderTrack, resetCrop, selectAll, splitAtPlayhead, toggleTrack,
 } from "@/lib/editor/actions";
 import { CLIPBOARD_KEY, copyClips, createClipboard, pasteItems } from "@/lib/editor/clipboard";
 import {
@@ -484,6 +484,21 @@ describe("runners", () => {
     duplicateTrack(store, "t1");
     expect(edit).not.toHaveBeenCalled();
   });
+
+  it("Select all and Deselect all wait while a gesture is live", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    const ctx = { store, clipboard: createClipboard(), openShortcuts: () => {} };
+    st().select(["x1"]);
+    st().setGesture([{ op: "move_clip", clipId: "x2", start: 95 }]);
+    runCommand("select-all", ctx);
+    runCommand("clear-selection", ctx);
+    expect(st().selection.clipIds).toEqual(["x1"]);
+    expect(st().gesture).not.toBeNull();
+    st().setGesture(null);
+    runCommand("select-all", ctx);
+    expect([...st().selection.clipIds].sort()).toEqual(st().doc.tracks.flatMap((t) => t.clips.map((c) => c.id)).sort());
+  });
 });
 
 // The sample project with audio tracks added up to the most tracks a project may have.
@@ -741,5 +756,27 @@ describe("arming a crop", () => {
     const viewer = makeStore({ canEdit: false });
     armCrop(viewer, "x1", false);
     expect(viewer.getState()).toMatchObject({ cropArmed: null, notice: null, selection: { clipIds: [] } });
+  });
+
+  it("armCrop on a hidden track says so and arms nothing", () => {
+    const doc = sampleDoc();
+    expect(doc.tracks[1].clips.map((c) => c.id)).toContain("x1");
+    doc.tracks[1].hidden = true;
+    const store = makeStore({ doc });
+    const st = () => store.getState();
+    st().seek(45);
+    st().play();
+    armCrop(store, "x1", false);
+    expect(st()).toMatchObject({ cropArmed: null, playing: true, playhead: 45, selection: { clipIds: [] } });
+    expect(st().notice).toMatchObject({ tone: "error", text: MESSAGES.trackHidden });
+  });
+});
+
+describe("typing text in place", () => {
+  it("editTextInPlace does nothing while a gesture is live", () => {
+    const store = makeStore();
+    store.getState().setGesture([{ op: "move_clip", clipId: "x2", start: 95 }]);
+    editTextInPlace(store, "x1");
+    expect(store.getState()).toMatchObject({ textEditId: null, notice: null, selection: { clipIds: [] } });
   });
 });

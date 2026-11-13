@@ -51,7 +51,11 @@ export function InlineEdit({ defaultValue, label, maxLength, onDone, className, 
       maxLength={maxLength}
       className={className}
       onKeyDown={onKeyDown}
-      onBlur={(event) => end(event.currentTarget.value, false)}
+      onBlur={(event) => {
+        // Leaving the window is not a click away: the field is still open, and focused, on return.
+        if (!document.hasFocus()) return;
+        end(event.currentTarget.value, false);
+      }}
     />
   );
 }

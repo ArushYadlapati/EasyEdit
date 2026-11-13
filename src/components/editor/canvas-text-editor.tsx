@@ -90,7 +90,7 @@ export function CanvasTextEditor({ clipId, surface }: { clipId: string; surface:
     const el = ref.current;
     if (!el) return;
     if (document.activeElement !== el) before.current = document.activeElement;
-    el.focus();
+    el.focus({ preventScroll: true });
     el.setSelectionRange(el.value.length, el.value.length);
   }, []);
 
@@ -125,6 +125,8 @@ export function CanvasTextEditor({ clipId, surface }: { clipId: string; surface:
       onBlur={() => {
         if (closed.current) return;
         text.save();
+        // Leaving the window is not a click away: what was typed is saved, and the box stays open for the return.
+        if (!document.hasFocus()) return;
         close(false);
       }}
       className={cx(

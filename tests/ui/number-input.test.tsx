@@ -174,7 +174,24 @@ describe("drag a value to change it", () => {
     expect(input.value).toBe("250");
     move(20);
     frame();
-    expect(onPreview).toHaveBeenLastCalledWith(70, { scrubbed: true });
+    expect(onPreview).toHaveBeenLastCalledWith(250, { scrubbed: true });
+    move(30);
+    frame();
+    expect(onPreview).toHaveBeenLastCalledWith(260, { scrubbed: true });
+  });
+
+  it("a key pressed mid-drag scales only the movement after it", () => {
+    const { input, press, move } = setup();
+    press();
+    move(30);
+    frame();
+    expect(input.value).toBe("80");
+    move(31, { shiftKey: true });
+    frame();
+    expect(input.value).toBe("90");
+    move(32, { ctrlKey: true });
+    frame();
+    expect(input.value).toBe("90.1");
   });
 
   it("a value that cannot apply is not shown", () => {

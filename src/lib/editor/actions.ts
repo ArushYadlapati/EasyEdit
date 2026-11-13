@@ -191,22 +191,26 @@ function focusClip(store: EditorStore, clipId: string): void {
 
 // The clip menu's Crop: shows the clip with its crop marks, and its next handle drag on the preview crops without Alt.
 // A notice says Alt (Option on a Mac) does it any time. Nothing for a viewer, while a drag or a typed value is live, or
-// for audio or a clip on a locked track.
+// for audio or a clip on a locked track. On a hidden track it says so instead.
 export function armCrop(store: EditorStore, clipId: string, isMac: boolean): void {
   const state = store.getState();
   const found = findClip(state.doc, clipId);
   if (!state.canEdit || state.gesture !== null || !found || found.track.locked || found.clip.type === "audio") return;
+  if (found.track.hidden) {
+    state.notify("error", MESSAGES.trackHidden);
+    return;
+  }
   focusClip(store, clipId);
   store.getState().setCropArmed(clipId);
   store.getState().notify("info", isMac ? MESSAGES.cropHintMac : MESSAGES.cropHint);
 }
 
 // Opens a text clip for typing in place on the preview: pauses, brings the playhead into the clip and selects it. On a
-// locked or hidden track it says so instead. Nothing for a viewer.
+// locked or hidden track it says so instead. Nothing for a viewer, or while a drag or a typed value is live.
 export function editTextInPlace(store: EditorStore, clipId: string): void {
   const state = store.getState();
   const found = findClip(state.doc, clipId);
-  if (!state.canEdit || !found || found.clip.type !== "text") return;
+  if (!state.canEdit || !found || found.clip.type !== "text" || state.gesture !== null) return;
   if (found.track.locked) {
     state.notify("error", explainOpError("TRACK_LOCKED"));
     return;

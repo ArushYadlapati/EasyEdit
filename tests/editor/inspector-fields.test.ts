@@ -77,6 +77,25 @@ describe("position and size in your units", () => {
     expect(clipFieldOps(stretched, "width", "1", { ...ctx, units: "in" })).toEqual(patch({ transform: { scale: 1 } }));
   });
 
+  it("with the lock off, Height keeps the Width in a 4K project", () => {
+    const doc = sampleDoc();
+    Object.assign(doc, { width: 3840, height: 2160 });
+    const c1 = findClip(doc, "c1")!.clip;
+    expect([c1.type, c1.transform.scale]).toEqual(["video", 1]);
+    const sizer: Sizer = { source: () => ({ width: 3840, height: 2160 }), measure: () => 0 };
+    const free = fieldContext(doc, c1, { units: "px", lockAspect: false }, sizer);
+    expect(clipFieldValue(c1, "width", free)).toBe("3840");
+    for (const raw of ["201", "204"]) {
+      const ops = clipFieldOps(c1, "height", raw, free)!;
+      const { transform } = (ops[0] as unknown as { patch: { transform: Record<string, number> } }).patch;
+      const updated = withTransform(c1, transform);
+      expect(clipFieldValue(updated, "height", free), raw).toBe(raw);
+      expect(clipFieldValue(updated, "width", free), raw).toBe("3840");
+    }
+    // A Height so small its scale rounds to 0 gives what it always gave, not a division by zero.
+    expect(clipFieldOps(c1, "height", "0.1", free)).toEqual([{ op: "update_clip", clipId: "c1", patch: { transform: { scale: 0, stretch: 21600 } } }]);
+  });
+
   it("width and height need a box", () => {
     expect(clipFieldValue(clip("x1"), "width", BASE)).toBe("");
     expect(clipFieldOps(clip("x1"), "height", "100", BASE)).toBeNull();

@@ -21,8 +21,10 @@ const EDITS = new Set(SHORTCUTS.filter((s) => s.edits).map((s) => s.command));
 
 // A command that changes the project runs only for someone who can edit, never in the middle of a
 // drag or a field being typed in (the gesture is saved or dropped first), and not once the project
-// is gone. Signed out, edits go on and wait to be sent, as when offline.
+// is gone. Signed out, edits go on and wait to be sent, as when offline. Select all and Deselect all
+// wait out a gesture too: a selection change would end it half-way.
 function canRun(command: CommandId, state: EditorState): boolean {
+  if (command === "select-all" || command === "clear-selection") return state.gesture === null;
   if (!EDITS.has(command)) return true;
   return state.canEdit && state.gesture === null && state.status !== "deleted";
 }

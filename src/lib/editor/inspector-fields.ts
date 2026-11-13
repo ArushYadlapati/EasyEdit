@@ -183,7 +183,9 @@ function resize(clip: Clip, field: "width" | "height", f: number, locked: boolea
   const stretch = stretchOf(clip.transform);
   if (locked) return { scale: round(scale * f, 4) };
   if (field === "width") return { stretch: round(stretch * f, 4) };
-  return { scale: round(scale * f, 4), stretch: round(stretch / f, 4) };
+  // The stretch is worked out from the rounded scale, so their rounding does not move the width.
+  const s2 = round(scale * f, 4);
+  return { scale: s2, stretch: s2 === 0 ? round(stretch / f, 4) : round((stretch * scale) / s2, 4) };
 }
 
 // How far a drag on Start or Length may take the clip, in seconds, so a drag slides up to a neighbour and stops there.
