@@ -5,6 +5,7 @@ import { useStore } from "zustand";
 import { cx } from "@/components/ui/cx";
 import { Splitter } from "@/components/ui/splitter";
 import { fitLayout, layoutStyle, sizeBounds, type Layout, type LayoutStore, type PanelId } from "@/lib/editor/layout";
+import { useMediaDropState } from "./media/media-context";
 
 const REGION = "relative min-h-0 min-w-0 overflow-hidden";
 
@@ -37,6 +38,8 @@ export function PanelGrid({ layout, deleted = false, top, left, center, right, b
   const wanted = useStore(layout, (s) => s.wanted);
   const win = useStore(layout, (s) => s.window);
   const [resizing, setResizing] = useState<"col" | "row" | null>(null);
+  // While something is dragged over the window, the edges let it through to the panels under them.
+  const dragging = useMediaDropState((s) => s.incoming !== null, false);
   // The sizes wanted when a drag began. Escape puts them back, so a size the window had squeezed, or a timeline that
   // followed the window's height, is kept as it was rather than replaced by the size shown at the start.
   const beforeDrag = useRef<Layout | null>(null);
@@ -73,7 +76,7 @@ export function PanelGrid({ layout, deleted = false, top, left, center, right, b
           beforeDrag.current = dragging ? layout.getState().wanted : null;
           setResizing(dragging ? (vertical ? "col" : "row") : null);
         }}
-        className={cx(EDGE, className)}
+        className={cx(EDGE, className, dragging && "pointer-events-none")}
       />
     );
   };

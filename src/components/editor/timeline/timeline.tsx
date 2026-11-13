@@ -19,6 +19,7 @@ import {
 import { viewDoc } from "@/lib/editor/store";
 import { docDuration, type Track } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
+import { useLibrary, useMediaDropState } from "../media/media-context";
 import { LANE_GUTTER, PlayheadLine } from "./playhead";
 import { Ruler } from "./ruler";
 import { Toolbar } from "./toolbar";
@@ -57,6 +58,10 @@ export function Timeline() {
   const fitRequest = useEditor((s) => s.fitRequest);
   const canEdit = useEditor((s) => s.canEdit);
   const selection = useEditor((s) => s.selection);
+  const incoming = useMediaDropState((s) => s.incoming, null);
+  const setUp = useLibrary((s) => s.setUp);
+  // Lit while something it would take is dragged over the window: a library item, or files when uploads are set up.
+  const armed = canEdit && (incoming === "asset" || (incoming === "files" && setUp));
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const [scrollStart, setScrollStart] = useState(0);
@@ -179,7 +184,7 @@ export function Timeline() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Toolbar duration={duration} fps={fps} />
-      <div className="relative min-h-0 flex-1">
+      <div data-drop={armed ? "armed" : "idle"} className="relative min-h-0 flex-1">
         <div ref={scrollRef} onScroll={onScroll} className={cx("absolute inset-0 overflow-auto overscroll-contain", DRAG_CURSOR)}>
           <div className="relative min-h-full" style={{ width }} onContextMenu={onContentContextMenu}>
             <Ruler zoom={zoom} fps={fps} fromFrame={fromFrame} toFrame={toFrame} max={frames} end={duration} onScrub={onScrub} />
@@ -212,6 +217,16 @@ export function Timeline() {
             {canEdit ? "Nothing on the timeline yet. Add text or media from the panel on the left." : "Nothing on the timeline yet."}
           </p>
         )}
+        {/* The drop look: an outline and a light tint over the whole timeline. It never takes the pointer, or it would
+            become the drag's target. */}
+        <div
+          aria-hidden
+          className={cx(
+            "pointer-events-none absolute inset-0 rounded-[4px] outline-2 -outline-offset-2 outline-ed-accent bg-ed-accent-weak/50",
+            "transition-opacity duration-120 motion-reduce:transition-none",
+            armed ? "opacity-100" : "opacity-0",
+          )}
+        />
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Segmented } from "@/components/ui/segmented";
 import { TextInput } from "@/components/ui/text-input";
+import { carriesFiles } from "@/lib/editor/media-drop";
 import { LIMITS } from "@/lib/limits";
 import type { MediaFailure, MediaResult } from "@/lib/media/api";
 import { visibleAssets } from "@/lib/media/library-store";
@@ -16,7 +17,7 @@ import { MEDIA_MESSAGES } from "@/lib/media/messages";
 import type { AssetKind, AssetView, UploadItem } from "@/lib/media/types";
 import { useEditor, useEditorStore } from "../context";
 import { AssetTile, type AssetAction, type WatchView } from "./asset-tile";
-import { useLibrary, useMedia } from "./media-context";
+import { useLibrary, useMedia, useMediaDropState } from "./media-context";
 import { UploadRow } from "./upload-row";
 
 const ACCEPT = ".mp4,.m4v,.mov,.webm,.jpg,.jpeg,.png,.webp,.mp3,.m4a,.wav,.aac";
@@ -38,7 +39,7 @@ function refusalOf(answer: MediaFailure): string {
 }
 
 // Whether a drag carries files from the computer, and not text or a clip of this page.
-const carriesFiles = (event: DragEvent) => [...(event.dataTransfer?.types ?? [])].includes("Files");
+const draggingFiles = (event: DragEvent) => carriesFiles([...(event.dataTransfer?.types ?? [])]);
 
 // One IntersectionObserver for the rows of the tab's scrolling panel, so that a row reads its still picture only
 // once it has been scrolled into view. Without one, every row counts as in view.
@@ -102,6 +103,9 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   const canUpload = canEdit && setUp;
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  // Over this tab, or a file from the computer anywhere over the window.
+  const incomingFiles = useMediaDropState((s) => s.incoming === "files", false);
+  const highlighted = canUpload && (dragging || incomingFiles);
   const [editing, setEditing] = useState<{ action: AssetAction; asset: AssetView } | null>(null);
   const { scroller, watch } = useRowsInView();
   const eventLabelId = useId();
@@ -142,7 +146,7 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   }
 
   function onDragOver(event: DragEvent<HTMLDivElement>) {
-    if (!carriesFiles(event)) return;
+    if (!draggingFiles(event)) return;
     event.preventDefault(); // a file dropped here never opens in the window
     event.dataTransfer.dropEffect = canUpload ? "copy" : "none";
     if (canUpload) setDragging(true);
@@ -153,7 +157,7 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
-    if (!carriesFiles(event)) return;
+    if (!draggingFiles(event)) return;
     event.preventDefault();
     setDragging(false);
     const files = [...event.dataTransfer.files];
@@ -163,7 +167,7 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   return (
     <div
       {...panel}
-      className={cx("relative min-h-0 flex-1", dragging && "outline-2 -outline-offset-2 outline-ed-accent")}
+      className={cx("relative min-h-0 flex-1", highlighted && "outline-2 -outline-offset-2 outline-ed-accent")}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -174,6 +178,7 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
             <Upload />
             Upload
           </Button>
+          {canUpload && <p className="text-[13px] leading-5 text-ed-muted">You can also drag files here or onto the timeline.</p>}
           <input
             ref={picker}
             type="file"
@@ -255,7 +260,7 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
         )}
       </div>
 
-      {dragging && (
+      {highlighted && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-ed-bg/80">
           <p className="text-sm font-medium text-ed-text">Drop to upload</p>
         </div>

@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useSyncExternalStore, type ReactNode } from "react";
 import { useStore } from "zustand";
+import type { MediaDrop, MediaDropState } from "@/lib/editor/media-drop";
 import { createMediaApi, type MediaApi } from "@/lib/media/api";
 import { createIngest } from "@/lib/media/ingest-protocol";
 import { createLibraryStore, type LibraryState, type LibraryStore } from "@/lib/media/library-store";
@@ -80,10 +81,16 @@ function idleServices(): MediaServices {
 }
 
 const MediaContext = createContext<MediaServices | null>(null);
+const MediaDropContext = createContext<MediaDrop | null>(null);
 const IDLE = idleServices();
 
-export function MediaProvider({ services, children }: { services: MediaServices; children: ReactNode }): ReactNode {
-  return <MediaContext value={services}>{children}</MediaContext>;
+// drop: the editor's file and library drags. Without one, every drag feature does nothing.
+export function MediaProvider({ services, drop = null, children }: { services: MediaServices; drop?: MediaDrop | null; children: ReactNode }): ReactNode {
+  return (
+    <MediaContext value={services}>
+      <MediaDropContext value={drop}>{children}</MediaDropContext>
+    </MediaContext>
+  );
 }
 
 export function useMedia(): MediaServices {
@@ -94,4 +101,17 @@ export function useMedia(): MediaServices {
 // return a primitive or an existing reference; wrap derived arrays and objects (visibleAssets) in useShallow.
 export function useLibrary<T>(selector: (state: LibraryState) => T): T {
   return useStore(useMedia().library, selector);
+}
+
+export function useMediaDrop(): MediaDrop | null {
+  return useContext(MediaDropContext);
+}
+
+// Reads from the drag state and re-renders when the selected value changes; fallback without a drop. The selector
+// must return a primitive or an existing reference.
+export function useMediaDropState<T>(selector: (state: MediaDropState) => T, fallback: T): T {
+  const drop = useMediaDrop();
+  const subscribe = useCallback((onChange: () => void) => (drop ? drop.state.subscribe(onChange) : () => {}), [drop]);
+  const read = () => (drop ? selector(drop.state.getState()) : fallback);
+  return useSyncExternalStore(subscribe, read, read);
 }

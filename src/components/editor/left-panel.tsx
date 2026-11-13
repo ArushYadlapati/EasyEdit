@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type MouseEvent } from "react";
+import { useEffect, useId, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { Tabs, tabIds } from "@/components/ui/tabs";
@@ -9,6 +9,7 @@ import { presetMenu, rightClickEntries } from "@/lib/editor/menus";
 import { TEXT_PRESETS, type TextPreset } from "@/lib/editor/text-presets";
 import type { AssetView } from "@/lib/media/types";
 import { useEditor, useEditorStore, useSettingsStore } from "./context";
+import { useMediaDrop } from "./media/media-context";
 import { MediaTab, type PanelProps } from "./media/media-tab";
 import { useToMenuItems } from "./menu-items";
 import { useIsMac } from "./use-shortcuts";
@@ -75,6 +76,15 @@ export function LeftPanel() {
   const settings = useSettingsStore();
   const addAsset = (asset: AssetView) => addMedia(store, asset, { stillSeconds: settings.getState().stillSeconds });
   const [tab, setTab] = useState("text");
+  const drop = useMediaDrop();
+  // A file from the computer over the window opens the Media tab, where it can be dropped. It stays there afterwards.
+  useEffect(
+    () =>
+      drop?.state.subscribe((state, before) => {
+        if (state.incoming === "files" && before.incoming !== "files") setTab("media");
+      }),
+    [drop],
+  );
   const current = TABS.find((t) => t.id === tab) ?? TABS[0];
   const idPrefix = useId();
   const ids = tabIds(idPrefix, current.id);

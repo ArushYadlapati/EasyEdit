@@ -7,6 +7,7 @@ import { createMediaServices, type MediaServices } from "@/components/editor/med
 import { formatTimecode } from "@/lib/editor/geometry";
 import { DEFAULT_KEYMAP, KEYMAP_KEY, formatKeymap, setKeys, setOff } from "@/lib/editor/keymap";
 import { DEFAULT_LAYOUT } from "@/lib/editor/layout";
+import { createMediaDrop, type MediaDrop } from "@/lib/editor/media-drop";
 import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
 import type { EditorInit } from "@/lib/editor/types";
 import type { MediaApi } from "@/lib/media/api";
@@ -14,6 +15,7 @@ import { createLibraryStore, type RefreshReason } from "@/lib/media/library-stor
 import type { UploadItem } from "@/lib/media/types";
 import type { UploadQueue } from "@/lib/media/upload-queue";
 import { sampleDoc } from "../editor/fixtures";
+import { dragEvent } from "../helpers/drag-events";
 import { act, fireEvent, render, screen } from "../helpers/dom";
 import { happyDOM } from "../helpers/layout";
 
@@ -21,6 +23,11 @@ import { happyDOM } from "../helpers/layout";
 vi.mock("@/components/editor/media/media-context", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/components/editor/media/media-context")>();
   return { ...real, createMediaServices: vi.fn(real.createMediaServices) };
+});
+// The real drop, wrapped so a test can reach the one the shell made, and the store it was given.
+vi.mock("@/lib/editor/media-drop", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/editor/media-drop")>();
+  return { ...real, createMediaDrop: vi.fn(real.createMediaDrop) };
 });
 // The real settings store, wrapped so a test can read the one the shell made.
 vi.mock("@/lib/editor/settings", async (importOriginal) => {
@@ -286,7 +293,7 @@ it("leaving the editor stops uploads and removes nothing", async () => {
   expect(unload.defaultPrevented).toBe(false);
 });
 
-it("a file dropped outside the Media tab does nothing; on the tab it is uploaded", async () => {
+it("a file is uploaded once wherever it is dropped; a text drag is left to the browser", async () => {
   stubServer();
   const media = pretendMedia();
   render(<EditorShell initial={initial()} />);
@@ -297,17 +304,200 @@ it("a file dropped outside the Media tab does nothing; on the tab it is uploaded
   // false: the default is prevented, so the browser does not open the file in place of the editor
   expect(fireEvent.dragOver(timeline, carryingFiles)).toBe(false);
   expect(fireEvent.drop(timeline, carryingFiles)).toBe(false);
-  expect(media.queue.add).not.toHaveBeenCalled();
+  expect(media.queue.add).toHaveBeenCalledTimes(1);
+  expect(media.queue.add).toHaveBeenCalledWith(files);
   // A drag of text or of something on the page is left to the browser.
   const carryingText = { dataTransfer: { types: ["text/plain"], files: [] } };
   expect(fireEvent.dragOver(timeline, carryingText)).toBe(true);
   expect(fireEvent.drop(timeline, carryingText)).toBe(true);
+  expect(media.queue.add).toHaveBeenCalledTimes(1);
 
   await act(() => void fireEvent.click(screen.getByRole("tab", { name: "Media" })));
   await flush();
   expect(fireEvent.drop(screen.getByRole("tabpanel", { name: "Media" }), carryingFiles)).toBe(false);
+  expect(media.queue.add).toHaveBeenCalledTimes(2);
+  expect(media.queue.add).toHaveBeenLastCalledWith(files);
+});
+
+const selectedTab = () => screen.getAllByRole("tab").find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent;
+const timelineDrop = () => screen.getByRole("region", { name: "Timeline" }).querySelector<HTMLElement>("[data-drop]")!;
+const FILES = { types: ["Files"] };
+
+it("a file dragged over the preview opens the Media tab, shows its drop text and lights the timeline", async () => {
+  stubServer();
+  pretendMedia();
+  render(<EditorShell initial={initial()} />);
+  await flush();
+  expect(selectedTab()).toBe("Text");
+  expect(timelineDrop().dataset.drop).toBe("idle");
+  const preview = screen.getByRole("main", { name: "Preview" });
+  await act(() => void fireEvent(preview, dragEvent("dragenter", FILES)));
+  expect(selectedTab()).toBe("Media");
+  expect(screen.getByText("Drop to upload")).toBeTruthy();
+  expect(timelineDrop().dataset.drop).toBe("armed");
+  const glow = timelineDrop().lastElementChild!;
+  expect(glow.classList.contains("bg-ed-accent-weak/50")).toBe(true);
+  expect(glow.classList.contains("pointer-events-none")).toBe(true);
+  // The panel edges let the drag through to what is under them.
+  for (const edge of screen.getAllByRole("separator")) expect(edge.classList.contains("pointer-events-none")).toBe(true);
+
+  await act(() => void fireEvent(preview, dragEvent("drop", { files: [new File(["x"], "a.mov")] })));
+  expect(screen.queryByText("Drop to upload")).toBeNull();
+  expect(selectedTab()).toBe("Media");
+  expect(timelineDrop().dataset.drop).toBe("idle");
+  for (const edge of screen.getAllByRole("separator")) expect(edge.classList.contains("pointer-events-none")).toBe(false);
+});
+
+it("without uploads set up the tab still switches and the timeline stays dark", async () => {
+  stubServer();
+  const media = pretendMedia();
+  vi.mocked(media.api.list).mockImplementation(async () => ({ ok: true as const, assets: [], setUp: false }));
+  render(<EditorShell initial={initial()} />);
+  await flush();
+  expect(media.library.getState().setUp).toBe(false);
+  await act(() => void fireEvent(screen.getByRole("main", { name: "Preview" }), dragEvent("dragenter", FILES)));
+  await flush();
+  expect(selectedTab()).toBe("Media");
+  expect(screen.queryByText("Drop to upload")).toBeNull();
+  expect(timelineDrop().dataset.drop).toBe("idle");
+});
+
+it("a file dropped on the inspector goes to the library only", async () => {
+  const server = stubServer();
+  const media = pretendMedia();
+  render(<EditorShell initial={initial()} />);
+  await flush();
+  const details = screen.getByRole("complementary", { name: "Details" });
+  const over = dragEvent("dragover", FILES);
+  expect(fireEvent(details, over)).toBe(false);
+  expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe("copy");
+  const files = [new File(["x"], "a.mov"), new File(["y"], "b.jpg")];
+  expect(fireEvent(details, dragEvent("drop", { files }))).toBe(false);
   expect(media.queue.add).toHaveBeenCalledTimes(1);
   expect(media.queue.add).toHaveBeenCalledWith(files);
+  await flush();
+  expect(server.posts()).toBe(0); // nothing was added to the timeline
+});
+
+it("a file dropped on the top row goes to the library only", async () => {
+  const server = stubServer();
+  const media = pretendMedia();
+  render(<EditorShell initial={initial()} />);
+  await flush();
+  const banner = screen.getByRole("banner");
+  const over = dragEvent("dragover", FILES);
+  expect(fireEvent(banner, over)).toBe(false);
+  expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe("copy");
+  const files = [new File(["x"], "a.mov")];
+  expect(fireEvent(banner, dragEvent("drop", { files }))).toBe(false);
+  expect(media.queue.add).toHaveBeenCalledTimes(1);
+  expect(media.queue.add).toHaveBeenCalledWith(files);  await flush();
+  expect(server.posts()).toBe(0);
+});
+
+it("a viewer gets none of it", async () => {
+  stubServer();
+  const media = pretendMedia();
+  render(<EditorShell initial={{ ...initial(), canEdit: false }} />);
+  await flush();
+  const preview = screen.getByRole("main", { name: "Preview" });
+  await act(() => void fireEvent(preview, dragEvent("dragenter", FILES)));
+  expect(selectedTab()).toBe("Text");
+  expect(timelineDrop().dataset.drop).toBe("idle");
+  for (const edge of screen.getAllByRole("separator")) expect(edge.classList.contains("pointer-events-none")).toBe(false);
+  const over = dragEvent("dragover", FILES);
+  expect(fireEvent(preview, over)).toBe(false); // the file still never opens in the window
+  expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe("none");
+  expect(fireEvent(preview, dragEvent("drop", { files: [new File(["x"], "a.mov")] }))).toBe(false);
+  expect(media.queue.add).not.toHaveBeenCalled();
+});
+
+it("with a dialog open or without uploads set up, a file dropped on the inspector is refused", async () => {
+  stubServer();
+  const media = pretendMedia();
+  render(<EditorShell initial={initial()} />);
+  await flush();
+  const details = screen.getByRole("complementary", { name: "Details" });
+  const dialog = document.createElement("dialog");
+  dialog.setAttribute("open", "");
+  document.body.append(dialog);
+  try {
+    const over = dragEvent("dragover", FILES);
+    expect(fireEvent(details, over)).toBe(false);
+    expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe("none");
+    expect(fireEvent(details, dragEvent("drop", { files: [new File(["x"], "a.mov")] }))).toBe(false);
+    expect(media.queue.add).not.toHaveBeenCalled();
+  } finally {
+    dialog.remove();
+  }
+
+  act(() => media.library.setState({ setUp: false }));
+  const notSetUp = dragEvent("dragover", FILES);
+  expect(fireEvent(details, notSetUp)).toBe(false);
+  expect((notSetUp as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe("none");
+  expect(fireEvent(details, dragEvent("drop", { files: [new File(["x"], "a.mov")] }))).toBe(false);
+  expect(media.queue.add).not.toHaveBeenCalled();
+});
+
+it("under StrictMode, a file over the window still opens the Media tab", async () => {
+  stubServer();
+  pretendMedia();
+  render(
+    <StrictMode>
+      <EditorShell initial={initial()} />
+    </StrictMode>,
+  );
+  await flush();
+  await act(() => void fireEvent(screen.getByRole("main", { name: "Preview" }), dragEvent("dragenter", FILES)));
+  expect(selectedTab()).toBe("Media");
+  expect(screen.getByText("Drop to upload")).toBeTruthy();
+  expect(timelineDrop().dataset.drop).toBe("armed");
+});
+
+const shellDrop = () => {
+  const made = vi.mocked(createMediaDrop).mock;
+  return { drop: made.results.at(-1)!.value as MediaDrop, store: made.calls.at(-1)![0].store };
+};
+
+it("losing edit access mid-drag turns the drop look off", async () => {
+  stubServer();
+  pretendMedia();
+  render(<EditorShell initial={initial()} />);
+  await flush();
+  await act(() => void fireEvent(screen.getByRole("main", { name: "Preview" }), dragEvent("dragenter", FILES)));
+  expect(timelineDrop().dataset.drop).toBe("armed");
+  const { drop, store } = shellDrop();
+  act(() => store.getState().revokeEditing());
+  expect(drop.state.getState().incoming).toBe(null);
+  expect(timelineDrop().dataset.drop).toBe("idle");
+  expect(screen.queryByText("Drop to upload")).toBeNull();
+});
+
+it("a deleted project takes no drag", async () => {
+  stubServer();
+  const media = pretendMedia();
+  render(<EditorShell initial={initial()} />);
+  await flush();
+  const { drop, store } = shellDrop();
+  act(() => store.getState().setStatus("deleted"));
+  await act(() => void fireEvent(document.body, dragEvent("dragenter", FILES)));
+  expect(drop.state.getState().incoming).toBe(null);
+  const over = dragEvent("dragover", FILES);
+  expect(fireEvent(document.body, over)).toBe(false);
+  expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe("none");
+  expect(fireEvent(document.body, dragEvent("drop", { files: [new File(["x"], "a.mov")] }))).toBe(false);
+  expect(media.queue.add).not.toHaveBeenCalled();
+});
+
+it("leaving the editor stops watching drags", async () => {
+  stubServer();
+  pretendMedia();
+  const removed = vi.spyOn(window, "removeEventListener");
+  const { unmount } = render(<EditorShell initial={initial()} />);
+  await flush();
+  unmount();
+  const watched = removed.mock.calls.filter(([type, , options]) => type === "dragenter" && options === true);
+  expect(watched).toHaveLength(1);
 });
 
 it("a refresh or ensure that fails leaves no rejection unhandled", async () => {
