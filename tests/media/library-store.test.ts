@@ -191,7 +191,7 @@ describe("the library store", () => {
     expect(calls).toHaveLength(2);
 
     const before = state().assets;
-    await state().ensure(["made-up"]); // the server does not return it
+    expect(await state().ensure(["made-up"])).toEqual([]); // the server answered, without it
     await state().ensure(["made-up", "a1"]);
     expect(state().assets).toBe(before); // nothing was learned, so nothing is said to have changed
     expect(calls).toEqual([["list"], ["list", ["a2"]], ["list", ["made-up"]]]);
@@ -226,10 +226,10 @@ describe("the library store", () => {
   it("an id whose request failed is asked for again", async () => {
     const { state, server, calls } = setup([asset("a2", { removed: true })]);
     server.failing = { ok: false, kind: "network", message: "" };
-    await state().ensure(["a2"]);
+    expect(await state().ensure(["a2"])).toEqual(["a2"]); // no answer
     expect(state()).toMatchObject({ assets: {}, problem: null }); // `problem` is for the library's own fetch
     server.failing = null;
-    await state().ensure(["a2"]);
+    expect(await state().ensure(["a2"])).toEqual([]);
     expect(calls).toHaveLength(2);
     expect(state().assets.a2).toMatchObject({ removed: true });
   });

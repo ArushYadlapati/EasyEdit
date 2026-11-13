@@ -16,7 +16,7 @@ export type LibraryState = {
   kind: AssetKind | "all";
   uploadEvent: string;
   refresh(reason: RefreshReason): Promise<void>;
-  ensure(ids: string[]): Promise<void>; // fetches the ids it has not seen
+  ensure(ids: string[]): Promise<string[]>; // fetches the ids it has not seen; answers the ids no request got an answer for
   put(asset: AssetView): void;
   // Each calls the API once and returns its answer. On success the store takes the change; on failure the store is unchanged.
   rename(id: string, name: string): Promise<MediaResult<{ asset: AssetView }>>;
@@ -115,12 +115,17 @@ export function createLibraryStore(deps: { api: MediaApi; now?: () => number }):
         const known = get().assets;
         const wanted = [...new Set(ids)].filter((id) => !Object.hasOwn(known, id) && !asked.has(id));
         for (const id of wanted) asked.add(id); // an id the server does not return stays here, and is not asked for again
+        const unanswered: string[] = [];
         for (let from = 0; from < wanted.length; from += LIMITS.mediaIdsPerRequest) {
           const some = wanted.slice(from, from + LIMITS.mediaIdsPerRequest);
           const answer = await api.list(some);
           if (answer.ok) take(answer.assets, true);
-          else for (const id of some) asked.delete(id); // no answer says nothing about them
+          else {
+            for (const id of some) asked.delete(id); // no answer says nothing about them
+            unanswered.push(...some);
+          }
         }
+        return unanswered;
       },
 
       put: (asset) => take([asset], true),

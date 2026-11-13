@@ -32,7 +32,7 @@ const localStore = {
 };
 
 // A refresh or an ensure that fails has nothing to tell the shell: the library store keeps its own problem.
-const quietly = (work: Promise<void>) => void work.catch(() => {});
+const quietly = (work: Promise<unknown>) => void work.catch(() => {});
 
 // Owns the store, the API client, the sync, the media services, the project's dashboard picture and this browser's
 // preferences for one open project, and ties them to the page: tab visibility, focus, coming back online, the user's

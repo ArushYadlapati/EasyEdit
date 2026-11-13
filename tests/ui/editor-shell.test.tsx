@@ -166,7 +166,7 @@ it("under strict mode one sync runs", async () => {
 // empty library, with its refresh and ensure wrapped, a queue that records calls, and files that never arrive.
 // A promise that has failed, and writes down whether anyone took its failure.
 const handled: boolean[] = [];
-function failed(): Promise<void> {
+function failed(): Promise<never> {
   const promise = Promise.reject(new Error("broke"));
   const at = handled.push(false) - 1;
   const then = promise.then.bind(promise);
