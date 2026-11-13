@@ -12,6 +12,14 @@ export type DialogProps = {
   children: ReactNode;
   className?: string;
   bar?: ReactNode; // between the header and the body, and does not scroll with the body, such as a row of tabs
+  size?: "md" | "lg"; // lg takes most of the window, at a fixed height, so a footer sits at its bottom
+  footer?: ReactNode; // after the body, and does not scroll with it, such as the dialog's buttons
+};
+
+const SIZES = {
+  md: "max-h-[min(80vh,640px)] w-[min(32rem,calc(100vw-32px))]",
+  // The last width term keeps a 16 px gutter on a phone.
+  lg: "h-[min(92vh,760px)] max-h-[min(92vh,760px)] w-[min(92vw,1120px,calc(100vw-32px))]",
 };
 
 // A modal on the native <dialog>, so focus stays inside it and the page behind is inert. Escape and
@@ -19,7 +27,7 @@ export type DialogProps = {
 // the first element marked data-autofocus, a field's text selected so typing replaces it; with none
 // marked, the browser's choice stands. React's autoFocus cannot do this: the contents mount while the
 // dialog is still closed.
-export function Dialog({ title, open, onClose, children, className, bar }: DialogProps) {
+export function Dialog({ title, open, onClose, children, className, bar, size = "md", footer }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -39,7 +47,9 @@ export function Dialog({ title, open, onClose, children, className, bar }: Dialo
       ref={ref}
       aria-labelledby={titleId}
       className={cx(
-        "m-auto max-h-[min(80vh,640px)] w-[min(32rem,calc(100vw-32px))] flex-col rounded-md border border-ed-line bg-ed-panel p-0 text-ed-text shadow-2xl open:flex backdrop:bg-ed-bg/70",
+        "m-auto",
+        SIZES[size],
+        "flex-col rounded-md border border-ed-line bg-ed-panel p-0 text-ed-text shadow-2xl open:flex backdrop:bg-ed-bg/70",
         className,
       )}
       onKeyDown={(event) => {
@@ -64,7 +74,10 @@ export function Dialog({ title, open, onClose, children, className, bar }: Dialo
             </IconButton>
           </header>
           {bar && <div className="shrink-0 border-b border-ed-line px-3 py-2">{bar}</div>}
-          <div className="min-h-0 overflow-y-auto p-4 text-[13px] leading-5">{children}</div>
+          <div className={cx("min-h-0 overflow-y-auto p-4 text-[13px] leading-5", size === "lg" && "flex-1")}>{children}</div>
+          {footer && (
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-ed-line px-4 py-3">{footer}</div>
+          )}
         </>
       )}
     </dialog>

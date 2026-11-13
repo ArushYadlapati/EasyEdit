@@ -10,7 +10,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { LENGTH_MAX_S, LENGTH_MIN_S, clampSeconds, type Units } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
 import { useEditor, useSettings, useSettingsStore } from "./context";
-import { FormatSelect } from "./format-select";
+import { FormatFields } from "./format-select";
 import { ShortcutsSection } from "./shortcuts-section";
 
 export type SettingsSection = "project" | "general" | "shortcuts";
@@ -40,9 +40,7 @@ function ProjectSection() {
   const fps = useEditor((s) => viewDoc(s).fps);
   return (
     <>
-      <Field label="Format">
-        <FormatSelect />
-      </Field>
+      <FormatFields />
       <div className="flex flex-col gap-1">
         <span className={CAPTION}>Frame rate</span>
         <p className="text-ed-text">{fps} fps</p>
