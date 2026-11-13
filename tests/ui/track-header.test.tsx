@@ -64,6 +64,61 @@ describe("track header", () => {
     expect(store.getState().queue).toEqual([]);
   });
 
+  it("clicking a track's name opens its field and selects the track", () => {
+    const { store, track } = setup();
+    const name = screen.getByRole("button", { name: "Text 1" });
+    expect(name.hasAttribute("data-edit-control")).toBe(false);
+    expect(name.className).toContain("w-fit");
+    expect(name.className).toContain("max-w-full");
+    fireEvent.click(name);
+    const input = screen.getByRole("textbox", { name: "Track name" }) as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Text 1".length]);
+    expect(input.hasAttribute("data-edit-control")).toBe(true);
+    expect(input.maxLength).toBe(LIMITS.trackNameChars);
+    expect(store.getState().selection.trackId).toBe("t1");
+    fireEvent.change(input, { target: { value: "Titles" } });
+    expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["rename track"]);
+    expect(track().name).toBe("Titles");
+    expect(screen.queryByRole("textbox", { name: "Track name" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Titles" }));
+  });
+
+  it("a viewer's click on the name only selects the track", () => {
+    const { store } = setup("t1", makeStore({ canEdit: false }));
+    fireEvent.click(screen.getByRole("button", { name: "Text 1" }));
+    expect(screen.queryByRole("textbox", { name: "Track name" })).toBeNull();
+    expect(store.getState().selection.trackId).toBe("t1");
+  });
+
+  it("a click beside the name selects without opening the field", () => {
+    const { store, view } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Lock track" }));
+    expect(store.getState().selection.trackId).toBeNull(); // a button in the header is not the background
+    const header = view.container.firstElementChild as HTMLElement;
+    const spacer = screen.getByRole("button", { name: "Text 1" }).nextElementSibling as HTMLElement;
+    expect(spacer.tagName).not.toBe("BUTTON");
+    expect(spacer.className).toContain("flex-1");
+    fireEvent.click(spacer);
+    expect(store.getState().selection.trackId).toBe("t1");
+    act(() => store.getState().selectTrack(null));
+    fireEvent.click(header);
+    expect(store.getState().selection.trackId).toBe("t1");
+    expect(screen.queryByRole("textbox", { name: "Track name" })).toBeNull();
+  });
+
+  it("Enter while composing does not save", () => {
+    const { store, track } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Text 1" }));
+    const input = screen.getByRole("textbox", { name: "Track name" }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Titles" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(screen.getByRole("textbox", { name: "Track name" })).toBe(input);
+    expect(track().name).toBe("Text 1");
+    expect(store.getState().queue).toEqual([]);
+  });
+
   it("the lock switch keeps its name and shows whether it is on", () => {
     const { track } = setup();
     const lock = screen.getByRole("button", { name: "Lock track" });

@@ -1,11 +1,11 @@
 "use client";
 
 import { Ellipsis, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from "lucide-react";
-import { memo, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { memo, useEffect, useRef, useState, type MouseEvent } from "react";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
+import { InlineEdit } from "@/components/ui/inline-edit";
 import { Menu, type MenuItem } from "@/components/ui/menu";
-import { TextInput } from "@/components/ui/text-input";
 import { removeTrack, renameTrack, reorderTrack, toggleTrack } from "@/lib/editor/actions";
 import { reorderTrackOps } from "@/lib/editor/commands";
 import { HEADER_WIDTH, trackToggles } from "@/lib/editor/geometry";
@@ -31,37 +31,34 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
   const [editing, setEditing] = useState(false);
   const renaming = editing && canEdit;
   const nameButton = useRef<HTMLButtonElement>(null);
-  const nameInput = useRef<HTMLInputElement>(null);
-  const finished = useRef(false); // Enter or Escape already ended this rename
-  const refocus = useRef(false);
+  const refocus = useRef(false); // a key ended the rename, so focus goes back to the name
 
   useEffect(() => {
-    if (renaming) {
-      nameInput.current?.focus();
-      nameInput.current?.select();
-    } else if (refocus.current) {
-      refocus.current = false;
-      nameButton.current?.focus();
-    }
+    if (renaming || !refocus.current) return;
+    refocus.current = false;
+    nameButton.current?.focus();
   }, [renaming]);
 
   function startRename() {
-    finished.current = false;
     setEditing(true);
   }
 
-  function endRename(save: boolean, byKey: boolean) {
-    if (finished.current) return;
-    finished.current = true;
+  function endRename(value: string | null, byKey: boolean) {
     refocus.current = byKey;
-    if (save && nameInput.current) renameTrack(store, track.id, nameInput.current.value);
+    if (value !== null) renameTrack(store, track.id, value);
     setEditing(false);
   }
 
-  function onNameKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key !== "Enter" && event.key !== "Escape") return;
-    event.preventDefault();
-    endRename(event.key === "Enter", true);
+  // A click on the name selects the track and, for an editor, opens the name for typing.
+  function onNameClick() {
+    selectTrack(track.id);
+    if (canEdit) startRename();
+  }
+
+  // A click on the header's background selects the track; its buttons do their own thing.
+  function onHeaderClick(event: MouseEvent<HTMLDivElement>) {
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    selectTrack(track.id);
   }
 
   const items: MenuItem[] = [
@@ -87,17 +84,15 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
         FADE,
       )}
       style={{ width: HEADER_WIDTH }}
+      onClick={onHeaderClick}
     >
       {renaming ? (
-        <TextInput
-          ref={nameInput}
+        <InlineEdit
           data-edit-control
-          disabled={!canEdit}
-          aria-label="Track name"
+          label="Track name"
           defaultValue={track.name}
           maxLength={LIMITS.trackNameChars}
-          onKeyDown={onNameKeyDown}
-          onBlur={() => endRename(true, false)}
+          onDone={endRename}
         />
       ) : (
         <>
@@ -106,9 +101,9 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
             type="button"
             title={track.name}
             aria-current={selected ? "true" : undefined}
-            onClick={() => selectTrack(track.id)}
+            onClick={onNameClick}
             className={cx(
-              "h-7 min-w-0 flex-1 truncate rounded-md px-1.5 text-left text-xs leading-4 font-medium",
+              "h-7 w-fit max-w-full min-w-0 truncate rounded-md px-1.5 text-left text-xs leading-4 font-medium",
               selected ? "text-ed-accent" : "text-ed-text hover:bg-ed-hover",
               FOCUS_RING,
               FADE,
@@ -116,6 +111,7 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
           >
             {track.name}
           </button>
+          <div className="min-w-0 flex-1 self-stretch" />
           <IconButton
             data-edit-control
             disabled={!canEdit}
