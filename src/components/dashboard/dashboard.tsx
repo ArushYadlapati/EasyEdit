@@ -33,18 +33,27 @@ export type DashboardProps = {
 const HEADING = "mb-3 text-sm font-semibold text-ed-text";
 const EMPTY = "text-[13px] text-ed-muted";
 
-function CardGrid({ projects, folderName, now, canEdit }: {
+function CardGrid({ projects, folderName, now, canEdit, folders, actions }: {
   projects: readonly DashboardProject[];
   folderName(project: DashboardProject): string | null;
   now: Date;
   canEdit: boolean;
+  folders: readonly DashboardFolder[];
+  actions: DashboardActions;
 }) {
+  // Each card is its own <li>, which takes the card's right-click.
   return (
     <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
       {projects.map((project) => (
-        <li key={project.id} className="min-w-0">
-          <ProjectCard project={project} folderName={folderName(project)} now={now} canEdit={canEdit} />
-        </li>
+        <ProjectCard
+          key={project.id}
+          project={project}
+          folderName={folderName(project)}
+          now={now}
+          canEdit={canEdit}
+          folders={folders}
+          actions={actions}
+        />
       ))}
     </ul>
   );
@@ -95,7 +104,11 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
 
   const noFolder = () => null;
   const list = (folderName: (project: DashboardProject) => string | null) =>
-    shown.length > 0 ? <CardGrid projects={shown} folderName={folderName} now={now} canEdit={canEdit} /> : empty();
+    shown.length > 0 ? (
+      <CardGrid projects={shown} folderName={folderName} now={now} canEdit={canEdit} folders={folders} actions={actions} />
+    ) : (
+      empty()
+    );
 
   return (
     <ContextMenuProvider>
@@ -139,7 +152,14 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
                     <h2 id={recentId} className={HEADING}>
                       Recent
                     </h2>
-                    <CardGrid projects={recent} folderName={noFolder} now={now} canEdit={canEdit} />
+                    <CardGrid
+                      projects={recent}
+                      folderName={noFolder}
+                      now={now}
+                      canEdit={canEdit}
+                      folders={folders}
+                      actions={actions}
+                    />
                   </section>
                 )}
                 <section aria-labelledby={allId}>

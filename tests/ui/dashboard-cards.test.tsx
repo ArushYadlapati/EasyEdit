@@ -1,0 +1,373 @@
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FormState } from "@/lib/projects/dashboard-actions";
+import { renderDashboard } from "../helpers/dashboard";
+import { act, fireEvent, screen, within } from "../helpers/dom";
+
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
+vi.mock("next/navigation", () => ({ useRouter: () => router, unstable_rethrow: () => {} }));
+
+beforeEach(() => {
+  router.push.mockClear();
+  router.replace.mockClear();
+  router.refresh.mockClear();
+  router.bfcacheId = "b0";
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+const EDITOR_ITEMS = ["Open", "Rename", "Duplicate", "Move to folder…", "Delete"];
+
+const region = (name: string) => screen.getByRole("region", { name });
+const card = (name: string) => within(region("All projects")).getByRole("link", { name }).closest("li")!;
+const options = (li: HTMLElement) => within(li).getByRole("button", { name: "Project options" });
+const menuItems = () =>
+  within(screen.getByRole("menu", { name: "Project options" }))
+    .getAllByRole("menuitem")
+    .map((item) => item.textContent);
+const escape = () => fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+const sent = (fn: { mock: { calls: [FormData][] } }, call = 0) => Object.fromEntries(fn.mock.calls[call][0].entries());
+
+// Opens the card's ⋯ menu and picks an item, letting any action it starts settle.
+async function pick(li: HTMLElement, label: string) {
+  fireEvent.click(options(li));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("menuitem", { name: label }));
+  });
+}
+
+const dialog = (name: string) => screen.getByRole("dialog", { name });
+const radios = () => within(screen.getByRole("radiogroup", { name: "Folder" })).getAllByRole("radio") as HTMLInputElement[];
+const radioNames = () => radios().map((radio) => radio.closest("label")!.textContent);
+const radio = (name: string) => screen.getByRole("radio", { name }) as HTMLInputElement;
+const button = (within_: HTMLElement, name: string) => within(within_).getByRole("button", { name }) as HTMLButtonElement;
+
+async function click(element: HTMLElement) {
+  await act(async () => {
+    fireEvent.click(element);
+  });
+}
+
+describe("a card's menu", () => {
+  it("the ⋯ button and a right-click open the same menu", () => {
+    const { unmount } = renderDashboard();
+    const li = card("Qual recap");
+    expect(options(li).querySelector("svg")?.getAttribute("class")).toContain("lucide-ellipsis");
+    fireEvent.click(options(li));
+    expect(menuItems()).toEqual(EDITOR_ITEMS);
+    const del = screen.getByRole("menuitem", { name: "Delete" });
+    expect(del.className).toContain("text-ed-danger");
+    expect(del.previousElementSibling?.getAttribute("role")).toBe("separator");
+    escape();
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(fireEvent.contextMenu(li, { clientX: 5, clientY: 5 })).toBe(false);
+    expect(menuItems()).toEqual(EDITOR_ITEMS);
+    escape();
+    unmount();
+
+    renderDashboard({ canEdit: false });
+    const viewed = card("Qual recap");
+    fireEvent.click(options(viewed));
+    expect(menuItems()).toEqual(["Open"]);
+    escape();
+    expect(fireEvent.contextMenu(viewed, { clientX: 5, clientY: 5 })).toBe(false);
+    expect(menuItems()).toEqual(["Open"]);
+  });
+
+  it("the keyboard's menu key opens it at the card and gives focus back", () => {
+    renderDashboard();
+    const li = card("Qual recap");
+    fireEvent.contextMenu(li, { clientX: 0, clientY: 0 });
+    expect(menuItems()).toEqual(EDITOR_ITEMS);
+    escape();
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(options(li));
+  });
+
+  it("the menu opens at the pointer, or at the card's lower-left corner from the keyboard", () => {
+    renderDashboard();
+    const li = card("Qual recap");
+    vi.spyOn(li, "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({ x: 100, y: 50, width: 200, height: 200 }));
+    const at = () => {
+      const { left, top } = screen.getByRole("menu", { name: "Project options" }).style;
+      return [left, top];
+    };
+    fireEvent.contextMenu(li, { clientX: 150, clientY: 120 });
+    expect(at()).toEqual(["150px", "120px"]);
+    escape();
+    fireEvent.contextMenu(li, { clientX: 0, clientY: 0 });
+    expect(at()).toEqual(["100px", "250px"]);
+  });
+
+  it("a right-click on the open ⋯ menu opens no second menu", () => {
+    renderDashboard();
+    fireEvent.click(options(card("Qual recap")));
+    expect(fireEvent.contextMenu(screen.getByRole("menuitem", { name: "Rename" }), { clientX: 5, clientY: 5 })).toBe(false);
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+  });
+
+  it("a right-click in the rename field keeps the browser's own menu", async () => {
+    renderDashboard();
+    const li = card("Qual recap");
+    await pick(li, "Rename");
+    const field = within(li).getByRole("textbox", { name: "New name for Qual recap" });
+    expect(fireEvent.contextMenu(field, { clientX: 5, clientY: 5 })).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("a right-click in a card's dialog keeps the browser's own menu", async () => {
+    renderDashboard();
+    await pick(card("Qual recap"), "Delete");
+    expect(fireEvent.contextMenu(within(dialog("Delete project")).getByText('Delete "Qual recap"?'), { clientX: 5, clientY: 5 })).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("Open goes to the editor", async () => {
+    renderDashboard();
+    await pick(card("Qual recap"), "Open");
+    expect(router.push).toHaveBeenCalledWith("/editor/a");
+  });
+
+  it("Open from a right-click goes to the editor too", async () => {
+    renderDashboard({ canEdit: false });
+    fireEvent.contextMenu(card("Poster"), { clientX: 5, clientY: 5 });
+    await click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(router.push).toHaveBeenCalledWith("/editor/b");
+  });
+});
+
+describe("renaming a card", () => {
+  it("Rename happens in place", async () => {
+    const { actions } = renderDashboard();
+    const li = card("Qual recap");
+    await pick(li, "Rename");
+    const field = within(li).getByRole("textbox", { name: "New name for Qual recap" }) as HTMLInputElement;
+    expect(field.value).toBe("Qual recap");
+    expect(field.maxLength).toBe(100);
+    expect(field.closest("a")).toBeNull();
+    expect(within(li).queryByRole("link")).toBeNull();
+    expect(li.querySelector("[data-blank-frame]")).not.toBeNull();
+    fireEvent.change(field, { target: { value: "Finals" } });
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "Enter" });
+    });
+    expect(actions.rename).toHaveBeenCalledTimes(1);
+    expect(sent(actions.rename)).toEqual({ id: "a", name: "Finals" });
+    expect(document.activeElement).toBe(options(li));
+    expect(within(li).getByRole("link", { name: "Qual recap" })).toBeTruthy();
+  });
+
+  it("Rename from a right-click opens the same field", async () => {
+    const { actions } = renderDashboard();
+    const li = card("Qual recap");
+    fireEvent.contextMenu(li, { clientX: 5, clientY: 5 });
+    await click(screen.getByRole("menuitem", { name: "Rename" }));
+    const field = within(li).getByRole("textbox", { name: "New name for Qual recap" });
+    expect(document.activeElement).toBe(field);
+    fireEvent.change(field, { target: { value: "Finals" } });
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "Enter" });
+    });
+    expect(sent(actions.rename)).toEqual({ id: "a", name: "Finals" });
+  });
+
+  it("blur submits a rename", async () => {
+    const { actions } = renderDashboard();
+    const li = card("Qual recap");
+    await pick(li, "Rename");
+    const field = within(li).getByRole("textbox", { name: "New name for Qual recap" });
+    fireEvent.change(field, { target: { value: "Finals" } });
+    await act(async () => {
+      fireEvent.blur(field);
+    });
+    expect(actions.rename).toHaveBeenCalledTimes(1);
+    expect(sent(actions.rename)).toEqual({ id: "a", name: "Finals" });
+    // Focus went where the pointer took it, not back to the ⋯ button.
+    expect(document.activeElement).not.toBe(options(li));
+  });
+
+  it("Escape keeps the name", async () => {
+    const { actions } = renderDashboard();
+    const li = card("Qual recap");
+    await pick(li, "Rename");
+    const field = within(li).getByRole("textbox", { name: "New name for Qual recap" });
+    fireEvent.change(field, { target: { value: "Finals" } });
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "Escape" });
+    });
+    expect(actions.rename).not.toHaveBeenCalled();
+    expect(within(li).getByRole("link", { name: "Qual recap" })).toBeTruthy();
+    expect(document.activeElement).toBe(options(li));
+  });
+
+  it("an unchanged name sends nothing", async () => {
+    const { actions } = renderDashboard();
+    const li = card("Qual recap");
+    await pick(li, "Rename");
+    const field = within(li).getByRole("textbox", { name: "New name for Qual recap" });
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "Enter" });
+    });
+    expect(actions.rename).not.toHaveBeenCalled();
+    expect(within(li).getByRole("link", { name: "Qual recap" })).toBeTruthy();
+  });
+
+  it("a refused rename says why on the card", async () => {
+    const { actions } = renderDashboard();
+    actions.rename.mockResolvedValue({ error: "Enter a name up to 100 characters." });
+    const li = card("Qual recap");
+    await pick(li, "Rename");
+    const field = within(li).getByRole("textbox", { name: "New name for Qual recap" });
+    fireEvent.change(field, { target: { value: " " } });
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "Enter" });
+    });
+    const alert = within(li).getByRole("alert");
+    expect(alert.textContent).toBe("Enter a name up to 100 characters.");
+    expect(alert.className).toContain("text-ed-danger");
+    expect(within(li).getByRole("link", { name: "Qual recap" })).toBeTruthy();
+    // The next try clears it.
+    actions.rename.mockResolvedValue({});
+    await pick(li, "Rename");
+    fireEvent.change(within(li).getByRole("textbox"), { target: { value: "Finals" } });
+    await act(async () => {
+      fireEvent.keyDown(within(li).getByRole("textbox"), { key: "Enter" });
+    });
+    expect(within(li).queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("duplicating a card", () => {
+  it("Duplicate sends the project, and a refusal says why on the card", async () => {
+    const { actions } = renderDashboard();
+    const li = card("Qual recap");
+    await pick(li, "Duplicate");
+    expect(actions.duplicate).toHaveBeenCalledTimes(1);
+    expect(sent(actions.duplicate)).toEqual({ id: "a" });
+    expect(within(li).queryByRole("alert")).toBeNull();
+    actions.duplicate.mockResolvedValue({ error: "That project no longer exists." });
+    await pick(li, "Duplicate");
+    const alert = within(li).getByRole("alert");
+    expect(alert.textContent).toBe("That project no longer exists.");
+    expect(alert.className).toContain("text-ed-danger");
+  });
+});
+
+describe("moving a card to a folder", () => {
+  it("Move to folder… offers the folders and No folder, with the current one chosen", async () => {
+    const { actions } = renderDashboard();
+    await pick(card("Poster"), "Move to folder…");
+    const moving = dialog("Move to folder");
+    expect(radioNames()).toEqual(["No folder", "Season 2026", "Sponsors"]);
+    expect(radio("Season 2026").checked).toBe(true);
+    expect(radios().filter((r) => r.checked)).toHaveLength(1);
+    expect(document.activeElement).toBe(radio("Season 2026"));
+    const move = button(moving, "Move");
+    expect(move.disabled).toBe(true);
+    expect(move.className).toContain("bg-ed-accent");
+    expect(button(moving, "Cancel")).toBeTruthy();
+    fireEvent.click(radio("Sponsors"));
+    expect(move.disabled).toBe(false);
+    await click(move);
+    expect(actions.move).toHaveBeenCalledTimes(1);
+    expect(sent(actions.move)).toEqual({ id: "b", folderId: "f2" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("moving out of a folder sends no folder", async () => {
+    const { actions } = renderDashboard();
+    await pick(card("Poster"), "Move to folder…");
+    fireEvent.click(radio("No folder"));
+    await click(button(dialog("Move to folder"), "Move"));
+    expect(sent(actions.move)).toEqual({ id: "b", folderId: "" });
+  });
+
+  it("a project in no folder starts on No folder", async () => {
+    renderDashboard();
+    await pick(card("Qual recap"), "Move to folder…");
+    expect(radio("No folder").checked).toBe(true);
+    expect(button(dialog("Move to folder"), "Move").disabled).toBe(true);
+  });
+
+  it("Cancel moves nothing, and the next opening starts from the current folder", async () => {
+    const { actions } = renderDashboard();
+    const li = card("Poster");
+    await pick(li, "Move to folder…");
+    fireEvent.click(radio("Sponsors"));
+    await click(button(dialog("Move to folder"), "Cancel"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(actions.move).not.toHaveBeenCalled();
+    await pick(li, "Move to folder…");
+    expect(radio("Season 2026").checked).toBe(true);
+  });
+
+  it("Move is held while moving", async () => {
+    const { actions } = renderDashboard();
+    actions.move.mockImplementation(() => new Promise<FormState>(() => {}));
+    await pick(card("Poster"), "Move to folder…");
+    fireEvent.click(radio("Sponsors"));
+    const move = button(dialog("Move to folder"), "Move");
+    await click(move);
+    expect(move.disabled).toBe(true);
+    await click(move);
+    expect(actions.move).toHaveBeenCalledTimes(1);
+  });
+
+  it("a folder deleted meanwhile is explained in the dialog", async () => {
+    const { actions } = renderDashboard();
+    actions.move.mockResolvedValue({ error: "That folder no longer exists." });
+    await pick(card("Poster"), "Move to folder…");
+    fireEvent.click(radio("Sponsors"));
+    await click(button(dialog("Move to folder"), "Move"));
+    const alert = within(dialog("Move to folder")).getByRole("alert");
+    expect(alert.textContent).toBe("That folder no longer exists.");
+    expect(alert.className).toContain("text-ed-danger");
+  });
+});
+
+describe("deleting a card", () => {
+  it("Delete asks first", async () => {
+    const { actions } = renderDashboard();
+    const li = card("Qual recap");
+    await pick(li, "Delete");
+    const asking = dialog("Delete project");
+    expect(within(asking).getByText('Delete "Qual recap"?')).toBeTruthy();
+    expect(document.activeElement).toBe(button(asking, "Cancel"));
+    expect(button(asking, "Delete").className).toContain("text-ed-danger");
+    await click(button(asking, "Cancel"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(actions.remove).not.toHaveBeenCalled();
+    await pick(li, "Delete");
+    await click(button(dialog("Delete project"), "Delete"));
+    expect(actions.remove).toHaveBeenCalledTimes(1);
+    expect(sent(actions.remove)).toEqual({ id: "a" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("a refused delete stays in the dialog", async () => {
+    const { actions } = renderDashboard();
+    actions.remove.mockResolvedValue({ error: "Your role doesn't allow this." });
+    const li = card("Qual recap");
+    await pick(li, "Delete");
+    await click(button(dialog("Delete project"), "Delete"));
+    const alert = within(dialog("Delete project")).getByRole("alert");
+    expect(alert.textContent).toBe("Your role doesn't allow this.");
+    expect(alert.className).toContain("text-ed-danger");
+    // Closing and asking again starts without the old message.
+    await click(button(dialog("Delete project"), "Cancel"));
+    await pick(li, "Delete");
+    expect(within(dialog("Delete project")).queryByRole("alert")).toBeNull();
+  });
+
+  it("Delete is held while deleting", async () => {
+    const { actions } = renderDashboard();
+    actions.remove.mockImplementation(() => new Promise<FormState>(() => {}));
+    await pick(card("Qual recap"), "Delete");
+    const del = button(dialog("Delete project"), "Delete");
+    await click(del);
+    expect(del.disabled).toBe(true);
+  });
+});
