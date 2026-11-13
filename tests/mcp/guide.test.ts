@@ -17,6 +17,13 @@ describe("the op reference", () => {
     expect(EDIT_DESCRIPTION).toContain(OP_REFERENCE);
   });
 
+  it("shows both forms of set_format", () => {
+    expect(OP_REFERENCE).toContain('{"op":"set_format","format":"short_9x16"|"feed_4x5"|"square_1x1"|"long_16x9"|"long_4k"}\n');
+    expect(OP_REFERENCE).toContain('{"op":"set_format","format":"custom","width":W,"height":H}   W and H in pixels: even, 16 to 4096, at most the area of 3840×2160');
+    const ops = prepareOps([{ op: "set_format", format: "custom", width: 816, height: 1056 }]);
+    expect(applyOps(createEmptyDoc("short_9x16"), ops).doc.width).toBe(816);
+  });
+
   it("shows a text clip the engine accepts as written", () => {
     expect(OP_REFERENCE).toContain(JSON.stringify(EXAMPLE_TEXT_CLIP.transform));
     expect(OP_REFERENCE).toContain(JSON.stringify(EXAMPLE_TEXT_CLIP.style));

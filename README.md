@@ -277,7 +277,7 @@ A member can connect Claude to the app and ask it to read and change projects fo
 | --- | --- |
 | `list_projects` | Lists the team's projects, newest change first, and says who you are signed in as. |
 | `get_project` | Reads one project's timeline as text: tracks, clips, times and the current version. |
-| `create_project` | Creates an empty project with a name and one of the five formats. |
+| `create_project` | Creates an empty project with a name and one of the five formats, or a custom width and height in pixels. |
 | `edit_timeline` | Applies a list of changes to a project, all or nothing. |
 | `add_text` | Adds one or more text clips from a preset (title, subtitle or lower third). |
 | `undo_change` | Undoes one earlier change, Claude's or a person's, like **Undo this change** in the editor. |
