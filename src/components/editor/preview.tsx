@@ -1,20 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { cx } from "@/components/ui/cx";
+import { boardLayout, boardScale, centreOf, scrollFor, type BoardLayout, type Size } from "@/lib/editor/board";
 import { makeFontResolver } from "@/lib/editor/fonts";
 import { mediaWants, upcomingAssetIds } from "@/lib/editor/media-plan";
-import { fitBox, previewSize } from "@/lib/editor/preview-size";
+import { previewSize } from "@/lib/editor/preview-size";
+import type { BoardZoom } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
 import { drawFrame } from "@/lib/render/compositor";
 import { SAFE_ZONES } from "@/lib/render/safe-zones";
 import type { TimelineDoc } from "@/lib/timeline";
-import { useEditor, useEditorStore } from "./context";
+import { useEditor, useEditorStore, useSettings } from "./context";
 import { useMedia, type MediaServices } from "./media/media-context";
 import { createMediaPool, upcomingWants, type PoolDeps } from "./media/media-pool";
 import { Transport } from "./transport";
 import { usePlayback } from "./use-playback";
+import { BoardScaleContext } from "./zoom-menu";
 
-const PADDING_PX = 16; // around the canvas, inside the region
+// What the board last showed, so a zoom change, or a pane resize at a fixed zoom, can keep the same middle.
+type Shown = { zoom: BoardZoom; layout: BoardLayout; pane: Size; scroll: { left: number; top: number } };
 
 // The picture, drawn by the same compositor export uses, with the transport underneath. The canvas
 // is drawn from a store subscription, not from React state, so playing re-renders nothing here.
@@ -22,6 +27,8 @@ const PADDING_PX = 16; // around the canvas, inside the region
 // timecode and the timeline's playhead; every other change waits for the next one. Each draw first makes the
 // media pool's video and audio elements match the frame, readying those of the clips that start soon, then draws
 // from them.
+// The frame sits on a board: in Fill it fits the pane, and at a percentage it keeps its size and the board scrolls.
+// The canvas keeps its backing size at every zoom and CSS scales it, so a zoom or a scroll never redraws.
 export function Preview() {
   const drawNow = useRef<(() => void) | null>(null);
   const redraw = useRef<(() => void) | null>(null);
@@ -35,21 +42,25 @@ export function Preview() {
   const height = useEditor((s) => viewDoc(s).height);
   const format = useEditor((s) => viewDoc(s).format);
   const showSafeZones = useEditor((s) => s.showSafeZones);
-  const areaRef = useRef<HTMLDivElement>(null);
+  const boardZoom = useSettings((s) => s.boardZoom);
+  const paneRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [area, setArea] = useState({ width: 0, height: 0 });
+  const [pane, setPane] = useState<Size>({ width: 0, height: 0 });
 
   const backing = previewSize({ width, height });
-  const box = fitBox(width / height, area.width, area.height);
+  const layout = useMemo(() => {
+    const doc = { width, height };
+    return boardLayout(boardScale(boardZoom, doc, pane), doc, pane);
+  }, [boardZoom, width, height, pane]);
   const zone = SAFE_ZONES[format];
 
-  // The room left for the canvas, before the first paint and on every resize.
+  // The pane's inside, before the first paint and on every resize.
   useLayoutEffect(() => {
-    const el = areaRef.current;
+    const el = paneRef.current;
     if (!el) return;
     const measure = () => {
-      const next = { width: Math.max(0, el.clientWidth - 2 * PADDING_PX), height: Math.max(0, el.clientHeight - 2 * PADDING_PX) };
-      setArea((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
+      const next = { width: el.clientWidth, height: el.clientHeight };
+      setPane((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
@@ -57,6 +68,26 @@ export function Preview() {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // A zoom change keeps the point at the pane's middle there, and so does a pane resize at a fixed zoom (the browser
+  // would keep the scroll, and the view would drift). The scroll it starts from is the one shown before the change,
+  // since the browser may already have cut it down to a smaller content. Until the pane was measured, the frame's
+  // middle is put there.
+  const shown = useRef<Shown | null>(null);
+  useLayoutEffect(() => {
+    const el = paneRef.current;
+    if (!el) return;
+    const before = shown.current;
+    const paneChanged = before !== null && (before.pane.width !== pane.width || before.pane.height !== pane.height);
+    if (before && (before.zoom !== boardZoom || (boardZoom !== "fill" && paneChanged))) {
+      const measured = before.pane.width > 0 && before.pane.height > 0 && before.layout.k > 0;
+      const middle = measured ? centreOf(before.layout, before.pane, before.scroll) : { x: width / 2, y: height / 2 };
+      const next = scrollFor(middle, layout, pane);
+      el.scrollLeft = next.left;
+      el.scrollTop = next.top;
+    }
+    shown.current = { zoom: boardZoom, layout, pane, scroll: { left: el.scrollLeft, top: el.scrollTop } };
+  }, [boardZoom, layout, pane, width, height]);
 
   // A play, a pause or a new rate is drawn, so the media starts, stops or changes speed. This effect comes after
   // usePlayback's, and asks for its frame anew, so on a play the loop's animation frame comes first and a frame it
@@ -148,22 +179,42 @@ export function Preview() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div ref={areaRef} className="flex min-h-0 flex-1 items-center justify-center" style={{ padding: PADDING_PX }}>
-        {/* The edge is an outline, outside the box, so the canvas and the safe-zone box cover exactly the picture. */}
-        <div className="relative shrink-0 outline outline-ed-line" style={{ width: box.width, height: box.height }}>
-          <canvas ref={canvasRef} role="img" aria-label="Preview" width={backing.width} height={backing.height} className="block size-full" />
-          {showSafeZones && (
+      <div className="relative min-h-0 flex-1">
+        {/* In Fill nothing scrolls, so a scrollbar can never shrink the pane and start a refit. */}
+        <div
+          ref={paneRef}
+          data-board
+          className={cx("absolute inset-0 overscroll-contain", boardZoom === "fill" ? "overflow-hidden" : "overflow-auto")}
+          onScroll={(event) => {
+            if (shown.current) shown.current.scroll = { left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop };
+          }}
+        >
+          <div className="relative" style={{ width: layout.content.width, height: layout.content.height }}>
+            {/* Placed by its offset, never by flex centring, which would push an overflowing frame past where scrolling
+                reaches. The edge is an outline, outside the box, so the canvas and the safe-zone box cover exactly the
+                picture. */}
             <div
-              aria-hidden
-              className="pointer-events-none absolute border border-dashed border-ed-faint"
-              style={{ top: `${zone.top * 100}%`, right: `${zone.right * 100}%`, bottom: `${zone.bottom * 100}%`, left: `${zone.left * 100}%` }}
+              data-frame
+              className="absolute outline outline-ed-line"
+              style={{ left: layout.offset.x, top: layout.offset.y, width: layout.frame.width, height: layout.frame.height }}
             >
-              <span className="absolute top-1 left-1.5 text-[11px] leading-4 text-ed-muted">{zone.label}</span>
+              <canvas ref={canvasRef} role="img" aria-label="Preview" width={backing.width} height={backing.height} className="block size-full" />
+              {showSafeZones && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute border border-dashed border-ed-faint"
+                  style={{ top: `${zone.top * 100}%`, right: `${zone.right * 100}%`, bottom: `${zone.bottom * 100}%`, left: `${zone.left * 100}%` }}
+                >
+                  <span className="absolute top-1 left-1.5 text-[11px] leading-4 text-ed-muted">{zone.label}</span>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
-      <Transport />
+      <BoardScaleContext value={layout.k}>
+        <Transport />
+      </BoardScaleContext>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import {
   Fragment, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject,
 } from "react";
@@ -8,8 +8,9 @@ import { DISABLED, FADE, FOCUS_RING, cx } from "./cx";
 import { IconButton, type IconButtonProps } from "./icon-button";
 
 // shortcut: a key hint drawn at the right, not part of the item's name. checked: a switch, drawn
-// with a check mark. separatorBefore: a rule above the item. edit: it changes the project, so its
-// button is marked as an edit control.
+// with a check mark. radio: one choice of several, drawn the same way (checked marks the current one).
+// separatorBefore: a rule above the item. edit: it changes the project, so its button is marked as an
+// edit control.
 export type MenuItem = {
   id: string;
   label: string;
@@ -17,6 +18,7 @@ export type MenuItem = {
   danger?: boolean;
   shortcut?: string;
   checked?: boolean;
+  radio?: boolean;
   separatorBefore?: boolean;
   edit?: boolean;
 };
@@ -24,6 +26,8 @@ export type MenuItem = {
 export type MenuProps = Omit<IconButtonProps, "label" | "children" | "pressed" | "onSelect"> & {
   label: string;
   icon?: ReactNode; // without one, the button shows the label as text
+  text?: string; // a text button's visible text, with a chevron after it, when it differs from the label (which still names it)
+  title?: string; // a text button's tooltip; an icon button's is its label
   items: MenuItem[] | (() => MenuItem[]); // a function is called each time the menu opens
   onSelect(id: string): void;
 };
@@ -35,11 +39,12 @@ function enabledItems(list: HTMLElement | null): HTMLButtonElement[] {
   return [...(list?.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)') ?? [])];
 }
 
-// A button that opens a list of actions under it: an icon button, or a text button showing its label.
+// A button that opens a list of actions under it: an icon button, or a text button showing its label (or its
+// own text and a chevron, still named by the label).
 // The arrow keys, Home and End move between the items. Escape, a click outside or picking an item
 // closes it, and focus goes back to the button. Items given as a function are read as the menu opens
 // and kept while it is open. Extra props go on the button.
-export function Menu({ label, icon, items, onSelect, disabled, shortcut, className, onClick, onKeyDown, ...rest }: MenuProps) {
+export function Menu({ label, icon, text, title, items, onSelect, disabled, shortcut, className, onClick, onKeyDown, ...rest }: MenuProps) {
   const [openAt, setOpenAt] = useState<"first" | "last" | null>(null);
   const [opened, setOpened] = useState<MenuItem[]>([]);
   // Turning disabled closes the menu for good, so enabling it again does not reopen it.
@@ -140,7 +145,8 @@ export function Menu({ label, icon, items, onSelect, disabled, shortcut, classNa
       ) : (
         <button
           type="button"
-          title={shortcut ? `${label} (${shortcut})` : undefined}
+          aria-label={text === undefined ? undefined : label}
+          title={title ?? (shortcut ? `${label} (${shortcut})` : undefined)}
           className={cx(
             "inline-flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-medium text-ed-muted select-none",
             "enabled:hover:bg-ed-hover enabled:hover:text-ed-text aria-expanded:bg-ed-hover aria-expanded:text-ed-text",
@@ -151,7 +157,14 @@ export function Menu({ label, icon, items, onSelect, disabled, shortcut, classNa
           )}
           {...triggerProps}
         >
-          {label}
+          {text === undefined ? (
+            label
+          ) : (
+            <>
+              {text}
+              <ChevronDown aria-hidden size={12} />
+            </>
+          )}
         </button>
       )}
       {open && openAt && (
@@ -190,7 +203,7 @@ export type MenuListProps = {
 export function MenuList({ label, items, openAt, place, onPick, onDismiss, id, ref }: MenuListProps): ReactNode {
   const own = useRef<HTMLDivElement>(null);
   const list = ref ?? own;
-  // When any item is a switch, every item keeps a column for the check, so the labels line up.
+  // When any item is a switch or a choice, every item keeps a column for the check, so the labels line up.
   const checkable = items.some((item) => item.checked !== undefined);
   const placeNow = useEffectEvent(place);
 
@@ -244,8 +257,8 @@ export function MenuList({ label, items, openAt, place, onPick, onDismiss, id, r
           {item.separatorBefore && <div role="separator" className="my-1 h-px shrink-0 bg-ed-line" />}
           <button
             type="button"
-            role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
-            aria-checked={item.checked}
+            role={item.radio ? "menuitemradio" : item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+            aria-checked={item.radio ? !!item.checked : item.checked}
             data-edit-control={item.edit || undefined}
             tabIndex={-1}
             disabled={item.disabled}

@@ -298,6 +298,54 @@ it("a text menu button is named by its label", () => {
   expect(screen.getByRole("menu", { name: "Edit" })).toBeTruthy();
 });
 
+it("a text menu button can show other text, with a chevron, and keep its label as its name", () => {
+  render(<Menu label="Preview zoom: Fill to size" text="Fill" title="Preview zoom" items={[{ id: "fill", label: "Fill to size" }]} onSelect={() => {}} />);
+  const trigger = screen.getByRole("button", { name: "Preview zoom: Fill to size" });
+  expect(trigger.getAttribute("aria-label")).toBe("Preview zoom: Fill to size");
+  expect(trigger.textContent).toBe("Fill");
+  expect(trigger.getAttribute("title")).toBe("Preview zoom");
+  const chevron = trigger.querySelector("svg")!;
+  expect(chevron.getAttribute("aria-hidden")).toBe("true");
+  expect([chevron.getAttribute("width"), chevron.getAttribute("height")]).toEqual(["12", "12"]);
+  expect(chevron.previousSibling?.textContent).toBe("Fill");
+  fireEvent.click(trigger);
+  expect(screen.getByRole("menu", { name: "Preview zoom: Fill to size" })).toBeTruthy();
+});
+
+it("a text menu button without text has no aria-label, no chevron, and only a shortcut's title", () => {
+  const { rerender } = render(<Menu label="Edit" items={[]} onSelect={() => {}} />);
+  const trigger = screen.getByRole("button", { name: "Edit" });
+  expect(trigger.hasAttribute("aria-label")).toBe(false);
+  expect(trigger.hasAttribute("title")).toBe(false);
+  expect(trigger.querySelector("svg")).toBeNull();
+  rerender(<Menu label="Edit" shortcut="E" items={[]} onSelect={() => {}} />);
+  expect(trigger.getAttribute("title")).toBe("Edit (E)");
+});
+
+it("radio items carry aria-checked and win over the checkbox role", () => {
+  render(
+    <Menu
+      label="Zoom"
+      items={[
+        { id: "fill", label: "Fill to size", radio: true, checked: true },
+        { id: "25", label: "25%", radio: true, checked: false, separatorBefore: true },
+        { id: "50", label: "50%", radio: true },
+      ]}
+      onSelect={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Zoom" }));
+  expect(screen.queryAllByRole("menuitemcheckbox")).toHaveLength(0);
+  const radios = screen.getAllByRole("menuitemradio");
+  expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["true", "false", "false"]);
+  expect(document.activeElement).toBe(radios[0]);
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+  expect(document.activeElement).toBe(radios[1]);
+  // The check column lines the labels up, and only the checked one draws the mark.
+  const columns = [...screen.getByRole("menu").querySelectorAll("[data-check]")];
+  expect(columns.map((c) => c.querySelector("svg") !== null)).toEqual([true, false, false]);
+});
+
 it("a menu's items are read when it opens", () => {
   let n = 0;
   const items = vi.fn(() => [{ id: "a", label: `Item ${++n}` }]);

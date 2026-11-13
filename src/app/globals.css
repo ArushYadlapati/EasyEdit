@@ -64,3 +64,6 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
+
+/* A sideways swipe past the board's edge (or over the board in Fill, where it does not scroll) is not the browser's Back. */
+html:has(.editor) { overscroll-behavior-x: none; }

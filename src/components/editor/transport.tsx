@@ -8,6 +8,7 @@ import { FORMAT_PRESETS, docDuration } from "@/lib/timeline";
 import { useEditor } from "./context";
 import { Timecode } from "./timecode";
 import { useShortcutLabel } from "./use-shortcuts";
+import { ZoomMenu } from "./zoom-menu";
 
 // "2×", or "−2×" when playing backward.
 const rateLabel = (rate: number) => (rate < 0 ? `−${-rate}×` : `${rate}×`);
@@ -59,6 +60,7 @@ export function Transport() {
         </span>
       )}
       <div className="ml-auto flex min-w-0 items-center gap-2">
+        <ZoomMenu />
         <IconButton label="Safe zones" pressed={showSafeZones} onClick={() => toggleSafeZones()}>
           <Scan />
         </IconButton>
