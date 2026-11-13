@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { EDIT_DESCRIPTION, EXAMPLE_MEDIA_CLIP, EXAMPLE_TEXT_CLIP, OP_REFERENCE, SERVER_INSTRUCTIONS, TEAM_STYLE_RULES, buildEditingGuide } from "@/lib/mcp/guide";
+import { EDIT_DESCRIPTION, EXAMPLE_CROP, EXAMPLE_MEDIA_CLIP, EXAMPLE_TEXT_CLIP, OP_REFERENCE, SERVER_INSTRUCTIONS, TEAM_STYLE_RULES, buildEditingGuide } from "@/lib/mcp/guide";
 import { checkAllowedOps } from "@/lib/mcp/op-rules";
 import { editTimelineTool } from "@/lib/mcp/tools/edit-timeline";
 import { createProject } from "@/lib/projects/service";
-import { OpInput, applyOps, createEmptyDoc, prepareOps } from "@/lib/timeline";
+import { NO_CROP, OpInput, applyOps, createEmptyDoc, prepareOps } from "@/lib/timeline";
 import { makeTestDb } from "../helpers/db";
 import { insertAsset } from "../media/context";
 import { toolContext } from "./context";
@@ -75,7 +75,27 @@ describe("the guide", () => {
       'A media CLIP: {"type":"video"|"image"|"audio","assetId":A,"start":F,"duration":F,"in":F,"speed":1,"volume":1,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"}}',
       "assetId comes from list_assets, and type must be the asset's kind. in is the first frame of the footage the clip shows. Video and audio must stay inside the footage: in + duration × speed is at most the asset's length in frames. Video and image clips go on video or overlay tracks, audio clips on audio tracks.",
       "x and y place the clip's center as a fraction of the frame: 0.5, 0.5 is the middle. For plain text, add_text is simpler; for media, add_media is.",
+      'A video, image or text transform may also have "crop":{"left":0.1,"top":0,"right":0.1,"bottom":0}: the share cut from each side of the clip, 0 to 1. The rest stays where it was. update_clip replaces the whole crop, so give all four; {"left":0,"top":0,"right":0,"bottom":0} removes it.',
     ].join("\n"))).toBe(true);
+  });
+
+  it("shows a crop the engine accepts as written, on video and on text", () => {
+    expect(EXAMPLE_CROP).toEqual({ left: 0.1, top: 0, right: 0.1, bottom: 0 });
+    expect(OP_REFERENCE).toContain(`"crop":${JSON.stringify(EXAMPLE_CROP)}:`);
+    expect(OP_REFERENCE).toContain(`${JSON.stringify(NO_CROP)} removes it.`);
+    const added = applyOps(createEmptyDoc("short_9x16"), prepareOps([
+      { op: "add_clip", trackId: "v1", clip: { ...EXAMPLE_MEDIA_CLIP, id: "v" } },
+      { op: "add_clip", trackId: "t1", clip: { ...EXAMPLE_TEXT_CLIP, id: "t" } },
+    ])).doc;
+    const ops = prepareOps(["v", "t"].map((clipId) => ({ op: "update_clip" as const, clipId, patch: { transform: { crop: EXAMPLE_CROP } } })));
+    const { doc } = applyOps(added, ops);
+    expect([doc.tracks[0].clips[0].transform.crop, doc.tracks[1].clips[0].transform.crop]).toEqual([EXAMPLE_CROP, EXAMPLE_CROP]);
+    const removed = applyOps(doc, prepareOps([{ op: "update_clip", clipId: "t", patch: { transform: { crop: NO_CROP } } }])).doc;
+    expect(removed.tracks[1].clips[0].transform.crop).toEqual(NO_CROP);
+  });
+
+  it("says crop is possible", () => {
+    expect(buildEditingGuide()).toContain("Change the format. Crop video, images and text.");
   });
 
   it("has no team section until the team has rules", () => {

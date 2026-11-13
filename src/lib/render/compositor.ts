@@ -1,5 +1,8 @@
-import type { Clip, MediaClip, TextClip, TimelineDoc, Track } from "@/lib/timeline";
-import { layoutText } from "./text-layout";
+import type { Clip, Crop, MediaClip, TextClip, TimelineDoc, Track } from "@/lib/timeline";
+import { isCropped } from "@/lib/timeline/presets";
+import { layoutText, textRect, type LocalRect } from "./text-layout";
+
+export type { LocalRect };
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type ResolvedSource = { image: CanvasImageSource; width: number; height: number };
@@ -35,29 +38,84 @@ export function fitRect(srcW: number, srcH: number, dstW: number, dstH: number, 
   return { width: srcW * ratio, height: srcH * ratio };
 }
 
+// The size a video or image is drawn at before scale and rotation: fitted to the frame, or the whole frame for a placeholder.
+export function mediaSize(
+  doc: { width: number; height: number },
+  clip: MediaClip,
+  source: { width: number; height: number } | null,
+): { width: number; height: number } {
+  if (!hasPicture(source)) return { width: doc.width, height: doc.height };
+  return fitRect(source.width, source.height, doc.width, doc.height, clip.transform.fit);
+}
+
+// A source with no size (a video before its metadata, or with no video track) draws a placeholder.
+function hasPicture<T extends { width: number; height: number }>(source: T | null | undefined): source is T {
+  return !!source && source.width > 0 && source.height > 0;
+}
+
+// What is left of a box once each side's share of its width or height is cut away.
+export function cropRect(rect: LocalRect, crop: Crop | undefined): LocalRect {
+  if (!crop) return { ...rect };
+  const w = rect.right - rect.left;
+  const h = rect.bottom - rect.top;
+  return { left: rect.left + crop.left * w, top: rect.top + crop.top * h, right: rect.right - crop.right * w, bottom: rect.bottom - crop.bottom * h };
+}
+
+const centred = ({ width, height }: { width: number; height: number }): LocalRect => ({ left: -width / 2, top: -height / 2, right: width / 2, bottom: height / 2 });
+
 function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (family: string) => string): void {
   const { fontWeight, fontSize, fontFamily, color, align } = clip.style;
   ctx.font = `${fontWeight} ${fontSize}px ${resolveFont(fontFamily)}`;
   ctx.fillStyle = color;
   ctx.textAlign = align;
   ctx.textBaseline = "middle";
-  for (const line of layoutText(clip, doc.width, (s) => ctx.measureText(s).width)) ctx.fillText(line.text, line.x, line.y);
+  const measure = (s: string) => ctx.measureText(s).width;
+  const crop = clip.transform.crop;
+  if (crop && isCropped(crop)) {
+    const k = cropRect(textRect(clip, doc.width, measure), crop);
+    // An uncut side moves out by the font size, so glyphs wider than their measured advance are not shaved.
+    if (crop.left === 0) k.left -= fontSize;
+    if (crop.top === 0) k.top -= fontSize;
+    if (crop.right === 0) k.right += fontSize;
+    if (crop.bottom === 0) k.bottom += fontSize;
+    ctx.beginPath();
+    ctx.rect(k.left, k.top, k.right - k.left, k.bottom - k.top);
+    ctx.clip();
+  }
+  for (const line of layoutText(clip, doc.width, measure)) ctx.fillText(line.text, line.x, line.y);
 }
 
 function drawMedia(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip & { type: "video" | "image" }, frame: number, options: DrawOptions): void {
-  const source = options.resolveSource?.(clip, frame);
-  if (source && source.width > 0 && source.height > 0) {
-    const { width, height } = fitRect(source.width, source.height, doc.width, doc.height, clip.transform.fit);
-    ctx.drawImage(source.image, -width / 2, -height / 2, width, height);
+  const source = options.resolveSource?.(clip, frame) ?? null;
+  const size = mediaSize(doc, clip, source);
+  const crop = clip.transform.crop;
+  const k = cropRect(centred(size), crop);
+  if (hasPicture(source)) {
+    if (!crop || !isCropped(crop)) {
+      ctx.drawImage(source.image, -size.width / 2, -size.height / 2, size.width, size.height);
+      return;
+    }
+    const { width: sw, height: sh } = source;
+    ctx.drawImage(
+      source.image,
+      crop.left * sw,
+      crop.top * sh,
+      sw - crop.left * sw - crop.right * sw,
+      sh - crop.top * sh - crop.bottom * sh,
+      k.left,
+      k.top,
+      k.right - k.left,
+      k.bottom - k.top,
+    );
     return;
   }
   ctx.fillStyle = PLACEHOLDER_FILL[clip.type];
-  ctx.fillRect(-doc.width / 2, -doc.height / 2, doc.width, doc.height);
+  ctx.fillRect(k.left, k.top, k.right - k.left, k.bottom - k.top);
   ctx.fillStyle = "#ededed";
   ctx.font = `500 ${Math.round(doc.width * 0.04)}px sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(options.placeholderLabel?.(clip) ?? (clip.type === "video" ? "Video" : "Image"), 0, 0);
+  ctx.fillText(options.placeholderLabel?.(clip) ?? (clip.type === "video" ? "Video" : "Image"), (k.left + k.right) / 2, (k.top + k.bottom) / 2);
 }
 
 // Draws in project pixels and never reads the canvas size: a caller that wants a smaller canvas scales the context first.

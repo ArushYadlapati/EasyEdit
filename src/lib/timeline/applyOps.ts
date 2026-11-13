@@ -2,7 +2,7 @@ import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { OpError } from "./errors";
 import type { Op } from "./ops";
-import { FORMAT_PRESETS, TRACK_ACCEPTS } from "./presets";
+import { FORMAT_PRESETS, NO_CROP, TRACK_ACCEPTS } from "./presets";
 import { MediaClip, TextClip, Transform, TextStyle } from "./types";
 import type { Clip, TimelineDoc, Track } from "./types";
 
@@ -11,8 +11,19 @@ const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).stri
 const StrictTextClip = TextClip.extend({ transform: Transform.strict(), style: TextStyle.strict() }).strict();
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
 
+// Optional transform fields, each with its neutral value. update_clip fills a missing one before it is set or
+// expected, so the first change records an undo that goes back to the neutral value.
+const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CROP }) };
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// The transform keys an update_clip patch or expect gives a value for.
+function transformKeys(part: unknown): string[] {
+  if (!isPlainObject(part) || !isPlainObject(part.transform)) return [];
+  const transform = part.transform;
+  return Object.keys(transform).filter((key) => transform[key] !== undefined);
 }
 
 function isEqual(a: unknown, b: unknown): boolean {
@@ -424,6 +435,10 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         const { track, clipIndex } = findClip(doc, op.clipId, opIndex, name);
         assertUnlocked(track, opIndex, name);
         const current = track.clips[clipIndex];
+        const transform: Record<string, unknown> = current.transform;
+        for (const key of [...transformKeys(op.patch), ...transformKeys(op.expect)]) {
+          if (Object.hasOwn(TRANSFORM_FILL, key) && transform[key] === undefined) transform[key] = TRANSFORM_FILL[key]();
+        }
         if (op.expect && !holds(current, op.expect)) throw stale(`clip "${op.clipId}"`);
         for (const key of FROZEN_CLIP_KEYS) {
           if (key in op.patch) {

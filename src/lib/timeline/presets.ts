@@ -1,4 +1,4 @@
-import type { Clip, FormatId, TimelineDoc, Track, TrackKind, Transform } from "./types";
+import type { Clip, Crop, FormatId, TimelineDoc, Track, TrackKind, Transform } from "./types";
 
 export const FORMAT_PRESETS: Record<FormatId, { width: number; height: number; label: string }> = {
   short_9x16: { width: 1080, height: 1920, label: "Short 9:16" },
@@ -18,6 +18,13 @@ export const DEFAULT_TRANSFORM: Readonly<Transform> = Object.freeze({
   opacity: 1,
   fit: "cover",
 });
+
+// Nothing cut. DEFAULT_TRANSFORM has no crop at all, which means the same.
+export const NO_CROP: Readonly<Crop> = Object.freeze({ left: 0, top: 0, right: 0, bottom: 0 });
+
+export function isCropped(crop: Crop | undefined): boolean {
+  return crop !== undefined && (crop.left > 0 || crop.top > 0 || crop.right > 0 || crop.bottom > 0);
+}
 
 export const TRACK_ACCEPTS: Record<TrackKind, Clip["type"][]> = {
   video: ["video", "image"],
