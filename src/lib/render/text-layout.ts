@@ -49,7 +49,7 @@ export function layoutText(clip: TextClip, docWidth: number, measure: (s: string
   return lines.map((text, i) => ({ text, x, y: (i - (lines.length - 1) / 2) * clip.style.fontSize * LINE_HEIGHT }));
 }
 
-// A box in project pixels from the clip's centre, before scale and rotation.
+// A box in project pixels from the clip's centre, before scale, stretch and rotation.
 export type LocalRect = { left: number; top: number; right: number; bottom: number };
 
 // The box the text's lines take up, as measured. Text with no width is half its font size wide around the anchor.

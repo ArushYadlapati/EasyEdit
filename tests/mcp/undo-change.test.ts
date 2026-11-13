@@ -52,6 +52,20 @@ describe("undo_change", () => {
     expect((await project()).doc.tracks[1].clips[0].transform.crop).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
   });
 
+  it("undoing Claude's first stretch takes it away", async () => {
+    const { db, id, edit, undo, project } = await setup();
+    const stretched = await edit(1, [{ op: "update_clip", clipId: "x1", patch: { transform: { stretch: 1.5 } } }]); // version 2
+    expect(stretched.text).toContain("stretch=1.5");
+    const r = await undo(2, 2);
+    expect(r.isError).toBe(false);
+    expect(r.text.split("\n")[0]).toBe("Undid version 2 (Changed a clip: stretch) as version 3.");
+    const shown = await getProjectTool(await toolContext(db), { project_id: id });
+    expect(shown.isError).toBe(false);
+    expect(shown.text).toContain('"FIRST"');
+    expect(shown.text).not.toContain("stretch=");
+    expect((await project()).doc.tracks[1].clips[0].transform.stretch).toBe(1);
+  });
+
   it("undoes a person's change too", async () => {
     const { undo, project } = await setup();
     expect((await undo(1, 1)).text.split("\n")[0]).toBe("Undid version 1 (Added text) as version 2.");

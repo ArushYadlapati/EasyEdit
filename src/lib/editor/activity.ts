@@ -50,6 +50,7 @@ const ASPECTS: [name: string, touched: (patch: Record<string, unknown>) => boole
   ["alignment", (p) => has(p.style, "align")],
   ["position", (p) => has(p.transform, "x") || has(p.transform, "y")],
   ["scale", (p) => has(p.transform, "scale")],
+  ["stretch", (p) => has(p.transform, "stretch")],
   ["rotation", (p) => has(p.transform, "rotation")],
   ["opacity", (p) => has(p.transform, "opacity")],
   ["fit", (p) => has(p.transform, "fit")],

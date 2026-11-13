@@ -28,6 +28,9 @@ export const EXAMPLE_MEDIA_CLIP: { type: "video"; assetId: string; start: number
 // The crop shown in the op reference. The test applies it to a video clip and a text clip.
 export const EXAMPLE_CROP: Crop = { left: 0.1, top: 0, right: 0.1, bottom: 0 };
 
+// The stretch shown in the op reference. The test applies it to a video clip and a text clip.
+export const EXAMPLE_STRETCH = 1.5;
+
 // The ops edit_timeline accepts, as Claude reads them. replace_track stays out: it is kept for stored undo data.
 export const OP_REFERENCE = `Ops:
 {"op":"add_clip","trackId":T,"clip":CLIP,"ripple":true}      ripple is optional: it pushes later clips right
@@ -46,7 +49,8 @@ A text CLIP: {"type":"text","start":F,"duration":F,"text":S,"transform":${JSON.s
 A media CLIP: {"type":"video"|"image"|"audio","assetId":A,"start":F,"duration":F,"in":F,"speed":1,"volume":1,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"}}
 assetId comes from list_assets, and type must be the asset's kind. in is the first frame of the footage the clip shows. Video and audio must stay inside the footage: in + duration × speed is at most the asset's length in frames. Video and image clips go on video or overlay tracks, audio clips on audio tracks.
 x and y place the clip's center as a fraction of the frame: 0.5, 0.5 is the middle. For plain text, add_text is simpler; for media, add_media is.
-A video, image or text transform may also have "crop":${JSON.stringify(EXAMPLE_CROP)}: the share cut from each side of the clip, 0 to 1. The rest stays where it was. update_clip replaces the whole crop, so give all four; ${JSON.stringify(NO_CROP)} removes it.`;
+A video, image or text transform may also have "crop":${JSON.stringify(EXAMPLE_CROP)}: the share cut from each side of the clip, 0 to 1. The rest stays where it was. update_clip replaces the whole crop, so give all four; ${JSON.stringify(NO_CROP)} removes it.
+A video, image or text transform may also have "stretch":${EXAMPLE_STRETCH}: the clip is drawn ${EXAMPLE_STRETCH} times as wide for its height (below 1 is narrower). scale still sizes the whole clip; 1, or no stretch, keeps its own shape.`;
 
 export const EDIT_DESCRIPTION = `Change a project's timeline with a batch of ops. The whole batch is applied, or none of it.
 
@@ -76,7 +80,7 @@ export function buildEditingGuide(): string {
     "- Every change is a batch of ops (see edit_timeline). Each batch is one line in the editor's Activity list, under your name, and people can undo it there.",
     "",
     "## What is possible today",
-    "- Create projects. Add and style text. Add video, images and audio from the library. Move, trim, split and delete clips. Add, rename, lock, hide, reorder and remove tracks. Change the format. Crop video, images and text.",
+    "- Create projects. Add and style text. Add video, images and audio from the library. Move, trim, split and delete clips. Add, rename, lock, hide, reorder and remove tracks. Change the format. Crop and stretch video, images and text.",
     "- Not yet: seeing inside footage, captions, export, posting. Say so when asked. Never make up an asset id.",
     "",
     "## Working well",

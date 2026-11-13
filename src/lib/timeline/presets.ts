@@ -26,6 +26,13 @@ export function isCropped(crop: Crop | undefined): boolean {
   return crop !== undefined && (crop.left > 0 || crop.top > 0 || crop.right > 0 || crop.bottom > 0);
 }
 
+// The clip keeps its own shape. DEFAULT_TRANSFORM has no stretch at all, which means the same.
+export const NO_STRETCH = 1;
+
+export function stretchOf(t: { stretch?: number }): number {
+  return t.stretch ?? NO_STRETCH;
+}
+
 export const TRACK_ACCEPTS: Record<TrackKind, Clip["type"][]> = {
   video: ["video", "image"],
   overlay: ["image", "video"],
