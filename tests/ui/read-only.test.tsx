@@ -1,10 +1,34 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
 import type { EditorStore } from "@/lib/editor/store";
 import { makeStore, sampleDoc } from "../editor/fixtures";
 import { fireEvent, render, screen } from "../helpers/dom";
+import { rect } from "../helpers/layout";
+import { fakeCtx } from "../render/fake-ctx";
+
+// A preview that draws and is laid out, as in tests/ui/preview-canvas.test.tsx, so the selected clip's handles would
+// be placed for an editor.
+function layOutPreview() {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx().ctx as never);
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.hasAttribute("data-board") ? 572 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.hasAttribute("data-board") ? 992 : 0;
+  });
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    if (this.hasAttribute("data-board")) return rect(200, 40, 572, 992);
+    if (this instanceof HTMLCanvasElement) return rect(216, 56, 540, 960);
+    if (this.hasAttribute("data-canvas-overlay") || this.querySelector(":scope > [data-frame]")) return rect(200, 40, 572, 992);
+    return rect(0, 0, 0, 0);
+  });
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function show(canEdit: boolean) {
   const store = makeStore({ canEdit });
@@ -15,10 +39,12 @@ function show(canEdit: boolean) {
 }
 
 it("a viewer sees the same screen with no working edit control", () => {
+  layOutPreview();
   const { store, container, controls } = show(false);
   expect(controls.length).toBeGreaterThan(10);
   for (const control of controls) expect(control.disabled, control.outerHTML.slice(0, 120)).toBe(true);
   expect(container.querySelector("[data-trim-handle]")).toBeNull();
+  expect(container.querySelector("[data-canvas-handle]")).toBeNull();
   expect(screen.getByText("View only")).toBeTruthy();
   expect((screen.getByRole("button", { name: /^Play/ }) as HTMLButtonElement).disabled).toBe(false);
   expect(screen.getByRole("img", { name: "Preview" })).toBeTruthy();
@@ -29,9 +55,11 @@ it("a viewer sees the same screen with no working edit control", () => {
 });
 
 it("an editor sees those controls working", () => {
+  layOutPreview();
   const { store, container, controls } = show(true);
   expect(controls.filter((control) => !control.disabled).length).toBeGreaterThan(10);
   expect(container.querySelector("[data-trim-handle]")).not.toBeNull();
+  expect(container.querySelector("[data-canvas-handle]")).not.toBeNull();
   expect(screen.queryByText("View only")).toBeNull();
   fireEvent.keyDown(document.body, { key: "Delete" });
   expect(store.getState().queue).toMatchObject([{ label: "delete" }]);
