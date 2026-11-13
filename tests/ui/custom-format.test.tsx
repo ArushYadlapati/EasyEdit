@@ -7,6 +7,7 @@ import { render, screen } from "../helpers/dom";
 
 it("a custom-size project opens in the editor with its size named", () => {
   const store = makeStore({ doc: { ...sampleDoc(), format: "custom", width: 816, height: 1056 } });
+  store.getState().toggleSafeZones(); // the safe area starts hidden
   expect(() =>
     render(
       <EditorProvider store={store}>

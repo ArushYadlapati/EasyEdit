@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { OpError } from "./errors";
-import { Clip, FormatId, MediaClip, TextClip, TextStyle, Track, TrackKind, TrackName, Transform } from "./types";
+import { Clip, FormatId, MediaClip, SafeArea, TextClip, TextStyle, Track, TrackKind, TrackName, Transform } from "./types";
 
 const id = z.string().min(1);
 const optionalId = { id: id.optional() };
@@ -103,6 +103,13 @@ const sharedOps = [
       .object({ format: FormatId, width: z.number().int().optional(), height: z.number().int().optional() })
       .strict()
       .optional(),
+  }),
+  // One format's safe area size; null goes back to the default. expect: the size it must have now (null: the default).
+  z.object({
+    op: z.literal("set_safe_area"),
+    format: FormatId,
+    size: SafeArea.nullable(),
+    expect: z.object({ size: SafeArea.nullable() }).strict().optional(),
   }),
 ] as const;
 

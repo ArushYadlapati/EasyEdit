@@ -184,7 +184,7 @@ function focusByClick(element: HTMLElement) {
 
 it("the space bar and Enter press a button reached with the keyboard and do not toggle playback", () => {
   const { st } = show();
-  const button = screen.getByRole("button", { name: "Safe zones" });
+  const button = screen.getByRole("button", { name: "Safe area" });
   button.focus();
   expect(press(button, " ")).toBe(true);
   expect(press(button, "Enter")).toBe(true);
@@ -209,7 +209,7 @@ it("Space after clicking a button plays or pauses and does not press the button 
 
 it("a button that was already focused by the keyboard and is then clicked gives Space up too", () => {
   const { st } = show();
-  const button = screen.getByRole("button", { name: "Safe zones" });
+  const button = screen.getByRole("button", { name: "Safe area" });
   button.focus();
   fireEvent.pointerDown(button); // focus does not move, so no focus event follows
   expect(press(button, " ")).toBe(false);
@@ -219,7 +219,7 @@ it("a button that was already focused by the keyboard and is then clicked gives 
 it("a clicked button reached again with the keyboard takes Space back", () => {
   const { st } = show();
   const title = screen.getByRole("button", { name: "Add title" });
-  const other = screen.getByRole("button", { name: "Safe zones" });
+  const other = screen.getByRole("button", { name: "Safe area" });
   focusByClick(title);
   // Long after the click, focus moves away and back with no pointer, as Tab and Shift+Tab do.
   vi.spyOn(performance, "now").mockReturnValue(performance.now() + 60_000);

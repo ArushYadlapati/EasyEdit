@@ -10,6 +10,7 @@ import {
   NO_STRETCH,
   TRACK_ACCEPTS,
   isFrameSize,
+  maxSafeAreaHeight,
 } from "./presets";
 import { MediaClip, TextClip, Transform, TextStyle } from "./types";
 import type { Clip, FormatId, FrameSize, TimelineDoc, Track } from "./types";
@@ -535,6 +536,21 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         doc.format = op.format;
         doc.width = size.width;
         doc.height = size.height;
+        break;
+      }
+
+      case "set_safe_area": {
+        const now = doc.safeAreas?.[op.format] ?? null;
+        if (op.expect && !isEqual(op.expect.size, now)) throw stale("the safe area");
+        if (op.size && op.size.height > maxSafeAreaHeight(op.format)) {
+          throw new OpError("INVALID", `${name}: the height can be at most ${maxSafeAreaHeight(op.format)} for ${op.format}, below its top`, opIndex);
+        }
+        groups.push([{ op: "set_safe_area", format: op.format, size: now, expect: { size: op.size } }]);
+        const rest = { ...doc.safeAreas };
+        delete rest[op.format];
+        if (op.size) rest[op.format] = { width: op.size.width, height: op.size.height };
+        if (Object.keys(rest).length) doc.safeAreas = rest;
+        else delete doc.safeAreas;
         break;
       }
 

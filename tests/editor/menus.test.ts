@@ -71,7 +71,7 @@ it("undo and redo follow their stacks; cut and delete need a selection; paste ne
 it("the View menu shows the two switches and the zoom limits", () => {
   const entries = viewMenu(BASE);
   expect(entries.map((e) => e.label)).toEqual([
-    "Zoom in on the timeline", "Zoom out on the timeline", "Fit the timeline", "Snapping", "Safe zones", "Reset panel sizes", "Keyboard shortcuts",
+    "Zoom in on the timeline", "Zoom out on the timeline", "Fit the timeline", "Snapping", "Safe area", "Reset panel sizes", "Keyboard shortcuts",
   ]);
   expect(entries.map((e) => e.id)).toEqual(["zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", "safe-zones", "reset-layout", "show-shortcuts"]);
   expect(entries.map((e) => e.command)).toEqual(["zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", undefined, undefined, "show-shortcuts"]);
@@ -105,7 +105,7 @@ it("topMenuInput reads the store", () => {
     canRedo: false,
     canPaste: false,
     snapping: true,
-    showSafeZones: true,
+    showSafeZones: false, // hidden at first
     canZoomIn: true,
     canZoomOut: true,
   });
@@ -122,7 +122,7 @@ it("topMenuInput reads the store", () => {
   store.getState().setSnapping(false);
   store.getState().toggleSafeZones();
   store.getState().setStatus("deleted");
-  expect(topMenuInput(store.getState(), false)).toMatchObject({ canUndo: false, canRedo: true, snapping: false, showSafeZones: false, deleted: true });
+  expect(topMenuInput(store.getState(), false)).toMatchObject({ canUndo: false, canRedo: true, snapping: false, showSafeZones: true, deleted: true });
   expect(topMenuInput(makeStore({ canEdit: false }).getState(), false).canEdit).toBe(false);
 });
 
@@ -409,17 +409,17 @@ it("a viewer's right-click keeps only what a viewer can use", () => {
   expect(rightClickEntries(clipMenu(editor.getState()), true)).toEqual(clipMenu(editor.getState()));
 });
 
-it("the preview menu offers Paste and the Safe zones switch, and a viewer only the switch", () => {
+it("the preview menu offers Paste and the Safe area switch, and a viewer only the switch", () => {
   const store = makeStore();
   const st = () => store.getState();
   const entries = previewMenu(st(), false);
   expect(entries).toEqual([
     { id: "paste", label: "Paste", command: "paste", disabled: true, edit: true },
-    { id: "safe-zones", label: "Safe zones", checked: true, separatorBefore: true },
+    { id: "safe-zones", label: "Safe area", checked: false, separatorBefore: true },
   ]);
   expect(byId(previewMenu(st(), true), "paste").disabled).toBe(false);
   st().toggleSafeZones();
-  expect(byId(previewMenu(st(), true), "safe-zones").checked).toBe(false);
+  expect(byId(previewMenu(st(), true), "safe-zones").checked).toBe(true);
   // Paste is an edit: greyed while a gesture is live, and in a deleted project.
   st().setGesture([{ op: "update_clip", clipId: "x1", patch: { transform: { x: 0.4 } } }]);
   expect(byId(previewMenu(st(), true), "paste").disabled).toBe(true);

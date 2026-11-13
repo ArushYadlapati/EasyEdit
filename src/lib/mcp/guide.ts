@@ -1,6 +1,6 @@
 import { DEFAULT_TEXT_SECONDS, TEXT_FONT, TEXT_PRESETS } from "@/lib/editor/text-presets";
 import { LIMITS } from "@/lib/limits";
-import { SAFE_ZONES } from "@/lib/render/safe-zones";
+import { safeAreaMargins } from "@/lib/render/safe-zones";
 import { NO_CROP, type Crop, type TextStyle, type Transform } from "@/lib/timeline";
 
 // The clip shown in the op reference. The test adds it to a project, so the example cannot go stale.
@@ -45,6 +45,7 @@ export const OP_REFERENCE = `Ops:
 {"op":"remove_track","trackId":T}
 {"op":"set_format","format":"short_9x16"|"feed_4x5"|"square_1x1"|"long_16x9"|"long_4k"}
 {"op":"set_format","format":"custom","width":W,"height":H}   W and H in pixels: even, 16 to 4096, at most the area of 3840×2160
+{"op":"set_safe_area","format":FORMAT,"size":{"width":W,"height":H}}   shares of the frame; "size":null goes back to the default
 
 A text CLIP: {"type":"text","start":F,"duration":F,"text":S,"transform":${JSON.stringify(EXAMPLE_TEXT_CLIP.transform)},"style":${JSON.stringify(EXAMPLE_TEXT_CLIP.style)}}
 A media CLIP: {"type":"video"|"image"|"audio","assetId":A,"start":F,"duration":F,"in":F,"speed":1,"volume":1,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"}}
@@ -70,7 +71,7 @@ export const TEAM_STYLE_RULES: string[] = [];
 const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
 
 export function buildEditingGuide(): string {
-  const zone = SAFE_ZONES.short_9x16;
+  const zone = safeAreaMargins({ format: "short_9x16" });
   const presets = TEXT_PRESETS.map((p) => `${p.id} (${p.fontSize} px, weight ${p.fontWeight}, ${p.align}, y ${p.y})`).join("; ");
   const lines = [
     "# EasyEdit editing guide",
@@ -79,6 +80,7 @@ export function buildEditingGuide(): string {
     "- A project is one timeline in one format. Tracks are layers: a later track draws on top. Track kinds: video, overlay, text, caption, audio.",
     "- Clips sit on tracks and never overlap on the same track. Times are whole frames; the project's first line gives fps.",
     "- Every change is a batch of ops (see edit_timeline). Each batch is one line in the editor's Activity list, under your name, and people can undo it there.",
+    '- Each format has a safe area: a box, centred sideways, that the apps\' buttons and captions leave uncovered. A project can set its own size for a format; get_project then shows a "Safe area" line, and that box is the one to keep text inside.',
     "",
     "## What is possible today",
     "- Create projects. Add and style text. Add video, images and audio from the library. Move, trim, split and delete clips. Add, rename, lock, hide, reorder and remove tracks. Change the format. Crop and stretch video, images and text.",
@@ -95,7 +97,7 @@ export function buildEditingGuide(): string {
     "## Short videos (short_9x16)",
     "- Open with a hook: the first text starts at frame 0 and is readable within 1.5 seconds.",
     "- Aim for 15 to 45 seconds unless asked otherwise.",
-    `- Keep text clear of the top ${percent(zone.top)}, the bottom ${percent(zone.bottom)} and ${percent(zone.left)} at each side.`,
+    `- Keep text inside the safe area. By default that keeps it clear of the top ${percent(zone.top)}, the bottom ${percent(zone.bottom)} and ${percent(zone.left)} at each side.`,
     "- One idea per text clip, about six words at most, on screen for at least 1.5 seconds.",
     "- Captions are always on, once captions exist.",
     "",

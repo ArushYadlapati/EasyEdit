@@ -43,7 +43,7 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
     const store = createEditorStore(initial, { view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones } });
     const api = createProjectApi(initial.projectId);
     const sync = createSync({ store, api, isVisible: () => document.visibilityState === "visible" });
-    // Snapping and safe zones live in the editor store; the cookie holds them with the rest.
+    // Snapping and the safe area switch live in the editor store; the cookie holds them with the rest.
     const savePrefs: SettingsSave["prefs"] = (chosen) => {
       const { snapping, showSafeZones } = store.getState();
       writePrefsCookie(formatPrefs({ ...chosen, snapping, safeZones: showSafeZones }));
@@ -69,7 +69,7 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
     }
     // Read after mount, so the server's render and the first client render agree; loading it twice changes nothing.
     settings.getState().loadKeymap(readKeymap(localStore));
-    // Every toggle of snapping or safe zones, from any control, is kept.
+    // Every toggle of snapping or the safe area, from any control, is kept.
     return store.subscribe((state, before) => {
       if (state.snapping === before.snapping && state.showSafeZones === before.showSafeZones) return;
       const { units, boardZoom, stillSeconds, textSeconds } = settings.getState();

@@ -1,6 +1,6 @@
 import { LIMITS } from "@/lib/limits";
 import { PresetId } from "./types";
-import type { Clip, Crop, FormatId, FrameSize, TimelineDoc, Track, TrackKind, Transform } from "./types";
+import type { Clip, Crop, FormatId, FrameSize, SafeArea, TimelineDoc, Track, TrackKind, Transform } from "./types";
 
 export const FORMAT_PRESETS: Record<PresetId, { width: number; height: number; label: string }> = {
   short_9x16: { width: 1080, height: 1920, label: "Short 9:16" },
@@ -44,6 +44,31 @@ export function formatLabel(of: { format: FormatId; width?: number; height?: num
 }
 
 export const DEFAULT_FPS = 30;
+
+// Each format's safe area before anyone changes it, as shares of the frame: centred sideways, its top edge at `top`.
+// A changed size keeps that top and grows downward. 9:16 follows Meta's published Reels guidance (14% of the top,
+// 35% of the bottom and 6% of each side kept clear); it is written for ads, so it errs on the side of room. YouTube
+// publishes no Shorts margins. The other formats keep 5% clear on every side.
+export const SAFE_AREA_DEFAULTS: Record<FormatId, Readonly<SafeArea & { top: number }>> = {
+  short_9x16: { top: 0.14, width: 0.88, height: 0.51 },
+  feed_4x5: { top: 0.05, width: 0.9, height: 0.9 },
+  square_1x1: { top: 0.05, width: 0.9, height: 0.9 },
+  long_16x9: { top: 0.05, width: 0.9, height: 0.9 },
+  long_4k: { top: 0.05, width: 0.9, height: 0.9 },
+  custom: { top: 0.05, width: 0.9, height: 0.9 }, // one size for every custom-sized project
+};
+
+// The tallest safe area a format allows: what is left below its top.
+export function maxSafeAreaHeight(format: FormatId): number {
+  return Number((1 - SAFE_AREA_DEFAULTS[format].top).toFixed(4));
+}
+
+// The safe area the project shows now: its own size for its format, or the default.
+export function safeAreaOf(doc: Pick<TimelineDoc, "format" | "safeAreas">): SafeArea & { top: number; custom: boolean } {
+  const fallback = SAFE_AREA_DEFAULTS[doc.format];
+  const own = doc.safeAreas?.[doc.format];
+  return own ? { top: fallback.top, width: own.width, height: own.height, custom: true } : { ...fallback, custom: false };
+}
 
 export const DEFAULT_TRANSFORM: Readonly<Transform> = Object.freeze({
   x: 0.5,

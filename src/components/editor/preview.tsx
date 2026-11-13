@@ -11,7 +11,7 @@ import { previewSize } from "@/lib/editor/preview-size";
 import type { BoardZoom } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
 import { drawFrame } from "@/lib/render/compositor";
-import { SAFE_ZONES } from "@/lib/render/safe-zones";
+import { SAFE_AREA_LABEL, safeAreaMargins } from "@/lib/render/safe-zones";
 import type { TimelineDoc } from "@/lib/timeline";
 import { CanvasOverlay } from "./canvas-overlay";
 import { useEditor, useEditorStore, useSettings } from "./context";
@@ -49,6 +49,7 @@ export function Preview() {
   const width = useEditor((s) => viewDoc(s).width);
   const height = useEditor((s) => viewDoc(s).height);
   const format = useEditor((s) => viewDoc(s).format);
+  const safeAreas = useEditor((s) => viewDoc(s).safeAreas);
   const showSafeZones = useEditor((s) => s.showSafeZones);
   const boardZoom = useSettings((s) => s.boardZoom);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -63,7 +64,7 @@ export function Preview() {
     const doc = { width, height };
     return boardLayout(boardScale(boardZoom, doc, pane), doc, pane);
   }, [boardZoom, width, height, pane]);
-  const zone = SAFE_ZONES[format];
+  const zone = safeAreaMargins({ format, safeAreas });
 
   // The pane's inside, before the first paint and on every resize.
   useLayoutEffect(() => {
@@ -265,7 +266,7 @@ export function Preview() {
         >
           <div ref={contentRef} className="relative" style={{ width: layout.content.width, height: layout.content.height }}>
             {/* Placed by its offset, never by flex centring, which would push an overflowing frame past where scrolling
-                reaches. The edge is an outline, outside the box, so the canvas and the safe-zone box cover exactly the
+                reaches. The edge is an outline, outside the box, so the canvas and the safe area box cover exactly the
                 picture. */}
             <div
               data-frame
@@ -279,7 +280,7 @@ export function Preview() {
                   className="pointer-events-none absolute border border-dashed border-ed-faint"
                   style={{ top: `${zone.top * 100}%`, right: `${zone.right * 100}%`, bottom: `${zone.bottom * 100}%`, left: `${zone.left * 100}%` }}
                 >
-                  <span className="absolute top-1 left-1.5 text-[11px] leading-4 text-ed-muted">{zone.label}</span>
+                  <span className="absolute top-1 left-1.5 text-[11px] leading-4 text-ed-muted">{SAFE_AREA_LABEL}</span>
                 </div>
               )}
             </div>

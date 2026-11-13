@@ -52,6 +52,7 @@ const CASES: [string, OpInput][] = [
   ["update_clip", { op: "update_clip", clipId: "x1", patch: { text: "GO", style: { color: "#000" } } }],
   ["set_format", { op: "set_format", format: "long_16x9" }],
   ["set_format custom", { op: "set_format", format: "custom", width: 816, height: 1056 }],
+  ["set_safe_area", { op: "set_safe_area", format: "short_9x16", size: { width: 0.8, height: 0.6 } }],
 ];
 
 describe("every accepted change can be undone in one request", () => {
