@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "@/components/dashboard/dashboard";
+import { PROJECT_DRAG_TYPE } from "@/components/dashboard/drag";
 import type { FormState } from "@/lib/projects/dashboard-actions";
-import { FOLDERS, NOW, PROJECTS, RECENT_IDS, renderDashboard } from "../helpers/dashboard";
+import { FOLDERS, NOW, PROJECTS, RECENT_IDS, dashProject, renderDashboard } from "../helpers/dashboard";
 import { act, fireEvent, screen, within } from "../helpers/dom";
+import { dragEvent } from "../helpers/drag-events";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
 vi.mock("next/navigation", () => ({ useRouter: () => router, unstable_rethrow: () => {} }));
@@ -461,5 +463,79 @@ describe("deleting a card", () => {
     await click(del);
     expect(del.disabled).toBe(true);
     await act(async () => finish({}));
+  });
+});
+
+describe("the card's picture", () => {
+  const PICTURED = [dashProject({ id: "a", name: "Qual recap", thumbnailVersion: 3 }), PROJECTS[1], PROJECTS[2]];
+  const picture = (li: HTMLElement) => li.querySelector<HTMLImageElement>("[data-blank-frame] > img");
+
+  it("a card with a picture shows it in its frame, unnamed and not draggable on its own", () => {
+    renderDashboard({ projects: PICTURED });
+    const li = card("Qual recap");
+    const img = picture(li)!;
+    expect(img.getAttribute("src")).toBe("/api/projects/a/thumbnail?v=3");
+    expect(img.getAttribute("alt")).toBe("");
+    expect(img.getAttribute("loading")).toBe("lazy");
+    expect(img.getAttribute("decoding")).toBe("async");
+    expect(img.getAttribute("draggable")).toBe("false");
+    expect(img.classList).toContain("size-full");
+    expect(img.classList).toContain("object-cover");
+    expect(within(li).getByRole("link", { name: "Qual recap" })).toBeTruthy();
+    expect(li.getAttribute("draggable")).toBe("true");
+  });
+
+  it("a card without a picture shows only the blank frame", () => {
+    renderDashboard({ projects: PICTURED });
+    const li = card("Poster");
+    expect(li.querySelector("[data-blank-frame] img")).toBeNull();
+    expect(li.querySelector("[data-blank-frame]")?.getAttribute("style")).toContain("aspect-ratio: 816 / 1056");
+  });
+
+  it("a picture that fails to load leaves the blank frame, until a newer one comes", () => {
+    const { actions, rerender } = renderDashboard({ projects: PICTURED });
+    fireEvent.error(picture(card("Qual recap"))!);
+    expect(picture(card("Qual recap"))).toBeNull();
+    expect(card("Qual recap").querySelector("[data-blank-frame]")).not.toBeNull();
+    rerender(
+      <Dashboard
+        projects={[{ ...PICTURED[0], thumbnailVersion: 4 }, PROJECTS[1], PROJECTS[2]]}
+        folders={FOLDERS}
+        recentIds={RECENT_IDS}
+        view={null}
+        canEdit
+        now={NOW}
+        actions={actions}
+      />,
+    );
+    expect(picture(card("Qual recap"))?.getAttribute("src")).toMatch(/\?v=4$/);
+  });
+
+  it("the card still drags with its id when it has a picture", () => {
+    renderDashboard({ projects: PICTURED });
+    const li = card("Qual recap");
+    const event = dragEvent("dragstart");
+    act(() => {
+      li.dispatchEvent(event);
+    });
+    const transfer = (event as unknown as { dataTransfer: DataTransfer }).dataTransfer;
+    expect(transfer.getData(PROJECT_DRAG_TYPE)).toBe("a");
+  });
+
+  it("a recent card and a custom-size card show their pictures in their own shape", () => {
+    renderDashboard({
+      projects: [
+        dashProject({ id: "a", name: "Qual recap", thumbnailVersion: 3 }),
+        { ...PROJECTS[1], thumbnailVersion: 1 },
+        { ...PROJECTS[2], thumbnailVersion: 2 },
+      ],
+    });
+    const poster = card("Poster").querySelector("[data-blank-frame]")!;
+    expect(poster.getAttribute("style")).toContain("aspect-ratio: 816 / 1056");
+    expect(poster.querySelector("img")?.getAttribute("src")).toBe("/api/projects/b/thumbnail?v=1");
+    const recent = within(region("Recent")).getByRole("link", { name: "Finals" });
+    const img = recent.querySelector("[data-blank-frame] > img")!;
+    expect(img.getAttribute("src")).toBe("/api/projects/c/thumbnail?v=2");
+    expect(img.parentElement!.getAttribute("style")).toContain("aspect-ratio: 1920 / 1080");
   });
 });

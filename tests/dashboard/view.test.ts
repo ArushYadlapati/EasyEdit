@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { matchesSearch, projectsInView, recentProjects, resolveView, sortProjects, SORT_OPTIONS } from "@/lib/dashboard/view";
+import { matchesSearch, projectsInView, recentProjects, resolveView, sortProjects, SORT_OPTIONS, thumbnailUrl } from "@/lib/dashboard/view";
 
 type P = { id: string; name: string; createdAt: Date; updatedAt: Date; folderId: string | null };
 
@@ -80,4 +80,10 @@ it("an unknown folder in the address is the main view", () => {
   expect(resolveView("nope", folders)).toBeNull();
   expect(resolveView(["f1"], folders)).toBeNull();
   expect(resolveView(undefined, folders)).toBeNull();
+});
+
+it("a thumbnail's address carries its version", () => {
+  expect(thumbnailUrl({ id: "a", thumbnailVersion: 3 })).toBe("/api/projects/a/thumbnail?v=3");
+  expect(thumbnailUrl({ id: "a b", thumbnailVersion: 0 })).toBe("/api/projects/a%20b/thumbnail?v=0");
+  expect(thumbnailUrl({ id: "a", thumbnailVersion: null })).toBeNull();
 });

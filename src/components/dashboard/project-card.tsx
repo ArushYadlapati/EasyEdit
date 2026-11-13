@@ -13,7 +13,7 @@ import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { InlineEdit } from "@/components/ui/inline-edit";
 import { Menu, type MenuItem } from "@/components/ui/menu";
-import { PROJECT_GONE, type DashboardFolder, type DashboardProject } from "@/lib/dashboard/view";
+import { PROJECT_GONE, thumbnailUrl, type DashboardFolder, type DashboardProject } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
 import { formatLabel } from "@/lib/timeline";
@@ -48,9 +48,10 @@ const withId = (id: string, more: Record<string, string> = {}) => {
   return formData;
 };
 
-// A project on the dashboard: a blank frame in its shape and its name, which open it in the editor, then its format,
-// who changed it last and when, and its folder. Its ⋯ button and a right-click on it open the same menu: Open for
-// everyone, and for editors Rename (in place), Duplicate, Move to folder… and Delete (after asking).
+// A project on the dashboard: its picture in a frame of its shape (a blank frame until it has one) and its name, which
+// open it in the editor, then its format, who changed it last and when, and its folder. Its ⋯ button and a right-click
+// on it open the same menu: Open for everyone, and for editors Rename (in place), Duplicate, Move to folder… and Delete
+// (after asking).
 export function ProjectCard({ project, folderName, now, canEdit, folders, actions, onGone }: ProjectCardProps): ReactNode {
   const router = useRouter();
   const menu = useContextMenu();
@@ -61,6 +62,7 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null); // why a rename or duplicate was refused
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null); // the picture address that failed to load
   const rename = useAction(actions.rename);
   const duplicate = useAction(actions.duplicate);
   const remove = useAction(actions.remove);
@@ -123,9 +125,24 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
     event.dataTransfer.effectAllowed = "move";
   }
 
+  // The saved picture shows unless its address failed to load; a newer version is a new address, so it shows again.
+  const url = thumbnailUrl(project);
   const picture = (
     <div className="aspect-video rounded-md border border-ed-line bg-ed-panel p-3 transition-colors duration-120 group-hover:bg-ed-hover motion-reduce:transition-none">
-      <BlankFrame width={project.width} height={project.height} />
+      <BlankFrame width={project.width} height={project.height}>
+        {url !== null && url !== failed && (
+          // eslint-disable-next-line @next/next/no-img-element -- a picture behind the sign-in, with its version in the address; next/image's optimizer cannot fetch one.
+          <img
+            src={url}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="size-full object-cover"
+            onError={() => setFailed(url)}
+          />
+        )}
+      </BlankFrame>
     </div>
   );
 
