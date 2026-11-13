@@ -121,6 +121,16 @@ export function rowAt(y: number, rowCount: number): number {
   return Math.min(Math.max(0, rowCount - 1), Math.max(0, Math.floor(y / ROW_HEIGHT)));
 }
 
+// Where a dragged track would land, for a pointer y px below the first row's top. The slot is the
+// gap between rows nearest the pointer (0 above the first row), kept inside the track's group: the
+// rows above the audio rows, or the audio rows. toRow is the row the track would then have.
+export function trackDropSlot(rows: Track[], fromRow: number, y: number): { slot: number; toRow: number } {
+  const visual = rows.filter((t) => t.kind !== "audio").length;
+  const [lo, hi] = rows[fromRow]?.kind === "audio" ? [visual, rows.length] : [0, visual];
+  const slot = Math.min(hi, Math.max(lo, Math.round(y / ROW_HEIGHT)));
+  return { slot, toRow: slot > fromRow ? slot - 1 : slot };
+}
+
 // The ids of the clips a box covers, row by row, then by start. The box may be dragged any way.
 export function clipsInBox(rows: Track[], box: { fromFrame: number; toFrame: number; fromRow: number; toRow: number }): string[] {
   const fromFrame = Math.min(box.fromFrame, box.toFrame);

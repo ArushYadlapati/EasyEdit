@@ -7,6 +7,7 @@ import {
   deleteOps,
   edgeFrames,
   moveOps,
+  moveTrackOps,
   nearestEdge,
   removeTrackOps,
   renameTrackOps,
@@ -154,6 +155,10 @@ export function toggleTrack(store: EditorStore, trackId: string, field: TrackSwi
 
 export function reorderTrack(store: EditorStore, trackId: string, direction: "up" | "down"): void {
   editTrack(store, reorderTrackOps(store.getState().doc, trackId, direction), "reorder tracks");
+}
+
+export function moveTrack(store: EditorStore, trackId: string, toRow: number): void {
+  editTrack(store, moveTrackOps(store.getState().doc, trackId, toRow), "reorder tracks");
 }
 
 export function removeTrack(store: EditorStore, trackId: string): void {

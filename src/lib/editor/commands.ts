@@ -48,15 +48,24 @@ export function addTrackOps(doc: TimelineDoc, kind: TrackKind): OpInput[] {
   return [{ op: "add_track", track: { kind, name: nextTrackName(doc, kind) }, index: newTrackIndex(doc, kind) }];
 }
 
-// Swaps a track with its neighbor one row up or down. Audio rows and the rows above them are two
-// groups, and a track never leaves its group.
-export function reorderTrackOps(doc: TimelineDoc, trackId: string, direction: "up" | "down"): OpInput[] {
+// Moves a track to another row, the others closing up behind it. Audio rows and the rows above them
+// are two groups, and a track never leaves its group: toRow is held inside it.
+export function moveTrackOps(doc: TimelineDoc, trackId: string, toRow: number): OpInput[] {
   const rows = displayRows(doc);
-  const row = rows.findIndex((t) => t.id === trackId);
-  if (row < 0) return [];
-  const neighbor = rows[direction === "up" ? row - 1 : row + 1];
-  if (!neighbor || (neighbor.kind === "audio") !== (rows[row].kind === "audio")) return [];
-  return [{ op: "move_track", trackId, index: doc.tracks.indexOf(neighbor) }];
+  const from = rows.findIndex((t) => t.id === trackId);
+  if (from < 0) return [];
+  const visual = rows.filter((t) => t.kind !== "audio").length;
+  const [lo, hi] = rows[from].kind === "audio" ? [visual, rows.length - 1] : [0, visual - 1];
+  const to = Math.min(hi, Math.max(lo, toRow));
+  if (to === from) return [];
+  // Taken out, then put in where the track now on that row is: next to it, on that row.
+  return [{ op: "move_track", trackId, index: doc.tracks.indexOf(rows[to]) }];
+}
+
+// Swaps a track with its neighbor one row up or down, inside its group.
+export function reorderTrackOps(doc: TimelineDoc, trackId: string, direction: "up" | "down"): OpInput[] {
+  const row = displayRows(doc).findIndex((t) => t.id === trackId);
+  return row < 0 ? [] : moveTrackOps(doc, trackId, direction === "up" ? row - 1 : row + 1);
 }
 
 // Surrounding spaces are dropped. An empty name, or the same one, changes nothing.

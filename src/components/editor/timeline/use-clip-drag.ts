@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, type RefObject } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { beginMove, beginTrim, resolveDrag, type Drag, type DragGhost } from "@/lib/editor/drag";
-import { HEADER_WIDTH, ROW_HEIGHT, clipsInBox, displayRows, rowAt } from "@/lib/editor/geometry";
+import { moveTrack } from "@/lib/editor/actions";
+import { HEADER_WIDTH, ROW_HEIGHT, RULER_HEIGHT, clipsInBox, displayRows, rowAt, trackDropSlot } from "@/lib/editor/geometry";
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { MESSAGES } from "@/lib/editor/messages";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
@@ -12,7 +13,7 @@ import type { OpInput, TimelineDoc } from "@/lib/timeline";
 import { useMedia } from "../media/media-context";
 
 export const CLICK_SLOP_PX = 3; // a press that travels further is a drag, not a click
-const EDGE_ZONE_PX = 32; // a pointer this close to either side of the lanes scrolls them
+const EDGE_ZONE_PX = 32; // a pointer this close to either side of the lanes, or to the rows' top or bottom, scrolls them
 const AUTOSCROLL_PX = 12; // per animation frame
 
 // What the timeline draws on top of the rows while a drag or a box selection is under way. Frames
@@ -21,9 +22,10 @@ export type DragView = {
   guide: number | null; // the snap target
   ghost: DragGhost[] | null; // where the dragged clips would be, when that is not allowed
   box: { fromFrame: number; toFrame: number; fromY: number; toY: number } | null;
+  track: { fromRow: number; slot: number } | null; // the dragged track's row, and the gap between rows it would go in
 };
 
-const IDLE: DragView = { guide: null, ghost: null, box: null };
+const IDLE: DragView = { guide: null, ghost: null, box: null, track: null };
 
 type Grab = "move" | "start" | "end";
 
@@ -49,7 +51,9 @@ type ClipSession = Press & {
 
 type BoxSession = Press & { kind: "box"; base: string[]; fromFrame: number; fromY: number; picked: string; shown: string };
 
-type Session = ClipSession | BoxSession;
+type TrackSession = Press & { kind: "track"; trackId: string; toRow: number | null; shown: string };
+
+type Session = ClipSession | BoxSession | TrackSession;
 
 export type TimelineDrag = {
   view: StoreApi<DragView>;
@@ -57,11 +61,13 @@ export type TimelineDrag = {
   setZoom(zoom: number): void;
   pressClip(e: Pointer, clipId: string, grab: Grab, collapse: boolean): void;
   pressRows(e: Pointer): void;
+  pressTrack(e: ReactPointerEvent | PointerEvent, trackId: string): void;
   dispose(): void;
 };
 
-// Dragging clips and box selection for one timeline. A press captures the pointer on the scrolling
-// area, so the drag outlives the clip's element when the clip moves to another row. Pointer moves
+// Dragging clips and tracks, and box selection, for one timeline. A press captures the pointer on the
+// scrolling area, so the drag outlives the clip's element when the clip moves to another row. A track
+// press captures only once it becomes a drag, so a plain press still clicks the track's name. Pointer moves
 // are worked out at most once per animation frame, against the store's current document, and
 // everything a press set up is taken down when it ends, however it ends. assetOf reads the media library when a
 // trim begins, so the trim stops where the clip's media ends.
@@ -73,6 +79,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
   let session: Session | null = null;
   let frameId: number | null = null;
   let unsubscribe: (() => void) | null = null;
+  let pointerSource: EventTarget | null = null; // where the press's pointer events are listened for
 
   // In the rows the lane's left edge is frame 0; the gutter before it gives a negative x.
   const laneLeft = () => rows?.querySelector("[data-lane]")?.getBoundingClientRect().left ?? 0;
@@ -99,9 +106,9 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     frameId = null;
     const s = session;
     if (!s?.started) return;
-    const scrolling = autoscroll(s.x);
-    if (s.kind === "clip") resolveClip(s);
-    else resolveBox(s);
+    // A track drag never scrolls the lanes sideways, only the rows up and down.
+    const scrolling = s.kind === "track" ? autoscrollRows(s.y) : autoscroll(s.x);
+    resolve(s);
     if (scrolling && session === s) schedule();
   }
 
@@ -114,6 +121,27 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     const before = scroller.scrollLeft;
     scroller.scrollLeft = before + step;
     return scroller.scrollLeft !== before;
+  }
+
+  // Scrolls the rows one step when the pointer is near the top or bottom of the part of them in view
+  // (the ruler covers the top of the scrolling area). Never above the top; false when nothing moved.
+  function autoscrollRows(clientY: number): boolean {
+    if (!scroller || !rows) return false;
+    const area = scroller.getBoundingClientRect();
+    const shown = rows.getBoundingClientRect();
+    const top = Math.max(shown.top, area.top + RULER_HEIGHT);
+    const bottom = Math.min(shown.bottom, area.bottom);
+    const step = clientY < top + EDGE_ZONE_PX ? -AUTOSCROLL_PX : clientY > bottom - EDGE_ZONE_PX ? AUTOSCROLL_PX : 0;
+    if (step === 0) return false;
+    const before = scroller.scrollTop;
+    scroller.scrollTop = Math.max(0, before + step);
+    return scroller.scrollTop !== before;
+  }
+
+  function resolve(s: Session) {
+    if (s.kind === "clip") resolveClip(s);
+    else if (s.kind === "box") resolveBox(s);
+    else resolveTrack(s);
   }
 
   function resolveClip(s: ClipSession) {
@@ -143,7 +171,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
       s.live = store.getState().gesture !== null;
     }
     if (scroller) scroller.dataset.drag = s.ok ? s.drag.type : "refused";
-    show(s, { guide: result.guide, ghost: s.ok ? null : result.ghost, box: null });
+    show(s, { guide: result.guide, ghost: s.ok ? null : result.ghost, box: null, track: null });
   }
 
   function resolveBox(s: BoxSession) {
@@ -165,7 +193,23 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     }
     const bottom = shown.length * ROW_HEIGHT;
     const clampY = (y: number) => Math.min(bottom, Math.max(0, y));
-    show(s, { guide: null, ghost: null, box: { fromFrame: s.fromFrame, toFrame, fromY: clampY(s.fromY), toY: clampY(toY) } });
+    show(s, { guide: null, ghost: null, box: { fromFrame: s.fromFrame, toFrame, fromY: clampY(s.fromY), toY: clampY(toY) }, track: null });
+  }
+
+  // The rows stay where they are while a track is dragged; the overlay shows where it would land.
+  function resolveTrack(s: TrackSession) {
+    const state = store.getState();
+    if (!state.canEdit) return end(false);
+    const shown = displayRows(state.doc);
+    const fromRow = shown.findIndex((t) => t.id === s.trackId);
+    if (fromRow < 0) {
+      state.notify("error", MESSAGES.trackGone);
+      return end(false);
+    }
+    const { slot, toRow } = trackDropSlot(shown, fromRow, yInRows(s.y));
+    s.toRow = toRow;
+    if (scroller) scroller.dataset.drag = "track";
+    show(s, { guide: null, ghost: null, box: null, track: { fromRow, slot } });
   }
 
   function onMove(e: PointerEvent) {
@@ -185,6 +229,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
           return end(false);
         }
       }
+      if (s.kind === "track") capture(s.pointerId);
       s.started = true;
     }
     schedule();
@@ -200,9 +245,22 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
       return end(false);
     }
     // The drop is where the pointer came up, even when that frame was not worked out yet.
-    if (s.kind === "clip") resolveClip(s);
-    else resolveBox(s);
+    resolve(s);
     end(true);
+    if (s.kind === "track") swallowClick();
+  }
+
+  // The click that follows a track drag's release would open the name or select the track. It is
+  // taken before anything hears it, and the catch is dropped on that click or on the next task.
+  function swallowClick() {
+    const swallow = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      drop();
+    };
+    const drop = () => window.removeEventListener("click", swallow, true);
+    window.addEventListener("click", swallow, true);
+    setTimeout(drop, 0);
   }
 
   function onCancel(e: PointerEvent) {
@@ -225,18 +283,24 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     end(false);
   }
 
+  function capture(pointerId: number) {
+    try {
+      scroller?.setPointerCapture(pointerId);
+    } catch {
+      // The pointer is no longer active; its next events end the press.
+    }
+  }
+
+  // A track press listens on the window until it captures; the captured events still bubble there.
   function begin(s: Session) {
     end(false);
     if (!scroller) return;
     session = s;
-    try {
-      scroller.setPointerCapture(s.pointerId);
-    } catch {
-      // The pointer is no longer active; its next events end the press.
-    }
-    scroller.addEventListener("pointermove", onMove);
-    scroller.addEventListener("pointerup", onUp);
-    scroller.addEventListener("pointercancel", onCancel);
+    if (s.kind !== "track") capture(s.pointerId);
+    pointerSource = s.kind === "track" ? window : scroller;
+    pointerSource.addEventListener("pointermove", onMove as EventListener);
+    pointerSource.addEventListener("pointerup", onUp as EventListener);
+    pointerSource.addEventListener("pointercancel", onCancel as EventListener);
     scroller.addEventListener("lostpointercapture", onCancel);
     scroller.addEventListener("scroll", refresh);
     window.addEventListener("keydown", onKey, true);
@@ -253,7 +317,8 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
   }
 
   // Takes down everything begin set up. A clip drag that started saves its gesture when commit is
-  // true (the store refuses a drop that does not fit, with its message) and drops it otherwise.
+  // true (the store refuses a drop that does not fit, with its message) and drops it otherwise. A
+  // track drag sets no gesture: it saves its one move when commit is true.
   function end(commit: boolean) {
     const s = session;
     if (!s) return;
@@ -263,10 +328,11 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     unsubscribe?.();
     unsubscribe = null;
     window.removeEventListener("keydown", onKey, true);
+    pointerSource?.removeEventListener("pointermove", onMove as EventListener);
+    pointerSource?.removeEventListener("pointerup", onUp as EventListener);
+    pointerSource?.removeEventListener("pointercancel", onCancel as EventListener);
+    pointerSource = null;
     if (scroller) {
-      scroller.removeEventListener("pointermove", onMove);
-      scroller.removeEventListener("pointerup", onUp);
-      scroller.removeEventListener("pointercancel", onCancel);
       scroller.removeEventListener("lostpointercapture", onCancel);
       scroller.removeEventListener("scroll", refresh);
       delete scroller.dataset.drag;
@@ -286,6 +352,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
         state.commitGesture(s.label);
       }
     }
+    if (s.kind === "track" && s.started && commit && s.toRow !== null) moveTrack(store, s.trackId, s.toRow);
   }
 
   const press = (e: Pointer): Press => ({ pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, started: false });
@@ -325,6 +392,9 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
       const base = e.shiftKey ? store.getState().selection.clipIds : [];
       begin({ ...press(e), kind: "box", base, fromFrame: frameAt(e.clientX), fromY: yInRows(e.clientY), picked: base.join(" "), shown: "" });
     },
+    pressTrack(e, trackId) {
+      begin({ ...press(e), kind: "track", trackId, toRow: null, shown: "" });
+    },
     dispose() {
       end(false);
     },
@@ -351,7 +421,7 @@ export function useTimelineDrag(
   return drag;
 }
 
-// The timeline's drag controller, for clips and rows. Null outside a timeline.
+// The timeline's drag controller, for clips, rows and track headers. Null outside a timeline.
 export function useClipDrag(): TimelineDrag | null {
   return useContext(TimelineDragContext);
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { Ellipsis, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from "lucide-react";
-import { memo, useEffect, useRef, useState, type MouseEvent } from "react";
+import { memo, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { InlineEdit } from "@/components/ui/inline-edit";
@@ -12,6 +12,7 @@ import { HEADER_WIDTH, trackToggles } from "@/lib/editor/geometry";
 import { LIMITS } from "@/lib/limits";
 import type { Track } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
+import { useClipDrag } from "./use-clip-drag";
 
 // Each switch keeps one name, for what it turns on, and shows with aria-pressed whether it is on.
 const SWITCHES = {
@@ -21,9 +22,11 @@ const SWITCHES = {
 
 // The name of a track and its switches, stuck to the left of its row. The accent tint is a
 // background image over the opaque fill, because the clips scroll underneath. While the options
-// menu is open the header rises above the ruler, so a menu that opens upwards is not covered.
+// menu is open the header rises above the ruler, so a menu that opens upwards is not covered. An
+// editor drags the track up and down by its header, locked or not.
 export const TrackHeader = memo(function TrackHeader({ track, selected }: { track: Track; selected: boolean }) {
   const store = useEditorStore();
+  const drag = useClipDrag();
   const selectTrack = useEditor((s) => s.selectTrack);
   const canEdit = useEditor((s) => s.canEdit);
   const canMoveUp = useEditor((s) => reorderTrackOps(s.doc, track.id, "up").length > 0);
@@ -61,6 +64,15 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
     selectTrack(track.id);
   }
 
+  // A press on the name or the background can become a track drag; the switches, the options menu
+  // and the rename field keep their presses.
+  function onHeaderPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !canEdit || !drag || !(event.target instanceof Element)) return;
+    const button = event.target.closest("button");
+    if ((button && button !== nameButton.current) || event.target.closest("input")) return;
+    drag.pressTrack(event, track.id);
+  }
+
   const items: MenuItem[] = [
     { id: "rename", label: "Rename" },
     { id: "up", label: "Move up", disabled: !canMoveUp },
@@ -81,10 +93,12 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
       className={cx(
         "sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-ed-line bg-ed-raised px-2 has-[[aria-expanded=true]]:z-40",
         selected && "bg-linear-to-r from-ed-accent-weak to-ed-accent-weak",
+        canEdit && "cursor-grab",
         FADE,
       )}
       style={{ width: HEADER_WIDTH }}
       onClick={onHeaderClick}
+      onPointerDown={onHeaderPointerDown}
     >
       {renaming ? (
         <InlineEdit

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  addTrack, copySelection, cutSelection, deleteSelection, goToEdge, nudgeSelection, paste, removeTrack, renameTrack, reorderTrack,
+  addTrack, copySelection, cutSelection, deleteSelection, goToEdge, moveTrack, nudgeSelection, paste, removeTrack, renameTrack, reorderTrack,
   selectAll, splitAtPlayhead, toggleTrack,
 } from "@/lib/editor/actions";
 import { CLIPBOARD_KEY, copyClips, createClipboard, pasteItems } from "@/lib/editor/clipboard";
 import {
-  addTrackOps, deleteOps, edgeFrames, moveOps, nearestEdge, removeTrackOps, renameTrackOps, reorderTrackOps, splitOps, toggleTrackOps,
+  addTrackOps, deleteOps, edgeFrames, moveOps, moveTrackOps, nearestEdge, removeTrackOps, renameTrackOps, reorderTrackOps, splitOps, toggleTrackOps,
 } from "@/lib/editor/commands";
 import { displayRows } from "@/lib/editor/geometry";
 import { MESSAGES } from "@/lib/editor/messages";
@@ -104,6 +104,42 @@ describe("track commands", () => {
       }
     }
     expect(moves).toBe(8);
+  });
+
+  it("moveTrackOps moves a track to any row in its group", () => {
+    const d = sampleDoc();
+    d.tracks = [emptyTrack("v1", "video"), emptyTrack("a1", "audio"), emptyTrack("t1", "text"), emptyTrack("cap", "caption"), emptyTrack("a2", "audio"), emptyTrack("o1", "overlay")];
+    const rows = rowIds(d); // o1, cap, t1, v1, then audio a1, a2
+    const isAudio = (id: string) => id.startsWith("a");
+    let moves = 0;
+    for (const id of rows) {
+      const from = rows.indexOf(id);
+      for (let to = 0; to < rows.length; to++) {
+        if (isAudio(rows[to]) !== isAudio(id) || to === from) continue;
+        const moved = rows.filter((r) => r !== id);
+        moved.splice(to, 0, id);
+        expect(rowIds(applyOps(d, prepareOps(moveTrackOps(d, id, to))).doc), `${id} to ${to}`).toEqual(moved);
+        moves++;
+      }
+    }
+    expect(moves).toBe(14); // 4 rows × 3 others, 2 rows × 1 other
+    expect(moveTrackOps(sampleDoc(), "v1", 0)).toEqual([{ op: "move_track", trackId: "v1", index: 2 }]);
+    expect(rowIds(applyOps(sampleDoc(), prepareOps(moveTrackOps(sampleDoc(), "v1", 0))).doc)).toEqual(["v1", "cap", "t1", "a1"]);
+  });
+
+  it("moveTrack saves one change labeled reorder tracks", () => {
+    const store = makeStore();
+    moveTrack(store, "v1", 0);
+    moveTrack(store, "v1", 0); // already there: nothing
+    expect(rowIds(store.getState().doc)).toEqual(["v1", "cap", "t1", "a1"]);
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["reorder tracks"]);
+  });
+
+  it("it stops at the group's edge and gives nothing for the same row", () => {
+    const d = sampleDoc(); // rows: cap, t1, v1, then audio a1
+    expect(moveTrackOps(d, "a1", 0)).toEqual([]);
+    expect(rowIds(applyOps(d, prepareOps(moveTrackOps(d, "cap", 3))).doc)).toEqual(["t1", "v1", "cap", "a1"]);
+    expect([moveTrackOps(d, "t1", 1), moveTrackOps(d, "gone", 0)]).toEqual([[], []]);
   });
 
   it("renames a track, keeping the old name when the new one is empty", () => {
@@ -273,6 +309,7 @@ describe("runners", () => {
     roundTrip("rename", (s) => renameTrack(s, "t1", "Titles"));
     roundTrip("toggle", (s) => toggleTrack(s, "v1", "hidden"));
     roundTrip("reorder", (s) => reorderTrack(s, "t1", "up"));
+    roundTrip("move track", (s) => moveTrack(s, "v1", 0));
     roundTrip("remove track", (s) => removeTrack(s, "t1"));
   });
 
@@ -313,6 +350,7 @@ describe("runners", () => {
     nudgeSelection(store, 5);
     cutSelection(store, createClipboard());
     paste(store, createClipboard());
+    moveTrack(store, "v1", 0);
     st().seek(500);
     splitAtPlayhead(store);
     expect(st()).toMatchObject({ queue: [], notice: null });

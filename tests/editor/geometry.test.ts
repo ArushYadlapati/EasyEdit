@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_CONTENT_PX, ROW_HEIGHT, clampZoom, clipsInBox, contentFrames, displayRows, fitZoom, formatClock, formatTimecode,
-  frameToPx, pxToFrame, revealScroll, rowAt, rulerTicks, trackToggles, visibleClips, zoomAt,
+  frameToPx, pxToFrame, revealScroll, rowAt, rulerTicks, trackDropSlot, trackToggles, visibleClips, zoomAt,
 } from "@/lib/editor/geometry";
 import { makeStore, sampleDoc, video } from "./fixtures";
 
@@ -89,6 +89,14 @@ describe("rows", () => {
     expect(clipsInBox(rows, { fromFrame: 50, toFrame: 100, fromRow: 1, toRow: 2 })).toEqual(["x1", "x2", "c2"]);
     expect(clipsInBox(rows, { fromFrame: 100, toFrame: 50, fromRow: 2, toRow: 1 })).toEqual(["x1", "x2", "c2"]);
     expect(clipsInBox(rows, { fromFrame: 60, toFrame: 90, fromRow: 1, toRow: 1 })).toEqual([]);
+  });
+
+  it("trackDropSlot keeps a track inside its group", () => {
+    const rows = displayRows(sampleDoc()); // cap, t1, v1, a1
+    expect([0, 19, 21, 200].map((y) => trackDropSlot(rows, 2, y))).toEqual([
+      { slot: 0, toRow: 0 }, { slot: 0, toRow: 0 }, { slot: 1, toRow: 1 }, { slot: 3, toRow: 2 },
+    ]);
+    expect(trackDropSlot(rows, 3, 0)).toEqual({ slot: 3, toRow: 3 });
   });
 
   it("offers hide and mute by track kind", () => {

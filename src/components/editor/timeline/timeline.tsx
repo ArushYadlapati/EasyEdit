@@ -31,8 +31,11 @@ const WINDOW_STEP_PX = 100; // the rendered range moves in steps, so scrolling r
 const WHEEL_ZOOM_RATE = 0.002; // per pixel of wheel travel
 const LINE_PX = 16; // a wheel that reports lines
 
-// The scrolling area's cursor follows the drag: a drop that is not allowed, or a trim.
-const DRAG_CURSOR = "[&[data-drag=refused]]:cursor-not-allowed [&[data-drag=refused]_*]:cursor-not-allowed [&[data-drag=trim]_*]:cursor-ew-resize";
+// The scrolling area's cursor follows the drag: a drop that is not allowed, a trim, or a track.
+const DRAG_CURSOR = cx(
+  "[&[data-drag=refused]]:cursor-not-allowed [&[data-drag=refused]_*]:cursor-not-allowed [&[data-drag=trim]_*]:cursor-ew-resize",
+  "[&[data-drag=track]]:cursor-grabbing [&[data-drag=track]_*]:cursor-grabbing",
+);
 
 const windowStart = (scrollLeft: number) => Math.floor(scrollLeft / WINDOW_STEP_PX) * WINDOW_STEP_PX;
 
@@ -208,9 +211,11 @@ export function Timeline() {
 }
 
 // Drawn over the rows during a drag: the snap guide, where clips would land when the drop is not
-// allowed, and the box of a box selection. Only this re-renders as they change.
+// allowed, the box of a box selection, and a dragged track's tint and the line where it would go
+// (none when it would stay on its row). Only this re-renders as they change.
 function DragOverlay({ view, rows, zoom }: { view: StoreApi<DragView>; rows: Track[]; zoom: number }) {
-  const { guide, ghost, box } = useStore(view);
+  const { guide, ghost, box, track } = useStore(view);
+  const moves = track !== null && (track.slot > track.fromRow ? track.slot - 1 : track.slot) !== track.fromRow;
   const x = (frame: number) => HEADER_WIDTH + LANE_GUTTER + frameToPx(frame, zoom);
   return (
     <>
@@ -239,6 +244,22 @@ function DragOverlay({ view, rows, zoom }: { view: StoreApi<DragView>; rows: Tra
             width: frameToPx(Math.abs(box.toFrame - box.fromFrame), zoom),
             height: Math.abs(box.toY - box.fromY),
           }}
+        />
+      )}
+      {track && (
+        <div
+          aria-hidden
+          data-track-drag-row
+          className="pointer-events-none absolute inset-x-0 z-30 bg-ed-accent-weak"
+          style={{ top: track.fromRow * ROW_HEIGHT, height: ROW_HEIGHT }}
+        />
+      )}
+      {track && moves && (
+        <div
+          aria-hidden
+          data-track-insert
+          className="pointer-events-none absolute inset-x-0 z-30 h-0.5 bg-ed-accent"
+          style={{ top: track.slot * ROW_HEIGHT - 1 }}
         />
       )}
     </>
