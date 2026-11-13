@@ -8,7 +8,7 @@ This README gets the app running on your own computer. You will set up three thi
 
 - Sign in with Google. Anyone not on the allowlist is turned away.
 - An Admin page where admins add people, change their role, and remove them.
-- A dashboard where editors create projects in any of five video formats, and rename, duplicate and delete them. A deleted project is hidden and not shown again.
+- A dashboard where editors create projects in one of five video formats or at a custom size (in pixels, centimeters or inches), keep them in folders, and rename, duplicate and delete them. Recent shows the projects you opened last. A deleted project is hidden and not shown again.
 - The editor, which opens a project in the whole window: an add panel on the left, the preview in the middle, the details on the right and the timeline along the bottom. It is always dark, and it asks the Dark Reader browser extension to leave it alone. In it you can:
   - add text clips from three presets (Title, Subtitle, Lower third) and video, image and audio clips from the Media tab, and move, trim, split, delete, ripple-delete, copy and paste clips of every kind
   - add, rename, lock, hide, mute, reorder and remove tracks
@@ -301,8 +301,8 @@ Every person on the allowlist has one of three roles.
 
 | Role | What they can do today |
 | --- | --- |
-| Viewer | Sign in, see the dashboard, open projects, see the media library and play media. Cannot create or change anything. |
-| Editor | Everything a viewer can, plus create, rename, duplicate and delete projects, and change them. Upload media, and rename and remove it. Deleting hides a project; it is not shown again. |
+| Viewer | Sign in, see the dashboard and its folders, open projects, see the media library and play media. Cannot create or change anything. |
+| Editor | Everything a viewer can, plus create, rename, duplicate and delete projects, keep them in folders (make, rename and delete folders), and change them. Upload media, and rename and remove it. Deleting hides a project; it is not shown again. Deleting a folder never deletes its projects. |
 | Admin | Everything an editor can, plus open the Admin page to add, re-role and remove people. |
 
 Some rules:

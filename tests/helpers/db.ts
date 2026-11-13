@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
@@ -6,7 +7,8 @@ import { afterAll, onTestFinished } from "vitest";
 import type { DB } from "@/db";
 import * as schema from "@/db/schema";
 
-const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
+// From the file's own path: in a happy-dom test file, Vite rewrites new URL(…, import.meta.url) to an http:// address.
+const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "../../drizzle");
 
 // One migrated database per test file; every makeTestDb() call gets its own clone of it.
 let template: Promise<PGlite> | undefined;
