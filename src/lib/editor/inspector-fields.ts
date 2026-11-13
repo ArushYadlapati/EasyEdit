@@ -1,8 +1,13 @@
-import type { Clip, OpInput } from "@/lib/timeline";
+import type { Clip, OpInput, TimelineDoc } from "@/lib/timeline";
+import { stretchOf } from "@/lib/timeline/presets";
+import { clipRects, type Sizer } from "./clip-box";
 import { trimBounds } from "./media-clips";
+import type { Units } from "./settings";
+import { fromUnit, showUnit } from "./units";
 
-// The inspector shows times in seconds (snapped to whole frames on the way in), and position,
-// scale and opacity in percent, where 50% is the center.
+// The inspector shows times in seconds (snapped to whole frames on the way in), position and size in the unit
+// chosen in Settings, and scale and opacity in percent. X and Y are the centre's distance from the frame's left
+// and top edges; Width and Height are the drawn size after the crop, before rotation.
 
 export type ClipField =
   | "text"
@@ -12,6 +17,8 @@ export type ClipField =
   | "align"
   | "x"
   | "y"
+  | "width"
+  | "height"
   | "scale"
   | "rotation"
   | "opacity"
@@ -27,7 +34,9 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   align: "style change",
   x: "position change",
   y: "position change",
-  scale: "position change",
+  width: "size change",
+  height: "size change",
+  scale: "size change",
   rotation: "position change",
   opacity: "position change",
   start: "timing change",
@@ -60,10 +69,53 @@ export function parseNumber(raw: string): number | null {
   return PLAIN_DECIMAL.test(text) ? Number(text) : null;
 }
 
-export function clipFieldValue(clip: Clip, field: ClipField, fps: number): string {
+// What a field is shown and changed against: the project's rate and frame, this browser's unit and lock, and
+// the clip's kept box before scale and stretch (null when it is not measured, or for audio).
+export type FieldContext = {
+  fps: number;
+  frame: { width: number; height: number };
+  units: Units;
+  box: { width: number; height: number } | null;
+  lockAspect: boolean;
+};
+
+export type FieldPrefs = { units: Units; lockAspect: boolean };
+
+const PX_LOCKED: FieldPrefs = { units: "px", lockAspect: true };
+
+// The context of a clip in this document. Without prefs, pixels and locked; without a sizer, no box.
+export function fieldContext(doc: TimelineDoc, clip: Clip, prefs: FieldPrefs = PX_LOCKED, sizer: Sizer | null = null): FieldContext {
+  const kept = sizer ? clipRects(doc, clip, sizer)?.kept : undefined;
+  return {
+    fps: doc.fps,
+    frame: { width: doc.width, height: doc.height },
+    units: prefs.units,
+    box: kept ? { width: kept.right - kept.left, height: kept.bottom - kept.top } : null,
+    lockAspect: prefs.lockAspect,
+  };
+}
+
+const round = (n: number, places: number) => Number(n.toFixed(places));
+
+// The field's length in project pixels as drawn, or null when it has none.
+function lengthPx(clip: Clip, field: "x" | "y" | "width" | "height", ctx: FieldContext): number | null {
+  const t = clip.transform;
+  if (field === "x") return t.x * ctx.frame.width;
+  if (field === "y") return t.y * ctx.frame.height;
+  if (!ctx.box) return null;
+  return field === "width" ? ctx.box.width * t.scale * stretchOf(t) : ctx.box.height * t.scale;
+}
+
+export function clipFieldValue(clip: Clip, field: ClipField, ctx: FieldContext): string {
+  const { fps } = ctx;
   switch (field) {
     case "x":
     case "y":
+    case "width":
+    case "height": {
+      const px = lengthPx(clip, field, ctx);
+      return px === null ? "" : showUnit(px, ctx.units);
+    }
     case "scale":
     case "opacity":
       return oneDecimal(clip.transform[field] * 100);
@@ -89,11 +141,22 @@ export function clipFieldValue(clip: Clip, field: ClipField, fps: number): strin
   }
 }
 
+// A size changed by f. Locked, the scale alone, so the shape is kept. Unlocked, Width changes the stretch alone, and
+// Height the scale with the stretch against it, so the width stays.
+function resize(clip: Clip, field: "width" | "height", f: number, locked: boolean): Record<string, number> {
+  const { scale } = clip.transform;
+  const stretch = stretchOf(clip.transform);
+  if (locked) return { scale: round(scale * f, 4) };
+  if (field === "width") return { stretch: round(stretch * f, 4) };
+  return { scale: round(scale * f, 4), stretch: round(stretch / f, 4) };
+}
+
 // The ops that set the field to what was typed: null when it is not valid input, [] when it
 // changes nothing. The rules of the change itself (overlaps, locked tracks, what text may hold)
 // stay with applyOps. lengthFrames is the length of a media clip's asset in frames, when it is known: a typed
 // length then stops at the end of the media, as a trim on the timeline does.
-export function clipFieldOps(clip: Clip, field: ClipField, raw: string, fps: number, lengthFrames?: number): OpInput[] | null {
+export function clipFieldOps(clip: Clip, field: ClipField, raw: string, ctx: FieldContext, lengthFrames?: number): OpInput[] | null {
+  const { fps } = ctx;
   const update = (patch: Record<string, unknown>): OpInput[] => [{ op: "update_clip", clipId: clip.id, patch }];
 
   switch (field) {
@@ -112,9 +175,19 @@ export function clipFieldOps(clip: Clip, field: ClipField, raw: string, fps: num
       return to === clip.start + clip.duration ? [] : [{ op: "trim_clip", clipId: clip.id, edge: "end", to }];
     }
     case "x":
-    case "y": {
+    case "y":
+    case "width":
+    case "height": {
       const n = parseNumber(raw);
-      return n === null ? null : update({ transform: { [field]: n / 100 } });
+      const now = lengthPx(clip, field, ctx);
+      if (n === null || now === null) return null;
+      const sizing = field === "width" || field === "height";
+      if (sizing && (n <= 0 || now <= 0)) return null;
+      const typed = fromUnit(n, ctx.units);
+      // A value typed as it is shown (the rounded number) never nudges the clip.
+      if (showUnit(typed, ctx.units) === showUnit(now, ctx.units)) return [];
+      if (sizing) return update({ transform: resize(clip, field, typed / now, ctx.lockAspect) });
+      return update({ transform: { [field]: round(typed / (field === "x" ? ctx.frame.width : ctx.frame.height), 6) } });
     }
     case "scale": {
       const n = parseNumber(raw);

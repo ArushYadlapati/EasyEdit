@@ -4,6 +4,7 @@ import { EditorProvider } from "@/components/editor/context";
 import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
 import { MESSAGES, explainOpError } from "@/lib/editor/messages";
+import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
 import { findClip, viewDoc } from "@/lib/editor/store";
 import { LIMITS } from "@/lib/limits";
 import { entry, makeStore, sampleDoc, text, video } from "../editor/fixtures";
@@ -148,7 +149,7 @@ describe("fix round 1", () => {
   });
 
   it.each([
-    ["X", "25", { transform: { x: 0.25 } }],
+    ["X", "270", { transform: { x: 0.25 } }],
     ["Opacity", "40", { transform: { opacity: 0.4 } }],
   ] as const)("an in-range %s is saved on blur", (label, value, patch) => {
     const store = setup();
@@ -354,5 +355,112 @@ describe("media", () => {
     fireEvent.change(length, { target: { value: "10" } });
     fireEvent.keyDown(length, { key: "Enter" });
     expect(store.getState().queue).toMatchObject([{ label: "timing change", ops: [{ op: "trim_clip", clipId: "c2", edge: "end", to: 90 }] }]);
+  });
+});
+
+describe("position and size in your units", () => {
+  function setup(clipId = "x1", settings = createSettingsStore({ prefs: DEFAULT_PREFS })) {
+    const store = makeStore();
+    store.getState().select([clipId]);
+    render(<EditorProvider store={store} settings={settings}><Inspector /></EditorProvider>);
+    return { store, settings };
+  }
+  const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
+  const lock = () => screen.getByRole("button", { name: "Lock aspect ratio" });
+  const saved = (store: ReturnType<typeof makeStore>) => findClip(store.getState().doc, "x1")!.clip.transform;
+
+  it("Width and Height show the drawn size, and the lock keeps the shape", () => {
+    const { store, settings } = setup();
+    expect(input("Width").value).toBe("64");
+    expect(input("Height").value).toBe("77");
+    fireEvent.change(input("Width"), { target: { value: "128" } });
+    expect(findClip(viewDoc(store.getState()), "x1")!.clip.transform.scale).toBe(2); // previewed while typing
+    expect(store.getState().queue).toEqual([]);
+    fireEvent.keyDown(input("Width"), { key: "Enter" });
+    expect(store.getState().queue.at(-1)).toMatchObject({ label: "size change" });
+    expect(saved(store).scale).toBe(2);
+    expect(input("Height").value).toBe("154");
+
+    fireEvent.click(lock());
+    expect(lock().getAttribute("aria-pressed")).toBe("false");
+    expect(settings.getState().lockAspect).toBe(false);
+    fireEvent.change(input("Width"), { target: { value: "64" } });
+    fireEvent.keyDown(input("Width"), { key: "Enter" });
+    expect(saved(store).stretch).toBe(0.5);
+    expect(input("Width").value).toBe("64");
+    expect(input("Height").value).toBe("154");
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["size change", "size change"]);
+  });
+
+  it("unlocked, Height changes the scale and keeps the width", () => {
+    const { store, settings } = setup();
+    act(() => settings.getState().set({ lockAspect: false }));
+    fireEvent.change(input("Height"), { target: { value: "38.4" } });
+    fireEvent.keyDown(input("Height"), { key: "Enter" });
+    expect(saved(store)).toMatchObject({ scale: 0.5, stretch: 2 });
+    expect(input("Width").value).toBe("64");
+    expect(input("Height").value).toBe("38");
+  });
+
+  it("a placeholder video is as big as the frame", () => {
+    setup("c1");
+    expect(input("Width").value).toBe("1080");
+    expect(input("Height").value).toBe("1920");
+  });
+
+  it("a video is its library size fitted to the frame, and follows the library when the size arrives", () => {
+    const store = makeStore();
+    store.getState().select(["c1"]);
+    const media = pretendMediaServices([assetView({ width: null, height: null })]);
+    render(
+      <EditorProvider store={store}>
+        <MediaProvider services={media}>
+          <Inspector />
+        </MediaProvider>
+      </EditorProvider>,
+    );
+    expect(input("Width").value).toBe("1080");
+    expect(input("Height").value).toBe("1920");
+    // A 1920 × 1080 video covers the 1080 × 1920 frame: 1920 tall, 3413 wide.
+    act(() => media.library.setState({ assets: { a: assetView({ width: 1920, height: 1080 }) } }));
+    expect(input("Width").value).toBe("3413");
+    expect(input("Height").value).toBe("1920");
+  });
+
+  it("units follow Settings", () => {
+    const { store } = setup("x1", createSettingsStore({ prefs: { ...DEFAULT_PREFS, units: "in" } }));
+    expect(input("Y").value).toBe("10");
+    expect(input("Y").parentElement!.textContent).toContain("in");
+    fireEvent.keyDown(input("Y"), { key: "ArrowUp" });
+    expect(saved(store).y).toBe(0.505);
+    expect(input("Y").value).toBe("10.1");
+  });
+
+  it("in pixels an arrow moves the clip a pixel", () => {
+    const { store } = setup();
+    expect(input("X").parentElement!.textContent).toContain("px");
+    fireEvent.keyDown(input("X"), { key: "ArrowUp" });
+    expect(saved(store).x).toBe(0.500926);
+    expect(input("X").value).toBe("541");
+  });
+
+  it("a units change in Settings shows at once", () => {
+    const { settings } = setup();
+    expect(input("X").value).toBe("540");
+    act(() => settings.getState().set({ units: "cm" }));
+    expect(input("X").value).toBe("14.29");
+    expect(input("Width").parentElement!.textContent).toContain("cm");
+  });
+
+  it("the lock starts on", () => {
+    setup();
+    expect(lock().getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("the lock is between Width and Height", () => {
+    setup();
+    const section = screen.getByRole("heading", { name: "Position" }).parentElement!;
+    const names = [...section.querySelectorAll("input, button")].map((c) => c.getAttribute("aria-label"));
+    expect(names).toEqual(["X", "Y", "Width", "Lock aspect ratio", "Height", "Scale", "Rotation", "Opacity"]);
   });
 });

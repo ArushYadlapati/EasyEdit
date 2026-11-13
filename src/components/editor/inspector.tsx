@@ -1,9 +1,11 @@
 "use client";
 
+import { Link2, Link2Off } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DISABLED, FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
+import { IconButton } from "@/components/ui/icon-button";
 import { NumberInput } from "@/components/ui/number-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
@@ -11,6 +13,7 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { removeTrack, renameTrack, toggleTrack } from "@/lib/editor/actions";
+import type { Sizer } from "@/lib/editor/clip-box";
 import { trackToggles } from "@/lib/editor/geometry";
 import {
   FIELD_LABEL,
@@ -19,21 +22,25 @@ import {
   WEIGHTS,
   clipFieldOps,
   clipFieldValue,
+  fieldContext,
   parseNumber,
   type ClipField,
+  type FieldPrefs,
 } from "@/lib/editor/inspector-fields";
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
+import { UNIT_SUFFIX } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import type { LibraryStore } from "@/lib/media/library-store";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { docDuration, type Clip, type Op, type OpInput, type Track } from "@/lib/timeline";
-import { useEditor, useEditorStore } from "./context";
+import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatSelect } from "./format-select";
 import { useLibrary, useMedia } from "./media/media-context";
+import { useTextMeasure } from "./text-measure";
 import { Timecode } from "./timecode";
 
 const TEXT = "text-[13px] leading-5";
@@ -55,16 +62,20 @@ type Align = (typeof ALIGN_OPTIONS)[number]["value"];
 
 const HEX = /^#[0-9a-f]{6}$/; // what a color input accepts
 
+// What a number field shows and changes against besides the document: this browser's unit and lock, and how the
+// clip's box is measured.
+type FieldView = { prefs: FieldPrefs; sizer: Sizer };
+
 // The ops that set a field of the clip as the store holds it now (not as a live gesture shows it):
 // null when the input is not valid, [] when it changes nothing. A media clip's length stops where its media ends,
-// as far as the library knows it now.
-function fieldOps(store: EditorStore, clipId: string, field: ClipField, raw: string, library?: LibraryStore) {
+// as far as the library knows it now. Without a view, the field is read in pixels with no box.
+function fieldOps(store: EditorStore, clipId: string, field: ClipField, raw: string, library?: LibraryStore, view?: FieldView) {
   const { doc } = store.getState();
   const found = findClip(doc, clipId);
   if (!found) return null;
   const { clip } = found;
   const lengthFrames = clip.type === "text" || !library ? undefined : mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps);
-  return clipFieldOps(clip, field, raw, doc.fps, lengthFrames);
+  return clipFieldOps(clip, field, raw, fieldContext(doc, clip, view?.prefs, view?.sizer), lengthFrames);
 }
 
 // Ends a field's edit the way leaving it does. The field's own live gesture is saved as one change;
@@ -146,6 +157,20 @@ function NumberField(props: {
   const store = useEditorStore();
   const { library } = useMedia();
   const canEdit = useEditor((s) => s.canEdit);
+  const units = useSettings((s) => s.units);
+  const lockAspect = useSettings((s) => s.lockAspect);
+  const measure = useTextMeasure();
+  // A video or image is measured by its picture's size as the library knows it; until then, the placeholder's frame.
+  const assetId = useEditor((s) => {
+    const clip = findClip(viewDoc(s), clipId)?.clip;
+    return clip && clip.type !== "text" ? clip.assetId : null;
+  });
+  const sourceWidth = useLibrary((s) => (assetId === null ? null : (s.assets[assetId]?.width ?? null)));
+  const sourceHeight = useLibrary((s) => (assetId === null ? null : (s.assets[assetId]?.height ?? null)));
+  const view: FieldView = {
+    prefs: { units, lockAspect },
+    sizer: { source: () => (sourceWidth !== null && sourceHeight !== null ? { width: sourceWidth, height: sourceHeight } : null), measure },
+  };
   const box = useRef<HTMLInputElement>(null);
   const gesture = useFieldGesture(store, clipId, field);
   const { live } = gesture;
@@ -154,7 +179,7 @@ function NumberField(props: {
   const shown = useEditor((s) => {
     const doc = live !== null && s.gesture?.ops === live ? s.doc : viewDoc(s);
     const found = findClip(doc, clipId);
-    return found ? clipFieldValue(found.clip, field, doc.fps) : "";
+    return found ? clipFieldValue(found.clip, field, fieldContext(doc, found.clip, view.prefs, view.sizer)) : "";
   });
 
   // NumberInput reads the box with Number(), which also takes "0x10" and "1e2"; only plain decimals count.
@@ -176,10 +201,10 @@ function NumberField(props: {
         suffix={suffix}
         onPreview={(v) => {
           if (v === null || !typedIsPlain()) gesture.drop();
-          else gesture.preview(fieldOps(store, clipId, field, String(v), library));
+          else gesture.preview(fieldOps(store, clipId, field, String(v), library, view));
         }}
         onCommit={(v) => {
-          const ops = typedIsPlain() ? fieldOps(store, clipId, field, String(v), library) : null;
+          const ops = typedIsPlain() ? fieldOps(store, clipId, field, String(v), library, view) : null;
           if (ops === null) {
             gesture.drop();
             store.getState().notify("error", explainOpError("INVALID"));
@@ -235,10 +260,10 @@ function useTextField(store: EditorStore, clipId: string, field: ClipField, show
 }
 
 // The native color input previews while the picker moves and saves when it closes.
-function ColorField({ clip, fps, canEdit }: { clip: Clip; fps: number; canEdit: boolean }) {
+function ColorField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   const store = useEditorStore();
   const swatch = useRef<HTMLInputElement>(null);
-  const shown = clipFieldValue(clip, "color", fps);
+  const shown = clipFieldValue(clip, "color", fieldContext(viewDoc(store.getState()), clip));
   const hex = useTextField(store, clip.id, "color", shown);
   const picked = useFieldGesture(store, clip.id, "color");
 
@@ -299,9 +324,9 @@ function ColorField({ clip, fps, canEdit }: { clip: Clip; fps: number; canEdit: 
   );
 }
 
-function TextSection({ clip, fps, canEdit }: { clip: Clip; fps: number; canEdit: boolean }) {
+function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   const store = useEditorStore();
-  const text = useTextField(store, clip.id, "text", clipFieldValue(clip, "text", fps));
+  const text = useTextField(store, clip.id, "text", clipFieldValue(clip, "text", fieldContext(viewDoc(store.getState()), clip)));
   if (clip.type !== "text") return null;
   const weight = clip.style.fontWeight;
   const weights = WEIGHTS.some((w) => w.value === weight) ? WEIGHTS : [...WEIGHTS, { value: weight, label: String(weight) }];
@@ -337,7 +362,7 @@ function TextSection({ clip, fps, canEdit }: { clip: Clip; fps: number; canEdit:
           </Select>
         </Field>
       </div>
-      <ColorField clip={clip} fps={fps} canEdit={canEdit} />
+      <ColorField clip={clip} canEdit={canEdit} />
       <div className="flex min-w-0 items-center gap-2">
         <span className={cx(CAPTION, "w-12 shrink-0")}>Align</span>
         <Segmented<Align>
@@ -354,12 +379,34 @@ function TextSection({ clip, fps, canEdit }: { clip: Clip; fps: number; canEdit:
   );
 }
 
+// X and Y place the clip's centre, and Width and Height give its drawn size, in the unit chosen in Settings. An arrow
+// moves them a pixel, or a tenth of a centimetre or inch.
 function PositionSection({ clipId }: { clipId: string }) {
+  const settings = useSettingsStore();
+  const units = useSettings((s) => s.units);
+  const lockAspect = useSettings((s) => s.lockAspect);
+  const canEdit = useEditor((s) => s.canEdit);
+  const length = { suffix: UNIT_SUFFIX[units], step: units === "px" ? 1 : 0.1 };
   return (
     <Section title="Position">
       <div className="grid grid-cols-2 gap-2">
-        <NumberField clipId={clipId} field="x" label="X" suffix="%" />
-        <NumberField clipId={clipId} field="y" label="Y" suffix="%" />
+        <NumberField clipId={clipId} field="x" label="X" {...length} />
+        <NumberField clipId={clipId} field="y" label="Y" {...length} />
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-1">
+        <NumberField clipId={clipId} field="width" label="Width" {...length} />
+        <IconButton
+          label="Lock aspect ratio"
+          pressed={lockAspect}
+          data-edit-control
+          disabled={!canEdit}
+          onClick={() => settings.getState().set({ lockAspect: !lockAspect })}
+        >
+          {lockAspect ? <Link2 /> : <Link2Off />}
+        </IconButton>
+        <NumberField clipId={clipId} field="height" label="Height" {...length} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clipId} field="scale" label="Scale" suffix="%" min={1} />
         <NumberField clipId={clipId} field="rotation" label="Rotation" suffix="°" />
         <NumberField clipId={clipId} field="opacity" label="Opacity" suffix="%" min={0} max={100} />
@@ -405,12 +452,11 @@ function MediaSection({ assetId, kind }: { assetId: string; kind: Exclude<Clip["
 }
 
 function ClipInspector({ clip }: { clip: Clip }) {
-  const fps = useEditor((s) => viewDoc(s).fps);
   const canEdit = useEditor((s) => s.canEdit);
   return (
     <>
       {clip.type === "text" ? (
-        <TextSection clip={clip} fps={fps} canEdit={canEdit} />
+        <TextSection clip={clip} canEdit={canEdit} />
       ) : (
         <>
           <h2 className="text-sm leading-5 font-semibold text-ed-text">{MEDIA_TITLE[clip.type]}</h2>
