@@ -20,6 +20,7 @@ import { actorFrom } from "@/lib/actor";
 import { createFolder } from "@/lib/projects/folders";
 import { recordOpen } from "@/lib/projects/opens";
 import { createProject } from "@/lib/projects/service";
+import { saveThumbnail } from "@/lib/projects/thumbnails";
 import { makeTestDb } from "../helpers/db";
 import { render, screen } from "../helpers/dom";
 
@@ -53,6 +54,8 @@ vi.mock("@/components/keep-signed-in", () => ({ KeepSignedIn }));
 const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada Lovelace", image: null, role: "editor" };
 const vic: CurrentUser = { id: "u2", email: "vic@gmail.com", name: "Vic", image: null, role: "viewer" };
 const admin: CurrentUser = { id: "u3", email: "root@gmail.com", name: "Root", image: null, role: "admin" };
+
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
 
 let projectId: string;
 
@@ -100,6 +103,13 @@ describe("the dashboard page", () => {
     expect(props.folders).toEqual([]);
     expect(props.view).toBeNull();
     expect(props.now).toBeInstanceOf(Date);
+  });
+
+  it("the dashboard gets each project's picture version, never its bytes", async () => {
+    await saveThumbnail(testDb, actorFrom(ada), projectId, 0, JPEG);
+    const props = await dashboardFor(ada);
+    expect(props.projects[0].thumbnailVersion).toBe(0);
+    expect(Object.keys(props.projects[0])).not.toContain("thumbnail");
   });
 
   it("a viewer's page has no edit controls and their own Recent", async () => {

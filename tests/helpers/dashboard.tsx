@@ -24,6 +24,7 @@ export function dashProject(over: Partial<DashboardProject> & { id: string; name
     updatedBy: "u-sam",
     updatedAt: NOW,
     changedBy: "Sam",
+    thumbnailVersion: null,
     ...over,
   };
 }

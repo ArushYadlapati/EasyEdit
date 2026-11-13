@@ -109,6 +109,7 @@ describe("projects service", () => {
       version: 0,
       updatedBy: "u7",
       updatedAt: expect.any(Date),
+      thumbnailVersion: null,
     });
   });
 
@@ -137,6 +138,7 @@ describe("projects service", () => {
       createdAt: expect.any(Date),
       updatedBy: "u3",
       updatedAt: expect.any(Date),
+      thumbnailVersion: null,
     });
   });
 

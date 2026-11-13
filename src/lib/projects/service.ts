@@ -31,6 +31,7 @@ export type ProjectRecord = {
   version: number;
   updatedBy: string;
   updatedAt: Date;
+  thumbnailVersion: number | null;
 };
 
 export type ProjectSummary = {
@@ -44,6 +45,7 @@ export type ProjectSummary = {
   createdAt: Date;
   updatedBy: string;
   updatedAt: Date;
+  thumbnailVersion: number | null;
 };
 
 export type OpLogEntry = {
@@ -141,6 +143,7 @@ export async function getProject(db: DB, actor: Actor, id: string): Promise<Proj
       version: projects.version,
       updatedBy: projects.updatedBy,
       updatedAt: projects.updatedAt,
+      thumbnailVersion: projects.thumbnailVersion,
     })
     .from(projects)
     .where(liveProject(id));
@@ -161,6 +164,7 @@ export async function listProjects(db: DB, actor: Actor): Promise<ProjectSummary
       createdAt: projects.createdAt,
       updatedBy: projects.updatedBy,
       updatedAt: projects.updatedAt,
+      thumbnailVersion: projects.thumbnailVersion,
     })
     .from(projects)
     .where(notDeleted)
@@ -361,19 +365,21 @@ export async function renameProject(db: DB, actor: Actor, id: string, name: stri
   return { id, name: rows[0].name };
 }
 
-// A soft delete: the row and its op log are kept, and the row records who deleted it.
+// A soft delete: the row and its op log are kept, and the row records who deleted it. Its picture is dropped: no path
+// brings a deleted project back.
 export async function deleteProject(db: DB, actor: Actor, id: string): Promise<void> {
   requireRole(actor, "editor");
   const rows = await db
     .update(projects)
-    .set({ deletedAt: sql`now()`, updatedBy: actor.userId, updatedAt: sql`now()` })
+    .set({ deletedAt: sql`now()`, updatedBy: actor.userId, updatedAt: sql`now()`, thumbnail: null, thumbnailVersion: null })
     .where(liveProject(id))
     .returning({ id: projects.id });
   if (!rows[0]) throw notFound(id);
 }
 
 // The doc is copied inside the insert itself, so the copy is always the version current at that moment. The copy
-// stays in the source's folder, and its size is read from the doc, since the source's size columns may be empty.
+// stays in the source's folder, and its size is read from the doc, since the source's size columns may be empty. A
+// picture of the current version is copied as the copy's version 0; an older one is left behind.
 export async function duplicateProject(db: DB, actor: Actor, id: string): Promise<{ id: string; version: 0 }> {
   requireRole(actor, "editor");
   const source = await db.select({ name: projects.name }).from(projects).where(liveProject(id));
@@ -381,9 +387,11 @@ export async function duplicateProject(db: DB, actor: Actor, id: string): Promis
   const copyId = newId();
   const copy = (folderId: SQL) =>
     db.execute(sql`
-      insert into projects (id, name, format, doc, version, created_by, updated_by, folder_id, width, height)
+      insert into projects (id, name, format, doc, version, created_by, updated_by, folder_id, width, height,
+                            thumbnail, thumbnail_version)
       select ${copyId}::text, ${copyName(source[0].name)}::text, format, doc, 0, ${actor.userId}::text, ${actor.userId}::text,
-             ${folderId}, (doc->>'width')::integer, (doc->>'height')::integer
+             ${folderId}, (doc->>'width')::integer, (doc->>'height')::integer,
+             case when thumbnail_version = version then thumbnail end, case when thumbnail_version = version then 0 end
       from projects
       where id = ${id}::text and deleted_at is null
       returning id

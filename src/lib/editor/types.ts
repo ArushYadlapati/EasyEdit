@@ -2,7 +2,15 @@ import type { Op, OpErrorCode, TimelineDoc } from "@/lib/timeline";
 
 export type Me = { id: string; name: string };
 
-export type EditorInit = { projectId: string; name: string; doc: TimelineDoc; version: number; me: Me; canEdit: boolean };
+export type EditorInit = {
+  projectId: string;
+  name: string;
+  doc: TimelineDoc;
+  version: number;
+  me: Me;
+  canEdit: boolean;
+  thumbnailVersion?: number | null; // the stored picture's version when the page loaded; null or left out: none
+};
 
 export type EditKind = "edit" | "undo" | "redo";
 

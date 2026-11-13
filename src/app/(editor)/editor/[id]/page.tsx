@@ -39,6 +39,7 @@ export default async function EditorPage({ params }: PageProps<"/editor/[id]">) 
           version: project.version,
           me: { id: user.id, name: user.name },
           canEdit: meetsRole(user.role, "editor"),
+          thumbnailVersion: project.thumbnailVersion,
         }}
         layout={layout}
         prefs={prefs}
