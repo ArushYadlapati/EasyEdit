@@ -19,12 +19,13 @@ import {
 import { viewDoc } from "@/lib/editor/store";
 import { docDuration, type Track } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
-import { useLibrary, useMediaDropState } from "../media/media-context";
+import { useLibrary, useMediaDrop, useMediaDropState } from "../media/media-context";
 import { LANE_GUTTER, PlayheadLine } from "./playhead";
 import { Ruler } from "./ruler";
 import { Toolbar } from "./toolbar";
 import { CLIP_HEIGHT, CLIP_TOP } from "./clip-view";
 import { TrackRow, useLaneMenu } from "./track-row";
+import { UploadPlaceholders } from "./upload-placeholders";
 import { TimelineDragContext, useTimelineDrag, type DragView } from "./use-clip-drag";
 import { useTimelineDrop, type DropHover } from "./use-timeline-drop";
 
@@ -61,6 +62,9 @@ export function Timeline() {
   const selection = useEditor((s) => s.selection);
   const incoming = useMediaDropState((s) => s.incoming, null);
   const setUp = useLibrary((s) => s.setUp);
+  const hasDrop = useMediaDrop() !== null;
+  // Files can be dragged onto it only where there is a drop to take them.
+  const takesFiles = canEdit && setUp && hasDrop;
   // Lit while something it would take is dragged over the window: a library item, or files when uploads are set up.
   const armed = canEdit && (incoming === "asset" || (incoming === "files" && setUp));
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -207,6 +211,7 @@ export function Timeline() {
                     divider={track.kind !== "audio" && rows[i + 1]?.kind === "audio"}
                   />
                 ))}
+                <UploadPlaceholders />
                 <DragOverlay view={drag.view} hover={hover} rows={rows} zoom={zoom} />
               </div>
             </TimelineDragContext>
@@ -218,7 +223,11 @@ export function Timeline() {
             className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-center text-[13px] leading-5 text-ed-muted"
             style={{ left: HEADER_WIDTH, top: RULER_HEIGHT }}
           >
-            {canEdit ? "Nothing on the timeline yet. Add text or media from the panel on the left." : "Nothing on the timeline yet."}
+            {takesFiles
+              ? "Nothing on the timeline yet. Add text or media from the panel on the left, or drag files here."
+              : canEdit
+                ? "Nothing on the timeline yet. Add text or media from the panel on the left."
+                : "Nothing on the timeline yet."}
           </p>
         )}
         {/* The drop look: an outline and a light tint over the whole timeline, stronger while an item is over it. It
@@ -241,8 +250,9 @@ export function Timeline() {
 
 // Drawn over the rows during a drag: the snap guide, where clips would land when the drop is not
 // allowed, the box of a box selection, a dragged track's tint and the line where it would go
-// (none when it would stay on its row), and where a library item dragged in would land. Only this
-// re-renders as they change.
+// (none when it would stay on its row), and where a library item dragged in would land: a box of its length, or a
+// line where files (or an item with no length) would start, on its row or, below the last row, across them all. Only
+// this re-renders as they change.
 function DragOverlay({ view, hover, rows, zoom }: { view: StoreApi<DragView>; hover: StoreApi<DropHover | null>; rows: Track[]; zoom: number }) {
   const { guide: dragGuide, ghost, box, track } = useStore(view);
   const incoming = useStore(hover);
@@ -265,7 +275,7 @@ function DragOverlay({ view, hover, rows, zoom }: { view: StoreApi<DragView>; ho
           />
         );
       })}
-      {incoming && incomingRow >= 0 && (
+      {incoming && incoming.duration !== null && incomingRow >= 0 && (
         <div
           aria-hidden
           data-drop-ghost
@@ -273,8 +283,20 @@ function DragOverlay({ view, hover, rows, zoom }: { view: StoreApi<DragView>; ho
           style={{
             left: x(incoming.start),
             top: incomingRow * ROW_HEIGHT + CLIP_TOP,
-            width: incoming.duration === null ? 2 : Math.max(2, frameToPx(incoming.duration, zoom)),
+            width: Math.max(2, frameToPx(incoming.duration, zoom)),
             height: CLIP_HEIGHT,
+          }}
+        />
+      )}
+      {incoming && incoming.duration === null && (
+        <div
+          aria-hidden
+          data-drop-line
+          className="pointer-events-none absolute z-10 w-0.5 bg-ed-accent"
+          style={{
+            left: x(incoming.start) - 1,
+            top: incomingRow >= 0 ? incomingRow * ROW_HEIGHT : 0,
+            height: incomingRow >= 0 ? ROW_HEIGHT : rows.length * ROW_HEIGHT,
           }}
         />
       )}

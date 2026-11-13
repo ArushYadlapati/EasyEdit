@@ -400,6 +400,33 @@ it("an empty timeline says where clips come from, and only an editor is told to 
   expect(screen.getByText("Nothing on the timeline yet.")).toBeTruthy();
 });
 
+it("the empty timeline tells an editor files can be dragged onto it", () => {
+  const cases: { canEdit: boolean; setUp: boolean; sentence: string }[] = [
+    { canEdit: true, setUp: true, sentence: "Nothing on the timeline yet. Add text or media from the panel on the left, or drag files here." },
+    { canEdit: true, setUp: false, sentence: "Nothing on the timeline yet. Add text or media from the panel on the left." },
+    { canEdit: false, setUp: true, sentence: "Nothing on the timeline yet." },
+  ];
+  for (const { canEdit, setUp, sentence } of cases) {
+    const store = makeStore({ doc: createEmptyDoc("short_9x16"), canEdit });
+    const media = pretendMediaServices([]);
+    media.library.setState({ setUp });
+    const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
+    const view = render(
+      <EditorProvider store={store}>
+        <MediaProvider services={media} drop={drop}>
+          <Timeline />
+        </MediaProvider>
+      </EditorProvider>,
+    );
+    expect(screen.getByText(sentence)).toBeTruthy();
+    view.unmount();
+  }
+  // Without a drop nothing can be dragged onto it, so it does not say so.
+  const { unmount } = setup(makeStore({ doc: createEmptyDoc("short_9x16") }), pretendMediaServices([]));
+  expect(screen.getByText("Nothing on the timeline yet. Add text or media from the panel on the left.")).toBeTruthy();
+  unmount();
+});
+
 it("lights up for what it would take: a library item, or files once uploads are set up, for an editor", () => {
   const cases: { canEdit: boolean; setUp: boolean; incoming: Incoming; drop: string }[] = [
     { canEdit: true, setUp: true, incoming: null, drop: "idle" },

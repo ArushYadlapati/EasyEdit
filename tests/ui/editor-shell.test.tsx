@@ -18,6 +18,7 @@ import { sampleDoc } from "../editor/fixtures";
 import { dragEvent } from "../helpers/drag-events";
 import { act, fireEvent, render, screen } from "../helpers/dom";
 import { happyDOM } from "../helpers/layout";
+import { assetView } from "../helpers/media-services";
 
 // The existing tests get the real services; a test of the media wiring hands the shell its own for one render.
 vi.mock("@/components/editor/media/media-context", async (importOriginal) => {
@@ -293,29 +294,66 @@ it("leaving the editor stops uploads and removes nothing", async () => {
   expect(unload.defaultPrevented).toBe(false);
 });
 
-it("a file is uploaded once wherever it is dropped; a text drag is left to the browser", async () => {
-  stubServer();
+// The upload of climb.mov (key k1, as the pretend queue names every file) is in, and its asset ready: 2 s long.
+const landUpload = (media: ReturnType<typeof pretendMedia>) =>
+  act(() => {
+    media.library.getState().setUploads([{ ...uploading, stage: "done", sentBytes: uploading.sizeBytes, durationMs: 2_000 }]);
+    media.library.getState().put(assetView({ id: "x1", name: "climb", fileName: "climb.mov", durationMs: 2_000 }));
+  });
+const climbClips = () => screen.queryAllByRole("button", { name: /^Video clip "climb"/ });
+
+it("a file dropped on the timeline is uploaded and placed; one dropped on the inspector goes only to the library", async () => {
+  const server = stubServer();
   const media = pretendMedia();
   render(<EditorShell initial={initial()} />);
   await flush();
+  // The timeline's own drop: at its scroller, the drop area's first child.
+  const scroller = timelineDrop().firstElementChild!;
+  const climb = [new File(["x"], "climb.mov", { lastModified: 1 })];
+  const over = dragEvent("dragover", FILES);
+  expect(fireEvent(scroller, over)).toBe(false);
+  expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe("copy");
+  expect(fireEvent(scroller, dragEvent("drop", { files: climb }))).toBe(false);
+  expect(media.queue.add).toHaveBeenCalledTimes(1);
+  expect(media.queue.add).toHaveBeenCalledWith(climb);
+  expect(climbClips()).toEqual([]);
+  await landUpload(media);
+  await flush();
+  expect(climbClips()).toHaveLength(1);
+  expect(climbClips()[0].getAttribute("aria-pressed")).not.toBe("true"); // landed, not selected
+  expect(server.posts()).toBe(1);
+
+  // On the inspector: to the library only.
+  const details = screen.getByRole("complementary", { name: "Details" });
+  expect(fireEvent(details, dragEvent("drop", { files: [new File(["y"], "b.mov")] }))).toBe(false);
+  expect(media.queue.add).toHaveBeenCalledTimes(2);
+  await flush();
+  expect(server.posts()).toBe(1);
+  expect(climbClips()).toHaveLength(1);
+
   const timeline = screen.getByRole("region", { name: "Timeline" });
   const files = [new File(["x"], "a.mov", { lastModified: 1 })];
   const carryingFiles = { dataTransfer: { types: ["Files"], files } };
-  // false: the default is prevented, so the browser does not open the file in place of the editor
+  // On the timeline's frame outside its scrolling area: to the library only. false: the default is prevented, so the
+  // browser does not open the file in place of the editor.
   expect(fireEvent.dragOver(timeline, carryingFiles)).toBe(false);
   expect(fireEvent.drop(timeline, carryingFiles)).toBe(false);
-  expect(media.queue.add).toHaveBeenCalledTimes(1);
-  expect(media.queue.add).toHaveBeenCalledWith(files);
+  expect(media.queue.add).toHaveBeenCalledTimes(3);
+  expect(media.queue.add).toHaveBeenLastCalledWith(files);
+  await flush();
+  expect(server.posts()).toBe(1);
   // A drag of text or of something on the page is left to the browser.
   const carryingText = { dataTransfer: { types: ["text/plain"], files: [] } };
   expect(fireEvent.dragOver(timeline, carryingText)).toBe(true);
   expect(fireEvent.drop(timeline, carryingText)).toBe(true);
-  expect(media.queue.add).toHaveBeenCalledTimes(1);
+  expect(fireEvent.dragOver(scroller, carryingText)).toBe(true);
+  expect(fireEvent.drop(scroller, carryingText)).toBe(true);
+  expect(media.queue.add).toHaveBeenCalledTimes(3);
 
   await act(() => void fireEvent.click(screen.getByRole("tab", { name: "Media" })));
   await flush();
   expect(fireEvent.drop(screen.getByRole("tabpanel", { name: "Media" }), carryingFiles)).toBe(false);
-  expect(media.queue.add).toHaveBeenCalledTimes(2);
+  expect(media.queue.add).toHaveBeenCalledTimes(4);
   expect(media.queue.add).toHaveBeenLastCalledWith(files);
 });
 
@@ -452,6 +490,25 @@ it("under StrictMode, a file over the window still opens the Media tab", async (
   expect(selectedTab()).toBe("Media");
   expect(screen.getByText("Drop to upload")).toBeTruthy();
   expect(timelineDrop().dataset.drop).toBe("armed");
+});
+
+it("under StrictMode, a file dropped on the timeline still lands once its upload is in", async () => {
+  const server = stubServer();
+  const media = pretendMedia();
+  render(
+    <StrictMode>
+      <EditorShell initial={initial()} />
+    </StrictMode>,
+  );
+  await flush();
+  const scroller = timelineDrop().firstElementChild!;
+  fireEvent(scroller, dragEvent("dragover", FILES));
+  expect(fireEvent(scroller, dragEvent("drop", { files: [new File(["x"], "climb.mov")] }))).toBe(false);
+  expect(media.queue.add).toHaveBeenCalledTimes(1);
+  await landUpload(media);
+  await flush();
+  expect(climbClips()).toHaveLength(1);
+  expect(server.posts()).toBe(1);
 });
 
 const shellDrop = () => {

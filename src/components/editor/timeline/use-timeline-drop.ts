@@ -5,7 +5,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import { addMedia } from "@/lib/editor/actions";
 import type { TimelinePoint } from "@/lib/editor/geometry";
 import { mediaClipFor } from "@/lib/editor/media-clips";
-import { ASSET_DRAG_TYPE, dragKind, dropTrack } from "@/lib/editor/media-drop";
+import { ASSET_DRAG_TYPE, carriesFiles, dragKind, dropTrack } from "@/lib/editor/media-drop";
 import { placeClips } from "@/lib/editor/placement";
 import { clipEdges, snap } from "@/lib/editor/snap";
 import type { EditorState } from "@/lib/editor/store";
@@ -14,8 +14,8 @@ import { useEditorStore, useSettingsStore } from "../context";
 import { useMedia, useMediaDrop } from "../media/media-context";
 import type { TimelineDrag } from "./use-clip-drag";
 
-// Where a dragged library item would land: the row it is shown on, its first frame and its length (null: a line, for
-// an item with no length), and the snap target when it snapped.
+// Where a drag would land: the row it is shown on (null: below the last row or over the ruler), its first frame and its
+// length (null: a line, for files and for an item with no length), and the snap target when it snapped.
 export type DropHover = { trackId: string | null; start: number; duration: number | null; guide: number | null };
 
 type Handlers = Pick<DOMAttributes<HTMLDivElement>, "onDragOver" | "onDragLeave" | "onDrop">;
@@ -51,9 +51,12 @@ function hoverFor(state: EditorState, at: TimelinePoint, asset: AssetView, still
 const sameHover = (a: DropHover | null, b: DropHover | null) =>
   a === b || (a !== null && b !== null && a.trackId === b.trackId && a.start === b.start && a.duration === b.duration && a.guide === b.guide);
 
-// Library items dragged onto the timeline. The handlers go on the scrolling area: the ruler, the rows and the space
-// below them. While an item of this page is over it, hover is the box of its length where it would land. Files are
-// left to the window here. A drop works from its own event: the item is the one its data names.
+// Library items and files dragged onto the timeline. The handlers go on the scrolling area: the ruler, the rows and the
+// space below them. While an item of this page is over it, hover is the box of its length where it would land; while
+// files are, a line at the frame where they would start on the row under the pointer (their lengths are not known
+// before the drop). Files are taken only by an editor of a project that is still there, with uploads set up; anyone
+// else is told no drop is taken here. A drop works from its own event: the item is the one its data names, the files
+// the ones it carries, the place where it is let go.
 export function useTimelineDrop(drag: TimelineDrag | null): { hover: StoreApi<DropHover | null>; handlers: Handlers } {
   const store = useEditorStore();
   const settings = useSettingsStore();
@@ -73,6 +76,10 @@ export function useTimelineDrop(drag: TimelineDrag | null): { hover: StoreApi<Dr
     const show = (next: DropHover | null) => {
       if (!sameHover(hover.getState(), next)) hover.setState(next, true);
     };
+    const takesFiles = () => {
+      const { canEdit, status } = store.getState();
+      return canEdit && status !== "deleted" && library.getState().setUp;
+    };
     return {
       onDragOver(e) {
         if (!drop || !drag) return;
@@ -83,6 +90,19 @@ export function useTimelineDrop(drag: TimelineDrag | null): { hover: StoreApi<Dr
           e.preventDefault();
           e.dataTransfer.dropEffect = "none";
           show(null);
+          return;
+        }
+        if (kind === "files") {
+          e.preventDefault();
+          if (!takesFiles()) {
+            e.dataTransfer.dropEffect = "none";
+            show(null);
+            return;
+          }
+          e.dataTransfer.dropEffect = "copy";
+          const at = drag.pointAt(e.clientX, e.clientY);
+          const { frame, guide } = landingFrame(store.getState(), at, null);
+          show({ trackId: at.trackId, start: frame, duration: null, guide });
           return;
         }
         if (kind !== "asset" || asset === null) return;
@@ -104,7 +124,20 @@ export function useTimelineDrop(drag: TimelineDrag | null): { hover: StoreApi<Dr
         show(null);
       },
       onDrop(e) {
-        if (!drop || !drag || ![...e.dataTransfer.types].includes(ASSET_DRAG_TYPE)) return;
+        if (!drop || !drag) return;
+        const types = [...e.dataTransfer.types];
+        if (!types.includes(ASSET_DRAG_TYPE) && carriesFiles(types)) {
+          // Taken here either way, so the window does not send the files to the library as well.
+          e.preventDefault();
+          show(null);
+          const files = [...e.dataTransfer.files];
+          if (!takesFiles() || files.length === 0) return;
+          const at = drag.pointAt(e.clientX, e.clientY);
+          const { frame } = landingFrame(store.getState(), at, null);
+          drop.dropFiles(files, { frame, trackId: at.trackId }, { stillSeconds: settings.getState().stillSeconds });
+          return;
+        }
+        if (!types.includes(ASSET_DRAG_TYPE)) return;
         e.preventDefault();
         show(null);
         const { assets } = library.getState();
