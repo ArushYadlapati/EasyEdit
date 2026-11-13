@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider, useEditor } from "@/components/editor/context";
+import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { Toolbar } from "@/components/editor/timeline/toolbar";
 import { TrackHeader } from "@/components/editor/timeline/track-header";
 import { displayRows } from "@/lib/editor/geometry";
@@ -15,10 +16,15 @@ function Header({ id }: { id: string }) {
   return track ? <TrackHeader track={track} selected={false} /> : null;
 }
 
-function setup(id = "t1", store = makeStore()) {
+function setup(id = "t1", store = makeStore(), others: string[] = []) {
   const view = render(
     <EditorProvider store={store}>
-      <Header id={id} />
+      <ContextMenuProvider>
+        <Header id={id} />
+        {others.map((other) => (
+          <Header key={other} id={other} />
+        ))}
+      </ContextMenuProvider>
     </EditorProvider>,
   );
   const track = () => store.getState().doc.tracks.find((t) => t.id === id) as Track;
@@ -31,6 +37,14 @@ function setup(id = "t1", store = makeStore()) {
   };
   return { store, view, track, openMenu, item, startRename };
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+// A track's header element, found from its name.
+const headerOf = (name: string) => screen.getByRole("button", { name }).parentElement as HTMLElement;
+const rightClick = (el: Element) => fireEvent.contextMenu(el, { clientX: 20, clientY: 10, button: 2 });
 
 describe("track header", () => {
   it("renames from the menu: the input takes focus, Enter saves and is marked handled", () => {
@@ -181,6 +195,91 @@ describe("track header", () => {
     expect(selection).toEqual({ clipIds: [], trackId: copy.id });
     expect(queue.map((e) => e.label)).toEqual(["duplicate track"]);
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("the header's right-click menu lists the track's actions", () => {
+    const { store } = setup();
+    expect(rightClick(headerOf("Text 1"))).toBe(false);
+    expect(screen.getByRole("menu", { name: "Track options" })).toBeTruthy();
+    expect(screen.getAllByRole("menuitem").map((e) => e.textContent)).toEqual(["Rename", "Duplicate", "Move up", "Move down", "Remove track"]);
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate" }));
+    const { doc, queue } = store.getState();
+    const copy = doc.tracks.find((t) => t.name === "Text 1 copy")!;
+    expect(displayRows(doc).map((t) => t.id)).toEqual(["cap", copy.id, "t1", "v1", "a1"]);
+    expect(queue.map((e) => e.label)).toEqual(["duplicate track"]);
+    expect(screen.queryByRole("menu")).toBeNull();
+    // Focus goes back to the track's name.
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Text 1" }));
+  });
+
+  it("Move up, Move down and Remove track from the header's right-click menu", () => {
+    const { store, track } = setup("v1");
+    rightClick(headerOf("Video 1"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move up" }));
+    expect(displayRows(store.getState().doc).map((t) => t.id)).toEqual(["cap", "v1", "t1", "a1"]);
+    rightClick(headerOf("Video 1"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move down" }));
+    rightClick(headerOf("Video 1"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove track" }));
+    expect(track()).toBeUndefined();
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["reorder tracks", "reorder tracks", "remove track"]);
+  });
+
+  it("a right-click on another track's header selects that track before its menu opens", () => {
+    const { store } = setup("t1", makeStore(), ["v1"]);
+    act(() => store.getState().select(["x1"]));
+    rightClick(headerOf("Text 1"));
+    expect(store.getState().selection).toEqual({ clipIds: [], trackId: "t1" });
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    rightClick(headerOf("Video 1"));
+    expect(store.getState().selection.trackId).toBe("v1");
+    // The menu is the selected track's.
+    expect(screen.getByRole("menuitem", { name: "Move down" })).toHaveProperty("disabled", true);
+  });
+
+  it("Rename from the header's right-click menu keeps its field focused", () => {
+    const { store, track } = setup();
+    rightClick(headerOf("Text 1"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const input = screen.getByRole("textbox", { name: "Track name" });
+    expect(document.activeElement).toBe(input);
+    // The browser's own menu is left to the field.
+    expect(rightClick(input)).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "Titles" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(track().name).toBe("Titles");
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["rename track"]);
+  });
+
+  it("on a Mac, Ctrl+click on a track's name opens its menu and no field", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const { store } = setup();
+    const name = screen.getByRole("button", { name: "Text 1" });
+    fireEvent.pointerDown(name, { button: 0, ctrlKey: true });
+    fireEvent.click(name, { ctrlKey: true });
+    expect(screen.queryByRole("textbox", { name: "Track name" })).toBeNull();
+    expect(store.getState().selection.trackId).toBeNull();
+    rightClick(name);
+    expect(screen.getByRole("menu", { name: "Track options" })).toBeTruthy();
+    expect(store.getState().selection.trackId).toBe("t1");
+  });
+
+  it("a right-click on the open options popup opens no second menu", () => {
+    const { store, openMenu } = setup();
+    openMenu();
+    expect(rightClick(screen.getByRole("menu"))).toBe(false);
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(store.getState().selection.trackId).toBeNull();
+  });
+
+  it("a viewer's right-click on a header opens no menu", () => {
+    const { store } = setup("t1", makeStore({ canEdit: false }));
+    expect(rightClick(headerOf("Text 1"))).toBe(false);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(store.getState().selection.trackId).toBe("t1");
   });
 
   it("the ⋯ menu reads the project when it opens", () => {

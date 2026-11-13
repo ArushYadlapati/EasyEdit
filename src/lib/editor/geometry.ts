@@ -117,6 +117,10 @@ export function displayRows(doc: TimelineDoc): Track[] {
   return [...visual, ...doc.tracks.filter((t) => t.kind === "audio")];
 }
 
+// A point on the timeline: a whole frame (0 or more) and the track on that row, null below the last
+// row (or above the first).
+export type TimelinePoint = { frame: number; trackId: string | null };
+
 export function rowAt(y: number, rowCount: number): number {
   return Math.min(Math.max(0, rowCount - 1), Math.max(0, Math.floor(y / ROW_HEIGHT)));
 }

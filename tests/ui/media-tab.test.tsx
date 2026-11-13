@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
+import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { LeftPanel } from "@/components/editor/left-panel";
 import { MediaProvider, useMedia, type MediaServices } from "@/components/editor/media/media-context";
 import type { MediaApi, MediaFailure, MediaResult } from "@/lib/media/api";
 import { createLibraryStore } from "@/lib/media/library-store";
 import type { MediaFiles } from "@/lib/media/media-files";
+import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
 import { MEDIA_MESSAGES, formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import type { AssetView, UploadItem } from "@/lib/media/types";
@@ -89,7 +91,7 @@ function pretendQueue() {
 
 const never = <T,>() => new Promise<T>(() => {});
 
-function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boolean; files?: MediaFiles } = {}) {
+function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boolean; files?: MediaFiles; settings?: SettingsStore } = {}) {
   const { api, answers } = pretendApi(options.listed ?? [FIELD, PHOTO], options.setUp);
   const library = createLibraryStore({ api });
   const queue = pretendQueue();
@@ -97,10 +99,12 @@ function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boole
   const services: MediaServices = { library, queue, files, dispose: vi.fn() };
   const store = makeStore({ canEdit: options.canEdit ?? true });
   const view = render(
-    <EditorProvider store={store}>
-      <MediaProvider services={services}>
-        <LeftPanel />
-      </MediaProvider>
+    <EditorProvider store={store} settings={options.settings}>
+      <ContextMenuProvider>
+        <MediaProvider services={services}>
+          <LeftPanel />
+        </MediaProvider>
+      </ContextMenuProvider>
     </EditorProvider>,
   );
   return { api, answers, library, queue, files, store, view };
@@ -534,6 +538,61 @@ describe("who may change what", () => {
     expect(added[0]).toMatchObject({ type: "image", assetId: "i1", start: 200 });
     expect(store.getState().selection.clipIds).toEqual([added[0].id]);
     expect(store.getState().queue).toMatchObject([{ label: "add media" }]);
+  });
+});
+
+describe("a tile's right-click menu", () => {
+  const rightClick = (name: string) => fireEvent.contextMenu(row(name).closest("li")!, { clientX: 20, clientY: 20, button: 2 });
+
+  it("a tile's right-click menu adds it to the timeline", async () => {
+    const settings = createSettingsStore({ prefs: { ...DEFAULT_PREFS, stillSeconds: 4 } });
+    const { store } = setup({ settings });
+    await openMedia();
+    act(() => store.getState().seek(200));
+    expect(rightClick("IMG_4821")).toBe(false);
+    const menu = screen.getByRole("menu", { name: "More for IMG_4821" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Add to timeline", "Rename", "Set event", "Remove"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Add to timeline" }));
+    const added = store.getState().doc.tracks.flatMap((t) => t.clips).find((c) => c.type === "image")!;
+    expect(added).toMatchObject({ assetId: "i1", start: 200, duration: 120 });
+    expect(store.getState().selection.clipIds).toEqual([added.id]);
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["add media"]);
+    expect(document.activeElement).toBe(row("IMG_4821"));
+  });
+
+  it("Rename from it opens the same dialog as More", async () => {
+    browserShowModal();
+    setup();
+    await openMedia();
+    rightClick("field");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    await flush();
+    expect(within(screen.getByRole("dialog")).getByRole("heading", { name: "Rename" })).toBeTruthy();
+  });
+
+  it("a right-click on the More menu's list opens no second menu", async () => {
+    setup();
+    await openMedia();
+    fireEvent.click(screen.getByRole("button", { name: "More for field" }));
+    fireEvent.contextMenu(screen.getByRole("menu", { name: "More for field" }), { clientX: 20, clientY: 20, button: 2 });
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+  });
+
+  it("opens nothing for a viewer", async () => {
+    setup({ canEdit: false });
+    await openMedia();
+    expect(rightClick("field")).toBe(false);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("on a Mac, Ctrl+click on a tile adds nothing", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const { store } = setup();
+    await openMedia();
+    fireEvent.click(row("IMG_4821"), { ctrlKey: true });
+    expect(store.getState().queue).toEqual([]);
+    fireEvent.click(row("IMG_4821"));
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["add media"]);
   });
 });
 

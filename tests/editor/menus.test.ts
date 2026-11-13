@@ -1,6 +1,8 @@
 import { expect, it } from "vitest";
 import { ZOOM_MAX, ZOOM_MIN, clampZoom, zoomLimits } from "@/lib/editor/geometry";
-import { editMenu, topMenuInput, trackMenu, viewMenu, type MenuEntry, type TopMenuInput } from "@/lib/editor/menus";
+import {
+  assetMenu, clipMenu, editMenu, laneMenu, presetMenu, rightClickEntries, topMenuInput, trackMenu, viewMenu, type MenuEntry, type TopMenuInput,
+} from "@/lib/editor/menus";
 import { LIMITS } from "@/lib/limits";
 import { docDuration } from "@/lib/timeline";
 import { makeStore, sampleDoc } from "./fixtures";
@@ -164,4 +166,145 @@ it("trackMenu disables Duplicate on Captions and Remove on a locked track", () =
   const viewer = trackMenu(makeStore({ canEdit: false }).getState(), "t1");
   expect(viewer.map((e) => e.id)).toEqual(["rename", "duplicate", "up", "down", "remove"]);
   expect(enabled(viewer)).toEqual([]);
+});
+
+const ids = (entries: MenuEntry[]) => entries.map((e) => e.id);
+const lockTrack = (store: ReturnType<typeof makeStore>, trackId: string) =>
+  store.getState().edit([{ op: "update_track", trackId, patch: { locked: true } }], "track change");
+
+it("clipMenu follows the selection and the playhead", () => {
+  const store = makeStore();
+  const st = () => store.getState();
+  st().select(["x1"]);
+  st().seek(30);
+  const entries = clipMenu(st());
+  expect(entries.map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Delete"]);
+  expect(ids(entries)).toEqual(["cut", "copy", "duplicate", "split", "delete"]);
+  for (const entry of entries) expect(entry.command).toBe(entry.id);
+  expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["duplicate", "split", "delete"]);
+  expect(entries.filter((e) => e.danger).map((e) => e.id)).toEqual(["delete"]);
+  // edit follows the shortcut table: Copy changes nothing.
+  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["cut", "duplicate", "split", "delete"]);
+  expect(enabled(entries)).toEqual(["cut", "copy", "duplicate", "split", "delete"]);
+
+  st().seek(70);
+  expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "delete"]);
+
+  st().seek(30);
+  lockTrack(store, "t1");
+  expect(enabled(clipMenu(st()))).toEqual(["copy", "duplicate"]);
+  // One selected clip on a locked track is enough.
+  st().select(["x1", "c1"]);
+  expect(byId(clipMenu(st()), "cut").disabled).toBe(true);
+  expect(byId(clipMenu(st()), "delete").disabled).toBe(true);
+  st().select(["c1"]);
+  expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "delete"]);
+});
+
+it("laneMenu on a track's row offers Duplicate track and Remove track; below the last row it does not", () => {
+  const store = makeStore();
+  const st = () => store.getState();
+  const row = laneMenu(st(), true, "v1");
+  expect(ids(row)).toEqual(["paste", "track-duplicate", "track-remove", "add-video", "add-overlay", "add-text", "add-audio"]);
+  expect(row.map((e) => e.label)).toEqual([
+    "Paste", "Duplicate track", "Remove track", "Add video track", "Add overlay track", "Add text track", "Add audio track",
+  ]);
+  expect(row.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["track-duplicate", "add-video"]);
+  expect(row.filter((e) => e.danger).map((e) => e.id)).toEqual(["track-remove"]);
+  for (const entry of row) expect([entry.edit, entry.command], entry.id).toEqual([true, undefined]);
+  expect(enabled(row)).toEqual(ids(row));
+
+  const below = laneMenu(st(), true, null);
+  expect(ids(below)).toEqual(["paste", "add-video", "add-overlay", "add-text", "add-audio"]);
+  expect(below.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["add-video"]);
+  // A track that is not there is the same as none.
+  expect(ids(laneMenu(st(), true, "gone"))).toEqual(ids(below));
+
+  expect(byId(laneMenu(st(), false, "v1"), "paste").disabled).toBe(true);
+  expect(byId(laneMenu(st(), true, "cap"), "track-duplicate").disabled).toBe(true);
+  lockTrack(store, "v1");
+  const locked = byId(laneMenu(st(), true, "v1"), "track-remove");
+  expect(locked).toMatchObject({ label: "Remove track (unlock first)", danger: true, disabled: true });
+  expect(byId(laneMenu(st(), true, "v1"), "track-duplicate").disabled).toBe(false);
+});
+
+it("laneMenu leaves out Captions when the project has one, and disables adding in a full project", () => {
+  const doc = sampleDoc();
+  doc.tracks = doc.tracks.filter((t) => t.kind !== "caption");
+  const noCaptions = laneMenu(makeStore({ doc }).getState(), true, null);
+  expect(ids(noCaptions)).toEqual(["paste", "add-video", "add-overlay", "add-text", "add-audio", "add-caption"]);
+  expect(byId(noCaptions, "add-caption").label).toBe("Add captions track");
+  expect(enabled(noCaptions)).toEqual(ids(noCaptions));
+
+  const full = sampleDoc();
+  for (let i = full.tracks.length; i < LIMITS.tracksPerProject; i++) {
+    full.tracks.push({ id: `a${i}`, kind: "audio", name: `Audio ${i}`, muted: false, hidden: false, locked: false, clips: [] });
+  }
+  const entries = laneMenu(makeStore({ doc: full }).getState(), true, "v1");
+  expect(enabled(entries)).toEqual(["paste", "track-remove"]);
+  // One short of full, they come back.
+  full.tracks.pop();
+  expect(enabled(laneMenu(makeStore({ doc: full }).getState(), true, null))).toEqual(["paste", "add-video", "add-overlay", "add-text", "add-audio"]);
+});
+
+it("clipMenu and laneMenu grey every editing entry once the project is deleted", () => {
+  const store = makeStore();
+  store.getState().select(["x1"]);
+  store.getState().seek(30);
+  store.getState().setStatus("deleted");
+  expect(enabled(clipMenu(store.getState()))).toEqual(["copy"]);
+  expect(enabled(laneMenu(store.getState(), true, "v1"))).toEqual([]);
+});
+
+it("clipMenu and laneMenu grey every editing entry while a gesture is live", () => {
+  const store = makeStore();
+  const st = () => store.getState();
+  st().select(["x1"]);
+  st().seek(30);
+  st().setGesture([{ op: "move_clip", clipId: "x1", start: 5 }]);
+  const clip = clipMenu(st());
+  expect(clip.filter((e) => e.edit)).toHaveLength(4);
+  expect(enabled(clip)).toEqual(["copy"]);
+  const lane = laneMenu(st(), true, "v1");
+  expect(lane.filter((e) => e.edit)).toHaveLength(lane.length);
+  expect(enabled(lane)).toEqual([]);
+});
+
+it("the media tile and text preset menus", () => {
+  const asset = assetMenu();
+  expect(asset.map((e) => [e.id, e.label])).toEqual([["add", "Add to timeline"], ["rename", "Rename"], ["event", "Set event"], ["remove", "Remove"]]);
+  expect(asset.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["rename"]);
+  expect(asset.filter((e) => e.danger).map((e) => e.id)).toEqual(["remove"]);
+  for (const entry of asset) expect([entry.edit, !!entry.disabled], entry.id).toEqual([true, false]);
+  expect(presetMenu()).toEqual([{ id: "add", label: "Add to timeline", edit: true }]);
+});
+
+it("a viewer's right-click keeps only what a viewer can use", () => {
+  const store = makeStore({ canEdit: false });
+  store.getState().select(["x1"]);
+  store.getState().seek(30);
+  const clip = rightClickEntries(clipMenu(store.getState()), false);
+  expect(ids(clip)).toEqual(["copy"]);
+  expect(clip[0].separatorBefore).toBeUndefined();
+  expect("separatorBefore" in clip[0]).toBe(false);
+  expect(rightClickEntries(laneMenu(store.getState(), true, "v1"), false)).toEqual([]);
+  expect(rightClickEntries(laneMenu(store.getState(), true, null), false)).toEqual([]);
+  expect(rightClickEntries(trackMenu(store.getState(), "t1"), false)).toEqual([]);
+  expect(rightClickEntries(assetMenu(), false)).toEqual([]);
+  expect(rightClickEntries(presetMenu(), false)).toEqual([]);
+  // An editor keeps everything, as it was.
+  const editor = makeStore();
+  editor.getState().select(["x1"]);
+  expect(rightClickEntries(clipMenu(editor.getState()), true)).toEqual(clipMenu(editor.getState()));
+});
+
+it("rightClickEntries drops the separator before the first entry left", () => {
+  const entries: MenuEntry[] = [{ id: "a", label: "A", edit: true }, { id: "b", label: "B", separatorBefore: true }];
+  expect(rightClickEntries(entries, false)).toEqual([{ id: "b", label: "B" }]);
+  expect("separatorBefore" in rightClickEntries(entries, false)[0]).toBe(false);
+  expect(rightClickEntries(entries, true)).toEqual(entries);
+  expect(rightClickEntries([{ id: "a", label: "A", separatorBefore: true }, { id: "b", label: "B", separatorBefore: true }], true)).toEqual([
+    { id: "a", label: "A" },
+    { id: "b", label: "B", separatorBefore: true },
+  ]);
 });

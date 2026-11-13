@@ -16,7 +16,7 @@ import { TEXT_PRESETS } from "@/lib/editor/text-presets";
 import { LIMITS } from "@/lib/limits";
 import { applyOps, prepareOps, type Clip, type OpInput, type TimelineDoc, type Track } from "@/lib/timeline";
 import { assetView } from "../helpers/media-services";
-import { makeStore, sampleDoc, text, video } from "./fixtures";
+import { makeStore, noticesOf, sampleDoc, text, video } from "./fixtures";
 
 const ids = (doc: TimelineDoc) => doc.tracks.map((t) => t.id);
 const rowIds = (doc: TimelineDoc) => displayRows(doc).map((t) => t.id);
@@ -263,6 +263,46 @@ describe("runners", () => {
     expect(findClip(st().doc, "x1")).toBeNull();
     expect(board.read()!.clips[0].clip.id).toBe("x1");
     expect(st().queue.map((e) => e.label)).toEqual(["paste", "cut"]);
+  });
+
+  it("paste at a point lands at that frame, on that track when it fits", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    const notices = noticesOf(store);
+    const board = createClipboard();
+    const startsOn = (trackId: string) => st().doc.tracks.find((t) => t.id === trackId)!.clips.map((c) => c.start);
+    st().select(["x2"]);
+    copySelection(store, board);
+    paste(store, board, { frame: 200, trackId: "t1" });
+    expect(startsOn("t1")).toEqual([0, 90, 200]);
+    // Video 1 does not take text, so the copy keeps its own track; at 0 that is taken, so a new one is made.
+    paste(store, board, { frame: 0, trackId: "v1" });
+    const added = st().doc.tracks.find((t) => t.name === "Text 2")!;
+    expect(added.clips.map((c) => [c.type, c.start])).toEqual([["text", 0]]);
+    expect(st().selection.clipIds).toEqual([added.clips[0].id]);
+    // A wished track that takes the clip wins over the one it was copied from.
+    paste(store, board, { frame: 250, trackId: added.id });
+    expect(startsOn(added.id)).toEqual([0, 250]);
+    expect(startsOn("t1")).toEqual([0, 90, 200]);
+
+    board.write(copyClips(st().doc, ["c1", "x1"])!);
+    paste(store, board, { frame: 300, trackId: "v1" });
+    expect(startsOn("v1")).toEqual([0, 30, 300]);
+    expect(startsOn("t1")).toEqual([0, 90, 200, 300]);
+    expect(notices).toEqual([]);
+    expect(st().queue.map((e) => e.label)).toEqual(["paste", "paste", "paste", "paste"]);
+    // Without a point it still pastes at the playhead.
+    st().seek(500);
+    paste(store, board);
+    expect(startsOn("v1")).toContain(500);
+  });
+
+  it("a paste below the last row keeps each clip's own track", () => {
+    const store = makeStore();
+    const board = createClipboard();
+    board.write(copyClips(store.getState().doc, ["c2"])!);
+    paste(store, board, { frame: 200, trackId: null });
+    expect(store.getState().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toEqual([0, 30, 200]);
   });
 
   it("a refused cut leaves the clipboard and the clip alone", () => {

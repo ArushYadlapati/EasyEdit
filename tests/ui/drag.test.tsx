@@ -516,6 +516,27 @@ it("a locked track drags", () => {
   expect(rowOrder(st)).toEqual(["v1", "cap", "t1", "a1"]);
 });
 
+it("on a Mac a Ctrl press on a header drags nothing, and a press on the options popup never drags", () => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  const { st, scroller, press, move, release, frame } = renderTimeline();
+  const name = screen.getByRole("button", { name: "Video 1" });
+  press(name, HEAD_X, y(2), { ctrlKey: true });
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  release(HEAD_X, RULER_HEIGHT);
+  expect(scroller.dataset.drag).toBeUndefined();
+  expect(st().queue).toHaveLength(0);
+  // Opened from the keyboard: an earlier test's drag may still be swallowing the next click.
+  fireEvent.keyDown(screen.getAllByRole("button", { name: "Track options" })[2], { key: "ArrowDown" });
+  press(screen.getByRole("menu"), HEAD_X, y(2));
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  release(HEAD_X, RULER_HEIGHT);
+  expect(scroller.dataset.drag).toBeUndefined();
+  expect(st().queue).toHaveLength(0);
+  expect(rowOrder(st)).toEqual(["cap", "t1", "v1", "a1"]);
+});
+
 it("a press without moving opens the name field; a drag does not", async () => {
   const { st, scroller, press, move, release, frame } = renderTimeline();
   const name = () => screen.getByRole("button", { name: "Video 1" });

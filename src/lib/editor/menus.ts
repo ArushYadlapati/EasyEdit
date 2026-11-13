@@ -1,5 +1,6 @@
-import { docDuration } from "@/lib/timeline";
-import { duplicateTrackOps, reorderTrackOps } from "./commands";
+import { LIMITS } from "@/lib/limits";
+import { docDuration, type TrackKind } from "@/lib/timeline";
+import { duplicateTrackOps, reorderTrackOps, splitOps } from "./commands";
 import { zoomLimits } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import type { EditorState } from "./store";
@@ -124,4 +125,101 @@ export function trackMenu(state: EditorState, trackId: string): MenuEntry[] {
       separatorBefore: true,
     },
   ];
+}
+
+// A right-click menu as a viewer may use it: what changes the project is left out, and the first
+// entry left has no separator above it. An editor's is unchanged.
+export function rightClickEntries(entries: MenuEntry[], canEdit: boolean): MenuEntry[] {
+  const kept = canEdit ? entries : entries.filter((e) => !e.edit);
+  return kept.map((entry, i) => {
+    if (i > 0 || !entry.separatorBefore) return entry;
+    const { separatorBefore, ...rest } = entry;
+    void separatorBefore;
+    return rest;
+  });
+}
+
+// Nothing that changes the project runs for a viewer, in a deleted project, or in the middle of a drag.
+function editBlocked(state: EditorState): boolean {
+  return !state.canEdit || state.status === "deleted" || state.gesture !== null;
+}
+
+export type ClipMenuId = "cut" | "copy" | "duplicate" | "split" | "delete";
+
+// A clip's menu (label "Clip actions"), for the selection the right-click made. Cut and Delete are
+// greyed when a selected clip is on a locked track, Split when the playhead crosses none of the
+// selection on an unlocked track. Duplicate also works from a locked track: the copies go elsewhere.
+export function clipMenu(state: EditorState): MenuEntry[] {
+  const { doc, selection, playhead } = state;
+  const selected = new Set(selection.clipIds);
+  const onLocked = doc.tracks.some((t) => t.locked && t.clips.some((c) => selected.has(c.id)));
+  const blocked = editBlocked(state);
+  const entry = (command: ClipMenuId, label: string, unavailable: boolean, extra: Partial<MenuEntry> = {}): MenuEntry => {
+    const edit = EDITS.has(command);
+    return { id: command, label, command, disabled: (edit && blocked) || unavailable, ...extra, ...(edit && { edit }) };
+  };
+  return [
+    entry("cut", "Cut", onLocked),
+    entry("copy", "Copy", false),
+    entry("duplicate", "Duplicate", false, { separatorBefore: true }),
+    entry("split", "Split at the playhead", splitOps(doc, playhead, selection.clipIds).length === 0, { separatorBefore: true }),
+    entry("delete", "Delete", onLocked, { separatorBefore: true, danger: true }),
+  ];
+}
+
+export type LaneMenuId = "paste" | "track-duplicate" | "track-remove" | "add-video" | "add-overlay" | "add-text" | "add-audio" | "add-caption";
+
+const ADDABLE: { kind: TrackKind; label: string }[] = [
+  { kind: "video", label: "Add video track" },
+  { kind: "overlay", label: "Add overlay track" },
+  { kind: "text", label: "Add text track" },
+  { kind: "audio", label: "Add audio track" },
+  { kind: "caption", label: "Add captions track" },
+];
+
+// The menu of a track's empty row, or of the space below the last row when trackId is null (label
+// "Timeline"). Every entry changes the project. A project has one captions track at most, and 20
+// tracks at most.
+export function laneMenu(state: EditorState, canPaste: boolean, trackId: string | null): MenuEntry[] {
+  const { doc } = state;
+  const blocked = editBlocked(state);
+  const track = doc.tracks.find((t) => t.id === trackId);
+  const entry = (id: LaneMenuId, label: string, unavailable: boolean, extra: Partial<MenuEntry> = {}): MenuEntry => ({
+    id,
+    label,
+    disabled: blocked || unavailable,
+    ...extra,
+    edit: true,
+  });
+  const entries = [entry("paste", "Paste", !canPaste)];
+  if (track) {
+    entries.push(
+      entry("track-duplicate", "Duplicate track", duplicateTrackOps(doc, track.id, "new").length === 0, { separatorBefore: true }),
+      entry("track-remove", track.locked ? "Remove track (unlock first)" : "Remove track", track.locked, { danger: true }),
+    );
+  }
+  const full = doc.tracks.length >= LIMITS.tracksPerProject;
+  const hasCaptions = doc.tracks.some((t) => t.kind === "caption");
+  const adds = ADDABLE.filter(({ kind }) => kind !== "caption" || !hasCaptions);
+  adds.forEach(({ kind, label }, i) => entries.push(entry(`add-${kind}`, label, full, i === 0 ? { separatorBefore: true } : {})));
+  return entries;
+}
+
+export type AssetMenuId = "add" | "rename" | "event" | "remove";
+
+// A media tile's menu (label "More for <name>").
+export function assetMenu(): MenuEntry[] {
+  return [
+    { id: "add", label: "Add to timeline", edit: true },
+    { id: "rename", label: "Rename", separatorBefore: true, edit: true },
+    { id: "event", label: "Set event", edit: true },
+    { id: "remove", label: "Remove", danger: true, edit: true },
+  ] satisfies (MenuEntry & { id: AssetMenuId })[];
+}
+
+export type PresetMenuId = "add";
+
+// A Text-tab preset's menu (label "More for <preset label>").
+export function presetMenu(): MenuEntry[] {
+  return [{ id: "add", label: "Add to timeline", edit: true }] satisfies (MenuEntry & { id: PresetMenuId })[];
 }

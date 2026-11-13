@@ -1,23 +1,50 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { Tabs, tabIds } from "@/components/ui/tabs";
 import { addMedia, addText } from "@/lib/editor/actions";
-import { TEXT_PRESETS } from "@/lib/editor/text-presets";
+import { presetMenu, rightClickEntries } from "@/lib/editor/menus";
+import { TEXT_PRESETS, type TextPreset } from "@/lib/editor/text-presets";
 import type { AssetView } from "@/lib/media/types";
 import { useEditor, useEditorStore, useSettingsStore } from "./context";
 import { MediaTab, type PanelProps } from "./media/media-tab";
+import { useToMenuItems } from "./menu-items";
+import { useIsMac } from "./use-shortcuts";
 
 const TABS = [
   { id: "text", label: "Text" },
   { id: "media", label: "Media" },
 ];
 
+// Each preset adds itself at the playhead on a click, or from its right-click menu. On a Mac a Ctrl+click is that
+// right-click, so it adds nothing.
 function TextTab({ panel }: { panel: PanelProps }) {
   const store = useEditorStore();
   const settings = useSettingsStore();
   const canEdit = useEditor((s) => s.canEdit);
+  const menu = useContextMenu();
+  const toItems = useToMenuItems();
+  const isMac = useIsMac();
+  const add = (preset: TextPreset) => addText(store, preset, settings.getState().textSeconds);
+
+  function onContextMenu(e: MouseEvent<HTMLButtonElement>, preset: TextPreset) {
+    e.preventDefault();
+    if (!menu) return;
+    const entries = rightClickEntries(presetMenu(), store.getState().canEdit);
+    if (entries.length === 0) return;
+    menu({
+      ...menuPoint(e),
+      label: `More for ${preset.label}`,
+      items: toItems(entries),
+      returnFocus: e.currentTarget,
+      onSelect: (id) => {
+        if (id === "add") add(preset);
+      },
+    });
+  }
+
   return (
     <div {...panel} className="min-h-0 flex-1 overflow-y-auto">
       <div className="flex flex-col gap-2 p-3">
@@ -29,7 +56,10 @@ function TextTab({ panel }: { panel: PanelProps }) {
             aria-label={`Add ${preset.label.toLowerCase()}`}
             className="w-full justify-start"
             style={{ fontWeight: Math.min(preset.fontWeight, 600) }}
-            onClick={() => addText(store, preset, settings.getState().textSeconds)}
+            onClick={(e) => {
+              if (!(isMac && e.ctrlKey)) add(preset);
+            }}
+            onContextMenu={(e) => onContextMenu(e, preset)}
           >
             {preset.label}
           </Button>

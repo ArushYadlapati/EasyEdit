@@ -1,11 +1,13 @@
 "use client";
 
-import { memo, useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { memo, useRef, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { ROW_HEIGHT, formatTimecode, frameToPx } from "@/lib/editor/geometry";
 import type { Clip } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
 import { useLibrary } from "../media/media-context";
+import { useClipMenu } from "../use-clip-menu";
+import { useIsMac } from "../use-shortcuts";
 import { CLICK_SLOP_PX, useClipDrag } from "./use-clip-drag";
 
 const FILL: Record<Clip["type"], string> = {
@@ -41,7 +43,8 @@ type ClipViewProps = { clip: Clip; zoom: number; fps: number; selected: boolean;
 // pressing a clip that is not selected selects only it (Shift, Cmd or Ctrl toggles it); pressing a
 // selected clip keeps the selection, and letting go without moving makes it the only one. Where
 // the clip can be edited, the timeline's drag takes the press from there: it moves the clip, or
-// trims it from a handle at either end, and handles the release.
+// trims it from a handle at either end, and handles the release. A right-click opens the clip's menu;
+// on a Mac a Ctrl press is that right-click, so it neither selects nor drags.
 export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidden, locked }: ClipViewProps) {
   const store = useEditorStore();
   const drag = useClipDrag();
@@ -50,8 +53,11 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
   const press = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const width = Math.max(2, frameToPx(clip.duration, zoom));
   const dragger = canEdit && !locked ? drag : null; // null for a viewer, a locked track, or outside a timeline
+  const isMac = useIsMac();
+  const openClipMenu = useClipMenu();
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
+    if (isMac && e.ctrlKey) return;
     press.current = null;
     if (e.button !== 0) return;
     const { selection, select } = store.getState();
@@ -72,6 +78,11 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
     if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) < CLICK_SLOP_PX) store.getState().select([clip.id]);
   }
 
+  function onContextMenu(e: MouseEvent<HTMLDivElement>) {
+    e.preventDefault();
+    openClipMenu(e, clip.id, e.currentTarget);
+  }
+
   // Enter selects the clip. Space is left alone: in the editor it always plays or pauses.
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key !== "Enter") return;
@@ -90,6 +101,7 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
       onPointerUp={onPointerUp}
       onPointerCancel={() => (press.current = null)}
       onKeyDown={onKeyDown}
+      onContextMenu={onContextMenu}
       className={cx(
         "group absolute flex touch-none items-center overflow-hidden rounded-[4px] border select-none",
         FILL[clip.type],

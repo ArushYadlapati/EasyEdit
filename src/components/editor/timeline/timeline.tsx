@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type UIEvent } from "react";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand/vanilla";
 import { cx } from "@/components/ui/cx";
@@ -23,7 +23,7 @@ import { LANE_GUTTER, PlayheadLine } from "./playhead";
 import { Ruler } from "./ruler";
 import { Toolbar } from "./toolbar";
 import { CLIP_HEIGHT, CLIP_TOP } from "./clip-view";
-import { TrackRow } from "./track-row";
+import { TrackRow, useLaneMenu } from "./track-row";
 import { TimelineDragContext, useTimelineDrag, type DragView } from "./use-clip-drag";
 
 const OVERSCAN_PX = 200; // clips this far outside the visible area are rendered too
@@ -74,6 +74,7 @@ export function Timeline() {
   const fromFrame = Math.max(0, (scrollStart - LANE_GUTTER - OVERSCAN_PX) / zoom);
   const toFrame = (scrollStart - LANE_GUTTER + WINDOW_STEP_PX + viewportPx + OVERSCAN_PX) / zoom;
   const drag = useTimelineDrag(store, scrollRef, rowsRef, zoom);
+  const openLaneMenu = useLaneMenu(drag);
 
   useEffect(() => {
     if (zoom !== storedZoom) store.getState().setZoom(zoom);
@@ -169,12 +170,18 @@ export function Timeline() {
     setScrollStart(windowStart(e.currentTarget.scrollLeft));
   }
 
+  // The space below the last row has a menu of its own, with no track in it.
+  function onContentContextMenu(e: MouseEvent<HTMLDivElement>) {
+    if (e.defaultPrevented || e.target !== e.currentTarget) return;
+    openLaneMenu(e, null);
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Toolbar duration={duration} fps={fps} />
       <div className="relative min-h-0 flex-1">
         <div ref={scrollRef} onScroll={onScroll} className={cx("absolute inset-0 overflow-auto overscroll-contain", DRAG_CURSOR)}>
-          <div className="relative min-h-full" style={{ width }}>
+          <div className="relative min-h-full" style={{ width }} onContextMenu={onContentContextMenu}>
             <Ruler zoom={zoom} fps={fps} fromFrame={fromFrame} toFrame={toFrame} max={frames} end={duration} onScrub={onScrub} />
             <TimelineDragContext value={drag}>
               <div ref={rowsRef} className="relative">

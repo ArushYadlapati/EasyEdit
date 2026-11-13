@@ -17,6 +17,7 @@ import {
   toggleTrackOps,
   type TrackSwitch,
 } from "./commands";
+import type { TimelinePoint } from "./geometry";
 import { mediaClipFor } from "./media-clips";
 import { MESSAGES } from "./messages";
 import { placeClips } from "./placement";
@@ -125,8 +126,9 @@ export function cutSelection(store: EditorStore, clipboard: ClipboardStore): voi
   if (state.edit(deleteOps(ids, false), "cut").ok && copied) clipboard.write(copied);
 }
 
-// Puts the clipboard's clips at the playhead, where placeClips finds room, and selects them.
-export function paste(store: EditorStore, clipboard: ClipboardStore): void {
+// Puts the clipboard's clips at the playhead, or at the point given, where placeClips finds room, and selects
+// them. Each clip would like the point's track when that track takes it, else the track it was copied from.
+export function paste(store: EditorStore, clipboard: ClipboardStore, at?: TimelinePoint): void {
   const state = store.getState();
   if (!state.canEdit) return;
   const copied = clipboard.read();
@@ -134,7 +136,11 @@ export function paste(store: EditorStore, clipboard: ClipboardStore): void {
     state.notify("info", MESSAGES.nothingToPaste);
     return;
   }
-  const placement = placeClips(state.doc, pasteItems(copied, state.playhead), () => nanoid(10));
+  const target = state.doc.tracks.find((t) => t.id === at?.trackId);
+  const items = pasteItems(copied, at?.frame ?? state.playhead).map((item) =>
+    target && TRACK_ACCEPTS[target.kind].includes(item.clip.type) ? { ...item, trackId: target.id } : item,
+  );
+  const placement = placeClips(state.doc, items, () => nanoid(10));
   if (!placement.ok) {
     state.notify("error", MESSAGES.noRoom);
     return;

@@ -1,14 +1,50 @@
 "use client";
 
-import { memo, useMemo, useRef, type PointerEvent } from "react";
+import { memo, useCallback, useMemo, useRef, type MouseEvent, type PointerEvent } from "react";
+import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { cx } from "@/components/ui/cx";
+import { addTrack, duplicateTrack, paste, removeTrack } from "@/lib/editor/actions";
 import { HEADER_WIDTH, ROW_HEIGHT, visibleClips } from "@/lib/editor/geometry";
-import type { Track } from "@/lib/timeline";
-import { useEditorStore } from "../context";
+import { laneMenu, rightClickEntries } from "@/lib/editor/menus";
+import type { Track, TrackKind } from "@/lib/timeline";
+import { useClipboard, useEditorStore } from "../context";
+import { useToMenuItems } from "../menu-items";
+import { useIsMac } from "../use-shortcuts";
 import { ClipView } from "./clip-view";
 import { LANE_GUTTER } from "./playhead";
 import { TrackHeader } from "./track-header";
-import { useClipDrag } from "./use-clip-drag";
+import { useClipDrag, type TimelineDrag } from "./use-clip-drag";
+
+// Opens the menu of empty timeline space: a track's row (trackId), or below the last row (null). Paste lands
+// at the right-clicked point, which drag works out from the event. A viewer has nothing there, so no menu opens.
+export function useLaneMenu(drag: TimelineDrag | null): (e: MouseEvent<HTMLElement>, trackId: string | null) => void {
+  const store = useEditorStore();
+  const clipboard = useClipboard();
+  const menu = useContextMenu();
+  const toItems = useToMenuItems();
+  return useCallback(
+    (e, trackId) => {
+      e.preventDefault();
+      if (!menu) return;
+      const state = store.getState();
+      const entries = rightClickEntries(laneMenu(state, clipboard.read() !== null, trackId), state.canEdit);
+      if (entries.length === 0) return;
+      const at = drag?.pointAt(e.clientX, e.clientY);
+      menu({
+        ...menuPoint(e),
+        label: "Timeline",
+        items: toItems(entries),
+        onSelect: (id) => {
+          if (id === "paste") paste(store, clipboard, at);
+          else if (id === "track-duplicate" && trackId) duplicateTrack(store, trackId);
+          else if (id === "track-remove" && trackId) removeTrack(store, trackId);
+          else if (id.startsWith("add-")) addTrack(store, id.slice("add-".length) as TrackKind);
+        },
+      });
+    },
+    [store, clipboard, menu, toItems, drag],
+  );
+}
 
 type TrackRowProps = {
   track: Track;
@@ -29,12 +65,22 @@ export const TrackRow = memo(function TrackRow(props: TrackRowProps) {
   const clips = useMemo(() => visibleClips(track.clips, fromFrame, toFrame), [track.clips, fromFrame, toFrame]);
   const laneRef = useRef<HTMLDivElement>(null);
   const drag = useClipDrag();
+  const isMac = useIsMac();
+  const openLaneMenu = useLaneMenu(drag);
+  const isEmptySpace = (target: EventTarget) => target === laneRef.current;
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
-    if (e.button !== 0 || (e.target !== e.currentTarget && e.target !== laneRef.current)) return;
+    if (isMac && e.ctrlKey) return;
+    if (e.button !== 0 || (e.target !== e.currentTarget && !isEmptySpace(e.target))) return;
     const { selection, select } = store.getState();
     if (!e.shiftKey && (selection.clipIds.length > 0 || selection.trackId !== null)) select([]);
     drag?.pressRows(e);
+  }
+
+  // A clip's or the header's own right-click has already been handled.
+  function onContextMenu(e: MouseEvent<HTMLDivElement>) {
+    if (e.defaultPrevented || (e.target !== e.currentTarget && !isEmptySpace(e.target))) return;
+    openLaneMenu(e, track.id);
   }
 
   return (
@@ -44,6 +90,7 @@ export const TrackRow = memo(function TrackRow(props: TrackRowProps) {
       className={cx("flex border-b", divider ? "border-ed-line-strong" : "border-ed-line")}
       style={{ height: ROW_HEIGHT }}
       onPointerDown={onPointerDown}
+      onContextMenu={onContextMenu}
     >
       <TrackHeader track={track} selected={trackSelected} />
       <div data-lane className="relative flex min-w-0 flex-1 items-center" ref={laneRef} style={{ marginLeft: LANE_GUTTER }}>

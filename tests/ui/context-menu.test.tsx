@@ -1,10 +1,16 @@
 // @vitest-environment happy-dom
-import { useEffect } from "react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { useEffect, type ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EditorProvider } from "@/components/editor/context";
+import { EditorScreen } from "@/components/editor/editor-screen";
 import { ContextMenuProvider, menuPoint, placeAtPoint, useContextMenu, type ContextMenuRequest } from "@/components/ui/context-menu";
 import { Menu, type MenuItem } from "@/components/ui/menu";
+import { ROW_HEIGHT, RULER_HEIGHT } from "@/lib/editor/geometry";
+import { findClip } from "@/lib/editor/store";
+import { makeStore } from "../editor/fixtures";
 import { act, fireEvent, render, screen } from "../helpers/dom";
 import { happyDOM, rect } from "../helpers/layout";
+import { LANE_LEFT, installTimelineStubs, renderTimeline, x, y } from "../helpers/timeline-harness";
 
 const ITEMS: MenuItem[] = [
   { id: "cut", label: "Cut", disabled: true },
@@ -303,4 +309,249 @@ it("a menu button still opens its list under itself, or above it near the bottom
   const above = screen.getByRole("menu", { name: "Edit" });
   expect([above.style.top, above.style.left]).toEqual([`${740 - 4 - 150}px`, "100px"]);
   expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Delete" }));
+});
+
+describe("the timeline's right-click menus", () => {
+  installTimelineStubs();
+
+  const withMenus = { wrap: (timeline: ReactNode) => <ContextMenuProvider>{timeline}</ContextMenuProvider> };
+  const BELOW = RULER_HEIGHT + 4 * ROW_HEIGHT + 20; // under the last of the four rows
+  // Each item's text without its key hint.
+  const labels = () =>
+    screen.getAllByRole("menuitem").map((item) => {
+      const copy = item.cloneNode(true) as HTMLElement;
+      copy.querySelector("[data-shortcut]")?.remove();
+      return copy.textContent;
+    });
+  const pick = (name: string) => fireEvent.click(screen.getByRole("menuitem", { name }));
+
+  function setup(store = makeStore()) {
+    const t = renderTimeline(store, withMenus);
+    // Rows top to bottom: cap, t1, v1, a1.
+    const lane = (row: number) => t.lanes[row];
+    const content = t.scroller.firstElementChild as HTMLElement;
+    const rightClick = (el: Element, clientX: number, clientY: number) => fireEvent.contextMenu(el, { clientX, clientY, button: 2 });
+    // Copies c2 through its own menu.
+    const copyC2 = () => {
+      rightClick(t.clip("c2"), x(40), y(2));
+      pick("Copy");
+    };
+    return { ...t, lane, content, rightClick, copyC2 };
+  }
+
+  it("right-clicking a clip opens its menu instead of the browser's", () => {
+    const { clip } = setup();
+    expect(fireEvent.contextMenu(clip("x2"), { clientX: 300, clientY: 200, button: 2 })).toBe(false);
+    const menu = screen.getByRole("menu", { name: "Clip actions" });
+    expect(labels()).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Delete"]);
+    expect(document.activeElement).toBe(screen.getAllByRole("menuitem")[0]);
+    // Hints follow the keys.
+    expect(menu.querySelector("[data-shortcut]")?.textContent).toBe("Ctrl+X");
+  });
+
+  it("a right-click on a clip is not replaced by its row's menu", () => {
+    const { clip } = setup();
+    fireEvent.contextMenu(clip("c1"), { clientX: x(10), clientY: y(2), button: 2 });
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(screen.getByRole("menu", { name: "Clip actions" })).toBeTruthy();
+    expect(screen.queryByRole("menu", { name: "Timeline" })).toBeNull();
+  });
+
+  it("an unselected clip becomes the selection; a clip in a selection keeps it", () => {
+    const { st, clip, rightClick } = setup();
+    act(() => st().select(["x1", "c1"]));
+    rightClick(clip("c1"), x(10), y(2));
+    expect(st().selection.clipIds).toEqual(["x1", "c1"]);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    rightClick(clip("x2"), x(100), y(1));
+    expect(st().selection.clipIds).toEqual(["x2"]);
+    // Never a toggle, even with a modifier held.
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    fireEvent.contextMenu(clip("x2"), { clientX: x(100), clientY: y(1), button: 2, ctrlKey: true, shiftKey: true });
+    expect(st().selection.clipIds).toEqual(["x2"]);
+  });
+
+  it("Delete from the menu removes the selected clips", () => {
+    const { st, clip, rightClick } = setup();
+    act(() => st().select(["x1", "c1"]));
+    rightClick(clip("x1"), x(10), y(1));
+    pick("Delete");
+    expect(findClip(st().doc, "x1")).toBeNull();
+    expect(findClip(st().doc, "c1")).toBeNull();
+    expect(st().queue.map((e) => e.label)).toEqual(["delete"]);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("Split and Duplicate from the menu run as their keys do", () => {
+    const { st, clip, rightClick } = setup();
+    act(() => st().seek(45));
+    rightClick(clip("c2"), x(40), y(2));
+    pick("Split at the playhead");
+    rightClick(clip("x2"), x(100), y(1));
+    pick("Duplicate");
+    expect(st().queue.map((e) => e.label)).toEqual(["split", "duplicate"]);
+  });
+
+  it("Escape closes it and puts focus back on the clip", () => {
+    const { clip, rightClick } = setup();
+    rightClick(clip("x2"), x(100), y(1));
+    expect(fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" })).toBe(false);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(clip("x2"));
+  });
+
+  it("on a Mac, Ctrl+click opens the menu and does not toggle", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const { st, clip, lane, press, release } = setup();
+    act(() => st().select(["x1"]));
+    press(clip("x2"), x(100), y(1), { ctrlKey: true });
+    release(x(100), y(1));
+    expect(st().selection.clipIds).toEqual(["x1"]);
+    fireEvent.contextMenu(clip("x2"), { clientX: x(100), clientY: y(1), button: 2, ctrlKey: true });
+    expect(st().selection.clipIds).toEqual(["x2"]);
+    expect(screen.getByRole("menu", { name: "Clip actions" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    // Nor does a Ctrl press on a row clear the selection.
+    press(lane(2), x(200), y(2), { ctrlKey: true });
+    expect(st().selection.clipIds).toEqual(["x2"]);
+  });
+
+  it("Paste from empty space lands where you right-clicked", () => {
+    const { st, lane, rightClick, copyC2 } = setup();
+    copyC2();
+    expect(fireEvent.contextMenu(lane(2), { clientX: x(200), clientY: y(2), button: 2 })).toBe(false);
+    expect(screen.getByRole("menu", { name: "Timeline" })).toBeTruthy();
+    expect(labels()).toEqual(["Paste", "Duplicate track", "Remove track", "Add video track", "Add overlay track", "Add text track", "Add audio track"]);
+    pick("Paste");
+    const v1 = st().doc.tracks.find((t) => t.id === "v1")!;
+    expect(v1.clips.map((c) => c.start)).toEqual([0, 30, 200]);
+    expect(st().queue.map((e) => e.label)).toEqual(["paste"]);
+    // The text track's row takes text, not video: the copy goes to Video 1 again. The frame is a whole one.
+    rightClick(lane(1), x(300) + 1, y(1));
+    pick("Paste");
+    expect(st().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toEqual([0, 30, 200, 301]);
+  });
+
+  it("Paste is greyed with nothing copied", () => {
+    const { lane, rightClick } = setup();
+    rightClick(lane(2), x(200), y(2));
+    expect((screen.getByRole("menuitem", { name: "Paste" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("right-clicking empty space on Video 1's row offers Remove track, which removes it", () => {
+    const { st, lane, rightClick } = setup();
+    rightClick(lane(2), x(200), y(2));
+    pick("Remove track");
+    expect(st().doc.tracks.some((t) => t.id === "v1")).toBe(false);
+    expect(st().queue.map((e) => e.label)).toEqual(["remove track"]);
+  });
+
+  it("Duplicate track from empty space copies the row's track", () => {
+    const { st, lane, rightClick } = setup();
+    rightClick(lane(1), x(200), y(1));
+    pick("Duplicate track");
+    expect(st().doc.tracks.some((t) => t.name === "Text 1 copy")).toBe(true);
+    expect(st().queue.map((e) => e.label)).toEqual(["duplicate track"]);
+  });
+
+  it("Add text track from empty space adds a text track", () => {
+    const { st, lane, rightClick } = setup();
+    rightClick(lane(2), x(200), y(2));
+    pick("Add text track");
+    expect(st().doc.tracks.filter((t) => t.kind === "text").map((t) => t.name)).toEqual(["Text 1", "Text 2"]);
+    expect(st().queue.map((e) => e.label)).toEqual(["add track"]);
+  });
+
+  it("a right-click below the last row opens 'Timeline' without track entries, and Paste lands at that frame", () => {
+    const { st, content, rightClick, copyC2 } = setup();
+    copyC2();
+    expect(fireEvent.contextMenu(content, { clientX: x(200), clientY: BELOW, button: 2 })).toBe(false);
+    expect(screen.getByRole("menu", { name: "Timeline" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Remove track" })).toBeNull();
+    expect(labels()).toEqual(["Paste", "Add video track", "Add overlay track", "Add text track", "Add audio track"]);
+    pick("Paste");
+    expect(st().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toEqual([0, 30, 200]);
+    // Left of the lanes in view, it is their first frame in view.
+    for (const lane of document.querySelectorAll<HTMLElement>("[data-lane]")) lane.getBoundingClientRect = () => rect(LANE_LEFT - 1000, 0, 2400, ROW_HEIGHT);
+    rightClick(content, 100, BELOW);
+    pick("Paste");
+    expect(st().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toContain((1000 - (LANE_LEFT - 240)) / 2);
+  });
+
+  it("below the last row a clip keeps its own track, even when the last row would take it", () => {
+    // Rows top to bottom: cap, t1, v1, v2; c2 was copied from v1.
+    const doc = makeStore().getState().doc;
+    doc.tracks = [{ id: "v2", kind: "video", name: "Video 2", muted: false, hidden: false, locked: false, clips: [] }, ...doc.tracks.filter((t) => t.kind !== "audio")];
+    const { st, content, rightClick, copyC2 } = setup(makeStore({ doc }));
+    copyC2();
+    rightClick(content, x(200), BELOW);
+    pick("Paste");
+    expect(st().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toEqual([0, 30, 200]);
+    expect(st().doc.tracks.find((t) => t.id === "v2")!.clips).toEqual([]);
+  });
+
+  it("the rename field keeps the browser's menu, and its row opens none", () => {
+    const { st } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Video 1" }));
+    const field = screen.getByRole("textbox", { name: "Track name" });
+    expect(fireEvent.contextMenu(field, { clientX: 60, clientY: y(2), button: 2 })).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(field);
+    expect(st().queue).toEqual([]);
+  });
+
+  it("outside a menu provider a right-click only keeps the browser's menu shut", () => {
+    const { st, clip, lanes, scroller } = renderTimeline();
+    expect(fireEvent.contextMenu(clip("x2"), { clientX: x(100), clientY: y(1), button: 2 })).toBe(false);
+    expect(st().selection.clipIds).toEqual([]);
+    expect(fireEvent.contextMenu(lanes[2], { clientX: x(200), clientY: y(2), button: 2 })).toBe(false);
+    expect(fireEvent.contextMenu(scroller.firstElementChild!, { clientX: x(200), clientY: BELOW, button: 2 })).toBe(false);
+    expect(fireEvent.contextMenu(screen.getByRole("button", { name: "Video 1" }), { clientX: 60, clientY: y(2), button: 2 })).toBe(false);
+    expect(st().selection.trackId).toBeNull();
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("a right-click on the ruler opens no menu of the timeline's", () => {
+    setup();
+    fireEvent.contextMenu(screen.getByRole("slider", { name: "Playhead" }), { clientX: x(10), clientY: 10, button: 2 });
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("a viewer's right-click on a clip offers only Copy; on a row it opens no menu and no browser menu", () => {
+    const { st, clip, lane, content, rightClick } = setup(makeStore({ canEdit: false }));
+    rightClick(clip("x2"), x(100), y(1));
+    expect(labels()).toEqual(["Copy"]);
+    expect(screen.queryAllByRole("separator")).toHaveLength(0);
+    expect(st().selection.clipIds).toEqual(["x2"]);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(rightClick(lane(2), x(200), y(2))).toBe(false);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(rightClick(content, x(200), BELOW)).toBe(false);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+});
+
+it("a key while the menu is open runs nothing", () => {
+  vi.stubGlobal("requestAnimationFrame", () => 1);
+  vi.stubGlobal("cancelAnimationFrame", () => {});
+  try {
+    const store = makeStore();
+    store.getState().seek(45);
+    render(
+      <EditorProvider store={store}>
+        <EditorScreen />
+      </EditorProvider>,
+    );
+    const c2 = document.querySelector<HTMLElement>('[data-clip-id="c2"]')!;
+    fireEvent.contextMenu(c2, { clientX: 5, clientY: 5, button: 2 });
+    expect(screen.getByRole("menu", { name: "Clip actions" })).toBeTruthy();
+    fireEvent.keyDown(document.activeElement!, { key: "s" });
+    expect(store.getState().queue).toEqual([]);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(document.activeElement).toBe(c2);
+    fireEvent.keyDown(c2, { key: "s" });
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["split"]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

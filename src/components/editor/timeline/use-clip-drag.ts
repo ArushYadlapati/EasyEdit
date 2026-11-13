@@ -4,7 +4,16 @@ import { createContext, useContext, useEffect, useLayoutEffect, useMemo, type Po
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { beginMove, beginTrim, resolveDrag, type Drag, type DragGhost } from "@/lib/editor/drag";
 import { moveTrack } from "@/lib/editor/actions";
-import { HEADER_WIDTH, ROW_HEIGHT, RULER_HEIGHT, clipsInBox, displayRows, rowAt, trackDropSlot } from "@/lib/editor/geometry";
+import {
+  HEADER_WIDTH,
+  ROW_HEIGHT,
+  RULER_HEIGHT,
+  clipsInBox,
+  displayRows,
+  rowAt,
+  trackDropSlot,
+  type TimelinePoint,
+} from "@/lib/editor/geometry";
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { MESSAGES } from "@/lib/editor/messages";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
@@ -62,6 +71,7 @@ export type TimelineDrag = {
   pressClip(e: Pointer, clipId: string, grab: Grab, collapse: boolean): void;
   pressRows(e: Pointer): void;
   pressTrack(e: ReactPointerEvent | PointerEvent, trackId: string): void;
+  pointAt(clientX: number, clientY: number): TimelinePoint;
   dispose(): void;
 };
 
@@ -394,6 +404,15 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     },
     pressTrack(e, trackId) {
       begin({ ...press(e), kind: "track", trackId, toRow: null, shown: "" });
+    },
+    // The frame and track under a point on screen. Left of the lanes in view (under the track
+    // headers) counts as their first frame in view; above or below the rows there is no track.
+    pointAt(clientX, clientY) {
+      const lanesLeft = (scroller?.getBoundingClientRect().left ?? 0) + HEADER_WIDTH;
+      const frame = Math.round(frameAt(Math.max(clientX, lanesLeft)));
+      const shown = displayRows(store.getState().doc);
+      const row = Math.floor(yInRows(clientY) / ROW_HEIGHT);
+      return { frame, trackId: row >= 0 && row < shown.length ? shown[row].id : null };
     },
     dispose() {
       end(false);
