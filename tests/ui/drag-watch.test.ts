@@ -86,7 +86,7 @@ it("a drop turns it off and keeps the dragged library item until dragend", () =>
   expect(incoming()).toBe(null);
   expect(drop.state.getState().asset).toBe(asset);
   a.dispatchEvent(dragEvent("dragend", { types: [ASSET_DRAG_TYPE] }));
-  expect(drop.state.getState()).toEqual({ incoming: null, asset: null });
+  expect(drop.state.getState()).toEqual({ incoming: null, asset: null, groups: [] });
 
   // A file drop turns it off the same way.
   a.dispatchEvent(dragEvent("dragenter", FILES));
@@ -215,10 +215,10 @@ it("a library item dragged from this page is an asset", () => {
   a.dispatchEvent(dragEvent("dragstart", { types: [ASSET_DRAG_TYPE] }));
   drop.startAssetDrag(asset);
   a.dispatchEvent(dragEvent("dragenter", { types: [ASSET_DRAG_TYPE] }));
-  expect(drop.state.getState()).toEqual({ incoming: "asset", asset });
+  expect(drop.state.getState()).toEqual({ incoming: "asset", asset, groups: [] });
   // The idle clear keeps the item: the drag has not ended.
   vi.advanceTimersByTime(1000);
-  expect(drop.state.getState()).toEqual({ incoming: null, asset });
+  expect(drop.state.getState()).toEqual({ incoming: null, asset, groups: [] });
 });
 
 it("sets the state only when it changes", () => {
