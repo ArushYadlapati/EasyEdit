@@ -2,9 +2,17 @@ import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { OpError } from "./errors";
 import type { Op } from "./ops";
-import { FORMAT_PRESETS, FRAME_SIZE_MESSAGE, NO_CROP, NO_STRETCH, TRACK_ACCEPTS, isPresetId } from "./presets";
+import {
+  CUSTOM_SIZE_ONLY,
+  FORMAT_PRESETS,
+  FRAME_SIZE_MESSAGE,
+  NO_CROP,
+  NO_STRETCH,
+  TRACK_ACCEPTS,
+  isFrameSize,
+} from "./presets";
 import { MediaClip, TextClip, Transform, TextStyle } from "./types";
-import type { Clip, TimelineDoc, Track } from "./types";
+import type { Clip, FormatId, FrameSize, TimelineDoc, Track } from "./types";
 
 // update_clip re-validates strictly so a typo'd or foreign key is rejected, not dropped.
 const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).strict();
@@ -490,14 +498,43 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
       }
 
       case "set_format": {
-        // A custom format needs its size, which this op does not carry yet.
-        if (!isPresetId(op.format)) throw new OpError("INVALID", `set_format: ${FRAME_SIZE_MESSAGE}`, opIndex);
-        if (op.expect && op.expect.format !== doc.format) throw stale("the format");
-        groups.push([{ op: "set_format", format: doc.format, expect: { format: op.format } }]);
-        const preset = FORMAT_PRESETS[op.format];
+        // A custom format carries its own size; a named one takes its preset's and refuses a size.
+        let size: FrameSize;
+        if (op.format === "custom") {
+          const { width, height } = op;
+          if (width === undefined || height === undefined || !isFrameSize(width, height)) {
+            throw new OpError("INVALID", `set_format: ${FRAME_SIZE_MESSAGE}`, opIndex);
+          }
+          size = { width, height };
+        } else {
+          if (op.width !== undefined || op.height !== undefined) {
+            throw new OpError("INVALID", `set_format: ${CUSTOM_SIZE_ONLY}`, opIndex);
+          }
+          size = FORMAT_PRESETS[op.format];
+        }
+        const guard = op.expect;
+        if (
+          guard &&
+          (guard.format !== doc.format ||
+            (guard.width !== undefined && guard.width !== doc.width) ||
+            (guard.height !== undefined && guard.height !== doc.height))
+        ) {
+          throw stale("the format");
+        }
+        // Each side carries a size only when its format is custom, so between named formats this is the plain undo.
+        const sizeOf = (format: FormatId, of: FrameSize) =>
+          format === "custom" ? { width: of.width, height: of.height } : {};
+        groups.push([
+          {
+            op: "set_format",
+            format: doc.format,
+            ...sizeOf(doc.format, doc),
+            expect: { format: op.format, ...sizeOf(op.format, size) },
+          },
+        ]);
         doc.format = op.format;
-        doc.width = preset.width;
-        doc.height = preset.height;
+        doc.width = size.width;
+        doc.height = size.height;
         break;
       }
 

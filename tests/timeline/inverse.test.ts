@@ -48,6 +48,7 @@ const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["update_clip crop on a cropped clip", { op: "update_clip", clipId: "c2", patch: { transform: { crop: { left: 0.2, top: 0, right: 0, bottom: 0 } } } }, richCropped],
   ["move_track", { op: "move_track", trackId: "t1", index: 0 }],
   ["set_format", { op: "set_format", format: "long_16x9" }],
+  ["set_format custom", { op: "set_format", format: "custom", width: 816, height: 1056 }],
 ];
 
 describe("inverse round trip", () => {

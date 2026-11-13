@@ -151,6 +151,9 @@ describe("expect guards are validated like the fields they guard", () => {
     invalid({ op: "move_clip", clipId: "c", start: 5, expect: { start: 0, bogus: 1 } });
     valid({ op: "set_format", format: "long_16x9", expect: { format: "short_9x16" } });
     invalid({ op: "set_format", format: "long_16x9", expect: { format: "short_9x16", bogus: 1 } });
+    valid({ op: "set_format", format: "custom", width: 816, height: 1056, expect: { format: "custom", width: 800, height: 1000 } });
+    invalid({ op: "set_format", format: "custom", width: 816, height: 1056, expect: { format: "custom", depth: 1 } });
+    invalid({ op: "set_format", format: "custom", width: "816", height: 1056 });
     invalid({ op: "remove_clip", clipId: "c", expect: { start: 0, duration: 3, bogus: 1 } });
     invalid({ op: "remove_track", trackId: "v1", expect: { clipIds: [], bogus: 1 } });
   });

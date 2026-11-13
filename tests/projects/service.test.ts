@@ -135,6 +135,16 @@ describe("projects service", () => {
     expect(project!.doc.format).toBe("long_16x9");
     expect(project!.format).toBe("long_16x9");
     expect((await listProjects(db, as("u1"))).find((p) => p.id === id)!.format).toBe("long_16x9");
+
+    await applyProjectOps(db, as("u1"), {
+      projectId: id,
+      baseVersion: 1,
+      ops: [{ op: "set_format", format: "custom", width: 816, height: 1056 }],
+    });
+    const custom = await getProject(db, as("u1"), id);
+    expect(custom!.format).toBe("custom");
+    expect(custom!.doc.format).toBe("custom");
+    expect(custom!.doc.width).toBe(816);
   });
 
   it("invalid op leaves doc and version unchanged", async () => {

@@ -51,6 +51,7 @@ const CASES: [string, OpInput][] = [
   ["split_clip", { op: "split_clip", clipId: "c1", at: 11, newClipId: "c5" }],
   ["update_clip", { op: "update_clip", clipId: "x1", patch: { text: "GO", style: { color: "#000" } } }],
   ["set_format", { op: "set_format", format: "long_16x9" }],
+  ["set_format custom", { op: "set_format", format: "custom", width: 816, height: 1056 }],
 ];
 
 describe("every accepted change can be undone in one request", () => {
