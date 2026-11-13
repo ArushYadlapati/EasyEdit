@@ -11,7 +11,7 @@ import { NoticeBar } from "./notice-bar";
 import { PanelGrid } from "./panel-grid";
 import { Preview } from "./preview";
 import { RightPanel } from "./right-panel";
-import { ShortcutsDialog } from "./shortcuts-dialog";
+import { SettingsDialog, type SettingsSection } from "./settings-dialog";
 import { Timeline } from "./timeline/timeline";
 import { TopBar } from "./top-bar";
 import { useShortcuts } from "./use-shortcuts";
@@ -27,7 +27,8 @@ type EditorScreenProps = {
 // resizing a panel does not draw the panels again.
 export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writeLayoutCookie }: EditorScreenProps) {
   const deleted = useEditor((s) => s.status === "deleted");
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
+  const [lastSection, setLastSection] = useState<SettingsSection>("project"); // the gear opens it again
   const [layout] = useState(() => createLayoutStore(initialLayout, saveLayout));
   // The Back button can bring back an older page, painted with sizes older than the cookie: the cookie's are the
   // ones last chosen, so they are shown. They are already kept, so nothing is saved.
@@ -37,7 +38,11 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
     const sizes = parseLayout(kept);
     if (formatLayout(sizes) !== formatLayout(layout.getState().wanted)) layout.getState().load(sizes);
   }, [layout]);
-  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  const showSettingsAt = useCallback((section: SettingsSection) => {
+    setSettingsAt(section);
+    setLastSection(section);
+  }, []);
+  const openShortcuts = useCallback(() => showSettingsAt("shortcuts"), [showSettingsAt]);
   useShortcuts(openShortcuts);
 
   return (
@@ -45,7 +50,13 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
       <PanelGrid
         layout={layout}
         deleted={deleted}
-        top={<TopBar onShowShortcuts={openShortcuts} onResetLayout={() => layout.getState().reset()} />}
+        top={
+          <TopBar
+            onShowShortcuts={openShortcuts}
+            onShowSettings={() => showSettingsAt(lastSection)}
+            onResetLayout={() => layout.getState().reset()}
+          />
+        }
         left={<LeftPanel />}
         center={
           deleted ? (
@@ -70,7 +81,7 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
         <p className="text-sm font-semibold">The editor needs a wider window.</p>
         <p className="text-[13px] leading-5 text-ed-muted">Open this project on a laptop or desktop.</p>
       </div>
-      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <SettingsDialog at={settingsAt} onSection={showSettingsAt} onClose={() => setSettingsAt(null)} />
     </div>
   );
 }

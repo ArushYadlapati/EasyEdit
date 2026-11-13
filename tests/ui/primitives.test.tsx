@@ -11,6 +11,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Splitter, type SplitterProps } from "@/components/ui/splitter";
+import { Tabs } from "@/components/ui/tabs";
 import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
@@ -114,6 +115,29 @@ it("a dialog opens with focus on its marked field, text selected; with none mark
   render(<Shown marked={false} />);
   fireEvent.click(screen.getByRole("button", { name: "Open" }));
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
+});
+
+it("a dialog's bar sits between its header and its scrolling body, and its marked tab takes focus", () => {
+  const tabs = [{ id: "a", label: "First" }, { id: "b", label: "Second" }];
+  render(
+    <Dialog title="Settings" open onClose={() => {}} bar={<Tabs label="Sections" value="b" tabs={tabs} onChange={() => {}} autoFocusSelected />}>
+      <p>Body</p>
+    </Dialog>,
+  );
+  const header = screen.getByRole("heading", { name: "Settings" }).closest("header")!;
+  const bar = screen.getByRole("tablist").parentElement!;
+  const body = screen.getByText("Body").parentElement!;
+  expect([...header.parentElement!.children]).toEqual([header, bar, body]);
+  expect(body.className).toContain("overflow-y-auto");
+  expect(bar.className).not.toContain("overflow-y-auto");
+  expect(screen.getByRole("tab", { name: "Second" }).hasAttribute("data-autofocus")).toBe(true);
+  expect(screen.getByRole("tab", { name: "First" }).hasAttribute("data-autofocus")).toBe(false);
+  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Second" }));
+});
+
+it("tabs mark no tab for focus unless asked", () => {
+  render(<Tabs label="Sections" value="a" tabs={[{ id: "a", label: "First" }]} onChange={() => {}} />);
+  expect(screen.getByRole("tab", { name: "First" }).hasAttribute("data-autofocus")).toBe(false);
 });
 
 it("a splitter moves 16 px a key, 64 with Shift, and to its ends with Home and End", () => {

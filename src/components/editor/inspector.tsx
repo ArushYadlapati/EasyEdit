@@ -30,8 +30,9 @@ import { LIMITS } from "@/lib/limits";
 import type { LibraryStore } from "@/lib/media/library-store";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { FORMAT_PRESETS, docDuration, type Clip, type FormatId, type Op, type OpInput, type Track } from "@/lib/timeline";
+import { docDuration, type Clip, type Op, type OpInput, type Track } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "./context";
+import { FormatSelect } from "./format-select";
 import { useLibrary, useMedia } from "./media/media-context";
 import { Timecode } from "./timecode";
 
@@ -495,12 +496,7 @@ function TrackSection({ track }: { track: Track }) {
   );
 }
 
-const FORMATS = Object.entries(FORMAT_PRESETS) as [FormatId, (typeof FORMAT_PRESETS)[FormatId]][];
-
 function ProjectSection() {
-  const store = useEditorStore();
-  const canEdit = useEditor((s) => s.canEdit);
-  const format = useEditor((s) => viewDoc(s).format);
   const fps = useEditor((s) => viewDoc(s).fps);
   const length = useEditor((s) => docDuration(viewDoc(s)));
 
@@ -508,18 +504,7 @@ function ProjectSection() {
     <>
       <Section title="Project">
         <Field label="Format">
-          <Select
-            data-edit-control
-            disabled={!canEdit}
-            value={format}
-            onChange={(event) => store.getState().edit([{ op: "set_format", format: event.target.value as FormatId }], "format change")}
-          >
-            {FORMATS.map(([id, preset]) => (
-              <option key={id} value={id}>
-                {preset.label} ({preset.width} × {preset.height})
-              </option>
-            ))}
-          </Select>
+          <FormatSelect />
         </Field>
         <p className={cx(TEXT, "text-ed-muted")}>{fps} fps</p>
         <p className={cx(TEXT, "text-ed-muted")}>

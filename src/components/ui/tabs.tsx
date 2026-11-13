@@ -9,6 +9,7 @@ export type TabsProps = {
   tabs: { id: string; label: string }[];
   onChange(id: string): void;
   idPrefix?: string; // given: each tab controls the panel with id tabIds(idPrefix, id).panel
+  autoFocusSelected?: boolean; // marks the selected tab data-autofocus, so a Dialog focuses it on opening
   className?: string;
 };
 
@@ -27,7 +28,7 @@ const KEY_MOVES: Record<string, (index: number, count: number) => number> = {
 
 // A row of tabs. The arrow keys, Home and End move to a tab and show it. The caller renders the
 // panel: role="tabpanel", with id and aria-labelledby from tabIds(idPrefix, value).
-export function Tabs({ label, value, tabs, onChange, idPrefix, className }: TabsProps) {
+export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected = false, className }: TabsProps) {
   const ownPrefix = useId();
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const current = tabs.findIndex((t) => t.id === value);
@@ -55,6 +56,7 @@ export function Tabs({ label, value, tabs, onChange, idPrefix, className }: Tabs
           role="tab"
           aria-controls={idPrefix === undefined ? undefined : tabIds(idPrefix, tab.id).panel}
           aria-selected={tab.id === value}
+          data-autofocus={autoFocusSelected && tab.id === value ? "" : undefined}
           tabIndex={index === tabStop ? 0 : -1}
           className={cx(
             "h-7 truncate rounded-md px-3 text-xs font-medium text-ed-muted select-none hover:bg-ed-hover hover:text-ed-text",

@@ -5,14 +5,21 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { cx } from "./cx";
 import { IconButton } from "./icon-button";
 
-export type DialogProps = { title: string; open: boolean; onClose(): void; children: ReactNode; className?: string };
+export type DialogProps = {
+  title: string;
+  open: boolean;
+  onClose(): void;
+  children: ReactNode;
+  className?: string;
+  bar?: ReactNode; // between the header and the body, and does not scroll with the body, such as a row of tabs
+};
 
 // A modal on the native <dialog>, so focus stays inside it and the page behind is inert. Escape and
 // the Close button ask the caller to close it through onClose; open decides. On opening, focus goes to
 // the first element marked data-autofocus, a field's text selected so typing replaces it; with none
 // marked, the browser's choice stands. React's autoFocus cannot do this: the contents mount while the
 // dialog is still closed.
-export function Dialog({ title, open, onClose, children, className }: DialogProps) {
+export function Dialog({ title, open, onClose, children, className, bar }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -56,6 +63,7 @@ export function Dialog({ title, open, onClose, children, className }: DialogProp
               <X />
             </IconButton>
           </header>
+          {bar && <div className="shrink-0 border-b border-ed-line px-3 py-2">{bar}</div>}
           <div className="min-h-0 overflow-y-auto p-4 text-[13px] leading-5">{children}</div>
         </>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, Keyboard, Redo2, Undo2 } from "lucide-react";
+import { ChevronLeft, Keyboard, Redo2, SettingsIcon, Undo2 } from "lucide-react";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { Menu } from "@/components/ui/menu";
@@ -16,13 +16,14 @@ import { useCommandRunner, useShortcutLabel } from "./use-shortcuts";
 
 type TopBarProps = {
   onShowShortcuts(): void;
+  onShowSettings?(): void;
   onResetLayout?(): void; // View → Reset panel sizes
 };
 
 // The row across the top: Projects, the Edit and View menus, the project's name, then the save
-// status and the undo, redo and shortcuts buttons. The menus read the editor as they open, so what
+// status and the undo, redo, settings and shortcuts buttons. The menus read the editor as they open, so what
 // cannot run right then is greyed.
-export function TopBar({ onShowShortcuts, onResetLayout }: TopBarProps) {
+export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout }: TopBarProps) {
   const store = useEditorStore();
   const clipboard = useClipboard();
   const run = useCommandRunner(onShowShortcuts);
@@ -91,6 +92,10 @@ export function TopBar({ onShowShortcuts, onResetLayout }: TopBarProps) {
           onClick={() => redo()}
         >
           <Redo2 />
+        </IconButton>
+        {/* A viewer's own preferences are in Settings too, and so it opens for a deleted project. */}
+        <IconButton label="Settings" onClick={onShowSettings}>
+          <SettingsIcon />
         </IconButton>
         <IconButton label="Keyboard shortcuts" shortcut={keyFor("show-shortcuts")} onClick={onShowShortcuts}>
           <Keyboard />

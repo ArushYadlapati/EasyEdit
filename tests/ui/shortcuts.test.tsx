@@ -7,7 +7,7 @@ import { DEFAULT_KEYMAP, setKeys, type Keymap } from "@/lib/editor/keymap";
 import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
 import { shortcutFor, shouldIgnoreKey } from "@/lib/editor/shortcuts";
 import { makeStore } from "../editor/fixtures";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
 const isMac = () => navigator.platform.startsWith("Mac");
 const MOD = () => (isMac() ? { metaKey: true } : { ctrlKey: true });
@@ -120,23 +120,24 @@ it("Space plays even when a clip has focus", () => {
   expect(st().playing).toBe(true);
 });
 
-it("? opens the list of shortcuts, and Escape closes it without clearing the selection", () => {
+it("? opens Settings at Shortcuts, and Escape closes it without clearing the selection", () => {
   const { st } = show();
-  expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
+  expect(document.querySelector("dialog[open]")).toBeNull();
   press(document.body, "?", { shiftKey: true });
-  const title = screen.getByText("Keyboard shortcuts");
-  const dialog = title.closest("dialog");
-  expect(dialog?.open).toBe(true);
-  for (const group of ["Playback", "Editing", "Timeline", "General"]) expect(screen.getByRole("heading", { name: group })).toBeTruthy();
-  expect(screen.getByText("Delete and close the gap")).toBeTruthy();
-  expect(dialog?.querySelectorAll("kbd").length).toBeGreaterThan(30);
+  const dialog = document.querySelector<HTMLDialogElement>("dialog[open]")!;
+  const inside = within(dialog);
+  expect(inside.getByRole("heading", { name: "Settings" })).toBeTruthy();
+  expect(inside.getByRole("tab", { name: "Shortcuts" }).getAttribute("aria-selected")).toBe("true");
+  for (const group of ["Playback", "Editing", "Timeline", "General"]) expect(inside.getByRole("heading", { name: group })).toBeTruthy();
+  expect(inside.getByText("Delete and close the gap")).toBeTruthy();
+  expect(dialog.querySelectorAll("kbd").length).toBeGreaterThan(30);
   // While it is open, keys are not shortcuts.
   press(document.body, "Delete");
   expect(st().queue).toEqual([]);
   // Escape, pressed where focus is inside the dialog, closes it and nothing else.
-  press(title, "Escape");
-  expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
-  expect(dialog?.open).toBe(false);
+  press(inside.getByRole("heading", { name: "Settings" }), "Escape");
+  expect(document.querySelector("dialog[open]")).toBeNull();
+  expect(dialog.open).toBe(false);
   expect(st().selection.clipIds).toEqual(["x1"]);
 });
 
@@ -163,12 +164,14 @@ it("keys pressed on a button inside an open dialog never split or delete the cli
   expect(shouldIgnoreKey({ ...s, key: "Backspace" }, button)).toBe(true);
 });
 
-it("the top bar opens the list of shortcuts too", () => {
+it("Keyboard shortcuts opens Settings at Shortcuts", () => {
   show(false);
   fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
-  expect(screen.getByText("Keyboard shortcuts").closest("dialog")?.open).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
+  const dialog = document.querySelector<HTMLDialogElement>("dialog[open]")!;
+  expect(within(dialog).getByRole("heading", { name: "Settings" })).toBeTruthy();
+  expect(within(dialog).getByRole("tab", { name: "Shortcuts" }).getAttribute("aria-selected")).toBe("true");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  expect(document.querySelector("dialog[open]")).toBeNull();
 });
 
 // Focuses a control the way a mouse click does (a pointer goes down, then focus arrives) or the way
@@ -291,7 +294,7 @@ it("does nothing while the window is too narrow for the editor", () => {
   }
   expect(matchMedia).toHaveBeenCalledWith("(min-width: 64rem)");
   expect([st().queue, st().playhead, st().playing]).toEqual([[], 0, false]);
-  expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
+  expect(document.querySelector("dialog[open]")).toBeNull();
 });
 
 it("leaves copy and cut to the browser with no clip selected, or with text selected on the page", () => {
