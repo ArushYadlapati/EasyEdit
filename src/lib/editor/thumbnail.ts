@@ -1,5 +1,5 @@
-import { textFonts } from "@/lib/editor/fonts";
 import { mediaWants } from "@/lib/editor/media-plan";
+import { probeRequests, type FontRequest } from "@/lib/export/fonts";
 import type { LibraryState } from "@/lib/media/library-store";
 import { playbackFileFor, posterFileFor } from "@/lib/media/playback";
 import { activeClips, drawFrame, type Ctx2D, type ResolvedSource } from "@/lib/render/compositor";
@@ -69,7 +69,7 @@ export type ThumbnailDeps = {
   readFile(fileId: string): Promise<Blob | null>; // null: it could not be read
   decodeVideo(blob: Blob, seconds: number): Promise<ResolvedSource | null>;
   decodeImage(blob: Blob): Promise<ResolvedSource | null>;
-  loadFonts(fonts: Iterable<string>): Promise<void>;
+  loadFonts(requests: FontRequest[]): Promise<void>;
   resolveFont(family: string): string;
   makeCanvas(width: number, height: number): ThumbnailCanvas;
 };
@@ -149,7 +149,7 @@ export async function renderThumbnail(doc: TimelineDoc, deps: ThumbnailDeps, isC
 
   const toClose: ResolvedSource[] = [];
   try {
-    const fontsLoaded = deps.loadFonts(textFonts(doc, deps.resolveFont));
+    const fontsLoaded = deps.loadFonts(probeRequests(doc, deps.resolveFont));
     const decoded = new Map<string, ResolvedSource>();
     for (const source of plan.sources) {
       const value = await decodeSource(source, deps, isCurrent, toClose);

@@ -72,12 +72,12 @@ describe("browserThumbnailDeps", () => {
 describe("loadFonts", () => {
   it("loadFonts settles without document.fonts, and when a face fails", async () => {
     expect("fonts" in document).toBe(false);
-    await expect(loadFonts(['700 16px "Geist"'])).resolves.toBeUndefined();
+    await expect(loadFonts([{ font: '700 16px "Geist"', text: "hi" }])).resolves.toBeUndefined();
     const load = vi.fn(() => Promise.reject(new Error("x")));
     Object.defineProperty(document, "fonts", { configurable: true, value: { load } });
     try {
-      await expect(loadFonts(['700 16px "Geist"'])).resolves.toBeUndefined();
-      expect(load).toHaveBeenCalledWith('700 16px "Geist"');
+      await expect(loadFonts([{ font: '700 16px "Geist"', text: "hi" }])).resolves.toBeUndefined();
+      expect(load).toHaveBeenCalledWith('700 16px "Geist"', "hi");
     } finally {
       delete (document as { fonts?: unknown }).fonts;
     }
