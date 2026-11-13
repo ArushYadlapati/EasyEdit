@@ -21,13 +21,14 @@ import { placeClips } from "./placement";
 import { findClip, type EditorStore } from "./store";
 import { presetClip, type TextPreset } from "./text-presets";
 
-// Puts a text preset at the playhead, on the selected text track when it has room, and selects it.
-export function addText(store: EditorStore, preset: TextPreset): void {
+// Puts a text preset at the playhead, on the selected text track when it has room, and selects it. The length in
+// seconds is the caller's (Settings), else the default.
+export function addText(store: EditorStore, preset: TextPreset, seconds?: number): void {
   const state = store.getState();
   if (!state.canEdit) return;
   const selected = state.doc.tracks.find((t) => t.id === state.selection.trackId);
   const trackId = selected?.kind === "text" ? selected.id : null;
-  const placement = placeClips(state.doc, [{ clip: presetClip(preset, state.playhead, state.doc.fps), trackId }], () => nanoid(10));
+  const placement = placeClips(state.doc, [{ clip: presetClip(preset, state.playhead, state.doc.fps, seconds), trackId }], () => nanoid(10));
   if (!placement.ok) {
     state.notify("error", MESSAGES.noRoom);
     return;
@@ -37,17 +38,24 @@ export function addText(store: EditorStore, preset: TextPreset): void {
 }
 
 // Puts a clip of a library asset at the frame given, else the playhead, and selects it. The clip would like the track
-// given, else the selected track when that track takes it; placeClips finds where it goes.
-export function addMedia(store: EditorStore, asset: AssetView, at: { frame?: number; trackId?: string | null } = {}): void {
+// given, else the selected track when that track takes it; placeClips finds where it goes. A still image lasts
+// stillSeconds (Settings), else the default; a video or audio clip runs to the end of its media.
+export function addMedia(
+  store: EditorStore,
+  asset: AssetView,
+  opts: { frame?: number; trackId?: string | null; stillSeconds?: number } = {},
+): void {
   const state = store.getState();
   if (!state.canEdit) return;
-  const clip = asset.status === "ready" && !asset.removed ? mediaClipFor(asset, at.frame ?? state.playhead, state.doc.fps) : null;
+  // For video and audio durationSeconds would cap the length, so only an image is given one.
+  const length = { durationSeconds: asset.kind === "image" ? opts.stillSeconds : undefined };
+  const clip = asset.status === "ready" && !asset.removed ? mediaClipFor(asset, opts.frame ?? state.playhead, state.doc.fps, length) : null;
   if (!clip) {
     state.notify("info", MESSAGES.mediaNotReady);
     return;
   }
   const selected = state.doc.tracks.find((t) => t.id === state.selection.trackId);
-  const trackId = at.trackId !== undefined ? at.trackId : selected && TRACK_ACCEPTS[selected.kind].includes(clip.type) ? selected.id : null;
+  const trackId = opts.trackId !== undefined ? opts.trackId : selected && TRACK_ACCEPTS[selected.kind].includes(clip.type) ? selected.id : null;
   // The id is a stand-in, as presetClip's is: placement gives the clip its real one.
   const placement = placeClips(state.doc, [{ clip: { ...clip, id: "new" }, trackId }], () => nanoid(10));
   if (!placement.ok) {

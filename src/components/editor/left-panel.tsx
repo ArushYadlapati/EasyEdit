@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, tabIds } from "@/components/ui/tabs";
 import { addMedia, addText } from "@/lib/editor/actions";
 import { TEXT_PRESETS } from "@/lib/editor/text-presets";
-import { useEditor, useEditorStore } from "./context";
+import type { AssetView } from "@/lib/media/types";
+import { useEditor, useEditorStore, useSettingsStore } from "./context";
 import { MediaTab, type PanelProps } from "./media/media-tab";
 
 const TABS = [
@@ -15,6 +16,7 @@ const TABS = [
 
 function TextTab({ panel }: { panel: PanelProps }) {
   const store = useEditorStore();
+  const settings = useSettingsStore();
   const canEdit = useEditor((s) => s.canEdit);
   return (
     <div {...panel} className="min-h-0 flex-1 overflow-y-auto">
@@ -27,7 +29,7 @@ function TextTab({ panel }: { panel: PanelProps }) {
             aria-label={`Add ${preset.label.toLowerCase()}`}
             className="w-full justify-start"
             style={{ fontWeight: Math.min(preset.fontWeight, 600) }}
-            onClick={() => addText(store, preset)}
+            onClick={() => addText(store, preset, settings.getState().textSeconds)}
           >
             {preset.label}
           </Button>
@@ -40,6 +42,8 @@ function TextTab({ panel }: { panel: PanelProps }) {
 
 export function LeftPanel() {
   const store = useEditorStore();
+  const settings = useSettingsStore();
+  const addAsset = (asset: AssetView) => addMedia(store, asset, { stillSeconds: settings.getState().stillSeconds });
   const [tab, setTab] = useState("text");
   const current = TABS.find((t) => t.id === tab) ?? TABS[0];
   const idPrefix = useId();
@@ -52,7 +56,7 @@ export function LeftPanel() {
       <div className="flex h-11 shrink-0 items-center border-b border-ed-line px-3">
         <Tabs label="Add" value={current.id} tabs={TABS} onChange={setTab} idPrefix={idPrefix} />
       </div>
-      {current.id === "text" ? <TextTab panel={panel} /> : <MediaTab panel={panel} onAdd={(asset) => addMedia(store, asset)} />}
+      {current.id === "text" ? <TextTab panel={panel} /> : <MediaTab panel={panel} onAdd={addAsset} />}
     </div>
   );
 }

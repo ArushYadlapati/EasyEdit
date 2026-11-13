@@ -181,6 +181,9 @@ describe("text presets", () => {
       style: { fontFamily: "Geist", fontSize: 96, fontWeight: 700, color: "#ffffff", align: "center" },
     });
     expect([24, 60].map((fps) => presetClip(TEXT_PRESETS[0], 0, fps).duration)).toEqual([72, 180]);
+    // A length from Settings, in whole frames and never below one.
+    expect(presetClip(TEXT_PRESETS[0], 0, 25, 2.5).duration).toBe(63);
+    expect(presetClip(TEXT_PRESETS[0], 0, 30, 0.01).duration).toBe(1);
     expect(presetClip(TEXT_PRESETS[2], 0, 30)).toMatchObject({ transform: { y: 0.62 }, style: { fontSize: 44, fontWeight: 600, align: "left" } });
   });
 

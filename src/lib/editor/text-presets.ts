@@ -19,13 +19,13 @@ export const TEXT_PRESETS: TextPreset[] = [
   { id: "lower-third", label: "Lower third", text: "Name and role", fontSize: 44, fontWeight: 600, align: "left", y: 0.62 },
 ];
 
-// The id is a stand-in: placement gives the clip its real one.
-export function presetClip(preset: TextPreset, start: number, fps: number): TextClip {
+// The id is a stand-in: placement gives the clip its real one. The length is in seconds, as Settings gives it.
+export function presetClip(preset: TextPreset, start: number, fps: number, seconds = DEFAULT_TEXT_SECONDS): TextClip {
   return {
     id: "preset",
     type: "text",
     start,
-    duration: DEFAULT_TEXT_SECONDS * fps,
+    duration: Math.max(1, Math.round(seconds * fps)),
     text: preset.text,
     transform: { ...DEFAULT_TRANSFORM, x: 0.5, y: preset.y },
     style: { fontFamily: TEXT_FONT, fontSize: preset.fontSize, fontWeight: preset.fontWeight, color: "#ffffff", align: preset.align },

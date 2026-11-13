@@ -3,6 +3,10 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorShell } from "@/components/editor/editor-shell";
 import { createMediaServices, type MediaServices } from "@/components/editor/media/media-context";
+import { formatTimecode } from "@/lib/editor/geometry";
+import { DEFAULT_KEYMAP, KEYMAP_KEY, formatKeymap, setOff } from "@/lib/editor/keymap";
+import { DEFAULT_LAYOUT } from "@/lib/editor/layout";
+import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
 import type { EditorInit } from "@/lib/editor/types";
 import type { MediaApi } from "@/lib/media/api";
 import { createLibraryStore, type RefreshReason } from "@/lib/media/library-store";
@@ -17,6 +21,19 @@ vi.mock("@/components/editor/media/media-context", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/components/editor/media/media-context")>();
   return { ...real, createMediaServices: vi.fn(real.createMediaServices) };
 });
+// The real settings store, wrapped so a test can read the one the shell made.
+vi.mock("@/lib/editor/settings", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/editor/settings")>();
+  return { ...real, createSettingsStore: vi.fn(real.createSettingsStore) };
+});
+
+const EDITOR_URL = "http://localhost:3000/editor/p1";
+const PREFS_TEXT = () => document.cookie.split("; ").find((c) => c.startsWith("easyedit-prefs="));
+// happy-dom keeps a cookie set with max-age=0, empty; a date in the past removes it.
+const expireCookies = () => {
+  happyDOM().setURL(EDITOR_URL);
+  for (const name of ["easyedit-prefs", "easyedit-layout"]) document.cookie = `${name}=; path=/editor; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+};
 
 const initial = (): EditorInit => ({ projectId: "p1", name: "Qual recap", doc: sampleDoc(), version: 5, me: { id: "u1", name: "Ada" }, canEdit: true });
 
@@ -63,6 +80,8 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  expireCookies();
+  localStorage.clear();
 });
 
 it("asks before the page unloads only while edits are unsent", async () => {
@@ -328,4 +347,111 @@ it("starts from the panel sizes the page read, and keeps a new size in the brows
   expect(left.parentElement!.style.getPropertyValue("--ed-left-w")).toBe("300px");
   fireEvent.keyDown(left, { key: "ArrowLeft" });
   expect(document.cookie).toContain("easyedit-layout=284_240_400");
+});
+
+const pressed = (name: string) => screen.getByRole("button", { name }).getAttribute("aria-pressed");
+const leftWidth = () => screen.getByRole("separator", { name: "Left panel width" }).parentElement!.style.getPropertyValue("--ed-left-w");
+const shellSettings = () => vi.mocked(createSettingsStore).mock.results[0].value as SettingsStore;
+
+it("snapping and safe zones are remembered in this browser", () => {
+  stubServer();
+  happyDOM().setURL(EDITOR_URL);
+  const first = render(<EditorShell initial={initial()} />);
+  expect(PREFS_TEXT()).toBeUndefined(); // nothing is written until something changes
+  fireEvent.click(screen.getByRole("button", { name: "Safe zones" }));
+  expect(document.cookie).toContain("sz:0");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:0.sn:1.z:fill.st:30.tx:30");
+  fireEvent.click(screen.getByRole("button", { name: "Snap" }));
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:0.sn:0.z:fill.st:30.tx:30");
+  first.unmount();
+
+  // The page read the cookie: the store starts from it. With no newer cookie the page's values stand.
+  expireCookies();
+  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, snapping: false }} />);
+  expect(pressed("Snap")).toBe("false");
+  expect(pressed("Safe zones")).toBe("true");
+  expect(PREFS_TEXT()).toBeUndefined();
+});
+
+it("a change in Settings is kept with the snapping and safe zones of the moment", () => {
+  stubServer();
+  happyDOM().setURL(EDITOR_URL);
+  vi.mocked(createSettingsStore).mockClear();
+  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, safeZones: false }} />);
+  act(() => shellSettings().getState().set({ units: "in", stillSeconds: 4.5 }));
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:0.sn:1.z:fill.st:45.tx:30");
+  act(() => shellSettings().getState().set({ lockAspect: false }));
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:0.sn:1.z:fill.st:45.tx:30");
+});
+
+it("the editor's controls read the lengths the page gave", async () => {
+  stubServer();
+  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, textSeconds: 5 }} />);
+  await addTitle();
+  const fps = sampleDoc().fps;
+  expect(screen.getByRole("button", { name: `Text clip "Your title", ${formatTimecode(0, fps)} to ${formatTimecode(5 * fps, fps)}` })).toBeTruthy();
+});
+
+it("a newer cookie wins over the page's props after mount", () => {
+  stubServer();
+  happyDOM().setURL(EDITOR_URL);
+  document.cookie = "easyedit-prefs=u:cm.sz:1.sn:0.z:fill.st:30.tx:30; path=/editor";
+  document.cookie = "easyedit-layout=300_240_; path=/editor";
+  vi.mocked(createSettingsStore).mockClear();
+  const written = vi.spyOn(document, "cookie", "set");
+  render(<EditorShell initial={initial()} prefs={DEFAULT_PREFS} layout={DEFAULT_LAYOUT} />);
+  expect(shellSettings().getState().units).toBe("cm");
+  expect(pressed("Snap")).toBe("false");
+  expect(leftWidth()).toBe("300px");
+  // Nothing was saved by taking the cookie's values.
+  expect(written).not.toHaveBeenCalled();
+  written.mockRestore();
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:cm.sz:1.sn:0.z:fill.st:30.tx:30");
+  expect(document.cookie).toContain("easyedit-layout=300_240_");
+  // A later toggle saves the cookie's other values with it.
+  fireEvent.click(screen.getByRole("button", { name: "Snap" }));
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:cm.sz:1.sn:1.z:fill.st:30.tx:30");
+});
+
+it("after a newer layout cookie, going back to the page's size is saved", () => {
+  stubServer();
+  happyDOM().setURL(EDITOR_URL);
+  document.cookie = "easyedit-layout=300_240_; path=/editor";
+  render(<EditorShell initial={initial()} layout={{ left: 284, right: 240, timeline: null }} />);
+  expect(leftWidth()).toBe("300px");
+  fireEvent.keyDown(screen.getByRole("separator", { name: "Left panel width" }), { key: "ArrowLeft" });
+  expect(leftWidth()).toBe("284px");
+  expect(document.cookie).toContain("easyedit-layout=284_240_");
+});
+
+it("the keymap kept in this browser is loaded after mount, and a change is kept", () => {
+  stubServer();
+  // Stored in another order than the editor writes it, so a write would show.
+  const raw = JSON.stringify({ off: ["split"], v: 1 });
+  localStorage.setItem(KEYMAP_KEY, raw);
+  vi.mocked(createSettingsStore).mockClear();
+  render(<EditorShell initial={initial()} />);
+  expect(shellSettings().getState().keymap).toEqual(setOff(DEFAULT_KEYMAP, "split", true));
+  expect(localStorage.getItem(KEYMAP_KEY)).toBe(raw);
+  act(() => shellSettings().getState().setKeymap(DEFAULT_KEYMAP));
+  expect(localStorage.getItem(KEYMAP_KEY)).toBe(formatKeymap(DEFAULT_KEYMAP));
+});
+
+it("under strict mode the keymap and a newer cookie are taken once, and nothing is saved", () => {
+  stubServer();
+  happyDOM().setURL(EDITOR_URL);
+  document.cookie = "easyedit-prefs=u:in.sz:0.sn:1.z:50.st:30.tx:30; path=/editor";
+  localStorage.setItem(KEYMAP_KEY, JSON.stringify({ off: ["split"], v: 1 }));
+  const setItem = vi.spyOn(Storage.prototype, "setItem");
+  vi.mocked(createSettingsStore).mockClear();
+  render(
+    <StrictMode>
+      <EditorShell initial={initial()} />
+    </StrictMode>,
+  );
+  expect(pressed("Safe zones")).toBe("false");
+  const used = vi.mocked(createSettingsStore).mock.results.map((r) => (r.value as SettingsStore).getState());
+  expect(used.some((s) => s.units === "in" && s.boardZoom === 50 && s.keymap.off.includes("split"))).toBe(true);
+  expect(setItem).not.toHaveBeenCalled();
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:0.sn:1.z:50.st:30.tx:30");
 });

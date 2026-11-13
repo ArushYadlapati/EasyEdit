@@ -170,7 +170,7 @@ function isOwnHead(entry: ActivityEntry, head: PendingEdit | undefined, meId: st
 
 export function createEditorStore(
   init: EditorInit,
-  deps: { genId?: () => string; now?: () => number } = {},
+  deps: { genId?: () => string; now?: () => number; view?: { snapping: boolean; showSafeZones: boolean } } = {},
 ): EditorStore {
   // Edit ids are sent as request ids, which must be 8 to 64 characters of A-Za-z0-9_-.
   const genId = deps.genId ?? (() => nanoid(10));
@@ -278,7 +278,7 @@ export function createEditorStore(
       zoom: 2,
       viewportPx: 1200,
       fitRequest: 0,
-      snapping: true,
+      snapping: deps.view?.snapping ?? true, // view: what this browser kept, which the caller read
       status: "saved",
       notice: null,
       undoStack: [],
@@ -287,7 +287,7 @@ export function createEditorStore(
       remote: null,
       playing: false,
       rate: 1,
-      showSafeZones: true,
+      showSafeZones: deps.view?.showSafeZones ?? true,
 
       edit(ops, label) {
         const state = get();

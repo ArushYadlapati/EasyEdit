@@ -4,9 +4,10 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 import { useStore } from "zustand";
 import type { ApiFailure, ProjectApi } from "@/lib/editor/api";
 import { createClipboard, type ClipboardStore } from "@/lib/editor/clipboard";
+import { DEFAULT_PREFS, createSettingsStore, type SettingsState, type SettingsStore } from "@/lib/editor/settings";
 import type { EditorState, EditorStore } from "@/lib/editor/store";
 
-type EditorContextValue = { store: EditorStore; api: ProjectApi; clipboard: ClipboardStore };
+type EditorContextValue = { store: EditorStore; api: ProjectApi; clipboard: ClipboardStore; settings: SettingsStore };
 
 const EditorContext = createContext<EditorContextValue | null>(null);
 
@@ -21,14 +22,22 @@ const OFFLINE_API: ProjectApi = {
   rename: async () => NETWORK,
 };
 
-type EditorProviderProps = { store: EditorStore; api?: ProjectApi; clipboard?: ClipboardStore; children: ReactNode };
+type EditorProviderProps = {
+  store: EditorStore;
+  api?: ProjectApi;
+  clipboard?: ClipboardStore;
+  settings?: SettingsStore;
+  children: ReactNode;
+};
 
-// Without a clipboard, as in tests, copied clips are kept in memory.
-export function EditorProvider({ store, api, clipboard, children }: EditorProviderProps) {
+// Without a clipboard, as in tests, copied clips are kept in memory. Without settings, the defaults are used and
+// changes are kept in memory.
+export function EditorProvider({ store, api, clipboard, settings, children }: EditorProviderProps) {
   const [memoryClipboard] = useState(createClipboard);
+  const [memorySettings] = useState(() => createSettingsStore({ prefs: DEFAULT_PREFS }));
   const value = useMemo(
-    () => ({ store, api: api ?? OFFLINE_API, clipboard: clipboard ?? memoryClipboard }),
-    [store, api, clipboard, memoryClipboard],
+    () => ({ store, api: api ?? OFFLINE_API, clipboard: clipboard ?? memoryClipboard, settings: settings ?? memorySettings }),
+    [store, api, clipboard, memoryClipboard, settings, memorySettings],
   );
   return <EditorContext value={value}>{children}</EditorContext>;
 }
@@ -55,4 +64,14 @@ export function useEditorApi(): ProjectApi {
 
 export function useClipboard(): ClipboardStore {
   return useEditorContext().clipboard;
+}
+
+// Reads this browser's preferences and re-renders when the selected value changes. A click, drop or key handler
+// reads useSettingsStore().getState() at that moment instead.
+export function useSettings<T>(selector: (state: SettingsState) => T): T {
+  return useStore(useEditorContext().settings, selector);
+}
+
+export function useSettingsStore(): SettingsStore {
+  return useEditorContext().settings;
 }

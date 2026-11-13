@@ -96,6 +96,7 @@ export type LayoutState = {
   resize(which: PanelId, px: number): void; // a drag or a key: whole pixels within the bounds; not saved
   commit(): void; // saves the sizes when they differ from the last ones saved
   reset(which?: PanelId): void; // one size, or all three, back to the default; saved
+  load(layout: Layout): void; // sizes already kept elsewhere (a newer cookie): shown and taken as saved; not saved
 };
 export type LayoutStore = StoreApi<LayoutState>;
 
@@ -129,6 +130,10 @@ export function createLayoutStore(initial: Layout, save: (layout: Layout) => voi
       const wanted = which ? { ...get().wanted, [which]: DEFAULT_LAYOUT[which] } : DEFAULT_LAYOUT;
       set({ wanted });
       remember(wanted);
+    },
+    load: (layout) => {
+      saved = layout;
+      set({ wanted: layout });
     },
   }));
 }

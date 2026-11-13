@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  addTrack, copySelection, cutSelection, deleteSelection, goToEdge, nudgeSelection, paste, removeTrack, renameTrack, reorderTrack,
-  selectAll, splitAtPlayhead, toggleTrack,
+  addMedia, addText, addTrack, copySelection, cutSelection, deleteSelection, goToEdge, nudgeSelection, paste, removeTrack, renameTrack,
+  reorderTrack, selectAll, splitAtPlayhead, toggleTrack,
 } from "@/lib/editor/actions";
 import { CLIPBOARD_KEY, copyClips, createClipboard, pasteItems } from "@/lib/editor/clipboard";
 import {
@@ -10,7 +10,9 @@ import {
 import { displayRows } from "@/lib/editor/geometry";
 import { MESSAGES } from "@/lib/editor/messages";
 import { findClip } from "@/lib/editor/store";
+import { TEXT_PRESETS } from "@/lib/editor/text-presets";
 import { applyOps, prepareOps, type OpInput, type TimelineDoc, type Track } from "@/lib/timeline";
+import { assetView } from "../helpers/media-services";
 import { makeStore, sampleDoc, text, video } from "./fixtures";
 
 const ids = (doc: TimelineDoc) => doc.tracks.map((t) => t.id);
@@ -301,6 +303,36 @@ describe("runners", () => {
     expect(track("t1")).toBeUndefined();
     expect(st().doc.tracks.map((t) => t.name)).toEqual(["Video 1", "Captions", "Audio 1", "Overlay 1"]);
     expect(st().queue.map((e) => e.label)).toEqual(["add track", "rename track", "track change", "reorder tracks", "track change", "remove track"]);
+  });
+
+  it("text and still lengths come from the caller", () => {
+    const added = (store: ReturnType<typeof makeStore>) => findClip(store.getState().doc, store.getState().selection.clipIds[0])!.clip;
+    const forText = makeStore();
+    forText.getState().seek(300);
+    addText(forText, TEXT_PRESETS[0], 5);
+    expect(added(forText)).toMatchObject({ type: "text", duration: 150 });
+
+    const image = assetView({ id: "i1", kind: "image", durationMs: null, fps: null, hasAudio: false });
+    const forImage = makeStore();
+    forImage.getState().seek(300);
+    addMedia(forImage, image, { stillSeconds: 5 });
+    expect(added(forImage)).toMatchObject({ type: "image", duration: 150 });
+
+    // For a video the length is its own; a still length is no cap.
+    const forVideo = makeStore();
+    forVideo.getState().seek(300);
+    addMedia(forVideo, assetView({ durationMs: 2_000 }), { stillSeconds: 5 });
+    expect(added(forVideo)).toMatchObject({ type: "video", duration: 60 });
+    const shortVideo = makeStore();
+    shortVideo.getState().seek(300);
+    addMedia(shortVideo, assetView({ durationMs: 2_000 }), { stillSeconds: 1 });
+    expect(added(shortVideo)).toMatchObject({ type: "video", duration: 60 });
+
+    // Without a length, the defaults stand.
+    const plain = makeStore();
+    plain.getState().seek(300);
+    addMedia(plain, image);
+    expect(added(plain)).toMatchObject({ type: "image", duration: 90 });
   });
 
   it("do nothing for a viewer, with no message", () => {

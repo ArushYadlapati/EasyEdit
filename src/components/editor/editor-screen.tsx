@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
-import { DEFAULT_LAYOUT, createLayoutStore, type Layout } from "@/lib/editor/layout";
-import { writeLayoutCookie } from "./browser-prefs";
+import { DEFAULT_LAYOUT, LAYOUT_COOKIE, createLayoutStore, formatLayout, parseLayout, type Layout } from "@/lib/editor/layout";
+import { readCookie, writeLayoutCookie } from "./browser-prefs";
 import { useEditor } from "./context";
 import { LeaveLink } from "./leave-link";
 import { LeftPanel } from "./left-panel";
@@ -29,6 +29,14 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
   const deleted = useEditor((s) => s.status === "deleted");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [layout] = useState(() => createLayoutStore(initialLayout, saveLayout));
+  // The Back button can bring back an older page, painted with sizes older than the cookie: the cookie's are the
+  // ones last chosen, so they are shown. They are already kept, so nothing is saved.
+  useEffect(() => {
+    const kept = readCookie(LAYOUT_COOKIE);
+    if (kept === null) return;
+    const sizes = parseLayout(kept);
+    if (formatLayout(sizes) !== formatLayout(layout.getState().wanted)) layout.getState().load(sizes);
+  }, [layout]);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   useShortcuts(openShortcuts);
 

@@ -4,10 +4,14 @@ import { useEffect, useState } from "react";
 import { createProjectApi } from "@/lib/editor/api";
 import { createClipboard } from "@/lib/editor/clipboard";
 import type { Layout } from "@/lib/editor/layout";
+import {
+  DEFAULT_PREFS, PREFS_COOKIE, createSettingsStore, formatPrefs, parsePrefs, type Prefs, type SettingsSave,
+} from "@/lib/editor/settings";
 import { createEditorStore } from "@/lib/editor/store";
 import { createSync } from "@/lib/editor/sync";
 import type { EditorInit } from "@/lib/editor/types";
 import { docAssetIds } from "@/lib/media/library-store";
+import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser-prefs";
 import { EditorProvider } from "./context";
 import { EditorScreen } from "./editor-screen";
 import { MediaProvider, createMediaServices } from "./media/media-context";
@@ -25,16 +29,46 @@ const localStore = {
 // A refresh or an ensure that fails has nothing to tell the shell: the library store keeps its own problem.
 const quietly = (work: Promise<void>) => void work.catch(() => {});
 
-// Owns the store, the API client, the sync and the media services for one open project, and ties them to the page:
-// tab visibility, focus, coming back online, the user's clicks and keys, and leaving with unsent changes or running
-// uploads. The panel sizes come from the browser's cookie, which the page read.
-export function EditorShell({ initial, layout }: { initial: EditorInit; layout?: Layout }) {
-  const [{ store, api, sync, clipboard, media }] = useState(() => {
-    const store = createEditorStore(initial);
+// Owns the store, the API client, the sync, the media services and this browser's preferences for one open project,
+// and ties them to the page: tab visibility, focus, coming back online, the user's clicks and keys, and leaving with
+// unsent changes or running uploads. The panel sizes and the preferences come from the browser's cookies, which the
+// page read; the keymap is read from local storage once the editor is on screen.
+export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; layout?: Layout; prefs?: Prefs }) {
+  const [{ store, api, sync, clipboard, media, settings, savePrefs }] = useState(() => {
+    const store = createEditorStore(initial, { view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones } });
     const api = createProjectApi(initial.projectId);
     const sync = createSync({ store, api, isVisible: () => document.visibilityState === "visible" });
-    return { store, api, sync, clipboard: createClipboard(localStore), media: createMediaServices() };
+    // Snapping and safe zones live in the editor store; the cookie holds them with the rest.
+    const savePrefs: SettingsSave["prefs"] = (chosen) => {
+      const { snapping, showSafeZones } = store.getState();
+      writePrefsCookie(formatPrefs({ ...chosen, snapping, safeZones: showSafeZones }));
+    };
+    const settings = createSettingsStore({ prefs }, { prefs: savePrefs, keymap: (k) => writeKeymap(localStore, k) });
+    return { store, api, sync, clipboard: createClipboard(localStore), media: createMediaServices(), settings, savePrefs };
   });
+
+  useEffect(() => {
+    // The Back button can bring back an older page, painted with preferences older than the cookie: the cookie's
+    // are the ones last chosen, so they are taken, before the store is watched, so taking them saves nothing.
+    const kept = readCookie(PREFS_COOKIE);
+    if (kept !== null) {
+      const { units, boardZoom, stillSeconds, textSeconds, snapping, safeZones } = parsePrefs(kept);
+      const now = settings.getState();
+      if (now.units !== units || now.boardZoom !== boardZoom || now.stillSeconds !== stillSeconds || now.textSeconds !== textSeconds) {
+        settings.setState({ units, boardZoom, stillSeconds, textSeconds });
+      }
+      const view = store.getState();
+      if (view.snapping !== snapping || view.showSafeZones !== safeZones) store.setState({ snapping, showSafeZones: safeZones });
+    }
+    // Read after mount, so the server's render and the first client render agree; loading it twice changes nothing.
+    settings.getState().loadKeymap(readKeymap(localStore));
+    // Every toggle of snapping or safe zones, from any control, is kept.
+    return store.subscribe((state, before) => {
+      if (state.snapping === before.snapping && state.showSafeZones === before.showSafeZones) return;
+      const { units, boardZoom, stillSeconds, textSeconds } = settings.getState();
+      savePrefs({ units, boardZoom, stillSeconds, textSeconds });
+    });
+  }, [store, settings, savePrefs]);
 
   useEffect(() => {
     const { library, queue } = media;
@@ -120,7 +154,7 @@ export function EditorShell({ initial, layout }: { initial: EditorInit; layout?:
   }, [store, sync, media]);
 
   return (
-    <EditorProvider store={store} api={api} clipboard={clipboard}>
+    <EditorProvider store={store} api={api} clipboard={clipboard} settings={settings}>
       <MediaProvider services={media}>
         <EditorScreen initialLayout={layout} />
       </MediaProvider>
