@@ -277,6 +277,33 @@ it("Escape during a splitter drag goes back to the start, then cancels, then end
   expect(calls).toEqual(["dragging true", "change 260", "change 240", "cancel", "commit", "dragging false"]);
 });
 
+it("on a Mac a Ctrl press on a splitter starts no drag", () => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  const onChange = vi.fn();
+  const onCommit = vi.fn();
+  render(
+    <Splitter
+      label="Left panel width"
+      orientation="vertical"
+      value={240}
+      min={200}
+      max={480}
+      grow={1}
+      controls="pane"
+      onChange={onChange}
+      onCommit={onCommit}
+      onReset={() => {}}
+    />,
+  );
+  const bar = screen.getByRole("separator", { name: "Left panel width" });
+  fireEvent.pointerDown(bar, { button: 0, ctrlKey: true, pointerId: 1, clientX: 240 });
+  fireEvent.pointerMove(bar, { ctrlKey: true, pointerId: 1, clientX: 280 });
+  fireEvent.pointerUp(bar, { ctrlKey: true, pointerId: 1, clientX: 280 });
+  fireEvent.lostPointerCapture(bar, { pointerId: 1 });
+  expect(onChange).not.toHaveBeenCalled();
+  expect(onCommit).not.toHaveBeenCalled();
+});
+
 it("an inline edit opens focused with its text selected, and Enter, Escape and blur end it", () => {
   function editWith(extra: object = {}) {
     const onDone = vi.fn();
@@ -316,6 +343,20 @@ it("an inline edit opens focused with its text selected, and Enter, Escape and b
   blurred.unmount();
 });
 
+it("an inline edit stays open while the window is away", () => {
+  const onDone = vi.fn();
+  render(<InlineEdit defaultValue="Qual recap" label="Project name" maxLength={100} onDone={onDone} data-edit-control className="w-72" />);
+  const input = screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement;
+  fireEvent.change(input, { target: { value: "Finals" } });
+  const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  fireEvent.blur(input);
+  expect(onDone).not.toHaveBeenCalled();
+  expect(input.isConnected).toBe(true);
+  hasFocus.mockReturnValue(true);
+  fireEvent.blur(input);
+  expect(onDone.mock.calls).toEqual([["Finals", false]]);
+});
+
 it("Enter while composing does not save", () => {
   const onDone = vi.fn();
   render(<InlineEdit defaultValue="Qual recap" label="Project name" maxLength={100} onDone={onDone} />);
@@ -338,6 +379,14 @@ it("a text menu button is named by its label", () => {
   fireEvent.click(trigger);
   expect(trigger.getAttribute("aria-expanded")).toBe("true");
   expect(screen.getByRole("menu", { name: "Edit" })).toBeTruthy();
+});
+
+it("a menu is capped at 24rem, or the window's height less its margins", () => {
+  render(<Menu label="Edit" items={[{ id: "undo", label: "Undo" }]} onSelect={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  const classes = screen.getByRole("menu", { name: "Edit" }).className.split(" ");
+  expect(classes).toContain("max-h-[min(24rem,calc(100dvh-1rem))]");
+  expect(classes).not.toContain("max-h-80");
 });
 
 it("a text menu button can show other text, with a chevron, and keep its label as its name", () => {

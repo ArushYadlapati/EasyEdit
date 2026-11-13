@@ -53,6 +53,8 @@ type Scrub = {
   shift: boolean;
   fine: boolean; // Cmd or Ctrl
   perPx: number;
+  origin: number; // the value at originX: the start, moved to where Shift or Cmd/Ctrl last changed
+  originX: number;
   places: number;
   lo: number;
   hi: number;
@@ -176,12 +178,14 @@ export function NumberInput({
     latest.current.onPreview?.(null);
   }
 
+  // The value at the pointer, with the keys as they are now: each key scales only the movement after it.
+  const at = (s: Scrub) => s.origin + (s.x - s.originX) * s.perPx * (s.shift ? 10 : s.fine ? 0.1 : 1);
+
   // The value at the pointer, at most once per animation frame. A value that cannot apply is not shown: the last one
   // that did stays, in the field and in what the change previews.
   function work(s: Scrub) {
     s.frame = null;
-    const factor = s.shift ? 10 : s.fine ? 0.1 : 1;
-    const next = round(between(s.start + (s.x - s.x0) * s.perPx * factor, s.lo, s.hi), s.places);
+    const next = round(between(at(s), s.lo, s.hi), s.places);
     if (next === s.tried) return;
     s.tried = next;
     if (latest.current.onPreview?.(next, SCRUBBED) === false) {
@@ -221,6 +225,8 @@ export function NumberInput({
       shift: false,
       fine: false,
       perPx: scrub,
+      origin: value,
+      originX: event.clientX,
       places: decimals ?? 4,
       lo: Math.max(min, range?.min ?? -Infinity),
       hi: Math.min(max, range?.max ?? Infinity),
@@ -247,9 +253,16 @@ export function NumberInput({
     onPointerMove?.(event);
     const s = press.current;
     if (!s || event.pointerId !== s.pointerId) return;
+    const fine = event.metaKey || event.ctrlKey;
+    if (event.shiftKey !== s.shift || fine !== s.fine) {
+      // A key changed: the movement so far keeps the scale it had, from the value shown (an overshoot past the
+      // limit is dropped, so the new scale moves the value at once).
+      s.origin = between(at(s), s.lo, s.hi);
+      s.originX = s.x;
+    }
     s.x = event.clientX;
     s.shift = event.shiftKey;
-    s.fine = event.metaKey || event.ctrlKey;
+    s.fine = fine;
     if (!s.scrubbing && Math.abs(s.x - s.x0) <= SCRUB_SLOP_PX) return;
     s.scrubbing = true;
     if (s.frame === null) s.frame = requestAnimationFrame(() => work(s));

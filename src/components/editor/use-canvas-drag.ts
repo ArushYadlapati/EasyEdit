@@ -120,17 +120,20 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     if (!s.drag || !state.canEdit) return end(false);
     if (!view) return;
     const crop = crops(s);
-    // A cut from a handle drawn clamped would start where it is drawn: not before the pointer means to drag.
+    // A cut from a handle drawn clamped would start where it is drawn: not before the pointer means to drag. A turn
+    // would snap where it starts, so it too waits for the pointer to pass the click slop.
     const result: CanvasDragResult =
       crop && s.drawn && !s.travelled
         ? { ops: [], label: "crop", guides: NO_GUIDES }
-        : resolveCanvasDrag(s.drag, {
-            pointer: fromScreen(view, s.x, s.y),
-            shift: s.shift,
-            alt: crop,
-            snapping: state.snapping,
-            snapPx: SNAP_CSS_PX / view.k,
-          });
+        : s.drag.type === "rotate" && !s.travelled
+          ? { ops: [], label: s.label, guides: NO_GUIDES }
+          : resolveCanvasDrag(s.drag, {
+              pointer: fromScreen(view, s.x, s.y),
+              shift: s.shift,
+              alt: crop,
+              snapping: state.snapping,
+              snapPx: SNAP_CSS_PX / view.k,
+            });
     showCropping(crop ? s.clipId : null);
     s.label = result.label;
     s.ops = result.ops;
@@ -252,9 +255,11 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     showCropping(null);
     if (!s.started) return;
     const state = store.getState();
-    if (commit && s.ops.length > 0) state.commitGesture(s.label);
+    const changed = commit && s.ops.length > 0;
+    if (changed) state.commitGesture(s.label);
     else state.setGesture(null);
-    store.getState().setCropArmed(null);
+    // A click on a handle is no drag, so it leaves Crop armed.
+    if (s.travelled || changed) store.getState().setCropArmed(null);
   }
 
   return {

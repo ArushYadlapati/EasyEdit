@@ -62,6 +62,8 @@ export function Timeline() {
   const canEdit = useEditor((s) => s.canEdit);
   const selection = useEditor((s) => s.selection);
   const incoming = useMediaDropState((s) => s.incoming, null);
+  // A dropped file waiting to land: its placeholder stands where the empty timeline's sentence would.
+  const landing = useMediaDropState((s) => s.groups.length > 0, false);
   const setUp = useLibrary((s) => s.setUp);
   const hasDrop = useMediaDrop() !== null;
   // Files can be dragged onto it only where there is a drop to take them.
@@ -235,7 +237,7 @@ export function Timeline() {
             <PlayheadLine zoom={zoom} />
           </div>
         </div>
-        {empty && (
+        {empty && !landing && (
           <p
             className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-center text-[13px] leading-5 text-ed-muted"
             style={{ left: HEADER_WIDTH, top: RULER_HEIGHT }}

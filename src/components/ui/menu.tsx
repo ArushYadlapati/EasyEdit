@@ -251,7 +251,7 @@ export function MenuList({ label, items, openAt, place, onPick, onDismiss, id, r
       aria-label={label}
       tabIndex={-1}
       style={{ visibility: "hidden" }}
-      className="fixed z-50 flex max-h-80 min-w-40 flex-col overflow-y-auto rounded-md border border-ed-line bg-ed-raised py-1 shadow-lg outline-none"
+      className="fixed z-50 flex max-h-[min(24rem,calc(100dvh-1rem))] min-w-40 flex-col overflow-y-auto rounded-md border border-ed-line bg-ed-raised py-1 shadow-lg outline-none"
       onKeyDown={handleKeyDown}
       onContextMenu={(event) => event.preventDefault()}
     >

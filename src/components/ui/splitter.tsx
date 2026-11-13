@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { useIsMac } from "@/components/editor/use-shortcuts";
 import { RESIZE_STEP_PX } from "@/lib/editor/layout";
 import { FADE, FOCUS_RING_INSET, cx } from "./cx";
 
@@ -51,6 +52,7 @@ export function Splitter({
   const vertical = orientation === "vertical";
   const drag = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState(false);
+  const isMac = useIsMac();
   // The callbacks of the latest render, for Escape, which a window listener hears.
   const latest = useRef({ onChange, onCommit, onCancel, onDraggingChange });
   useLayoutEffect(() => {
@@ -74,6 +76,7 @@ export function Splitter({
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     if (e.button !== 0 || value === null || drag.current) return;
+    if (isMac && e.ctrlKey) return; // a right-click on a Mac
     const bar = e.currentTarget;
     const pointerId = e.pointerId;
     bar.setPointerCapture(pointerId);
