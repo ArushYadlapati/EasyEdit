@@ -13,7 +13,7 @@ import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { InlineEdit } from "@/components/ui/inline-edit";
 import { Menu, type MenuItem } from "@/components/ui/menu";
-import { PROJECT_GONE, thumbnailUrl, type DashboardFolder, type DashboardProject } from "@/lib/dashboard/view";
+import { PROJECT_GONE, pictureFits, thumbnailUrl, type DashboardFolder, type DashboardProject } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
 import { formatLabel } from "@/lib/timeline";
@@ -125,20 +125,33 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
     event.dataTransfer.effectAllowed = "move";
   }
 
-  // The saved picture shows unless its address failed to load; a newer version is a new address, so it shows again.
+  // The saved picture shows unless its address failed to load or the picture has another shape than the project (it is
+  // out of date); a newer version is a new address, so it shows again.
   const url = thumbnailUrl(project);
+  const img = useRef<HTMLImageElement>(null);
+  // A picture that loaded or failed before the page hydrated fired its event before React listened, so it is asked for
+  // again: the browser answers from its cache and fires load or error once more. React does the same for an <img> it
+  // creates itself.
+  useEffect(() => {
+    if (url !== null && img.current) img.current.src = url;
+  }, [url]);
   const picture = (
     <div className="aspect-video rounded-md border border-ed-line bg-ed-panel p-3 transition-colors duration-120 group-hover:bg-ed-hover motion-reduce:transition-none">
       <BlankFrame width={project.width} height={project.height}>
         {url !== null && url !== failed && (
           // eslint-disable-next-line @next/next/no-img-element -- a picture behind the sign-in, with its version in the address; next/image's optimizer cannot fetch one.
           <img
+            ref={img}
             src={url}
             alt=""
             loading="lazy"
             decoding="async"
             draggable={false}
             className="size-full object-cover"
+            onLoad={(event) => {
+              const { naturalWidth, naturalHeight } = event.currentTarget;
+              if (!pictureFits({ width: naturalWidth, height: naturalHeight }, project)) setFailed(url);
+            }}
             onError={() => setFailed(url)}
           />
         )}

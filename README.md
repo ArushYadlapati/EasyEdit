@@ -213,7 +213,7 @@ The editor cannot be opened without a Google sign-in, so the tests cannot click 
 13. Sign out in another tab, then move a clip in the editor. It says "You're signed out. Sign in again to save your changes." and the status reads "Signed out". Click **Sign in**: it opens in a new tab. Sign in there and come back to the editor: the status returns to "Saved" and the move is kept.
 14. Press `?`. The list of shortcuts opens. Close it with `Escape`.
 15. Make the window narrower than 1024 px. The editor is replaced by "The editor needs a wider window."
-16. Add a title, wait five seconds, then click **Projects**: the project's card shows the title on its picture.
+16. Add a title. Once the status reads "Saved", wait ten seconds, then click **Projects**: the project's card shows the title on its picture.
 
 ## Deploy to Vercel
 
@@ -259,7 +259,7 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     update projects set format = doc->>'format' where format is distinct from doc->>'format';
     ```
 
-    **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard and editor fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.
+    **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard, editor, project API and Claude's tools fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.
 5. Optional: publish the Google app, so teammates no longer have to be test users. In Google Cloud, open **Branding** and fill in the app domain details (home page, privacy policy link, authorized domain) with your deployed web address. You will need a public privacy policy page to link to. Then open **Audience** and click **Publish app**. This app only asks Google for name, email and profile picture, and the allowlist still decides who gets in.
 
 ## Connect Claude

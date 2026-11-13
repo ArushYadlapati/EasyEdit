@@ -11,7 +11,7 @@ import {
 } from "@/lib/editor/thumbnail";
 import type { AssetView } from "@/lib/media/types";
 import { PLACEHOLDER_FILL, type Ctx2D, type ResolvedSource } from "@/lib/render/compositor";
-import { createEmptyDoc, type TimelineDoc, type Track } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, createEmptyDoc, type TimelineDoc, type Track } from "@/lib/timeline";
 import { assetView } from "../helpers/media-services";
 import { fakeCtx, type Call } from "../render/fake-ctx";
 import { sampleDoc, text, video } from "./fixtures";
@@ -96,6 +96,29 @@ describe("planThumbnail", () => {
     d.tracks[0].clips[1] = video("c2", 30, 30, { assetId: "b" });
     const plan = planThumbnail(d, lib({ a: assetView(), b: assetView({ id: "b", removed: true }) }));
     expect(plan).toMatchObject({ kind: "draw" });
+  });
+
+  // A video clip c1 of asset "a" at the given opacity on v1, and text x1 on t1, both frames 0 to 60: the frame is 30,
+  // from x1, and c1 is under it.
+  function clipUnderText(opacity: number): TimelineDoc {
+    const d = createEmptyDoc("short_9x16");
+    d.tracks[0].clips = [video("c1", 0, 60, { transform: { ...DEFAULT_TRANSFORM, opacity } })];
+    d.tracks[1].clips = [text("x1", 0, 60)];
+    return d;
+  }
+
+  it("an invisible clip of a removed, unknown or uploading asset neither skips nor waits", () => {
+    const invisible = clipUnderText(0);
+    const drawn = { kind: "draw", frame: 30, sources: [] };
+    expect(planThumbnail(invisible, lib({ a: assetView({ removed: true }) }))).toEqual(drawn);
+    expect(planThumbnail(invisible, lib({}))).toEqual(drawn);
+    expect(planThumbnail(invisible, lib({ a: assetView({ status: "uploading" }) }))).toEqual(drawn);
+    expect(planThumbnail(invisible, lib({ a: assetView({ previewStatus: "pending", previewFileId: null }) }))).toEqual(drawn);
+    expect(planThumbnail(invisible, lib({}, false))).toEqual(drawn);
+  });
+
+  it("a clip that shows at all, of a removed asset, still skips", () => {
+    expect(planThumbnail(clipUnderText(0.5), lib({ a: assetView({ removed: true }) }))).toEqual({ kind: "skip" });
   });
 
   it("text alone needs no file", () => {

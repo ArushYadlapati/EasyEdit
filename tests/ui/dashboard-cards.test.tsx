@@ -1,9 +1,12 @@
 // @vitest-environment happy-dom
+import { hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { PROJECT_DRAG_TYPE } from "@/components/dashboard/drag";
+import { ProjectCard } from "@/components/dashboard/project-card";
 import type { FormState } from "@/lib/projects/dashboard-actions";
-import { FOLDERS, NOW, PROJECTS, RECENT_IDS, dashProject, renderDashboard } from "../helpers/dashboard";
+import { FOLDERS, NOW, PROJECTS, RECENT_IDS, dashProject, fakeActions, renderDashboard } from "../helpers/dashboard";
 import { act, fireEvent, screen, within } from "../helpers/dom";
 import { dragEvent } from "../helpers/drag-events";
 
@@ -509,6 +512,40 @@ describe("the card's picture", () => {
       />,
     );
     expect(picture(card("Qual recap"))?.getAttribute("src")).toMatch(/\?v=4$/);
+  });
+
+  it("a picture of another shape is out of date and leaves the blank frame", () => {
+    renderDashboard({ projects: PICTURED }); // Qual recap is 1080 × 1920
+    vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(640);
+    vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(360);
+    fireEvent.load(picture(card("Qual recap"))!);
+    expect(picture(card("Qual recap"))).toBeNull();
+    expect(card("Qual recap").querySelector("[data-blank-frame]")).not.toBeNull();
+  });
+
+  it("a picture in the project's shape stays once it loads", () => {
+    renderDashboard({ projects: PICTURED });
+    vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(360);
+    vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(640);
+    fireEvent.load(picture(card("Qual recap"))!);
+    expect(picture(card("Qual recap"))?.getAttribute("src")).toBe("/api/projects/a/thumbnail?v=3");
+  });
+
+  it("a card hydrated from the server's markup asks for its picture again, so its load or error still counts", () => {
+    const element = (
+      <ProjectCard project={PICTURED[0]} folderName={null} now={NOW} canEdit folders={FOLDERS} actions={fakeActions()} onGone={() => {}} />
+    );
+    const list = document.createElement("ul");
+    document.body.appendChild(list);
+    list.innerHTML = renderToString(element);
+    const setSrc = vi.spyOn(HTMLImageElement.prototype, "src", "set");
+    let root!: Root;
+    act(() => {
+      root = hydrateRoot(list, element);
+    });
+    expect(setSrc).toHaveBeenCalledWith("/api/projects/a/thumbnail?v=3");
+    act(() => root.unmount());
+    list.remove();
   });
 
   it("the card still drags with its id when it has a picture", () => {

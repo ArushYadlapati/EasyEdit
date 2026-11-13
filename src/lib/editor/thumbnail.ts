@@ -24,8 +24,8 @@ export type ThumbnailPlan =
   | { kind: "wait" } // shown media is uploading or having its preview made, or the library has not loaded
   | { kind: "skip" }; // shown media was removed or is missing, or has neither a file nor a still
 
-// What drawing the thumbnail needs, settled before anything is read: each picture under its frame, or why it cannot
-// be drawn yet (wait) or at all (skip). Every picture is looked at, so a skip anywhere wins over a wait anywhere.
+// What drawing the thumbnail needs, settled before anything is read: each picture that shows under its frame, or why it
+// cannot be drawn yet (wait) or at all (skip). Every picture is looked at, so a skip anywhere wins over a wait anywhere.
 export function planThumbnail(doc: TimelineDoc, library: Pick<LibraryState, "assets" | "loaded">): ThumbnailPlan {
   const frame = thumbnailFrame(doc);
   const seconds = new Map(mediaWants(doc, frame, { playing: false, rate: 1 }).map((want) => [want.clipId, want.seconds]));
@@ -34,6 +34,7 @@ export function planThumbnail(doc: TimelineDoc, library: Pick<LibraryState, "ass
   let skip = false;
   for (const { clip } of activeClips(doc, frame)) {
     if (clip.type !== "video" && clip.type !== "image") continue;
+    if (clip.transform.opacity === 0) continue; // shows nothing, so it is neither waited for nor a reason to skip
     const asset = library.assets[clip.assetId];
     if (asset === undefined && !library.loaded) {
       wait = true;

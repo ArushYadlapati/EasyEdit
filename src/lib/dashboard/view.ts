@@ -61,6 +61,15 @@ export function thumbnailUrl(project: Pick<DashboardProject, "id" | "thumbnailVe
   return `/api/projects/${encodeURIComponent(project.id)}/thumbnail?v=${project.thumbnailVersion}`;
 }
 
+// A project's picture is drawn in the project's shape at that time, so a picture of another shape is out of date. It
+// fits when it is within a pixel of the project's shape at the picture's size (its short side is rounded to whole
+// pixels), or when the two shapes are within 5 % of each other.
+export function pictureFits(picture: { width: number; height: number }, project: { width: number; height: number }): boolean {
+  if (picture.width <= 0 || picture.height <= 0) return false;
+  const off = Math.abs(picture.width * project.height - picture.height * project.width);
+  return off <= Math.max(project.width, project.height) || off <= 0.05 * picture.height * project.width;
+}
+
 // Your most recently opened projects, in the order you opened them; none while a search is typed.
 export function recentProjects<T extends { id: string }>(projects: readonly T[], recentIds: readonly string[], search: string): T[] {
   if (searchText(search) !== "") return [];
