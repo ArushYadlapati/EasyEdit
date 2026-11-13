@@ -16,7 +16,7 @@ export type Shortcut = {
   repeats: boolean;
 };
 
-export type KeyLike = { key: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean };
+export type KeyLike = { key: string; code?: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean };
 
 type Flags = { edits?: boolean; repeats?: boolean };
 
