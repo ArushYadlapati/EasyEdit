@@ -1,10 +1,10 @@
 "use client";
 
-import { useId, useLayoutEffect, useState, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
 import { cx } from "@/components/ui/cx";
 import { Splitter } from "@/components/ui/splitter";
-import { fitLayout, layoutStyle, sizeBounds, type LayoutStore, type PanelId } from "@/lib/editor/layout";
+import { fitLayout, layoutStyle, sizeBounds, type Layout, type LayoutStore, type PanelId } from "@/lib/editor/layout";
 
 const REGION = "relative min-h-0 min-w-0 overflow-hidden";
 
@@ -37,6 +37,9 @@ export function PanelGrid({ layout, deleted = false, top, left, center, right, b
   const wanted = useStore(layout, (s) => s.wanted);
   const win = useStore(layout, (s) => s.window);
   const [resizing, setResizing] = useState<"col" | "row" | null>(null);
+  // The sizes wanted when a drag began. Escape puts them back, so a size the window had squeezed, or a timeline that
+  // followed the window's height, is kept as it was rather than replaced by the size shown at the start.
+  const beforeDrag = useRef<Layout | null>(null);
   const ids = { left: useId(), right: useId(), timeline: useId() };
   const shown = fitLayout(wanted, win);
 
@@ -63,7 +66,13 @@ export function PanelGrid({ layout, deleted = false, top, left, center, right, b
         onChange={(px) => layout.getState().resize(which, px)}
         onCommit={() => layout.getState().commit()}
         onReset={() => layout.getState().reset(which)}
-        onDraggingChange={(dragging) => setResizing(dragging ? (vertical ? "col" : "row") : null)}
+        onCancel={() => {
+          if (beforeDrag.current) layout.setState({ wanted: beforeDrag.current });
+        }}
+        onDraggingChange={(dragging) => {
+          beforeDrag.current = dragging ? layout.getState().wanted : null;
+          setResizing(dragging ? (vertical ? "col" : "row") : null);
+        }}
         className={cx(EDGE, className)}
       />
     );

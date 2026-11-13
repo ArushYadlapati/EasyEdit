@@ -186,6 +186,31 @@ it("a splitter moves 16 px a key, 64 with Shift, and to its ends with Home and E
   nearEnd.unmount();
 });
 
+it("Escape during a splitter drag goes back to the start, then cancels, then ends the drag", () => {
+  const calls: string[] = [];
+  render(
+    <Splitter
+      label="Left panel width"
+      orientation="vertical"
+      value={240}
+      min={200}
+      max={480}
+      grow={1}
+      controls="pane"
+      onChange={(px) => calls.push(`change ${px}`)}
+      onCommit={() => calls.push("commit")}
+      onReset={() => {}}
+      onCancel={() => calls.push("cancel")}
+      onDraggingChange={(dragging) => calls.push(`dragging ${dragging}`)}
+    />,
+  );
+  const bar = screen.getByRole("separator", { name: "Left panel width" });
+  fireEvent.pointerDown(bar, { button: 0, pointerId: 1, clientX: 240 });
+  fireEvent.pointerMove(bar, { pointerId: 1, clientX: 260 });
+  expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(false);
+  expect(calls).toEqual(["dragging true", "change 260", "change 240", "cancel", "commit", "dragging false"]);
+});
+
 it("an inline edit opens focused with its text selected, and Enter, Escape and blur end it", () => {
   function editWith(extra: object = {}) {
     const onDone = vi.fn();

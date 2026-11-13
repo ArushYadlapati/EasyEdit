@@ -15,6 +15,7 @@ export type SplitterProps = {
   onChange(value: number): void; // during a drag, and for each key
   onCommit(): void; // at the end of a drag, and after each key
   onReset(): void; // a double-click
+  onCancel?(): void; // Escape during a drag, after onChange(start): the caller puts back what it had before the drag
   onDraggingChange?(dragging: boolean): void;
   className?: string; // the caller places the bar, absolutely
   style?: CSSProperties;
@@ -42,6 +43,7 @@ export function Splitter({
   onChange,
   onCommit,
   onReset,
+  onCancel,
   onDraggingChange,
   className,
   style,
@@ -50,9 +52,9 @@ export function Splitter({
   const drag = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState(false);
   // The callbacks of the latest render, for Escape, which a window listener hears.
-  const latest = useRef({ onChange, onCommit, onDraggingChange });
+  const latest = useRef({ onChange, onCommit, onCancel, onDraggingChange });
   useLayoutEffect(() => {
-    latest.current = { onChange, onCommit, onDraggingChange };
+    latest.current = { onChange, onCommit, onCancel, onDraggingChange };
   });
   // Unmounted mid-drag: the window listener goes with it.
   useEffect(() => () => drag.current?.release(), []);
@@ -82,6 +84,7 @@ export function Splitter({
       key.preventDefault();
       key.stopPropagation();
       latest.current.onChange(d.start);
+      latest.current.onCancel?.();
       finish();
       try {
         if (bar.hasPointerCapture(pointerId)) bar.releasePointerCapture(pointerId);

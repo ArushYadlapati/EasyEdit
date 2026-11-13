@@ -108,6 +108,34 @@ it("Escape during a drag puts the size back", () => {
   expect(store.getState().selection.clipIds).toEqual([]);
 });
 
+it("Escape on the timeline's edge leaves it following the window height", () => {
+  const { saveLayout, bar, size, variable } = show();
+  const edge = bar("Timeline height");
+  fireEvent.pointerDown(edge, { button: 0, pointerId: 1, clientY: 492 });
+  fireEvent.pointerMove(edge, { pointerId: 1, clientY: 432 });
+  expect(size("Timeline height")).toBe("336");
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(size("Timeline height")).toBe("276");
+  expect(saveLayout).not.toHaveBeenCalled();
+  // Still the default: a taller window gives a taller timeline.
+  act(() => happyDOM().setViewport({ width: 1024, height: 1000 }));
+  expect(size("Timeline height")).toBe("360");
+  expect(variable("--ed-timeline-h")).toBe("360px");
+});
+
+it("Escape in a narrow window puts back the size that was chosen, not the one shown", () => {
+  const { saveLayout, bar, size } = show({ initialLayout: { left: 480, right: 480, timeline: null } });
+  const left = bar("Left panel width");
+  fireEvent.pointerDown(left, { button: 0, pointerId: 1, clientX: 302 });
+  fireEvent.pointerMove(left, { pointerId: 1, clientX: 280 });
+  expect([size("Left panel width"), size("Right panel width")]).toEqual(["280", "262"]);
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect([size("Left panel width"), size("Right panel width")]).toEqual(["302", "240"]);
+  expect(saveLayout).not.toHaveBeenCalled();
+  act(() => happyDOM().setViewport({ width: 1600, height: 768 }));
+  expect([size("Left panel width"), size("Right panel width")]).toEqual(["480", "480"]);
+});
+
 it("a double-click puts the default size back", () => {
   const { saveLayout, bar, size } = show({ initialLayout: { left: 300, right: 240, timeline: 400 } });
   fireEvent.doubleClick(bar("Left panel width"));
