@@ -2,10 +2,10 @@
 
 import { Select } from "@/components/ui/select";
 import { viewDoc } from "@/lib/editor/store";
-import { FORMAT_PRESETS, type FormatId } from "@/lib/timeline";
+import { FORMAT_PRESETS, type PresetId } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "./context";
 
-const FORMATS = Object.entries(FORMAT_PRESETS) as [FormatId, (typeof FORMAT_PRESETS)[FormatId]][];
+const FORMATS = Object.entries(FORMAT_PRESETS) as [PresetId, (typeof FORMAT_PRESETS)[PresetId]][];
 
 // The project's format, from the presets. A change is one undoable "format change" for everyone; a
 // viewer, or a deleted project, sees it and cannot change it.
@@ -21,7 +21,7 @@ export function FormatSelect({ id, className }: { id?: string; className?: strin
       data-edit-control
       disabled={!canEdit}
       value={format}
-      onChange={(event) => store.getState().edit([{ op: "set_format", format: event.target.value as FormatId }], "format change")}
+      onChange={(event) => store.getState().edit([{ op: "set_format", format: event.target.value as PresetId }], "format change")}
     >
       {FORMATS.map(([formatId, preset]) => (
         <option key={formatId} value={formatId}>

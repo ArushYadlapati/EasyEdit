@@ -461,6 +461,12 @@ describe("set_format", () => {
     d.tracks[0].locked = true;
     expect(applyOps(d, [{ op: "set_format", format: "square_1x1" }]).doc.width).toBe(1080);
   });
+
+  it("a custom format with no size is refused", () => {
+    const run = () => applyOps(doc0(), [{ op: "set_format", format: "custom" }]);
+    failsWith(run, "INVALID");
+    expect(run).toThrow("set_format: Width and height go from 16 to 4096 pixels, up to the area of 4K (3840 × 2160).");
+  });
 });
 
 describe("track ordering and engine hardening", () => {

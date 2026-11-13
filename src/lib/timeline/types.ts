@@ -4,8 +4,12 @@ import { UNSTORABLE_TEXT, isStorableText } from "@/lib/text";
 
 export const TrackName = z.string().max(LIMITS.trackNameChars).refine(isStorableText, UNSTORABLE_TEXT);
 
-export const FormatId = z.enum(["short_9x16", "feed_4x5", "square_1x1", "long_16x9", "long_4k"]);
+// The five named sizes. A custom format keeps its own width and height in the doc.
+export const PresetId = z.enum(["short_9x16", "feed_4x5", "square_1x1", "long_16x9", "long_4k"]);
+export type PresetId = z.infer<typeof PresetId>;
+export const FormatId = z.enum([...PresetId.options, "custom"]);
 export type FormatId = z.infer<typeof FormatId>;
+export type FrameSize = { width: number; height: number };
 
 export const TrackKind = z.enum(["video", "overlay", "text", "caption", "audio"]);
 export type TrackKind = z.infer<typeof TrackKind>;

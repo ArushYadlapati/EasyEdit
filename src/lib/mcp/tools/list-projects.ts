@@ -3,7 +3,7 @@ import { actorUserId, displayActor } from "@/lib/projects/display-actor";
 import { listProjects } from "@/lib/projects/service";
 import { getUserNames } from "@/lib/projects/user-names";
 import { timeAgo } from "@/lib/time-ago";
-import { escapeQuoted, FORMAT_PRESETS } from "@/lib/timeline";
+import { escapeQuoted, formatLabel } from "@/lib/timeline";
 import { oneLine } from "../one-line";
 import { ok, type ToolContext, type ToolResult } from "../types";
 
@@ -25,7 +25,7 @@ export async function listProjectsTool(ctx: ToolContext, input: { cursor?: numbe
   lines.push(projects.length === 1 ? "1 project:" : `${projects.length} projects, most recently changed first:`);
   for (const p of page) {
     lines.push(
-      `${p.id}  "${escapeQuoted(p.name)}"  ${FORMAT_PRESETS[p.format].label}  version ${p.version}  changed ${timeAgo(p.updatedAt, now)} by ${oneLine(displayActor(p.updatedBy, names))}`,
+      `${p.id}  "${escapeQuoted(p.name)}"  ${formatLabel(p)}  version ${p.version}  changed ${timeAgo(p.updatedAt, now)} by ${oneLine(displayActor(p.updatedBy, names))}`,
     );
   }
   const end = start + page.length;

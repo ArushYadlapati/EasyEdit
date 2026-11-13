@@ -21,7 +21,7 @@ describe("limits", () => {
       mediaPendingMaxAgeMs: 604_800_000, mediaNameChars: 120, mediaEventChars: 80, mediaListMax: 2000,
       mediaIdsPerRequest: 200, mediaPosterBytes: 1_048_576, mediaDirectPlayBytes: 209_715_200,
       mediaPreviewWaitMs: 7_200_000, mediaCacheBytes: 2_147_483_648, mediaReadTokenMinSeconds: 600,
-      connectorAssetsPage: 50, connectorMediaItems: 20 });
+      connectorAssetsPage: 50, connectorMediaItems: 20, frameSideMin: 16, frameSideMax: 4096, frameAreaMax: 8_294_400 });
   });
 
   it("text up to 2,000 characters is accepted; 2,001 is INVALID on add and on update", () => {

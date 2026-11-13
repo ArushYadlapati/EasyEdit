@@ -10,4 +10,5 @@ export const SAFE_ZONES: Record<FormatId, SafeZone> = {
   square_1x1: DEFAULT_ZONE,
   long_16x9: DEFAULT_ZONE,
   long_4k: DEFAULT_ZONE,
+  custom: DEFAULT_ZONE,
 };

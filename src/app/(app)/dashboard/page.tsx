@@ -5,7 +5,7 @@ import { actorFrom } from "@/lib/actor";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
 import { listProjects } from "@/lib/projects/service";
 import { getUserNames } from "@/lib/projects/user-names";
-import { FORMAT_PRESETS } from "@/lib/timeline";
+import { formatLabel } from "@/lib/timeline";
 import { timeAgo } from "@/lib/time-ago";
 import { NewProjectForm } from "./new-project-form";
 import { ProjectControls } from "./project-controls";
@@ -36,7 +36,7 @@ export default async function DashboardPage() {
               >
                 <span className="font-medium">{project.name}</span>
                 <span className="w-fit rounded-full bg-black/[.06] px-2 py-0.5 text-xs dark:bg-white/[.1]">
-                  {FORMAT_PRESETS[project.format].label}
+                  {formatLabel(project)}
                 </span>
                 <span className="text-xs text-zinc-600 dark:text-zinc-400">
                   updated by {displayActor(project.updatedBy, names)} · {timeAgo(project.updatedAt)}

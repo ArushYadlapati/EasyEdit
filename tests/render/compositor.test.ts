@@ -274,5 +274,6 @@ describe("safe zones", () => {
     for (const format of ["feed_4x5", "square_1x1", "long_16x9", "long_4k"] as const) {
       expect(SAFE_ZONES[format]).toEqual({ top: 0.05, right: 0.05, bottom: 0.05, left: 0.05, label: "Safe area" });
     }
+    expect(SAFE_ZONES.custom).toEqual({ top: 0.05, right: 0.05, bottom: 0.05, left: 0.05, label: "Safe area" });
   });
 });

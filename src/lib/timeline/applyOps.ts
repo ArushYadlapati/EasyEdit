@@ -2,7 +2,7 @@ import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { OpError } from "./errors";
 import type { Op } from "./ops";
-import { FORMAT_PRESETS, NO_CROP, NO_STRETCH, TRACK_ACCEPTS } from "./presets";
+import { FORMAT_PRESETS, FRAME_SIZE_MESSAGE, NO_CROP, NO_STRETCH, TRACK_ACCEPTS, isPresetId } from "./presets";
 import { MediaClip, TextClip, Transform, TextStyle } from "./types";
 import type { Clip, TimelineDoc, Track } from "./types";
 
@@ -490,6 +490,8 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
       }
 
       case "set_format": {
+        // A custom format needs its size, which this op does not carry yet.
+        if (!isPresetId(op.format)) throw new OpError("INVALID", `set_format: ${FRAME_SIZE_MESSAGE}`, opIndex);
         if (op.expect && op.expect.format !== doc.format) throw stale("the format");
         groups.push([{ op: "set_format", format: doc.format, expect: { format: op.format } }]);
         const preset = FORMAT_PRESETS[op.format];

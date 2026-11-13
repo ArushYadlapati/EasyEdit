@@ -5,6 +5,7 @@ import { rowsOf, type DB } from "@/db";
 import { removeEntry } from "@/lib/allowlist/service";
 import { makeOpsHandlers } from "@/lib/projects/handlers";
 import { applyProjectOps, getProject } from "@/lib/projects/service";
+import { PresetId } from "@/lib/timeline";
 import { BASE_URL, MCP_URL, startConnectorApp, type ConnectorApp } from "../helpers/connector";
 import { insertAsset } from "../media/context";
 import { addText } from "../mcp/context";
@@ -56,6 +57,7 @@ describe("Claude and the website on one project", () => {
       const keysOf = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {}).sort();
       expect(keysOf("list_assets")).toEqual(["cursor", "kind", "search"]);
       expect(keysOf("add_media")).toEqual(["expected_version", "items", "project_id"]);
+      expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.format).toMatchObject({ enum: PresetId.options });
       const getProject = tools.find((t) => t.name === "get_project");
       expect(Object.keys(getProject?.inputSchema.properties ?? {}).sort()).toEqual(["cursor", "project_id", "version"]);
       expect(getProject?.description).toMatch(
