@@ -37,7 +37,7 @@ import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { docDuration, isCropped, type Clip, type Track } from "@/lib/timeline";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
-import { FormatSelect } from "./format-select";
+import { FormatFields } from "./format-select";
 import { useLibrary, useMedia } from "./media/media-context";
 import { useTextMeasure } from "./text-measure";
 import { Timecode } from "./timecode";
@@ -527,9 +527,7 @@ function ProjectSection() {
   return (
     <>
       <Section title="Project">
-        <Field label="Format">
-          <FormatSelect />
-        </Field>
+        <FormatFields />
         <p className={cx(TEXT, "text-ed-muted")}>{fps} fps</p>
         <p className={cx(TEXT, "text-ed-muted")}>
           Length <Timecode frame={length} fps={fps} />
