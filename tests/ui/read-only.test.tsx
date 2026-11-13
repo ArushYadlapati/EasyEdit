@@ -53,7 +53,8 @@ const STATES: [string, (store: EditorStore) => void, string[]][] = [
     (store) => store.getState().select(["x1"]),
     [
       "textarea Text", "input Size", "select Weight", "input Color", "input Hex color", "button Left", "button Center", "button Right",
-      "input X", "input Y", "input Scale", "input Rotation", "input Opacity", "input Start", "input Length",
+      "input X", "input Y", "input Width", "button Lock aspect ratio", "input Height", "input Scale", "input Rotation", "input Opacity",
+      "input Start", "input Length",
     ],
   ],
   ["nothing selected", (store) => store.getState().select([]), ["select Format"]],
