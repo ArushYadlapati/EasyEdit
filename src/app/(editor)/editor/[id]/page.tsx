@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { EditorShell } from "@/components/editor/editor-shell";
 import { KeepSignedIn } from "@/components/keep-signed-in";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
 import { actorFrom } from "@/lib/actor";
+import { LAYOUT_COOKIE, parseLayout } from "@/lib/editor/layout";
 import { getProject } from "@/lib/projects/service";
 
 // The editor is always dark. This asks the Dark Reader browser extension to leave the page alone: on a screen that
@@ -17,6 +19,8 @@ export default async function EditorPage({ params }: PageProps<"/editor/[id]">) 
   const { id } = await params;
   const project = await getProject(getDb(), actorFrom(user), id);
   if (!project) notFound();
+  // The panel sizes this browser kept, so the first paint already has them.
+  const layout = parseLayout((await cookies()).get(LAYOUT_COOKIE)?.value);
 
   return (
     <>
@@ -31,6 +35,7 @@ export default async function EditorPage({ params }: PageProps<"/editor/[id]">) 
           me: { id: user.id, name: user.name },
           canEdit: meetsRole(user.role, "editor"),
         }}
+        layout={layout}
       />
     </>
   );

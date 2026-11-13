@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createProjectApi } from "@/lib/editor/api";
 import { createClipboard } from "@/lib/editor/clipboard";
+import type { Layout } from "@/lib/editor/layout";
 import { createEditorStore } from "@/lib/editor/store";
 import { createSync } from "@/lib/editor/sync";
 import type { EditorInit } from "@/lib/editor/types";
@@ -26,8 +27,8 @@ const quietly = (work: Promise<void>) => void work.catch(() => {});
 
 // Owns the store, the API client, the sync and the media services for one open project, and ties them to the page:
 // tab visibility, focus, coming back online, the user's clicks and keys, and leaving with unsent changes or running
-// uploads.
-export function EditorShell({ initial }: { initial: EditorInit }) {
+// uploads. The panel sizes come from the browser's cookie, which the page read.
+export function EditorShell({ initial, layout }: { initial: EditorInit; layout?: Layout }) {
   const [{ store, api, sync, clipboard, media }] = useState(() => {
     const store = createEditorStore(initial);
     const api = createProjectApi(initial.projectId);
@@ -121,7 +122,7 @@ export function EditorShell({ initial }: { initial: EditorInit }) {
   return (
     <EditorProvider store={store} api={api} clipboard={clipboard}>
       <MediaProvider services={media}>
-        <EditorScreen />
+        <EditorScreen initialLayout={layout} />
       </MediaProvider>
     </EditorProvider>
   );

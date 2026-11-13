@@ -10,6 +10,7 @@ import type { UploadItem } from "@/lib/media/types";
 import type { UploadQueue } from "@/lib/media/upload-queue";
 import { sampleDoc } from "../editor/fixtures";
 import { act, fireEvent, render, screen } from "../helpers/dom";
+import { happyDOM } from "../helpers/layout";
 
 // The existing tests get the real services; a test of the media wiring hands the shell its own for one render.
 vi.mock("@/components/editor/media/media-context", async (importOriginal) => {
@@ -317,4 +318,14 @@ it("the real services ask the media routes once on open, and nothing after the e
   window.dispatchEvent(new Event("online"));
   await after(120_000);
   expect(media()).toEqual(["GET /api/media", "GET /api/media?ids=a"]);
+});
+
+it("starts from the panel sizes the page read, and keeps a new size in the browser's cookie", () => {
+  stubServer();
+  happyDOM().setURL("http://localhost:3000/editor/p1");
+  render(<EditorShell initial={initial()} layout={{ left: 300, right: 240, timeline: 400 }} />);
+  const left = screen.getByRole("separator", { name: "Left panel width" });
+  expect(left.parentElement!.style.getPropertyValue("--ed-left-w")).toBe("300px");
+  fireEvent.keyDown(left, { key: "ArrowLeft" });
+  expect(document.cookie).toContain("easyedit-layout=284_240_400");
 });
