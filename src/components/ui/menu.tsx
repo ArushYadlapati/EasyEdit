@@ -28,6 +28,7 @@ export type MenuProps = Omit<IconButtonProps, "label" | "children" | "pressed" |
   icon?: ReactNode; // without one, the button shows the label as text
   text?: string; // a text button's visible text, with a chevron after it, when it differs from the label (which still names it)
   title?: string; // a text button's tooltip; an icon button's is its label
+  lead?: ReactNode; // a text button only: drawn before its text, such as the person's picture
   items: MenuItem[] | (() => MenuItem[]); // a function is called each time the menu opens
   onSelect(id: string): void;
 };
@@ -40,11 +41,11 @@ function enabledItems(list: HTMLElement | null): HTMLButtonElement[] {
 }
 
 // A button that opens a list of actions under it: an icon button, or a text button showing its label (or its
-// own text and a chevron, still named by the label).
+// own text and a chevron, still named by the label), after its lead when it has one.
 // The arrow keys, Home and End move between the items. Escape, a click outside or picking an item
 // closes it, and focus goes back to the button. Items given as a function are read as the menu opens
 // and kept while it is open. Extra props go on the button.
-export function Menu({ label, icon, text, title, items, onSelect, disabled, shortcut, className, onClick, onKeyDown, ...rest }: MenuProps) {
+export function Menu({ label, icon, text, title, lead, items, onSelect, disabled, shortcut, className, onClick, onKeyDown, ...rest }: MenuProps) {
   const [openAt, setOpenAt] = useState<"first" | "last" | null>(null);
   const [opened, setOpened] = useState<MenuItem[]>([]);
   // Turning disabled closes the menu for good, so enabling it again does not reopen it.
@@ -149,6 +150,7 @@ export function Menu({ label, icon, text, title, items, onSelect, disabled, shor
           title={title ?? (shortcut ? `${label} (${shortcut})` : undefined)}
           className={cx(
             "inline-flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-medium text-ed-muted select-none",
+            lead !== undefined && "gap-1.5",
             "enabled:hover:bg-ed-hover enabled:hover:text-ed-text aria-expanded:bg-ed-hover aria-expanded:text-ed-text",
             FOCUS_RING,
             FADE,
@@ -157,6 +159,7 @@ export function Menu({ label, icon, text, title, items, onSelect, disabled, shor
           )}
           {...triggerProps}
         >
+          {lead}
           {text === undefined ? (
             label
           ) : (
