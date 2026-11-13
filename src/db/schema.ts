@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import type { FormatId, Op, TimelineDoc } from "@/lib/timeline";
 import { user } from "./auth-schema";
 
@@ -32,6 +32,21 @@ export const folders = pgTable(
   () => [uniqueIndex("folders_name_lower_unique").on(sql`lower("name")`)],
 );
 
+// drizzle 0.45 has no bytea(). PGlite reads a Uint8Array and neon-http a Buffer; hex text ("\x…") is decoded too,
+// should a driver hand bytea over as text. Every read is copied into a fresh Uint8Array<ArrayBuffer>, which a
+// Response body accepts.
+const bytea = customType<{ data: Uint8Array<ArrayBuffer>; driverData: Uint8Array | string }>({
+  dataType: () => "bytea",
+  fromDriver: (value) => (typeof value === "string" ? fromHex(value) : Uint8Array.from(value)),
+});
+
+function fromHex(text: string): Uint8Array<ArrayBuffer> {
+  const hex = text.startsWith("\\x") ? text.slice(2) : text;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
+}
+
 export const projects = pgTable("projects", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -49,6 +64,10 @@ export const projects = pgTable("projects", {
   // Kept in step with the doc; empty on rows old code wrote, so readers fall back to the doc.
   width: integer("width"),
   height: integer("height"),
+  // The dashboard card's JPEG; only readThumbnail selects it.
+  thumbnail: bytea("thumbnail"),
+  // The project version the picture was drawn from.
+  thumbnailVersion: integer("thumbnail_version"),
 });
 
 // When each person last opened each project, for their Recent list.

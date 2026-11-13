@@ -257,6 +257,8 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     update projects set format = 'custom', doc = jsonb_set(doc, '{format}', '"custom"') where doc->>'format' = 'long_16x9' and ((doc->>'width')::integer, (doc->>'height')::integer) <> (1920, 1080);
     update projects set format = doc->>'format' where format is distinct from doc->>'format';
     ```
+
+    **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard and editor fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.
 5. Optional: publish the Google app, so teammates no longer have to be test users. In Google Cloud, open **Branding** and fill in the app domain details (home page, privacy policy link, authorized domain) with your deployed web address. You will need a public privacy policy page to link to. Then open **Audience** and click **Publish app**. This app only asks Google for name, email and profile picture, and the allowlist still decides who gets in.
 
 ## Connect Claude

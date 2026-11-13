@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { rowsOf } from "@/db";
 import { AFTER_COMING_FORWARD, BEFORE_GOING_BACK, CUSTOM_AFTER_COMING_FORWARD, REFILL_PROJECT_SIZES } from "@/db/refill-project-sizes";
+import { projects } from "@/db/schema";
 import { makeTestDb } from "../helpers/db";
 
 describe("migrations", () => {
@@ -205,5 +206,49 @@ describe("migrations", () => {
     expect(readme).toContain(BEFORE_GOING_BACK);
     expect(readme).toContain(CUSTOM_AFTER_COMING_FORWARD);
     expect(readme).toContain(AFTER_COMING_FORWARD);
+  });
+
+  it("projects has a nullable bytea thumbnail and an integer thumbnail_version", async () => {
+    const db = await makeTestDb();
+    const r = await db.execute(sql`select column_name, data_type, is_nullable from information_schema.columns where table_name = 'projects' and column_name in ('thumbnail', 'thumbnail_version') order by column_name`);
+    expect(rowsOf(r)).toEqual([
+      { column_name: "thumbnail", data_type: "bytea", is_nullable: "YES" },
+      { column_name: "thumbnail_version", data_type: "integer", is_nullable: "YES" },
+    ]);
+  });
+
+  it("migration 0008 only adds the two columns", () => {
+    const file = readFileSync("drizzle/0008_project_thumbnails.sql", "utf8");
+    expect(file.split("--> statement-breakpoint").map((s) => s.trim())).toEqual([
+      'ALTER TABLE "projects" ADD COLUMN "thumbnail" "bytea";',
+      'ALTER TABLE "projects" ADD COLUMN "thumbnail_version" integer;',
+    ]);
+  });
+
+  it("a thumbnail reads back as the same bytes, from bytes or from hex text", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u', 'u')`);
+    await db.update(projects).set({ thumbnail: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), thumbnailVersion: 0 });
+    const [row] = await db.select({ thumbnail: projects.thumbnail, thumbnailVersion: projects.thumbnailVersion }).from(projects);
+    expect([...row.thumbnail!]).toEqual([255, 216, 255, 224]);
+    expect(row.thumbnail!.buffer).toBeInstanceOf(ArrayBuffer);
+    expect(row.thumbnailVersion).toBe(0);
+
+    // A table's column is typed as a plain PgColumn, whose mapFromDriverValue returns unknown.
+    const fromDriver = (value: Uint8Array | string) => projects.thumbnail.mapFromDriverValue(value) as Uint8Array;
+    expect([...fromDriver("\\xffd8ff")]).toEqual([255, 216, 255]);
+
+    // neon-http hands back a Buffer, and a small Buffer is a slice of a shared pool.
+    const out = fromDriver(Buffer.from([0xff, 0xd8, 0xff]));
+    expect([...out]).toEqual([255, 216, 255]);
+    expect(Object.getPrototypeOf(out)).toBe(Uint8Array.prototype);
+    expect(out.byteOffset).toBe(0);
+    expect(out.buffer.byteLength).toBe(3);
+  });
+
+  it("the README says to migrate before deploying, and that 0007 may run with it", () => {
+    expect(readFileSync("README.md", "utf8")).toContain(
+      "    **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard and editor fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.",
+    );
   });
 });
