@@ -1,4 +1,5 @@
 import { defaultResolveFont } from "@/lib/render/compositor";
+import type { TimelineDoc } from "@/lib/timeline";
 
 // Document font names that the app loads itself, and the CSS variable holding each one's loaded family list.
 export const FONT_VARS: Record<string, string> = { Geist: "--font-geist-sans", "Geist Mono": "--font-geist-mono" };
@@ -16,4 +17,16 @@ export function makeFontResolver(readVar: (name: string) => string): (family: st
     const value = name ? readVar(name).trim() : "";
     return value || defaultResolveFont(family);
   };
+}
+
+// Each distinct weight and family the text clips use, as a CSS font for document.fonts.load. The size
+// does not choose the face, so one size stands for all.
+export function textFonts(doc: TimelineDoc, resolveFont: (family: string) => string): Set<string> {
+  const fonts = new Set<string>();
+  for (const track of doc.tracks) {
+    for (const clip of track.clips) {
+      if (clip.type === "text") fonts.add(`${clip.style.fontWeight} 16px ${resolveFont(clip.style.fontFamily)}`);
+    }
+  }
+  return fonts;
 }

@@ -7,7 +7,7 @@ import { conflictResult, failureResult, OP_HINTS } from "@/lib/mcp/errors";
 import { EXAMPLE_CROP } from "@/lib/mcp/guide";
 import { editTimelineTool } from "@/lib/mcp/tools/edit-timeline";
 import { applyProjectOps, createProject, deleteProject, getProject } from "@/lib/projects/service";
-import type { OpInput } from "@/lib/timeline";
+import { FRAME_SIZE_MESSAGE, type OpInput } from "@/lib/timeline";
 import { makeTestDb } from "../helpers/db";
 import { addText, fillWithText, textClip, toolContext } from "./context";
 
@@ -53,6 +53,26 @@ describe("edit_timeline", () => {
     expect(r.text.split("\n")[0]).toBe("Applied 1 op as version 2.");
     expect(r.text).toContain('crop={"left":0.1,"top":0,"right":0.1,"bottom":0}');
     expect((await project()).doc.tracks[1].clips[0].transform.crop).toEqual(EXAMPLE_CROP);
+  });
+
+  it("Claude can change a project to a custom size", async () => {
+    const { edit } = await setup();
+    const r = await edit(0, [{ op: "set_format", format: "custom", width: 816, height: 1056 }]);
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain("Format custom 816x1056 @30fps");
+    const odd = await edit(1, [{ op: "set_format", format: "custom", width: 1081, height: 1920 }]);
+    expect(odd.isError).toBe(true);
+    expect(odd.text).toContain(FRAME_SIZE_MESSAGE);
+    const named = await edit(1, [{ op: "set_format", format: "long_16x9", width: 1920, height: 1080 }]);
+    expect(named.isError).toBe(true);
+    expect(named.text).toContain("Give a width and height only with the custom format.");
+  });
+
+  it("a custom size equal to a named size becomes that named size", async () => {
+    const { edit, project } = await setup();
+    const r = await edit(0, [{ op: "set_format", format: "custom", width: 1920, height: 1080 }]);
+    expect(r.isError).toBe(false);
+    expect((await project()).doc).toMatchObject({ format: "long_16x9", width: 1920, height: 1080 });
   });
 
   it("Claude can stretch a clip", async () => {

@@ -73,6 +73,8 @@ export function makeFakeServer(initial: TimelineDoc, startVersion: number) {
       name = next;
       return { ok: true, name };
     },
+    // Not recorded in `calls`, so the sync tests' call lists stay as they are.
+    putThumbnail: async () => ({ ok: false, kind: "network" }),
   };
 
   return {

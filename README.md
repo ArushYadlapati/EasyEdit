@@ -8,7 +8,7 @@ This README gets the app running on your own computer. You will set up three thi
 
 - Sign in with Google. Anyone not on the allowlist is turned away.
 - An Admin page where admins add people, change their role, and remove them.
-- A dashboard where editors create projects in any of five video formats, and rename, duplicate and delete them. A deleted project is hidden and not shown again.
+- A dashboard where editors create projects in one of five video formats or at a custom size (in pixels, centimeters or inches), keep them in folders, and rename, duplicate and delete them. Recent shows the projects you opened last. A deleted project is hidden and not shown again. Each card shows a picture of its project, which the editor draws a few seconds after a change is saved; a project changed from outside the editor shows its new picture once an editor opens it.
 - The editor, which opens a project in the whole window: an add panel on the left, the preview in the middle, the details on the right and the timeline along the bottom. It is always dark, and it asks the Dark Reader browser extension to leave it alone. In it you can:
   - add text clips from three presets (Title, Subtitle, Lower third) and video, image and audio clips from the Media tab, and move, trim, split, delete, ripple-delete, copy and paste clips of every kind
   - add, rename, lock, hide, mute, reorder and remove tracks
@@ -213,6 +213,7 @@ The editor cannot be opened without a Google sign-in, so the tests cannot click 
 13. Sign out in another tab, then move a clip in the editor. It says "You're signed out. Sign in again to save your changes." and the status reads "Signed out". Click **Sign in**: it opens in a new tab. Sign in there and come back to the editor: the status returns to "Saved" and the move is kept.
 14. Press `?`. The list of shortcuts opens. Close it with `Escape`.
 15. Make the window narrower than 1024 px. The editor is replaced by "The editor needs a wider window."
+16. Add a title, wait five seconds, then click **Projects**: the project's card shows the title on its picture.
 
 ## Deploy to Vercel
 
@@ -243,6 +244,22 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     `.env.local` must still exist, because `pnpm db:seed` reads it.
 
     **Before deploying a version with media:** run the migration against the production database first, with the command above, then deploy. The version that is live now ignores the new table.
+
+    **Before deploying the version with folders and custom sizes:** run the migration against the production database first, with the command above, then deploy. Run it at a quiet time: while it fills in each project's size, opening and saving projects waits for it. After the deploy, run this once in the Neon SQL editor for the production database. It fills in each project's width and height from its timeline wherever the version that was live during the deploy left them empty or out of date, and it is safe to run again:
+
+    ```sql
+    update projects set width = (doc->>'width')::integer, height = (doc->>'height')::integer where width is distinct from (doc->>'width')::integer or height is distinct from (doc->>'height')::integer;
+    ```
+
+    **Going back to an earlier version after this one:** the earlier version does not know custom sizes. Run the first statement below just before promoting an earlier deployment, and once more right after. It labels each custom-size project Long 16:9 in its timeline as well as in the project list, and keeps its size and clips, so the earlier version's dashboard, editor and Claude's project list keep working while people edit. There those projects read as Long 16:9 at their own size. The earlier editor's Activity list and Claude's undo can fail on a project whose format was changed to a custom size on this version, and undoing a format change made on the earlier version gives Long 16:9 at 1920 × 1080. After coming forward again, run the second and third statements, in that order, then the after-deploy statement above. The second makes every Long 16:9 project whose size is not 1920 × 1080 custom again:
+
+    ```sql
+    update projects set format = 'long_16x9', doc = jsonb_set(doc, '{format}', '"long_16x9"') where format = 'custom' or doc->>'format' = 'custom';
+    update projects set format = 'custom', doc = jsonb_set(doc, '{format}', '"custom"') where doc->>'format' = 'long_16x9' and ((doc->>'width')::integer, (doc->>'height')::integer) <> (1920, 1080);
+    update projects set format = doc->>'format' where format is distinct from doc->>'format';
+    ```
+
+    **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard and editor fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.
 5. Optional: publish the Google app, so teammates no longer have to be test users. In Google Cloud, open **Branding** and fill in the app domain details (home page, privacy policy link, authorized domain) with your deployed web address. You will need a public privacy policy page to link to. Then open **Audience** and click **Publish app**. This app only asks Google for name, email and profile picture, and the allowlist still decides who gets in.
 
 ## Connect Claude
@@ -264,7 +281,7 @@ A member can connect Claude to the app and ask it to read and change projects fo
 | --- | --- |
 | `list_projects` | Lists the team's projects, newest change first, and says who you are signed in as. |
 | `get_project` | Reads one project's timeline as text: tracks, clips, times and the current version. |
-| `create_project` | Creates an empty project with a name and one of the five formats. |
+| `create_project` | Creates an empty project with a name and one of the five formats, or a custom width and height in pixels. |
 | `edit_timeline` | Applies a list of changes to a project, all or nothing. |
 | `add_text` | Adds one or more text clips from a preset (title, subtitle or lower third). |
 | `undo_change` | Undoes one earlier change, Claude's or a person's, like **Undo this change** in the editor. |
@@ -288,8 +305,8 @@ Every person on the allowlist has one of three roles.
 
 | Role | What they can do today |
 | --- | --- |
-| Viewer | Sign in, see the dashboard, open projects, see the media library and play media. Cannot create or change anything. |
-| Editor | Everything a viewer can, plus create, rename, duplicate and delete projects, and change them. Upload media, and rename and remove it. Deleting hides a project; it is not shown again. |
+| Viewer | Sign in, see the dashboard and its folders, open projects, see the media library and play media. Cannot create or change anything. |
+| Editor | Everything a viewer can, plus create, rename, duplicate and delete projects, keep them in folders (make, rename and delete folders), and change them. Upload media, and rename and remove it. Deleting hides a project; it is not shown again. Deleting a folder never deletes its projects. |
 | Admin | Everything an editor can, plus open the Admin page to add, re-role and remove people. |
 
 Some rules:
@@ -311,6 +328,7 @@ Some rules:
 | Square 1:1 | 1080 x 1080 |
 | Long 16:9 | 1920 x 1080 |
 | Long 4K | 3840 x 2160 |
+| Custom | Any even width and height from 16 to 4096 pixels, up to the area of 4K (3840 x 2160) |
 
 All projects run at 30 frames per second. Times in the timeline are whole frames.
 
@@ -325,17 +343,20 @@ All projects run at 30 frames per second. Times in the timeline are whole frames
 
 ## The project API
 
-All routes need you to be signed in (they use the same cookie as the website). Bodies and answers are JSON.
+All routes need you to be signed in (they use the same cookie as the website). Bodies and answers are JSON, except the thumbnail route's picture, which is a JPEG.
 
 | Route | Who may call it | What it does |
 | --- | --- | --- |
 | `GET /api/projects` | viewer and up | List projects: `{ "projects": [...] }` |
-| `POST /api/projects` | editor and up | Create a project from `{ "name", "format" }`. Answers `201` with `{ "id" }`. |
+| `POST /api/projects` | editor and up | Create a project from `{ "name", "format" }`, with `"width"` and `"height"` in pixels when `"format"` is `"custom"`. Answers `201` with `{ "id" }`. |
 | `GET /api/projects/:id` | viewer and up | Get `{ id, name, format, doc, version }`. |
 | `GET /api/projects/:id/version` | viewer and up | Get just the current version: `{ version }`. |
 | `PATCH /api/projects/:id` | editor and up | Rename a project: send `{ "name" }`. Answers `{ id, name }`. |
 | `DELETE /api/projects/:id` | editor and up | Delete a project. Answers `204`. |
 | `POST /api/projects/:id/duplicate` | editor and up | Make a copy of a project. Answers `201` with `{ "id" }` of the copy. |
+| `POST /api/projects/:id/opened` | viewer and up | Records that you opened the project, for your Recent list on the dashboard. Answers `204`. |
+| `GET /api/projects/:id/thumbnail?v=N` | viewer and up | Get the project's picture for its dashboard card, a JPEG. `N` is `thumbnailVersion` from the project list; each new picture has a new `N`, so browsers keep each one. Answers `404` when the project has no picture. |
+| `PUT /api/projects/:id/thumbnail?v=N` | editor and up | Store the project's picture: send a JPEG of at most 300 KB drawn from version `N`. It is kept only when `N` is newer than the stored picture's and not past the project's version, and it changes neither the version nor when the project last changed. Answers `{ saved }`. The editor sends it by itself. |
 | `GET /api/projects/:id/ops?since=N` | viewer and up | Get the changes after version `N`: `{ version, entries, hasMore }`. Each entry is `{ version, ops, inverse, actor, actorName, requestId, createdAt }`. Add `limit` to set the page size (default 100, at most 500). A page holds fewer entries when they are large. When `hasMore` is true, ask again from the `version` in the answer. |
 | `POST /api/projects/:id/ops` | editor and up | Apply changes: send `{ "baseVersion": N, "ops": [...] }` (1 to 500 ops). Answers `{ version, ops, inverse }`. |
 

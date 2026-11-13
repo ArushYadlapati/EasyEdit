@@ -21,7 +21,8 @@ describe("limits", () => {
       mediaPendingMaxAgeMs: 604_800_000, mediaNameChars: 120, mediaEventChars: 80, mediaListMax: 2000,
       mediaIdsPerRequest: 200, mediaPosterBytes: 1_048_576, mediaDirectPlayBytes: 209_715_200,
       mediaPreviewWaitMs: 7_200_000, mediaCacheBytes: 2_147_483_648, mediaReadTokenMinSeconds: 600,
-      connectorAssetsPage: 50, connectorMediaItems: 20 });
+      connectorAssetsPage: 50, connectorMediaItems: 20, frameSideMin: 16, frameSideMax: 4096, frameAreaMax: 8_294_400,
+      folderNameChars: 60, dashboardRecent: 6, thumbnailBytes: 307_200 });
   });
 
   it("text up to 2,000 characters is accepted; 2,001 is INVALID on add and on update", () => {
@@ -151,6 +152,9 @@ describe("expect guards are validated like the fields they guard", () => {
     invalid({ op: "move_clip", clipId: "c", start: 5, expect: { start: 0, bogus: 1 } });
     valid({ op: "set_format", format: "long_16x9", expect: { format: "short_9x16" } });
     invalid({ op: "set_format", format: "long_16x9", expect: { format: "short_9x16", bogus: 1 } });
+    valid({ op: "set_format", format: "custom", width: 816, height: 1056, expect: { format: "custom", width: 800, height: 1000 } });
+    invalid({ op: "set_format", format: "custom", width: 816, height: 1056, expect: { format: "custom", depth: 1 } });
+    invalid({ op: "set_format", format: "custom", width: "816", height: 1056 });
     invalid({ op: "remove_clip", clipId: "c", expect: { start: 0, duration: 3, bogus: 1 } });
     invalid({ op: "remove_track", trackId: "v1", expect: { clipIds: [], bogus: 1 } });
   });

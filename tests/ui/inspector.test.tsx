@@ -33,6 +33,23 @@ it("shows the project with nothing selected, and switches the format", () => {
   expect(store.getState().queue).toMatchObject([{ label: "format change" }]);
 });
 
+it("with nothing selected a custom project shows its width and height", () => {
+  const custom = { ...sampleDoc(), format: "custom" as const, width: 816, height: 1056 };
+  const store = makeStore({ doc: custom });
+  render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+  expect((screen.getByRole("combobox", { name: "Format" }) as HTMLSelectElement).value).toBe("custom");
+  expect((screen.getByLabelText("Width") as HTMLInputElement).value).toBe("816");
+  expect((screen.getByLabelText("Height") as HTMLInputElement).value).toBe("1056");
+});
+
+it("a viewer sees a custom project's size in the inspector", () => {
+  const custom = { ...sampleDoc(), format: "custom" as const, width: 816, height: 1056 };
+  const store = makeStore({ doc: custom, canEdit: false });
+  render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+  expect((screen.getByLabelText("Width") as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByLabelText("Height") as HTMLInputElement).disabled).toBe(true);
+});
+
 it("saves the clamped value when a size above the maximum is confirmed with Enter", () => {
   const store = makeStore();
   store.getState().select(["x1"]);

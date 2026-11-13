@@ -32,6 +32,16 @@ describe("list_projects", () => {
     ].join("\n") });
   });
 
+  it("a custom-size project is listed with its size", async () => {
+    const db = await makeTestDb();
+    const ctx = await toolContext(db);
+    await db.insert(user).values({ id: "u2", name: "Grace Hopper", email: "u2@gmail.com", emailVerified: true });
+    const { id } = await createProject(db, grace, { name: "Poster", format: "custom", width: 816, height: 1056 });
+    expect((await listProjectsTool(ctx, {})).text.split("\n")).toContain(
+      `${id}  "Poster"  Custom 816 × 1056  version 0  changed just now by Grace Hopper`,
+    );
+  });
+
   it("tells a viewer they can only read, and says so when there is nothing yet", async () => {
     const db = await makeTestDb();
     expect((await listProjectsTool(await toolContext(db, { role: "viewer" }), {})).text).toBe(

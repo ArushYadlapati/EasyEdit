@@ -23,3 +23,19 @@ export async function deleteProjectAction(formData: FormData): Promise<FormState
 export async function duplicateProjectAction(formData: FormData): Promise<FormState> {
   return actions.duplicate(formData);
 }
+
+export async function moveProjectAction(formData: FormData): Promise<FormState> {
+  return actions.move(formData);
+}
+
+export async function createFolderAction(formData: FormData): Promise<FormState> {
+  return actions.createFolder(formData);
+}
+
+export async function renameFolderAction(formData: FormData): Promise<FormState> {
+  return actions.renameFolder(formData);
+}
+
+export async function deleteFolderAction(formData: FormData): Promise<FormState> {
+  return actions.deleteFolder(formData);
+}

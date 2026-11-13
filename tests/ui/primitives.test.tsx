@@ -135,6 +135,48 @@ it("a dialog's bar sits between its header and its scrolling body, and its marke
   expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Second" }));
 });
 
+it("a dialog's footer stays under its scrolling body", () => {
+  render(
+    <Dialog title="New project" open onClose={() => {}} footer={<button>Create project</button>}>
+      <p>Body</p>
+    </Dialog>,
+  );
+  const header = screen.getByRole("heading", { name: "New project" }).closest("header")!;
+  const body = screen.getByText("Body").parentElement!;
+  const footer = screen.getByRole("button", { name: "Create project" }).parentElement!;
+  expect([...header.parentElement!.children]).toEqual([header, body, footer]);
+  expect(body.className).toContain("overflow-y-auto");
+  expect(footer.className).not.toContain("overflow-y-auto");
+  expect(footer.className.split(" ")).toEqual(
+    expect.arrayContaining(["flex", "shrink-0", "items-center", "justify-end", "gap-2", "border-t", "border-ed-line", "px-4", "py-3"]),
+  );
+});
+
+it("a large dialog takes most of the window", () => {
+  const { unmount } = render(
+    <Dialog title="New project" open onClose={() => {}} size="lg">
+      <p>Body</p>
+    </Dialog>,
+  );
+  const large = screen.getByRole("dialog");
+  const classes = large.className.split(" ");
+  expect(classes).toEqual(expect.arrayContaining(["w-[min(92vw,1120px,calc(100vw-32px))]", "h-[min(92dvh,760px)]", "max-h-[min(92dvh,760px)]"]));
+  expect(classes).not.toContain("w-[min(32rem,calc(100vw-32px))]");
+  expect(classes).not.toContain("max-h-[min(80vh,640px)]");
+  expect(screen.getByText("Body").parentElement!.className.split(" ")).toContain("flex-1");
+  unmount();
+
+  render(
+    <Dialog title="Rename" open onClose={() => {}}>
+      <p>Body</p>
+    </Dialog>,
+  );
+  const regular = screen.getByRole("dialog").className.split(" ");
+  expect(regular).toEqual(expect.arrayContaining(["w-[min(32rem,calc(100vw-32px))]", "max-h-[min(80vh,640px)]"]));
+  expect(regular).not.toContain("h-[min(92dvh,760px)]");
+  expect(screen.getByText("Body").parentElement!.className.split(" ")).not.toContain("flex-1");
+});
+
 it("tabs mark no tab for focus unless asked", () => {
   render(<Tabs label="Sections" value="a" tabs={[{ id: "a", label: "First" }]} onChange={() => {}} />);
   expect(screen.getByRole("tab", { name: "First" }).hasAttribute("data-autofocus")).toBe(false);
@@ -369,6 +411,40 @@ it("a text menu button without text has no aria-label, no chevron, and only a sh
   expect(trigger.querySelector("svg")).toBeNull();
   rerender(<Menu label="Edit" shortcut="E" items={[]} onSelect={() => {}} />);
   expect(trigger.getAttribute("title")).toBe("Edit (E)");
+});
+
+// eslint-disable-next-line @next/next/no-img-element -- the account menu's picture is a plain <img> from any host.
+const PICTURE = <img src="https://x.test/a.png" alt="" />;
+
+it("a text menu button can show a picture before its text", () => {
+  render(
+    <Menu
+      label="Account"
+      text="Ada Lovelace"
+      lead={PICTURE}
+      items={[{ id: "sign-out", label: "Sign out" }]}
+      onSelect={() => {}}
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: "Account" });
+  expect(trigger.textContent).toContain("Ada Lovelace");
+  const picture = trigger.querySelector("img")!;
+  expect(picture.getAttribute("src")).toBe("https://x.test/a.png");
+  expect(picture.compareDocumentPosition(trigger.querySelector("svg")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(trigger.firstChild).toBe(picture);
+  expect(trigger.className.split(" ")).toContain("gap-1.5");
+  fireEvent.click(picture);
+  expect(screen.getByRole("menu", { name: "Account" })).toBeTruthy();
+});
+
+it("a text menu button without a lead keeps no gap", () => {
+  render(<Menu label="Account" text="Ada Lovelace" items={[]} onSelect={() => {}} />);
+  expect(screen.getByRole("button", { name: "Account" }).className.split(" ")).not.toContain("gap-1.5");
+});
+
+it("an icon menu button ignores a lead", () => {
+  render(<Menu label="Track options" icon={<Plus />} lead={PICTURE} items={[]} onSelect={() => {}} />);
+  expect(screen.getByRole("button", { name: "Track options" }).querySelector("img")).toBeNull();
 });
 
 it("radio items carry aria-checked and win over the checkbox role", () => {

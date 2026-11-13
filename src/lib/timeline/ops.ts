@@ -94,7 +94,16 @@ const sharedOps = [
     patch: z.record(z.string(), z.unknown()),
     expect: ClipExpect.optional(),
   }),
-  z.object({ op: z.literal("set_format"), format: FormatId, expect: z.object({ format: FormatId }).strict().optional() }),
+  z.object({
+    op: z.literal("set_format"),
+    format: FormatId,
+    width: z.number().int().optional(),
+    height: z.number().int().optional(),
+    expect: z
+      .object({ format: FormatId, width: z.number().int().optional(), height: z.number().int().optional() })
+      .strict()
+      .optional(),
+  }),
   // One format's safe area size; null goes back to the default. expect: the size it must have now (null: the default).
   z.object({
     op: z.literal("set_safe_area"),

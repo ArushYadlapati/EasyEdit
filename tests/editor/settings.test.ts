@@ -3,7 +3,7 @@ import { DEFAULT_KEYMAP, setOff } from "@/lib/editor/keymap";
 import {
   DEFAULT_PREFS, clampPercent, clampSeconds, createSettingsStore, formatPrefs, parsePrefs, type Prefs, type SettingsSave,
 } from "@/lib/editor/settings";
-import { fromUnit, showUnit, toUnit } from "@/lib/editor/units";
+import { fromUnit, showUnit, toEvenPixels, toUnit } from "@/lib/editor/units";
 
 const saver = () => ({ prefs: vi.fn<SettingsSave["prefs"]>(), keymap: vi.fn<SettingsSave["keymap"]>() });
 
@@ -118,5 +118,10 @@ describe("units", () => {
     expect(showUnit(76.8, "px")).toBe("77");
     expect(showUnit(100, "in")).toBe("1.04");
     expect(showUnit(48, "in")).toBe("0.5");
+    expect(toEvenPixels(8.5, "in")).toBe(816);
+    expect(toEvenPixels(4.01, "in")).toBe(384);
+    expect(toEvenPixels(10, "cm")).toBe(378);
+    expect(toEvenPixels(1081, "px")).toBe(1082);
+    expect(toEvenPixels(1079, "px")).toBe(1080);
   });
 });

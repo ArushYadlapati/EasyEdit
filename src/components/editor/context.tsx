@@ -20,6 +20,7 @@ const OFFLINE_API: ProjectApi = {
   getOpsSince: async () => NETWORK,
   getProject: async () => NETWORK,
   rename: async () => NETWORK,
+  putThumbnail: async () => NETWORK,
 };
 
 type EditorProviderProps = {

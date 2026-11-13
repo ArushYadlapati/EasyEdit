@@ -36,8 +36,8 @@
   }
 }
 
-/* The editor is always dark. Everything inside .editor uses these roles. */
-.editor {
+/* The editor is always dark. Everything inside .editor uses these roles, and the dashboard (.ed-theme) shares them. */
+.editor, .ed-theme {
   color-scheme: dark;
   --ed-bg: #0a0a0a;          /* the window and the area around the canvas (the app's dark background) */
   --ed-panel: #141414;       /* panels, top bar, timeline */

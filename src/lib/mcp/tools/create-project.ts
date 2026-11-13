@@ -1,7 +1,8 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { projects } from "@/db/schema";
 import { meetsRole } from "@/lib/access-rules";
-import { createProject, getProject } from "@/lib/projects/service";
+import { projectFrame } from "@/lib/projects/schemas";
+import { createProject, getProject, storedHeight, storedWidth } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 import { isStorableText } from "@/lib/text";
 import { escapeQuoted } from "@/lib/timeline";
@@ -13,7 +14,10 @@ import { fail, ok, type ToolContext, type ToolResult } from "../types";
 // A repeat of the same create within this window is taken as a retry, and answers with the project it already made.
 const TWIN_WINDOW = sql`interval '60 seconds'`;
 
-export async function createProjectTool(ctx: ToolContext, input: { name: string; format: string }): Promise<ToolResult> {
+type CreateInput = { name: string; format: string; width?: number; height?: number };
+
+// Claude's projects land in no folder: no folder is passed, and no tool mentions folders.
+export async function createProjectTool(ctx: ToolContext, input: CreateInput): Promise<ToolResult> {
   if (!meetsRole(ctx.user.role, "editor")) return fail(roleMessage(ctx.user.role));
 
   const twinId = await findTwin(ctx, input);
@@ -25,7 +29,7 @@ export async function createProjectTool(ctx: ToolContext, input: { name: string;
 
   let id: string;
   try {
-    ({ id } = await createProject(ctx.db, ctx.actor, input));
+    ({ id } = await createProject(ctx.db, ctx.actor, { name: input.name, format: input.format, width: input.width, height: input.height }));
   } catch (error) {
     if (error instanceof ServiceError) return fail(error.message);
     throw error;
@@ -35,11 +39,14 @@ export async function createProjectTool(ctx: ToolContext, input: { name: string;
   return answer(ctx, project, `Created project "${escapeQuoted(project.name)}" (id ${project.id}), version 0.`);
 }
 
-// A live project this actor created in the last minute with the same trimmed name and the same format.
-// A name the database cannot store has no twin; skipping the lookup lets the service refuse it with its sentence.
-async function findTwin(ctx: ToolContext, input: { name: string; format: string }): Promise<string | null> {
+// A live project this actor created in the last minute with the same trimmed name, format and size.
+// A name the database cannot store, or a format and size the service refuses, has no twin; skipping the lookup lets
+// the service refuse it with its sentence.
+async function findTwin(ctx: ToolContext, input: CreateInput): Promise<string | null> {
   const name = input.name.trim();
   if (!isStorableText(name)) return null;
+  const frame = projectFrame(input);
+  if ("error" in frame) return null;
   const rows = await ctx.db
     .select({ id: projects.id })
     .from(projects)
@@ -47,7 +54,9 @@ async function findTwin(ctx: ToolContext, input: { name: string; format: string 
       and(
         eq(projects.createdBy, ctx.actor.userId),
         eq(projects.name, name),
-        sql`${projects.format} = ${input.format}`,
+        sql`${projects.format} = ${frame.format}`,
+        sql`${storedWidth()} = ${frame.width}`,
+        sql`${storedHeight()} = ${frame.height}`,
         isNull(projects.deletedAt),
         sql`${projects.createdAt} > now() - ${TWIN_WINDOW}`,
       ),

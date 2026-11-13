@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { rowsOf, type DB } from "@/db";
 import { projectOps, projects } from "@/db/schema";
@@ -6,7 +6,7 @@ import { requireRole, type Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
 import { assetIdsToCheck, findMediaProblem, mediaProblemMessage } from "@/lib/media/refs";
 import { loadAssetFacts } from "@/lib/media/service";
-import { copyName, createProjectInput, projectName } from "@/lib/projects/schemas";
+import { copyName, projectFrame, projectName } from "@/lib/projects/schemas";
 import { ServiceError } from "@/lib/service-error";
 import {
   OpError,
@@ -31,9 +31,22 @@ export type ProjectRecord = {
   version: number;
   updatedBy: string;
   updatedAt: Date;
+  thumbnailVersion: number | null;
 };
 
-export type ProjectSummary = Omit<ProjectRecord, "doc">;
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  format: FormatId;
+  width: number;
+  height: number;
+  folderId: string | null;
+  version: number;
+  createdAt: Date;
+  updatedBy: string;
+  updatedAt: Date;
+  thumbnailVersion: number | null;
+};
 
 export type OpLogEntry = {
   version: number;
@@ -48,6 +61,9 @@ export type AppliedOps = { version: number; ops: Op[]; inverse: Op[] };
 
 const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const REQUEST_ID_INDEX = "project_ops_project_id_request_id_unique";
+// The foreign key from projects to folders, as drizzle-kit named it in migration 0007. A rename there must be made
+// here too, or a folder deleted mid-write would fail the write instead of leaving the project in no folder.
+export const FOLDER_FK = "projects_folder_id_folders_id_fk";
 
 // Deleted projects are hidden from every read and write.
 const notDeleted = isNull(projects.deletedAt);
@@ -55,27 +71,64 @@ const liveProject = (id: string) => and(eq(projects.id, id), notDeleted);
 
 const invalidName = () => new ServiceError("INVALID", 400, `Enter a name up to ${LIMITS.projectNameChars} characters.`);
 
+// The frame size kept in step with the doc. Rows written before the columns existed have them empty, so the doc's
+// own size is read instead.
+export function storedWidth(): SQL<number> {
+  return sql<number>`coalesce(${projects.width}, (${projects.doc}->>'width')::integer)`;
+}
+
+export function storedHeight(): SQL<number> {
+  return sql<number>`coalesce(${projects.height}, (${projects.doc}->>'height')::integer)`;
+}
+
+// True when a write failed with this Postgres error code on this constraint or index. Drivers may wrap the
+// database error.
+export function failedOn(error: unknown, code: string, name: string): boolean {
+  for (let e: unknown = error; e instanceof Error; e = e.cause) {
+    const { code: found, constraint } = e as { code?: unknown; constraint?: unknown };
+    if (found === code && (constraint === name || e.message.includes(name))) return true;
+  }
+  return false;
+}
+
+// True when a write failed because the folder it named was deleted after the write checked it.
+export function isFolderGone(error: unknown): boolean {
+  return failedOn(error, "23503", FOLDER_FK);
+}
+
 export async function createProject(
   db: DB,
   actor: Actor,
-  input: { name: string; format: string },
+  input: { name: string; format: string; width?: number; height?: number; folderId?: string | null },
 ): Promise<{ id: string; version: 0 }> {
   requireRole(actor, "editor");
   const name = projectName.safeParse(input.name);
   if (!name.success) throw invalidName();
-  const format = createProjectInput.shape.format.safeParse(input.format);
-  if (!format.success) throw new ServiceError("INVALID", 400, "Pick a format.");
+  const frame = projectFrame(input);
+  if ("error" in frame) throw new ServiceError("INVALID", 400, frame.error);
 
   const id = newId();
-  await db.insert(projects).values({
-    id,
-    name: name.data,
-    format: format.data,
-    doc: createEmptyDoc(format.data),
-    version: 0,
-    createdBy: actor.userId,
-    updatedBy: actor.userId,
-  });
+  const insert = (folderId: SQL | null) =>
+    db.insert(projects).values({
+      id,
+      name: name.data,
+      format: frame.format,
+      width: frame.width,
+      height: frame.height,
+      doc: createEmptyDoc(frame.format, frame),
+      folderId,
+      version: 0,
+      createdBy: actor.userId,
+      updatedBy: actor.userId,
+    });
+  const folderId = input.folderId ?? null;
+  // A folder that is gone leaves the project in no folder.
+  try {
+    await insert(folderId === null ? null : sql`(select id from folders where id = ${folderId})`);
+  } catch (error) {
+    if (folderId === null || !isFolderGone(error)) throw error;
+    await insert(null);
+  }
   return { id, version: 0 };
 }
 
@@ -90,6 +143,7 @@ export async function getProject(db: DB, actor: Actor, id: string): Promise<Proj
       version: projects.version,
       updatedBy: projects.updatedBy,
       updatedAt: projects.updatedAt,
+      thumbnailVersion: projects.thumbnailVersion,
     })
     .from(projects)
     .where(liveProject(id));
@@ -103,9 +157,14 @@ export async function listProjects(db: DB, actor: Actor): Promise<ProjectSummary
       id: projects.id,
       name: projects.name,
       format: projects.format,
+      width: storedWidth().mapWith(Number),
+      height: storedHeight().mapWith(Number),
+      folderId: projects.folderId,
       version: projects.version,
+      createdAt: projects.createdAt,
       updatedBy: projects.updatedBy,
       updatedAt: projects.updatedAt,
+      thumbnailVersion: projects.thumbnailVersion,
     })
     .from(projects)
     .where(notDeleted)
@@ -127,7 +186,7 @@ const rejected = (error: OpError, code: OpError["code"] = error.code) =>
 
 const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 
-// Updates the doc, and the format column that mirrors it, only if its version is still the one read, and logs
+// Updates the doc, and the format and size columns that mirror it, only if its version is still the one read, and logs
 // the ops and their inverse from that same update, so the doc and the op log can never disagree. Returns the new
 // version, or null if another writer won or the project was deleted since it was read.
 async function writeIfUnchanged(
@@ -145,7 +204,8 @@ async function writeIfUnchanged(
   const result = await db.execute(sql`
     with upd as (
       update projects
-      set doc = ${JSON.stringify(input.doc)}::jsonb, format = ${input.doc.format}::text, version = version + 1,
+      set doc = ${JSON.stringify(input.doc)}::jsonb, format = ${input.doc.format}::text,
+          width = ${input.doc.width}::integer, height = ${input.doc.height}::integer, version = version + 1,
           updated_by = ${input.actor}::text, updated_at = now()
       where id = ${input.projectId}::text and version = ${input.readVersion}::integer and deleted_at is null
       returning version
@@ -173,11 +233,7 @@ export async function getAppliedRequest(db: DB, actor: Actor, projectId: string,
 
 // True when a write failed because its request id was logged first. Drivers may wrap the database error.
 function isRequestIdTaken(error: unknown): boolean {
-  for (let e: unknown = error; e instanceof Error; e = e.cause) {
-    const { code, constraint } = e as { code?: unknown; constraint?: unknown };
-    if (code === "23505" && (constraint === REQUEST_ID_INDEX || e.message.includes(REQUEST_ID_INDEX))) return true;
-  }
-  return false;
+  return failedOn(error, "23505", REQUEST_ID_INDEX);
 }
 
 export async function applyProjectOps(
@@ -309,30 +365,45 @@ export async function renameProject(db: DB, actor: Actor, id: string, name: stri
   return { id, name: rows[0].name };
 }
 
-// A soft delete: the row and its op log are kept, and the row records who deleted it.
+// A soft delete: the row and its op log are kept, and the row records who deleted it. Its picture is dropped: no path
+// brings a deleted project back.
 export async function deleteProject(db: DB, actor: Actor, id: string): Promise<void> {
   requireRole(actor, "editor");
   const rows = await db
     .update(projects)
-    .set({ deletedAt: sql`now()`, updatedBy: actor.userId, updatedAt: sql`now()` })
+    .set({ deletedAt: sql`now()`, updatedBy: actor.userId, updatedAt: sql`now()`, thumbnail: null, thumbnailVersion: null })
     .where(liveProject(id))
     .returning({ id: projects.id });
   if (!rows[0]) throw notFound(id);
 }
 
-// The doc is copied inside the insert itself, so the copy is always the version current at that moment.
+// The doc is copied inside the insert itself, so the copy is always the version current at that moment. The copy
+// stays in the source's folder, and its size is read from the doc, since the source's size columns may be empty. A
+// picture of the current version is copied as the copy's version 0; an older one is left behind.
 export async function duplicateProject(db: DB, actor: Actor, id: string): Promise<{ id: string; version: 0 }> {
   requireRole(actor, "editor");
   const source = await db.select({ name: projects.name }).from(projects).where(liveProject(id));
   if (!source[0]) throw notFound(id);
   const copyId = newId();
-  const result = await db.execute(sql`
-    insert into projects (id, name, format, doc, version, created_by, updated_by)
-    select ${copyId}::text, ${copyName(source[0].name)}::text, format, doc, 0, ${actor.userId}::text, ${actor.userId}::text
-    from projects
-    where id = ${id}::text and deleted_at is null
-    returning id
-  `);
+  const copy = (folderId: SQL) =>
+    db.execute(sql`
+      insert into projects (id, name, format, doc, version, created_by, updated_by, folder_id, width, height,
+                            thumbnail, thumbnail_version)
+      select ${copyId}::text, ${copyName(source[0].name)}::text, format, doc, 0, ${actor.userId}::text, ${actor.userId}::text,
+             ${folderId}, (doc->>'width')::integer, (doc->>'height')::integer,
+             case when thumbnail_version = version then thumbnail end, case when thumbnail_version = version then 0 end
+      from projects
+      where id = ${id}::text and deleted_at is null
+      returning id
+    `);
+  let result: Awaited<ReturnType<typeof copy>>;
+  try {
+    result = await copy(sql`folder_id`);
+  } catch (error) {
+    // The folder was deleted while the copy was written: the copy goes in no folder.
+    if (!isFolderGone(error)) throw error;
+    result = await copy(sql`null`);
+  }
   if (rowsOf(result).length === 0) throw notFound(id);
   return { id: copyId, version: 0 };
 }

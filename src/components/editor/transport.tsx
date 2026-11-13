@@ -4,7 +4,7 @@ import { Pause, Play, Scan, SkipBack, SkipForward, StepBack, StepForward } from 
 import { useMemo } from "react";
 import { IconButton } from "@/components/ui/icon-button";
 import { viewDoc } from "@/lib/editor/store";
-import { FORMAT_PRESETS, docDuration } from "@/lib/timeline";
+import { docDuration, formatLabel } from "@/lib/timeline";
 import { useEditor } from "./context";
 import { Timecode } from "./timecode";
 import { useShortcutLabel } from "./use-shortcuts";
@@ -64,7 +64,7 @@ export function Transport() {
         <IconButton label="Safe area" pressed={showSafeZones} onClick={() => toggleSafeZones()}>
           <Scan />
         </IconButton>
-        <span className="truncate text-xs text-ed-muted">{FORMAT_PRESETS[doc.format].label}</span>
+        <span className="truncate text-xs text-ed-muted">{formatLabel(doc)}</span>
       </div>
     </div>
   );

@@ -47,6 +47,7 @@ describe("summarizeOps", () => {
     [[{ op: "move_track", trackId: "t1", index: 0 }], "Reordered tracks"],
     [[{ op: "replace_track", track, index: 1, restore: true }], "Restored a track"],
     [[{ op: "set_format", format: "long_16x9" }], "Changed the format to Long 16:9"],
+    [[{ op: "set_format", format: "custom", width: 816, height: 1056 }], "Changed the format to Custom 816 × 1056"],
     [[{ op: "set_safe_area", format: "short_9x16", size: { width: 0.875, height: 0.6 } }], "Resized the safe area to 87.5% × 60%"],
     [[{ op: "set_safe_area", format: "short_9x16", size: null }], "Reset the safe area"],
     [[{ op: "set_safe_area", format: "short_9x16", size: null }, { op: "set_format", format: "long_16x9" }], "Changed the format and changed the safe area"],

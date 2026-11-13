@@ -10,9 +10,9 @@ import { Tabs, tabIds } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
 import { LENGTH_MAX_S, LENGTH_MIN_S, clampSeconds, type Units } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
-import { FORMAT_PRESETS, SAFE_AREA_DEFAULTS, maxSafeAreaHeight, safeAreaOf, type SafeArea } from "@/lib/timeline";
+import { SAFE_AREA_DEFAULTS, formatLabel, maxSafeAreaHeight, safeAreaOf, type SafeArea } from "@/lib/timeline";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
-import { FormatSelect } from "./format-select";
+import { FormatFields } from "./format-select";
 import { ShortcutsSection } from "./shortcuts-section";
 
 export type SettingsSection = "project" | "general" | "shortcuts";
@@ -42,9 +42,7 @@ function ProjectSection() {
   const fps = useEditor((s) => viewDoc(s).fps);
   return (
     <>
-      <Field label="Format">
-        <FormatSelect />
-      </Field>
+      <FormatFields />
       <div className="flex flex-col gap-1">
         <span className={CAPTION}>Frame rate</span>
         <p className="text-ed-text">{fps} fps</p>
@@ -78,11 +76,12 @@ function SafeAreaFields() {
       <Heading>Safe area</Heading>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Width">
-          <NumberInput {...percent} data-edit-control max={100} value={toPercent(safe.width)} onCommit={(n) => resize({ width: fromPercent(n) })} />
+          <NumberInput {...percent} ariaLabel="Safe area width" data-edit-control max={100} value={toPercent(safe.width)} onCommit={(n) => resize({ width: fromPercent(n) })} />
         </Field>
         <Field label="Height">
           <NumberInput
             {...percent}
+            ariaLabel="Safe area height"
             data-edit-control
             max={toPercent(maxSafeAreaHeight(format))}
             value={toPercent(safe.height)}
@@ -91,7 +90,7 @@ function SafeAreaFields() {
         </Field>
       </div>
       <p className={SMALL_HINT}>
-        For {FORMAT_PRESETS[format].label}; each format keeps its own. Centred sideways, from {toPercent(safe.top)}% down.
+        For {format === "custom" ? "custom sizes" : formatLabel({ format })}; each format keeps its own. Centred sideways, from {toPercent(safe.top)}% down.
         {safe.custom ? "" : ` The default${format === "short_9x16" ? " follows Instagram's Reels guidance" : ""}: ${toPercent(fallback.width)}% × ${toPercent(fallback.height)}%.`}
       </p>
       {safe.custom && canEdit && (

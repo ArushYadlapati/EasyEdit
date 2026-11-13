@@ -5,7 +5,7 @@ import { cx } from "@/components/ui/cx";
 import { boardLayout, boardScale, centreOf, scrollFor, type BoardLayout, type Size } from "@/lib/editor/board";
 import { canvasItems, createPreviewSurface, viewOf, visibleBox } from "@/lib/editor/canvas-geometry";
 import type { Sizer } from "@/lib/editor/clip-box";
-import { makeFontResolver } from "@/lib/editor/fonts";
+import { makeFontResolver, textFonts } from "@/lib/editor/fonts";
 import { mediaWants, upcomingAssetIds } from "@/lib/editor/media-plan";
 import { previewSize } from "@/lib/editor/preview-size";
 import type { BoardZoom } from "@/lib/editor/settings";
@@ -15,8 +15,10 @@ import { SAFE_AREA_LABEL, safeAreaMargins } from "@/lib/render/safe-zones";
 import type { TimelineDoc } from "@/lib/timeline";
 import { CanvasOverlay } from "./canvas-overlay";
 import { useEditor, useEditorStore, useSettings } from "./context";
+import { decodeImage } from "./media/frame-decode";
 import { useMedia, type MediaServices } from "./media/media-context";
 import { createMediaPool, upcomingWants, type PoolDeps } from "./media/media-pool";
+import { cachedCssVar } from "./page-fonts";
 import { Transport } from "./transport";
 import { useBoardDrop } from "./use-board-drop";
 import { usePlayback } from "./use-playback";
@@ -323,43 +325,4 @@ function poolDeps(media: MediaServices): PoolDeps {
     objectUrl: (blob) => URL.createObjectURL(blob),
     revokeUrl: (url) => URL.revokeObjectURL(url),
   };
-}
-
-// Decodes an image, made smaller when its longer side is over maxSide.
-async function decodeImage(blob: Blob, maxSide: number): Promise<{ image: ImageBitmap; width: number; height: number }> {
-  const full = await createImageBitmap(blob);
-  const scale = maxSide / Math.max(full.width, full.height);
-  if (scale >= 1) return { image: full, width: full.width, height: full.height };
-  const width = Math.max(1, Math.round(full.width * scale));
-  const height = Math.max(1, Math.round(full.height * scale));
-  try {
-    return { image: await createImageBitmap(full, { resizeWidth: width, resizeHeight: height, resizeQuality: "high" }), width, height };
-  } finally {
-    full.close();
-  }
-}
-
-// Reads CSS variables from the document element. The app's font variables never change once set, so a
-// value is read once.
-function cachedCssVar(): (name: string) => string {
-  const cache = new Map<string, string>();
-  return (name) => {
-    const known = cache.get(name);
-    if (known !== undefined) return known;
-    const value = getComputedStyle(document.documentElement).getPropertyValue(name);
-    if (value.trim()) cache.set(name, value);
-    return value;
-  };
-}
-
-// Each distinct weight and family the text clips use, as a CSS font for document.fonts.load. The size
-// does not choose the face, so one size stands for all.
-function textFonts(doc: TimelineDoc, resolveFont: (family: string) => string): Set<string> {
-  const fonts = new Set<string>();
-  for (const track of doc.tracks) {
-    for (const clip of track.clips) {
-      if (clip.type === "text") fonts.add(`${clip.style.fontWeight} 16px ${resolveFont(clip.style.fontFamily)}`);
-    }
-  }
-  return fonts;
 }

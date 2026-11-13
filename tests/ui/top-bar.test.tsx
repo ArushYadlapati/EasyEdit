@@ -117,6 +117,7 @@ function showName(over: Parameters<typeof makeStore>[0] = {}) {
     getOpsSince: async () => ({ ok: false, kind: "network" }),
     getProject: async () => ({ ok: false, kind: "network" }),
     rename,
+    putThumbnail: async () => ({ ok: false, kind: "network" }),
   };
   render(
     <EditorProvider store={store} api={api}>

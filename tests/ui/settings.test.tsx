@@ -1,21 +1,22 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
 import type { Keymap } from "@/lib/editor/keymap";
-import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
+import { DEFAULT_PREFS, createSettingsStore, type Prefs } from "@/lib/editor/settings";
 import type { EditorInit } from "@/lib/editor/types";
-import { makeStore } from "../editor/fixtures";
+import { FRAME_SIZE_MESSAGE } from "@/lib/timeline";
+import { makeStore, sampleDoc } from "../editor/fixtures";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function show(over: Partial<EditorInit> = {}, keymap?: Keymap) {
+function show(over: Partial<EditorInit> = {}, keymap?: Keymap, prefs?: Prefs) {
   const store = makeStore(over);
   const save = { prefs: vi.fn(), keymap: vi.fn() };
-  const settings = createSettingsStore({ prefs: DEFAULT_PREFS, keymap }, save);
+  const settings = createSettingsStore({ prefs: prefs ?? DEFAULT_PREFS, keymap }, save);
   render(
     <EditorProvider store={store} settings={settings}>
       <EditorScreen />
@@ -75,36 +76,48 @@ it("Project → Safe area sizes the box for this format, for everyone, and Reset
   const { st } = show();
   fireEvent.click(gear());
   expect(dialog().getByRole("heading", { name: "Safe area" })).toBeTruthy();
-  expect(field("Width").value).toBe("88");
-  expect(field("Height").value).toBe("51");
-  expect(field("Width").hasAttribute("data-edit-control")).toBe(true);
+  expect(field("Safe area width").value).toBe("88");
+  expect(field("Safe area height").value).toBe("51");
+  expect(field("Safe area width").hasAttribute("data-edit-control")).toBe(true);
   expect(dialog().getByText(/For Short 9:16; each format keeps its own\. Centred sideways, from 14% down\. The default follows Instagram's Reels guidance: 88% × 51%\./)).toBeTruthy();
   expect(dialog().queryByRole("button", { name: /Reset to default/ })).toBeNull();
 
-  setField("Width", "80");
+  setField("Safe area width", "80");
   expect(st().queue.map((e) => e.label)).toEqual(["safe area change"]);
   expect(st().doc.safeAreas).toEqual({ short_9x16: { width: 0.8, height: 0.51 } });
-  setField("Height", "99"); // more than fits below the top: held to 86%
+  setField("Safe area height", "99"); // more than fits below the top: held to 86%
   expect(st().doc.safeAreas).toEqual({ short_9x16: { width: 0.8, height: 0.86 } });
-  expect(field("Height").value).toBe("86");
+  expect(field("Safe area height").value).toBe("86");
 
   fireEvent.click(dialog().getByRole("button", { name: "Reset to default (88% × 51%)" }));
   expect(st().doc.safeAreas).toBeUndefined();
-  expect(field("Width").value).toBe("88");
+  expect(field("Safe area width").value).toBe("88");
   expect(st().queue).toHaveLength(3);
 
   // Another format has its own size.
   fireEvent.change(format(), { target: { value: "long_16x9" } });
-  expect(field("Width").value).toBe("90");
-  expect(field("Height").value).toBe("90");
+  expect(field("Safe area width").value).toBe("90");
+  expect(field("Safe area height").value).toBe("90");
 });
 
 it("a viewer sees the safe area's size and cannot change it", () => {
   const { st } = show({ canEdit: false });
   fireEvent.click(gear());
-  expect(field("Width").disabled).toBe(true);
-  expect(field("Height").disabled).toBe(true);
+  expect(field("Safe area width").disabled).toBe(true);
+  expect(field("Safe area height").disabled).toBe(true);
   expect(st().queue).toHaveLength(0);
+});
+
+it("a custom-sized project has one safe area for every custom size", () => {
+  const { st } = show({ doc: { ...sampleDoc(), format: "custom", width: 816, height: 1056 } });
+  fireEvent.click(gear());
+  expect(field("Safe area width").value).toBe("90");
+  expect(field("Safe area height").value).toBe("90");
+  expect(dialog().getByText(/For custom sizes; each format keeps its own\. Centred sideways, from 5% down\. The default: 90% × 90%\./)).toBeTruthy();
+  setField("Safe area height", "99"); // held to what fits below the top
+  expect(st().doc.safeAreas).toEqual({ custom: { width: 0.9, height: 0.95 } });
+  // The project's own Width and Height are still the frame's.
+  expect(dialog().getByLabelText("Width")).not.toBe(field("Safe area width"));
 });
 
 it("a deleted project's Settings still opens, and its format cannot change", () => {
@@ -114,6 +127,159 @@ it("a deleted project's Settings still opens, and its format cannot change", () 
   fireEvent.click(gear());
   expect(format().disabled).toBe(true);
   expect(dialog().getByText("Only editors can change the format and the safe area.")).toBeTruthy();
+});
+
+describe("a custom size", () => {
+  const custom = { ...sampleDoc(), format: "custom" as const, width: 816, height: 1056 };
+  const width = () => dialog().getByLabelText("Width") as HTMLInputElement;
+  const height = () => dialog().getByLabelText("Height") as HTMLInputElement;
+  const type = (field: HTMLInputElement, value: string) => {
+    fireEvent.change(field, { target: { value } });
+    press(field, "Enter");
+  };
+  const pickCustom = () => fireEvent.change(format(), { target: { value: "custom" } });
+
+  it("Custom size starts from the project's size, in the editor's units, and sends nothing yet", () => {
+    const { st } = show({}, undefined, { ...DEFAULT_PREFS, units: "in" });
+    fireEvent.click(gear());
+    expect(dialog().queryByLabelText("Width")).toBeNull();
+    pickCustom();
+    expect(format().value).toBe("custom");
+    expect(width().value).toBe("11.25");
+    expect(height().value).toBe("20");
+    expect(width().parentElement!.textContent).toBe("in");
+    expect(height().parentElement!.textContent).toBe("in");
+    expect(dialog().getByText("1080 × 1920 pixels")).toBeTruthy();
+    expect(st().queue).toEqual([]);
+  });
+
+  it("a custom width is one format change, and Undo brings the named size back", () => {
+    const { st } = show();
+    fireEvent.click(gear());
+    pickCustom();
+    expect(dialog().queryByText("1080 × 1920 pixels")).toBeNull(); // the pixel line is for cm and in
+    type(width(), "816");
+    expect(st().queue.map((e) => e.label)).toEqual(["format change"]);
+    expect(st().queue.map((e) => e.ops)).toEqual([[{ op: "set_format", format: "custom", width: 816, height: 1920 }]]);
+    expect(st().doc).toMatchObject({ format: "custom", width: 816, height: 1920 });
+    expect(format().value).toBe("custom");
+    act(() => st().undo());
+    expect(st().doc).toMatchObject({ format: "short_9x16", width: 1080, height: 1920 });
+    expect(format().value).toBe("short_9x16");
+    expect(dialog().queryByLabelText("Width")).toBeNull();
+  });
+
+  it("typing a named size's numbers picks that named size", () => {
+    const { st } = show({ doc: custom });
+    fireEvent.click(gear());
+    type(width(), "1080");
+    type(height(), "1920");
+    expect(st().queue.at(-1)!.ops).toEqual([{ op: "set_format", format: "short_9x16" }]);
+    expect(format().value).toBe("short_9x16");
+    expect(dialog().queryByLabelText("Width")).toBeNull();
+  });
+
+  it("a size past the limits is not sent, and says why, until the next change", () => {
+    const { st } = show();
+    fireEvent.click(gear());
+    pickCustom();
+    type(width(), "4096");
+    expect(st().doc.width).toBe(4096);
+    type(height(), "4096");
+    expect(st().queue).toHaveLength(1);
+    const alert = dialog().getByRole("alert");
+    expect(alert.textContent).toBe(FRAME_SIZE_MESSAGE);
+    expect(alert.classList.contains("text-[11px]")).toBe(true);
+    expect(alert.classList.contains("text-ed-danger")).toBe(true);
+    expect(st().doc.height).toBe(1920);
+    type(height(), "1080");
+    expect(dialog().queryByRole("alert")).toBeNull();
+    expect(st().queue).toHaveLength(2);
+    expect(st().doc).toMatchObject({ width: 4096, height: 1080 });
+  });
+
+  it("the same size sends nothing", () => {
+    const { st } = show();
+    fireEvent.click(gear());
+    pickCustom();
+    type(width(), "1080");
+    expect(st().queue).toEqual([]);
+    type(width(), "1080.4"); // a different number that is the same even size
+    expect(st().queue).toEqual([]);
+  });
+
+  it("picking the project's own named size after Custom size hides the fields and sends nothing", () => {
+    const { st } = show({ doc: { ...sampleDoc(), format: "long_4k", width: 3840, height: 2160 } });
+    fireEvent.click(gear());
+    pickCustom();
+    type(height(), "4096"); // past the area of 4K: the message shows
+    expect(dialog().getByRole("alert")).toBeTruthy();
+    fireEvent.change(format(), { target: { value: "long_4k" } });
+    expect(format().value).toBe("long_4k");
+    expect(dialog().queryByLabelText("Width")).toBeNull();
+    pickCustom();
+    expect(dialog().queryByRole("alert")).toBeNull();
+    expect(st().queue).toEqual([]);
+  });
+
+  it("the sides step by 2 pixels, stay within 16 to 4096 pixels, and show the unit's places", () => {
+    const { st } = show();
+    fireEvent.click(gear());
+    pickCustom();
+    press(width(), "ArrowDown");
+    expect(st().doc.width).toBe(1078);
+    type(width(), "-5");
+    expect(st().doc.width).toBe(16);
+    type(width(), "5000");
+    expect(st().doc.width).toBe(4096);
+    expect(dialog().queryByRole("alert")).toBeNull();
+  });
+
+  it("in inches an arrow moves a tenth and keeps two places", () => {
+    const { st } = show({}, undefined, { ...DEFAULT_PREFS, units: "in" });
+    fireEvent.click(gear());
+    pickCustom();
+    fireEvent.change(width(), { target: { value: "11.2646" } });
+    press(width(), "ArrowUp"); // 11.36 in, not 11.3646 in (1091.0016 px, which would round up to 1092)
+    expect(st().doc.width).toBe(1090);
+  });
+
+  it("centimeters show two places, and the pixel line", () => {
+    show({}, undefined, { ...DEFAULT_PREFS, units: "cm" });
+    fireEvent.click(gear());
+    pickCustom();
+    expect(width().value).toBe("28.58");
+    expect(height().value).toBe("50.8");
+    expect(width().parentElement!.textContent).toBe("cm");
+    expect(dialog().getByText("1080 × 1920 pixels")).toBeTruthy();
+  });
+
+  it("an odd number of pixels rounds to an even one", () => {
+    const { st } = show();
+    fireEvent.click(gear());
+    pickCustom();
+    type(width(), "1081");
+    expect(st().doc.width).toBe(1082);
+  });
+
+  it("Custom size is the last option", () => {
+    show();
+    fireEvent.click(gear());
+    const texts = [...format().options].map((o) => o.textContent);
+    expect(texts.at(-1)).toBe("Custom size");
+    expect(texts[0]).toBe("Short 9:16 (1080 × 1920)");
+  });
+
+  it("a viewer sees a custom project's size and cannot change it", () => {
+    show({ doc: custom, canEdit: false });
+    fireEvent.click(gear());
+    for (const field of [width(), height()]) {
+      expect(field.disabled).toBe(true);
+      expect(field.hasAttribute("data-edit-control")).toBe(true);
+    }
+    expect(format().value).toBe("custom");
+    expect(format().disabled).toBe(true);
+  });
 });
 
 it("General sets the units, safe area, snapping and lengths", () => {

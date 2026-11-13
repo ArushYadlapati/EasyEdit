@@ -1,10 +1,11 @@
 import { z } from "zod";
 import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
-import { actorFrom } from "@/lib/actor";
+import { actorFrom, requireRole } from "@/lib/actor";
 import { apiRoute } from "@/lib/api-route";
 import { LIMITS } from "@/lib/limits";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
+import { recordOpen } from "@/lib/projects/opens";
 import {
   applyProjectOps,
   createProject,
@@ -16,6 +17,7 @@ import {
   listProjects,
   renameProject,
 } from "@/lib/projects/service";
+import { readThumbnail, saveThumbnail, THUMBNAIL_TOO_LARGE } from "@/lib/projects/thumbnails";
 import { getUserNames } from "@/lib/projects/user-names";
 import type { ErrorBody } from "@/lib/service-error";
 import type { OpInput } from "@/lib/timeline";
@@ -35,8 +37,13 @@ const opsBody = z.object({
   requestId: z.string().optional(), // the service checks its format
 });
 
-// Only the shape; the service checks the name and format themselves.
-const createBody = z.object({ name: z.string(), format: z.string() });
+// Only the shape; the service checks the name, format and size themselves. A project made here goes in no folder.
+const createBody = z.object({
+  name: z.string(),
+  format: z.string(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+});
 
 const renameBody = z.object({ name: z.string() });
 
@@ -135,6 +142,51 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       const { id } = await ctx.params;
       const copy = await duplicateProject(deps.db(), actorFrom(user), id);
       return Response.json({ id: copy.id }, { status: 201 });
+    }),
+
+    // An unknown or deleted project records nothing and still answers 204: there is nothing to tell the editor.
+    opened: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
+      const user = await deps.auth(req);
+      if (user instanceof Response) return user;
+      const { id } = await ctx.params;
+      await recordOpen(deps.db(), actorFrom(user), id);
+      return new Response(null, { status: 204 });
+    }),
+
+    // A year-long cache only under the stored picture's own version, so another `v` never pins the wrong picture.
+    getThumbnail: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
+      const user = await deps.auth(req);
+      if (user instanceof Response) return user;
+      const { id } = await ctx.params;
+      const stored = await readThumbnail(deps.db(), actorFrom(user), id);
+      if (!stored) return notFound(id);
+      const v = sinceParam.safeParse(new URL(req.url).searchParams.get("v"));
+      return new Response(stored.jpeg, {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": v.success && v.data === stored.version ? "private, max-age=31536000, immutable" : "private, no-cache",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }),
+
+    // The one handler that checks the role itself: a viewer's body, like a bad version or a declared length over the
+    // limit, is refused before it is read. The service checks the role, the size and the type again.
+    putThumbnail: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
+      const user = await deps.auth(req);
+      if (user instanceof Response) return user;
+      const { id } = await ctx.params;
+      const actor = actorFrom(user);
+      requireRole(actor, "editor");
+      const v = sinceParam.safeParse(new URL(req.url).searchParams.get("v"));
+      if (!v.success) return invalid("v must be a non-negative integer");
+      const length = req.headers.get("content-length");
+      if (length !== null && Number(length) > LIMITS.thumbnailBytes) {
+        return errorResponse(400, { code: "LIMIT_EXCEEDED", message: THUMBNAIL_TOO_LARGE });
+      }
+      const jpeg = new Uint8Array(await req.arrayBuffer());
+      const { saved } = await saveThumbnail(deps.db(), actor, id, v.data, jpeg);
+      return Response.json({ saved });
     }),
   };
 }

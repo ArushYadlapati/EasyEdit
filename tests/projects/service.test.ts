@@ -2,17 +2,21 @@ import type { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { rowsOf, type DB } from "@/db";
+import { folders } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
 import {
   applyProjectOps,
   createProject,
+  duplicateProject,
+  failedOn,
   getOpsSince,
   getProject,
   getProjectVersion,
+  isFolderGone,
   listProjects,
   type OpsPage,
 } from "@/lib/projects/service";
-import { DEFAULT_TRANSFORM, createEmptyDoc, type OpInput, type TextClip } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, FRAME_SIZE_MESSAGE, createEmptyDoc, type OpInput, type TextClip } from "@/lib/timeline";
 import { makeTestDb } from "../helpers/db";
 
 const as = (userId: string): Actor => ({ userId, email: `${userId}@gmail.com`, role: "editor" });
@@ -58,6 +62,16 @@ function textClips(doc: { tracks: { id: string; clips: unknown[] }[] }) {
   return doc.tracks.find((t) => t.id === "t1")!.clips as TextClip[];
 }
 
+type StoredRow = { format: string; width: number | null; height: number | null; folder_id: string | null };
+
+async function storedRow(db: DB, id: string): Promise<StoredRow> {
+  const rows = rowsOf<StoredRow>(await db.execute(sql`select format, width, height, folder_id from projects where id = ${id}`));
+  return rows[0];
+}
+
+// What a row written by the code before sizes were stored looks like.
+const clearStoredSize = (db: DB, id: string) => db.execute(sql`update projects set width = null, height = null where id = ${id}`);
+
 describe("projects service", () => {
   it("create → apply → version 1 and op logged", async () => {
     const db = await makeTestDb();
@@ -95,6 +109,7 @@ describe("projects service", () => {
       version: 0,
       updatedBy: "u7",
       updatedAt: expect.any(Date),
+      thumbnailVersion: null,
     });
   });
 
@@ -116,10 +131,154 @@ describe("projects service", () => {
       id: a.id,
       name: "A",
       format: "short_9x16",
+      width: 1080,
+      height: 1920,
+      folderId: null,
       version: 1,
+      createdAt: expect.any(Date),
       updatedBy: "u3",
       updatedAt: expect.any(Date),
+      thumbnailVersion: null,
     });
+  });
+
+  it("a custom size is stored in the doc and the columns, and a named size's own numbers make that named size", async () => {
+    const db = await makeTestDb();
+    const poster = await createProject(db, as("u1"), { name: "Poster", format: "custom", width: 816, height: 1056 });
+    expect((await getProject(db, as("u1"), poster.id))!.doc).toEqual(createEmptyDoc("custom", { width: 816, height: 1056 }));
+    const short = await createProject(db, as("u1"), { name: "Tall", format: "custom", width: 1080, height: 1920 });
+    const list = await listProjects(db, as("u1"));
+    expect(list.find((p) => p.id === poster.id)).toMatchObject({ format: "custom", width: 816, height: 1056 });
+    expect(list.find((p) => p.id === short.id)).toMatchObject({ format: "short_9x16", width: 1080, height: 1920 });
+    expect((await getProject(db, as("u1"), short.id))!.doc).toEqual(createEmptyDoc("short_9x16"));
+    expect(await storedRow(db, poster.id)).toMatchObject({ format: "custom", width: 816, height: 1056 });
+    expect(await storedRow(db, short.id)).toMatchObject({ format: "short_9x16", width: 1080, height: 1920 });
+  });
+
+  it("createProject explains a bad size", async () => {
+    const db = await makeTestDb();
+    for (const size of [{ width: 4096, height: 4096 }, {}, { width: 1081, height: 1920 }]) {
+      await expect(createProject(db, as("u1"), { name: "Poster", format: "custom", ...size })).rejects.toMatchObject({
+        code: "INVALID",
+        message: FRAME_SIZE_MESSAGE,
+      });
+    }
+    for (const size of [{ width: 1080 }, { height: 1920 }]) {
+      await expect(createProject(db, as("u1"), { name: "Poster", format: "short_9x16", ...size })).rejects.toMatchObject({
+        code: "INVALID",
+        message: "Give a width and height only with the custom format.",
+      });
+    }
+    for (const format of ["imax", "constructor"]) {
+      await expect(createProject(db, as("u1"), { name: "Poster", format })).rejects.toMatchObject({
+        code: "INVALID",
+        message: "Pick a format.",
+      });
+    }
+    expect(await listProjects(db, as("u1"))).toEqual([]);
+  });
+
+  it("a new project goes into the folder given, and into none when that folder is gone", async () => {
+    const db = await makeTestDb();
+    await db.insert(folders).values({ id: "f1", name: "Season 2026", createdBy: "u1" });
+    const inFolder = await createProject(db, as("u1"), { name: "A", format: "short_9x16", folderId: "f1" });
+    const gone = await createProject(db, as("u1"), { name: "B", format: "short_9x16", folderId: "gone" });
+    const list = await listProjects(db, as("u1"));
+    expect(list.find((p) => p.id === inFolder.id)!.folderId).toBe("f1");
+    expect(list.find((p) => p.id === gone.id)!.folderId).toBeNull();
+  });
+
+  it("a new project's columns hold its named size", async () => {
+    const db = await makeTestDb();
+    const { id } = await createProject(db, as("u1"), { name: "Reel", format: "long_16x9" });
+    expect(await storedRow(db, id)).toEqual({ format: "long_16x9", width: 1920, height: 1080, folder_id: null });
+  });
+
+  it("a folder already gone is left out by the insert itself, with no second try", async () => {
+    const db = await makeTestDb();
+    const insert = vi.spyOn(db, "insert");
+    const { id } = await createProject(db, as("u1"), { name: "A", format: "short_9x16", folderId: "gone" });
+    expect(insert).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+    expect(await storedRow(db, id)).toMatchObject({ folder_id: null });
+  });
+
+  it("failedOn matches a Postgres code on a named constraint, through wrapped causes or in the message alone", () => {
+    const wrapped = (inner: Error) => new Error("query failed", { cause: new Error("driver", { cause: inner }) });
+    const named = Object.assign(new Error("duplicate key"), { code: "23505", constraint: "some_index" });
+    const inMessage = Object.assign(new Error('duplicate key value violates unique constraint "some_index"'), {
+      code: "23505",
+    });
+    expect(failedOn(wrapped(named), "23505", "some_index")).toBe(true);
+    expect(failedOn(wrapped(inMessage), "23505", "some_index")).toBe(true);
+    expect(failedOn(wrapped(named), "23503", "some_index")).toBe(false);
+    expect(failedOn(wrapped(named), "23505", "other_index")).toBe(false);
+    expect(failedOn("text", "23505", "some_index")).toBe(false);
+  });
+
+  it("a folder deleted mid-write is recognised", () => {
+    const fkError = (constraint: string, code = "23503") =>
+      new Error("insert failed", {
+        cause: Object.assign(new Error(`violates foreign key constraint "${constraint}"`), { code, constraint }),
+      });
+    expect(isFolderGone(fkError("projects_folder_id_folders_id_fk"))).toBe(true);
+    expect(isFolderGone(fkError("project_ops_project_id_projects_id_fk"))).toBe(false);
+    expect(isFolderGone(fkError("projects_folder_id_folders_id_fk", "23505"))).toBe(false);
+    expect(isFolderGone("text")).toBe(false);
+  });
+
+  it("a folder deleted between a write's read and its foreign key leaves the new project and the copy in no folder", async () => {
+    const db = await makeTestDb();
+    await db.insert(folders).values({ id: "f1", name: "Season 2026", createdBy: "u1" });
+    const source = await createProject(db, as("u1"), { name: "Poster", format: "short_9x16", folderId: "f1" });
+    // Runs after the insert has read the folder id and before the foreign key is checked, as another writer's
+    // delete would land.
+    await db.execute(sql`
+      create function delete_folder_mid_write() returns trigger language plpgsql as $$
+      begin delete from folders where id = new.folder_id; return new; end $$
+    `);
+    await db.execute(sql`create trigger mid_write before insert on projects for each row execute function delete_folder_mid_write()`);
+    const created = await createProject(db, as("u1"), { name: "New", format: "short_9x16", folderId: "f1" });
+    expect(await storedRow(db, created.id)).toMatchObject({ folder_id: null });
+
+    await db.insert(folders).values({ id: "f2", name: "Season 2027", createdBy: "u1" });
+    await db.execute(sql`alter table projects disable trigger mid_write`);
+    await db.execute(sql`update projects set folder_id = 'f2' where id = ${source.id}`);
+    await db.execute(sql`alter table projects enable trigger mid_write`);
+    const copy = await duplicateProject(db, as("u1"), source.id);
+    expect(await storedRow(db, copy.id)).toMatchObject({ folder_id: null, width: 1080, height: 1920 });
+    expect((await getProject(db, as("u1"), copy.id))!.name).toBe("Poster copy");
+  });
+
+  it("width and height follow every write", async () => {
+    const db = await makeTestDb();
+    const { id } = await createProject(db, as("u1"), { name: "P", format: "short_9x16" });
+    await applyProjectOps(db, as("u1"), { projectId: id, baseVersion: 0, ops: [{ op: "set_format", format: "long_16x9" }] });
+    expect(await storedRow(db, id)).toMatchObject({ width: 1920, height: 1080 });
+    const custom = await applyProjectOps(db, as("u1"), {
+      projectId: id,
+      baseVersion: 1,
+      ops: [{ op: "set_format", format: "custom", width: 816, height: 1056 }],
+    });
+    expect(await storedRow(db, id)).toMatchObject({ width: 816, height: 1056 });
+    await applyProjectOps(db, as("u1"), { projectId: id, baseVersion: 2, ops: custom.inverse });
+    expect(await storedRow(db, id)).toMatchObject({ width: 1920, height: 1080 });
+  });
+
+  it("duplicate keeps the folder and the size", async () => {
+    const db = await makeTestDb();
+    await db.insert(folders).values({ id: "f1", name: "Season 2026", createdBy: "u1" });
+    const { id } = await createProject(db, as("u1"), { name: "Poster", format: "custom", width: 816, height: 1056, folderId: "f1" });
+    await clearStoredSize(db, id);
+    const copy = await duplicateProject(db, as("u1"), id);
+    expect(await storedRow(db, copy.id)).toMatchObject({ folder_id: "f1", width: 816, height: 1056 });
+  });
+
+  it("a row written without width and height lists its doc's size", async () => {
+    const db = await makeTestDb();
+    const { id } = await createProject(db, as("u1"), { name: "P", format: "short_9x16" });
+    await clearStoredSize(db, id);
+    expect(await listProjects(db, as("u1"))).toMatchObject([{ id, width: 1080, height: 1920 }]);
   });
 
   it("set_format updates the project's stored format with the doc", async () => {
@@ -135,6 +294,16 @@ describe("projects service", () => {
     expect(project!.doc.format).toBe("long_16x9");
     expect(project!.format).toBe("long_16x9");
     expect((await listProjects(db, as("u1"))).find((p) => p.id === id)!.format).toBe("long_16x9");
+
+    await applyProjectOps(db, as("u1"), {
+      projectId: id,
+      baseVersion: 1,
+      ops: [{ op: "set_format", format: "custom", width: 816, height: 1056 }],
+    });
+    const custom = await getProject(db, as("u1"), id);
+    expect(custom!.format).toBe("custom");
+    expect(custom!.doc.format).toBe("custom");
+    expect(custom!.doc.width).toBe(816);
   });
 
   it("invalid op leaves doc and version unchanged", async () => {

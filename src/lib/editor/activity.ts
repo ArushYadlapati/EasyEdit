@@ -1,4 +1,4 @@
-import { FORMAT_PRESETS, type Clip, type Op, type TimelineDoc } from "@/lib/timeline";
+import { formatLabel, type Clip, type Op, type TimelineDoc } from "@/lib/timeline";
 import { timeAgo } from "@/lib/time-ago";
 import type { ProjectApi } from "./api";
 import type { EditorStore } from "./store";
@@ -114,7 +114,7 @@ export function summarizeOps(ops: Op[], kindOf: KindOf = () => undefined): strin
       : count(n, "Replaced a track", (k) => `Replaced ${k} tracks`);
   }
   if (only("set_format") && n === 1) {
-    return `Changed the format to ${FORMAT_PRESETS[(ops[0] as OpOf<"set_format">).format].label}`;
+    return `Changed the format to ${formatLabel(ops[0] as OpOf<"set_format">)}`;
   }
   if (only("set_safe_area") && n === 1) {
     const { size } = ops[0] as OpOf<"set_safe_area">;

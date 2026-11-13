@@ -21,3 +21,8 @@ export function fromUnit(value: number, units: Units): number {
 export function showUnit(px: number, units: Units): string {
   return String(Number(toUnit(px, units).toFixed(UNIT_DECIMALS[units])));
 }
+
+// A typed length as a frame side: the nearest even number of pixels.
+export function toEvenPixels(value: number, units: Units): number {
+  return Math.round(fromUnit(value, units) / 2) * 2;
+}

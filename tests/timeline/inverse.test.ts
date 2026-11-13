@@ -53,6 +53,7 @@ const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["update_clip crop on a cropped clip", { op: "update_clip", clipId: "c2", patch: { transform: { crop: { left: 0.2, top: 0, right: 0, bottom: 0 } } } }, richCropped],
   ["move_track", { op: "move_track", trackId: "t1", index: 0 }],
   ["set_format", { op: "set_format", format: "long_16x9" }],
+  ["set_format custom", { op: "set_format", format: "custom", width: 816, height: 1056 }],
   ["set_safe_area", { op: "set_safe_area", format: "short_9x16", size: { width: 0.8, height: 0.6 } }],
   ["set_safe_area back to the default", { op: "set_safe_area", format: "short_9x16", size: null }, richSafeArea],
 ];

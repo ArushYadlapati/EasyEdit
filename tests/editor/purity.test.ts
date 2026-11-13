@@ -26,6 +26,14 @@ it("editor logic imports no React or Next code", () => {
   }
 });
 
+it("dashboard logic imports no React or Next code", () => {
+  const files = sources("src/lib/dashboard");
+  expect(files.length).toBeGreaterThan(0);
+  for (const [file, code] of files) {
+    expect(code, file).not.toMatch(FRAMEWORK_IMPORT);
+  }
+});
+
 const ZUSTAND_IMPORT = /\b(?:from|import|require)\s*\(?\s*["']zustand(?:\/[^"']*)?["']/;
 // One pass: string literals are matched first and kept, so a // or /* inside a string is never read as a comment.
 const stripComments = (code: string) =>

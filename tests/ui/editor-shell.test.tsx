@@ -1,14 +1,17 @@
 // @vitest-environment happy-dom
 import { StrictMode } from "react";
 import { renderToString } from "react-dom/server";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { EditorShell } from "@/components/editor/editor-shell";
 import { createMediaServices, type MediaServices } from "@/components/editor/media/media-context";
+import { browserThumbnailDeps } from "@/components/editor/thumbnail-deps";
 import { formatTimecode } from "@/lib/editor/geometry";
 import { DEFAULT_KEYMAP, KEYMAP_KEY, formatKeymap, setKeys, setOff } from "@/lib/editor/keymap";
 import { DEFAULT_LAYOUT } from "@/lib/editor/layout";
 import { createMediaDrop, type MediaDrop } from "@/lib/editor/media-drop";
 import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
+import type { ThumbnailCanvas, ThumbnailDeps } from "@/lib/editor/thumbnail";
+import { startThumbnailTrigger } from "@/lib/editor/thumbnail-trigger";
 import type { EditorInit } from "@/lib/editor/types";
 import type { MediaApi } from "@/lib/media/api";
 import { createLibraryStore, type RefreshReason } from "@/lib/media/library-store";
@@ -19,6 +22,7 @@ import { dragEvent } from "../helpers/drag-events";
 import { act, fireEvent, render, screen } from "../helpers/dom";
 import { happyDOM } from "../helpers/layout";
 import { assetView } from "../helpers/media-services";
+import { fakeCtx } from "../render/fake-ctx";
 
 // The existing tests get the real services; a test of the media wiring hands the shell its own for one render.
 vi.mock("@/components/editor/media/media-context", async (importOriginal) => {
@@ -34,6 +38,15 @@ vi.mock("@/lib/editor/media-drop", async (importOriginal) => {
 vi.mock("@/lib/editor/settings", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/editor/settings")>();
   return { ...real, createSettingsStore: vi.fn(real.createSettingsStore) };
+});
+// The real thumbnail trigger and page deps, wrapped so a test can read what the shell gave them or hand it its own.
+vi.mock("@/lib/editor/thumbnail-trigger", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/editor/thumbnail-trigger")>();
+  return { ...real, startThumbnailTrigger: vi.fn(real.startThumbnailTrigger) };
+});
+vi.mock("@/components/editor/thumbnail-deps", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/components/editor/thumbnail-deps")>();
+  return { ...real, browserThumbnailDeps: vi.fn(real.browserThumbnailDeps) };
 });
 
 const EDITOR_URL = "http://localhost:3000/editor/p1";
@@ -89,6 +102,9 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  // Back to the real functions, with no calls kept: every test renders the shell.
+  vi.mocked(startThumbnailTrigger).mockReset();
+  vi.mocked(browserThumbnailDeps).mockReset();
   expireCookies();
   localStorage.clear();
 });
@@ -798,4 +814,139 @@ it("the browser's menu is off in the editor and on in text fields and links", as
   // Gone with the editor.
   unmount();
   expect(fireEvent.contextMenu(document.body)).toBe(true);
+});
+
+// The page's side of drawing a thumbnail, with everything succeeding: a ready video asset "a", files that read,
+// decodes that answer, and a canvas whose context records and whose toBlob answers a JPEG.
+const JPEG = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: "image/jpeg" });
+function fakeDeps(over: Partial<ThumbnailDeps> = {}) {
+  const frame = { image: {} as CanvasImageSource, width: 1280, height: 720 };
+  const makeCanvas = vi.fn(
+    (): ThumbnailCanvas => ({ getContext: () => fakeCtx().ctx, toBlob: (done) => done(JPEG) }),
+  );
+  return {
+    library: () => ({ assets: { a: assetView() }, loaded: true }),
+    readFile: async (fileId: string) => new Blob([fileId]),
+    decodeVideo: async () => frame,
+    decodeImage: async () => frame,
+    loadFonts: async () => {},
+    resolveFont: (f: string) => f,
+    makeCanvas,
+    ...over,
+  } satisfies ThumbnailDeps;
+}
+const puts = (server: { requests: string[] }) => server.requests.filter((r) => r.startsWith("PUT"));
+
+it("the editor starts one thumbnail trigger with the stored picture's version", () => {
+  stubServer();
+  const { unmount } = render(<EditorShell initial={{ ...initial(), thumbnailVersion: 3 }} />);
+  expect(startThumbnailTrigger).toHaveBeenCalledTimes(1);
+  expect(startThumbnailTrigger).toHaveBeenCalledWith(expect.objectContaining({ storedVersion: 3 }));
+  unmount();
+  render(<EditorShell initial={initial()} />);
+  expect(vi.mocked(startThumbnailTrigger).mock.calls.at(-1)![0].storedVersion).toBeNull();
+});
+
+it("a saved change is drawn and sent once, 4 seconds later", async () => {
+  const fake = fakeDeps();
+  vi.mocked(browserThumbnailDeps).mockReturnValue(fake);
+  const server = stubServer();
+  render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  await addTitle();
+  await after(3_999);
+  expect(puts(server)).toEqual([]);
+  await after(1);
+  await flush();
+  expect(puts(server)).toEqual(["PUT /api/projects/p1/thumbnail?v=6"]);
+  expect(server.posts()).toBe(1);
+});
+
+it("with no 2D canvas, a saved change sends nothing and reads no file", async () => {
+  const server = stubServer();
+  const media = pretendMedia();
+  render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  const deps = vi.mocked(browserThumbnailDeps).mock.results.at(-1)!.value as ThumbnailDeps;
+  const read = vi.spyOn(deps, "readFile");
+  const made = vi.spyOn(deps, "makeCanvas");
+  await act(() => media.library.getState().put(assetView()));
+  await addTitle();
+  await after(10_000);
+  expect(made).toHaveBeenCalledTimes(1); // the capture got as far as the canvas, which has no 2D context here
+  expect(read).not.toHaveBeenCalled();
+  expect(server.requests.filter((r) => r.includes("/thumbnail"))).toEqual([]);
+  expect(server.posts()).toBe(1);
+});
+
+it("leaving before the picture is drawn sends none", async () => {
+  const fake = fakeDeps();
+  vi.mocked(browserThumbnailDeps).mockReturnValue(fake);
+  const server = stubServer();
+  const { unmount } = render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  await addTitle();
+  await after(3_999);
+  unmount();
+  await after(10_000);
+  expect(puts(server)).toEqual([]);
+  expect(fake.makeCanvas).not.toHaveBeenCalled();
+});
+
+it("edits still being sent when the editor is left draw no picture", async () => {
+  const fake = fakeDeps();
+  vi.mocked(browserThumbnailDeps).mockReturnValue(fake);
+  const server = stubServer();
+  const { unmount } = render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  server.hold = true;
+  await addTitle();
+  await addTitle("Add subtitle");
+  unmount();
+  server.release();
+  await flush();
+  await after(10_000);
+  expect(server.posts()).toBe(2);
+  expect(puts(server)).toEqual([]);
+  expect(fake.makeCanvas).not.toHaveBeenCalled();
+});
+
+it("leaving stops the picture before the media services close", () => {
+  stubServer();
+  const media = pretendMedia();
+  const realStart = vi.mocked(startThumbnailTrigger).getMockImplementation()!;
+  let stop: Mock<() => void> | undefined;
+  vi.mocked(startThumbnailTrigger).mockImplementationOnce((deps) => (stop = vi.fn(realStart(deps))));
+  const { unmount } = render(<EditorShell initial={initial()} />);
+  unmount();
+  expect(stop).toHaveBeenCalledTimes(1);
+  expect(stop!.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(media.services.dispose).mock.invocationCallOrder[0]);
+});
+
+it("under strict mode one trigger draws once", async () => {
+  const fake = fakeDeps();
+  vi.mocked(browserThumbnailDeps).mockReturnValue(fake);
+  const server = stubServer();
+  render(
+    <StrictMode>
+      <EditorShell initial={initial()} />
+    </StrictMode>,
+  );
+  await after(4_000);
+  await flush();
+  expect(puts(server)).toEqual(["PUT /api/projects/p1/thumbnail?v=5"]);
+});
+
+it("a picture waits for an upload, then follows once it is ready", async () => {
+  const media = pretendMedia();
+  const fake = fakeDeps({ library: () => media.library.getState() });
+  vi.mocked(browserThumbnailDeps).mockReturnValue(fake);
+  const server = stubServer();
+  render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  await flush(); // the library's first load lands
+  await act(() => media.library.getState().put(assetView({ status: "uploading" })));
+  await addTitle();
+  await after(10_000);
+  expect(puts(server)).toEqual([]);
+  expect(fake.makeCanvas).not.toHaveBeenCalled();
+  await act(() => media.library.getState().put(assetView()));
+  await after(0);
+  await flush();
+  expect(puts(server)).toEqual(["PUT /api/projects/p1/thumbnail?v=6"]);
 });

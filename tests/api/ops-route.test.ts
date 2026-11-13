@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/access-rules";
 import { makeOpsHandlers, makeProjectHandlers } from "@/lib/projects/handlers";
 import { applyProjectOps, createProject } from "@/lib/projects/service";
-import { DEFAULT_TRANSFORM, type OpInput } from "@/lib/timeline";
-import { user } from "@/db/schema";
+import { DEFAULT_TRANSFORM, FRAME_SIZE_MESSAGE, type OpInput } from "@/lib/timeline";
+import { folders, user } from "@/db/schema";
 import { makeTestDb } from "../helpers/db";
 
 function userWith(role: CurrentUser["role"]): CurrentUser {
@@ -214,6 +214,36 @@ describe("project routes", () => {
     const got = await projects.get(new Request(`http://x/api/projects/${id}`), ctx(id));
     expect(got.status).toBe(200);
     expect(await got.json()).toMatchObject({ id, name: "Qual", format: "long_16x9", version: 0, doc: { width: 1920 } });
+  });
+
+  it("create takes a custom size in pixels, and no folder", async () => {
+    const { db, projects } = await setup("editor");
+    await db.insert(folders).values({ id: "f1", name: "Season 2026", createdBy: "u1" });
+    const res = await projects.create(
+      post("http://x/api/projects", { name: "Poster", format: "custom", width: 816, height: 1056, folderId: "f1" }),
+    );
+    expect(res.status).toBe(201);
+    const { id } = await res.json();
+    const got = await (await projects.get(new Request(`http://x/api/projects/${id}`), ctx(id))).json();
+    expect(got.doc).toMatchObject({ format: "custom", width: 816, height: 1056 });
+    const list = await (await projects.list(new Request("http://x/api/projects"))).json();
+    expect(list.projects.find((p: { id: string }) => p.id === id).folderId).toBeNull();
+
+    const noSize = await projects.create(post("http://x/api/projects", { name: "Poster", format: "custom" }));
+    expect(noSize.status).toBe(400);
+    expect(await noSize.json()).toEqual({ code: "INVALID", message: FRAME_SIZE_MESSAGE });
+  });
+
+  it("a viewer cannot create a custom size", async () => {
+    const { projects } = await setup("viewer");
+    const res = await projects.create(post("http://x/api/projects", { name: "Poster", format: "custom", width: 816, height: 1056 }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ code: "FORBIDDEN", message: "Your role doesn't allow this." });
+    // The role is checked before the size, so a bad size gets the same answer.
+    const badSize = await projects.create(post("http://x/api/projects", { name: "Poster", format: "custom", width: 1081, height: 1920 }));
+    expect(badSize.status).toBe(403);
+    expect(await badSize.json()).toEqual({ code: "FORBIDDEN", message: "Your role doesn't allow this." });
+    expect(await (await projects.list(new Request("http://x/api/projects"))).json()).toEqual({ projects: [] });
   });
 
   it("create validates name and format; get of an unknown project is 404", async () => {

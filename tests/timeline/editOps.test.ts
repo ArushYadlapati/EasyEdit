@@ -464,6 +464,75 @@ describe("set_format", () => {
     d.tracks[0].locked = true;
     expect(applyOps(d, [{ op: "set_format", format: "square_1x1" }]).doc.width).toBe(1080);
   });
+
+  it("a custom format with no size is refused", () => {
+    const run = () => applyOps(doc0(), [{ op: "set_format", format: "custom" }]);
+    failsWith(run, "INVALID");
+    expect(run).toThrow("set_format: Width and height go from 16 to 4096 pixels, up to the area of 4K (3840 × 2160).");
+  });
+
+  const custom816 = () => applyOps(doc0(), [{ op: "set_format", format: "custom", width: 816, height: 1056 }]).doc;
+
+  it("changes to a custom size and undoes", () => {
+    const d = applyOps(doc0(), prepareOps([{ op: "add_clip", trackId: "v1", clip: media("c1", 0, 10) }])).doc;
+    const { doc, inverse } = applyOps(d, [{ op: "set_format", format: "custom", width: 816, height: 1056 }]);
+    expect(doc).toMatchObject({ format: "custom", width: 816, height: 1056 });
+    expect(doc.tracks).toEqual(d.tracks);
+    expect(inverse).toEqual([{ op: "set_format", format: "short_9x16", expect: { format: "custom", width: 816, height: 1056 } }]);
+    const back = applyOps(doc, inverse).doc;
+    expect(back.tracks).toEqual(d.tracks);
+    expect(back).toEqual(d);
+    expect(applyOps(custom816(), inverse).doc).toEqual(doc0());
+  });
+
+  it("from one custom size to another, the undo carries the old size", () => {
+    const d = custom816();
+    const { doc, inverse } = applyOps(d, [{ op: "set_format", format: "custom", width: 1000, height: 1000 }]);
+    expect(doc).toMatchObject({ format: "custom", width: 1000, height: 1000 });
+    expect(inverse).toEqual([
+      { op: "set_format", format: "custom", width: 816, height: 1056, expect: { format: "custom", width: 1000, height: 1000 } },
+    ]);
+    expect(applyOps(doc, inverse).doc).toEqual(d);
+  });
+
+  it("a custom size outside the limits is refused", () => {
+    for (const size of [{ width: 4096, height: 4096 }, { width: 1081, height: 1920 }, { width: 816 }, {}]) {
+      const run = () => applyOps(doc0(), [{ op: "set_format", format: "custom", ...size }]);
+      failsWith(run, "INVALID");
+      expect(run).toThrow("set_format: Width and height go from 16 to 4096 pixels, up to the area of 4K (3840 × 2160).");
+    }
+  });
+
+  it("a named format refuses a width or height", () => {
+    const ops: Op[] = [
+      { op: "set_format", format: "long_16x9", width: 1920, height: 1080 },
+      { op: "set_format", format: "long_16x9", height: 1080 },
+      { op: "set_format", format: "long_16x9", width: 1920 },
+    ];
+    for (const op of ops) {
+      const run = () => applyOps(doc0(), [op]);
+      failsWith(run, "INVALID");
+      expect(run).toThrow("set_format: Give a width and height only with the custom format.");
+    }
+  });
+
+  it("a size in expect guards a resize", () => {
+    for (const expected of [
+      { format: "custom" as const, width: 800, height: 1056 },
+      { format: "custom" as const, width: 816, height: 1000 },
+    ]) {
+      const run = () =>
+        applyOps(custom816(), [{ op: "set_format", format: "custom", width: 1000, height: 1000, expect: expected }]);
+      failsWith(run, "STALE");
+      expect(run).toThrow("set_format: the format changed since this edit");
+    }
+  });
+
+  it("a custom size equal to a named one is still accepted", () => {
+    const d = applyOps(doc0(), [{ op: "set_format", format: "long_16x9" }]).doc;
+    const { doc } = applyOps(d, [{ op: "set_format", format: "custom", width: 1080, height: 1920 }]);
+    expect(doc).toMatchObject({ format: "custom", width: 1080, height: 1920 });
+  });
 });
 
 describe("set_safe_area", () => {
