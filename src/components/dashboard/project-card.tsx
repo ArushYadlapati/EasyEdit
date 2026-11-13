@@ -3,10 +3,11 @@
 import { Ellipsis } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import { useAction } from "@/app/(app)/action-ui";
 import { BlankFrame } from "@/components/dashboard/blank-frame";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
+import { PROJECT_DRAG_TYPE } from "@/components/dashboard/drag";
 import { MoveToFolderDialog } from "@/components/dashboard/move-dialog";
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
@@ -103,6 +104,16 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
     menu?.({ ...menuPoint(event), label: LABEL, items, onSelect: choose, returnFocus: optionsButton() });
   }
 
+  // For editors the card drags into a folder in the sidebar, carrying only its id. Not while it is being renamed or
+  // one of its dialogs is open, so text in those can be selected; and a drag that starts inside it (such as selected
+  // text) is not the card's.
+  const draggable = canEdit && !renaming && !moving && !deleting;
+  function onDragStart(event: DragEvent<HTMLLIElement>) {
+    if (!draggable || event.target !== event.currentTarget) return;
+    event.dataTransfer.setData(PROJECT_DRAG_TYPE, project.id);
+    event.dataTransfer.effectAllowed = "move";
+  }
+
   const picture = (
     <div className="aspect-video rounded-md border border-ed-line bg-ed-panel p-3 transition-colors duration-120 group-hover:bg-ed-hover motion-reduce:transition-none">
       <BlankFrame width={project.width} height={project.height} />
@@ -110,7 +121,13 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
   );
 
   return (
-    <li ref={box} className="min-w-0" onContextMenu={onContextMenu}>
+    <li
+      ref={box}
+      className="min-w-0"
+      draggable={canEdit ? draggable : undefined}
+      onDragStart={onDragStart}
+      onContextMenu={onContextMenu}
+    >
       <div className="flex min-w-0 flex-col gap-2">
         {renaming ? (
           // No link while renaming, so a click in the field does not open the project.
@@ -124,7 +141,11 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
             />
           </div>
         ) : (
-          <Link href={`/editor/${project.id}`} className={cx("group flex min-w-0 flex-col gap-2 rounded-md", FOCUS_RING)}>
+          <Link
+            href={`/editor/${project.id}`}
+            draggable={canEdit ? false : undefined}
+            className={cx("group flex min-w-0 flex-col gap-2 rounded-md", FOCUS_RING)}
+          >
             {picture}
             <div className="truncate text-sm font-medium text-ed-text">{project.name}</div>
           </Link>

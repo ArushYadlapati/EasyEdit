@@ -1,13 +1,18 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Ellipsis, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useId, useState, type ReactNode } from "react";
+import { useAction } from "@/app/(app)/action-ui";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
+import { FolderNameDialog } from "@/components/dashboard/folder-name-dialog";
 import { NewProjectDialog } from "@/components/dashboard/new-project-dialog";
 import { ProjectCard } from "@/components/dashboard/project-card";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { useRefreshOnReturn } from "@/components/dashboard/use-refresh-on-return";
 import { Button } from "@/components/ui/button";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
+import { Menu, type MenuItem } from "@/components/ui/menu";
 import { Select } from "@/components/ui/select";
 import { TextInput } from "@/components/ui/text-input";
 import {
@@ -29,6 +34,11 @@ export type DashboardProps = {
   now: Date;
   actions: DashboardActions;
 };
+
+const FOLDER_ITEMS: MenuItem[] = [
+  { id: "rename", label: "Rename folder" },
+  { id: "delete", label: "Delete folder", danger: true },
+];
 
 const HEADING = "mb-3 text-sm font-semibold text-ed-text";
 const EMPTY = "text-[13px] text-ed-muted";
@@ -59,13 +69,19 @@ function CardGrid({ projects, folderName, now, canEdit, folders, actions }: {
   );
 }
 
-// The dashboard: the folders at the side, and a bar that stays at the top with the view's title, the search, the
-// sort and New project. The main view lists Recent, then All projects; a folder view lists that folder's projects.
+// The dashboard: the folders at the side, and a bar that stays at the top with the view's title (and, in a folder,
+// its menu), the search, the sort and New project. The main view lists Recent, then All projects; a folder view lists
+// that folder's projects. A card dropped on a folder in the sidebar moves there, and a refused move says why in the bar.
 export function Dashboard({ projects, folders, recentIds, view, canEdit, now, actions }: DashboardProps): ReactNode {
   useRefreshOnReturn();
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("changed");
   const [newOpen, setNewOpen] = useState(false);
+  const [folderDialog, setFolderDialog] = useState<"new" | "rename" | "delete" | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteFolder = useAction(actions.deleteFolder);
+  const dropMove = useAction(actions.move);
   const titleId = useId();
   const recentId = useId();
   const allId = useId();
@@ -75,6 +91,38 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   const shown = projectsInView(projects, { folderId: view, search, sort });
   const recent = recentProjects(projects, recentIds, search); // shown in the main view only
   const searching = search.trim() !== "";
+  const folderName = view === null ? null : (folderNames.get(view) ?? null);
+
+  // A drag can come from another window or site with any id, so only this page's projects move, and a drop onto the
+  // folder a project is already in does nothing.
+  function dropProject(projectId: string, folderId: string | null) {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project || project.folderId === folderId) return;
+    const formData = new FormData();
+    formData.set("id", project.id);
+    formData.set("folderId", folderId ?? "");
+    dropMove.submit(formData);
+  }
+
+  function chooseFolderOption(id: string) {
+    if (id === "delete") setDeleteError(null);
+    setFolderDialog(id === "rename" ? "rename" : "delete");
+  }
+
+  function confirmDeleteFolder() {
+    if (view === null) return;
+    const formData = new FormData();
+    formData.set("id", view);
+    deleteFolder.submit(formData, {
+      onStart: () => setDeleteError(null),
+      onSuccess: () => {
+        setFolderDialog(null);
+        router.replace("/dashboard");
+      },
+      onFailure: setDeleteError,
+    });
+  }
+  const closeFolderDialog = () => setFolderDialog(null);
 
   const newProjectButton = (className?: string) => (
     <Button variant="primary" className={className} onClick={() => setNewOpen(true)}>
@@ -113,12 +161,21 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   return (
     <ContextMenuProvider>
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <Sidebar folders={folders} view={view} />
+        <Sidebar
+          folders={folders}
+          view={view}
+          canEdit={canEdit}
+          onNewFolder={() => setFolderDialog("new")}
+          onDropProject={dropProject}
+        />
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-ed-line bg-ed-bg px-4 py-3">
             <h1 id={titleId} className="min-w-0 flex-1 truncate text-base font-semibold">
               {title}
             </h1>
+            {canEdit && folderName !== null && (
+              <Menu label="Folder options" icon={<Ellipsis />} items={FOLDER_ITEMS} onSelect={chooseFolderOption} />
+            )}
             {/* Below sm the search and the sort share a second row, under the title and New project. */}
             <div className="order-last flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto">
               <TextInput
@@ -143,6 +200,11 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
               </Select>
             </div>
             {canEdit && newProjectButton("shrink-0")}
+            {dropMove.error && (
+              <p role="alert" className="order-last basis-full text-xs text-ed-danger">
+                {dropMove.error}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-8 px-4 py-6">
             {view === null ? (
@@ -176,13 +238,46 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
         </main>
       </div>
       {canEdit && (
-        <NewProjectDialog
-          open={newOpen}
-          onClose={() => setNewOpen(false)}
-          folders={folders}
-          folderId={view}
-          action={actions.create}
-        />
+        <>
+          <NewProjectDialog
+            open={newOpen}
+            onClose={() => setNewOpen(false)}
+            folders={folders}
+            folderId={view}
+            action={actions.create}
+          />
+          <FolderNameDialog
+            open={folderDialog === "new"}
+            title="New folder"
+            submitLabel="Create folder"
+            initial=""
+            action={actions.createFolder}
+            onClose={closeFolderDialog}
+          />
+          {view !== null && folderName !== null && (
+            <>
+              <FolderNameDialog
+                open={folderDialog === "rename"}
+                title="Rename folder"
+                submitLabel="Save"
+                initial={folderName}
+                folderId={view}
+                action={actions.renameFolder}
+                onClose={closeFolderDialog}
+              />
+              <ConfirmDialog
+                title="Delete folder"
+                question={`Delete the folder "${folderName}"? Its projects stay in All projects.`}
+                confirmLabel="Delete folder"
+                open={folderDialog === "delete"}
+                pending={deleteFolder.pending}
+                error={deleteError}
+                onConfirm={confirmDeleteFolder}
+                onClose={closeFolderDialog}
+              />
+            </>
+          )}
+        </>
       )}
     </ContextMenuProvider>
   );
