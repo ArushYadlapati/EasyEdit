@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  addMedia, addText, addTrack, copySelection, cutSelection, deleteSelection, duplicateSelection, duplicateTrack, goToEdge, moveTrack,
+  addMedia, addText, addTrack, armCrop, copySelection, cutSelection, deleteSelection, duplicateSelection, duplicateTrack, goToEdge, moveTrack,
   nudgeSelection, paste, removeTrack, renameTrack, reorderTrack, resetCrop, selectAll, splitAtPlayhead, toggleTrack,
 } from "@/lib/editor/actions";
 import { CLIPBOARD_KEY, copyClips, createClipboard, pasteItems } from "@/lib/editor/clipboard";
@@ -669,5 +669,44 @@ describe("reset crop", () => {
     resetCrop(viewer, "x1");
     expect(edit).not.toHaveBeenCalled();
     expect(viewer.getState()).toMatchObject({ queue: [], notice: null });
+  });
+});
+
+describe("arming a crop", () => {
+  it("armCrop pauses, moves the playhead into the clip only when it is outside, and selects the clip", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    // c1 runs from 0 to 30: 30 is past its end.
+    st().seek(30);
+    st().play();
+    armCrop(store, "c1", false);
+    expect(st()).toMatchObject({ playing: false, playhead: 0, cropArmed: "c1", selection: { clipIds: ["c1"], trackId: null } });
+    expect(st().notice).toMatchObject({ tone: "info", text: MESSAGES.cropHint });
+    // x2 runs from 90 to 120: 89 is before it, 119 inside.
+    st().seek(89);
+    armCrop(store, "x2", true);
+    expect(st()).toMatchObject({ playhead: 90, cropArmed: "x2" });
+    expect(st().notice?.text).toBe(MESSAGES.cropHintMac);
+    st().seek(119);
+    armCrop(store, "x2", false);
+    expect(st().playhead).toBe(119);
+    expect(st().queue).toEqual([]);
+  });
+
+  it("armCrop does nothing for a viewer, while a gesture is live, for audio, or on a locked track", () => {
+    const doc = sampleDoc();
+    doc.tracks[3].clips = [video("au", 0, 30, { type: "audio" })];
+    doc.tracks[0].locked = true;
+    const store = makeStore({ doc });
+    const st = () => store.getState();
+    st().seek(45);
+    for (const id of ["au", "c1", "gone"]) armCrop(store, id, false);
+    st().setGesture([{ op: "move_clip", clipId: "x2", start: 95 }]);
+    armCrop(store, "x1", false);
+    st().setGesture(null);
+    expect(st()).toMatchObject({ cropArmed: null, notice: null, playhead: 45, selection: { clipIds: [] } });
+    const viewer = makeStore({ canEdit: false });
+    armCrop(viewer, "x1", false);
+    expect(viewer.getState()).toMatchObject({ cropArmed: null, notice: null, selection: { clipIds: [] } });
   });
 });

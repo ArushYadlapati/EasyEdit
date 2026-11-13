@@ -16,6 +16,8 @@ export const MESSAGES = {
   noRoom: "No room here, and the project can't take more tracks.",
   mediaNotReady: "This file isn't ready yet.",
   renameFailed: "Couldn't rename the project. Try again.",
+  cropHint: "Drag a handle to crop. Next time, you can hold Alt while you drag.",
+  cropHintMac: "Drag a handle to crop. Next time, you can hold Option while you drag.",
 } as const;
 
 const OP_ERROR_MESSAGES: Record<OpErrorCode, string> = {

@@ -301,4 +301,43 @@ describe("selection and playhead", () => {
     st().seek(-4);
     expect(st().playhead).toBe(0);
   });
+
+  it("crop arming lasts until another selection, Play or the clip's removal", () => {
+    const { st } = fresh();
+    expect(st().cropArmed).toBeNull();
+    st().select(["c1"]);
+    st().setCropArmed("c1");
+    expect(st().cropArmed).toBe("c1");
+    // The same selection keeps it.
+    st().select(["c1"]);
+    expect(st().cropArmed).toBe("c1");
+    st().select(["x1"]);
+    expect(st().cropArmed).toBeNull();
+    st().setCropArmed("c1");
+    st().select(["c1", "x1"]);
+    expect(st().cropArmed).toBeNull();
+    st().setCropArmed("c1");
+    st().select([]);
+    expect(st().cropArmed).toBeNull();
+    st().setCropArmed("c1");
+    st().selectTrack("t1");
+    expect(st().cropArmed).toBeNull();
+    st().setCropArmed("c1");
+    st().play();
+    expect(st().cropArmed).toBeNull();
+    st().pause();
+    st().setCropArmed("c1");
+    st().shuttle("l");
+    expect(st().cropArmed).toBeNull();
+    st().pause();
+    st().setCropArmed("c1");
+    // A remote edit elsewhere keeps it; one that removes the clip does not.
+    st().applyRemote([entry(6, [{ op: "remove_clip", clipId: "x2" }])]);
+    expect(st().cropArmed).toBe("c1");
+    st().applyRemote([entry(7, [{ op: "remove_clip", clipId: "c1" }])]);
+    expect(st().cropArmed).toBeNull();
+    st().setCropArmed("x1");
+    st().revokeEditing();
+    expect(st().cropArmed).toBeNull();
+  });
 });

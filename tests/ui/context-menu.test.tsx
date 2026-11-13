@@ -6,6 +6,7 @@ import { EditorScreen } from "@/components/editor/editor-screen";
 import { ContextMenuProvider, menuPoint, placeAtPoint, useContextMenu, type ContextMenuRequest } from "@/components/ui/context-menu";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ROW_HEIGHT, RULER_HEIGHT } from "@/lib/editor/geometry";
+import { MESSAGES } from "@/lib/editor/messages";
 import { findClip } from "@/lib/editor/store";
 import { DEFAULT_TRANSFORM, isCropped } from "@/lib/timeline";
 import { makeStore, sampleDoc, video } from "../editor/fixtures";
@@ -344,7 +345,7 @@ describe("the timeline's right-click menus", () => {
     const { clip } = setup();
     expect(fireEvent.contextMenu(clip("x2"), { clientX: 300, clientY: 200, button: 2 })).toBe(false);
     const menu = screen.getByRole("menu", { name: "Clip actions" });
-    expect(labels()).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Reset crop", "Delete"]);
+    expect(labels()).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Crop", "Reset crop", "Delete"]);
     expect(document.activeElement).toBe(screen.getAllByRole("menuitem")[0]);
     // Hints follow the keys.
     expect(menu.querySelector("[data-shortcut]")?.textContent).toBe("Ctrl+X");
@@ -406,6 +407,35 @@ describe("the timeline's right-click menus", () => {
     // Uncropped now: greyed.
     rightClick(clip("c2"), x(40), y(2));
     expect((screen.getByRole("menuitem", { name: "Reset crop" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("Crop in a clip's menu selects the clip and arms the crop", () => {
+    const { st, clip, rightClick } = setup();
+    act(() => {
+      st().seek(45);
+      st().play();
+    });
+    rightClick(clip("c1"), x(10), y(2));
+    pick("Crop");
+    expect(st().notice?.text).toBe("Drag a handle to crop. Next time, you can hold Alt while you drag.");
+    expect(st().selection.clipIds).toEqual(["c1"]);
+    expect(st().cropArmed).toBe("c1");
+    expect(st().playhead).toBe(0);
+    expect(st().playing).toBe(false);
+    expect(st().queue).toEqual([]);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("Crop keeps the playhead when it is inside the clip, and on a Mac says Option", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const { st, clip, rightClick } = setup();
+    act(() => st().seek(29));
+    rightClick(clip("c1"), x(10), y(2));
+    pick("Crop");
+    expect(st().notice?.text).toBe(MESSAGES.cropHintMac);
+    expect(MESSAGES.cropHintMac).toBe("Drag a handle to crop. Next time, you can hold Option while you drag.");
+    expect(st().playhead).toBe(29);
+    expect(st().cropArmed).toBe("c1");
   });
 
   it("Escape closes it and puts focus back on the clip", () => {

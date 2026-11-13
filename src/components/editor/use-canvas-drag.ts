@@ -15,6 +15,9 @@ type Guides = { x: number | null; y: number | null };
 
 const NO_GUIDES: Guides = { x: null, y: null };
 
+// The clip a handle drag crops now, if one does.
+type Cropping = { clipId: string | null };
+
 type Session = {
   pointerId: number;
   target: HTMLElement; // the overlay, which holds the pointer's capture
@@ -26,6 +29,8 @@ type Session = {
   x: number; // the pointer now
   y: number;
   shift: boolean;
+  alt: boolean; // Alt (Option) as the latest pointer or key event had it
+  travelled: boolean; // the pointer has passed the click slop since the press
   started: boolean;
   drag: CanvasDrag | null;
   label: CanvasDragResult["label"];
@@ -38,18 +43,23 @@ export type CanvasDragController = {
   press(e: ReactPointerEvent, grip: Grip, clipId: string, drawn?: Point): void;
   // The frame's centre lines a moved clip's centre sits on, in project pixels, while it is snapped there.
   guides: StoreApi<Guides>;
+  // The clip a handle drag crops now: with Alt, or armed by the clip menu's Crop.
+  cropping: StoreApi<Cropping>;
   dispose(): void;
 };
 
 // Moving, turning and resizing a clip on the preview by hand. A press captures the pointer on the overlay. A press on
 // the clip's body becomes a drag once it travels the click slop (and makes that clip the only selection), a press on a
-// handle at once. The pointer is worked out at most once per animation frame, from the press each time, with Shift as
-// it is now: a Shift pressed or let go mid-drag, or a scroll of the pane, works it out again where the pointer is. The
-// change is shown through the store's gesture and saved once on release; Escape, a cancelled pointer and a lost
-// capture drop it, and so does the store when the clip is removed. pointerdown is never prevented, so a focused field
-// blurs, and saves, before the drag sets anything.
+// handle at once. The pointer is worked out at most once per animation frame, from the press each time, with Shift and
+// Alt as they are now: one pressed or let go mid-drag, or a scroll of the pane, works it out again where the pointer
+// is. A handle drag crops instead of resizing while Alt is down or the clip menu's Crop armed the clip; from a handle
+// drawn clamped into the pane, the cut starts only once the pointer passes the click slop. The change is shown through
+// the store's gesture and saved once on release; Escape, a cancelled pointer and a lost capture drop it, and so does
+// the store when the clip is removed. The end of any drag disarms Crop. pointerdown is never prevented, so a focused
+// field blurs, and saves, before the drag sets anything.
 export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pane: () => HTMLElement | null): CanvasDragController {
   const guides = createStore<Guides>(() => NO_GUIDES);
+  const cropping = createStore<Cropping>(() => ({ clipId: null }));
   let session: Session | null = null;
   let frameId: number | null = null;
   let unsubscribe: (() => void) | null = null;
@@ -75,6 +85,15 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     if (now.x !== next.x || now.y !== next.y) guides.setState({ x: next.x, y: next.y }, true);
   }
 
+  function showCropping(clipId: string | null) {
+    if (cropping.getState().clipId !== clipId) cropping.setState({ clipId }, true);
+  }
+
+  // A handle drag crops while Alt is down or while the clip menu's Crop has armed its clip.
+  function crops(s: Session): boolean {
+    return s.drag?.type === "resize" && (s.alt || store.getState().cropArmed === s.clipId);
+  }
+
   // The drag begins from the clip as it is drawn now. Null when it cannot: the clip is gone, off the playhead, or on
   // a locked track.
   function start(s: Session): boolean {
@@ -91,6 +110,7 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     if (s.grip === "body") state.select([s.clipId]);
     s.drag = drag;
     s.started = true;
+    showCropping(crops(s) ? s.clipId : null);
     return true;
   }
 
@@ -99,13 +119,19 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     const view = surface.view();
     if (!s.drag || !state.canEdit) return end(false);
     if (!view) return;
-    const result = resolveCanvasDrag(s.drag, {
-      pointer: fromScreen(view, s.x, s.y),
-      shift: s.shift,
-      alt: false,
-      snapping: state.snapping,
-      snapPx: SNAP_CSS_PX / view.k,
-    });
+    const crop = crops(s);
+    // A cut from a handle drawn clamped would start where it is drawn: not before the pointer means to drag.
+    const result: CanvasDragResult =
+      crop && s.drawn && !s.travelled
+        ? { ops: [], label: "crop", guides: NO_GUIDES }
+        : resolveCanvasDrag(s.drag, {
+            pointer: fromScreen(view, s.x, s.y),
+            shift: s.shift,
+            alt: crop,
+            snapping: state.snapping,
+            snapPx: SNAP_CSS_PX / view.k,
+          });
+    showCropping(crop ? s.clipId : null);
     s.label = result.label;
     s.ops = result.ops;
     const ops = JSON.stringify(result.ops);
@@ -117,14 +143,21 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     showGuides(result.guides);
   }
 
-  function onMove(e: PointerEvent) {
-    const s = session;
-    if (!s || e.pointerId !== s.pointerId) return;
+  // The pointer and the modifiers a pointer event carries.
+  function track(s: Session, e: PointerEvent) {
     s.x = e.clientX;
     s.y = e.clientY;
     s.shift = e.shiftKey;
+    s.alt = e.altKey;
+    if (Math.hypot(s.x - s.x0, s.y - s.y0) >= CLICK_SLOP_PX) s.travelled = true;
+  }
+
+  function onMove(e: PointerEvent) {
+    const s = session;
+    if (!s || e.pointerId !== s.pointerId) return;
+    track(s, e);
     if (!s.started) {
-      if (Math.hypot(s.x - s.x0, s.y - s.y0) < CLICK_SLOP_PX) return;
+      if (!s.travelled) return;
       if (!start(s)) return;
     }
     schedule();
@@ -134,9 +167,7 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     const s = session;
     if (!s || e.pointerId !== s.pointerId) return;
     if (!s.started) return end(false);
-    s.x = e.clientX;
-    s.y = e.clientY;
-    s.shift = e.shiftKey;
+    track(s, e);
     // The drop is where the pointer came up, even when that frame was not worked out yet.
     resolve(s);
     end(true);
@@ -147,7 +178,8 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     if (s && (!(e instanceof PointerEvent) || e.pointerId === s.pointerId)) end(false);
   }
 
-  // Escape ends a drag before anything else hears it, so it does not also clear the selection. Shift is read live.
+  // Escape ends a drag before anything else hears it, so it does not also clear the selection. Shift and Alt are read
+  // live.
   function onKey(e: KeyboardEvent) {
     const s = session;
     if (!s) return;
@@ -158,8 +190,9 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
       end(false);
       return;
     }
-    if (e.shiftKey !== s.shift) {
+    if (e.shiftKey !== s.shift || e.altKey !== s.alt) {
       s.shift = e.shiftKey;
+      s.alt = e.altKey;
       refresh();
     }
   }
@@ -188,7 +221,7 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
         if (!now.live) next.notify("error", MESSAGES.clipGone);
         return end(false);
       }
-      if (next.doc !== prev.doc || next.snapping !== prev.snapping) refresh();
+      if (next.doc !== prev.doc || next.snapping !== prev.snapping || next.cropArmed !== prev.cropArmed) refresh();
     });
   }
 
@@ -216,14 +249,17 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
       // Already released.
     }
     showGuides(NO_GUIDES);
+    showCropping(null);
     if (!s.started) return;
     const state = store.getState();
     if (commit && s.ops.length > 0) state.commitGesture(s.label);
     else state.setGesture(null);
+    store.getState().setCropArmed(null);
   }
 
   return {
     guides,
+    cropping,
     press(e, grip, clipId, drawn) {
       end(false);
       if (!store.getState().canEdit) return;
@@ -238,6 +274,8 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
         x: e.clientX,
         y: e.clientY,
         shift: e.shiftKey,
+        alt: e.altKey,
+        travelled: false,
         started: false,
         drag: null,
         label: grip === "body" || grip === "rotate" ? "position change" : "size change",

@@ -981,3 +981,301 @@ describe("moving, turning and resizing on the preview", () => {
     expect(st().gesture).toBeNull();
   });
 });
+
+// c1, the frame-sized placeholder, at k = 0.5: its w handle is at client (216, 536) and its e handle at (756, 536).
+const looks = () =>
+  [...document.querySelectorAll<HTMLElement>("[data-canvas-handle]")].map((h) => [h.dataset.canvasHandle, h.getAttribute("data-look")]);
+const lookOfAll = (look: string) => [...EIGHT.map((g) => [g, look]), ["rotate", null]].sort();
+const cropFull = () => overlay().querySelector("[data-crop-full]");
+const pickItem = (name: string) => fireEvent.click(screen.getByRole("menuitem", { name }));
+
+describe("cropping on the preview", () => {
+  it("Alt-dragging a side crops it and keeps the rest in place", () => {
+    const { st } = show({ selected: ["c1"] });
+    pressHandle("w", 216, 536, { altKey: true });
+    move(270, 536, { altKey: true });
+    frame();
+    release(270, 536, { altKey: true });
+    expect(labelsOf(st())).toEqual(["crop"]);
+    expect(st().queue[0].ops).toEqual([{ op: "update_clip", clipId: "c1", patch: { transform: { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } } } }]);
+  });
+
+  it("Alt+Shift on a side keeps the kept part's shape", () => {
+    const { st } = show({ selected: ["c1"] });
+    pressHandle("e", 756, 536, { altKey: true, shiftKey: true });
+    move(702, 536, { altKey: true, shiftKey: true });
+    frame();
+    release(702, 536, { altKey: true, shiftKey: true });
+    expect(labelsOf(st())).toEqual(["crop"]);
+    expect(patchOf(st())).toEqual({ transform: { crop: { left: 0, top: 0.05, right: 0.1, bottom: 0.05 } } });
+  });
+
+  it("Alt pressed mid-drag switches the drag to a crop", () => {
+    const { st } = show({ selected: ["c1"] });
+    pressHandle("e", 756, 536);
+    move(702, 536);
+    frame();
+    expect(gesturePatch(st())).toHaveProperty("transform.stretch");
+    expect(cropFull()).toBeNull();
+    expect(fireEvent.keyDown(window, { key: "Alt", altKey: true })).toBe(false);
+    frame();
+    expect(gesturePatch(st())).toEqual({ transform: { crop: { left: 0, top: 0, right: 0.1, bottom: 0 } } });
+    expect(cropFull()).not.toBeNull();
+    expect(fireEvent.keyUp(window, { key: "Alt" })).toBe(false);
+    frame();
+    expect(gesturePatch(st())).toHaveProperty("transform.stretch");
+    expect(cropFull()).toBeNull();
+    expect(gesturePatch(st())).not.toHaveProperty("transform.crop");
+    release(702, 536);
+    expect(labelsOf(st())).toEqual(["size change"]);
+  });
+
+  it("Alt is read from each pointer move too", () => {
+    const { st } = show({ selected: ["c1"] });
+    pressHandle("w", 216, 536);
+    move(270, 536, { altKey: true });
+    frame();
+    expect(gesturePatch(st())).toEqual({ transform: { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } } });
+    move(270, 536);
+    frame();
+    expect(gesturePatch(st())).not.toHaveProperty("transform.crop");
+  });
+
+  it("an unclamped handle crops from the first move", () => {
+    const { st } = show({ selected: ["c1"] });
+    pressHandle("w", 216, 536, { altKey: true });
+    move(218, 536, { altKey: true });
+    frame();
+    expect(gesturePatch(st())).toEqual({ transform: { crop: { left: 0.0037, top: 0, right: 0, bottom: 0 } } });
+  });
+
+  it("an Alt drag of the clip's body moves it and outlines nothing", () => {
+    const { st } = show({ selected: ["c1"] });
+    press(...PICTURE, { altKey: true });
+    move(256, 76, { altKey: true });
+    frame();
+    expect(cropFull()).toBeNull();
+    release(256, 76, { altKey: true });
+    expect(labelsOf(st())).toEqual(["position change"]);
+  });
+
+  it("on a Mac an Option drag crops", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const { st } = show({ selected: ["c1"] });
+    pressHandle("w", 216, 536, { altKey: true });
+    move(270, 536, { altKey: true });
+    frame();
+    release(270, 536, { altKey: true });
+    expect(labelsOf(st())).toEqual(["crop"]);
+    expect(patchOf(st())).toEqual({ transform: { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } } });
+  });
+
+  it("a clamped handle starts the cut where it is drawn", () => {
+    const { st } = show({ over: { doc: withTransform(sampleDoc(), "c1", { scale: 3 }) }, selected: ["c1"] });
+    expect(placeOf("w")).toEqual(["12px", "496px"]);
+    pressHandle("w", 212, 536, { altKey: true });
+    move(217, 536, { altKey: true });
+    frame();
+    release(217, 536, { altKey: true });
+    expect(labelsOf(st())).toEqual(["crop"]);
+    expect((patchOf(st()) as { transform: { crop: { left: number } } }).transform.crop.left).toBe(0.334);
+  });
+
+  it("an Alt+click on a clamped handle crops nothing", () => {
+    const { st } = show({ over: { doc: withTransform(sampleDoc(), "c1", { scale: 3 }) }, selected: ["c1"] });
+    pressHandle("w", 212, 536, { altKey: true });
+    release(212, 536, { altKey: true });
+    expect(st().queue).toEqual([]);
+  });
+
+  it("a clamped handle's crop waits for the click slop", () => {
+    const { st } = show({ over: { doc: withTransform(sampleDoc(), "c1", { scale: 3 }) }, selected: ["c1"] });
+    pressHandle("w", 212, 536, { altKey: true });
+    move(214, 536, { altKey: true });
+    frame();
+    expect(st().gesture).toBeNull();
+    move(212, 536, { altKey: true });
+    frame();
+    release(212, 536, { altKey: true });
+    expect(st().queue).toEqual([]);
+    // Once past the slop, the cut keeps applying when the pointer comes back near the press.
+    pressHandle("w", 212, 536, { altKey: true });
+    move(217, 536, { altKey: true });
+    frame();
+    move(213, 536, { altKey: true });
+    frame();
+    expect((gesturePatch(st()) as { transform: { crop: { left: number } } }).transform.crop.left).toBe(0.3315);
+    fireEvent.keyDown(window, { key: "Escape" });
+    release(213, 536);
+    // A clamped handle resizes from the first move: only the crop waits.
+    pressHandle("w", 212, 536);
+    move(214, 536);
+    frame();
+    expect(gesturePatch(st())).toHaveProperty("transform.stretch");
+  });
+
+  it("text crops by hand too", () => {
+    const { st } = show({ selected: ["x1"] });
+    pressHandle("w", 470, 536, { altKey: true });
+    move(478, 536, { altKey: true });
+    frame();
+    release(478, 536, { altKey: true });
+    expect(labelsOf(st())).toEqual(["crop"]);
+    expect(st().queue[0].ops).toEqual([{ op: "update_clip", clipId: "x1", patch: { transform: { crop: { left: 0.25, top: 0, right: 0, bottom: 0 } } } }]);
+  });
+
+  it("holding Alt over the board turns the handles into crop marks", () => {
+    show({ selected: ["c1"] });
+    expect(looks().sort()).toEqual(lookOfAll("resize"));
+    fireEvent.pointerMove(overlay(), { clientX: 486, clientY: 536, pointerId: 1 });
+    expect(fireEvent.keyDown(window, { key: "Alt", altKey: true })).toBe(false);
+    expect(looks().sort()).toEqual(lookOfAll("crop"));
+    // Each mark is drawn in the clip's own turn, in its 24 px target.
+    expect(handle("w")!.querySelector("svg polygon")!.getAttribute("points")).toBe("10,5 14,5 14,19 10,19");
+    expect(handle("nw")!.querySelector("svg polygon")!.getAttribute("points")).toBe("10,10 22,10 22,14 14,14 14,22 10,22");
+    expect(handle("w")!.style.width).toBe("24px");
+    expect(fireEvent.keyUp(window, { key: "Alt" })).toBe(false);
+    expect(looks().sort()).toEqual(lookOfAll("resize"));
+    expect(handle("w")!.querySelector("svg")).toBeNull();
+  });
+
+  it("Alt let go while the window was away, or while the handles were hidden, leaves no marks", () => {
+    const { st } = show({ selected: ["c1"] });
+    fireEvent.pointerMove(overlay(), { clientX: 486, clientY: 536, pointerId: 1 });
+    fireEvent.keyDown(window, { key: "Alt", altKey: true });
+    expect(looks().sort()).toEqual(lookOfAll("crop"));
+    fireEvent.blur(window);
+    expect(looks().sort()).toEqual(lookOfAll("resize"));
+    fireEvent.keyDown(window, { key: "Alt", altKey: true });
+    expect(looks().sort()).toEqual(lookOfAll("crop"));
+    act(() => st().play());
+    fireEvent.keyUp(window, { key: "Alt" });
+    act(() => st().pause());
+    expect(looks().sort()).toEqual(lookOfAll("resize"));
+  });
+
+  it("Alt is also read from the pointer's moves over the board", () => {
+    show({ selected: ["c1"] });
+    fireEvent.pointerMove(overlay(), { clientX: 486, clientY: 536, pointerId: 1, altKey: true });
+    expect(looks().sort()).toEqual(lookOfAll("crop"));
+    fireEvent.pointerMove(overlay(), { clientX: 486, clientY: 536, pointerId: 1 });
+    expect(looks().sort()).toEqual(lookOfAll("resize"));
+  });
+
+  it("Alt away from the board leaves the handles as they are, and leaving the board ends the marks", () => {
+    show({ selected: ["c1"] });
+    expect(fireEvent.keyDown(window, { key: "Alt", altKey: true })).toBe(false);
+    expect(looks().sort()).toEqual(lookOfAll("resize"));
+    fireEvent.pointerEnter(overlay(), { clientX: 486, clientY: 536, pointerId: 1 });
+    expect(looks().sort()).toEqual(lookOfAll("crop"));
+    fireEvent.pointerLeave(overlay(), { clientX: 100, clientY: 536, pointerId: 1 });
+    expect(looks().sort()).toEqual(lookOfAll("resize"));
+  });
+
+  it("Alt with another key reaches the page", () => {
+    show({ selected: ["c1"] });
+    expect(fireEvent.keyDown(window, { key: "f", altKey: true })).toBe(true);
+    expect(fireEvent.keyUp(window, { key: "f", altKey: true })).toBe(true);
+  });
+
+  it("with no handles shown a lone Alt reaches the page", () => {
+    const { st } = show({ selected: ["c1", "x1"] });
+    expect(fireEvent.keyDown(window, { key: "Alt", altKey: true })).toBe(true);
+    expect(fireEvent.keyUp(window, { key: "Alt" })).toBe(true);
+    act(() => st().select(["c1"]));
+    expect(fireEvent.keyDown(window, { key: "Alt", altKey: true })).toBe(false);
+    act(() => st().play());
+    expect(fireEvent.keyUp(window, { key: "Alt" })).toBe(true);
+  });
+
+  it("an Alt drag outlines the whole clip", () => {
+    show({ selected: ["c1"] });
+    expect(cropFull()).toBeNull();
+    pressHandle("w", 216, 536, { altKey: true });
+    // From the press.
+    expect(cropFull()).not.toBeNull();
+    expect(looks().sort()).toEqual(lookOfAll("crop"));
+    move(270, 536, { altKey: true });
+    frame();
+    const full = cropFull()!;
+    expect(full.getAttribute("points")).toBe("16,16 556,16 556,976 16,976");
+    expect(full.getAttribute("fill")).toBe("none");
+    expect(full.getAttribute("stroke-dasharray")).not.toBeNull();
+    expect(full.getAttribute("class")).toContain("stroke-ed-accent");
+    // The marks stay while the drag crops, even with the pointer off the board.
+    fireEvent.pointerLeave(overlay(), { clientX: 100, clientY: 536, pointerId: 1 });
+    expect(looks().sort()).toEqual(lookOfAll("crop"));
+    release(270, 536, { altKey: true });
+    expect(cropFull()).toBeNull();
+  });
+
+  it("the whole-box outline is the uncut box of a clip already cropped", () => {
+    show({ over: { doc: withTransform(sampleDoc(), "c1", { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } }) }, selected: ["c1"] });
+    expect(placeOf("w")).toEqual(["70px", "496px"]);
+    pressHandle("w", 270, 536, { altKey: true });
+    move(280, 536, { altKey: true });
+    frame();
+    expect(cropFull()!.getAttribute("points")).toBe("16,16 556,16 556,976 16,976");
+  });
+
+  it("a plain resize draws no whole-box outline", () => {
+    show({ selected: ["c1"] });
+    pressHandle("w", 216, 536);
+    move(270, 536);
+    frame();
+    expect(cropFull()).toBeNull();
+  });
+
+  it("Crop in a clip's menu makes the next handle drag a crop", () => {
+    const { st } = show({ selected: [] });
+    rightClick(...PICTURE);
+    pickItem("Crop");
+    expect(st().notice?.text).toBe("Drag a handle to crop. Next time, you can hold Alt while you drag.");
+    expect(looks().sort()).toEqual(lookOfAll("crop"));
+    pressHandle("w", 216, 536);
+    move(270, 536);
+    frame();
+    release(270, 536);
+    expect(labelsOf(st())).toEqual(["crop"]);
+    expect(patchOf(st())).toEqual({ transform: { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } } });
+    expect(st().cropArmed).toBeNull();
+    expect(looks().sort()).toEqual(lookOfAll("resize"));
+    pressHandle("w", 270, 536);
+    move(280, 536);
+    frame();
+    release(280, 536);
+    expect(labelsOf(st())).toEqual(["crop", "size change"]);
+  });
+
+  it("a drag crops only while its clip is armed", () => {
+    const { st } = show({ selected: ["c1"] });
+    act(() => st().setCropArmed("c1"));
+    pressHandle("w", 216, 536);
+    move(270, 536);
+    frame();
+    expect(gesturePatch(st())).toHaveProperty("transform.crop");
+    act(() => st().setCropArmed(null));
+    frame();
+    expect(gesturePatch(st())).toHaveProperty("transform.stretch");
+  });
+
+  it("an armed crop ends with any canvas drag, and a click does not end it", () => {
+    const { st } = show({ selected: ["c1"] });
+    act(() => st().setCropArmed("c1"));
+    // A press that never travels is no drag.
+    click(...PICTURE);
+    expect(st().cropArmed).toBe("c1");
+    press(...PICTURE);
+    move(256, 76);
+    frame();
+    release(256, 76);
+    expect(labelsOf(st())).toEqual(["position change"]);
+    expect(st().cropArmed).toBeNull();
+    act(() => st().setCropArmed("c1"));
+    pressHandle("w", 236, 536);
+    move(290, 536);
+    frame();
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(false);
+    expect(st().cropArmed).toBeNull();
+  });
+});

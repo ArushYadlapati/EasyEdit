@@ -177,6 +177,28 @@ export function resetCrop(store: EditorStore, clipId: string): void {
   state.edit([{ op: "update_clip", clipId, patch: { transform: { crop: { ...NO_CROP } } } }], "crop");
 }
 
+// Pauses, moves the playhead to the clip's start when it is outside the clip, and makes the clip the selection.
+function focusClip(store: EditorStore, clipId: string): void {
+  const state = store.getState();
+  const clip = findClip(state.doc, clipId)?.clip;
+  if (!clip) return;
+  state.pause();
+  if (state.playhead < clip.start || state.playhead >= clip.start + clip.duration) state.seek(clip.start);
+  state.select([clipId]);
+}
+
+// The clip menu's Crop: shows the clip with its crop marks, and its next handle drag on the preview crops without Alt.
+// A notice says Alt (Option on a Mac) does it any time. Nothing for a viewer, while a drag or a typed value is live, or
+// for audio or a clip on a locked track.
+export function armCrop(store: EditorStore, clipId: string, isMac: boolean): void {
+  const state = store.getState();
+  const found = findClip(state.doc, clipId);
+  if (!state.canEdit || state.gesture !== null || !found || found.track.locked || found.clip.type === "audio") return;
+  focusClip(store, clipId);
+  store.getState().setCropArmed(clipId);
+  store.getState().notify("info", isMac ? MESSAGES.cropHintMac : MESSAGES.cropHint);
+}
+
 // Track runners, used by the track headers, the timeline toolbar and the inspector.
 
 function editTrack(store: EditorStore, ops: OpInput[], label: string): void {

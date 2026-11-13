@@ -1,12 +1,13 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { cx } from "@/components/ui/cx";
 import type { Point } from "@/lib/editor/board";
 import {
+  HANDLE_SIGNS,
   clampInto,
   corners,
   cursorFor,
@@ -14,6 +15,7 @@ import {
   handlePoints,
   hitTest,
   toOverlay,
+  toWorld,
   type Box,
   type CanvasItem,
   type Handle,
@@ -51,10 +53,23 @@ const PLACING: Handle[] = ["nw", "ne", "se", "sw", "n", "e", "s", "w"];
 const noShortcuts = () => {};
 
 type Outline = { clipId: string; points: string };
-// A handle where it is drawn, in overlay pixels; clamped when it was moved into the visible pane.
-type HandleView = { grip: Handle | "rotate"; clipId: string; left: number; top: number; size: number; cursor: string; clamped: boolean };
+// A handle where it is drawn, in overlay pixels; clamped when it was moved into the visible pane. look: a resize
+// handle's square or a crop mark (never for rotate); turn: the clip's rotation, which a crop mark follows.
+type HandleView = {
+  grip: Handle | "rotate";
+  clipId: string;
+  left: number;
+  top: number;
+  size: number;
+  cursor: string;
+  clamped: boolean;
+  look?: "resize" | "crop";
+  turn: number;
+};
 type Guide = { axis: "x" | "y"; x1: number; y1: number; x2: number; y2: number };
-type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[] };
+// full: the whole box of a clip being cropped, uncut, while a crop drag runs.
+type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[]; full: string | null };
+const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], full: null };
 
 // A clamped handle being dragged is drawn at the pointer (client pixels, null until it moves), clamped the same way.
 type Follow = { pointerId: number; grip: Handle; client: Point | null };
@@ -67,12 +82,14 @@ type Press = { pointerId: number; clipId: string; x: number; y: number; then: "t
 const px = (v: number) => Math.round(v * 100) / 100;
 
 // The layer over the preview board, frame and margin alike, where clips are pressed, right-clicked, outlined, moved,
-// turned and resized. What it draws is worked out outside render, whenever the preview draws or its board moves and
-// whenever the selection or a drag's guides change, and only a change is set. A press selects the top-most clip under
+// turned, resized and cropped. What it draws is worked out outside render, whenever the preview draws or its board
+// moves and whenever the selection, a drag's guides or what shows crop marks change, and only a change is set. A press selects the top-most clip under
 // the pointer, clicking through locked tracks; outside the frame only a selected clip takes it; a press that travels
 // moves the clip. One selected clip that can be edited, paused, has eight handles and a rotate handle. A right-click
 // opens the clip's menu (a handle's is its clip's), or the preview's when it lands on nothing or on a clip of a locked
-// track. On a Mac a Ctrl press is that right-click.
+// track. On a Mac a Ctrl press is that right-click. The handles but rotate show as crop marks while Alt is down with the
+// pointer over the board, while a drag crops, and while the clip menu's Crop has armed the clip; while handles show, a
+// lone Alt never reaches the browser, so it does not open a Windows browser's menu.
 export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane: RefObject<HTMLElement | null> }): ReactNode {
   const store = useEditorStore();
   const clipboard = useClipboard();
@@ -84,28 +101,36 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const ref = useRef<HTMLDivElement>(null);
   const press = useRef<Press | null>(null);
   const follow = useRef<Follow | null>(null);
+  const altDown = useRef(false);
+  const pointerOver = useRef(false);
   const refreshRef = useRef<() => void>(() => {});
   const drag = useCanvasDrag(surface, pane);
-  const [drawn] = useState(() => createStore<Drawn>(() => ({ outlines: [], handles: [], guides: [] })));
+  const [drawn] = useState(() => createStore<Drawn>(() => NOTHING_DRAWN));
   const outlines = useStore(drawn, (s) => s.outlines);
   const handles = useStore(drawn, (s) => s.handles);
   const guides = useStore(drawn, (s) => s.guides);
+  const full = useStore(drawn, (s) => s.full);
+  const handlesShown = handles.length > 0;
 
   useLayoutEffect(() => {
     const refresh = () => {
       const el = ref.current;
       const view = surface.view();
       const state = store.getState();
-      let next: Drawn = { outlines: [], handles: [], guides: [] };
+      let next: Drawn = NOTHING_DRAWN;
       if (el && view) {
         const box = el.getBoundingClientRect();
         const items = surface.items();
         const f = follow.current;
         const followed = f?.client ? { grip: f.grip, at: { x: f.client.x - box.left, y: f.client.y - box.top } } : null;
+        const cropping = drag.cropping.getState().clipId;
+        const marks = (clipId: string) => (altDown.current && pointerOver.current) || cropping === clipId || state.cropArmed === clipId;
+        const cut = items.find((i) => i.clipId === cropping);
         next = {
           outlines: outlinesOf(items, state.selection.clipIds, view, box),
-          handles: handlesOf(state, items, view, box, surface.visible(), followed),
+          handles: handlesOf(state, items, view, box, surface.visible(), followed, marks),
           guides: guidesOf(drag.guides.getState(), viewDoc(state), view, box),
+          full: cut ? fullOf(cut, view, box) : null,
         };
       }
       const now = drawn.getState();
@@ -113,21 +138,59 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       if (!sameOutlines(now.outlines, next.outlines)) patch.outlines = next.outlines;
       if (JSON.stringify(now.handles) !== JSON.stringify(next.handles)) patch.handles = next.handles;
       if (JSON.stringify(now.guides) !== JSON.stringify(next.guides)) patch.guides = next.guides;
+      if (now.full !== next.full) patch.full = next.full;
       if (Object.keys(patch).length > 0) drawn.setState(patch);
     };
     refreshRef.current = refresh;
     const stopSurface = surface.onChange(refresh);
     const stopStore = store.subscribe((s, prev) => {
-      if (s.selection !== prev.selection || s.canEdit !== prev.canEdit || s.playing !== prev.playing) refresh();
+      if (s.selection !== prev.selection || s.canEdit !== prev.canEdit || s.playing !== prev.playing || s.cropArmed !== prev.cropArmed) {
+        refresh();
+      }
     });
     const stopGuides = drag.guides.subscribe(refresh);
+    const stopCropping = drag.cropping.subscribe(refresh);
     return () => {
       stopSurface();
       stopStore();
       stopGuides();
+      stopCropping();
       refreshRef.current = () => {};
     };
   }, [surface, store, drawn, drag]);
+
+  // While handles show, Alt is followed from the keys, and a lone Alt press or release is kept from the browser, which
+  // would otherwise focus its menu (Firefox opens it on the release). Alt with another key is left alone.
+  useEffect(() => {
+    if (!handlesShown) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Alt") e.preventDefault();
+      setAlt(e.altKey);
+    };
+    // A window left with Alt held (Alt+Tab) never hears the release.
+    const onBlur = () => setAlt(false);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("keyup", onKey, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keyup", onKey, true);
+      window.removeEventListener("blur", onBlur);
+      altDown.current = false;
+    };
+  }, [handlesShown]);
+
+  function setAlt(down: boolean) {
+    if (altDown.current === down) return;
+    altDown.current = down;
+    refreshRef.current();
+  }
+
+  function setOver(over: boolean) {
+    if (pointerOver.current === over) return;
+    pointerOver.current = over;
+    refreshRef.current();
+  }
 
   // A dragged handle stops following the pointer when the pointer comes up or is lost.
   function stopFollowing(pointerId: number) {
@@ -187,6 +250,8 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   }
 
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
+    setOver(true);
+    setAlt(e.altKey);
     const f = follow.current;
     if (f && f.pointerId === e.pointerId) {
       f.client = { x: e.clientX, y: e.clientY };
@@ -241,6 +306,8 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       data-canvas-overlay
       className="absolute inset-0 touch-none select-none"
       onPointerDown={onPointerDown}
+      onPointerEnter={() => setOver(true)}
+      onPointerLeave={() => setOver(false)}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={(e) => {
@@ -254,6 +321,18 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       onContextMenu={onContextMenu}
     >
       <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible">
+        {full && (
+          <polygon
+            data-crop-full
+            points={full}
+            fill="none"
+            strokeWidth={1}
+            strokeDasharray="4 3"
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+            className="stroke-ed-accent"
+          />
+        )}
         {outlines.map((o) => (
           <polygon
             key={o.clipId}
@@ -284,14 +363,52 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         <div
           key={h.grip}
           data-canvas-handle={h.grip}
+          data-look={h.look}
           className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
           style={{ left: h.left, top: h.top, width: h.size, height: h.size, cursor: h.cursor }}
         >
-          <span className={cx("size-2 border border-ed-accent bg-ed-bg", h.grip === "rotate" && "rounded-full")} />
+          {h.look === "crop" && h.grip !== "rotate" ? (
+            <CropMark grip={h.grip} turn={h.turn} />
+          ) : (
+            <span className={cx("size-2 border border-ed-accent bg-ed-bg", h.grip === "rotate" && "rounded-full")} />
+          )}
         </div>
       ))}
     </div>
   );
+}
+
+// A crop mark in a handle's 24 px target, turned with the clip: a side's is a 14 × 4 bar along its side, a corner's an L
+// of two 12 × 4 bars on its two sides, in the accent colour with a 1 px edge of the background.
+function CropMark({ grip, turn }: { grip: Handle; turn: number }): ReactNode {
+  return (
+    <svg
+      aria-hidden
+      width={TARGET_PX}
+      height={TARGET_PX}
+      viewBox={`0 0 ${TARGET_PX} ${TARGET_PX}`}
+      className="pointer-events-none absolute top-1/2 left-1/2 overflow-visible"
+      style={{ transform: `translate(-50%, -50%) rotate(${turn}deg)` }}
+    >
+      <polygon points={markPoints(grip)} strokeWidth={2} paintOrder="stroke" className="fill-ed-accent stroke-ed-bg" />
+    </svg>
+  );
+}
+
+// A crop mark's outline in its 24 px target, whose middle is the handle's spot; the bars straddle the box's edges.
+function markPoints(grip: Handle): string {
+  const { hx, hy } = HANDLE_SIGNS[grip];
+  const c = TARGET_PX / 2;
+  let points: [number, number][];
+  if (hx === 0) points = [[c - 7, c - 2], [c + 7, c - 2], [c + 7, c + 2], [c - 7, c + 2]];
+  else if (hy === 0) points = [[c - 2, c - 7], [c + 2, c - 7], [c + 2, c + 7], [c - 2, c + 7]];
+  else {
+    // The L's outer corner, then along the top or bottom edge, back along the inside, and out along the side edge.
+    const ox = c + 2 * hx;
+    const oy = c + 2 * hy;
+    points = [[ox, oy], [ox - 12 * hx, oy], [ox - 12 * hx, oy - 4 * hy], [ox - 4 * hx, oy - 4 * hy], [ox - 4 * hx, oy - 12 * hy], [ox, oy - 12 * hy]];
+  }
+  return points.map(([x, y]) => `${x},${y}`).join(" ");
 }
 
 // The handle a press or right-click landed on, if any.
@@ -304,7 +421,8 @@ function gripOf(target: EventTarget): Handle | "rotate" | null {
 const inside = (p: Point, box: Box) => p.x >= box.left && p.x <= box.right && p.y >= box.top && p.y <= box.bottom;
 
 // The handles of the one selected clip, when it is drawn now, can be edited, is on an unlocked track and nothing
-// plays, in the overlay's pixels. followed: a dragged clamped handle drawn at the pointer.
+// plays, in the overlay's pixels. followed: a dragged clamped handle drawn at the pointer. marks: whether a clip's
+// handles show as crop marks.
 function handlesOf(
   state: EditorState,
   items: CanvasItem[],
@@ -312,6 +430,7 @@ function handlesOf(
   overlay: { left: number; top: number },
   visible: Box | null,
   followed: { grip: Handle; at: Point } | null,
+  marks: (clipId: string) => boolean,
 ): HandleView[] {
   const ids = state.selection.clipIds;
   if (ids.length !== 1 || !state.canEdit || state.playing || !visible) return [];
@@ -325,6 +444,7 @@ function handlesOf(
   const rotateOffset = (push.ns > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k;
   const at = new Map(handlePoints(item, rotateOffset, push).map((p) => [p.grip, toOverlay(view, overlay, p.at)]));
 
+  const look = marks(item.clipId) ? "crop" : "resize";
   const placed: HandleView[] = [];
   const shownAs = (grip: Handle | "rotate", p: Point, clamped: boolean, cursor: string): HandleView => ({
     grip,
@@ -334,6 +454,8 @@ function handlesOf(
     size,
     cursor,
     clamped,
+    ...(grip !== "rotate" && { look }),
+    turn: item.rotation,
   });
   for (const grip of PLACING) {
     const raw = at.get(grip)!;
@@ -376,6 +498,20 @@ function guidesOf(
   if (snapped.x !== null) out.push(line("x", { x: snapped.x, y: 0 }, { x: snapped.x, y: frame.height }));
   if (snapped.y !== null) out.push(line("y", { x: 0, y: snapped.y }, { x: frame.width, y: snapped.y }));
   return out;
+}
+
+// A clip's whole box, uncut, in the overlay's pixels.
+function fullOf(item: CanvasItem, view: View, overlay: { left: number; top: number }): string {
+  const { left, top, right, bottom } = item.full;
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ]
+    .map((p) => toOverlay(view, overlay, toWorld(item, p)))
+    .map((p) => `${px(p.x)},${px(p.y)}`)
+    .join(" ");
 }
 
 // The outline of each selected clip drawn now, in the overlay's pixels.

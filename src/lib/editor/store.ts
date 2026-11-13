@@ -59,6 +59,9 @@ export type EditorState = {
   playing: boolean;
   rate: number; // negative when playing backward
   showSafeZones: boolean;
+  // The clip whose next handle drag on the preview crops without Alt (the clip menu's Crop). Another selection, Play,
+  // the clip's removal or the end of any drag on the preview clears it.
+  cropArmed: string | null;
 
   edit(ops: OpInput[], label: string): EditResult;
   undo(): void;
@@ -92,6 +95,7 @@ export type EditorState = {
   step(deltaFrames: number): void; // pauses, then moves the playhead; forward stops at the end
   toggleSafeZones(): void;
   setName(name: string): void; // only what the editor shows; renameFromEditor saves it
+  setCropArmed(clipId: string | null): void;
 };
 
 export type EditorStore = StoreApi<EditorState>;
@@ -183,6 +187,7 @@ export function createEditorStore(
     // gesture is re-applied. A gesture whose clip is gone ends; one that no longer fits waits.
     function settle(state: EditorState, doc: TimelineDoc): Partial<EditorState> {
       const patch: Partial<EditorState> = { doc, selection: pruneSelection(doc, state.selection) };
+      if (state.cropArmed !== null && !findClip(doc, state.cropArmed)) patch.cropArmed = null;
       const gesture = state.gesture;
       if (gesture) {
         try {
@@ -288,6 +293,7 @@ export function createEditorStore(
       playing: false,
       rate: 1,
       showSafeZones: deps.view?.showSafeZones ?? true,
+      cropArmed: null,
 
       edit(ops, label) {
         const state = get();
@@ -382,12 +388,13 @@ export function createEditorStore(
         if (mode === "replace") next = wanted;
         else if (mode === "add") next = [...current, ...added];
         else next = [...current.filter((id) => !wanted.includes(id)), ...added];
-        set({ selection: { clipIds: next, trackId: null } });
+        const keepsArmed = next.length === 1 && next[0] === state.cropArmed;
+        set({ selection: { clipIds: next, trackId: null }, ...(!keepsArmed && { cropArmed: null }) });
       },
 
       selectTrack(trackId) {
         if (trackId !== null && !get().doc.tracks.some((t) => t.id === trackId)) return;
-        set({ selection: { clipIds: [], trackId } });
+        set({ selection: { clipIds: [], trackId }, cropArmed: null });
       },
 
       seek(frame) {
@@ -533,6 +540,7 @@ export function createEditorStore(
           gesture: null,
           doc: server.doc,
           selection: pruneSelection(server.doc, selection),
+          cropArmed: null,
           notice: makeNotice("error", MESSAGES.lostAccess),
         });
       },
@@ -541,7 +549,7 @@ export function createEditorStore(
         const { doc, playhead } = get();
         const end = docDuration(doc);
         if (end === 0) return;
-        set({ playing: true, rate: 1, playhead: playhead >= end ? 0 : playhead });
+        set({ playing: true, rate: 1, playhead: playhead >= end ? 0 : playhead, cropArmed: null });
       },
 
       pause() {
@@ -558,7 +566,7 @@ export function createEditorStore(
         const end = docDuration(doc);
         if (end === 0) return;
         const startsForward = next.rate > 0 && !(playing && rate > 0);
-        set({ ...next, playhead: startsForward && playhead >= end ? 0 : playhead });
+        set({ ...next, playhead: startsForward && playhead >= end ? 0 : playhead, cropArmed: null });
       },
 
       step(deltaFrames) {
@@ -575,6 +583,10 @@ export function createEditorStore(
 
       setName(name) {
         set({ name });
+      },
+
+      setCropArmed(clipId) {
+        if (clipId !== get().cropArmed) set({ cropArmed: clipId });
       },
     };
   });
