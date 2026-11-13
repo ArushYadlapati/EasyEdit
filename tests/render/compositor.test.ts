@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PLACEHOLDER_FILL, activeClips, cropRect, drawFrame, fitRect, mediaSize, type LocalRect } from "@/lib/render/compositor";
-import { SAFE_ZONES } from "@/lib/render/safe-zones";
+import { SAFE_AREA_LABEL, safeAreaMargins } from "@/lib/render/safe-zones";
 import { layoutText, wrapLines } from "@/lib/render/text-layout";
 import { DEFAULT_TRANSFORM, NO_CROP, createEmptyDoc, type Clip, type MediaClip, type TextClip, type TimelineDoc } from "@/lib/timeline";
 import { text, video } from "../editor/fixtures";
@@ -268,11 +268,19 @@ describe("crop", () => {
   });
 });
 
-describe("safe zones", () => {
-  it("has margins for every format", () => {
-    expect(SAFE_ZONES.short_9x16).toEqual({ top: 0.14, right: 0.06, bottom: 0.35, left: 0.06, label: "Reels and Shorts safe area" });
+describe("safe area", () => {
+  it("defaults: Meta's Reels margins for 9:16, 5% elsewhere", () => {
+    expect(safeAreaMargins({ format: "short_9x16" })).toEqual({ top: 0.14, right: 0.06, bottom: 0.35, left: 0.06 });
     for (const format of ["feed_4x5", "square_1x1", "long_16x9", "long_4k"] as const) {
-      expect(SAFE_ZONES[format]).toEqual({ top: 0.05, right: 0.05, bottom: 0.05, left: 0.05, label: "Safe area" });
+      expect(safeAreaMargins({ format })).toEqual({ top: 0.05, right: 0.05, bottom: 0.05, left: 0.05 });
     }
+    expect(SAFE_AREA_LABEL).toBe("Safe area");
+  });
+
+  it("a project's own size stays centred sideways and grows down from the same top", () => {
+    const safeAreas = { short_9x16: { width: 0.8, height: 0.7 } };
+    expect(safeAreaMargins({ format: "short_9x16", safeAreas })).toEqual({ top: 0.14, right: 0.1, bottom: 0.16, left: 0.1 });
+    expect(safeAreaMargins({ format: "long_16x9", safeAreas })).toEqual({ top: 0.05, right: 0.05, bottom: 0.05, left: 0.05 });
   });
 });
+

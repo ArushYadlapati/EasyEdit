@@ -77,6 +77,12 @@ export const Track = z.object({
 });
 export type Track = z.infer<typeof Track>;
 
+// The safe area's size as a share of the frame. It is centred sideways and starts at its format's default top
+// (SAFE_AREA_DEFAULTS), so its height can be at most what is left below that top.
+const SafeAreaSide = z.number().min(0.05).max(1);
+export const SafeArea = z.strictObject({ width: SafeAreaSide, height: SafeAreaSide });
+export type SafeArea = z.infer<typeof SafeArea>;
+
 export const TimelineDoc = z.object({
   schemaVersion: z.literal(1),
   format: FormatId,
@@ -84,5 +90,7 @@ export const TimelineDoc = z.object({
   height: z.number().int(),
   fps: z.number().int(),
   tracks: z.array(Track),
+  // A size per format, set in Settings; a format with none uses its default. Older projects have no field.
+  safeAreas: z.partialRecord(FormatId, SafeArea).optional(),
 });
 export type TimelineDoc = z.infer<typeof TimelineDoc>;

@@ -59,10 +59,52 @@ it("a viewer sees the format and cannot change it", () => {
   show({ canEdit: false });
   fireEvent.click(gear());
   expect(format().disabled).toBe(true);
-  expect(dialog().getByText("Only editors can change the format.")).toBeTruthy();
+  expect(dialog().getByText("Only editors can change the format and the safe area.")).toBeTruthy();
   expect(dialog().queryByText("Changes this project for everyone who works on it.")).toBeNull();
   fireEvent.click(tab("General"));
   expect((dialog().getByRole("switch", { name: "Snapping" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+const field = (name: string) => dialog().getByRole("textbox", { name }) as HTMLInputElement;
+const setField = (name: string, value: string) => {
+  fireEvent.change(field(name), { target: { value } });
+  press(field(name), "Enter");
+};
+
+it("Project → Safe area sizes the box for this format, for everyone, and Reset goes back", () => {
+  const { st } = show();
+  fireEvent.click(gear());
+  expect(dialog().getByRole("heading", { name: "Safe area" })).toBeTruthy();
+  expect(field("Width").value).toBe("88");
+  expect(field("Height").value).toBe("51");
+  expect(field("Width").hasAttribute("data-edit-control")).toBe(true);
+  expect(dialog().getByText(/For Short 9:16; each format keeps its own\. Centred sideways, from 14% down\. The default follows Instagram's Reels guidance: 88% × 51%\./)).toBeTruthy();
+  expect(dialog().queryByRole("button", { name: /Reset to default/ })).toBeNull();
+
+  setField("Width", "80");
+  expect(st().queue.map((e) => e.label)).toEqual(["safe area change"]);
+  expect(st().doc.safeAreas).toEqual({ short_9x16: { width: 0.8, height: 0.51 } });
+  setField("Height", "99"); // more than fits below the top: held to 86%
+  expect(st().doc.safeAreas).toEqual({ short_9x16: { width: 0.8, height: 0.86 } });
+  expect(field("Height").value).toBe("86");
+
+  fireEvent.click(dialog().getByRole("button", { name: "Reset to default (88% × 51%)" }));
+  expect(st().doc.safeAreas).toBeUndefined();
+  expect(field("Width").value).toBe("88");
+  expect(st().queue).toHaveLength(3);
+
+  // Another format has its own size.
+  fireEvent.change(format(), { target: { value: "long_16x9" } });
+  expect(field("Width").value).toBe("90");
+  expect(field("Height").value).toBe("90");
+});
+
+it("a viewer sees the safe area's size and cannot change it", () => {
+  const { st } = show({ canEdit: false });
+  fireEvent.click(gear());
+  expect(field("Width").disabled).toBe(true);
+  expect(field("Height").disabled).toBe(true);
+  expect(st().queue).toHaveLength(0);
 });
 
 it("a deleted project's Settings still opens, and its format cannot change", () => {
@@ -71,10 +113,10 @@ it("a deleted project's Settings still opens, and its format cannot change", () 
   expect(gear().disabled).toBe(false);
   fireEvent.click(gear());
   expect(format().disabled).toBe(true);
-  expect(dialog().getByText("Only editors can change the format.")).toBeTruthy();
+  expect(dialog().getByText("Only editors can change the format and the safe area.")).toBeTruthy();
 });
 
-it("General sets the units, safe zones, snapping and lengths", () => {
+it("General sets the units, safe area, snapping and lengths", () => {
   const { st, settings, save } = show();
   fireEvent.click(gear());
   fireEvent.click(tab("General"));
@@ -92,11 +134,11 @@ it("General sets the units, safe zones, snapping and lengths", () => {
   fireEvent.click(dialog().getByRole("radio", { name: "Inches" }));
   expect(settings.getState().units).toBe("in");
 
-  const safeZones = dialog().getByRole("switch", { name: "Show safe zones" });
-  expect(safeZones.getAttribute("aria-checked")).toBe("true");
-  fireEvent.click(safeZones);
-  expect(st().showSafeZones).toBe(false);
-  expect(safeZones.getAttribute("aria-checked")).toBe("false");
+  const safeArea = dialog().getByRole("switch", { name: "Show safe area" });
+  expect(safeArea.getAttribute("aria-checked")).toBe("false"); // hidden at first
+  fireEvent.click(safeArea);
+  expect(st().showSafeZones).toBe(true);
+  expect(safeArea.getAttribute("aria-checked")).toBe("true");
   const snapping = dialog().getByRole("switch", { name: "Snapping" });
   fireEvent.click(snapping);
   expect(st().snapping).toBe(false);

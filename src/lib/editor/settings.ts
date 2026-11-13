@@ -20,7 +20,7 @@ export const PREFS_COOKIE = "easyedit-prefs";
 
 export const DEFAULT_PREFS: Readonly<Prefs> = Object.freeze({
   units: "px",
-  safeZones: true,
+  safeZones: false, // the safe area box starts hidden
   snapping: true,
   boardZoom: "fill",
   stillSeconds: DEFAULT_IMAGE_SECONDS,
@@ -87,7 +87,7 @@ export type SettingsState = {
 };
 export type SettingsStore = StoreApi<SettingsState>;
 
-// Snapping and safe zones live in the editor store, so the caller adds them when it writes the cookie.
+// Snapping and the safe area switch live in the editor store, so the caller adds them when it writes the cookie.
 export type SettingsSave = { prefs(p: Omit<Prefs, "snapping" | "safeZones">): void; keymap(k: Keymap): void };
 
 // Without a saver, as in tests, every choice is kept in memory only.

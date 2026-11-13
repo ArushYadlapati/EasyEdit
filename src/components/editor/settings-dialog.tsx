@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { NumberInput } from "@/components/ui/number-input";
@@ -9,7 +10,8 @@ import { Tabs, tabIds } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
 import { LENGTH_MAX_S, LENGTH_MIN_S, clampSeconds, type Units } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
-import { useEditor, useSettings, useSettingsStore } from "./context";
+import { FORMAT_PRESETS, SAFE_AREA_DEFAULTS, maxSafeAreaHeight, safeAreaOf, type SafeArea } from "@/lib/timeline";
+import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatSelect } from "./format-select";
 import { ShortcutsSection } from "./shortcuts-section";
 
@@ -47,7 +49,63 @@ function ProjectSection() {
         <span className={CAPTION}>Frame rate</span>
         <p className="text-ed-text">{fps} fps</p>
       </div>
+      <SafeAreaFields />
     </>
+  );
+}
+
+const toPercent = (fraction: number) => Number((fraction * 100).toFixed(1));
+const fromPercent = (percent: number) => Number((percent / 100).toFixed(4));
+
+// The safe area's size for the project's current format, kept with the project. Each format has its own; the box
+// stays centred sideways and keeps its top, so a new height grows downward.
+function SafeAreaFields() {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit && s.status !== "deleted");
+  const format = useEditor((s) => viewDoc(s).format);
+  const safeAreas = useEditor((s) => viewDoc(s).safeAreas);
+  const safe = safeAreaOf({ format, safeAreas });
+  const fallback = SAFE_AREA_DEFAULTS[format];
+  const percent = { suffix: "%", step: 1, min: 5, disabled: !canEdit };
+
+  function resize(patch: Partial<SafeArea>) {
+    const size = { width: safe.width, height: safe.height, ...patch };
+    store.getState().edit([{ op: "set_safe_area", format, size }], "safe area change");
+  }
+
+  return (
+    <section className="flex flex-col gap-2">
+      <Heading>Safe area</Heading>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Width">
+          <NumberInput {...percent} data-edit-control max={100} value={toPercent(safe.width)} onCommit={(n) => resize({ width: fromPercent(n) })} />
+        </Field>
+        <Field label="Height">
+          <NumberInput
+            {...percent}
+            data-edit-control
+            max={toPercent(maxSafeAreaHeight(format))}
+            value={toPercent(safe.height)}
+            onCommit={(n) => resize({ height: fromPercent(n) })}
+          />
+        </Field>
+      </div>
+      <p className={SMALL_HINT}>
+        For {FORMAT_PRESETS[format].label}; each format keeps its own. Centred sideways, from {toPercent(safe.top)}% down.
+        {safe.custom ? "" : ` The default${format === "short_9x16" ? " follows Instagram's Reels guidance" : ""}: ${toPercent(fallback.width)}% × ${toPercent(fallback.height)}%.`}
+      </p>
+      {safe.custom && canEdit && (
+        <Button
+          size="sm"
+          variant="ghost"
+          data-edit-control
+          className="self-start"
+          onClick={() => store.getState().edit([{ op: "set_safe_area", format, size: null }], "safe area change")}
+        >
+          Reset to default ({toPercent(fallback.width)}% × {toPercent(fallback.height)}%)
+        </Button>
+      )}
+    </section>
   );
 }
 
@@ -72,7 +130,7 @@ function GeneralSection() {
           <Segmented<Units> label="Units" value={units} options={UNIT_OPTIONS} onChange={(next) => settings.getState().set({ units: next })} />
           <p className={SMALL_HINT}>Centimeters and inches count 96 pixels to the inch.</p>
         </div>
-        <Toggle label="Show safe zones" checked={showSafeZones} onChange={() => toggleSafeZones()} />
+        <Toggle label="Show safe area" checked={showSafeZones} onChange={() => toggleSafeZones()} />
       </section>
       <section className="flex flex-col gap-2">
         <Heading>Timeline</Heading>
@@ -103,7 +161,7 @@ export function SettingsDialog({ at, onSection, onClose }: { at: SettingsSection
       ? IN_THIS_BROWSER
       : editable
         ? "Changes this project for everyone who works on it."
-        : "Only editors can change the format.";
+        : "Only editors can change the format and the safe area.";
 
   return (
     <Dialog

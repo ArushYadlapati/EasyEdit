@@ -41,7 +41,8 @@ describe("the guide", () => {
   const guide = buildEditingGuide();
 
   it("takes its numbers from the app", () => {
-    expect(guide).toContain("Keep text clear of the top 14%, the bottom 35% and 6% at each side.");
+    expect(guide).toContain("Keep text inside the safe area. By default that keeps it clear of the top 14%, the bottom 35% and 6% at each side.");
+    expect(guide).toContain('A project can set its own size for a format; get_project then shows a "Safe area" line, and that box is the one to keep text inside.');
     expect(guide).toContain("- Presets for add_text: title (96 px, weight 700, center, y 0.5); subtitle (56 px, weight 500, center, y 0.6); lower-third (44 px, weight 600, left, y 0.62).");
     expect(guide).toContain("A text clip lasts 3 seconds unless you say otherwise. The only font today is Geist.");
     expect(guide).toContain("up to 2000 characters");
@@ -70,6 +71,7 @@ describe("the guide", () => {
       "- A clip cannot run past the end of its footage. A trim that would is refused.",
     ].join("\n"));
     expect(OP_REFERENCE).toContain('{"op":"update_clip","clipId":C,"patch":{...}}               text, style{...}, transform{...}, volume, speed; never start or duration');
+    expect(OP_REFERENCE).toContain('{"op":"set_safe_area","format":FORMAT,"size":{"width":W,"height":H}}   shares of the frame; "size":null goes back to the default');
     expect(OP_REFERENCE.endsWith([
       `"style":${JSON.stringify(EXAMPLE_TEXT_CLIP.style)}}`,
       'A media CLIP: {"type":"video"|"image"|"audio","assetId":A,"start":F,"duration":F,"in":F,"speed":1,"volume":1,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"}}',

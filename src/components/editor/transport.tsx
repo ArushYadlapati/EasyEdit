@@ -61,7 +61,7 @@ export function Transport() {
       )}
       <div className="ml-auto flex min-w-0 items-center gap-2">
         <ZoomMenu />
-        <IconButton label="Safe zones" pressed={showSafeZones} onClick={() => toggleSafeZones()}>
+        <IconButton label="Safe area" pressed={showSafeZones} onClick={() => toggleSafeZones()}>
           <Scan />
         </IconButton>
         <span className="truncate text-xs text-ed-muted">{FORMAT_PRESETS[doc.format].label}</span>

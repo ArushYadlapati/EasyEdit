@@ -651,35 +651,36 @@ const pressed = (name: string) => screen.getByRole("button", { name }).getAttrib
 const leftWidth = () => screen.getByRole("separator", { name: "Left panel width" }).parentElement!.style.getPropertyValue("--ed-left-w");
 const shellSettings = () => vi.mocked(createSettingsStore).mock.results[0].value as SettingsStore;
 
-it("snapping and safe zones are remembered in this browser", () => {
+it("snapping and the safe area are remembered in this browser", () => {
   stubServer();
   happyDOM().setURL(EDITOR_URL);
   const first = render(<EditorShell initial={initial()} />);
   expect(PREFS_TEXT()).toBeUndefined(); // nothing is written until something changes
-  fireEvent.click(screen.getByRole("button", { name: "Safe zones" }));
-  expect(document.cookie).toContain("sz:0");
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:0.sn:1.z:fill.st:30.tx:30");
+  expect(pressed("Safe area")).toBe("false"); // hidden at first
+  fireEvent.click(screen.getByRole("button", { name: "Safe area" }));
+  expect(document.cookie).toContain("sz:1");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:1.z:fill.st:30.tx:30");
   fireEvent.click(screen.getByRole("button", { name: "Snap" }));
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:0.sn:0.z:fill.st:30.tx:30");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:0.z:fill.st:30.tx:30");
   first.unmount();
 
   // The page read the cookie: the store starts from it. With no newer cookie the page's values stand.
   expireCookies();
-  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, snapping: false }} />);
+  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, snapping: false, safeZones: true }} />);
   expect(pressed("Snap")).toBe("false");
-  expect(pressed("Safe zones")).toBe("true");
+  expect(pressed("Safe area")).toBe("true");
   expect(PREFS_TEXT()).toBeUndefined();
 });
 
-it("a change in Settings is kept with the snapping and safe zones of the moment", () => {
+it("a change in Settings is kept with the snapping and safe area of the moment", () => {
   stubServer();
   happyDOM().setURL(EDITOR_URL);
   vi.mocked(createSettingsStore).mockClear();
-  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, safeZones: false }} />);
+  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, safeZones: true }} />);
   act(() => shellSettings().getState().set({ units: "in", stillSeconds: 4.5 }));
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:0.sn:1.z:fill.st:45.tx:30");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:1.sn:1.z:fill.st:45.tx:30");
   act(() => shellSettings().getState().set({ lockAspect: false }));
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:0.sn:1.z:fill.st:45.tx:30");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:1.sn:1.z:fill.st:45.tx:30");
 });
 
 it("the editor's controls read the lengths the page gave", async () => {
@@ -738,7 +739,7 @@ it("the keymap kept in this browser is loaded after mount, and a change is kept"
 it("under strict mode the keymap and a newer cookie are taken once, and nothing is saved", () => {
   stubServer();
   happyDOM().setURL(EDITOR_URL);
-  document.cookie = "easyedit-prefs=u:in.sz:0.sn:1.z:50.st:30.tx:30; path=/editor";
+  document.cookie = "easyedit-prefs=u:in.sz:1.sn:1.z:50.st:30.tx:30; path=/editor";
   localStorage.setItem(KEYMAP_KEY, JSON.stringify({ off: ["split"], v: 1 }));
   const setItem = vi.spyOn(Storage.prototype, "setItem");
   vi.mocked(createSettingsStore).mockClear();
@@ -747,11 +748,11 @@ it("under strict mode the keymap and a newer cookie are taken once, and nothing 
       <EditorShell initial={initial()} />
     </StrictMode>,
   );
-  expect(pressed("Safe zones")).toBe("false");
+  expect(pressed("Safe area")).toBe("true");
   const used = vi.mocked(createSettingsStore).mock.results.map((r) => (r.value as SettingsStore).getState());
   expect(used.some((s) => s.units === "in" && s.boardZoom === 50 && s.keymap.off.includes("split"))).toBe(true);
   expect(setItem).not.toHaveBeenCalled();
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:0.sn:1.z:50.st:30.tx:30");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:1.sn:1.z:50.st:30.tx:30");
 });
 
 it("a keymap saved in this browser shows once the page has loaded", () => {

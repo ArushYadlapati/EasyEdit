@@ -303,7 +303,7 @@ export function createEditorStore(
       remote: null,
       playing: false,
       rate: 1,
-      showSafeZones: deps.view?.showSafeZones ?? true,
+      showSafeZones: deps.view?.showSafeZones ?? false,
       cropArmed: null,
       textEditId: null,
 

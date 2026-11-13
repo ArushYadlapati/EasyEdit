@@ -378,16 +378,16 @@ describe("right-clicking the preview", () => {
     expect(st().selection.clipIds).toEqual(["c1"]);
   });
 
-  it("a right-click on empty picture opens 'Preview', and Safe zones hides them", () => {
+  it("a right-click on empty picture opens 'Preview', and Safe area shows it", () => {
     const { st } = show({ at: 70 });
     rightClick(...TEXT);
     const menu = screen.getByRole("menu", { name: "Preview" });
     const paste = within(menu).getByRole("menuitem", { name: /^Paste/ });
     expect(paste.hasAttribute("disabled") || paste.getAttribute("aria-disabled") === "true").toBe(true);
-    const safe = within(menu).getByRole("menuitemcheckbox", { name: "Safe zones" });
-    expect(safe.getAttribute("aria-checked")).toBe("true");
+    const safe = within(menu).getByRole("menuitemcheckbox", { name: "Safe area" });
+    expect(safe.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(safe);
-    expect(st().showSafeZones).toBe(false);
+    expect(st().showSafeZones).toBe(true);
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
@@ -412,12 +412,12 @@ describe("right-clicking the preview", () => {
     expect(st().queue.map((q) => q.label)).toEqual(["paste"]);
   });
 
-  it("a viewer's preview menu has only Safe zones", () => {
+  it("a viewer's preview menu has only Safe area", () => {
     show({ at: 70, over: { canEdit: false }, copied: ["x1"] });
     rightClick(...TEXT);
     const menu = screen.getByRole("menu", { name: "Preview" });
-    expect([...menu.querySelectorAll("button")].map((i) => i.textContent)).toEqual(["Safe zones"]);
-    expect(within(menu).getByRole("menuitemcheckbox", { name: "Safe zones" }).getAttribute("aria-checked")).toBe("true");
+    expect([...menu.querySelectorAll("button")].map((i) => i.textContent)).toEqual(["Safe area"]);
+    expect(within(menu).getByRole("menuitemcheckbox", { name: "Safe area" }).getAttribute("aria-checked")).toBe("false");
   });
 });
 

@@ -8,6 +8,11 @@ const text = (id: string, start: number, duration: number) =>
      style: { fontFamily: "Inter", fontSize: 64, fontWeight: 700, color: "#fff", align: "center" } }) as Clip;
 
 // Tracks: v1 [c1 0-30 (in 10, speed 1.5), c2 30-60, c3 60-90], o1 (empty overlay), t1 [x1 0-60, stretch 1.5], cap, a1
+// rich() with its own 9:16 safe area, so a reset changes something.
+function richSafeArea(): TimelineDoc {
+  return { ...rich(), safeAreas: { short_9x16: { width: 0.8, height: 0.6 } } };
+}
+
 function rich(): TimelineDoc {
   const d = createEmptyDoc("short_9x16");
   d.tracks[0].clips = [video("c1", 0, 30, { in: 10, speed: 1.5 }), video("c2", 30, 30), video("c3", 60, 30)];
@@ -48,6 +53,8 @@ const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["update_clip crop on a cropped clip", { op: "update_clip", clipId: "c2", patch: { transform: { crop: { left: 0.2, top: 0, right: 0, bottom: 0 } } } }, richCropped],
   ["move_track", { op: "move_track", trackId: "t1", index: 0 }],
   ["set_format", { op: "set_format", format: "long_16x9" }],
+  ["set_safe_area", { op: "set_safe_area", format: "short_9x16", size: { width: 0.8, height: 0.6 } }],
+  ["set_safe_area back to the default", { op: "set_safe_area", format: "short_9x16", size: null }, richSafeArea],
 ];
 
 describe("inverse round trip", () => {

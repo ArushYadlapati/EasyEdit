@@ -116,6 +116,10 @@ export function summarizeOps(ops: Op[], kindOf: KindOf = () => undefined): strin
   if (only("set_format") && n === 1) {
     return `Changed the format to ${FORMAT_PRESETS[(ops[0] as OpOf<"set_format">).format].label}`;
   }
+  if (only("set_safe_area") && n === 1) {
+    const { size } = ops[0] as OpOf<"set_safe_area">;
+    return size ? `Resized the safe area to ${wholePercent(size.width)} × ${wholePercent(size.height)}` : "Reset the safe area";
+  }
   return summarizeMixed(ops) ?? fallback;
 }
 
@@ -128,7 +132,13 @@ const MIXED_GROUPS: { match: (op: Op["op"]) => boolean; one: string; many: (n: n
   { match: (k) => k === "update_clip", one: "edited a clip", many: (n) => `edited ${n} clips` },
   { match: (k) => k.endsWith("_track"), one: "changed tracks", many: () => "changed tracks" },
   { match: (k) => k === "set_format", one: "changed the format", many: () => "changed the format" },
+  { match: (k) => k === "set_safe_area", one: "changed the safe area", many: () => "changed the safe area" },
 ];
+
+// 0.88 → "88%"; a typed 0.875 → "87.5%".
+function wholePercent(fraction: number): string {
+  return `${Number((fraction * 100).toFixed(1))}%`;
+}
 
 // "A", "A and B", "A, B and C", "A, B, C and more", with the first letter capitalised.
 function summarizeMixed(ops: Op[]): string | null {

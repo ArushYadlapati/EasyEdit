@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TRANSFORM,
   NO_CROP,
+  SAFE_AREA_DEFAULTS,
   applyOps,
   createEmptyDoc,
+  maxSafeAreaHeight,
   prepareOps,
+  safeAreaOf,
   type Op,
   type OpInput,
   type TimelineDoc,
@@ -460,6 +463,56 @@ describe("set_format", () => {
     const d = doc0();
     d.tracks[0].locked = true;
     expect(applyOps(d, [{ op: "set_format", format: "square_1x1" }]).doc.width).toBe(1080);
+  });
+});
+
+describe("set_safe_area", () => {
+  const SIZE = { width: 0.8, height: 0.6 };
+
+  it("sets one format's size, keeps the others', and undoes to no field at all", () => {
+    const d = doc0();
+    const { doc, inverse } = applyOps(d, [{ op: "set_safe_area", format: "short_9x16", size: SIZE }]);
+    expect(doc.safeAreas).toEqual({ short_9x16: SIZE });
+    expect(safeAreaOf(doc)).toEqual({ top: 0.14, ...SIZE, custom: true });
+    expect(inverse).toEqual([{ op: "set_safe_area", format: "short_9x16", size: null, expect: { size: SIZE } }]);
+    const undone = applyOps(doc, inverse).doc;
+    expect(undone).toEqual(d);
+    expect("safeAreas" in undone).toBe(false);
+    const both = applyOps(doc, [{ op: "set_safe_area", format: "long_16x9", size: { width: 0.7, height: 0.7 } }]).doc;
+    expect(both.safeAreas).toEqual({ short_9x16: SIZE, long_16x9: { width: 0.7, height: 0.7 } });
+  });
+
+  it("null goes back to the default, and its undo brings the size back", () => {
+    const sized = applyOps(doc0(), [{ op: "set_safe_area", format: "short_9x16", size: SIZE }]).doc;
+    const { doc, inverse } = applyOps(sized, [{ op: "set_safe_area", format: "short_9x16", size: null }]);
+    expect(safeAreaOf(doc)).toEqual({ ...SAFE_AREA_DEFAULTS.short_9x16, custom: false });
+    expect(applyOps(doc, inverse).doc).toEqual(sized);
+  });
+
+  it("each format keeps its own size through a format change", () => {
+    const sized = applyOps(doc0(), [{ op: "set_safe_area", format: "short_9x16", size: SIZE }]).doc;
+    const wide = applyOps(sized, [{ op: "set_format", format: "long_16x9" }]).doc;
+    expect(safeAreaOf(wide)).toEqual({ top: 0.05, width: 0.9, height: 0.9, custom: false });
+    expect(safeAreaOf(applyOps(wide, [{ op: "set_format", format: "short_9x16" }]).doc)).toMatchObject({ ...SIZE, custom: true });
+  });
+
+  it("a different size than expected is STALE", () => {
+    const sized = applyOps(doc0(), [{ op: "set_safe_area", format: "short_9x16", size: SIZE }]).doc;
+    failsWith(() => applyOps(sized, [{ op: "set_safe_area", format: "short_9x16", size: null, expect: { size: null } }]), "STALE");
+    expect(applyOps(sized, [{ op: "set_safe_area", format: "short_9x16", size: null, expect: { size: SIZE } }]).doc.safeAreas).toBeUndefined();
+  });
+
+  it("the height can only fill what is left below the format's top", () => {
+    expect(maxSafeAreaHeight("short_9x16")).toBe(0.86);
+    expect(maxSafeAreaHeight("square_1x1")).toBe(0.95);
+    expect(applyOps(doc0(), [{ op: "set_safe_area", format: "short_9x16", size: { width: 1, height: 0.86 } }]).doc.safeAreas).toBeDefined();
+    failsWith(() => applyOps(doc0(), [{ op: "set_safe_area", format: "short_9x16", size: { width: 1, height: 0.87 } }]), "INVALID");
+  });
+
+  it("refuses a size that is too small, too large or has other keys", () => {
+    for (const size of [{ width: 0.04, height: 0.5 }, { width: 1.1, height: 0.5 }, { width: 0.5, height: 0.5, top: 0 }]) {
+      failsWith(() => prepareOps([{ op: "set_safe_area", format: "short_9x16", size } as never]), "INVALID");
+    }
   });
 });
 
