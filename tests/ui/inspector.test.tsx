@@ -626,7 +626,7 @@ describe("drag a value to change it", () => {
     drag("Scale", 7, { ctrlKey: true });
     expect(input("Rotation").value).toBe("1.5");
     expect(shown()).toMatchObject({ style: { fontSize: 72 }, transform: { rotation: 1.5, opacity: 0.75 } });
-    expect(shown().transform.scale).toBeCloseTo(1.007, 6);
+    expect(shown().transform.scale).toBe(1.007);
     expect(store.getState().queue.map((e) => e.label)).toEqual(["style change", "position change", "position change", "size change"]);
     move("X", 0); // nothing held
   });

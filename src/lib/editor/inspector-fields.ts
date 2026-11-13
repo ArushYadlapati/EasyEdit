@@ -209,7 +209,8 @@ export function clipFieldOps(clip: Clip, field: ClipField, raw: string, ctx: Fie
     }
     case "scale": {
       const n = parseNumber(raw);
-      return n === null || n <= 0 ? null : update({ transform: { scale: n / 100 } });
+      const scale = n === null ? 0 : round(n / 100, 4);
+      return scale <= 0 ? null : update({ transform: { scale } });
     }
     case "rotation": {
       const n = parseNumber(raw);
@@ -217,7 +218,7 @@ export function clipFieldOps(clip: Clip, field: ClipField, raw: string, ctx: Fie
     }
     case "opacity": {
       const n = parseNumber(raw);
-      return n === null ? null : update({ transform: { opacity: clamp(n / 100, 0, 1) } });
+      return n === null ? null : update({ transform: { opacity: clamp(round(n / 100, 4), 0, 1) } });
     }
   }
 
