@@ -8,6 +8,7 @@ import {
   applyProjectOps,
   createProject,
   duplicateProject,
+  failedOn,
   getOpsSince,
   getProject,
   getProjectVersion,
@@ -198,6 +199,19 @@ describe("projects service", () => {
     expect(insert).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
     expect(await storedRow(db, id)).toMatchObject({ folder_id: null });
+  });
+
+  it("failedOn matches a Postgres code on a named constraint, through wrapped causes or in the message alone", () => {
+    const wrapped = (inner: Error) => new Error("query failed", { cause: new Error("driver", { cause: inner }) });
+    const named = Object.assign(new Error("duplicate key"), { code: "23505", constraint: "some_index" });
+    const inMessage = Object.assign(new Error('duplicate key value violates unique constraint "some_index"'), {
+      code: "23505",
+    });
+    expect(failedOn(wrapped(named), "23505", "some_index")).toBe(true);
+    expect(failedOn(wrapped(inMessage), "23505", "some_index")).toBe(true);
+    expect(failedOn(wrapped(named), "23503", "some_index")).toBe(false);
+    expect(failedOn(wrapped(named), "23505", "other_index")).toBe(false);
+    expect(failedOn("text", "23505", "some_index")).toBe(false);
   });
 
   it("a folder deleted mid-write is recognised", () => {

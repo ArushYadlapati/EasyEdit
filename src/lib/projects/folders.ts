@@ -5,7 +5,7 @@ import { folders, projects } from "@/db/schema";
 import { requireRole, type Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
 import { folderName } from "@/lib/projects/schemas";
-import { isFolderGone } from "@/lib/projects/service";
+import { failedOn, isFolderGone } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 
 export type FolderSummary = { id: string; name: string; projectCount: number };
@@ -24,15 +24,8 @@ function parseName(name: string): string {
   return parsed.data;
 }
 
-// True when a write failed because another folder already has this name in some case. Drivers may wrap the
-// database error.
-function isNameTaken(error: unknown): boolean {
-  for (let e: unknown = error; e instanceof Error; e = e.cause) {
-    const { code, constraint } = e as { code?: unknown; constraint?: unknown };
-    if (code === "23505" && (constraint === NAME_INDEX || e.message.includes(NAME_INDEX))) return true;
-  }
-  return false;
-}
+// True when a write failed because another folder already has this name in some case.
+const isNameTaken = (error: unknown) => failedOn(error, "23505", NAME_INDEX);
 
 async function savingName<T>(write: Promise<T>): Promise<T> {
   try {

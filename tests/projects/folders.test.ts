@@ -47,6 +47,21 @@ describe("folders", () => {
     await expect(createFolder(db, editor, "  season 2026 ")).rejects.toMatchObject(NAME_TAKEN);
   });
 
+  it("a duplicate name the driver wraps, naming the index only in its message, is still refused as taken", async () => {
+    const db = await makeTestDb();
+    const duplicate = new Error("query failed", {
+      cause: Object.assign(new Error('duplicate key value violates unique constraint "folders_name_lower_unique"'), {
+        code: "23505",
+      }),
+    });
+    vi.spyOn(db, "insert").mockImplementation(() => ({ values: () => Promise.reject(duplicate) }) as never);
+    try {
+      await expect(createFolder(db, editor, "Season")).rejects.toMatchObject(NAME_TAKEN);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it("listFolders counts each folder's live projects, ordered by name regardless of case", async () => {
     const db = await makeTestDb();
     await createFolder(db, editor, "sponsors");

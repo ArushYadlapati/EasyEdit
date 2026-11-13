@@ -81,7 +81,7 @@ export function storedHeight(): SQL<number> {
 
 // True when a write failed with this Postgres error code on this constraint or index. Drivers may wrap the
 // database error.
-function failedOn(error: unknown, code: string, name: string): boolean {
+export function failedOn(error: unknown, code: string, name: string): boolean {
   for (let e: unknown = error; e instanceof Error; e = e.cause) {
     const { code: found, constraint } = e as { code?: unknown; constraint?: unknown };
     if (found === code && (constraint === name || e.message.includes(name))) return true;
