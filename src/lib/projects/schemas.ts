@@ -18,6 +18,13 @@ export const projectName: z.ZodType<string> = z
   .max(LIMITS.projectNameChars)
   .refine(isStorableText);
 
+export const folderName: z.ZodType<string> = z
+  .string()
+  .trim()
+  .min(1)
+  .max(LIMITS.folderNameChars)
+  .refine(isStorableText);
+
 export type ProjectFrame = { format: FormatId; width: number; height: number };
 
 // The format and size a new project is made with. A size is given only with "custom", and a custom size equal to

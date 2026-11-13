@@ -38,6 +38,7 @@ export const LIMITS = {
   frameSideMin: 16, // a custom size, each side in pixels
   frameSideMax: 4096,
   frameAreaMax: 3840 * 2160, // a custom size; 8,294,400 is the area of 4K
+  folderNameChars: 60,
 } as const;
 
 export type Limits = { readonly [K in keyof typeof LIMITS]: number };
