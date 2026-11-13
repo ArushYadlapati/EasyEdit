@@ -18,7 +18,7 @@ const REFUSED: MediaFailure = { ok: false, kind: "refused", message: 'Used in 1 
 // assets that are not removed. `failing` makes every call answer that failure. `meanwhile` runs while a list is on
 // its way back: the server has read its rows, so the answer says what was true before it.
 function setup(held: AssetView[] = []) {
-  const server = { held, setUp: true, failing: null as MediaFailure | null, takes: 0, meanwhile: null as ((ids?: string[]) => Promise<void>) | null }; // takes: how long a list request is on its way, in ms
+  const server = { held, setUp: true, failing: null as MediaFailure | null, takes: 0, meanwhile: null as ((ids?: string[]) => Promise<void>) | null, holding: null as Promise<void> | null }; // takes: how long a list request is on its way, in ms; holding: a list answers once it settles
   const clock = { at: 1_762_900_000_000 };
   const calls: unknown[][] = [];
   const unused = async (): Promise<never> => {
@@ -28,6 +28,7 @@ function setup(held: AssetView[] = []) {
     async list(ids) {
       calls.push(ids ? ["list", ids] : ["list"]);
       clock.at += server.takes;
+      await server.holding;
       if (server.failing) return server.failing;
       const assets = ids ? server.held.filter((one) => ids.includes(one.id)) : server.held.filter((one) => !one.removed);
       const answer = { ok: true as const, assets, setUp: server.setUp };
@@ -212,6 +213,62 @@ describe("the library store", () => {
     const { state, calls } = setup([asset("a2", { removed: true })]);
     await Promise.all([state().ensure(["a2"]), state().ensure(["a2"])]);
     expect(calls).toEqual([["list", ["a2"]]]);
+  });
+
+  it("an id already being asked for is waited for, and reported when its request fails", async () => {
+    const { state, server, calls } = setup([asset("a2", { removed: true })]);
+    let answer = () => {};
+    server.holding = new Promise((resolve) => void (answer = resolve));
+    const first = state().ensure(["a2"]);
+    let second: string[] | null = null;
+    const waiting = state().ensure(["a2"]).then((unanswered) => void (second = unanswered));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(second).toBeNull(); // the request has not been answered yet
+    server.failing = { ok: false, kind: "network", message: "" };
+    answer();
+    expect(await first).toEqual(["a2"]);
+    await waiting;
+    expect(second).toEqual(["a2"]); // no request it waited for got an answer
+    expect(calls).toEqual([["list", ["a2"]]]);
+  });
+
+  it("an id already being asked for is waited for, and known once its request is answered", async () => {
+    const { state, server, calls } = setup([asset("a2", { removed: true })]);
+    let answer = () => {};
+    server.holding = new Promise((resolve) => void (answer = resolve));
+    const first = state().ensure(["a2"]);
+    const second = state().ensure(["a2", "a2"]);
+    answer();
+    expect(await second).toEqual([]);
+    expect(state().assets.a2).toEqual(asset("a2", { removed: true })); // known by the time the second call answers
+    expect(await first).toEqual([]);
+    expect(calls).toEqual([["list", ["a2"]]]);
+  });
+
+  it("an id waiting in a later request of another call is waited for too", async () => {
+    const { state, server, calls } = setup();
+    const many = Array.from({ length: 250 }, (_, index) => `id-${index}`);
+    let answer = () => {};
+    server.holding = new Promise((resolve) => void (answer = resolve));
+    const first = state().ensure(many); // its second request has not been sent yet
+    const second = state().ensure(["id-249", "id-0"]);
+    server.failing = { ok: false, kind: "network", message: "" };
+    answer();
+    expect(await first).toEqual(many);
+    expect(await second).toEqual(["id-249", "id-0"]);
+    expect(calls).toEqual([["list", many.slice(0, 200)], ["list", many.slice(200)]]);
+  });
+
+  it("an id whose request threw is reported to a call waiting for it", async () => {
+    const { state, server } = setup([asset("a2", { removed: true })]);
+    let fail: (reason: Error) => void = () => {};
+    server.holding = new Promise((_, reject) => void (fail = reject));
+    const first = state().ensure(["a2"]);
+    const second = state().ensure(["a2"]);
+    fail(new Error("lost"));
+    await expect(first).rejects.toThrow("lost");
+    expect(await second).toEqual(["a2"]);
   });
 
   it("asks for at most 200 ids in one request", async () => {

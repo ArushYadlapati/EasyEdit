@@ -41,6 +41,7 @@ export function createLibraryStore(deps: { api: MediaApi; now?: () => number }):
   let fetching: Promise<void> | null = null; // the fetch of the library that is in flight
   let fetchBegan: number | null = null; // when the last one began
   const asked = new Set<string>(); // ids asked for one by one since the last fetch, answered or not
+  const answering = new Map<string, Promise<boolean>>(); // each id whose request is in flight or not yet sent, to whether it got an answer
   // Ids of assets that came from `ensure`, `put` or a removal and that no fetch has listed since. A fetch keeps
   // them: the list has only what is ready and not removed, and a clip may name an asset that is neither.
   const learned = new Set<string>();
@@ -113,18 +114,43 @@ export function createLibraryStore(deps: { api: MediaApi; now?: () => number }):
 
       async ensure(ids) {
         const known = get().assets;
-        const wanted = [...new Set(ids)].filter((id) => !Object.hasOwn(known, id) && !asked.has(id));
+        const unknown = [...new Set(ids)].filter((id) => !Object.hasOwn(known, id));
+        // An id another call is still asking for is waited for, and counts as that request's answer.
+        const others = unknown.flatMap((id) => {
+          const answered = asked.has(id) ? answering.get(id) : undefined;
+          return answered ? [answered.then((ok) => (ok ? [] : [id]))] : [];
+        });
+        const wanted = unknown.filter((id) => !asked.has(id));
         for (const id of wanted) asked.add(id); // an id the server does not return stays here, and is not asked for again
-        const unanswered: string[] = [];
+        const batches: { some: string[]; answered: Promise<boolean>; settle: (ok: boolean) => void }[] = [];
         for (let from = 0; from < wanted.length; from += LIMITS.mediaIdsPerRequest) {
           const some = wanted.slice(from, from + LIMITS.mediaIdsPerRequest);
-          const answer = await api.list(some);
-          if (answer.ok) take(answer.assets, true);
-          else {
-            for (const id of some) asked.delete(id); // no answer says nothing about them
-            unanswered.push(...some);
-          }
+          let settle: (ok: boolean) => void = () => {};
+          const answered = new Promise<boolean>((resolve) => void (settle = resolve));
+          for (const id of some) answering.set(id, answered);
+          batches.push({ some, answered, settle });
         }
+        const finish = (batch: (typeof batches)[number], ok: boolean) => {
+          for (const id of batch.some) if (answering.get(id) === batch.answered) answering.delete(id);
+          batch.settle(ok);
+        };
+        const unanswered: string[] = [];
+        let next = 0;
+        try {
+          for (; next < batches.length; next += 1) {
+            const { some } = batches[next];
+            const answer = await api.list(some);
+            if (answer.ok) take(answer.assets, true);
+            else {
+              for (const id of some) asked.delete(id); // no answer says nothing about them
+              unanswered.push(...some);
+            }
+            finish(batches[next], answer.ok);
+          }
+        } finally {
+          for (const batch of batches.slice(next)) finish(batch, false); // when a request throws, no one waits for ever
+        }
+        for (const theirs of await Promise.all(others)) unanswered.push(...theirs);
         return unanswered;
       },
 
