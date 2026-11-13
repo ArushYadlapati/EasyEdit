@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Dashboard } from "@/components/dashboard/dashboard";
 import { PROJECT_DRAG_TYPE } from "@/components/dashboard/drag";
 import type { FormState } from "@/lib/projects/dashboard-actions";
-import { renderDashboard } from "../helpers/dashboard";
+import { FOLDERS, NOW, PROJECTS, RECENT_IDS, renderDashboard } from "../helpers/dashboard";
 import { act, fireEvent, screen, within } from "../helpers/dom";
 import { dragEvent } from "../helpers/drag-events";
 
@@ -187,6 +188,38 @@ describe("folders in the sidebar", () => {
     await click(button(dialog("Delete folder"), "Cancel"));
     await pickFolderOption("Delete folder");
     expect(within(dialog("Delete folder")).queryByRole("alert")).toBeNull();
+  });
+
+  // The refusal refreshes the page, and the address's folder is then unknown, so the page shows the main view.
+  it.each([
+    ["Rename folder", "Save", "renameFolder"],
+    ["Delete folder", "Delete folder", "deleteFolder"],
+  ] as const)("%s on a folder deleted elsewhere says so in the dialog", async (option, confirmLabel, actionName) => {
+    const { actions, rerender } = renderDashboard({ view: "f1" });
+    let answer: (state: FormState) => void = () => {};
+    actions[actionName].mockImplementation(() => new Promise<FormState>((resolve) => (answer = resolve)));
+    await pickFolderOption(option);
+    await click(button(dialog(option), confirmLabel));
+    rerender(
+      <Dashboard
+        projects={PROJECTS.map((p) => ({ ...p, folderId: p.folderId === "f1" ? null : p.folderId }))}
+        folders={FOLDERS.filter((f) => f.id !== "f1")}
+        recentIds={RECENT_IDS}
+        view={null}
+        canEdit
+        now={NOW}
+        actions={actions}
+      />,
+    );
+    await act(async () => {
+      answer({ error: "That folder no longer exists." });
+    });
+    const asking = dialog(option);
+    expect(within(asking).getByRole("alert").textContent).toBe("That folder no longer exists.");
+    expect(asking.contains(document.activeElement)).toBe(true);
+    expect(router.replace).not.toHaveBeenCalled();
+    await click(button(asking, "Cancel"));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("Delete folder is held while it runs", async () => {

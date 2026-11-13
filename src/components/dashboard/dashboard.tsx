@@ -79,6 +79,10 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   const [sort, setSort] = useState<SortKey>("changed");
   const [newOpen, setNewOpen] = useState(false);
   const [folderDialog, setFolderDialog] = useState<"new" | "rename" | "delete" | null>(null);
+  // The folder that Rename folder or Delete folder was opened on, kept while its dialog is open even if the folder
+  // leaves the page: a refusal because it was deleted elsewhere refreshes the page out of the folder's view, and the
+  // dialog must stay to say so.
+  const [chosenFolder, setChosenFolder] = useState<{ id: string; name: string } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteFolder = useAction(actions.deleteFolder);
   const dropMove = useAction(actions.move);
@@ -105,14 +109,16 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   }
 
   function chooseFolderOption(id: string) {
+    if (view === null || folderName === null) return;
+    setChosenFolder({ id: view, name: folderName });
     if (id === "delete") setDeleteError(null);
     setFolderDialog(id === "rename" ? "rename" : "delete");
   }
 
   function confirmDeleteFolder() {
-    if (view === null) return;
+    if (chosenFolder === null) return;
     const formData = new FormData();
-    formData.set("id", view);
+    formData.set("id", chosenFolder.id);
     deleteFolder.submit(formData, {
       onStart: () => setDeleteError(null),
       onSuccess: () => {
@@ -254,20 +260,20 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
             action={actions.createFolder}
             onClose={closeFolderDialog}
           />
-          {view !== null && folderName !== null && (
+          {chosenFolder !== null && (
             <>
               <FolderNameDialog
                 open={folderDialog === "rename"}
                 title="Rename folder"
                 submitLabel="Save"
-                initial={folderName}
-                folderId={view}
+                initial={chosenFolder.name}
+                folderId={chosenFolder.id}
                 action={actions.renameFolder}
                 onClose={closeFolderDialog}
               />
               <ConfirmDialog
                 title="Delete folder"
-                question={`Delete the folder "${folderName}"? Its projects stay in All projects.`}
+                question={`Delete the folder "${chosenFolder.name}"? Its projects stay in All projects.`}
                 confirmLabel="Delete folder"
                 open={folderDialog === "delete"}
                 pending={deleteFolder.pending}
