@@ -53,6 +53,7 @@ const ASPECTS: [name: string, touched: (patch: Record<string, unknown>) => boole
   ["rotation", (p) => has(p.transform, "rotation")],
   ["opacity", (p) => has(p.transform, "opacity")],
   ["fit", (p) => has(p.transform, "fit")],
+  ["crop", (p) => has(p.transform, "crop")],
   ["source", (p) => "assetId" in p],
   ["start point", (p) => "in" in p],
   ["speed", (p) => "speed" in p],

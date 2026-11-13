@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { user } from "@/db/schema";
+import { EXAMPLE_CROP } from "@/lib/mcp/guide";
 import { editTimelineTool } from "@/lib/mcp/tools/edit-timeline";
+import { getProjectTool } from "@/lib/mcp/tools/get-project";
 import { undoChangeTool } from "@/lib/mcp/tools/undo-change";
 import { applyProjectOps, createProject, getProject } from "@/lib/projects/service";
 import type { OpInput, TextClip } from "@/lib/timeline";
@@ -34,6 +36,20 @@ describe("undo_change", () => {
     expect(r.text).toContain('"FIRST"');
     expect(await text()).toBe("FIRST");
     expect((await project()).version).toBe(3);
+  });
+
+  it("undoing Claude's first crop takes it away", async () => {
+    const { db, id, edit, undo, project } = await setup();
+    const cropped = await edit(1, [{ op: "update_clip", clipId: "x1", patch: { transform: { crop: EXAMPLE_CROP } } }]); // version 2
+    expect(cropped.text).toContain("crop=");
+    const r = await undo(2, 2);
+    expect(r.isError).toBe(false);
+    expect(r.text.split("\n")[0]).toBe("Undid version 2 (Changed a clip: crop) as version 3.");
+    const shown = await getProjectTool(await toolContext(db), { project_id: id });
+    expect(shown.isError).toBe(false);
+    expect(shown.text).toContain('"FIRST"');
+    expect(shown.text).not.toContain("crop=");
+    expect((await project()).doc.tracks[1].clips[0].transform.crop).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
   });
 
   it("undoes a person's change too", async () => {

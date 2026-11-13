@@ -4,6 +4,7 @@ import { rowsOf } from "@/db";
 import { user } from "@/db/schema";
 import { LIMITS } from "@/lib/limits";
 import { conflictResult, failureResult, OP_HINTS } from "@/lib/mcp/errors";
+import { EXAMPLE_CROP } from "@/lib/mcp/guide";
 import { editTimelineTool } from "@/lib/mcp/tools/edit-timeline";
 import { applyProjectOps, createProject, deleteProject, getProject } from "@/lib/projects/service";
 import type { OpInput } from "@/lib/timeline";
@@ -43,6 +44,17 @@ async function setup(over: Parameters<typeof toolContext>[1] = {}) {
 }
 
 describe("edit_timeline", () => {
+  it("Claude can crop a clip and sees the crop", async () => {
+    const { edit, project } = await setup();
+    expect((await edit(0, [addText(0)])).isError).toBe(false);
+    const clipId = (await project()).doc.tracks[1].clips[0].id;
+    const r = await edit(1, [{ op: "update_clip", clipId, patch: { transform: { crop: EXAMPLE_CROP } } }]);
+    expect(r.isError).toBe(false);
+    expect(r.text.split("\n")[0]).toBe("Applied 1 op as version 2.");
+    expect(r.text).toContain('crop={"left":0.1,"top":0,"right":0.1,"bottom":0}');
+    expect((await project()).doc.tracks[1].clips[0].transform.crop).toEqual(EXAMPLE_CROP);
+  });
+
   it("applies a batch and reports the version, the new ids and the project", async () => {
     const { edit, project, log } = await setup();
     const r = await edit(0, [addText(0), addText(60, "SECOND")]);

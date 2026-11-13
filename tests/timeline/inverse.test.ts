@@ -15,11 +15,17 @@ function rich(): TimelineDoc {
   d.tracks.find((t) => t.id === "t1")!.clips = [text("x1", 0, 60)];
   return d;
 }
+// rich() with c2 already cropped. rich() itself stays uncropped, because other tests pin its clips.
+function richCropped(): TimelineDoc {
+  const d = rich();
+  d.tracks[0].clips[1].transform.crop = { left: 0.1, top: 0, right: 0, bottom: 0 };
+  return d;
+}
 const ids = (d: TimelineDoc, trackId: string) => d.tracks.find((t) => t.id === trackId)!.clips.map((c) => c.id);
 const clipOf = (d: TimelineDoc, id: string) => d.tracks.flatMap((t) => t.clips).find((c) => c.id === id)!;
 const inv = (op: Op) => applyOps(rich(), [op]).inverse;
 
-const CASES: [string, Op][] = [
+const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["add_track", { op: "add_track", track: { id: "n1", kind: "audio", name: "Music" }, index: 2 }],
   ["remove_track", { op: "remove_track", trackId: "t1" }],
   ["update_track", { op: "update_track", trackId: "v1", patch: { name: "Main", muted: true } }],
@@ -36,13 +42,14 @@ const CASES: [string, Op][] = [
   ["trim_clip end", { op: "trim_clip", clipId: "c3", edge: "end", to: 70 }],
   ["split_clip at speed 1.5", { op: "split_clip", clipId: "c1", at: 11, newClipId: "c5" }],
   ["update_clip", { op: "update_clip", clipId: "x1", patch: { text: "GO", style: { color: "#000" } } }],
+  ["update_clip crop on a cropped clip", { op: "update_clip", clipId: "c2", patch: { transform: { crop: { left: 0.2, top: 0, right: 0, bottom: 0 } } } }, richCropped],
   ["move_track", { op: "move_track", trackId: "t1", index: 0 }],
   ["set_format", { op: "set_format", format: "long_16x9" }],
 ];
 
 describe("inverse round trip", () => {
-  it.each(CASES)("%s: applying the inverse restores the document", (_name, op) => {
-    const base = rich();
+  it.each(CASES)("%s: applying the inverse restores the document", (_name, op, start = rich) => {
+    const base = start();
     const { doc, inverse } = applyOps(base, [op]);
     expect(doc).not.toEqual(base);
     expect(applyOps(doc, inverse).doc).toEqual(base);
@@ -51,8 +58,8 @@ describe("inverse round trip", () => {
   // Stored inverses go to the database and back to the client as JSON, and return as an ordinary request.
   const viaJson = (ops: Op[]) => prepareOps(JSON.parse(JSON.stringify(ops)));
 
-  it.each(CASES)("%s: the inverse survives JSON and prepareOps, and so does the inverse of the undo", (_name, op) => {
-    const base = rich();
+  it.each(CASES)("%s: the inverse survives JSON and prepareOps, and so does the inverse of the undo", (_name, op, start = rich) => {
+    const base = start();
     const edit = applyOps(base, [op]);
     const undo = applyOps(edit.doc, viaJson(edit.inverse));
     expect(undo.doc).toEqual(base);

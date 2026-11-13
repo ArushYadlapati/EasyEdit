@@ -1,6 +1,7 @@
 import { describe as suite, expect, it } from "vitest";
 import {
   DEFAULT_TRANSFORM,
+  NO_CROP,
   applyOps,
   createEmptyDoc,
   describe,
@@ -124,6 +125,29 @@ Track cap [caption] "Captions"
   (empty)
 Track a1 [audio] "Audio 1"
   (empty)`);
+  });
+
+  it("prints a crop only when there is one", () => {
+    const CUT = { left: 0.1, top: 0, right: 0.2, bottom: 0 };
+    const printed = 'crop={"left":0.1,"top":0,"right":0.2,"bottom":0}';
+    const lineOf = (crop: typeof CUT) => {
+      const d = applyOps(createEmptyDoc("short_9x16"), [
+        { op: "add_clip", trackId: "v1", clip: { id: "c1", type: "video", assetId: "a", start: 0, duration: 30, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM, scale: 2, crop } } },
+        { op: "add_clip", trackId: "t1", clip: { id: "x1", type: "text", start: 0, duration: 30, text: "hi", transform: { ...DEFAULT_TRANSFORM, crop }, style } },
+        { op: "add_clip", trackId: "a1", clip: { id: "s1", type: "audio", assetId: "m", start: 0, duration: 30, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM, crop } } },
+      ]).doc;
+      const lines = describe(d, { detail: true }).split("\n");
+      return { video: lines[2], text: lines[4], audio: lines[8], short: describe(d) };
+    };
+    const cropped = lineOf(CUT);
+    expect(cropped.video.endsWith(` fit=cover scale=2 ${printed}`)).toBe(true);
+    expect(cropped.text.endsWith(`align=center x=0.5 y=0.5 ${printed}`)).toBe(true);
+    expect(cropped.audio).toMatch(/^ {2}s1 {2}audio /);
+    expect(cropped.audio).not.toContain("crop=");
+    expect(cropped.short).not.toContain("crop=");
+    expect(lineOf({ bottom: 0, right: 0.2, top: 0, left: 0.1 }).video.endsWith(printed)).toBe(true);
+    const none = lineOf({ ...NO_CROP });
+    expect([none.video, none.text, none.audio].join("\n")).not.toContain("crop=");
   });
 
   it("without detail, prints exactly what it printed before", () => {

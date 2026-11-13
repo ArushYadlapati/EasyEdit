@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { PLACEHOLDER_FILL, activeClips, drawFrame, fitRect } from "@/lib/render/compositor";
+import { PLACEHOLDER_FILL, activeClips, cropRect, drawFrame, fitRect, mediaSize, type LocalRect } from "@/lib/render/compositor";
 import { SAFE_ZONES } from "@/lib/render/safe-zones";
 import { layoutText, wrapLines } from "@/lib/render/text-layout";
-import { DEFAULT_TRANSFORM, createEmptyDoc, type Clip, type MediaClip, type TextClip, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, NO_CROP, createEmptyDoc, type Clip, type MediaClip, type TextClip, type TimelineDoc } from "@/lib/timeline";
 import { text, video } from "../editor/fixtures";
 import { fakeCtx, type Call } from "./fake-ctx";
 
@@ -135,6 +135,114 @@ describe("drawFrame with an empty source", () => {
     drawFrame(ctx, d, 0, { resolveSource: () => ({ image: {} as CanvasImageSource, width: 0, height: 1080 }) });
     expect(only(calls, "drawImage")).toEqual([]);
     expect(only(calls, "fillText")).toEqual([["fillText", "Video", 0, 0]]);
+  });
+});
+
+describe("crop", () => {
+  const CUT = { left: 0.1, top: 0, right: 0.2, bottom: 0 };
+  const closeTo = (actual: unknown[], expected: number[]) => {
+    expect(actual).toHaveLength(expected.length);
+    expected.forEach((v, i) => expect(actual[i] as number, String(i)).toBeCloseTo(v, 6));
+  };
+  const closeRect = (rect: LocalRect, expected: Partial<LocalRect>) => {
+    for (const [side, value] of Object.entries(expected)) expect(rect[side as keyof LocalRect], side).toBeCloseTo(value, 6);
+  };
+  const imageDoc = (transform: Record<string, unknown>) => {
+    const d = createEmptyDoc("short_9x16");
+    d.tracks[0].clips = [video("v", 0, 30, { type: "image", transform: { ...DEFAULT_TRANSFORM, fit: "contain", ...transform } })];
+    return d;
+  };
+  const image = {} as CanvasImageSource;
+  const source = () => ({ image, width: 200, height: 100 });
+
+  it("mediaSize fits the source, or fills the frame for a placeholder", () => {
+    const doc = { width: 1080, height: 1920 };
+    const clip = video("v", 0, 30, { transform: { ...DEFAULT_TRANSFORM, fit: "contain" } }) as MediaClip;
+    expect(mediaSize(doc, clip, null)).toEqual({ width: 1080, height: 1920 });
+    expect(mediaSize(doc, clip, { width: 0, height: 0 })).toEqual({ width: 1080, height: 1920 });
+    expect(mediaSize(doc, clip, { width: 1920, height: 0 })).toEqual({ width: 1080, height: 1920 });
+    const fitted = mediaSize(doc, clip, { width: 1920, height: 1080 });
+    expect(fitted.width).toBeCloseTo(1080, 6);
+    expect(fitted.height).toBeCloseTo(607.5, 6);
+  });
+
+  it("cropRect cuts shares of any box", () => {
+    closeRect(cropRect({ left: -540, top: -270, right: 540, bottom: 270 }, CUT), { left: -432, top: -270, right: 324, bottom: 270 });
+    closeRect(cropRect({ left: -486, top: -38.4, right: -422, bottom: 38.4 }, { left: 0.5, top: 0, right: 0, bottom: 0 }), { left: -454, top: -38.4, right: -422, bottom: 38.4 });
+    closeRect(cropRect({ left: -100, top: -50, right: 100, bottom: 50 }, { left: 0, top: 0.1, right: 0, bottom: 0.3 }), { left: -100, top: -40, right: 100, bottom: 20 });
+    expect(cropRect({ left: -1, top: -2, right: 3, bottom: 4 }, undefined)).toEqual({ left: -1, top: -2, right: 3, bottom: 4 });
+  });
+
+  it("a cropped image draws the kept part in place", () => {
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, imageDoc({ crop: CUT }), 0, { resolveSource: source });
+    const [draw] = only(calls, "drawImage");
+    expect(draw[1]).toBe(image);
+    closeTo(draw.slice(2), [20, 0, 140, 100, -432, -270, 756, 540]);
+    const { ctx: c2, calls: tall } = fakeCtx();
+    drawFrame(c2, imageDoc({ crop: { left: 0, top: 0.25, right: 0, bottom: 0.5 } }), 0, { resolveSource: source });
+    closeTo(only(tall, "drawImage")[0].slice(2), [0, 25, 200, 25, -540, -135, 1080, 135]);
+  });
+
+  it("no crop and NO_CROP keep the plain call", () => {
+    for (const transform of [{}, { crop: { ...NO_CROP } }]) {
+      const { ctx, calls } = fakeCtx();
+      drawFrame(ctx, imageDoc(transform), 0, { resolveSource: source });
+      const draws = only(calls, "drawImage");
+      expect(draws).toHaveLength(1);
+      closeTo(draws[0].slice(2), [-540, -270, 1080, 540]);
+      expect(only(calls, "clip", "rect")).toEqual([]);
+    }
+  });
+
+  it("a cropped placeholder fills only the kept part", () => {
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, imageDoc({ crop: CUT }), 0);
+    const fills = only(calls, "fillRect");
+    expect(fills).toHaveLength(2);
+    expect(fills[1][0]).toBe("fillRect");
+    closeTo(fills[1].slice(1), [-432, -960, 756, 1920]);
+    const [label] = only(calls, "fillText");
+    expect(label[1]).toBe("Image");
+    closeTo(label.slice(2), [-54, 0]);
+    expect(only(calls, "drawImage")).toEqual([]);
+  });
+
+  it("a placeholder for a source with no size is cropped too", () => {
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, imageDoc({ crop: CUT }), 0, { resolveSource: () => ({ image, width: 200, height: 0 }) });
+    closeTo(only(calls, "fillRect")[1].slice(1), [-432, -960, 756, 1920]);
+    expect(only(calls, "drawImage")).toEqual([]);
+  });
+
+  it("a cropped text clips to the kept part", () => {
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, textDoc(text("x1", 0, 30, { transform: { ...DEFAULT_TRANSFORM, crop: { left: 0.25, top: 0, right: 0, bottom: 0 } } })), 0);
+    const start = calls.findIndex(([name]) => name === "beginPath");
+    expect(start).toBeGreaterThan(-1);
+    const [begin, rect, clip, fill] = calls.slice(start, start + 4);
+    expect(begin).toEqual(["beginPath"]);
+    expect(rect[0]).toBe("rect");
+    closeTo(rect.slice(1), [-16, -102.4, 112, 204.8]);
+    expect(clip).toEqual(["clip"]);
+    expect(fill).toEqual(["fillText", "hi", 0, 0]);
+    expect(calls.findIndex(([name]) => name === "restore")).toBeGreaterThan(start);
+    expect(calls.findIndex(([name]) => name === "save")).toBeLessThan(start);
+  });
+
+  it("a text cut on every side clips at each cut", () => {
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, textDoc(text("x1", 0, 30, { transform: { ...DEFAULT_TRANSFORM, crop: { left: 0.25, top: 0.25, right: 0.25, bottom: 0.25 } } })), 0);
+    closeTo(only(calls, "rect")[0].slice(1), [-16, -19.2, 32, 38.4]);
+  });
+
+  it("uncropped text makes no clip call", () => {
+    for (const transform of [{ ...DEFAULT_TRANSFORM }, { ...DEFAULT_TRANSFORM, crop: { ...NO_CROP } }]) {
+      const { ctx, calls } = fakeCtx();
+      drawFrame(ctx, textDoc(text("x1", 0, 30, { transform })), 0);
+      expect(only(calls, "beginPath", "rect", "clip")).toEqual([]);
+      expect(only(calls, "fillText")).toEqual([["fillText", "hi", 0, 0]]);
+    }
   });
 });
 

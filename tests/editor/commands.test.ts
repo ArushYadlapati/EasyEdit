@@ -163,6 +163,18 @@ describe("copy and paste", () => {
     expect(memory.read()).toEqual(copied);
   });
 
+  it("keeps a clip's crop through copy, storage and paste", () => {
+    const crop = { left: 0.1, top: 0, right: 0.2, bottom: 0 };
+    const doc = sampleDoc();
+    doc.tracks[0].clips[0].transform.crop = crop;
+    doc.tracks[1].clips[0].transform.crop = crop;
+    const board = createClipboard();
+    board.write(copyClips(doc, ["c1", "x1"])!);
+    const read = board.read()!;
+    expect(read.clips.map((c) => c.clip.transform.crop)).toEqual([crop, crop]);
+    expect(pasteItems(read, 300).map((item) => item.clip.transform.crop)).toEqual([crop, crop]);
+  });
+
   it("never throws when storage does, and keeps what this tab copied", () => {
     const fail = () => { throw new Error("storage is off"); };
     const copied = copyClips(sampleDoc(), ["x1"])!;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TRANSFORM,
+  NO_CROP,
   applyOps,
   createEmptyDoc,
   prepareOps,
@@ -290,6 +291,121 @@ describe("update_clip", () => {
     const d = withClips(media("c1", 0, 30));
     d.tracks[0].locked = true;
     failsWith(() => applyOps(d, [{ op: "update_clip", clipId: "c1", patch: { volume: 1 } }]), "TRACK_LOCKED");
+  });
+});
+
+describe("crop", () => {
+  const CUT = { left: 0.1, top: 0, right: 0.2, bottom: 0 };
+  const crop = (clipId: string, value: unknown) => ({ op: "update_clip" as const, clipId, patch: { transform: { crop: value } } });
+  const textDoc = () => {
+    const d = doc0();
+    d.tracks[1].clips = [text("t", 0, 30)];
+    return d;
+  };
+
+  it("a first crop can be undone, back to no crop", () => {
+    const d = withClips(media("c1", 0, 30));
+    const { doc, inverse } = applyOps(d, [crop("c1", CUT)]);
+    expect(clipsOf(doc)[0].transform.crop).toEqual(CUT);
+    expect(inverse).toEqual([
+      {
+        op: "update_clip",
+        clipId: "c1",
+        patch: { transform: { crop: { left: 0, top: 0, right: 0, bottom: 0 } } },
+        expect: { transform: { crop: { left: 0.1, top: 0, right: 0.2, bottom: 0 } } },
+      },
+    ]);
+    // The undo carries its own copy, never the shared constant.
+    const [undoOp] = inverse;
+    if (undoOp.op !== "update_clip") throw new Error("the undo is an update_clip");
+    const undoCrop = (undoOp.patch.transform as { crop: object }).crop;
+    expect(undoCrop).not.toBe(NO_CROP);
+    expect(Object.isFrozen(undoCrop)).toBe(false);
+    const undone = applyOps(doc, inverse).doc;
+    const back = clipsOf(undone)[0].transform.crop;
+    expect(back).toEqual(NO_CROP);
+    expect(Object.isFrozen(back)).toBe(false);
+    expect(Object.isFrozen(NO_CROP)).toBe(true);
+  });
+
+  it("a crop given as undefined changes nothing and records no undo", () => {
+    const d = withClips(media("c1", 0, 30));
+    const { doc, inverse } = applyOps(d, [crop("c1", undefined)]);
+    expect(inverse).toEqual([]);
+    expect(doc).toEqual(d);
+    expect(applyOps(d, [{ op: "update_clip", clipId: "c1", patch: { volume: 0.5 }, expect: { transform: { crop: undefined } } }]).doc).not.toEqual(d);
+  });
+
+  it("a text clip can be cropped", () => {
+    const d = textDoc();
+    const { doc, inverse } = applyOps(d, [crop("t", CUT)]);
+    expect(doc.tracks[1].clips[0].transform.crop).toEqual(CUT);
+    expect(applyOps(doc, inverse).doc.tracks[1].clips[0].transform.crop).toEqual(NO_CROP);
+  });
+
+  it("changing a crop undoes exactly", () => {
+    const d = withClips(media("c1", 0, 30, { transform: { ...DEFAULT_TRANSFORM, crop: CUT } }));
+    const next = { left: 0.3, top: 0.1, right: 0, bottom: 0.2 };
+    const { doc, inverse } = applyOps(d, [crop("c1", next)]);
+    expect(clipsOf(doc)[0].transform.crop).toEqual(next);
+    expect(inverse).toEqual([{ op: "update_clip", clipId: "c1", patch: { transform: { crop: CUT } }, expect: { transform: { crop: next } } }]);
+    expect(applyOps(doc, inverse).doc).toEqual(d);
+  });
+
+  it("a crop must leave part of the picture", () => {
+    const d = withClips(media("c1", 0, 30));
+    for (const bad of [
+      { left: 0.6, top: 0, right: 0.4, bottom: 0 },
+      { left: 0, top: 0.5, right: 0, bottom: 0.5 },
+      { left: -0.1, top: 0, right: 0, bottom: 0 },
+      { left: 0, top: 0, right: 1.1, bottom: 0 },
+      { left: 0.1, top: 0, right: 0.1 },
+      { l: 0.1, top: 0, right: 0, bottom: 0 },
+      { left: 0.1, top: 0, right: 0, bottom: 0, l: 0.1 },
+    ]) {
+      failsWith(() => applyOps(d, [crop("c1", bad)]), "INVALID");
+      expect(() => prepareOps([{ op: "add_clip", trackId: "v1", clip: media("n", 40, 10, { transform: { ...DEFAULT_TRANSFORM, crop: bad } }) }])).toThrow(
+        expect.objectContaining({ code: "INVALID" }),
+      );
+    }
+    expect(applyOps(d, [crop("c1", { left: 0.5, top: 0.4, right: 0.4999, bottom: 0.5 })]).doc).toBeTruthy();
+  });
+
+  it("an expect with a crop holds, and a different one is STALE", () => {
+    const d = withClips(media("c1", 0, 30, { transform: { ...DEFAULT_TRANSFORM, crop: CUT } }));
+    const next = { left: 0, top: 0, right: 0.5, bottom: 0 };
+    const [held] = prepareOps([{ ...crop("c1", next), expect: { transform: { crop: CUT } } }]);
+    expect(clipsOf(applyOps(d, [held]).doc)[0].transform.crop).toEqual(next);
+    const [stale] = prepareOps([{ ...crop("c1", next), expect: { transform: { crop: { ...CUT, left: 0.15 } } } }]);
+    failsWith(() => applyOps(d, [stale]), "STALE");
+    // A clip with no crop yet holds an expect of no crop.
+    const plain = withClips(media("c1", 0, 30));
+    expect(clipsOf(applyOps(plain, [{ ...crop("c1", next), expect: { transform: { crop: { ...NO_CROP } } } }]).doc)[0].transform.crop).toEqual(next);
+    failsWith(() => applyOps(plain, [{ ...crop("c1", next), expect: { transform: { crop: CUT } } }]), "STALE");
+    // An expect alone names the crop too.
+    const scaled = applyOps(plain, [{ op: "update_clip", clipId: "c1", patch: { transform: { scale: 2 } }, expect: { transform: { crop: { ...NO_CROP } } } }]);
+    expect(clipsOf(scaled.doc)[0].transform).toMatchObject({ scale: 2, crop: NO_CROP });
+  });
+
+  it("split, add_clip and replace_track keep the crop", () => {
+    const cropped = media("c1", 0, 90, { transform: { ...DEFAULT_TRANSFORM, crop: CUT } });
+    const split = applyOps(withClips(cropped), [{ op: "split_clip", clipId: "c1", at: 30, newClipId: "c2" }]).doc;
+    expect(clipsOf(split).map((c) => c.transform.crop)).toEqual([CUT, CUT]);
+    const added = applyOps(doc0(), prepareOps([{ op: "add_clip", trackId: "v1", clip: cropped }])).doc;
+    expect(clipsOf(added)[0].transform.crop).toEqual(CUT);
+    const track = { ...doc0().tracks[0], clips: [cropped] };
+    const replaced = applyOps(doc0(), prepareOps([{ op: "replace_track", track, index: 0 }])).doc;
+    expect(clipsOf(replaced)[0].transform.crop).toEqual(CUT);
+  });
+
+  it("a crop survives JSON and prepareOps", () => {
+    const viaJson = (ops: Op[]) => prepareOps(JSON.parse(JSON.stringify(ops)));
+    const d = withClips(media("c1", 0, 30));
+    const edit = applyOps(d, viaJson([crop("c1", CUT)]));
+    expect(clipsOf(edit.doc)[0].transform.crop).toEqual(CUT);
+    const undo = applyOps(edit.doc, viaJson(edit.inverse));
+    expect(clipsOf(undo.doc)[0].transform.crop).toEqual(NO_CROP);
+    expect(applyOps(undo.doc, viaJson(undo.inverse)).doc).toEqual(edit.doc);
   });
 });
 

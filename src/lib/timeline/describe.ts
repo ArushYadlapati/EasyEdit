@@ -1,5 +1,5 @@
 import { graphemes } from "@/lib/text";
-import { docDuration } from "./presets";
+import { docDuration, isCropped } from "./presets";
 import type { Clip, Track, TimelineDoc, Transform } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
@@ -37,12 +37,16 @@ function describeClip(clip: Clip, fps: number): string {
   return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}`;
 }
 
-// Scale, rotation and opacity are only worth a word when they are not the defaults.
-function describeTransformChanges(t: Transform): string {
+// Scale, rotation, opacity and crop are only worth a word when they are not the defaults. Audio draws nothing, so its crop is left out.
+function describeTransformChanges(t: Transform, type: Clip["type"]): string {
   let out = "";
   if (t.scale !== 1) out += ` scale=${t.scale}`;
   if (t.rotation !== 0) out += ` rotation=${t.rotation}`;
   if (t.opacity !== 1) out += ` opacity=${t.opacity}`;
+  if (t.crop && isCropped(t.crop) && type !== "audio") {
+    const { left, top, right, bottom } = t.crop;
+    out += ` crop=${JSON.stringify({ left, top, right, bottom })}`;
+  }
   return out;
 }
 
@@ -56,13 +60,13 @@ function describeClipInDetail(clip: Clip, fps: number): string {
     return (
       `${head}  "${escapeQuoted(clip.text)}"` +
       `  font="${escapeQuoted(s.fontFamily)}" size=${s.fontSize} weight=${s.fontWeight} color="${escapeQuoted(s.color)}" align=${s.align} x=${t.x} y=${t.y}` +
-      describeTransformChanges(t)
+      describeTransformChanges(t, clip.type)
     );
   }
   return (
     `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +
-    describeTransformChanges(t)
+    describeTransformChanges(t, clip.type)
   );
 }
 

@@ -40,6 +40,6 @@ export function pretendMediaServices(assets: AssetView[], options: { loaded?: bo
   };
   const library = createLibraryStore({ api });
   library.setState({ assets: Object.fromEntries(assets.map((asset) => [asset.id, asset])), loaded: options.loaded ?? true });
-  const queue: UploadQueue = { add() {}, cancel() {}, retry() {}, resume() {}, dismiss() {}, stop() {}, items: () => [], active: () => 0 };
+  const queue: UploadQueue = { add: () => [], cancel() {}, retry() {}, resume() {}, dismiss() {}, stop() {}, items: () => [], active: () => 0 };
   return { library, queue, files: { get: never, put: async () => {} }, dispose() {} };
 }

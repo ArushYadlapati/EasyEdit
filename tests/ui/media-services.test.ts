@@ -11,7 +11,7 @@ vi.mock("@/lib/media/upload-queue", async (importOriginal) => {
   return {
     ...real,
     createUploadQueue: vi.fn((): UploadQueue => ({
-      add() {}, cancel() {}, retry() {}, resume() {}, dismiss() {}, items: () => [], active: () => 0,
+      add: () => [], cancel() {}, retry() {}, resume() {}, dismiss() {}, items: () => [], active: () => 0,
       stop: () => void order.push("queue.stop"),
     })),
   };
