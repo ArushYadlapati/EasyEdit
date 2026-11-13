@@ -7,7 +7,7 @@ const matches = (url: string) => unstable_doesMiddlewareMatch({ config, url });
 
 describe("proxy", () => {
   it("runs on app pages and app API routes", () => {
-    for (const url of ["/", "/dashboard", "/admin", "/editor/abc", "/api/projects", "/api/projects/abc/ops", "/loginx", "/consent"]) {
+    for (const url of ["/", "/dashboard", "/admin", "/editor/abc", "/api/projects", "/api/projects/abc/ops", "/api/projects/abc/thumbnail", "/loginx", "/consent"]) {
       expect(matches(url), url).toBe(true);
     }
   });

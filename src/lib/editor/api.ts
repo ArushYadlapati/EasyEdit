@@ -17,6 +17,7 @@ export type ProjectApi = {
   getOpsSince(since: number, limit?: number): Promise<ApiResult<{ version: number; entries: ActivityEntry[]; hasMore: boolean }>>;
   getProject(): Promise<ApiResult<{ doc: TimelineDoc; version: number; name: string }>>;
   rename(name: string): Promise<ApiResult<{ name: string }>>; // not an op: no version, no undo
+  putThumbnail(version: number, jpeg: Blob): Promise<ApiResult<{ saved: boolean }>>; // the dashboard picture; not an op: no version, no undo
 };
 
 const TIMEOUT_MS = 15_000;
@@ -126,6 +127,13 @@ export function createProjectApi(projectId: string, fetchFn?: typeof fetch): Pro
         base,
         { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) },
         (b) => (typeof b.name === "string" ? { name: b.name } : null),
+      );
+    },
+    putThumbnail(version, jpeg) {
+      return request(
+        `${base}/thumbnail?v=${version}`,
+        { method: "PUT", headers: { "content-type": "image/jpeg" }, body: jpeg },
+        (b) => (typeof b.saved === "boolean" ? { saved: b.saved } : null),
       );
     },
   };

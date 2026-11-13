@@ -15,6 +15,7 @@ function fakeApi(answer: (name: string) => Promise<RenameResult>) {
     getOpsSince: async () => ({ ok: false, kind: "network" }),
     getProject: async () => ({ ok: false, kind: "network" }),
     rename,
+    putThumbnail: async () => ({ ok: false, kind: "network" }),
   };
   return { api, rename };
 }

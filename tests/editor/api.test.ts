@@ -55,6 +55,20 @@ describe("project api", () => {
     expect(await apiWith(() => json(200, { id: "p1" })).api.rename("Finals")).toEqual({ ok: false, kind: "network" });
   });
 
+  it("putThumbnail sends the JPEG by PUT with its version and reads saved", async () => {
+    const jpeg = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
+    const { api, fetchFn } = apiWith(() => json(200, { saved: true }));
+    expect(await api.putThumbnail(6, jpeg)).toEqual({ ok: true, saved: true });
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe("/api/projects/p1/thumbnail?v=6");
+    expect(init).toMatchObject({ method: "PUT", headers: { "content-type": "image/jpeg" }, cache: "no-store" });
+    expect(init!.body).toBe(jpeg);
+    expect(init!.keepalive).toBeUndefined();
+
+    expect(await apiWith(() => json(403, { code: "FORBIDDEN", message: "m" })).api.putThumbnail(6, jpeg)).toEqual({ ok: false, kind: "forbidden" });
+    expect(await apiWith(() => json(200, {})).api.putThumbnail(6, jpeg)).toEqual({ ok: false, kind: "network" });
+  });
+
   it.each([
     [400, { code: "OVERLAP", message: "m", opIndex: 0 },{ ok: false, kind: "op", code: "OVERLAP", message: "m", opIndex: 0 }],
     [409, { code: "CONFLICT", message: "m", currentVersion: 9 }, { ok: false, kind: "conflict", currentVersion: 9 }],

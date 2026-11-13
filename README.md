@@ -8,7 +8,7 @@ This README gets the app running on your own computer. You will set up three thi
 
 - Sign in with Google. Anyone not on the allowlist is turned away.
 - An Admin page where admins add people, change their role, and remove them.
-- A dashboard where editors create projects in one of five video formats or at a custom size (in pixels, centimeters or inches), keep them in folders, and rename, duplicate and delete them. Recent shows the projects you opened last. A deleted project is hidden and not shown again.
+- A dashboard where editors create projects in one of five video formats or at a custom size (in pixels, centimeters or inches), keep them in folders, and rename, duplicate and delete them. Recent shows the projects you opened last. A deleted project is hidden and not shown again. Each card shows a picture of its project, which the editor draws a few seconds after a change is saved; a project changed from outside the editor shows its new picture once an editor opens it.
 - The editor, which opens a project in the whole window: an add panel on the left, the preview in the middle, the details on the right and the timeline along the bottom. It is always dark, and it asks the Dark Reader browser extension to leave it alone. In it you can:
   - add text clips from three presets (Title, Subtitle, Lower third) and video, image and audio clips from the Media tab, and move, trim, split, delete, ripple-delete, copy and paste clips of every kind
   - add, rename, lock, hide, mute, reorder and remove tracks
@@ -213,6 +213,7 @@ The editor cannot be opened without a Google sign-in, so the tests cannot click 
 13. Sign out in another tab, then move a clip in the editor. It says "You're signed out. Sign in again to save your changes." and the status reads "Signed out". Click **Sign in**: it opens in a new tab. Sign in there and come back to the editor: the status returns to "Saved" and the move is kept.
 14. Press `?`. The list of shortcuts opens. Close it with `Escape`.
 15. Make the window narrower than 1024 px. The editor is replaced by "The editor needs a wider window."
+16. Add a title, wait five seconds, then click **Projects**: the project's card shows the title on its picture.
 
 ## Deploy to Vercel
 
@@ -342,7 +343,7 @@ All projects run at 30 frames per second. Times in the timeline are whole frames
 
 ## The project API
 
-All routes need you to be signed in (they use the same cookie as the website). Bodies and answers are JSON.
+All routes need you to be signed in (they use the same cookie as the website). Bodies and answers are JSON, except the thumbnail route's picture, which is a JPEG.
 
 | Route | Who may call it | What it does |
 | --- | --- | --- |
@@ -354,6 +355,8 @@ All routes need you to be signed in (they use the same cookie as the website). B
 | `DELETE /api/projects/:id` | editor and up | Delete a project. Answers `204`. |
 | `POST /api/projects/:id/duplicate` | editor and up | Make a copy of a project. Answers `201` with `{ "id" }` of the copy. |
 | `POST /api/projects/:id/opened` | viewer and up | Records that you opened the project, for your Recent list on the dashboard. Answers `204`. |
+| `GET /api/projects/:id/thumbnail?v=N` | viewer and up | Get the project's picture for its dashboard card, a JPEG. `N` is `thumbnailVersion` from the project list; each new picture has a new `N`, so browsers keep each one. Answers `404` when the project has no picture. |
+| `PUT /api/projects/:id/thumbnail?v=N` | editor and up | Store the project's picture: send a JPEG of at most 300 KB drawn from version `N`. It is kept only when `N` is newer than the stored picture's and not past the project's version, and it changes neither the version nor when the project last changed. Answers `{ saved }`. The editor sends it by itself. |
 | `GET /api/projects/:id/ops?since=N` | viewer and up | Get the changes after version `N`: `{ version, entries, hasMore }`. Each entry is `{ version, ops, inverse, actor, actorName, requestId, createdAt }`. Add `limit` to set the page size (default 100, at most 500). A page holds fewer entries when they are large. When `hasMore` is true, ask again from the `version` in the answer. |
 | `POST /api/projects/:id/ops` | editor and up | Apply changes: send `{ "baseVersion": N, "ops": [...] }` (1 to 500 ops). Answers `{ version, ops, inverse }`. |
 

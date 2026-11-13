@@ -101,6 +101,7 @@ it("at the most the list keeps, it says so instead of offering earlier changes",
     getVersion: async () => ({ ok: false, kind: "network" }),
     getProject: async () => ({ ok: false, kind: "network" }),
     rename: async () => ({ ok: false, kind: "network" }),
+    putThumbnail: async () => ({ ok: false, kind: "network" }),
     getOpsSince: async () => {
       calls += 1;
       return { ok: true, version: 500, entries: [], hasMore: false };
