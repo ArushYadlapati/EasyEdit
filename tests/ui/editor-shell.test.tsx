@@ -546,6 +546,56 @@ it("a deleted project takes no drag", async () => {
   expect(media.queue.add).not.toHaveBeenCalled();
 });
 
+const boardDrop = () => document.querySelector<HTMLElement>("[data-board]")!.parentElement!;
+const placeholderTexts = () =>
+  [...screen.getByRole("region", { name: "Timeline" }).querySelectorAll("[data-upload-placeholder]")].map((p) => p.textContent);
+
+it("a file dropped on the transport goes only to the library", async () => {
+  const server = stubServer();
+  const media = pretendMedia();
+  render(<EditorShell initial={initial()} />);
+  await flush();
+  const transport = screen.getByRole("button", { name: /^Go to start/ });
+  const over = dragEvent("dragover", FILES);
+  expect(fireEvent(transport, over)).toBe(false);
+  expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe("copy");
+  const files = [new File(["x"], "climb.mov")];
+  expect(fireEvent(transport, dragEvent("drop", { files }))).toBe(false);
+  expect(media.queue.add).toHaveBeenCalledTimes(1);
+  expect(media.queue.add).toHaveBeenCalledWith(files);
+  act(() => media.library.getState().setUploads([uploading]));
+  await flush();
+  expect(placeholderTexts()).toEqual([]);
+  await landUpload(media);
+  await flush();
+  expect(climbClips()).toEqual([]);
+  expect(server.posts()).toBe(0);
+});
+
+it("the timeline shows a placeholder for a board drop", async () => {
+  const server = stubServer();
+  const media = pretendMedia();
+  render(<EditorShell initial={initial()} />);
+  await flush();
+  const { store } = shellDrop();
+  act(() => store.getState().seek(60));
+  const over = dragEvent("dragover", FILES);
+  expect(fireEvent(boardDrop(), over)).toBe(false);
+  expect((over as unknown as { dataTransfer: DataTransfer }).dataTransfer.dropEffect).toBe("copy");
+  expect(fireEvent(boardDrop(), dragEvent("drop", { files: [new File(["x"], "climb.mov")] }))).toBe(false);
+  expect(media.queue.add).toHaveBeenCalledTimes(1);
+  act(() => media.library.getState().setUploads([uploading])); // 40% sent
+  await flush();
+  expect(placeholderTexts()).toEqual(["climb.mov · Uploading 40%"]);
+  await landUpload(media);
+  await flush();
+  expect(placeholderTexts()).toEqual([]);
+  expect(climbClips()).toHaveLength(1);
+  const landed = store.getState().doc.tracks.find((t) => t.id === "v1")!.clips.find((c) => c.type === "video" && c.assetId === "x1");
+  expect(landed).toMatchObject({ start: 60, duration: 60 });
+  expect(server.posts()).toBe(1);
+});
+
 it("leaving the editor stops watching drags", async () => {
   stubServer();
   pretendMedia();

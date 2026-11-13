@@ -18,6 +18,7 @@ import { useEditor, useEditorStore, useSettings } from "./context";
 import { useMedia, type MediaServices } from "./media/media-context";
 import { createMediaPool, upcomingWants, type PoolDeps } from "./media/media-pool";
 import { Transport } from "./transport";
+import { useBoardDrop } from "./use-board-drop";
 import { usePlayback } from "./use-playback";
 import { BoardScaleContext } from "./zoom-menu";
 
@@ -53,6 +54,7 @@ export function Preview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [surface] = useState(() => createPreviewSurface());
   const [pane, setPane] = useState<Size>({ width: 0, height: 0 });
+  const drop = useBoardDrop();
 
   const backing = previewSize({ width, height });
   const layout = useMemo(() => {
@@ -247,7 +249,9 @@ export function Preview() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="relative min-h-0 flex-1">
+      {/* The board's wrapper takes drops on the frame and the margin around it, bubbling from the overlay, the handles
+          and the text box; the transport is outside it, so a file dropped there goes to the library only. */}
+      <div className="relative min-h-0 flex-1" data-drop={drop.over ? "over" : "idle"} {...drop.handlers}>
         {/* In Fill nothing scrolls, so a scrollbar can never shrink the pane and start a refit. */}
         <div
           ref={paneRef}
@@ -282,6 +286,12 @@ export function Preview() {
             <CanvasOverlay surface={surface} pane={paneRef} />
           </div>
         </div>
+        {/* What is dropped goes to the timeline at the playhead, not where it is let go, and the look says so. */}
+        {drop.over && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center outline-2 -outline-offset-2 outline-ed-accent bg-ed-accent-weak/50">
+            <p className="rounded-md bg-ed-panel px-3 py-1.5 text-[13px] text-ed-text">Drop to add at the playhead</p>
+          </div>
+        )}
       </div>
       <BoardScaleContext value={layout.k}>
         <Transport />

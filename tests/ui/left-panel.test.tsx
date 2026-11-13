@@ -128,7 +128,7 @@ function withDrop(options: { canEdit?: boolean; setUp?: boolean } = {}) {
 }
 
 const selectedTab = () => screen.getAllByRole("tab").find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent;
-const DRAG_LINE = "You can also drag files here or onto the timeline.";
+const DRAG_LINE = "You can also drag files here, onto the timeline or onto the preview.";
 
 it("a file over the window shows the Media tab and its drop text", () => {
   const { drop } = withDrop();
