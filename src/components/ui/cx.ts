@@ -17,3 +17,13 @@ export const FIELD_BOX = cx(
   FADE,
   DISABLED,
 );
+// A number you drag sideways, as in Premiere: at rest an underlined accent value with no box, a box only while it is
+// typed in. FIELD_BOX's size, padding, focus ring and fade, never mixed with its border and fill.
+export const SCRUB_BOX = cx(
+  "w-full min-w-0 rounded-md px-2 text-[13px] leading-5 placeholder:text-ed-muted",
+  FOCUS_RING_INSET,
+  FADE,
+  "border border-transparent bg-transparent text-ed-accent underline decoration-dotted underline-offset-4 cursor-ew-resize",
+  "enabled:hover:border-ed-line focus:border-ed-line-strong focus:bg-ed-raised focus:text-ed-text focus:no-underline focus:cursor-text",
+  "disabled:text-ed-text disabled:no-underline disabled:cursor-default",
+);

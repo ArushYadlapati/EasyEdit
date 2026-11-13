@@ -24,6 +24,7 @@ import {
   clipFieldValue,
   fieldContext,
   parseNumber,
+  scrubBounds,
   type ClipField,
   type FieldPrefs,
 } from "@/lib/editor/inspector-fields";
@@ -31,7 +32,8 @@ import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
-import { UNIT_SUFFIX } from "@/lib/editor/units";
+import type { Units } from "@/lib/editor/settings";
+import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import type { LibraryStore } from "@/lib/media/library-store";
 import { formatLength } from "@/lib/media/messages";
@@ -91,7 +93,8 @@ function finishField(store: EditorStore, clipId: string, field: ClipField, own: 
 // One field's live gesture: the ops it last previewed (as the store holds them, so a gesture this
 // field did not start is never saved under its label) and whether that preview was refused. When
 // the field goes away mid-edit, for example because the selection changed before it lost focus,
-// the edit is finished as if the field had been left.
+// the edit is finished as if the field had been left. preview returns whether the change applies right now: false
+// for ops that are not valid or a change the store refuses.
 function useFieldGesture(store: EditorStore, clipId: string, field: ClipField) {
   const own = useRef<Op[] | null>(null);
   const refused = useRef(false);
@@ -107,10 +110,11 @@ function useFieldGesture(store: EditorStore, clipId: string, field: ClipField) {
 
   return {
     live,
-    preview(ops: OpInput[] | null) {
+    preview(ops: OpInput[] | null): boolean {
       const change = ops !== null && ops.length > 0 ? ops : null;
       const applies = store.getState().setGesture(change);
       remember(change ? (store.getState().gesture?.ops ?? null) : null, ops === null || !applies);
+      return ops !== null && applies;
     },
     finish() {
       finishField(store, clipId, field, own.current, refused.current);
@@ -143,7 +147,30 @@ function Hint({ children }: { children: ReactNode }) {
   return <p className={cx(TEXT, "text-ed-muted")}>{children}</p>;
 }
 
-// A number field of the clip. Typing previews the change; Enter, blur or an arrow key saves it.
+// How a field's value is dragged: the change per CSS px, and the places it is rounded to. X, Y, Width and Height move a
+// project pixel per CSS pixel, in the chosen unit; Start and Length a frame.
+function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; decimals: number } | null {
+  switch (field) {
+    case "x":
+    case "y":
+    case "width":
+    case "height":
+      return { scrub: toUnit(1, units), decimals: UNIT_DECIMALS[units] };
+    case "fontSize":
+    case "scale":
+    case "rotation":
+    case "opacity":
+      return { scrub: 1, decimals: 1 };
+    case "start":
+    case "duration":
+      return { scrub: 1 / fps, decimals: 2 };
+    default:
+      return null;
+  }
+}
+
+// A number field of the clip. Typing previews the change; Enter, blur or an arrow key saves it. Dragged sideways, it
+// previews each value and saves one change when let go.
 function NumberField(props: {
   clipId: string;
   field: ClipField;
@@ -159,6 +186,7 @@ function NumberField(props: {
   const canEdit = useEditor((s) => s.canEdit);
   const units = useSettings((s) => s.units);
   const lockAspect = useSettings((s) => s.lockAspect);
+  const fps = useEditor((s) => s.doc.fps);
   const measure = useTextMeasure();
   // A video or image is measured by its picture's size as the library knows it; until then, the placeholder's frame.
   const assetId = useEditor((s) => {
@@ -182,6 +210,18 @@ function NumberField(props: {
     return found ? clipFieldValue(found.clip, field, fieldContext(doc, found.clip, view.prefs, view.sizer)) : "";
   });
 
+  const drag = scrubOf(field, units, fps);
+  // Start and Length stop at the neighbouring clips, as they are when the press starts.
+  const scrubRange =
+    field === "start" || field === "duration"
+      ? () => {
+          const { doc } = store.getState();
+          const clip = findClip(doc, clipId)?.clip;
+          const lengthFrames = clip && clip.type !== "text" ? mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps) : undefined;
+          return scrubBounds(doc, clipId, field, lengthFrames);
+        }
+      : undefined;
+
   // NumberInput reads the box with Number(), which also takes "0x10" and "1e2"; only plain decimals count.
   function typedIsPlain(): boolean {
     let text = box.current?.value.trim() ?? "";
@@ -199,12 +239,19 @@ function NumberField(props: {
         disabled={!canEdit}
         value={Number(shown)}
         suffix={suffix}
-        onPreview={(v) => {
-          if (v === null || !typedIsPlain()) gesture.drop();
-          else gesture.preview(fieldOps(store, clipId, field, String(v), library, view));
+        scrub={drag?.scrub}
+        decimals={drag?.decimals}
+        scrubRange={scrubRange}
+        onPreview={(v, how) => {
+          // A dragged value is a number the field made, not text that was typed.
+          if (v === null || (!how?.scrubbed && !typedIsPlain())) {
+            gesture.drop();
+            return;
+          }
+          return gesture.preview(fieldOps(store, clipId, field, String(v), library, view));
         }}
-        onCommit={(v) => {
-          const ops = typedIsPlain() ? fieldOps(store, clipId, field, String(v), library, view) : null;
+        onCommit={(v, how) => {
+          const ops = how?.scrubbed || typedIsPlain() ? fieldOps(store, clipId, field, String(v), library, view) : null;
           if (ops === null) {
             gesture.drop();
             store.getState().notify("error", explainOpError("INVALID"));

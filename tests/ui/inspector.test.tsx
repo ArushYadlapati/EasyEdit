@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
@@ -462,5 +462,197 @@ describe("position and size in your units", () => {
     const section = screen.getByRole("heading", { name: "Position" }).parentElement!;
     const names = [...section.querySelectorAll("input, button")].map((c) => c.getAttribute("aria-label"));
     expect(names).toEqual(["X", "Y", "Width", "Lock aspect ratio", "Height", "Scale", "Rotation", "Opacity"]);
+  });
+});
+
+describe("drag a value to change it", () => {
+  // Animation frames run when frame() says.
+  let frames = new Map<number, FrameRequestCallback>();
+  let nextFrame = 0;
+  beforeEach(() => {
+    frames = new Map();
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      frames.set(++nextFrame, cb);
+      return nextFrame;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+  const frame = () =>
+    act(() => {
+      const due = [...frames.values()];
+      frames.clear();
+      for (const cb of due) cb(0);
+    });
+
+  function setup(clipId = "x1", over: { canEdit?: boolean; settings?: ReturnType<typeof createSettingsStore> } = {}) {
+    const store = makeStore({ canEdit: over.canEdit ?? true });
+    store.getState().select([clipId]);
+    render(
+      <EditorProvider store={store} settings={over.settings ?? createSettingsStore({ prefs: DEFAULT_PREFS })}>
+        <Inspector />
+      </EditorProvider>,
+    );
+    const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
+    const press = (label: string) => fireEvent.pointerDown(input(label), { button: 0, pointerId: 1, clientX: 100 });
+    const move = (label: string, dx: number) => {
+      fireEvent.pointerMove(input(label), { pointerId: 1, clientX: 100 + dx });
+      frame();
+    };
+    const release = (label: string, dx: number) => fireEvent.pointerUp(input(label), { pointerId: 1, clientX: 100 + dx });
+    const shown = (id = clipId) => findClip(viewDoc(store.getState()), id)!.clip;
+    const labels = () => store.getState().queue.map((e) => e.label);
+    return { store, input, press, move, release, shown, labels };
+  }
+
+  it("dragging the X value saves one position change", () => {
+    const { store, input, press, move, release, shown, labels } = setup();
+    press("X");
+    move("X", 20);
+    expect(shown().transform.x).toBe(0.518519);
+    expect(input("X").value).toBe("560");
+    expect(store.getState().queue).toEqual([]);
+    release("X", 20);
+    expect(labels()).toEqual(["position change"]);
+    expect(store.getState().queue[0].ops).toMatchObject([{ op: "update_clip", clipId: "x1", patch: { transform: { x: 0.518519 } } }]);
+    expect(store.getState().gesture).toBeNull();
+    expect(input("X").value).toBe("560");
+  });
+
+  it("Escape mid-drag puts it back", () => {
+    const { store, input, press, move, release, shown } = setup();
+    press("X");
+    move("X", 20);
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(false);
+    expect(store.getState().gesture).toBeNull();
+    expect(shown().transform.x).toBe(0.5);
+    expect(input("X").value).toBe("540");
+    release("X", 20);
+    expect(store.getState().queue).toEqual([]);
+    expect(findClip(store.getState().doc, "x1")!.clip.transform.x).toBe(0.5);
+  });
+
+  it("a draft in Y is saved before a drag on X starts", () => {
+    const { store, input, press, move, release } = setup();
+    input("Y").focus();
+    fireEvent.change(input("Y"), { target: { value: "1000" } });
+    press("X");
+    expect(store.getState().queue).toMatchObject([{ label: "position change", ops: [{ patch: { transform: { y: 0.520833 } } }] }]);
+    move("X", 20);
+    release("X", 20);
+    expect(store.getState().queue).toMatchObject([
+      { label: "position change", ops: [{ patch: { transform: { y: 0.520833 } } }] },
+      { label: "position change", ops: [{ patch: { transform: { x: 0.518519 } } }] },
+    ]);
+  });
+
+  it("scrubbing Start stops at the clip before it", () => {
+    const { store, input, press, move, release, labels } = setup("x2");
+    expect(input("Start").value).toBe("3");
+    press("Start");
+    move("Start", -5);
+    expect(input("Start").value).toBe("2.83"); // a frame a pixel, to two places
+    move("Start", -40);
+    expect(input("Start").value).toBe("2");
+    release("Start", -40);
+    expect(labels()).toEqual(["timing change"]);
+    expect(findClip(store.getState().doc, "x2")!.clip.start).toBe(60);
+  });
+
+  it("Start's limits are read when the press starts", () => {
+    const { store, input, press, move } = setup("x2");
+    // Someone else shortens x1 to end at 75, after the field was drawn.
+    act(() => {
+      store.getState().applyRemote([entry(6, [{ op: "trim_clip", clipId: "x1", edge: "end", to: 75 }])]);
+    });
+    press("Start");
+    move("Start", -40);
+    expect(input("Start").value).toBe("2.5");
+  });
+
+  it("Length stops at the clip after it", () => {
+    const { input, press, move, shown } = setup("c1");
+    expect(input("Length").value).toBe("1");
+    press("Length");
+    move("Length", 40);
+    expect(input("Length").value).toBe("1");
+    move("Length", -6);
+    expect(input("Length").value).toBe("0.8");
+    expect(shown("c1").duration).toBe(24);
+  });
+
+  it("a dragged Length stops at the end of the media", () => {
+    // c2, at 30, is 30 frames from the start of a 2 s video: it can end at 90 at the latest.
+    const store = makeStore();
+    store.getState().select(["c2"]);
+    render(
+      <EditorProvider store={store}>
+        <MediaProvider services={pretendMediaServices([assetView({ durationMs: 2_000 })])}>
+          <Inspector />
+        </MediaProvider>
+      </EditorProvider>,
+    );
+    const length = screen.getByLabelText("Length") as HTMLInputElement;
+    fireEvent.pointerDown(length, { button: 0, pointerId: 1, clientX: 100 });
+    fireEvent.pointerMove(length, { pointerId: 1, clientX: 200 });
+    frame();
+    expect(length.value).toBe("2");
+    fireEvent.pointerUp(length, { pointerId: 1, clientX: 200 });
+    expect(store.getState().queue).toMatchObject([{ label: "timing change", ops: [{ op: "trim_clip", clipId: "c2", edge: "end", to: 90 }] }]);
+  });
+
+  it("a cm scrub shows two decimals", () => {
+    const { input, press, move } = setup("x1", { settings: createSettingsStore({ prefs: { ...DEFAULT_PREFS, units: "cm" } }) });
+    expect(input("X").value).toBe("14.29");
+    press("X");
+    move("X", 10);
+    expect(input("X").value).toBe("14.55");
+  });
+
+  it("Size, Scale, Rotation and Opacity move one a pixel, to one place", () => {
+    const { store, input, press, move, release, shown } = setup();
+    const drag = (label: string, dx: number, init: object = {}) => {
+      press(label);
+      fireEvent.pointerMove(input(label), { pointerId: 1, clientX: 100 + dx, ...init });
+      frame();
+      release(label, dx);
+    };
+    drag("Size", 8);
+    drag("Rotation", 15, { ctrlKey: true });
+    drag("Opacity", -25);
+    drag("Scale", 7, { ctrlKey: true });
+    expect(input("Rotation").value).toBe("1.5");
+    expect(shown()).toMatchObject({ style: { fontSize: 72 }, transform: { rotation: 1.5, opacity: 0.75 } });
+    expect(shown().transform.scale).toBeCloseTo(1.007, 6);
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["style change", "position change", "position change", "size change"]);
+    move("X", 0); // nothing held
+  });
+
+  it("a size that cannot apply stays at the last one that did", () => {
+    const { store, input, press, move, release, shown } = setup();
+    expect(input("Width").value).toBe("64");
+    press("Width");
+    move("Width", -60);
+    expect(input("Width").value).toBe("4");
+    expect(shown().transform.scale).toBe(0.0625);
+    move("Width", -70);
+    expect(input("Width").value).toBe("4");
+    expect(shown().transform.scale).toBe(0.0625); // the picture stays with the number
+    release("Width", -70);
+    expect(store.getState().queue).toMatchObject([{ label: "size change", ops: [{ patch: { transform: { scale: 0.0625 } } }] }]);
+    expect(store.getState().notice).toBeNull();
+  });
+
+  it("a viewer cannot drag a value", () => {
+    const { store, input, press, move, release } = setup("x1", { canEdit: false });
+    press("X");
+    move("X", 20);
+    expect(store.getState().gesture).toBeNull();
+    expect(input("X").value).toBe("540");
+    release("X", 20);
+    expect(store.getState().queue).toEqual([]);
   });
 });

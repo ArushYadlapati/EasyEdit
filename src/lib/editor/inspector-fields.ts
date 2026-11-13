@@ -151,6 +151,24 @@ function resize(clip: Clip, field: "width" | "height", f: number, locked: boolea
   return { scale: round(scale * f, 4), stretch: round(stretch / f, 4) };
 }
 
+// How far a drag on Start or Length may take the clip, in seconds, so a drag slides up to a neighbour and stops there.
+// Start runs from the end of the clip before it on its track (else 0) to where its end meets the clip after it (else
+// without end). Length runs from one frame to the clip after it, or the end of the media when that comes first.
+// lengthFrames is the media's length in frames, when it is known. Typing keeps its own checks.
+export function scrubBounds(doc: TimelineDoc, clipId: string, field: "start" | "duration", lengthFrames?: number): { min: number; max: number } {
+  const track = doc.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+  const clip = track?.clips.find((c) => c.id === clipId);
+  if (!track || !clip) return { min: -Infinity, max: Infinity };
+  const others = track.clips.filter((c) => c.id !== clip.id);
+  const before = Math.max(0, ...others.filter((c) => c.start < clip.start).map((c) => c.start + c.duration));
+  const after = Math.min(Infinity, ...others.filter((c) => c.start > clip.start).map((c) => c.start));
+  const { fps } = doc;
+  if (field === "start") return { min: before / fps, max: (after - clip.duration) / fps };
+  const maxEnd = clip.type === "text" ? undefined : trimBounds(clip, lengthFrames)?.maxEnd;
+  const end = Math.min(after, maxEnd ?? Infinity);
+  return { min: 1 / fps, max: Math.max(1, end - clip.start) / fps };
+}
+
 // The ops that set the field to what was typed: null when it is not valid input, [] when it
 // changes nothing. The rules of the change itself (overlaps, locked tracks, what text may hold)
 // stay with applyOps. lengthFrames is the length of a media clip's asset in frames, when it is known: a typed

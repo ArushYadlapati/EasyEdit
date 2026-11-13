@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Sizer } from "@/lib/editor/clip-box";
-import { clipFieldOps, clipFieldValue, fieldContext, FIELD_LABEL, type ClipField, type FieldContext } from "@/lib/editor/inspector-fields";
+import { clipFieldOps, clipFieldValue, fieldContext, FIELD_LABEL, scrubBounds, type ClipField, type FieldContext } from "@/lib/editor/inspector-fields";
 import { findClip } from "@/lib/editor/store";
 import { applyOps, prepareOps, type Clip, type OpInput } from "@/lib/timeline";
 import { sampleDoc, text, video } from "./fixtures";
@@ -193,5 +193,36 @@ describe("a media clip's length", () => {
     expect(clipFieldOps(text("t", 100, 90), "duration", "60", BASE, 375)).toEqual([{ op: "trim_clip", clipId: "t", edge: "end", to: 1900 }]);
     const image = video("i", 100, 90, { type: "image", in: 0 });
     expect(clipFieldOps(image, "duration", "60", BASE, 375)).toEqual([{ op: "trim_clip", clipId: "i", edge: "end", to: 1900 }]);
+  });
+});
+
+describe("scrubBounds", () => {
+  it("scrubBounds stops at the neighbours", () => {
+    expect(scrubBounds(sampleDoc(), "x2", "start")).toEqual({ min: 2, max: Infinity });
+    expect(scrubBounds(sampleDoc(), "c1", "duration")).toEqual({ min: 1 / 30, max: 1 });
+  });
+
+  it("Start stops where the clip would touch the one after it", () => {
+    // x1 is 60 frames long and x2 starts at 90.
+    expect(scrubBounds(sampleDoc(), "x1", "start")).toEqual({ min: 0, max: 1 });
+    expect(scrubBounds(sampleDoc(), "c2", "start")).toEqual({ min: 1, max: Infinity });
+  });
+
+  it("Length stops at the end of the media when that comes first", () => {
+    // c2 starts at 30 with nothing after it; a 60-frame video lets it end at 90.
+    expect(scrubBounds(sampleDoc(), "c2", "duration")).toEqual({ min: 1 / 30, max: Infinity });
+    expect(scrubBounds(sampleDoc(), "c2", "duration", 60)).toEqual({ min: 1 / 30, max: 2 });
+    // c1 would reach c2 before the end of a 300-frame video.
+    expect(scrubBounds(sampleDoc(), "c1", "duration", 300)).toEqual({ min: 1 / 30, max: 1 });
+    // A clip that already runs past its media keeps one frame.
+    const doc = sampleDoc();
+    doc.tracks[0].clips[1] = video("c2", 30, 30, { in: 100 });
+    expect(scrubBounds(doc, "c2", "duration", 60)).toEqual({ min: 1 / 30, max: 1 / 30 });
+  });
+
+  it("follows the project's rate, and an unknown clip has no limits", () => {
+    const doc = { ...sampleDoc(), fps: 60 };
+    expect(scrubBounds(doc, "x2", "start")).toEqual({ min: 1, max: Infinity });
+    expect(scrubBounds(doc, "gone", "start")).toEqual({ min: -Infinity, max: Infinity });
   });
 });
