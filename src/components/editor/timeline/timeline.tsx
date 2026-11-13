@@ -228,6 +228,8 @@ export function Timeline() {
           className={cx(
             "pointer-events-none absolute inset-0 rounded-[4px] outline-2 -outline-offset-2 outline-ed-accent",
             over ? "bg-ed-accent-weak" : "bg-ed-accent-weak/50",
+            // Above the sticky ruler (z-30) and track headers (z-20): it comes after the scroller, so it paints over them.
+            "z-30",
             "transition-opacity duration-120 motion-reduce:transition-none",
             armed || over ? "opacity-100" : "opacity-0",
           )}

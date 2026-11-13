@@ -426,6 +426,8 @@ it("lights up for what it would take: a library item, or files once uploads are 
     expect(wrapper.dataset.drop, JSON.stringify({ canEdit, setUp, incoming })).toBe(expected);
     const glow = wrapper.lastElementChild!;
     expect(glow.className).toContain("pointer-events-none absolute inset-0 rounded-[4px] outline-2 -outline-offset-2 outline-ed-accent bg-ed-accent-weak/50");
+    // Above the sticky ruler (z-30) and the track headers (z-20), so the outline shows on all four sides.
+    expect(glow.classList.contains("z-30")).toBe(true);
     expect(glow.classList.contains(expected === "armed" ? "opacity-100" : "opacity-0")).toBe(true);
     view.unmount();
   }
