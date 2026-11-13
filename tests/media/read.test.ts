@@ -5,7 +5,7 @@ import { LIMITS } from "@/lib/limits";
 import { createMediaApi, type MediaApi, type MediaFailure } from "@/lib/media/api";
 import { pickEvictions } from "@/lib/media/cache-plan";
 import { createMediaFiles, createMemoryStore, type FileStore } from "@/lib/media/media-files";
-import { PLACEHOLDER_LABELS, playbackFileFor } from "@/lib/media/playback";
+import { PLACEHOLDER_LABELS, playbackFileFor, posterFileFor } from "@/lib/media/playback";
 import { TOKEN_MARGIN_MS, createReadTokens, driveFileUrl, readDriveFile, type ReadTokens } from "@/lib/media/read-tokens";
 import type { AssetView } from "@/lib/media/types";
 import { makeFakeDrive } from "../helpers/fake-drive";
@@ -375,6 +375,16 @@ describe("which file plays", () => {
     expect(playbackFileFor({ ...video, previewStatus: "pending" })).toEqual({ fileId: null, why: "preparing" });
     expect(playbackFileFor({ ...video, previewStatus: "failed" })).toEqual({ fileId: null, why: "no-preview" });
     expect(playbackFileFor({ ...video, previewStatus: "failed", sizeBytes: 1000 })).toEqual({ fileId: "o1", from: "original" });
+  });
+
+  it("posterFileFor", () => {
+    const image = { ...video, kind: "image", previewStatus: "none", previewFileId: null, posterFileId: "post-a" } as AssetView;
+    expect(posterFileFor(image)).toBe("post-a");
+    expect(posterFileFor({ ...video, posterFileId: "post-v" })).toBe("post-v");
+    expect(posterFileFor({ ...image, kind: "audio" })).toBeNull();
+    expect(posterFileFor(undefined)).toBeNull();
+    expect(posterFileFor({ ...image, removed: true })).toBeNull();
+    expect(posterFileFor({ ...image, posterFileId: null })).toBeNull();
   });
 
   it("has a label for every placeholder", () => {

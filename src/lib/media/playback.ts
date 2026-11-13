@@ -18,6 +18,13 @@ export function playbackFileFor(asset: AssetView | undefined): PlaybackFile {
   return asset.sizeBytes <= LIMITS.mediaDirectPlayBytes ? original : { fileId: null, why: "no-preview" };
 }
 
+// The still picture a clip on the timeline shows: null for audio, an unknown asset, a removed one (its file is in the
+// trash, so it is not read) or one whose still is not made yet.
+export function posterFileFor(asset: AssetView | undefined): string | null {
+  if (!asset || asset.removed || asset.kind === "audio") return null;
+  return asset.posterFileId;
+}
+
 // What a clip shows in place of its picture. loading and failed are about reading the file, not about the asset.
 export const PLACEHOLDER_LABELS: Record<"uploading" | "preparing" | "no-preview" | "removed" | "unknown" | "loading" | "failed", string> = {
   uploading: "Uploading",

@@ -3,12 +3,15 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { LANE_GUTTER } from "@/components/editor/timeline/playhead";
 import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
+import { ClipView } from "@/components/editor/timeline/clip-view";
 import { Timeline } from "@/components/editor/timeline/timeline";
 import { HEADER_WIDTH, MAX_CONTENT_PX, formatTimecode } from "@/lib/editor/geometry";
+import type { MediaFiles } from "@/lib/media/media-files";
+import type { AssetView } from "@/lib/media/types";
 import { createEmptyDoc } from "@/lib/timeline";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
-import { makeStore, sampleDoc, video } from "../editor/fixtures";
+import { makeStore, sampleDoc, text, video } from "../editor/fixtures";
 
 // happy-dom does no layout: every element is 1400 px wide, so the lanes measure 1400 − HEADER_WIDTH px. The scroller's
 // left edge is at 0 on screen, so the ruler's lane starts at HEADER_WIDTH − scrollLeft.
@@ -211,6 +214,181 @@ it("a media clip carries its asset's name", () => {
   act(() => bare.store.getState().setZoom(2));
   expect(bare.clip("c1").getAttribute("aria-label")).toBe(`Video clip, ${range}`);
   expect(within(bare.clip("c1")).getByText("Video")).toBeTruthy();
+});
+
+// Media whose library holds these assets and whose files give the still "post-a" (and nothing else), with
+// addresses made and revoked by spies.
+function stillMedia(assets: AssetView[] = [assetView()]) {
+  const get = vi.fn<MediaFiles["get"]>((fileId) => (fileId === "post-a" ? Promise.resolve({ ok: true, blob: new Blob(["jpeg"]) }) : new Promise(() => {})));
+  const media: MediaServices = { ...pretendMediaServices(assets), files: { get, put: async () => {} } };
+  const made = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:post-a");
+  const revoked = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  return { media, get, made, revoked };
+}
+const flush = () => act(async () => {});
+
+it("a wide video clip shows its asset's still before its name", async () => {
+  const { media, get, made, revoked } = stillMedia();
+  const { st, clip, unmount } = setup(makeStore(), media);
+  act(() => st().setZoom(4));
+  // The box is there before the picture, so the name never moves.
+  expect(clip("c1").firstElementChild!.hasAttribute("data-clip-still")).toBe(true);
+  expect(clip("c1").querySelector("img")).toBeNull();
+  await flush();
+  for (const id of ["c1", "c2"]) {
+    expect(clip(id).style.width).toBe("120px");
+    const box = clip(id).firstElementChild as HTMLElement;
+    expect(box.hasAttribute("data-clip-still")).toBe(true);
+    expect(box.getAttribute("aria-hidden")).toBe("true");
+    expect(box.className).toContain("bg-ed-raised");
+    expect(box.className).not.toContain("bg-ed-clip-");
+    const img = box.querySelector('img[src="blob:post-a"]')!;
+    expect(img.getAttribute("alt")).toBe("");
+    expect(img.getAttribute("draggable")).toBe("false");
+    expect(img.getAttribute("decoding")).toBe("async");
+    expect(img.className).toContain("pointer-events-none");
+    expect(box.nextElementSibling!.textContent).toBe("intake");
+    expect(clip(id).getAttribute("aria-label")).toMatch(/^Video clip "intake", /);
+  }
+  expect(get).toHaveBeenCalledTimes(1);
+  expect(get).toHaveBeenCalledWith("post-a");
+  expect(made).toHaveBeenCalledTimes(1);
+  expect(revoked).not.toHaveBeenCalled();
+  unmount();
+  expect(revoked).toHaveBeenCalledTimes(1);
+  expect(revoked).toHaveBeenCalledWith("blob:post-a");
+});
+
+it("a narrow clip drops the still and keeps its name", async () => {
+  const { media, get, revoked } = stillMedia();
+  const { st, clip, container } = setup(makeStore(), media);
+  act(() => st().setZoom(2)); // 60 px
+  await flush();
+  expect(container.querySelector("[data-clip-still]")).toBeNull();
+  expect(within(clip("c1")).getByText("intake")).toBeTruthy();
+  expect(get).not.toHaveBeenCalled(); // a still is read only where it is shown
+  act(() => st().setZoom(3.9)); // 117 px: still too narrow
+  await flush();
+  expect(container.querySelector("[data-clip-still]")).toBeNull();
+  act(() => st().setZoom(4));
+  await flush();
+  expect(clip("c1").querySelector("img")).not.toBeNull();
+  act(() => st().setZoom(2)); // narrowed again: the still is let go
+  expect(container.querySelector("[data-clip-still]")).toBeNull();
+  expect(revoked).toHaveBeenCalledWith("blob:post-a");
+});
+
+it("a clip whose still is not made yet, or whose asset is unknown, keeps the empty box", async () => {
+  const { media, get } = stillMedia([assetView({ posterFileId: null })]);
+  const { st, clip } = setup(makeStore(), media);
+  act(() => st().setZoom(4));
+  await flush();
+  expect(clip("c1").firstElementChild!.hasAttribute("data-clip-still")).toBe(true);
+  expect(clip("c1").firstElementChild!.childElementCount).toBe(0);
+  expect(get).not.toHaveBeenCalled();
+  // The still arrives: the clip reads it.
+  act(() => media.library.getState().put(assetView()));
+  await flush();
+  expect(clip("c1").querySelector('img[src="blob:post-a"]')).not.toBeNull();
+  // Pointed at an asset the library does not know.
+  act(() => void st().edit([{ op: "update_clip", clipId: "c1", patch: { assetId: "zz" } }], "swap"));
+  expect(clip("c1").firstElementChild!.hasAttribute("data-clip-still")).toBe(true);
+  expect(clip("c1").firstElementChild!.childElementCount).toBe(0);
+  expect(within(clip("c1")).getByText("Video")).toBeTruthy();
+});
+
+it("a removed asset's clip shows the missing-media mark and reads nothing", async () => {
+  const { media, get } = stillMedia([assetView({ removed: true })]);
+  const { st, clip } = setup(makeStore(), media);
+  act(() => st().setZoom(4));
+  await flush();
+  const box = clip("c1").querySelector("[data-clip-still]")!;
+  const mark = box.querySelector("svg")!;
+  expect(mark.getAttribute("class")).toContain("text-ed-muted");
+  expect(mark.getAttribute("width")).toBe("14");
+  expect(box.querySelector("img")).toBeNull();
+  expect(get).not.toHaveBeenCalled();
+});
+
+it("a text clip shows a sample in its own font, weight and color", () => {
+  const { st, clip } = setup();
+  act(() => st().setZoom(4));
+  const sample = clip("x1").firstElementChild as HTMLElement;
+  expect(sample.hasAttribute("data-clip-sample")).toBe(true);
+  expect(sample.getAttribute("aria-hidden")).toBe("true");
+  expect(sample.textContent).toBe("Aa");
+  expect(sample.style.fontFamily).toBe("var(--font-geist-sans)");
+  expect(sample.style.fontWeight).toBe("700");
+  expect(sample.style.color).toBe("#ffffff");
+  expect(sample.className).toContain("bg-ed-bg");
+  expect(sample.className).toContain("text-xs");
+  expect(sample.className).not.toContain("bg-ed-clip-");
+  expect(sample.nextElementSibling!.textContent).toBe("hi");
+  expect(clip("x1").getAttribute("aria-label")).toMatch(/^Text clip "hi", /);
+  act(() => st().setZoom(1.9)); // x1 is 114 px wide: the sample goes, the name stays
+  expect(clip("x1").querySelector("[data-clip-sample]")).toBeNull();
+  expect(within(clip("x1")).getByText("hi")).toBeTruthy();
+});
+
+it("a color change redraws the sample", () => {
+  const { st, clip } = setup();
+  act(() => st().setZoom(4));
+  act(() => void st().edit([{ op: "update_clip", clipId: "x1", patch: { style: { color: "#000000" } } }], "color"));
+  const sample = clip("x1").querySelector<HTMLElement>("[data-clip-sample]")!;
+  expect(sample.style.color).toBe("#000000");
+  expect(sample.className).toContain("bg-ed-text");
+  expect(sample.className).not.toContain("bg-ed-bg");
+});
+
+it("a font or weight change redraws the sample", () => {
+  const { st, clip } = setup();
+  act(() => st().setZoom(4));
+  const sample = () => clip("x1").querySelector<HTMLElement>("[data-clip-sample]")!;
+  act(() => void st().edit([{ op: "update_clip", clipId: "x1", patch: { style: { fontFamily: "Geist Mono" } } }], "font"));
+  expect(sample().style.fontFamily).toBe("var(--font-geist-mono)");
+  act(() => void st().edit([{ op: "update_clip", clipId: "x1", patch: { style: { fontWeight: 500 } } }], "weight"));
+  expect(sample().style.fontWeight).toBe("500");
+});
+
+it("audio clips show no still", async () => {
+  const doc = sampleDoc();
+  doc.tracks[3].clips = [video("s1", 0, 30, { type: "audio" })];
+  const { media, get } = stillMedia();
+  const { st, clip } = setup(makeStore({ doc }), media);
+  act(() => st().setZoom(4));
+  await flush();
+  expect(clip("s1").querySelector("[data-clip-still], [data-clip-sample]")).toBeNull();
+  expect(clip("s1").firstElementChild!.textContent).toBe("intake");
+  expect(get).toHaveBeenCalledTimes(1); // c1 and c2's still, not the audio clip's
+});
+
+it("a clip told to show no still shows none, and a caption row's clips are told so", async () => {
+  const { media, get } = stillMedia();
+  const store = makeStore();
+  const view = (still: boolean) => (
+    <EditorProvider store={store}>
+      <MediaProvider services={media}>
+        <ClipView clip={video("c9", 0, 30)} zoom={4} fps={30} selected={false} hidden={false} locked={false} still={still} />
+      </MediaProvider>
+    </EditorProvider>
+  );
+  const { container, rerender, unmount } = render(view(true));
+  await flush();
+  expect(container.querySelector('[data-clip-still] img[src="blob:post-a"]')).not.toBeNull();
+  rerender(view(false));
+  expect(container.querySelector("[data-clip-still]")).toBeNull();
+  expect(within(container).getByText("intake")).toBeTruthy();
+  unmount();
+
+  const doc = sampleDoc();
+  doc.tracks[2].clips = [video("k1", 0, 30), text("k2", 30, 30)];
+  const timeline = setup(makeStore({ doc }), media);
+  act(() => timeline.st().setZoom(4));
+  await flush();
+  expect(timeline.clip("c1").querySelector("[data-clip-still]")).not.toBeNull();
+  expect(timeline.clip("k1").querySelector("[data-clip-still]")).toBeNull();
+  expect(timeline.clip("k2").querySelector("[data-clip-sample]")).toBeNull();
+  expect(get).toHaveBeenCalledTimes(2); // once for the lone clip, once for the timeline
 });
 
 it("an empty timeline says where clips come from, and only an editor is told to add them", () => {

@@ -103,6 +103,7 @@ export const TrackRow = memo(function TrackRow(props: TrackRowProps) {
             selected={selectedIds.includes(clip.id)}
             hidden={track.hidden}
             locked={track.locked}
+            still={track.kind !== "caption"}
           />
         ))}
         {track.kind === "caption" && track.clips.length === 0 && (
