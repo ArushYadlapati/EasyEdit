@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 import { StrictMode } from "react";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorShell } from "@/components/editor/editor-shell";
 import { createMediaServices, type MediaServices } from "@/components/editor/media/media-context";
 import { formatTimecode } from "@/lib/editor/geometry";
-import { DEFAULT_KEYMAP, KEYMAP_KEY, formatKeymap, setOff } from "@/lib/editor/keymap";
+import { DEFAULT_KEYMAP, KEYMAP_KEY, formatKeymap, setKeys, setOff } from "@/lib/editor/keymap";
 import { DEFAULT_LAYOUT } from "@/lib/editor/layout";
 import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
 import type { EditorInit } from "@/lib/editor/types";
@@ -454,4 +455,14 @@ it("under strict mode the keymap and a newer cookie are taken once, and nothing 
   expect(used.some((s) => s.units === "in" && s.boardZoom === 50 && s.keymap.off.includes("split"))).toBe(true);
   expect(setItem).not.toHaveBeenCalled();
   expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:0.sn:1.z:50.st:30.tx:30");
+});
+
+it("a keymap saved in this browser shows once the page has loaded", () => {
+  stubServer();
+  const km = setKeys(DEFAULT_KEYMAP, "split", "Mod+Shift+S");
+  localStorage.setItem(KEYMAP_KEY, formatKeymap(km));
+  // The server's HTML, and so hydration, has the default hints.
+  expect(renderToString(<EditorShell initial={initial()} />)).toContain('title="Split (S)"');
+  render(<EditorShell initial={initial()} />);
+  expect(screen.getByRole("button", { name: "Split" }).getAttribute("title")).toBe("Split (Ctrl+Shift+S)");
 });

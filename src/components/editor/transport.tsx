@@ -3,12 +3,11 @@
 import { Pause, Play, Scan, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 import { useMemo } from "react";
 import { IconButton } from "@/components/ui/icon-button";
-import { shortcutFor } from "@/lib/editor/shortcuts";
 import { viewDoc } from "@/lib/editor/store";
 import { FORMAT_PRESETS, docDuration } from "@/lib/timeline";
 import { useEditor } from "./context";
 import { Timecode } from "./timecode";
-import { useIsMac } from "./use-shortcuts";
+import { useShortcutLabel } from "./use-shortcuts";
 
 // "2×", or "−2×" when playing backward.
 const rateLabel = (rate: number) => (rate < 0 ? `−${-rate}×` : `${rate}×`);
@@ -25,16 +24,16 @@ export function Transport() {
   const pause = useEditor((s) => s.pause);
   const toggleSafeZones = useEditor((s) => s.toggleSafeZones);
   const duration = useMemo(() => docDuration(doc), [doc]);
-  const isMac = useIsMac();
-  const playKey = shortcutFor("play-pause", isMac);
+  const keyFor = useShortcutLabel();
+  const playKey = keyFor("play-pause");
 
   return (
     <div className="flex h-10 shrink-0 items-center gap-2 border-t border-ed-line bg-ed-panel px-3">
       <div className="flex items-center gap-1">
-        <IconButton label="Go to start" shortcut={shortcutFor("go-start", isMac)} onClick={() => seek(0)}>
+        <IconButton label="Go to start" shortcut={keyFor("go-start")} onClick={() => seek(0)}>
           <SkipBack />
         </IconButton>
-        <IconButton label="Back one frame" shortcut={shortcutFor("frame-back", isMac)} onClick={() => step(-1)}>
+        <IconButton label="Back one frame" shortcut={keyFor("frame-back")} onClick={() => step(-1)}>
           <StepBack />
         </IconButton>
         {playing ? (
@@ -46,10 +45,10 @@ export function Transport() {
             <Play />
           </IconButton>
         )}
-        <IconButton label="Forward one frame" shortcut={shortcutFor("frame-forward", isMac)} onClick={() => step(1)}>
+        <IconButton label="Forward one frame" shortcut={keyFor("frame-forward")} onClick={() => step(1)}>
           <StepForward />
         </IconButton>
-        <IconButton label="Go to end" shortcut={shortcutFor("go-end", isMac)} onClick={() => seek(duration)}>
+        <IconButton label="Go to end" shortcut={keyFor("go-end")} onClick={() => seek(duration)}>
           <SkipForward />
         </IconButton>
       </div>

@@ -6,6 +6,7 @@ import { MediaProvider } from "@/components/editor/media/media-context";
 import { TopBar } from "@/components/editor/top-bar";
 import type { ProjectApi } from "@/lib/editor/api";
 import { createClipboard } from "@/lib/editor/clipboard";
+import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
 import type { SyncStatus } from "@/lib/editor/types";
 import { makeStore, text } from "../editor/fixtures";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "../helpers/dom";
@@ -191,11 +192,15 @@ it("a deleted project shows the name as a heading with no button", () => {
 });
 
 // A top bar with its own clipboard, so a test can copy into it.
-function showMenus(over: Parameters<typeof makeStore>[0] = {}, props: { onResetLayout?(): void; onShowShortcuts?(): void } = {}) {
+function showMenus(
+  over: Parameters<typeof makeStore>[0] = {},
+  props: { onResetLayout?(): void; onShowShortcuts?(): void } = {},
+  settings?: SettingsStore,
+) {
   const store = makeStore(over);
   const clipboard = createClipboard();
   render(
-    <EditorProvider store={store} clipboard={clipboard}>
+    <EditorProvider store={store} clipboard={clipboard} settings={settings}>
       <TopBar onShowShortcuts={props.onShowShortcuts ?? (() => {})} onResetLayout={props.onResetLayout} />
     </EditorProvider>,
   );
@@ -227,6 +232,24 @@ it("the Edit menu shows each item's key", () => {
   // Undo changes the project, so it is marked; Copy does not.
   expect(item("Undo").hasAttribute("data-edit-control")).toBe(true);
   expect(item("Copy").hasAttribute("data-edit-control")).toBe(false);
+});
+
+it("Edit menu hints follow the custom key", () => {
+  const settings = createSettingsStore({ prefs: DEFAULT_PREFS, keymap: { on: true, keys: { split: ["Mod+Shift+S"] }, off: [] } });
+  const { open, item } = showMenus({}, {}, settings);
+  const hint = (name: string) => item(name).querySelector("[data-shortcut]")?.textContent;
+  open("Edit");
+  expect(hint("Split")).toBe("Ctrl+Shift+S");
+  expect(hint("Undo")).toBe("Ctrl+Z");
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  // The keys are read as the menu opens: an item that is off, or every item with all off, shows none.
+  act(() => settings.getState().setKeymap({ on: true, keys: {}, off: ["undo"] }));
+  open("Edit");
+  expect([hint("Split"), hint("Undo")]).toEqual(["S", undefined]);
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  act(() => settings.getState().setKeymap({ on: false, keys: {}, off: [] }));
+  open("View");
+  expect(hint("Zoom in on the timeline")).toBeUndefined();
 });
 
 it("Edit → Paste is greyed until something is copied", () => {

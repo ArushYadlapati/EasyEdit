@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
 import { createClipboard } from "@/lib/editor/clipboard";
+import { DEFAULT_KEYMAP, setKeys, type Keymap } from "@/lib/editor/keymap";
+import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
 import { shortcutFor, shouldIgnoreKey } from "@/lib/editor/shortcuts";
 import { makeStore } from "../editor/fixtures";
 import { act, fireEvent, render, screen } from "../helpers/dom";
@@ -324,4 +326,87 @@ it("keys go to an open menu, not to the editor", () => {
   press(item, "ArrowRight");
   expect(screen.getByRole("menu", { name: "Track options" })).toBeTruthy();
   expect([st().queue, st().playhead, st().selection.clipIds]).toEqual([[], 0, ["x1"]]);
+});
+
+const CUSTOM_SPLIT: Keymap = { on: true, keys: { split: ["Mod+Shift+S"] }, off: [] };
+
+// The editor with this browser's keys, the playhead at 45 on c2 and nothing selected.
+function showWithKeys(keymap: Keymap) {
+  const store = makeStore();
+  const settings = createSettingsStore({ prefs: DEFAULT_PREFS, keymap });
+  store.getState().seek(45);
+  render(
+    <EditorProvider store={store} settings={settings}>
+      <EditorScreen />
+    </EditorProvider>,
+  );
+  return { settings, st: () => store.getState() };
+}
+
+const titleOf = (name: string) => screen.getByRole("button", { name }).getAttribute("title");
+
+it("a custom key runs its command and the old key no longer does", () => {
+  const { st, settings } = showWithKeys(CUSTOM_SPLIT);
+  expect(press(document.body, "s")).toBe(true);
+  expect(st().queue).toEqual([]);
+  expect(press(document.body, "S", { ctrlKey: true, shiftKey: true })).toBe(false);
+  expect(st().queue.map((e) => e.label)).toEqual(["split"]);
+  // The keymap is read when the key goes down, so a change in Settings takes effect at once.
+  act(() => settings.getState().setKeymap(DEFAULT_KEYMAP));
+  act(() => st().seek(15));
+  expect(press(document.body, "s")).toBe(false);
+  expect(st().queue.map((e) => e.label)).toEqual(["split", "split"]);
+});
+
+it("a shortcut turned off does nothing and loses its hint", () => {
+  const { st } = showWithKeys({ on: true, keys: {}, off: ["split"] });
+  expect(press(document.body, "s")).toBe(true);
+  expect([st().queue, st().notice]).toEqual([[], null]);
+  expect(titleOf("Split")).toBe("Split");
+  expect(titleOf("Snap")).toBe("Snap (N)");
+});
+
+it("with all shortcuts off the browser gets every key", () => {
+  const { st } = showWithKeys({ ...CUSTOM_SPLIT, on: false });
+  // The listener returns before anything else, so it does not even ask the window's width.
+  const matchMedia = vi.spyOn(window, "matchMedia");
+  expect(press(document.body, " ")).toBe(true);
+  expect(st().playing).toBe(false);
+  expect(press(document.body, "S", { ctrlKey: true, shiftKey: true })).toBe(true);
+  expect(st().queue).toEqual([]);
+  act(() => st().select(["x1"]));
+  expect(press(document.body, "Escape")).toBe(true);
+  expect(st().selection.clipIds).toEqual(["x1"]);
+  expect(matchMedia).not.toHaveBeenCalled();
+  // Hints drop their keys too.
+  const hinted = ["Undo", "Redo", "Keyboard shortcuts", "Split", "Delete", "Ripple delete", "Snap", "Zoom in", "Zoom out", "Fit"];
+  const transport = ["Go to start", "Back one frame", "Play", "Forward one frame", "Go to end"];
+  for (const name of [...hinted, ...transport]) expect(titleOf(name)).toBe(name);
+});
+
+it("on a Mac a custom key reads as the Mac writes it, and Option keys are read from their place", () => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  const { st, settings } = showWithKeys(CUSTOM_SPLIT);
+  expect(titleOf("Split")).toBe("Split (⌘⇧S)");
+  expect(press(document.body, "S", { metaKey: true, shiftKey: true })).toBe(false);
+  expect(st().queue.map((e) => e.label)).toEqual(["split"]);
+  // Option+S types "ß" on a Mac.
+  act(() => settings.getState().setKeymap(setKeys(DEFAULT_KEYMAP, "split", "Alt+S")));
+  act(() => st().seek(15));
+  expect(titleOf("Split")).toBe("Split (⌥S)");
+  expect(press(document.body, "ß", { altKey: true, code: "KeyS" })).toBe(false);
+  expect(st().queue.map((e) => e.label)).toEqual(["split", "split"]);
+});
+
+it("tooltips follow the custom key", () => {
+  const { settings } = showWithKeys(CUSTOM_SPLIT);
+  expect(titleOf("Split")).toBe("Split (Ctrl+Shift+S)");
+  act(() => settings.getState().setKeymap(setKeys(DEFAULT_KEYMAP, "play-pause", "P")));
+  expect([titleOf("Split"), titleOf("Play")]).toEqual(["Split (S)", "Play (P)"]);
+  act(() => settings.getState().setKeymap(setKeys(DEFAULT_KEYMAP, "undo", "U")));
+  expect(titleOf("Undo")).toBe("Undo (U)");
+  act(() => settings.getState().setKeymap(setKeys(DEFAULT_KEYMAP, "go-start", "Mod+Home")));
+  expect(titleOf("Go to start")).toBe("Go to start (Ctrl+Home)");
+  act(() => settings.getState().setKeymap(DEFAULT_KEYMAP));
+  expect(titleOf("Split")).toBe("Split (S)");
 });

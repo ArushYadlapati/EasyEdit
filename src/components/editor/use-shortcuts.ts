@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { runCommand } from "@/lib/editor/run-command";
-import { SHORTCUTS, isPressable, matchShortcut, shouldIgnoreKey, type CommandId } from "@/lib/editor/shortcuts";
-import { useClipboard, useEditorStore } from "./context";
+import { keyHint, matchKeys } from "@/lib/editor/keymap";
+import { SHORTCUTS, isPressable, shouldIgnoreKey, type CommandId } from "@/lib/editor/shortcuts";
+import { useClipboard, useEditorStore, useSettings, useSettingsStore } from "./context";
 
 const isMacPlatform = () => navigator.platform.startsWith("Mac");
 const noChanges = () => () => {};
@@ -18,6 +19,15 @@ const REPEATING = new Set(SHORTCUTS.filter((s) => s.repeats).map((s) => s.comman
 // the browser corrects it after hydration.
 export function useIsMac(): boolean {
   return useSyncExternalStore(noChanges, isMacPlatform, () => false);
+}
+
+// A command's key for a tooltip or a menu, from the keys chosen in this browser: "" when the command
+// has no key, is switched off, or every shortcut is. The keymap loads after mount, so the server's
+// HTML and hydration show the table's keys.
+export function useShortcutLabel(): (command: CommandId) => string {
+  const isMac = useIsMac();
+  const keymap = useSettings((s) => s.keymap);
+  return useCallback((command: CommandId) => keyHint(command, isMac, keymap), [isMac, keymap]);
 }
 
 // Focus that arrives this soon after a pointer went down came from that click (or from what the
@@ -43,9 +53,12 @@ export function useCommandRunner(openShortcuts: () => void): (command: CommandId
 // while the window is too narrow for the editor, and while a dialog or a menu is open. Space plays
 // or pauses even on a button, unless the button was reached with the keyboard. Copy and cut
 // are left to the browser when no clip is selected or text is. A held key runs its command again
-// only where the table says it repeats. Pass a stable openShortcuts: a new one adds the listener again.
+// only where the table says it repeats. The keys are this browser's keymap, read as each key goes
+// down; with every shortcut off the browser gets every key. Pass a stable openShortcuts: a new one
+// adds the listener again.
 export function useShortcuts(openShortcuts: () => void): void {
   const store = useEditorStore();
+  const settings = useSettingsStore();
   const run = useCommandRunner(openShortcuts);
 
   useEffect(() => {
@@ -64,6 +77,8 @@ export function useShortcuts(openShortcuts: () => void): void {
       clickedControl = byPointer && event.target instanceof Element ? event.target : null;
     }
     function onKeyDown(event: KeyboardEvent) {
+      const { keymap } = settings.getState();
+      if (!keymap.on) return;
       if (event.defaultPrevented) return;
       const target = event.target instanceof Element ? event.target : null;
       // A button, link or summary focused by a click: Space is the shortcut, not a second press.
@@ -72,7 +87,7 @@ export function useShortcuts(openShortcuts: () => void): void {
       if (!clicked && shouldIgnoreKey(event, target)) return;
       if (!window.matchMedia(WIDE_ENOUGH).matches) return;
       if (document.querySelector('dialog[open], [role="menu"]')) return;
-      const command = matchShortcut(event, isMac);
+      const command = matchKeys(event, isMac, keymap);
       if (!command) return;
       if ((command === "copy" || command === "cut") && (store.getState().selection.clipIds.length === 0 || hasTextSelection())) return;
       event.preventDefault();
@@ -89,5 +104,5 @@ export function useShortcuts(openShortcuts: () => void): void {
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("focusin", onFocusIn, true);
     };
-  }, [store, run]);
+  }, [store, settings, run]);
 }

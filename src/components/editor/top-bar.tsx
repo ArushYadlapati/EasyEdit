@@ -5,14 +5,14 @@ import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { Menu } from "@/components/ui/menu";
 import { editMenu, topMenuInput, viewMenu, type MenuEntry, type TopMenuInput } from "@/lib/editor/menus";
-import { shortcutFor, type CommandId } from "@/lib/editor/shortcuts";
+import type { CommandId } from "@/lib/editor/shortcuts";
 import { useClipboard, useEditor, useEditorStore } from "./context";
 import { EditingIndicator } from "./editing-indicator";
 import { LeaveLink } from "./leave-link";
-import { toMenuItems } from "./menu-items";
+import { useToMenuItems } from "./menu-items";
 import { ProjectName } from "./project-name";
 import { SaveStatus } from "./save-status";
-import { useCommandRunner, useIsMac } from "./use-shortcuts";
+import { useCommandRunner, useShortcutLabel } from "./use-shortcuts";
 
 type TopBarProps = {
   onShowShortcuts(): void;
@@ -33,10 +33,11 @@ export function TopBar({ onShowShortcuts, onResetLayout }: TopBarProps) {
   const deleted = status === "deleted";
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
-  const isMac = useIsMac();
+  const keyFor = useShortcutLabel();
+  const toItems = useToMenuItems();
 
   const itemsOf = (menu: (input: TopMenuInput) => MenuEntry[]) => () =>
-    toMenuItems(menu(topMenuInput(store.getState(), clipboard.read() !== null)), isMac);
+    toItems(menu(topMenuInput(store.getState(), clipboard.read() !== null)));
   function pick(id: string) {
     if (id === "safe-zones") store.getState().toggleSafeZones();
     else if (id === "reset-layout") onResetLayout?.();
@@ -76,7 +77,7 @@ export function TopBar({ onShowShortcuts, onResetLayout }: TopBarProps) {
         <IconButton
           data-edit-control
           label={undoLabel ? `Undo ${undoLabel}` : "Undo"}
-          shortcut={shortcutFor("undo", isMac)}
+          shortcut={keyFor("undo")}
           disabled={!canEdit || deleted || undoLabel === undefined}
           onClick={() => undo()}
         >
@@ -85,13 +86,13 @@ export function TopBar({ onShowShortcuts, onResetLayout }: TopBarProps) {
         <IconButton
           data-edit-control
           label={redoLabel ? `Redo ${redoLabel}` : "Redo"}
-          shortcut={shortcutFor("redo", isMac)}
+          shortcut={keyFor("redo")}
           disabled={!canEdit || deleted || redoLabel === undefined}
           onClick={() => redo()}
         >
           <Redo2 />
         </IconButton>
-        <IconButton label="Keyboard shortcuts" shortcut={shortcutFor("show-shortcuts", isMac)} onClick={onShowShortcuts}>
+        <IconButton label="Keyboard shortcuts" shortcut={keyFor("show-shortcuts")} onClick={onShowShortcuts}>
           <Keyboard />
         </IconButton>
       </div>

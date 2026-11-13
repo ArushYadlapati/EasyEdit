@@ -6,12 +6,11 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { addTrack, deleteSelection, splitAtPlayhead } from "@/lib/editor/actions";
 import { ZOOM_STEP, zoomLimits } from "@/lib/editor/geometry";
-import { shortcutFor, type CommandId } from "@/lib/editor/shortcuts";
 import { LIMITS } from "@/lib/limits";
 import type { TrackKind } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
 import { Timecode } from "../timecode";
-import { useIsMac } from "../use-shortcuts";
+import { useShortcutLabel } from "../use-shortcuts";
 
 const TRACK_ITEMS: { id: TrackKind; label: string }[] = [
   { id: "video", label: "Video track" },
@@ -37,8 +36,7 @@ export function Toolbar({ duration, fps }: { duration: number; fps: number }) {
   const zoomToFit = useEditor((s) => s.zoomToFit);
   const snapping = useEditor((s) => s.snapping);
   const setSnapping = useEditor((s) => s.setSnapping);
-  const isMac = useIsMac();
-  const key = (command: CommandId) => shortcutFor(command, isMac);
+  const key = useShortcutLabel();
   const { min: minZoom, max: maxZoom } = zoomLimits(duration, fps);
 
   return (
