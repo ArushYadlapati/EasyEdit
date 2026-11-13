@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/select";
 import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
-import { removeTrack, renameTrack, toggleTrack } from "@/lib/editor/actions";
+import { removeTrack, renameTrack, resetCrop, toggleTrack } from "@/lib/editor/actions";
 import type { Sizer } from "@/lib/editor/clip-box";
 import { trackToggles } from "@/lib/editor/geometry";
 import {
@@ -22,6 +22,7 @@ import {
   WEIGHTS,
   clipFieldOps,
   clipFieldValue,
+  cropScrubRange,
   fieldContext,
   parseNumber,
   scrubBounds,
@@ -38,7 +39,7 @@ import { LIMITS } from "@/lib/limits";
 import type { LibraryStore } from "@/lib/media/library-store";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { docDuration, type Clip, type Op, type OpInput, type Track } from "@/lib/timeline";
+import { docDuration, isCropped, type Clip, type Op, type OpInput, type Track } from "@/lib/timeline";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatSelect } from "./format-select";
 import { useLibrary, useMedia } from "./media/media-context";
@@ -148,7 +149,7 @@ function Hint({ children }: { children: ReactNode }) {
 }
 
 // How a field's value is dragged: the change per CSS px, and the places it is rounded to. X, Y, Width and Height move a
-// project pixel per CSS pixel, in the chosen unit; Start and Length a frame.
+// project pixel per CSS pixel, in the chosen unit; a crop side half a percent; Start and Length a frame.
 function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; decimals: number } | null {
   switch (field) {
     case "x":
@@ -161,6 +162,11 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
     case "rotation":
     case "opacity":
       return { scrub: 1, decimals: 1 };
+    case "cropLeft":
+    case "cropTop":
+    case "cropRight":
+    case "cropBottom":
+      return { scrub: 0.5, decimals: 1 };
     case "start":
     case "duration":
       return { scrub: 1 / fps, decimals: 2 };
@@ -211,16 +217,22 @@ function NumberField(props: {
   });
 
   const drag = scrubOf(field, units, fps);
-  // Start and Length stop at the neighbouring clips, as they are when the press starts.
-  const scrubRange =
-    field === "start" || field === "duration"
-      ? () => {
-          const { doc } = store.getState();
-          const clip = findClip(doc, clipId)?.clip;
-          const lengthFrames = clip && clip.type !== "text" ? mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps) : undefined;
-          return scrubBounds(doc, clipId, field, lengthFrames);
-        }
-      : undefined;
+  // Start and Length stop at the neighbouring clips, and a crop side where its opposite leaves 5%, as they are when the
+  // press starts.
+  let scrubRange: (() => { min: number; max: number }) | undefined;
+  if (field === "start" || field === "duration") {
+    scrubRange = () => {
+      const { doc } = store.getState();
+      const clip = findClip(doc, clipId)?.clip;
+      const lengthFrames = clip && clip.type !== "text" ? mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps) : undefined;
+      return scrubBounds(doc, clipId, field, lengthFrames);
+    };
+  } else if (field === "cropLeft" || field === "cropTop" || field === "cropRight" || field === "cropBottom") {
+    scrubRange = () => {
+      const clip = findClip(store.getState().doc, clipId)?.clip;
+      return clip ? cropScrubRange(clip, field) : { min: -Infinity, max: Infinity };
+    };
+  }
 
   // NumberInput reads the box with Number(), which also takes "0x10" and "1e2"; only plain decimals count.
   function typedIsPlain(): boolean {
@@ -462,6 +474,30 @@ function PositionSection({ clipId }: { clipId: string }) {
   );
 }
 
+// The share cut from each side of the clip's whole picture or text box, each side leaving at least 5% against the
+// other. Reset crop shows the whole clip again.
+function CropSection({ clipId }: { clipId: string }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const cropped = useEditor((s) => isCropped(findClip(viewDoc(s), clipId)?.clip.transform.crop));
+  const side = { suffix: "%", min: 0, max: 95 };
+  return (
+    <Section title="Crop">
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField clipId={clipId} field="cropLeft" label="Crop left" {...side} />
+        <NumberField clipId={clipId} field="cropTop" label="Crop top" {...side} />
+        <NumberField clipId={clipId} field="cropRight" label="Crop right" {...side} />
+        <NumberField clipId={clipId} field="cropBottom" label="Crop bottom" {...side} />
+      </div>
+      <div className="flex flex-col items-start">
+        <Button data-edit-control disabled={!canEdit || !cropped} onClick={() => resetCrop(store, clipId)}>
+          Reset crop
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
 function TimingSection({ clipId }: { clipId: string }) {
   return (
     <Section title="Timing">
@@ -511,6 +547,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
         </>
       )}
       {clip.type !== "audio" && <PositionSection clipId={clip.id} />}
+      {clip.type !== "audio" && <CropSection clipId={clip.id} />}
       <TimingSection clipId={clip.id} />
     </>
   );

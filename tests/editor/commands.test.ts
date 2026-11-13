@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   addMedia, addText, addTrack, copySelection, cutSelection, deleteSelection, duplicateSelection, duplicateTrack, goToEdge, moveTrack,
-  nudgeSelection, paste, removeTrack, renameTrack, reorderTrack, selectAll, splitAtPlayhead, toggleTrack,
+  nudgeSelection, paste, removeTrack, renameTrack, reorderTrack, resetCrop, selectAll, splitAtPlayhead, toggleTrack,
 } from "@/lib/editor/actions";
 import { CLIPBOARD_KEY, copyClips, createClipboard, pasteItems } from "@/lib/editor/clipboard";
 import {
@@ -14,7 +14,7 @@ import { runCommand } from "@/lib/editor/run-command";
 import { findClip } from "@/lib/editor/store";
 import { TEXT_PRESETS } from "@/lib/editor/text-presets";
 import { LIMITS } from "@/lib/limits";
-import { applyOps, prepareOps, type Clip, type OpInput, type TimelineDoc, type Track } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, applyOps, isCropped, prepareOps, type Clip, type OpInput, type TimelineDoc, type Track } from "@/lib/timeline";
 import { assetView } from "../helpers/media-services";
 import { makeStore, noticesOf, sampleDoc, text, video } from "./fixtures";
 
@@ -622,5 +622,52 @@ describe("duplicate", () => {
     expect(st().queue).toHaveLength(1);
     st().undo();
     expect(st().doc).toEqual(sampleDoc());
+  });
+});
+
+describe("reset crop", () => {
+  const CROP = { left: 0.1, top: 0.2, right: 0, bottom: 0.05 };
+  const cropX1 = (store: ReturnType<typeof makeStore>) =>
+    store.getState().edit([{ op: "update_clip", clipId: "x1", patch: { transform: { crop: CROP } } }], "crop");
+  const cropOf = (store: ReturnType<typeof makeStore>, id = "x1") => findClip(store.getState().doc, id)!.clip.transform.crop;
+
+  it("resetCrop shows the whole clip again in one change", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    cropX1(store);
+    resetCrop(store, "x1");
+    expect(st().queue.map((e) => e.label)).toEqual(["crop", "crop"]);
+    expect(st().queue[1].ops).toMatchObject([{ op: "update_clip", clipId: "x1", patch: { transform: { crop: { left: 0, top: 0, right: 0, bottom: 0 } } } }]);
+    expect(cropOf(store)).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
+    expect(isCropped(cropOf(store))).toBe(false);
+    st().undo();
+    expect(cropOf(store)).toEqual(CROP);
+  });
+
+  it("resetCrop does nothing for an uncropped clip, a viewer, or while a gesture is live", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    const spy = vi.spyOn(st(), "edit");
+    resetCrop(store, "x1");
+    resetCrop(store, "gone");
+    expect(spy).not.toHaveBeenCalled();
+    expect(st()).toMatchObject({ queue: [], notice: null });
+    spy.mockRestore();
+
+    cropX1(store);
+    st().setGesture([{ op: "move_clip", clipId: "x2", start: 95 }]);
+    resetCrop(store, "x1");
+    st().setGesture(null);
+    expect(st().queue).toHaveLength(1);
+    expect(isCropped(cropOf(store))).toBe(true);
+
+    const doc = sampleDoc();
+    doc.tracks[1].clips[0] = text("x1", 0, 60, { transform: { ...DEFAULT_TRANSFORM, crop: CROP } });
+    const viewer = makeStore({ doc, canEdit: false });
+    const edit = vi.fn();
+    viewer.setState({ edit });
+    resetCrop(viewer, "x1");
+    expect(edit).not.toHaveBeenCalled();
+    expect(viewer.getState()).toMatchObject({ queue: [], notice: null });
   });
 });

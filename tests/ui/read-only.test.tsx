@@ -54,6 +54,7 @@ const STATES: [string, (store: EditorStore) => void, string[]][] = [
     [
       "textarea Text", "input Size", "select Weight", "input Color", "input Hex color", "button Left", "button Center", "button Right",
       "input X", "input Y", "input Width", "button Lock aspect ratio", "input Height", "input Scale", "input Rotation", "input Opacity",
+      "input Crop left", "input Crop top", "input Crop right", "input Crop bottom", "button Reset crop",
       "input Start", "input Length",
     ],
   ],

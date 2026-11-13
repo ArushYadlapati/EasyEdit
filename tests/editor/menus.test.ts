@@ -5,7 +5,7 @@ import {
 } from "@/lib/editor/menus";
 import { LIMITS } from "@/lib/limits";
 import { docDuration } from "@/lib/timeline";
-import { makeStore, sampleDoc } from "./fixtures";
+import { makeStore, sampleDoc, video } from "./fixtures";
 
 // An editor with nothing selected, nothing copied, empty stacks and room to zoom both ways.
 const BASE: TopMenuInput = {
@@ -178,14 +178,19 @@ it("clipMenu follows the selection and the playhead", () => {
   st().select(["x1"]);
   st().seek(30);
   const entries = clipMenu(st());
-  expect(entries.map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Delete"]);
-  expect(ids(entries)).toEqual(["cut", "copy", "duplicate", "split", "delete"]);
-  for (const entry of entries) expect(entry.command).toBe(entry.id);
+  expect(entries.map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Reset crop", "Delete"]);
+  expect(ids(entries)).toEqual(["cut", "copy", "duplicate", "split", "reset-crop", "delete"]);
+  for (const entry of entries.filter((e) => e.id !== "reset-crop")) expect(entry.command).toBe(entry.id);
   expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["duplicate", "split", "delete"]);
   expect(entries.filter((e) => e.danger).map((e) => e.id)).toEqual(["delete"]);
   // edit follows the shortcut table: Copy changes nothing.
-  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["cut", "duplicate", "split", "delete"]);
+  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["cut", "duplicate", "split", "reset-crop", "delete"]);
+  // x1 is not cropped.
   expect(enabled(entries)).toEqual(["cut", "copy", "duplicate", "split", "delete"]);
+  // Two clips keep the original five.
+  st().select(["c1", "x1"]);
+  expect(clipMenu(st()).map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Delete"]);
+  st().select(["x1"]);
 
   st().seek(70);
   expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "delete"]);
@@ -199,6 +204,44 @@ it("clipMenu follows the selection and the playhead", () => {
   expect(byId(clipMenu(st()), "delete").disabled).toBe(true);
   st().select(["c1"]);
   expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "delete"]);
+});
+
+it("the clip menu offers Reset crop for one video, image or text", () => {
+  const store = makeStore();
+  const st = () => store.getState();
+  const crop = (clipId: string) =>
+    st().edit([{ op: "update_clip", clipId, patch: { transform: { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } } } }], "crop");
+  const resetCrop = () => clipMenu(st()).find((e) => e.id === "reset-crop");
+  for (const id of ["c1", "x1"]) {
+    st().select([id]);
+    const labels = clipMenu(st()).map((e) => e.label);
+    expect(labels.indexOf("Reset crop"), id).toBe(labels.indexOf("Split at the playhead") + 1);
+    expect(resetCrop(), id).toMatchObject({ label: "Reset crop", edit: true, disabled: true });
+    expect(resetCrop()!.command).toBeUndefined();
+    expect(resetCrop()!.separatorBefore).toBeUndefined();
+  }
+  // An image too, but not audio.
+  const doc = sampleDoc();
+  doc.tracks[0].clips[0] = video("c1", 0, 30, { type: "image" });
+  doc.tracks[3].clips = [video("au", 0, 30, { type: "audio" })];
+  const other = makeStore({ doc });
+  other.getState().select(["c1"]);
+  expect(ids(clipMenu(other.getState()))).toContain("reset-crop");
+  other.getState().select(["au"]);
+  expect(ids(clipMenu(other.getState()))).not.toContain("reset-crop");
+  // Two clips: none.
+  st().select(["c1", "x1"]);
+  expect(resetCrop()).toBeUndefined();
+
+  // Cropped, it can run; on a locked track or mid-gesture it cannot.
+  crop("x1");
+  st().select(["x1"]);
+  expect(resetCrop()!.disabled).toBe(false);
+  st().setGesture([{ op: "move_clip", clipId: "x2", start: 95 }]);
+  expect(resetCrop()!.disabled).toBe(true);
+  st().setGesture(null);
+  lockTrack(store, "t1");
+  expect(resetCrop()!.disabled).toBe(true);
 });
 
 it("laneMenu on a track's row offers Duplicate track and Remove track; below the last row it does not", () => {
@@ -263,7 +306,7 @@ it("clipMenu and laneMenu grey every editing entry while a gesture is live", () 
   st().seek(30);
   st().setGesture([{ op: "move_clip", clipId: "x1", start: 5 }]);
   const clip = clipMenu(st());
-  expect(clip.filter((e) => e.edit)).toHaveLength(4);
+  expect(clip.filter((e) => e.edit)).toHaveLength(5);
   expect(enabled(clip)).toEqual(["copy"]);
   const lane = laneMenu(st(), true, "v1");
   expect(lane.filter((e) => e.edit)).toHaveLength(lane.length);

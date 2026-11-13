@@ -1,13 +1,14 @@
-import type { Clip, OpInput, TimelineDoc } from "@/lib/timeline";
-import { stretchOf } from "@/lib/timeline/presets";
-import { clipRects, type Sizer } from "./clip-box";
+import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
+import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
+import { CROP_MIN_SHOWN, clipRects, type Sizer } from "./clip-box";
 import { trimBounds } from "./media-clips";
 import type { Units } from "./settings";
 import { fromUnit, showUnit } from "./units";
 
 // The inspector shows times in seconds (snapped to whole frames on the way in), position and size in the unit
 // chosen in Settings, and scale and opacity in percent. X and Y are the centre's distance from the frame's left
-// and top edges; Width and Height are the drawn size after the crop, before rotation.
+// and top edges; Width and Height are the drawn size after the crop, before rotation. Each crop side is the share cut
+// from that side, in percent.
 
 export type ClipField =
   | "text"
@@ -22,8 +23,14 @@ export type ClipField =
   | "scale"
   | "rotation"
   | "opacity"
+  | "cropLeft"
+  | "cropTop"
+  | "cropRight"
+  | "cropBottom"
   | "start"
   | "duration";
+
+export type CropField = "cropLeft" | "cropTop" | "cropRight" | "cropBottom";
 
 // The label of the change, for undo and the activity list.
 export const FIELD_LABEL: Record<ClipField, string> = {
@@ -39,6 +46,10 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   scale: "size change",
   rotation: "position change",
   opacity: "position change",
+  cropLeft: "crop",
+  cropTop: "crop",
+  cropRight: "crop",
+  cropBottom: "crop",
   start: "timing change",
   duration: "timing change",
 };
@@ -97,6 +108,25 @@ export function fieldContext(doc: TimelineDoc, clip: Clip, prefs: FieldPrefs = P
 
 const round = (n: number, places: number) => Number(n.toFixed(places));
 
+// Each crop field's side, and the side across from it.
+const CROP_SIDES: Record<CropField, { side: keyof Crop; opposite: keyof Crop }> = {
+  cropLeft: { side: "left", opposite: "right" },
+  cropTop: { side: "top", opposite: "bottom" },
+  cropRight: { side: "right", opposite: "left" },
+  cropBottom: { side: "bottom", opposite: "top" },
+};
+
+// The most a side may cut, as a share: what leaves CROP_MIN_SHOWN against the opposite side. Below 0 when the
+// opposite side already leaves less, as a crop made elsewhere may.
+function cropRoom(crop: Crop, field: CropField): number {
+  return 1 - crop[CROP_SIDES[field].opposite] - CROP_MIN_SHOWN;
+}
+
+// How far a drag on a crop side may go, in percent, from the crop as it is.
+export function cropScrubRange(clip: Clip, field: CropField): { min: number; max: number } {
+  return { min: 0, max: Math.max(0, round(cropRoom(clip.transform.crop ?? NO_CROP, field) * 100, 4)) };
+}
+
 // The field's length in project pixels as drawn, or null when it has none.
 function lengthPx(clip: Clip, field: "x" | "y" | "width" | "height", ctx: FieldContext): number | null {
   const t = clip.transform;
@@ -121,6 +151,11 @@ export function clipFieldValue(clip: Clip, field: ClipField, ctx: FieldContext):
       return oneDecimal(clip.transform[field] * 100);
     case "rotation":
       return oneDecimal(clip.transform.rotation);
+    case "cropLeft":
+    case "cropTop":
+    case "cropRight":
+    case "cropBottom":
+      return oneDecimal((clip.transform.crop ?? NO_CROP)[CROP_SIDES[field].side] * 100);
     case "start":
       return (clip.start / fps).toFixed(2);
     case "duration":
@@ -219,6 +254,18 @@ export function clipFieldOps(clip: Clip, field: ClipField, raw: string, ctx: Fie
     case "opacity": {
       const n = parseNumber(raw);
       return n === null ? null : update({ transform: { opacity: clamp(round(n / 100, 4), 0, 1) } });
+    }
+    case "cropLeft":
+    case "cropTop":
+    case "cropRight":
+    case "cropBottom": {
+      const n = parseNumber(raw);
+      if (n === null) return null;
+      const crop = clip.transform.crop ?? NO_CROP;
+      const { side } = CROP_SIDES[field];
+      const value = Math.max(0, round(clamp(n / 100, 0, cropRoom(crop, field)), 4));
+      // update_clip replaces the crop whole, so all four sides go.
+      return value === crop[side] ? [] : update({ transform: { crop: { ...crop, [side]: value } } });
     }
   }
 

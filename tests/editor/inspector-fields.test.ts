@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Sizer } from "@/lib/editor/clip-box";
-import { clipFieldOps, clipFieldValue, fieldContext, FIELD_LABEL, scrubBounds, type ClipField, type FieldContext } from "@/lib/editor/inspector-fields";
+import { CROP_MIN_SHOWN, type Sizer } from "@/lib/editor/clip-box";
+import {
+  clipFieldOps, clipFieldValue, cropScrubRange, fieldContext, FIELD_LABEL, scrubBounds, type ClipField, type FieldContext,
+} from "@/lib/editor/inspector-fields";
 import { findClip } from "@/lib/editor/store";
 import { applyOps, prepareOps, type Clip, type OpInput } from "@/lib/timeline";
 import { sampleDoc, text, video } from "./fixtures";
@@ -227,5 +229,48 @@ describe("scrubBounds", () => {
     const doc = { ...sampleDoc(), fps: 60 };
     expect(scrubBounds(doc, "x2", "start")).toEqual({ min: 1, max: Infinity });
     expect(scrubBounds(doc, "gone", "start")).toEqual({ min: -Infinity, max: Infinity });
+  });
+});
+
+describe("crop numbers", () => {
+  const crop = (c: Partial<Record<"left" | "top" | "right" | "bottom", number>>) => ({ left: 0, top: 0, right: 0, bottom: 0, ...c });
+  const cropped = (c: Partial<Record<"left" | "top" | "right" | "bottom", number>>) => withTransform(clip("x1"), { crop: crop(c) });
+
+  it("a typed side crops that side and sends all four", () => {
+    expect(clipFieldOps(clip("x1"), "cropLeft", "10", BASE)).toEqual(patch({ transform: { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } } }));
+    expect(clipFieldOps(cropped({ right: 0.5 }), "cropLeft", "60", BASE)).toEqual(patch({ transform: { crop: crop({ left: 0.45, right: 0.5 }) } }));
+    expect(clipFieldOps(cropped({ left: 0.2 }), "cropLeft", "-5", BASE)).toEqual(patch({ transform: { crop: crop({ left: 0 }) } }));
+    expect(clipFieldOps(cropped({ left: 0.1 }), "cropLeft", "10", BASE)).toEqual([]);
+    expect(clipFieldOps(clip("x1"), "cropLeft", "0", BASE)).toEqual([]);
+    expect(FIELD_LABEL.cropLeft).toBe("crop");
+    expect([FIELD_LABEL.cropTop, FIELD_LABEL.cropRight, FIELD_LABEL.cropBottom]).toEqual(["crop", "crop", "crop"]);
+  });
+
+  it("each side leaves at least 5% against its opposite, kept to 4 places", () => {
+    expect(clipFieldOps(cropped({ bottom: 0.3 }), "cropTop", "90", BASE)).toEqual(patch({ transform: { crop: crop({ top: 0.65, bottom: 0.3 }) } }));
+    expect(clipFieldOps(cropped({ left: 0.25 }), "cropRight", "99", BASE)).toEqual(patch({ transform: { crop: crop({ left: 0.25, right: 0.7 }) } }));
+    expect(clipFieldOps(cropped({ top: 0.1 }), "cropBottom", "12.34567", BASE)).toEqual(patch({ transform: { crop: crop({ top: 0.1, bottom: 0.1235 }) } }));
+    // The other pair does not hold a side back.
+    expect(clipFieldOps(cropped({ top: 0.9 }), "cropLeft", "90", BASE)).toEqual(patch({ transform: { crop: crop({ left: 0.9, top: 0.9 }) } }));
+    // An opposite side past 95% leaves no room at all.
+    expect(clipFieldOps(cropped({ right: 0.97 }), "cropLeft", "10", BASE)).toEqual([]);
+    expect(clipFieldOps(clip("x1"), "cropLeft", "abc", BASE)).toBeNull();
+    expect(clipFieldOps(clip("x1"), "cropLeft", "", BASE)).toBeNull();
+  });
+
+  it("each side shows its share in percent, to one place", () => {
+    const c = cropped({ left: 0.1, top: 0.125, right: 0.3333, bottom: 0 });
+    expect(["cropLeft", "cropTop", "cropRight", "cropBottom"].map((f) => clipFieldValue(c, f as ClipField, BASE))).toEqual(["10", "12.5", "33.3", "0"]);
+    expect(clipFieldValue(clip("c1"), "cropTop", BASE)).toBe("0");
+  });
+
+  it("a dragged side stops where the opposite side leaves 5%", () => {
+    expect(cropScrubRange(cropped({ right: 0.3 }), "cropLeft")).toEqual({ min: 0, max: 65 });
+    expect(cropScrubRange(cropped({ left: 0.3 }), "cropRight")).toEqual({ min: 0, max: 65 });
+    expect(cropScrubRange(cropped({ bottom: 0.125 }), "cropTop")).toEqual({ min: 0, max: 82.5 });
+    expect(cropScrubRange(cropped({ top: 0.5 }), "cropBottom")).toEqual({ min: 0, max: 45 });
+    expect(cropScrubRange(clip("c1"), "cropLeft")).toEqual({ min: 0, max: 95 });
+    expect(cropScrubRange(cropped({ right: 0.97 }), "cropLeft")).toEqual({ min: 0, max: 0 });
+    expect(CROP_MIN_SHOWN).toBe(0.05);
   });
 });

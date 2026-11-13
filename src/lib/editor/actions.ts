@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
-import { TRACK_ACCEPTS, type OpInput, type TrackKind } from "@/lib/timeline";
+import { NO_CROP, TRACK_ACCEPTS, isCropped, type OpInput, type TrackKind } from "@/lib/timeline";
 import { copyClips, pasteItems, type ClipboardStore } from "./clipboard";
 import {
   addTrackOps,
@@ -166,6 +166,15 @@ export function duplicateSelection(store: EditorStore): void {
   }
   const result = state.edit(placement.ops, "duplicate");
   if (result.ok) state.select(placement.clipIds);
+}
+
+// Shows the whole of a cropped clip again, in one change labeled "crop". Nothing to do for an uncropped clip, or while
+// a drag or a typed value is live.
+export function resetCrop(store: EditorStore, clipId: string): void {
+  const state = store.getState();
+  const clip = findClip(state.doc, clipId)?.clip;
+  if (!state.canEdit || state.gesture !== null || !clip || !isCropped(clip.transform.crop)) return;
+  state.edit([{ op: "update_clip", clipId, patch: { transform: { crop: { ...NO_CROP } } } }], "crop");
 }
 
 // Track runners, used by the track headers, the timeline toolbar and the inspector.

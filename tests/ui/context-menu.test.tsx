@@ -7,7 +7,8 @@ import { ContextMenuProvider, menuPoint, placeAtPoint, useContextMenu, type Cont
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ROW_HEIGHT, RULER_HEIGHT } from "@/lib/editor/geometry";
 import { findClip } from "@/lib/editor/store";
-import { makeStore } from "../editor/fixtures";
+import { DEFAULT_TRANSFORM, isCropped } from "@/lib/timeline";
+import { makeStore, sampleDoc, video } from "../editor/fixtures";
 import { act, fireEvent, render, screen } from "../helpers/dom";
 import { happyDOM, rect } from "../helpers/layout";
 import { LANE_LEFT, installTimelineStubs, renderTimeline, x, y } from "../helpers/timeline-harness";
@@ -343,7 +344,7 @@ describe("the timeline's right-click menus", () => {
     const { clip } = setup();
     expect(fireEvent.contextMenu(clip("x2"), { clientX: 300, clientY: 200, button: 2 })).toBe(false);
     const menu = screen.getByRole("menu", { name: "Clip actions" });
-    expect(labels()).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Delete"]);
+    expect(labels()).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Reset crop", "Delete"]);
     expect(document.activeElement).toBe(screen.getAllByRole("menuitem")[0]);
     // Hints follow the keys.
     expect(menu.querySelector("[data-shortcut]")?.textContent).toBe("Ctrl+X");
@@ -390,6 +391,21 @@ describe("the timeline's right-click menus", () => {
     rightClick(clip("x2"), x(100), y(1));
     pick("Duplicate");
     expect(st().queue.map((e) => e.label)).toEqual(["split", "duplicate"]);
+  });
+
+  it("Reset crop from a clip's right-click menu removes its crop", () => {
+    const doc = sampleDoc();
+    doc.tracks[0].clips[1] = video("c2", 30, 30, { transform: { ...DEFAULT_TRANSFORM, crop: { left: 0.1, top: 0, right: 0.2, bottom: 0 } } });
+    const { st, clip, rightClick } = setup(makeStore({ doc }));
+    rightClick(clip("c2"), x(40), y(2));
+    expect((screen.getByRole("menuitem", { name: "Reset crop" }) as HTMLButtonElement).disabled).toBe(false);
+    pick("Reset crop");
+    expect(st().queue.map((e) => e.label)).toEqual(["crop"]);
+    expect(isCropped(findClip(st().doc, "c2")!.clip.transform.crop)).toBe(false);
+    expect(screen.queryByRole("menu")).toBeNull();
+    // Uncropped now: greyed.
+    rightClick(clip("c2"), x(40), y(2));
+    expect((screen.getByRole("menuitem", { name: "Reset crop" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("Escape closes it and puts focus back on the clip", () => {

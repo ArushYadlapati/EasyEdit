@@ -7,6 +7,7 @@ import { MESSAGES, explainOpError } from "@/lib/editor/messages";
 import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
 import { findClip, viewDoc } from "@/lib/editor/store";
 import { LIMITS } from "@/lib/limits";
+import { DEFAULT_TRANSFORM, isCropped } from "@/lib/timeline";
 import { entry, makeStore, sampleDoc, text, video } from "../editor/fixtures";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
@@ -654,5 +655,134 @@ describe("drag a value to change it", () => {
     expect(input("X").value).toBe("540");
     release("X", 20);
     expect(store.getState().queue).toEqual([]);
+  });
+});
+
+describe("crop numbers and Reset crop", () => {
+  let frames = new Map<number, FrameRequestCallback>();
+  let nextFrame = 0;
+  beforeEach(() => {
+    frames = new Map();
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      frames.set(++nextFrame, cb);
+      return nextFrame;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+  const frame = () =>
+    act(() => {
+      const due = [...frames.values()];
+      frames.clear();
+      for (const cb of due) cb(0);
+    });
+
+  function setup(clipId = "x1", canEdit = true) {
+    const store = makeStore({ canEdit });
+    store.getState().select([clipId]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
+    const reset = () => screen.getByRole("button", { name: "Reset crop" }) as HTMLButtonElement;
+    const crop = () => findClip(store.getState().doc, clipId)!.clip.transform.crop;
+    const labels = () => store.getState().queue.map((e) => e.label);
+    return { store, input, reset, crop, labels };
+  }
+
+  it("Crop left 10 crops one side in one change", () => {
+    const { store, input, reset, crop, labels } = setup();
+    expect(["Crop left", "Crop top", "Crop right", "Crop bottom"].map((l) => input(l).value)).toEqual(["0", "0", "0", "0"]);
+    expect(reset().disabled).toBe(true);
+    fireEvent.change(input("Crop left"), { target: { value: "10" } });
+    fireEvent.keyDown(input("Crop left"), { key: "Enter" });
+    expect(labels()).toEqual(["crop"]);
+    expect(store.getState().queue[0].ops).toMatchObject([
+      { op: "update_clip", clipId: "x1", patch: { transform: { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } } } },
+    ]);
+    expect(input("Crop left").value).toBe("10");
+    expect(reset().disabled).toBe(false);
+    fireEvent.click(reset());
+    expect(labels()).toEqual(["crop", "crop"]);
+    expect(isCropped(crop())).toBe(false);
+    expect(input("Crop left").value).toBe("0");
+    expect(reset().disabled).toBe(true);
+  });
+
+  it("a typed side above 95 is not previewed, and saves as 95", () => {
+    const { store, input, crop } = setup("c1");
+    fireEvent.change(input("Crop left"), { target: { value: "99" } });
+    expect(store.getState().gesture).toBeNull();
+    fireEvent.keyDown(input("Crop left"), { key: "Enter" });
+    expect(crop()).toEqual({ left: 0.95, top: 0, right: 0, bottom: 0 });
+  });
+
+  it("a typed side stops where its opposite leaves 5%", () => {
+    const { input, crop } = setup("c1");
+    fireEvent.change(input("Crop right"), { target: { value: "30" } });
+    fireEvent.blur(input("Crop right"));
+    fireEvent.change(input("Crop left"), { target: { value: "90" } });
+    fireEvent.keyDown(input("Crop left"), { key: "Enter" });
+    expect(crop()).toEqual({ left: 0.65, top: 0, right: 0.3, bottom: 0 });
+    expect(input("Crop left").value).toBe("65");
+  });
+
+  it("dragging Crop left 20 px crops 10%", () => {
+    const { store, input, crop, labels } = setup();
+    fireEvent.pointerDown(input("Crop left"), { button: 0, pointerId: 1, clientX: 100 });
+    fireEvent.pointerMove(input("Crop left"), { pointerId: 1, clientX: 120 });
+    frame();
+    expect(input("Crop left").value).toBe("10");
+    expect(findClip(viewDoc(store.getState()), "x1")!.clip.transform.crop).toEqual({ left: 0.1, top: 0, right: 0, bottom: 0 });
+    fireEvent.pointerUp(input("Crop left"), { pointerId: 1, clientX: 120 });
+    expect(crop()!.left).toBe(0.1);
+    expect(labels()).toEqual(["crop"]);
+  });
+
+  it("each side reads in percent, and a fine drag keeps one place", () => {
+    const { input, crop } = setup();
+    expect(input("Crop bottom").parentElement!.textContent).toContain("%");
+    fireEvent.pointerDown(input("Crop top"), { button: 0, pointerId: 1, clientX: 100 });
+    fireEvent.pointerMove(input("Crop top"), { pointerId: 1, clientX: 105, ctrlKey: true });
+    frame();
+    expect(input("Crop top").value).toBe("0.3");
+    fireEvent.pointerUp(input("Crop top"), { pointerId: 1, clientX: 105, ctrlKey: true });
+    expect(crop()).toEqual({ left: 0, top: 0.003, right: 0, bottom: 0 });
+  });
+
+  it("a dragged side stops where its opposite leaves 5%, read when the press starts", () => {
+    const { store, input, crop } = setup();
+    act(() => {
+      store.getState().edit([{ op: "update_clip", clipId: "x1", patch: { transform: { crop: { left: 0, top: 0, right: 0.5, bottom: 0 } } } }], "crop");
+    });
+    fireEvent.pointerDown(input("Crop left"), { button: 0, pointerId: 1, clientX: 100 });
+    fireEvent.pointerMove(input("Crop left"), { pointerId: 1, clientX: 300 });
+    frame();
+    expect(input("Crop left").value).toBe("45");
+    fireEvent.pointerUp(input("Crop left"), { pointerId: 1, clientX: 300 });
+    expect(crop()).toEqual({ left: 0.45, top: 0, right: 0.5, bottom: 0 });
+  });
+
+  it("a viewer sees the crop and cannot reset it", () => {
+    const doc = sampleDoc();
+    doc.tracks[0].clips[0] = video("c1", 0, 30, { transform: { ...DEFAULT_TRANSFORM, crop: { left: 0, top: 0.25, right: 0, bottom: 0 } } });
+    const store = makeStore({ doc, canEdit: false });
+    store.getState().select(["c1"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    expect((screen.getByLabelText("Crop top") as HTMLInputElement).value).toBe("25");
+    const reset = screen.getByRole("button", { name: "Reset crop" }) as HTMLButtonElement;
+    expect(reset.hasAttribute("data-edit-control")).toBe(true);
+    expect(reset.disabled).toBe(true);
+  });
+
+  it("an audio clip has no crop", () => {
+    const doc = sampleDoc();
+    doc.tracks[3].clips = [video("au", 0, 30, { type: "audio" })];
+    const store = makeStore({ doc });
+    store.getState().select(["au"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    expect(screen.queryByLabelText("Crop left")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reset crop" })).toBeNull();
   });
 });

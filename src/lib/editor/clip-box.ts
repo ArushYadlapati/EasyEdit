@@ -9,6 +9,9 @@ export type Sizer = {
   measure(clip: TextClip, s: string): number;
 };
 
+// The least share of a clip's width or height a crop typed or dragged by hand leaves showing.
+export const CROP_MIN_SHOWN = 0.05;
+
 // A clip's box as the preview draws it, from its centre, before scale, stretch and rotation: the whole picture or
 // text box, and the part the crop keeps. Audio has none.
 export function clipRects(doc: TimelineDoc, clip: Clip, sizer: Sizer): { full: LocalRect; kept: LocalRect } | null {

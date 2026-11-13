@@ -1,9 +1,9 @@
 import { LIMITS } from "@/lib/limits";
-import { docDuration, type TrackKind } from "@/lib/timeline";
+import { docDuration, isCropped, type TrackKind } from "@/lib/timeline";
 import { duplicateTrackOps, reorderTrackOps, splitOps } from "./commands";
 import { zoomLimits } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
-import type { EditorState } from "./store";
+import { findClip, type EditorState } from "./store";
 
 // One entry of a menu, as data. command: the shortcut-table command it runs, whose key is shown as
 // its hint. edit: it changes the project, so its control is marked as an edit control.
@@ -144,25 +144,32 @@ function editBlocked(state: EditorState): boolean {
   return !state.canEdit || state.status === "deleted" || state.gesture !== null;
 }
 
-export type ClipMenuId = "cut" | "copy" | "duplicate" | "split" | "delete";
+export type ClipMenuId = "cut" | "copy" | "duplicate" | "split" | "reset-crop" | "delete";
 
 // A clip's menu (label "Clip actions"), for the selection the right-click made. Cut and Delete are
 // greyed when a selected clip is on a locked track, Split when the playhead crosses none of the
 // selection on an unlocked track. Duplicate also works from a locked track: the copies go elsewhere.
+// Reset crop is there for one video, image or text clip, greyed when it is not cropped or is on a locked track; it is
+// no command, so the menu's opener runs it.
 export function clipMenu(state: EditorState): MenuEntry[] {
   const { doc, selection, playhead } = state;
   const selected = new Set(selection.clipIds);
   const onLocked = doc.tracks.some((t) => t.locked && t.clips.some((c) => selected.has(c.id)));
   const blocked = editBlocked(state);
-  const entry = (command: ClipMenuId, label: string, unavailable: boolean, extra: Partial<MenuEntry> = {}): MenuEntry => {
+  const entry = (command: Extract<ClipMenuId, CommandId>, label: string, unavailable: boolean, extra: Partial<MenuEntry> = {}): MenuEntry => {
     const edit = EDITS.has(command);
     return { id: command, label, command, disabled: (edit && blocked) || unavailable, ...extra, ...(edit && { edit }) };
   };
+  const single = selection.clipIds.length === 1 ? (findClip(doc, selection.clipIds[0])?.clip ?? null) : null;
+  const croppable = single !== null && single.type !== "audio";
   return [
     entry("cut", "Cut", onLocked),
     entry("copy", "Copy", false),
     entry("duplicate", "Duplicate", false, { separatorBefore: true }),
     entry("split", "Split at the playhead", splitOps(doc, playhead, selection.clipIds).length === 0, { separatorBefore: true }),
+    ...(croppable
+      ? [{ id: "reset-crop", label: "Reset crop", disabled: blocked || onLocked || !isCropped(single.transform.crop), edit: true }]
+      : []),
     entry("delete", "Delete", onLocked, { separatorBefore: true, danger: true }),
   ];
 }
