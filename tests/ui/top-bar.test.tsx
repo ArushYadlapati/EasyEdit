@@ -4,9 +4,10 @@ import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
 import { MediaProvider } from "@/components/editor/media/media-context";
 import { TopBar } from "@/components/editor/top-bar";
+import type { ProjectApi } from "@/lib/editor/api";
 import type { SyncStatus } from "@/lib/editor/types";
 import { makeStore } from "../editor/fixtures";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { act, fireEvent, render, screen, waitFor } from "../helpers/dom";
 import { pretendMediaServices } from "../helpers/media-services";
 
 afterEach(() => {
@@ -102,4 +103,88 @@ it("'Back to projects' on a deleted project leaves without asking: its edits can
   );
   expect(fireEvent.click(screen.getByRole("link", { name: "Back to projects" }))).toBe(true);
   expect(assign).not.toHaveBeenCalled();
+});
+
+// A top bar whose api answers every rename with the name it was sent.
+function showName(over: Parameters<typeof makeStore>[0] = {}) {
+  const store = makeStore(over);
+  const rename = vi.fn<ProjectApi["rename"]>(async (name) => ({ ok: true, name }));
+  const api: ProjectApi = {
+    postOps: async () => ({ ok: false, kind: "network" }),
+    getVersion: async () => ({ ok: false, kind: "network" }),
+    getOpsSince: async () => ({ ok: false, kind: "network" }),
+    getProject: async () => ({ ok: false, kind: "network" }),
+    rename,
+  };
+  render(
+    <EditorProvider store={store} api={api}>
+      <TopBar onShowShortcuts={() => {}} />
+    </EditorProvider>,
+  );
+  const open = () => {
+    fireEvent.click(screen.getByRole("button", { name: store.getState().name }));
+    return screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement;
+  };
+  return { store, rename, open };
+}
+
+it("clicking the project name opens a field with the name selected", () => {
+  const { open } = showName();
+  const button = screen.getByRole("button", { name: "Qual recap" });
+  expect(button.closest("h1")).toBe(screen.getByRole("heading", { name: "Qual recap" }));
+  expect(button.getAttribute("title")).toBe("Qual recap");
+  expect(button.hasAttribute("data-edit-control")).toBe(false);
+  const field = open();
+  expect(document.activeElement).toBe(field);
+  expect(field.selectionStart).toBe(0);
+  expect(field.selectionEnd).toBe(10);
+  expect(field.maxLength).toBe(100);
+  expect(field.hasAttribute("data-edit-control")).toBe(true);
+  // The field's box is full width, so its wrapper sets the width.
+  expect(field.parentElement?.className.split(" ")).toContain("w-72");
+  expect(screen.queryByRole("button", { name: "Qual recap" })).toBeNull();
+});
+
+it("Enter saves the new name and returns focus to it", async () => {
+  const { store, rename, open } = showName();
+  const field = open();
+  fireEvent.change(field, { target: { value: "Finals" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  expect(rename).toHaveBeenCalledTimes(1);
+  expect(rename).toHaveBeenCalledWith("Finals");
+  expect(screen.getByRole("heading").textContent).toBe("Finals");
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Finals" }));
+  await waitFor(() => expect(store.getState().name).toBe("Finals"));
+});
+
+it("Escape keeps the old name, and blur saves", async () => {
+  const { store, rename, open } = showName();
+  let field = open();
+  fireEvent.change(field, { target: { value: "Finals" } });
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(rename).not.toHaveBeenCalled();
+  expect(screen.getByRole("heading").textContent).toBe("Qual recap");
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Qual recap" }));
+
+  field = open();
+  fireEvent.change(field, { target: { value: "Finals" } });
+  fireEvent.blur(field);
+  expect(rename).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("heading").textContent).toBe("Finals");
+  // Clicking away leaves focus where the click put it.
+  expect(document.activeElement).not.toBe(screen.getByRole("button", { name: "Finals" }));
+  await waitFor(() => expect(store.getState().name).toBe("Finals"));
+});
+
+it("a viewer sees the name as a heading with no button", () => {
+  showName({ canEdit: false });
+  expect(screen.getByRole("heading", { name: "Qual recap" }).getAttribute("title")).toBe("Qual recap");
+  expect(screen.queryByRole("button", { name: "Qual recap" })).toBeNull();
+});
+
+it("a deleted project shows the name as a heading with no button", () => {
+  const { store } = showName();
+  act(() => store.getState().setStatus("deleted"));
+  expect(screen.getByRole("heading", { name: "Qual recap" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Qual recap" })).toBeNull();
 });

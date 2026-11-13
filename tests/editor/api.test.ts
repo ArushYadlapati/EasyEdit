@@ -36,8 +36,27 @@ describe("project api", () => {
     expect(fetchFn.mock.calls.map((call) => call[0])).toEqual(["/api/projects/p1/version", "/api/projects/p1/ops?since=5&limit=500", "/api/projects/p1"]);
   });
 
+  it("rename sends PATCH with the name and reads the answer", async () => {
+    const { api, fetchFn } = apiWith(() => json(200, { id: "p1", name: "Finals" }));
+    expect(await api.rename("Finals")).toEqual({ ok: true, name: "Finals" });
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe("/api/projects/p1");
+    expect(init).toMatchObject({ method: "PATCH", headers: { "content-type": "application/json" } });
+    expect(String(init!.body)).toBe('{"name":"Finals"}');
+
+    const refused = apiWith(() => json(400, { code: "INVALID", message: "Enter a name up to 100 characters." }));
+    expect(await refused.api.rename("x".repeat(101))).toEqual({
+      ok: false,
+      kind: "op",
+      code: "INVALID",
+      message: "Enter a name up to 100 characters.",
+    });
+    expect(await apiWith(() => json(403, { code: "FORBIDDEN", message: "m" })).api.rename("Finals")).toEqual({ ok: false, kind: "forbidden" });
+    expect(await apiWith(() => json(200, { id: "p1" })).api.rename("Finals")).toEqual({ ok: false, kind: "network" });
+  });
+
   it.each([
-    [400, { code: "OVERLAP", message: "m", opIndex: 0 }, { ok: false, kind: "op", code: "OVERLAP", message: "m", opIndex: 0 }],
+    [400, { code: "OVERLAP", message: "m", opIndex: 0 },{ ok: false, kind: "op", code: "OVERLAP", message: "m", opIndex: 0 }],
     [409, { code: "CONFLICT", message: "m", currentVersion: 9 }, { ok: false, kind: "conflict", currentVersion: 9 }],
     [401, { code: "UNAUTHENTICATED", message: "m" }, { ok: false, kind: "signed-out" }],
     [403, { code: "FORBIDDEN", message: "m" }, { ok: false, kind: "forbidden" }],

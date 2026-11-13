@@ -14,6 +14,7 @@ export const MESSAGES = {
   nothingToPaste: "Nothing to paste.",
   noRoom: "No room here, and the project can't take more tracks.",
   mediaNotReady: "This file isn't ready yet.",
+  renameFailed: "Couldn't rename the project. Try again.",
 } as const;
 
 const OP_ERROR_MESSAGES: Record<OpErrorCode, string> = {

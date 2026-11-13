@@ -18,6 +18,7 @@ const OFFLINE_API: ProjectApi = {
   getVersion: async () => NETWORK,
   getOpsSince: async () => NETWORK,
   getProject: async () => NETWORK,
+  rename: async () => NETWORK,
 };
 
 type EditorProviderProps = { store: EditorStore; api?: ProjectApi; clipboard?: ClipboardStore; children: ReactNode };

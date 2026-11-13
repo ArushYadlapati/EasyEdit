@@ -91,6 +91,7 @@ export type EditorState = {
   shuttle(key: "j" | "k" | "l"): void;
   step(deltaFrames: number): void; // pauses, then moves the playhead; forward stops at the end
   toggleSafeZones(): void;
+  setName(name: string): void; // only what the editor shows; renameFromEditor saves it
 };
 
 export type EditorStore = StoreApi<EditorState>;
@@ -570,6 +571,10 @@ export function createEditorStore(
 
       toggleSafeZones() {
         set({ showSafeZones: !get().showSafeZones });
+      },
+
+      setName(name) {
+        set({ name });
       },
     };
   });

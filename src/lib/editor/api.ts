@@ -16,6 +16,7 @@ export type ProjectApi = {
   getVersion(): Promise<ApiResult<{ version: number }>>;
   getOpsSince(since: number, limit?: number): Promise<ApiResult<{ version: number; entries: ActivityEntry[]; hasMore: boolean }>>;
   getProject(): Promise<ApiResult<{ doc: TimelineDoc; version: number; name: string }>>;
+  rename(name: string): Promise<ApiResult<{ name: string }>>; // not an op: no version, no undo
 };
 
 const TIMEOUT_MS = 15_000;
@@ -118,6 +119,13 @@ export function createProjectApi(projectId: string, fetchFn?: typeof fetch): Pro
         typeof b.version === "number" && isBody(b.doc) && typeof b.name === "string"
           ? { version: b.version, doc: b.doc as TimelineDoc, name: b.name }
           : null,
+      );
+    },
+    rename(name) {
+      return request(
+        base,
+        { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) },
+        (b) => (typeof b.name === "string" ? { name: b.name } : null),
       );
     },
   };

@@ -16,6 +16,7 @@ export function makeFakeServer(initial: TimelineDoc, startVersion: number) {
   let failures: Failure[] = [];
   let loseAnswer = false;
   let remoteCount = 0;
+  let name = "Qual recap";
 
   function write(ops: Op[], actor: string, actorName: string, requestId: string | null = null) {
     const result = applyOps(doc, ops);
@@ -64,7 +65,13 @@ export function makeFakeServer(initial: TimelineDoc, startVersion: number) {
       return wire({ ok: true, version: hasMore ? entries[entries.length - 1].version : version, entries, hasMore });
     },
     async getProject() {
-      return failed("project") ?? { ok: true, doc: structuredClone(doc), version, name: "Qual recap" };
+      return failed("project") ?? { ok: true, doc: structuredClone(doc), version, name };
+    },
+    async rename(next) {
+      const failure = failed("rename");
+      if (failure) return failure;
+      name = next;
+      return { ok: true, name };
     },
   };
 
@@ -72,6 +79,7 @@ export function makeFakeServer(initial: TimelineDoc, startVersion: number) {
     api, calls, log,
     doc: () => doc,
     version: () => version,
+    name: () => name,
     // A teammate's edit, sent with its own request id.
     remote(ops: OpInput[], actor = "u2", actorName = "Grace") { write(prepareOps(ops), actor, actorName, `remote-${String(++remoteCount).padStart(4, "0")}`); },
     fail(kind: Failure, times = 1) { failures = failures.concat(Array<Failure>(times).fill(kind)); },

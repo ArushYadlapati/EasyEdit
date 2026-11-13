@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { IconButton } from "@/components/ui/icon-button";
+import { InlineEdit } from "@/components/ui/inline-edit";
 import { Menu } from "@/components/ui/menu";
 import { NumberInput } from "@/components/ui/number-input";
 import { Segmented } from "@/components/ui/segmented";
@@ -183,4 +184,54 @@ it("a splitter moves 16 px a key, 64 with Shift, and to its ends with Home and E
   const nearEnd = keysOn({ value: 470 });
   expect(nearEnd.press("ArrowRight")).toEqual({ notHandled: false, value: 480 });
   nearEnd.unmount();
+});
+
+it("an inline edit opens focused with its text selected, and Enter, Escape and blur end it", () => {
+  function editWith(extra: object = {}) {
+    const onDone = vi.fn();
+    const { unmount } = render(
+      <InlineEdit defaultValue="Qual recap" label="Project name" maxLength={100} onDone={onDone} data-edit-control className="w-72" {...extra} />,
+    );
+    const input = screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement;
+    return { input, onDone, unmount };
+  }
+
+  const opened = editWith();
+  expect(document.activeElement).toBe(opened.input);
+  expect([opened.input.selectionStart, opened.input.selectionEnd]).toEqual([0, 10]);
+  expect(opened.input.maxLength).toBe(100);
+  expect(opened.input.hasAttribute("data-edit-control")).toBe(true);
+  expect(opened.input.className).toContain("w-72");
+  fireEvent.change(opened.input, { target: { value: "Finals" } });
+  expect(fireEvent.keyDown(opened.input, { key: "Enter" })).toBe(false);
+  expect(opened.onDone.mock.calls).toEqual([["Finals", true]]);
+  // The blur that follows a key does not end it a second time.
+  fireEvent.blur(opened.input);
+  expect(opened.onDone).toHaveBeenCalledTimes(1);
+  opened.unmount();
+
+  const escaped = editWith();
+  fireEvent.change(escaped.input, { target: { value: "Finals" } });
+  expect(fireEvent.keyDown(escaped.input, { key: "Escape" })).toBe(false);
+  expect(escaped.onDone.mock.calls).toEqual([[null, true]]);
+  // A key it does not handle is left to the browser.
+  expect(fireEvent.keyDown(escaped.input, { key: "a" })).toBe(true);
+  escaped.unmount();
+
+  const blurred = editWith();
+  fireEvent.change(blurred.input, { target: { value: "Finals" } });
+  fireEvent.blur(blurred.input);
+  expect(blurred.onDone.mock.calls).toEqual([["Finals", false]]);
+  blurred.unmount();
+});
+
+it("Enter while composing does not save", () => {
+  const onDone = vi.fn();
+  render(<InlineEdit defaultValue="Qual recap" label="Project name" maxLength={100} onDone={onDone} />);
+  const input = screen.getByRole("textbox", { name: "Project name" });
+  expect(fireEvent.keyDown(input, { key: "Enter", isComposing: true })).toBe(true);
+  expect(fireEvent.keyDown(input, { key: "Escape", isComposing: true })).toBe(true);
+  expect(onDone).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(onDone).toHaveBeenCalledTimes(1);
 });
