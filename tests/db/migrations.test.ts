@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { rowsOf } from "@/db";
+import { AFTER_COMING_FORWARD, BEFORE_GOING_BACK, REFILL_PROJECT_SIZES } from "@/db/refill-project-sizes";
 import { makeTestDb } from "../helpers/db";
 
 describe("migrations", () => {
@@ -10,7 +12,7 @@ describe("migrations", () => {
       sql`select table_name from information_schema.tables where table_schema='public' order by 1`,
     );
     expect(rowsOf<{ table_name: string }>(r).map((x) => x.table_name)).toEqual(
-      expect.arrayContaining(["account", "allowlist", "assets", "project_ops", "projects", "session", "user", "verification"]),
+      expect.arrayContaining(["account", "allowlist", "assets", "folders", "project_ops", "project_opens", "projects", "session", "user", "verification"]),
     );
   });
 
@@ -85,5 +87,93 @@ describe("migrations", () => {
       await db.execute(sql`insert into assets (id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, uploaded_by) values ('b1', 'image', 'Field', 'field.jpg', 'image/jpeg', 1, 1, 'u9') returning status, preview_status, has_audio`),
     );
     expect(row).toEqual({ status: "uploading", preview_status: "none", has_audio: false });
+  });
+
+  it("projects has nullable folder_id, width and height", async () => {
+    const db = await makeTestDb();
+    const r = await db.execute(sql`select column_name, data_type, is_nullable from information_schema.columns where table_name = 'projects' and column_name in ('folder_id', 'width', 'height') order by column_name`);
+    expect(rowsOf(r)).toEqual([
+      { column_name: "folder_id", data_type: "text", is_nullable: "YES" },
+      { column_name: "height", data_type: "integer", is_nullable: "YES" },
+      { column_name: "width", data_type: "integer", is_nullable: "YES" },
+    ]);
+  });
+
+  it("folder names are unique regardless of case", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into folders (id, name, created_by) values ('f1', 'Season 2026', 'u')`);
+    await expect(db.execute(sql`insert into folders (id, name, created_by) values ('f2', 'season 2026', 'u')`)).rejects.toThrow();
+    await db.execute(sql`insert into folders (id, name, created_by) values ('f3', 'Sponsors', 'u')`);
+    expect(rowsOf(await db.execute(sql`select id from folders order by id`))).toEqual([{ id: "f1" }, { id: "f3" }]);
+  });
+
+  it("deleting a folder keeps its projects, in no folder", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into folders (id, name, created_by) values ('f1', 'Season 2026', 'u')`);
+    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by, folder_id) values ('p1', 'P', 'short_9x16', '{}', 'u', 'u', 'f1')`);
+    await db.execute(sql`delete from folders where id = 'f1'`);
+    expect(rowsOf(await db.execute(sql`select id, folder_id from projects`))).toEqual([{ id: "p1", folder_id: null }]);
+  });
+
+  it("project_opens is one row per person and project, and goes with either", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Sam', 'sam@example.com')`);
+    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u1', 'u1'), ('p2', 'P', 'short_9x16', '{}', 'u1', 'u1')`);
+    const open = (projectId: string) => db.execute(sql`insert into project_opens (user_id, project_id) values ('u1', ${projectId})`);
+    await open("p1");
+    await open("p2");
+    await expect(open("p1")).rejects.toThrow();
+    const opens = async () => rowsOf(await db.execute(sql`select user_id, project_id from project_opens order by project_id`));
+    await db.execute(sql`delete from projects where id = 'p1'`);
+    expect(await opens()).toEqual([{ user_id: "u1", project_id: "p2" }]);
+    await db.execute(sql`delete from "user" where id = 'u1'`);
+    expect(await opens()).toEqual([]);
+  });
+
+  it("the migration's last statement fills width and height from each doc", async () => {
+    const file = readFileSync("drizzle/0007_project_folders.sql", "utf8");
+    expect(file).not.toMatch(/\bDROP\b/);
+    expect(file).not.toMatch(/"(width|height)" integer NOT NULL/);
+    const last = file.split("--> statement-breakpoint").at(-1)!.trim();
+    expect(last.startsWith('UPDATE "projects" SET "width"')).toBe(true);
+    const db = await makeTestDb();
+    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'custom', '{"width":816,"height":1056}', 'u', 'u')`);
+    await db.execute(sql.raw(last));
+    expect(rowsOf(await db.execute(sql`select width, height from projects`))).toEqual([{ width: 816, height: 1056 }]);
+  });
+
+  it("the after-deploy refill fixes empty and stale sizes, can run twice, and is in the README", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by, width, height) values
+      ('a', 'A', 'short_9x16', '{"width":1080,"height":1920}', 'u', 'u', null, null),
+      ('b', 'B', 'custom', '{"width":816,"height":1056}', 'u', 'u', 1, 1),
+      ('c', 'C', 'long_16x9', '{"width":1920,"height":1080}', 'u', 'u', 1920, 1080)`);
+    const sizes = async () => rowsOf(await db.execute(sql`select id, width, height from projects order by id`));
+    const fixed = [
+      { id: "a", width: 1080, height: 1920 },
+      { id: "b", width: 816, height: 1056 },
+      { id: "c", width: 1920, height: 1080 },
+    ];
+    const first = await db.execute(sql.raw(REFILL_PROJECT_SIZES));
+    expect((first as unknown as { affectedRows: number }).affectedRows).toBe(2);
+    expect(await sizes()).toEqual(fixed);
+    const second = await db.execute(sql.raw(REFILL_PROJECT_SIZES));
+    expect((second as unknown as { affectedRows: number }).affectedRows).toBe(0);
+    expect(await sizes()).toEqual(fixed);
+    expect(readFileSync("README.md", "utf8")).toContain(REFILL_PROJECT_SIZES);
+  });
+
+  it("going back and coming forward keep custom projects' timelines", async () => {
+    const db = await makeTestDb();
+    const doc = { format: "custom", width: 816, height: 1056 };
+    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'custom', ${JSON.stringify(doc)}, 'u', 'u')`);
+    const row = async () => rowsOf<{ format: string; doc: unknown }>(await db.execute(sql`select format, doc from projects`))[0];
+    await db.execute(sql.raw(BEFORE_GOING_BACK));
+    expect(await row()).toEqual({ format: "long_16x9", doc });
+    await db.execute(sql.raw(AFTER_COMING_FORWARD));
+    expect(await row()).toEqual({ format: "custom", doc });
+    const readme = readFileSync("README.md", "utf8");
+    expect(readme).toContain(BEFORE_GOING_BACK);
+    expect(readme).toContain(AFTER_COMING_FORWARD);
   });
 });
