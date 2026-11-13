@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  canvasItems, corners, createPreviewSurface, fromScreen, hitTest, toLocal, toOverlay, toScreen, toWorld, viewOf, visibleBox,
-  type CanvasItem, type View,
+  HANDLE_SIGNS, canvasItems, clampInto, corners, createPreviewSurface, cursorFor, fromScreen, handlePoints, hitTest, toLocal, toOverlay,
+  toScreen, toWorld, viewOf, visibleBox, type CanvasItem, type Handle, type View,
 } from "@/lib/editor/canvas-geometry";
 import type { Sizer } from "@/lib/editor/clip-box";
 import { createEmptyDoc, type Clip, type MediaClip, type TextClip, type TimelineDoc, type Transform } from "@/lib/timeline";
@@ -143,6 +143,103 @@ describe("the hit test", () => {
     expect(hit(items, 1081, 960, 0, { frame: FRAME })).toBeNull();
     // Inside the frame the selection does not matter.
     expect(hit(items, 540, 960, 0, { frame: FRAME, keep: [] })).toBe("x1");
+  });
+});
+
+describe("handles", () => {
+  const grips = (item: CanvasItem, offset = 48, push?: { ew: number; ns: number }) =>
+    Object.fromEntries(handlePoints(item, offset, push).map((h) => [h.grip, h.at]));
+
+  it("the eight handles sit on the kept box", () => {
+    const image = canvasItems(imageDoc(), 0, sizer)[0];
+    const at = grips(image);
+    expect(Object.keys(at)).toEqual(["nw", "n", "ne", "e", "se", "s", "sw", "w", "rotate"]);
+    expectPoint(at.e, 1080, 960);
+    expectPoint(at.w, 0, 960);
+    expectPoint(at.se, 1080, 1230);
+    expectPoint(at.nw, 0, 690);
+    expectPoint(at.ne, 1080, 690);
+    expectPoint(at.sw, 0, 1230);
+    expectPoint(at.n, 540, 690);
+    expectPoint(at.s, 540, 1230);
+    expectPoint(at.rotate, 540, 642);
+
+    const cropped = grips(canvasItems(imageDoc({ crop: { left: 0.1, top: 0, right: 0, bottom: 0 } }), 0, sizer)[0]);
+    expectPoint(cropped.w, 108, 960);
+    expectPoint(cropped.nw, 108, 690);
+    expectPoint(cropped.n, 594, 690);
+  });
+
+  it("a turned box's handles and rotate point turn with it", () => {
+    const at = grips(canvasItems(imageDoc({ rotation: 90 }), 0, sizer)[0], 48);
+    expectPoint(at.e, 540, 1500);
+    expectPoint(at.n, 810, 960);
+    // The box's up is the screen's right after a quarter turn clockwise.
+    expectPoint(at.rotate, 858, 960);
+  });
+
+  it("text is handled like a picture, on its own box", () => {
+    const x1 = canvasItems(patch(sampleDoc(), "x1", { scale: 2, stretch: 1.5 }), 10, sizer)[1];
+    const at = grips(x1, 10);
+    expectPoint(at.e, 636, 960);
+    expectPoint(at.nw, 444, 883.2);
+    expectPoint(at.rotate, 540, 873.2);
+  });
+
+  it("pushed side handles sit outside the box", () => {
+    const image = canvasItems(imageDoc(), 0, sizer)[0];
+    const at = grips(image, 48, { ew: 24, ns: 0 });
+    expectPoint(at.e, 1104, 960);
+    expectPoint(at.w, -24, 960);
+    expectPoint(at.n, 540, 690);
+    expectPoint(at.s, 540, 1230);
+    // Corners never move.
+    expectPoint(at.se, 1080, 1230);
+    const ns = grips(image, 48, { ew: 0, ns: 10 });
+    expectPoint(ns.n, 540, 680);
+    expectPoint(ns.s, 540, 1240);
+    expectPoint(ns.e, 1080, 960);
+    expectPoint(ns.rotate, 540, 642);
+    expectPoint(ns.se, 1080, 1230);
+    // Along the box's own axes when turned.
+    const turned = grips(canvasItems(imageDoc({ rotation: 90 }), 0, sizer)[0], 48, { ew: 24, ns: 10 });
+    expectPoint(turned.e, 540, 1524);
+    expectPoint(turned.w, 540, 396);
+    expectPoint(turned.n, 820, 960);
+    expectPoint(turned.s, 260, 960);
+  });
+
+  it("HANDLE_SIGNS points each handle outward", () => {
+    expect(HANDLE_SIGNS).toEqual({
+      nw: { hx: -1, hy: -1 }, n: { hx: 0, hy: -1 }, ne: { hx: 1, hy: -1 }, e: { hx: 1, hy: 0 },
+      se: { hx: 1, hy: 1 }, s: { hx: 0, hy: 1 }, sw: { hx: -1, hy: 1 }, w: { hx: -1, hy: 0 },
+    });
+  });
+
+  it("clampInto moves only a point outside the box", () => {
+    const box = { left: 270, top: 480, right: 842, bottom: 1472 };
+    expect(clampInto({ x: 1096, y: 1936 }, box, 12)).toEqual({ x: 830, y: 1460 });
+    expect(clampInto({ x: 500, y: 700 }, box, 12)).toEqual({ x: 500, y: 700 });
+    // Inside but nearer an edge than the inset: it stays.
+    expect(clampInto({ x: 275, y: 1465 }, box, 12)).toEqual({ x: 275, y: 1465 });
+    expect(clampInto({ x: 100, y: 300 }, box, 12)).toEqual({ x: 282, y: 492 });
+    // Each axis on its own; an edge is inside.
+    expect(clampInto({ x: 842, y: 100 }, box, 12)).toEqual({ x: 842, y: 492 });
+  });
+
+  it("cursorFor follows the turn", () => {
+    expect(cursorFor("se", 0)).toBe("nwse-resize");
+    expect(cursorFor("e", 0)).toBe("ew-resize");
+    expect(cursorFor("e", 90)).toBe("ns-resize");
+    expect(cursorFor("n", 45)).toBe("nesw-resize");
+    expect(cursorFor("n", 0)).toBe("ns-resize");
+    expect(cursorFor("ne", 0)).toBe("nesw-resize");
+    expect(cursorFor("w", -90)).toBe("ns-resize");
+    expect(cursorFor("sw", 0)).toBe("nesw-resize");
+    expect(cursorFor("nw", 0)).toBe("nwse-resize");
+    expect(cursorFor("e", 200)).toBe("ew-resize");
+    const all: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+    for (const h of all) expect(cursorFor(h, 360)).toBe(cursorFor(h, 0));
   });
 });
 
