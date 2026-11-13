@@ -110,6 +110,16 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       event.preventDefault();
     };
 
+    // The browser's own menu is kept for text fields and links; elsewhere a right-click opens the editor's menu or
+    // nothing. A control that opens its own menu has already prevented it.
+    const onContextMenu = (event: MouseEvent) => {
+      const target = event.target;
+      if (event.defaultPrevented || !(target instanceof Element)) return;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      if ((target instanceof HTMLElement && target.isContentEditable) || target.closest("a[href]")) return;
+      event.preventDefault();
+    };
+
     sync.start();
     quietly(library.getState().refresh("open"));
     quietly(library.getState().ensure(docAssetIds(store.getState().doc)));
@@ -124,6 +134,7 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
     window.addEventListener("keydown", onActivity, capture);
     window.addEventListener("dragover", onFileDrag);
     window.addEventListener("drop", onFileDrag);
+    window.addEventListener("contextmenu", onContextMenu);
     guardUnload(unsaved());
     const unsubscribe = store.subscribe((state, before) => {
       guardUnload(unsaved());
@@ -142,6 +153,7 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       window.removeEventListener("keydown", onActivity, capture);
       window.removeEventListener("dragover", onFileDrag);
       window.removeEventListener("drop", onFileDrag);
+      window.removeEventListener("contextmenu", onContextMenu);
       unsubscribe();
       unsubscribeLibrary();
       guardUnload(false);

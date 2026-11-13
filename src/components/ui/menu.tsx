@@ -1,7 +1,9 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import {
+  Fragment, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject,
+} from "react";
 import { DISABLED, FADE, FOCUS_RING, cx } from "./cx";
 import { IconButton, type IconButtonProps } from "./icon-button";
 
@@ -48,8 +50,6 @@ export function Menu({ label, icon, items, onSelect, disabled, shortcut, classNa
   const menuId = useId();
 
   const shown = typeof items === "function" ? opened : items;
-  // When any item is a switch, every item keeps a column for the check, so the labels line up.
-  const checkable = shown.some((item) => item.checked !== undefined);
 
   function openList(at: "first" | "last") {
     if (!open && typeof items === "function") setOpened(items());
@@ -61,24 +61,15 @@ export function Menu({ label, icon, items, onSelect, disabled, shortcut, classNa
     if (refocus) trigger.current?.focus();
   }
 
-  // Placed under the button, or above it when there is no room below, inside the window. Fixed
-  // positioning keeps the list clear of panels that clip their overflow.
-  useLayoutEffect(() => {
-    const button = trigger.current;
-    const menu = list.current;
-    if (!open || !button || !menu) return;
-    const anchor = button.getBoundingClientRect();
-    const size = menu.getBoundingClientRect();
+  // Placed under the button, or above it when there is no room below, inside the window.
+  function place(size: DOMRect) {
+    const anchor = trigger.current!.getBoundingClientRect();
     let top = anchor.bottom + GAP;
     if (top + size.height > window.innerHeight - EDGE) top = Math.max(EDGE, anchor.top - GAP - size.height);
     let left = anchor.left;
     if (left + size.width > window.innerWidth - EDGE) left = Math.max(EDGE, anchor.right - size.width);
-    menu.style.top = `${top}px`;
-    menu.style.left = `${left}px`;
-    menu.style.visibility = "visible";
-    const choices = enabledItems(menu);
-    (openAt === "last" ? choices.at(-1) : choices[0])?.focus();
-  }, [open, openAt]);
+    return { top, left };
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -116,27 +107,6 @@ export function Menu({ label, icon, items, onSelect, disabled, shortcut, classNa
     } else if (event.key === "Escape" && open) {
       event.preventDefault();
       close(false);
-    }
-  }
-
-  function handleListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const choices = enabledItems(list.current);
-    const at = choices.indexOf(document.activeElement as HTMLButtonElement);
-    const n = choices.length;
-    const moves: Record<string, () => number> = {
-      ArrowDown: () => (at + 1) % n,
-      ArrowUp: () => (at <= 0 ? n - 1 : at - 1),
-      Home: () => 0,
-      End: () => n - 1,
-    };
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close(true);
-    } else if (event.key === "Tab") {
-      close(false);
-    } else if (moves[event.key]) {
-      event.preventDefault();
-      if (n > 0) choices[moves[event.key]()].focus();
     }
   }
 
@@ -184,54 +154,124 @@ export function Menu({ label, icon, items, onSelect, disabled, shortcut, classNa
           {label}
         </button>
       )}
-      {open && (
-        <div
+      {open && openAt && (
+        <MenuList
           ref={list}
           id={menuId}
-          role="menu"
-          aria-label={label}
-          style={{ visibility: "hidden" }}
-          className="fixed z-50 flex max-h-80 min-w-40 flex-col overflow-y-auto rounded-md border border-ed-line bg-ed-raised py-1 shadow-lg"
-          onKeyDown={handleListKeyDown}
-        >
-          {shown.map((item) => (
-            <Fragment key={item.id}>
-              {item.separatorBefore && <div role="separator" className="my-1 h-px shrink-0 bg-ed-line" />}
-              <button
-                type="button"
-                role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
-                aria-checked={item.checked}
-                data-edit-control={item.edit || undefined}
-                tabIndex={-1}
-                disabled={item.disabled}
-                className={cx(
-                  "flex h-7 shrink-0 items-center gap-2 px-3 text-left text-xs whitespace-nowrap select-none",
-                  item.danger ? "text-ed-danger" : "text-ed-text",
-                  "enabled:hover:bg-ed-hover focus-visible:bg-ed-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ed-accent",
-                  "disabled:cursor-not-allowed disabled:opacity-40",
-                  FADE,
-                )}
-                onClick={() => {
-                  close(true);
-                  onSelect(item.id);
-                }}
-              >
-                {checkable && (
-                  <span data-check aria-hidden className="flex w-4 shrink-0 justify-center">
-                    {item.checked && <Check size={14} strokeWidth={2} />}
-                  </span>
-                )}
-                {item.label}
-                {item.shortcut && (
-                  <span data-shortcut aria-hidden className="ml-auto pl-6 text-ed-muted">
-                    {item.shortcut}
-                  </span>
-                )}
-              </button>
-            </Fragment>
-          ))}
-        </div>
+          label={label}
+          items={shown}
+          openAt={openAt}
+          place={place}
+          onPick={(id) => {
+            close(true);
+            onSelect(id);
+          }}
+          onDismiss={close}
+        />
       )}
     </span>
+  );
+}
+
+export type MenuListProps = {
+  label: string;
+  items: MenuItem[];
+  openAt: "first" | "last"; // the enabled item that takes focus
+  place(size: DOMRect): { top: number; left: number }; // where the list goes, given its size
+  onPick(id: string): void;
+  onDismiss(refocus: boolean): void; // Escape (true) or Tab (false)
+  id?: string;
+  ref?: RefObject<HTMLDivElement | null>; // for a host that needs the list, as for a press outside it
+};
+
+// The list of a menu, fixed on screen where place puts it, so panels that clip their overflow do not cut it.
+// It focuses its first or last enabled item, or itself when nothing is enabled, so Escape still reaches it.
+// The arrow keys, Home and End move between the enabled items. Its host decides what a pick or a dismissal does.
+export function MenuList({ label, items, openAt, place, onPick, onDismiss, id, ref }: MenuListProps): ReactNode {
+  const own = useRef<HTMLDivElement>(null);
+  const list = ref ?? own;
+  // When any item is a switch, every item keeps a column for the check, so the labels line up.
+  const checkable = items.some((item) => item.checked !== undefined);
+  const placeNow = useEffectEvent(place);
+
+  useLayoutEffect(() => {
+    const menu = list.current!;
+    const { top, left } = placeNow(menu.getBoundingClientRect());
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+    menu.style.visibility = "visible";
+    const choices = enabledItems(menu);
+    const first = openAt === "last" ? choices.at(-1) : choices[0];
+    if (first) first.focus();
+    else menu.focus();
+  }, [list, openAt]);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const choices = enabledItems(list.current);
+    const at = choices.indexOf(document.activeElement as HTMLButtonElement);
+    const n = choices.length;
+    const moves: Record<string, () => number> = {
+      ArrowDown: () => (at + 1) % n,
+      ArrowUp: () => (at <= 0 ? n - 1 : at - 1),
+      Home: () => 0,
+      End: () => n - 1,
+    };
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onDismiss(true);
+    } else if (event.key === "Tab") {
+      onDismiss(false);
+    } else if (moves[event.key]) {
+      event.preventDefault();
+      if (n > 0) choices[moves[event.key]()].focus();
+    }
+  }
+
+  return (
+    <div
+      ref={list}
+      id={id}
+      role="menu"
+      aria-label={label}
+      tabIndex={-1}
+      style={{ visibility: "hidden" }}
+      className="fixed z-50 flex max-h-80 min-w-40 flex-col overflow-y-auto rounded-md border border-ed-line bg-ed-raised py-1 shadow-lg outline-none"
+      onKeyDown={handleKeyDown}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      {items.map((item) => (
+        <Fragment key={item.id}>
+          {item.separatorBefore && <div role="separator" className="my-1 h-px shrink-0 bg-ed-line" />}
+          <button
+            type="button"
+            role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+            aria-checked={item.checked}
+            data-edit-control={item.edit || undefined}
+            tabIndex={-1}
+            disabled={item.disabled}
+            className={cx(
+              "flex h-7 shrink-0 items-center gap-2 px-3 text-left text-xs whitespace-nowrap select-none",
+              item.danger ? "text-ed-danger" : "text-ed-text",
+              "enabled:hover:bg-ed-hover focus-visible:bg-ed-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ed-accent",
+              "disabled:cursor-not-allowed disabled:opacity-40",
+              FADE,
+            )}
+            onClick={() => onPick(item.id)}
+          >
+            {checkable && (
+              <span data-check aria-hidden className="flex w-4 shrink-0 justify-center">
+                {item.checked && <Check size={14} strokeWidth={2} />}
+              </span>
+            )}
+            {item.label}
+            {item.shortcut && (
+              <span data-shortcut aria-hidden className="ml-auto pl-6 text-ed-muted">
+                {item.shortcut}
+              </span>
+            )}
+          </button>
+        </Fragment>
+      ))}
+    </div>
   );
 }

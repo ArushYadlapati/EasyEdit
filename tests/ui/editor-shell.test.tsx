@@ -466,3 +466,38 @@ it("a keymap saved in this browser shows once the page has loaded", () => {
   render(<EditorShell initial={initial()} />);
   expect(screen.getByRole("button", { name: "Split" }).getAttribute("title")).toBe("Split (Ctrl+Shift+S)");
 });
+
+it("the browser's menu is off in the editor and on in text fields and links", async () => {
+  stubServer();
+  const { unmount } = render(<EditorShell initial={initial()} />);
+  await flush();
+  const preview = screen.getByRole("main", { name: "Preview" });
+  expect(fireEvent.contextMenu(preview)).toBe(false);
+  expect(fireEvent.contextMenu(screen.getByRole("region", { name: "Timeline" }))).toBe(false);
+  const snap = screen.getByRole("button", { name: "Snap" });
+  expect(fireEvent.contextMenu(snap)).toBe(false);
+  expect(fireEvent.contextMenu(snap.querySelector("svg")!)).toBe(false); // an icon is no link
+
+  await act(() => void fireEvent.click(screen.getByRole("tab", { name: "Media" })));
+  await flush();
+  expect(fireEvent.contextMenu(screen.getByRole("searchbox", { name: "Search media" }))).toBe(true);
+  const projects = screen.getByRole("link", { name: "Projects" });
+  expect(fireEvent.contextMenu(projects)).toBe(true);
+  expect(fireEvent.contextMenu(projects.querySelector("svg")!)).toBe(true); // inside the link
+
+  // A text area, and anything inside an element whose text can be edited.
+  const area = document.createElement("textarea");
+  const editable = document.createElement("div");
+  editable.contentEditable = "true";
+  const word = document.createElement("span");
+  editable.append(word);
+  preview.append(area, editable);
+  expect(fireEvent.contextMenu(area)).toBe(true);
+  expect(fireEvent.contextMenu(word)).toBe(true);
+  area.remove();
+  editable.remove();
+
+  // Gone with the editor.
+  unmount();
+  expect(fireEvent.contextMenu(document.body)).toBe(true);
+});
