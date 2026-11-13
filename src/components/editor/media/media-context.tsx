@@ -66,7 +66,7 @@ function idleServices(): MediaServices {
     readToken: never,
   };
   const queue: UploadQueue = {
-    add() {},
+    add: () => [],
     cancel() {},
     retry() {},
     resume() {},

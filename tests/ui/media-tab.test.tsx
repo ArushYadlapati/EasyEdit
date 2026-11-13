@@ -76,7 +76,7 @@ function pretendApi(listed: AssetView[], setUp = true) {
 
 function pretendQueue() {
   return {
-    add: vi.fn<(files: File[]) => void>(),
+    add: vi.fn<(files: File[]) => string[]>(() => []),
     cancel: vi.fn<(key: string) => void>(),
     retry: vi.fn<(key: string) => void>(),
     resume: vi.fn<() => void>(),
@@ -119,7 +119,7 @@ const fileInput = (container: HTMLElement) => container.querySelector<HTMLInputE
 const filesOf = (...names: string[]) => names.map((name) => new File(["x"], name, { lastModified: 1 }));
 
 const upload = (over: Partial<UploadItem>): UploadItem => ({
-  key: "k1", fileName: "climb.mov", sizeBytes: 20_000_000, stage: "waiting", sentBytes: 0, previewFraction: 0,
+  key: "k1", fileName: "climb.mov", sizeBytes: 20_000_000, durationMs: null, stage: "waiting", sentBytes: 0, previewFraction: 0,
   assetId: null, message: null, canRetry: false, ...over,
 });
 

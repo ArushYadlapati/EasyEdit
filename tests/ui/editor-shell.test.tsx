@@ -152,7 +152,7 @@ function pretendMedia(options: { refreshFails?: boolean } = {}) {
   });
   let active = 0;
   const queue = {
-    add: vi.fn(), cancel: vi.fn(), retry: vi.fn(), resume: vi.fn(), dismiss: vi.fn(), stop: vi.fn(),
+    add: vi.fn(() => ["k1"]), cancel: vi.fn(), retry: vi.fn(), resume: vi.fn(), dismiss: vi.fn(), stop: vi.fn(),
     items: () => [],
     active: vi.fn(() => active),
   } satisfies UploadQueue;
@@ -163,7 +163,7 @@ function pretendMedia(options: { refreshFails?: boolean } = {}) {
 
 const reasons = (refresh: { mock: { calls: [RefreshReason][] } }) => refresh.mock.calls.map(([reason]) => reason);
 const uploading: UploadItem = {
-  key: "k1", fileName: "climb.mov", sizeBytes: 20_000_000, stage: "uploading", sentBytes: 8_000_000, previewFraction: 0,
+  key: "k1", fileName: "climb.mov", sizeBytes: 20_000_000, durationMs: null, stage: "uploading", sentBytes: 8_000_000, previewFraction: 0,
   assetId: "x1", message: null, canRetry: false,
 };
 

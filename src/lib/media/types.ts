@@ -53,6 +53,7 @@ export type UploadItem = {
   key: string;
   fileName: string;
   sizeBytes: number;
+  durationMs: number | null; // the length read from the file, once it has been; always null for an image
   stage: UploadStage;
   sentBytes: number; // of the original
   previewFraction: number; // how much of the preview copy is made, 0 to 1

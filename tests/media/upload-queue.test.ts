@@ -244,7 +244,7 @@ describe("one upload, start to finish", () => {
     await settled(h.queue);
     expect(new Set(h.changes).size).toBe(h.changes.length);
     expect(h.changes[0]).toEqual([
-      { key: expect.any(String), fileName: "IMG_4821.MOV", sizeBytes: 20_000_000, stage: "waiting", sentBytes: 0, previewFraction: 0, assetId: null, message: null, canRetry: false },
+      { key: expect.any(String), fileName: "IMG_4821.MOV", sizeBytes: 20_000_000, durationMs: null, stage: "waiting", sentBytes: 0, previewFraction: 0, assetId: null, message: null, canRetry: false },
     ]);
     expect(h.changes.at(-1)).toEqual(h.queue.items());
     expect(h.queue.items()).not.toBe(h.queue.items());
@@ -284,6 +284,28 @@ describe("one upload, start to finish", () => {
     expect(h.stages()).toEqual(["waiting", "reading", "uploading", "finishing", "done"]);
     expect(h.calls.map(([name]) => name)).toEqual(["open", "complete"]);
     expect((await listAssets(h.ctx.db, h.ctx.grace))[0]).toMatchObject({ kind: "audio", status: "ready", previewStatus: "none", posterFileId: null });
+  });
+
+  it("the length read from the file shows on the row", async () => {
+    const h = await harness({ probe: async () => ({ ...VIDEO.probe, durationMs: 2000 }) });
+    h.queue.add([videoFile()]);
+    await settled(h.queue);
+    const lengthAt = (stage: UploadStage) => h.changes.flat().find((item) => item.stage === stage)?.durationMs;
+    expect(lengthAt("waiting")).toBeNull();
+    expect(lengthAt("reading")).toBeNull(); // not before the file is read
+    expect(lengthAt("uploading")).toBe(2000); // as soon as it is
+    expect(h.queue.items()[0].durationMs).toBe(2000);
+
+    const image = await harness();
+    image.queue.add([imageFile()]);
+    await settled(image.queue);
+    expect(image.queue.items()[0]).toMatchObject({ stage: "done", durationMs: null });
+    expect(new Set(image.changes.flat().map((item) => item.durationMs))).toEqual(new Set([null])); // never a length
+
+    const unreadable = await harness({ probe: async () => null });
+    unreadable.queue.add([videoFile()]);
+    await settled(unreadable.queue);
+    expect(unreadable.queue.items()[0]).toMatchObject({ stage: "failed", durationMs: null });
   });
 
   it("the event is sent with the upload", async () => {
@@ -337,6 +359,7 @@ describe("a file that is not taken", () => {
     h.queue.add([videoFile()]);
     await settled(h.queue);
     expect(outcome(h.queue.items()[0])).toEqual({ stage: "failed", message: SENTENCES.unreadable, canRetry: false });
+    expect(h.queue.items()[0].durationMs).toBeNull(); // what was read is not this file's length
     expect(h.calls).toEqual([]);
   });
 
@@ -351,6 +374,29 @@ describe("a file that is not taken", () => {
     await settled(h.queue);
     expect(h.called("open")).toHaveLength(1);
     expect(await h.assetCount()).toBe(1);
+  });
+
+  it("add returns each file's row key: a new row, the row already on its way, a retried row, a refused file", async () => {
+    let made = 0;
+    const h = await harness({ options: { genKey: () => `key-${++made}` } });
+    const empty = () => new File([], "empty.mp4", { lastModified: 1_762_800_000_000 });
+    h.net.down = true;
+    expect(h.queue.add([videoFile("a.mov", SMALL), videoFile("b.mov", SMALL)])).toEqual(["key-1", "key-2"]); // new rows
+    await settled(h.queue);
+    expect(h.queue.items().map(outcome)).toEqual([
+      { stage: "failed", message: SENTENCES.stopped, canRetry: true },
+      { stage: "failed", message: SENTENCES.stopped, canRetry: true },
+    ]);
+    h.net.down = false;
+    // a.mov is retried, then is on its way; the empty file is refused in a row of its own; c.mov is new.
+    expect(h.queue.add([videoFile("a.mov", SMALL), empty(), videoFile("a.mov", SMALL), videoFile("c.mov", SMALL)])).toEqual(["key-1", "key-3", "key-1", "key-4"]);
+    expect(h.queue.items().map((item) => [item.key, item.fileName])).toEqual([["key-1", "a.mov"], ["key-2", "b.mov"], ["key-3", "empty.mp4"], ["key-4", "c.mov"]]);
+    expect(h.queue.add([videoFile("b.mov", SMALL)])).toEqual(["key-2"]); // retried
+    expect(h.queue.add([empty()])).toEqual(["key-5"]); // the refused row goes, and the file gets a new one, refused again
+    expect(h.queue.items().map((item) => item.key)).toEqual(["key-1", "key-2", "key-4", "key-5"]);
+    expect(h.queue.add([])).toEqual([]);
+    await settled(h.queue);
+    expect(h.queue.items().map((item) => item.stage)).toEqual(["done", "done", "done", "failed"]);
   });
 
   it("a file that differs in name, size or time is another upload, and so is one whose upload is done", async () => {

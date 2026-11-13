@@ -22,7 +22,7 @@ export type QueueDeps = {
 };
 
 export type UploadQueue = {
-  add(files: File[]): void;
+  add(files: File[]): string[]; // each file's row key, in order: a new row, the row already on its way, the retried row, or a refused file's new row
   cancel(key: string): void; // stops it and removes the row; an unfinished asset is removed on the server
   retry(key: string): void; // only a failed item that can be retried
   resume(): void; // retries every item that failed for the network; called when the connection returns
@@ -266,6 +266,7 @@ export function createUploadQueue(deps: QueueDeps): UploadQueue {
       if (read === "given-up") return fail(entry, READ_STOPPED);
       if (!read || !probeFits(kind, read)) return fail(entry, final(FILE_REFUSALS.unreadable));
       probe = entry.probe = read;
+      change(entry, { durationMs: read.durationMs });
     }
 
     const sends = (entry.sends = new AbortController());
@@ -323,15 +324,20 @@ export function createUploadQueue(deps: QueueDeps): UploadQueue {
 
   return {
     add(files) {
+      const keys: string[] = [];
       let added = false;
       for (const file of files) {
         const sameFile = (entry: Entry) => entry.file.name === file.name && entry.file.size === file.size && entry.file.lastModified === file.lastModified;
         // The file's own row, unless that upload is done: a file that is in can be uploaded again.
         const row = entries.find((entry) => entry.item.stage !== "done" && sameFile(entry));
         if (row) {
-          if (row.item.stage !== "failed") continue; // waiting or on its way
+          if (row.item.stage !== "failed") {
+            keys.push(row.item.key); // waiting or on its way
+            continue;
+          }
           if (row.item.canRetry) {
             again(row); // choosing the file again is a retry
+            keys.push(row.item.key);
             continue;
           }
           // It failed for good. The row goes, as when it is dismissed, and the file is taken as a new one.
@@ -342,6 +348,7 @@ export function createUploadQueue(deps: QueueDeps): UploadQueue {
           key: genKey(),
           fileName: file.name,
           sizeBytes: file.size,
+          durationMs: null,
           stage: checked.ok ? "waiting" : "failed",
           sentBytes: 0,
           previewFraction: 0,
@@ -350,10 +357,12 @@ export function createUploadQueue(deps: QueueDeps): UploadQueue {
           canRetry: false,
         };
         entries = [...entries, { item, file, kind: checked.ok ? checked.kind : null, probe: null, holdsPlace: false, ready: false, whole: false, network: false, left: null, sends: new AbortController(), derive: null }];
+        keys.push(item.key);
         added = true;
       }
       if (added) emit();
       startWaiting();
+      return keys;
     },
 
     cancel(key) {

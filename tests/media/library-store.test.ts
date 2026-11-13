@@ -387,7 +387,7 @@ describe("the library store", () => {
 
   it("holds the uploads, the search, the kind and the event for new uploads", () => {
     const { state, store } = setup();
-    const uploads: UploadItem[] = [{ key: "k1", fileName: "IMG_4821.MOV", sizeBytes: 20_000_000, stage: "uploading", sentBytes: 8_400_000, previewFraction: 0, assetId: "a1", message: null, canRetry: false }];
+    const uploads: UploadItem[] = [{ key: "k1", fileName: "IMG_4821.MOV", sizeBytes: 20_000_000, durationMs: null, stage: "uploading", sentBytes: 8_400_000, previewFraction: 0, assetId: "a1", message: null, canRetry: false }];
     let told = 0;
     store.subscribe(() => void told++);
     state().setUploads(uploads);
