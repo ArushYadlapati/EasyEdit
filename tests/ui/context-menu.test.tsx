@@ -345,7 +345,7 @@ describe("the timeline's right-click menus", () => {
     const { clip } = setup();
     expect(fireEvent.contextMenu(clip("x2"), { clientX: 300, clientY: 200, button: 2 })).toBe(false);
     const menu = screen.getByRole("menu", { name: "Clip actions" });
-    expect(labels()).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Crop", "Reset crop", "Delete"]);
+    expect(labels()).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Edit text", "Crop", "Reset crop", "Delete"]);
     expect(document.activeElement).toBe(screen.getAllByRole("menuitem")[0]);
     // Hints follow the keys.
     expect(menu.querySelector("[data-shortcut]")?.textContent).toBe("Ctrl+X");
@@ -436,6 +436,22 @@ describe("the timeline's right-click menus", () => {
     expect(MESSAGES.cropHintMac).toBe("Drag a handle to crop. Next time, you can hold Option while you drag.");
     expect(st().playhead).toBe(29);
     expect(st().cropArmed).toBe("c1");
+  });
+
+  it("Edit text in a text clip's menu opens it for typing, paused, with the playhead in the clip", () => {
+    const { st, clip, rightClick } = setup();
+    act(() => {
+      st().seek(45);
+      st().play();
+    });
+    rightClick(clip("x2"), x(100), y(1));
+    pick("Edit text");
+    expect(st().textEditId).toBe("x2");
+    expect(st().selection.clipIds).toEqual(["x2"]);
+    expect(st().playhead).toBe(90);
+    expect(st().playing).toBe(false);
+    expect(st().queue).toEqual([]);
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("Escape closes it and puts focus back on the clip", () => {

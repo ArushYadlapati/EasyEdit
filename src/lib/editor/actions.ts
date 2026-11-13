@@ -19,7 +19,7 @@ import {
 } from "./commands";
 import type { TimelinePoint } from "./geometry";
 import { mediaClipFor } from "./media-clips";
-import { MESSAGES } from "./messages";
+import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { findClip, type EditorStore } from "./store";
 import { presetClip, type TextPreset } from "./text-presets";
@@ -199,6 +199,24 @@ export function armCrop(store: EditorStore, clipId: string, isMac: boolean): voi
   focusClip(store, clipId);
   store.getState().setCropArmed(clipId);
   store.getState().notify("info", isMac ? MESSAGES.cropHintMac : MESSAGES.cropHint);
+}
+
+// Opens a text clip for typing in place on the preview: pauses, brings the playhead into the clip and selects it. On a
+// locked or hidden track it says so instead. Nothing for a viewer.
+export function editTextInPlace(store: EditorStore, clipId: string): void {
+  const state = store.getState();
+  const found = findClip(state.doc, clipId);
+  if (!state.canEdit || !found || found.clip.type !== "text") return;
+  if (found.track.locked) {
+    state.notify("error", explainOpError("TRACK_LOCKED"));
+    return;
+  }
+  if (found.track.hidden) {
+    state.notify("error", MESSAGES.trackHidden);
+    return;
+  }
+  focusClip(store, clipId);
+  store.getState().setTextEdit(clipId);
 }
 
 // Track runners, used by the track headers, the timeline toolbar and the inspector.

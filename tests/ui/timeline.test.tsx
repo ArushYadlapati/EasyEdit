@@ -464,3 +464,45 @@ it("without a drop the timeline never lights up", () => {
   const { container } = setup(makeStore(), pretendMediaServices([]));
   expect(container.querySelector<HTMLElement>("[data-drop]")!.dataset.drop).toBe("idle");
 });
+
+it("double-clicking a text clip on the timeline opens the box on the preview", () => {
+  const { st, scroller, clip } = setup();
+  act(() => {
+    st().seek(10);
+    st().play();
+  });
+  // Pointer capture sends the click to the scroller, so the clip is found under the pointer.
+  vi.spyOn(document, "elementFromPoint").mockReturnValue(clip("x2"));
+  fireEvent.doubleClick(scroller, { clientX: 500, clientY: 60 });
+  expect(st().textEditId).toBe("x2");
+  expect(st().selection.clipIds).toEqual(["x2"]);
+  expect(st().playhead).toBe(90);
+  expect(st().playing).toBe(false);
+  // Straight on the clip, it is found without asking where the pointer is.
+  act(() => st().setTextEdit(null));
+  vi.mocked(document.elementFromPoint).mockReturnValue(null);
+  fireEvent.doubleClick(clip("x1"), { clientX: 20, clientY: 60 });
+  expect(st().textEditId).toBe("x1");
+});
+
+it("a double-click on a video clip, or on no clip, opens nothing", () => {
+  const { st, scroller, clip } = setup();
+  act(() => st().seek(45));
+  fireEvent.doubleClick(clip("c1"), { clientX: 20, clientY: 90 });
+  vi.spyOn(document, "elementFromPoint").mockReturnValue(null);
+  fireEvent.doubleClick(scroller, { clientX: 1300, clientY: 300 });
+  expect(st().textEditId).toBeNull();
+  expect(st().notice).toBeNull();
+  // Not even a selection or a seek.
+  expect(st().selection.clipIds).toEqual([]);
+  expect(st().playhead).toBe(45);
+});
+
+it("a double-click on text on a hidden track says so", () => {
+  const doc = sampleDoc();
+  doc.tracks[1].hidden = true;
+  const { st, clip } = setup(makeStore({ doc }));
+  fireEvent.doubleClick(clip("x2"), { clientX: 500, clientY: 60 });
+  expect(st().notice?.text).toBe("That track is hidden.");
+  expect(st().textEditId).toBeNull();
+});

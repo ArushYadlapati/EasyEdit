@@ -144,13 +144,13 @@ function editBlocked(state: EditorState): boolean {
   return !state.canEdit || state.status === "deleted" || state.gesture !== null;
 }
 
-export type ClipMenuId = "cut" | "copy" | "duplicate" | "split" | "crop" | "reset-crop" | "delete";
+export type ClipMenuId = "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "delete";
 
 // A clip's menu (label "Clip actions"), for the selection the right-click made. Cut and Delete are
 // greyed when a selected clip is on a locked track, Split when the playhead crosses none of the
 // selection on an unlocked track. Duplicate also works from a locked track: the copies go elsewhere.
-// Crop and Reset crop are there for one video, image or text clip, both greyed on a locked track and Reset crop also
-// when it is not cropped; neither is a command, so the menu's opener runs them.
+// Edit text is there for one text clip, and Crop and Reset crop for one video, image or text clip, all greyed on a
+// locked track and Reset crop also when it is not cropped; none is a command, so the menu's opener runs them.
 export function clipMenu(state: EditorState): MenuEntry[] {
   const { doc, selection, playhead } = state;
   const selected = new Set(selection.clipIds);
@@ -162,11 +162,13 @@ export function clipMenu(state: EditorState): MenuEntry[] {
   };
   const single = selection.clipIds.length === 1 ? (findClip(doc, selection.clipIds[0])?.clip ?? null) : null;
   const croppable = single !== null && single.type !== "audio";
+  const typeable = single !== null && single.type === "text";
   return [
     entry("cut", "Cut", onLocked),
     entry("copy", "Copy", false),
     entry("duplicate", "Duplicate", false, { separatorBefore: true }),
     entry("split", "Split at the playhead", splitOps(doc, playhead, selection.clipIds).length === 0, { separatorBefore: true }),
+    ...(typeable ? [{ id: "edit-text", label: "Edit text", disabled: blocked || onLocked, edit: true }] : []),
     ...(croppable
       ? [
           { id: "crop", label: "Crop", disabled: blocked || onLocked, edit: true },

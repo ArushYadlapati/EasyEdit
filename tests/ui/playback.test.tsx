@@ -162,6 +162,20 @@ describe("the preview canvas", () => {
     expect(drawFrame).toHaveBeenCalledTimes(1);
   });
 
+  it("opening the box redraws once, without the text it covers, and closing it draws the text again", () => {
+    const store = makeStore();
+    mountPreview(store);
+    act(() => void store.getState().setTextEdit("x1"));
+    runFrame(16);
+    expect(drawFrame).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(drawFrame).mock.calls[0][3]).toMatchObject({ hideClipId: "x1" });
+    expect(frames.size).toBe(0);
+    act(() => void store.getState().setTextEdit(null));
+    runFrame(32);
+    expect(drawFrame).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(drawFrame).mock.calls[1][3]?.hideClipId).toBeUndefined();
+  });
+
   it("draws a played frame in the same animation frame that moved the playhead", () => {
     const store = makeStore();
     mountPreview(store);

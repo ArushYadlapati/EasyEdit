@@ -16,6 +16,7 @@ import {
   revealScroll,
   zoomAt,
 } from "@/lib/editor/geometry";
+import { editTextInPlace } from "@/lib/editor/actions";
 import { viewDoc } from "@/lib/editor/store";
 import { docDuration, type Track } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
@@ -183,6 +184,16 @@ export function Timeline() {
     setScrollStart(windowStart(e.currentTarget.scrollLeft));
   }
 
+  // A double-click on a text clip opens it for typing on the preview. Pointer capture sends the click to the scroller,
+  // so the clip is also looked for under the pointer.
+  function onDoubleClick(e: MouseEvent<HTMLDivElement>) {
+    const at = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-clip-id]") : null;
+    const el = at ?? document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-clip-id]");
+    const clipId = el?.dataset.clipId;
+    // A video, image or audio clip starts nothing.
+    if (clipId) editTextInPlace(store, clipId);
+  }
+
   // The space below the last row has a menu of its own, with no track in it.
   function onContentContextMenu(e: MouseEvent<HTMLDivElement>) {
     if (e.defaultPrevented || e.target !== e.currentTarget) return;
@@ -193,7 +204,13 @@ export function Timeline() {
     <div className="flex h-full min-h-0 flex-col">
       <Toolbar duration={duration} fps={fps} />
       <div data-drop={over ? "over" : armed ? "armed" : "idle"} className="relative min-h-0 flex-1">
-        <div ref={scrollRef} onScroll={onScroll} {...dropHandlers} className={cx("absolute inset-0 overflow-auto overscroll-contain", DRAG_CURSOR)}>
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          onDoubleClick={onDoubleClick}
+          {...dropHandlers}
+          className={cx("absolute inset-0 overflow-auto overscroll-contain", DRAG_CURSOR)}
+        >
           <div className="relative min-h-full" style={{ width }} onContextMenu={onContentContextMenu}>
             <Ruler zoom={zoom} fps={fps} fromFrame={fromFrame} toFrame={toFrame} max={frames} end={duration} onScrub={onScrub} />
             <TimelineDragContext value={drag}>

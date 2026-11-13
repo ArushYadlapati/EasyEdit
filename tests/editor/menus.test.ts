@@ -179,22 +179,22 @@ it("clipMenu follows the selection and the playhead", () => {
   st().select(["x1"]);
   st().seek(30);
   const entries = clipMenu(st());
-  expect(entries.map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Crop", "Reset crop", "Delete"]);
-  expect(ids(entries)).toEqual(["cut", "copy", "duplicate", "split", "crop", "reset-crop", "delete"]);
-  for (const entry of entries.filter((e) => e.id !== "crop" && e.id !== "reset-crop")) expect(entry.command).toBe(entry.id);
+  expect(entries.map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Edit text", "Crop", "Reset crop", "Delete"]);
+  expect(ids(entries)).toEqual(["cut", "copy", "duplicate", "split", "edit-text", "crop", "reset-crop", "delete"]);
+  for (const entry of entries.filter((e) => !["edit-text", "crop", "reset-crop"].includes(e.id))) expect(entry.command).toBe(entry.id);
   expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["duplicate", "split", "delete"]);
   expect(entries.filter((e) => e.danger).map((e) => e.id)).toEqual(["delete"]);
   // edit follows the shortcut table: Copy changes nothing.
-  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["cut", "duplicate", "split", "crop", "reset-crop", "delete"]);
+  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["cut", "duplicate", "split", "edit-text", "crop", "reset-crop", "delete"]);
   // x1 is not cropped.
-  expect(enabled(entries)).toEqual(["cut", "copy", "duplicate", "split", "crop", "delete"]);
+  expect(enabled(entries)).toEqual(["cut", "copy", "duplicate", "split", "edit-text", "crop", "delete"]);
   // Two clips keep the original five.
   st().select(["c1", "x1"]);
   expect(clipMenu(st()).map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Delete"]);
   st().select(["x1"]);
 
   st().seek(70);
-  expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "crop", "delete"]);
+  expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "edit-text", "crop", "delete"]);
 
   st().seek(30);
   lockTrack(store, "t1");
@@ -237,6 +237,40 @@ it("the clip menu offers Crop for one video, image or text", () => {
   expect(crop()!.disabled).toBe(false);
   lockTrack(store, "t1");
   expect(crop()!.disabled).toBe(true);
+});
+
+it("the clip menu offers Edit text for one text clip", () => {
+  const store = makeStore();
+  const st = () => store.getState();
+  const editText = () => clipMenu(st()).find((e) => e.id === "edit-text");
+  st().select(["x1"]);
+  const labels = clipMenu(st()).map((e) => e.label);
+  expect(labels.indexOf("Edit text")).toBe(labels.indexOf("Split at the playhead") + 1);
+  expect(editText()).toEqual({ id: "edit-text", label: "Edit text", disabled: false, edit: true });
+  // Not for a video, an image, audio, or two clips.
+  st().select(["c1"]);
+  expect(editText()).toBeUndefined();
+  const doc = sampleDoc();
+  doc.tracks[0].clips[0] = video("c1", 0, 30, { type: "image" });
+  doc.tracks[3].clips = [video("au", 0, 30, { type: "audio" })];
+  const other = makeStore({ doc });
+  for (const id of ["c1", "au"]) {
+    other.getState().select([id]);
+    expect(ids(clipMenu(other.getState())), id).not.toContain("edit-text");
+  }
+  st().select(["x1", "x2"]);
+  expect(editText()).toBeUndefined();
+  // Greyed mid-gesture and on a locked track.
+  st().select(["x1"]);
+  st().setGesture([{ op: "move_clip", clipId: "x2", start: 95 }]);
+  expect(editText()!.disabled).toBe(true);
+  st().setGesture(null);
+  lockTrack(store, "t1");
+  expect(editText()!.disabled).toBe(true);
+  // A viewer never sees it.
+  const viewer = makeStore({ canEdit: false });
+  viewer.getState().select(["x1"]);
+  expect(ids(rightClickEntries(clipMenu(viewer.getState()), false))).toEqual(["copy"]);
 });
 
 it("the clip menu offers Reset crop for one video, image or text", () => {
@@ -340,7 +374,7 @@ it("clipMenu and laneMenu grey every editing entry while a gesture is live", () 
   st().seek(30);
   st().setGesture([{ op: "move_clip", clipId: "x1", start: 5 }]);
   const clip = clipMenu(st());
-  expect(clip.filter((e) => e.edit)).toHaveLength(6);
+  expect(clip.filter((e) => e.edit)).toHaveLength(7);
   expect(enabled(clip)).toEqual(["copy"]);
   const lane = laneMenu(st(), true, "v1");
   expect(lane.filter((e) => e.edit)).toHaveLength(lane.length);

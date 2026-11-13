@@ -62,6 +62,17 @@ describe("drawFrame", () => {
     expect(only(calls, "fillText")).toEqual([["fillText", "seattle solvers robotics team", 0, -38.4], ["fillText", "wins", 0, 38.4]]);
   });
 
+  it("hideClipId leaves that clip out", () => {
+    const shown = text("x0", 0, 30, { text: "kept" });
+    const doc = textDoc(shown, text("x1", 0, 30, { text: "typed" }));
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, doc, 0, { hideClipId: "x1" });
+    expect(only(calls, "fillText")).toEqual([["fillText", "kept", 0, 0]]);
+    const all = fakeCtx();
+    drawFrame(all.ctx, doc, 0);
+    expect(only(all.calls, "fillText").map(([, s]) => s)).toEqual(["kept", "typed"]);
+  });
+
   it("draws only the clips under the playhead, on visible tracks, later tracks on top", () => {
     const d = textDoc(text("a", 0, 30, { text: "below" }), text("b", 30, 30, { text: "later" }));
     d.tracks.push({ id: "t2", kind: "text", name: "Text 2", muted: false, hidden: false, locked: false, clips: [text("c", 0, 30, { text: "above" })] });

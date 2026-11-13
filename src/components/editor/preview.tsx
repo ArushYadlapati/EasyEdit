@@ -129,8 +129,9 @@ export function Preview() {
 
   useEffect(() => () => pool.dispose(), [pool]);
 
-  // Draws now, then again whenever the shown document, the playhead, the loaded fonts, the library or the
-  // media change, at most once per animation frame. A new backing size clears the canvas, so it starts over then.
+  // Draws now, then again whenever the shown document, the playhead, the text typed in place, the loaded fonts, the
+  // library or the media change, at most once per animation frame. A new backing size clears the canvas, so it starts
+  // over then.
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -150,7 +151,9 @@ export function Preview() {
       if (!ctx) return;
       const { scale } = previewSize(doc);
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
-      drawFrame(ctx, doc, s.playhead, { resolveFont, resolveSource: pool.resolveSource, placeholderLabel: pool.label });
+      // Text being typed in place is shown by its box, so it is not drawn under it as well.
+      const hidden = s.textEditId !== null ? { hideClipId: s.textEditId } : {};
+      drawFrame(ctx, doc, s.playhead, { resolveFont, resolveSource: pool.resolveSource, placeholderLabel: pool.label, ...hidden });
       surface.changed();
     };
     // A frame asked for is skipped if a draw came first: the playback loop draws in its own animation frame.
@@ -216,7 +219,7 @@ export function Preview() {
       if (prev.playing && !s.playing) {
         pool.sync(mediaWants(doc, s.playhead, { playing: false, rate: s.rate }), upcomingWants(doc, s.playhead));
       }
-      if (docChanged || s.playhead !== prev.playhead) schedule();
+      if (docChanged || s.playhead !== prev.playhead || s.textEditId !== prev.textEditId) schedule();
     });
     const unsubscribeLibrary = media.library.subscribe((s, prev) => {
       if (s.assets !== prev.assets || s.loaded !== prev.loaded) schedule();

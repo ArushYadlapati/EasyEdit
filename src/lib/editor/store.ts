@@ -62,6 +62,9 @@ export type EditorState = {
   // The clip whose next handle drag on the preview crops without Alt (the clip menu's Crop). Another selection, Play,
   // the clip's removal or the end of any drag on the preview clears it.
   cropArmed: string | null;
+  // The text clip being typed in place on the preview. Its clip's removal, a lock or hide of its track, or the loss of
+  // edit access clears it.
+  textEditId: string | null;
 
   edit(ops: OpInput[], label: string): EditResult;
   undo(): void;
@@ -96,6 +99,7 @@ export type EditorState = {
   toggleSafeZones(): void;
   setName(name: string): void; // only what the editor shows; renameFromEditor saves it
   setCropArmed(clipId: string | null): void;
+  setTextEdit(clipId: string | null): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
 };
 
 export type EditorStore = StoreApi<EditorState>;
@@ -111,6 +115,12 @@ export function findClip(doc: TimelineDoc, clipId: string): { clip: Clip; track:
     if (clip) return { clip, track };
   }
   return null;
+}
+
+// A text clip that can be typed in place: there, on a track neither locked nor hidden.
+function typeableText(doc: TimelineDoc, clipId: string): boolean {
+  const found = findClip(doc, clipId);
+  return !!found && found.clip.type === "text" && !found.track.locked && !found.track.hidden;
 }
 
 function clipIds(doc: TimelineDoc): Set<string> {
@@ -188,6 +198,7 @@ export function createEditorStore(
     function settle(state: EditorState, doc: TimelineDoc): Partial<EditorState> {
       const patch: Partial<EditorState> = { doc, selection: pruneSelection(doc, state.selection) };
       if (state.cropArmed !== null && !findClip(doc, state.cropArmed)) patch.cropArmed = null;
+      if (state.textEditId !== null && !typeableText(doc, state.textEditId)) patch.textEditId = null;
       const gesture = state.gesture;
       if (gesture) {
         try {
@@ -294,6 +305,7 @@ export function createEditorStore(
       rate: 1,
       showSafeZones: deps.view?.showSafeZones ?? true,
       cropArmed: null,
+      textEditId: null,
 
       edit(ops, label) {
         const state = get();
@@ -541,6 +553,7 @@ export function createEditorStore(
           doc: server.doc,
           selection: pruneSelection(server.doc, selection),
           cropArmed: null,
+          textEditId: null,
           notice: makeNotice("error", MESSAGES.lostAccess),
         });
       },
@@ -587,6 +600,13 @@ export function createEditorStore(
 
       setCropArmed(clipId) {
         if (clipId !== get().cropArmed) set({ cropArmed: clipId });
+      },
+
+      setTextEdit(clipId) {
+        const state = get();
+        if (clipId !== null && (!state.canEdit || !typeableText(state.doc, clipId))) return false;
+        if (clipId !== state.textEditId) set({ textEditId: clipId });
+        return true;
       },
     };
   });

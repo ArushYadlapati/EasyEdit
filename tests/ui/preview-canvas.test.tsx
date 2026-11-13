@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { Inspector } from "@/components/editor/inspector";
 import { Preview } from "@/components/editor/preview";
+import { useShortcuts } from "@/components/editor/use-shortcuts";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
+import { editTextInPlace } from "@/lib/editor/actions";
 import { copyClips, createClipboard } from "@/lib/editor/clipboard";
 import { MESSAGES } from "@/lib/editor/messages";
 import { DEFAULT_PREFS, createSettingsStore, type BoardZoom } from "@/lib/editor/settings";
@@ -12,7 +14,7 @@ import { findClip, viewDoc, type EditorState, type EditorStore } from "@/lib/edi
 import type { EditorInit } from "@/lib/editor/types";
 import { drawFrame } from "@/lib/render/compositor";
 import type { Clip, TimelineDoc, Transform } from "@/lib/timeline";
-import { entry, makeStore, noticesOf, sampleDoc } from "../editor/fixtures";
+import { entry, makeStore, noticesOf, sampleDoc, text } from "../editor/fixtures";
 import { fakeCtx } from "../render/fake-ctx";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { rect } from "../helpers/layout";
@@ -119,7 +121,13 @@ type ShowOptions = {
   copied?: string[];
   strict?: boolean;
   inspector?: boolean;
+  shortcuts?: boolean;
 };
+
+function Keys() {
+  useShortcuts(() => {});
+  return null;
+}
 
 function show(opts: ShowOptions = {}) {
   const store: EditorStore = makeStore(opts.over);
@@ -132,6 +140,7 @@ function show(opts: ShowOptions = {}) {
     <EditorProvider store={store} settings={settings} clipboard={clipboard}>
       <ContextMenuProvider>
         {opts.inspector && <Inspector />}
+        {opts.shortcuts && <Keys />}
         <Preview />
       </ContextMenuProvider>
     </EditorProvider>
@@ -1277,5 +1286,292 @@ describe("cropping on the preview", () => {
     frame();
     expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(false);
     expect(st().cropArmed).toBeNull();
+  });
+});
+
+// The in-place box over x1 at k = 0.5: its centre, project (540, 960), is overlay (286, 496).
+const textBox = () => screen.queryByRole("textbox", { name: "Edit text" }) as HTMLTextAreaElement | null;
+const doubleClick = (x: number, y: number) => fireEvent.doubleClick(overlay(), { clientX: x, clientY: y });
+const textOf = (s: EditorState, clipId: string) => {
+  const clip = findClip(viewDoc(s), clipId)!.clip;
+  return clip.type === "text" ? clip.text : null;
+};
+const lastDrawOptions = () => vi.mocked(drawFrame).mock.calls.at(-1)![3];
+
+describe("typing text in place", () => {
+  it("double-clicking text on the preview opens a box with the caret at the end", () => {
+    const { st } = show({ selected: ["c1"] });
+    // happy-dom leaves the caret at the end of a new value by itself; a browser need not.
+    const caret = vi.spyOn(HTMLTextAreaElement.prototype, "setSelectionRange");
+    doubleClick(...TEXT);
+    const box = textBox()!;
+    expect(caret).toHaveBeenLastCalledWith(2, 2);
+    expect(box.value).toBe("hi");
+    expect(document.activeElement).toBe(box);
+    expect([box.selectionStart, box.selectionEnd]).toEqual([2, 2]);
+    expect(st().textEditId).toBe("x1");
+    expect(st().selection.clipIds).toEqual(["x1"]);
+    expect(box.hasAttribute("data-canvas-text-editor")).toBe(true);
+    expect(box.hasAttribute("data-edit-control")).toBe(false);
+    expect(box.maxLength).toBe(2000);
+    expect(box.closest("[data-canvas-overlay]")).toBe(overlay());
+  });
+
+  it("the box lies over the text in its font, size, weight, colour and alignment", () => {
+    const doc = sampleDoc();
+    const x1 = doc.tracks[1].clips[0];
+    if (x1.type === "text") x1.style = { ...x1.style, color: "#ffcc00", align: "left", fontWeight: 500 };
+    // Left-aligned, "hi" is drawn at the box's left end, project (54..118, 960).
+    show({ over: { doc } });
+    doubleClick(259, 536);
+    const { style } = textBox()!;
+    expect([style.left, style.top]).toEqual(["286px", "496px"]);
+    expect(style.transform).toBe("translate(-50%, -50%) rotate(0deg) scaleX(1)");
+    // 64 px at k = 0.5; the wrap width is 90% of the 1080 px frame.
+    expect(style.fontSize).toBe("32px");
+    expect(style.width).toBe("486px");
+    expect(style.fontWeight).toBe("500");
+    expect(style.fontFamily).toBe("Geist, sans-serif"); // the resolver's '"Geist", sans-serif', as the DOM reads it back
+    expect(style.lineHeight).toBe("1.2");
+    expect(style.textAlign).toBe("left");
+    expect(style.color).toBe("#ffcc00");
+    expect(textBox()!.className.split(" ")).toEqual(
+      expect.arrayContaining(["absolute", "resize-none", "overflow-hidden", "whitespace-pre-wrap", "wrap-anywhere", "bg-transparent", "p-0", "border-0", "outline", "outline-ed-accent", "select-text"]),
+    );
+  });
+
+  it("the box grows to fit its lines", () => {
+    show();
+    vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLTextAreaElement) {
+      return this.value.split("\n").length * 38;
+    });
+    doubleClick(...TEXT);
+    expect(textBox()!.style.height).toBe("38px");
+    fireEvent.change(textBox()!, { target: { value: "hi\nthere" } });
+    expect(textBox()!.style.height).toBe("76px");
+  });
+
+  it("typing shows at once, Enter adds a line, and Ctrl+Enter saves one change", () => {
+    const { st } = show();
+    doubleClick(...TEXT);
+    fireEvent.change(textBox()!, { target: { value: "hey" } });
+    expect(textOf(st(), "x1")).toBe("hey");
+    expect(st().queue).toEqual([]);
+    expect(fireEvent.keyDown(textBox()!, { key: "Enter" })).toBe(true);
+    expect(fireEvent.keyDown(textBox()!, { key: "Enter", shiftKey: true })).toBe(true);
+    expect(textBox()).not.toBeNull();
+    expect(st().queue).toEqual([]);
+    expect(fireEvent.keyDown(textBox()!, { key: "Enter", ctrlKey: true })).toBe(false);
+    expect(labelsOf(st())).toEqual(["text edit"]);
+    expect(textOf(st(), "x1")).toBe("hey");
+    expect(textBox()).toBeNull();
+    expect(st().textEditId).toBeNull();
+  });
+
+  it("Cmd+Enter saves too", () => {
+    const { st } = show();
+    doubleClick(...TEXT);
+    fireEvent.change(textBox()!, { target: { value: "hey" } });
+    expect(fireEvent.keyDown(textBox()!, { key: "Enter", metaKey: true })).toBe(false);
+    expect(labelsOf(st())).toEqual(["text edit"]);
+    expect(textBox()).toBeNull();
+  });
+
+  it("Escape keeps what was typed and saves one change", () => {
+    const { st } = show();
+    doubleClick(...TEXT);
+    fireEvent.change(textBox()!, { target: { value: "hey" } });
+    expect(fireEvent.keyDown(textBox()!, { key: "Escape" })).toBe(false);
+    expect(labelsOf(st())).toEqual(["text edit"]);
+    expect(textOf(st(), "x1")).toBe("hey");
+    expect(textBox()).toBeNull();
+    expect(st().textEditId).toBeNull();
+  });
+
+  it("Escape with nothing typed closes the box and saves nothing", () => {
+    const { st } = show();
+    doubleClick(...TEXT);
+    expect(fireEvent.keyDown(textBox()!, { key: "Escape" })).toBe(false);
+    expect(st().queue).toEqual([]);
+    expect(textBox()).toBeNull();
+  });
+
+  it("blur saves", () => {
+    const { st } = show();
+    doubleClick(...TEXT);
+    fireEvent.change(textBox()!, { target: { value: "hey" } });
+    fireEvent.blur(textBox()!);
+    expect(labelsOf(st())).toEqual(["text edit"]);
+    expect(textOf(st(), "x1")).toBe("hey");
+    expect(textBox()).toBeNull();
+    expect(st().textEditId).toBeNull();
+  });
+
+  it("when the box closes by a key, focus goes back to what had it", () => {
+    const { store } = show();
+    const before = document.createElement("button");
+    document.body.append(before);
+    before.focus();
+    act(() => editTextInPlace(store, "x1"));
+    expect(document.activeElement).toBe(textBox());
+    fireEvent.keyDown(textBox()!, { key: "Escape" });
+    expect(document.activeElement).toBe(before);
+    act(() => editTextInPlace(store, "x1"));
+    fireEvent.keyDown(textBox()!, { key: "Enter", ctrlKey: true });
+    expect(document.activeElement).toBe(before);
+    // After a blur, focus stays where the click put it: nothing, for a click on the board, or a control.
+    act(() => editTextInPlace(store, "x1"));
+    fireEvent.blur(textBox()!);
+    expect(textBox()).toBeNull();
+    expect(document.activeElement).not.toBe(before);
+    const clicked = document.createElement("button");
+    document.body.append(clicked);
+    act(() => editTextInPlace(store, "x1"));
+    act(() => clicked.focus());
+    expect(textBox()).toBeNull();
+    expect(document.activeElement).toBe(clicked);
+  });
+
+  it("typing s and a space into the box neither splits nor plays", () => {
+    const { st } = show({ shortcuts: true });
+    doubleClick(...TEXT);
+    expect(fireEvent.keyDown(textBox()!, { key: "s" })).toBe(true);
+    expect(fireEvent.keyDown(textBox()!, { key: " " })).toBe(true);
+    fireEvent.change(textBox()!, { target: { value: "his " } });
+    expect(st().playing).toBe(false);
+    expect(st().queue).toEqual([]);
+    fireEvent.keyDown(textBox()!, { key: "Enter", ctrlKey: true });
+    expect(labelsOf(st())).toEqual(["text edit"]);
+    // Out of the box, the same key splits.
+    fireEvent.keyDown(document.body, { key: "s" });
+    expect(labelsOf(st())).toEqual(["text edit", "split"]);
+  });
+
+  it("a viewer gets no box, and playback goes on", () => {
+    const { st } = show({ over: { canEdit: false } });
+    act(() => st().play());
+    doubleClick(...TEXT);
+    expect(textBox()).toBeNull();
+    expect(st().textEditId).toBeNull();
+    expect(st().playing).toBe(true);
+    expect(st().selection.clipIds).toEqual([]);
+  });
+
+  it("a double-click on a video starts nothing", () => {
+    const { st } = show();
+    doubleClick(...PICTURE);
+    expect(textBox()).toBeNull();
+    expect(st().textEditId).toBeNull();
+    expect(st().notice).toBeNull();
+  });
+
+  it("a double-click on locked text says the track is locked", () => {
+    const doc = sampleDoc();
+    doc.tracks[1].locked = true;
+    const { st } = show({ over: { doc } });
+    doubleClick(...TEXT);
+    expect(st().notice?.text).toBe("That track is locked.");
+    expect(st().textEditId).toBeNull();
+    expect(textBox()).toBeNull();
+  });
+
+  it("a double-click outside the frame reaches only a selected clip", () => {
+    const doc = () => withTransform(sampleDoc(), "x1", { scale: 20 });
+    const first = show({ over: { doc: doc() } });
+    doubleClick(206, 536); // project (-20, 960), on x1's box but beside the frame
+    expect(first.st().textEditId).toBeNull();
+    document.body.innerHTML = "";
+    const second = show({ over: { doc: doc() }, selected: ["x1"] });
+    doubleClick(206, 536);
+    expect(second.st().textEditId).toBe("x1");
+  });
+
+  it("Edit text from the clip menu opens the box", () => {
+    const { st } = show();
+    rightClick(...TEXT);
+    pickItem("Edit text");
+    expect(st().textEditId).toBe("x1");
+    expect(document.activeElement).toBe(textBox());
+  });
+
+  it("the preview does not draw the text twice", () => {
+    const { st } = show();
+    doubleClick(...TEXT);
+    frame();
+    expect(lastDrawOptions()).toMatchObject({ hideClipId: "x1" });
+    fireEvent.keyDown(textBox()!, { key: "Escape" });
+    frame();
+    expect(lastDrawOptions()?.hideClipId).toBeUndefined();
+    expect(st().textEditId).toBeNull();
+  });
+
+  it("while the box is open its clip has no handles or outline", () => {
+    show({ selected: ["x1"] });
+    expect(handleNames()).toHaveLength(9);
+    expect(outlines()).toHaveLength(1);
+    doubleClick(...TEXT);
+    expect(handleNames()).toEqual([]);
+    expect(outlines()).toEqual([]);
+    fireEvent.keyDown(textBox()!, { key: "Escape" });
+    expect(handleNames()).toHaveLength(9);
+    expect(outlines()).toHaveLength(1);
+  });
+
+  it("a press or a double-click inside the box is the box's own", () => {
+    // x3, on a text track drawn above x1, has the same place.
+    const doc = sampleDoc();
+    doc.tracks.push({ id: "t2", kind: "text", name: "Text 2", muted: false, hidden: false, locked: false, clips: [text("x3", 0, 60)] });
+    const { store, st } = show({ over: { doc } });
+    act(() => editTextInPlace(store, "x1"));
+    fireEvent.pointerDown(textBox()!, { clientX: PICTURE[0], clientY: PICTURE[1], button: 0, pointerId: 1 });
+    fireEvent.pointerUp(textBox()!, { clientX: PICTURE[0], clientY: PICTURE[1], button: 0, pointerId: 1 });
+    expect(st().selection.clipIds).toEqual(["x1"]);
+    // A double-click selects a word in it, and does not open x3.
+    expect(fireEvent.doubleClick(textBox()!, { clientX: TEXT[0], clientY: TEXT[1] })).toBe(true);
+    expect(st().textEditId).toBe("x1");
+    // Its right-click is the browser's, as in any text field.
+    expect(fireEvent.contextMenu(textBox()!, { clientX: TEXT[0], clientY: TEXT[1], button: 2 })).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("a small text gets a 13 px box", () => {
+    show({ over: { doc: withTransform(sampleDoc(), "x1", { scale: 0.2 }) } });
+    doubleClick(...TEXT);
+    const { style } = textBox()!;
+    // 6.4 px of type would be too small to read: 13 px, and the box widens in step from 97.2 px.
+    expect(style.fontSize).toBe("13px");
+    expect(style.width).toBe("197.44px");
+    expect([style.left, style.top]).toEqual(["286px", "496px"]);
+  });
+
+  it("a stretched text's box is stretched too", () => {
+    show({ over: { doc: withTransform(sampleDoc(), "x1", { stretch: 2, rotation: 30 }) } });
+    doubleClick(...TEXT);
+    expect(textBox()!.style.transform).toContain("scaleX(2)");
+    expect(textBox()!.style.transform).toBe("translate(-50%, -50%) rotate(30deg) scaleX(2)");
+  });
+
+  it("the box follows the frame when the pane changes", () => {
+    show();
+    doubleClick(...TEXT);
+    paneSize = { width: 972, height: 992 };
+    rects = { pane: rect(200, 40, 972, 992), content: rect(200, 40, 972, 992), canvas: rect(416, 56, 540, 960) };
+    act(() => {
+      for (const callback of observed) callback([], {} as ResizeObserver);
+    });
+    expect(textBox()!.style.left).toBe("486px");
+  });
+
+  it("removing the clip while typing closes the box with a message", () => {
+    const { store, st } = show();
+    const notices = noticesOf(store);
+    doubleClick(...TEXT);
+    fireEvent.change(textBox()!, { target: { value: "hey" } });
+    expect(st().gesture).not.toBeNull();
+    act(() => void st().applyRemote([entry(6, [{ op: "remove_clip", clipId: "x1" }])]));
+    expect(notices).toEqual([MESSAGES.clipGone]);
+    expect(st().textEditId).toBeNull();
+    expect(textBox()).toBeNull();
+    expect(st().queue).toEqual([]);
   });
 });

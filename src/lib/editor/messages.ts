@@ -18,6 +18,7 @@ export const MESSAGES = {
   renameFailed: "Couldn't rename the project. Try again.",
   cropHint: "Drag a handle to crop. Next time, you can hold Alt while you drag.",
   cropHintMac: "Drag a handle to crop. Next time, you can hold Option while you drag.",
+  trackHidden: "That track is hidden.",
 } as const;
 
 const OP_ERROR_MESSAGES: Record<OpErrorCode, string> = {

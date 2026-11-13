@@ -13,21 +13,18 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { removeTrack, renameTrack, resetCrop, toggleTrack } from "@/lib/editor/actions";
-import type { Sizer } from "@/lib/editor/clip-box";
 import { trackToggles } from "@/lib/editor/geometry";
 import {
   FIELD_LABEL,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   WEIGHTS,
-  clipFieldOps,
   clipFieldValue,
   cropScrubRange,
   fieldContext,
   parseNumber,
   scrubBounds,
   type ClipField,
-  type FieldPrefs,
 } from "@/lib/editor/inspector-fields";
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { explainOpError } from "@/lib/editor/messages";
@@ -36,15 +33,15 @@ import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import type { Units } from "@/lib/editor/settings";
 import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
-import type { LibraryStore } from "@/lib/media/library-store";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { docDuration, isCropped, type Clip, type Op, type OpInput, type Track } from "@/lib/timeline";
+import { docDuration, isCropped, type Clip, type Track } from "@/lib/timeline";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatSelect } from "./format-select";
 import { useLibrary, useMedia } from "./media/media-context";
 import { useTextMeasure } from "./text-measure";
 import { Timecode } from "./timecode";
+import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-field-gesture";
 
 const TEXT = "text-[13px] leading-5";
 const CAPTION = "text-xs font-medium text-ed-muted";
@@ -64,70 +61,6 @@ const ALIGN_OPTIONS = [
 type Align = (typeof ALIGN_OPTIONS)[number]["value"];
 
 const HEX = /^#[0-9a-f]{6}$/; // what a color input accepts
-
-// What a number field shows and changes against besides the document: this browser's unit and lock, and how the
-// clip's box is measured.
-type FieldView = { prefs: FieldPrefs; sizer: Sizer };
-
-// The ops that set a field of the clip as the store holds it now (not as a live gesture shows it):
-// null when the input is not valid, [] when it changes nothing. A media clip's length stops where its media ends,
-// as far as the library knows it now. Without a view, the field is read in pixels with no box.
-function fieldOps(store: EditorStore, clipId: string, field: ClipField, raw: string, library?: LibraryStore, view?: FieldView) {
-  const { doc } = store.getState();
-  const found = findClip(doc, clipId);
-  if (!found) return null;
-  const { clip } = found;
-  const lengthFrames = clip.type === "text" || !library ? undefined : mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps);
-  return clipFieldOps(clip, field, raw, fieldContext(doc, clip, view?.prefs, view?.sizer), lengthFrames);
-}
-
-// Ends a field's edit the way leaving it does. The field's own live gesture is saved as one change;
-// the store refuses one that does not apply, with its own message. A value that could not be turned
-// into a change is reported, unless the clip is gone. Anything else (no draft, or a gesture the
-// store already ended) is nothing to do.
-function finishField(store: EditorStore, clipId: string, field: ClipField, own: Op[] | null, refused: boolean) {
-  const state = store.getState();
-  if (own !== null && state.gesture?.ops === own) state.commitGesture(FIELD_LABEL[field]);
-  else if (refused && findClip(state.doc, clipId)) state.notify("error", explainOpError("INVALID"));
-}
-
-// One field's live gesture: the ops it last previewed (as the store holds them, so a gesture this
-// field did not start is never saved under its label) and whether that preview was refused. When
-// the field goes away mid-edit, for example because the selection changed before it lost focus,
-// the edit is finished as if the field had been left. preview returns whether the change applies right now: false
-// for ops that are not valid or a change the store refuses.
-function useFieldGesture(store: EditorStore, clipId: string, field: ClipField) {
-  const own = useRef<Op[] | null>(null);
-  const refused = useRef(false);
-  const [live, setLive] = useState<Op[] | null>(null); // own, for rendering
-
-  function remember(ops: Op[] | null, wasRefused: boolean) {
-    own.current = ops;
-    refused.current = wasRefused;
-    setLive(ops);
-  }
-
-  useEffect(() => () => finishField(store, clipId, field, own.current, refused.current), [store, clipId, field]);
-
-  return {
-    live,
-    preview(ops: OpInput[] | null): boolean {
-      const change = ops !== null && ops.length > 0 ? ops : null;
-      const applies = store.getState().setGesture(change);
-      remember(change ? (store.getState().gesture?.ops ?? null) : null, ops === null || !applies);
-      return ops !== null && applies;
-    },
-    finish() {
-      finishField(store, clipId, field, own.current, refused.current);
-      remember(null, false);
-    },
-    drop() {
-      const state = store.getState();
-      if (own.current !== null && state.gesture?.ops === own.current) state.setGesture(null);
-      remember(null, false);
-    },
-  };
-}
 
 // Select, Segmented and Toggle change the project at once.
 function editField(store: EditorStore, clipId: string, field: ClipField, raw: string) {
@@ -277,45 +210,6 @@ function NumberField(props: {
       />
     </Field>
   );
-}
-
-// A typed text field of the clip. What was typed is kept as a draft and previewed; blur or Enter
-// saves it and Escape drops it. A refused value is reported on save, and the field then shows the
-// document's value again.
-function useTextField(store: EditorStore, clipId: string, field: ClipField, shown: string) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const gesture = useFieldGesture(store, clipId, field);
-
-  function change(raw: string) {
-    setDraft(raw);
-    gesture.preview(fieldOps(store, clipId, field, raw));
-  }
-
-  function save() {
-    if (draft === null) return;
-    setDraft(null);
-    gesture.finish();
-  }
-
-  // Returns whether there was a draft to drop.
-  function cancel(): boolean {
-    if (draft === null) return false;
-    setDraft(null);
-    gesture.drop();
-    return true;
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, multiline = false) {
-    if (event.nativeEvent.isComposing) return;
-    if (event.key === "Enter" && !(multiline && event.shiftKey)) {
-      event.preventDefault();
-      save();
-    } else if (event.key === "Escape" && cancel()) {
-      event.preventDefault();
-    }
-  }
-
-  return { value: draft ?? shown, change, save, onKeyDown };
 }
 
 // The native color input previews while the picker moves and saves when it closes.

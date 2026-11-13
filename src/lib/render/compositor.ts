@@ -12,6 +12,8 @@ export type DrawOptions = {
   // What a clip with no picture says in its placeholder. Default: "Video" or "Image".
   placeholderLabel?: (clip: MediaClip) => string;
   resolveFont?: (family: string) => string; // a document font name to a CSS font-family list
+  // A clip left out: the preview's in-place text box shows that text instead. Never set for an export.
+  hideClipId?: string;
 };
 
 // Repeats the --ed-clip-video and --ed-clip-image colors from src/app/globals.css, because a worker cannot read CSS variables.
@@ -124,6 +126,7 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, doc.width, doc.height);
   for (const { clip } of activeClips(doc, frame)) {
+    if (clip.id === options.hideClipId) continue;
     const t = clip.transform;
     ctx.save();
     ctx.globalAlpha = t.opacity;

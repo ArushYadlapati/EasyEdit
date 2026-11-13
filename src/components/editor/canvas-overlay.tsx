@@ -22,9 +22,11 @@ import {
   type PreviewSurface,
   type View,
 } from "@/lib/editor/canvas-geometry";
+import { editTextInPlace } from "@/lib/editor/actions";
 import { previewMenu, rightClickEntries } from "@/lib/editor/menus";
 import { viewDoc, type EditorState } from "@/lib/editor/store";
-import { useClipboard, useEditorStore } from "./context";
+import { CanvasTextEditor } from "./canvas-text-editor";
+import { useClipboard, useEditor, useEditorStore } from "./context";
 import { useToMenuItems } from "./menu-items";
 import { CLICK_SLOP_PX } from "./timeline/use-clip-drag";
 import { useCanvasDrag } from "./use-canvas-drag";
@@ -87,9 +89,11 @@ const px = (v: number) => Math.round(v * 100) / 100;
 // the pointer, clicking through locked tracks; outside the frame only a selected clip takes it; a press that travels
 // moves the clip. One selected clip that can be edited, paused, has eight handles and a rotate handle. A right-click
 // opens the clip's menu (a handle's is its clip's), or the preview's when it lands on nothing or on a clip of a locked
-// track. On a Mac a Ctrl press is that right-click. The handles but rotate show as crop marks while Alt is down with the
-// pointer over the board, while a drag crops, and while the clip menu's Crop has armed the clip; while handles show, a
-// lone Alt never reaches the browser, so it does not open a Windows browser's menu.
+// track. On a Mac a Ctrl press is that right-click. A double-click on text opens its box for typing in place (or says its
+// track is locked); while the box is open its clip has no outline or handles, and what lands in the box is the box's.
+// The handles but rotate show as crop marks while Alt is down with the pointer over the board, while a drag crops, and
+// while the clip menu's Crop has armed the clip; while handles show, a lone Alt never reaches the browser, so it does
+// not open a Windows browser's menu.
 export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane: RefObject<HTMLElement | null> }): ReactNode {
   const store = useEditorStore();
   const clipboard = useClipboard();
@@ -111,6 +115,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const guides = useStore(drawn, (s) => s.guides);
   const full = useStore(drawn, (s) => s.full);
   const handlesShown = handles.length > 0;
+  const textEditId = useEditor((s) => s.textEditId);
 
   useLayoutEffect(() => {
     const refresh = () => {
@@ -126,9 +131,11 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         const cropping = drag.cropping.getState().clipId;
         const marks = (clipId: string) => (altDown.current && pointerOver.current) || cropping === clipId || state.cropArmed === clipId;
         const cut = items.find((i) => i.clipId === cropping);
+        // The text being typed in place shows its own box instead.
+        const framed = items.filter((i) => i.clipId !== state.textEditId);
         next = {
-          outlines: outlinesOf(items, state.selection.clipIds, view, box),
-          handles: handlesOf(state, items, view, box, surface.visible(), followed, marks),
+          outlines: outlinesOf(framed, state.selection.clipIds, view, box),
+          handles: handlesOf(state, framed, view, box, surface.visible(), followed, marks),
           guides: guidesOf(drag.guides.getState(), viewDoc(state), view, box),
           full: cut ? fullOf(cut, view, box) : null,
         };
@@ -144,7 +151,13 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     refreshRef.current = refresh;
     const stopSurface = surface.onChange(refresh);
     const stopStore = store.subscribe((s, prev) => {
-      if (s.selection !== prev.selection || s.canEdit !== prev.canEdit || s.playing !== prev.playing || s.cropArmed !== prev.cropArmed) {
+      if (
+        s.selection !== prev.selection ||
+        s.canEdit !== prev.canEdit ||
+        s.playing !== prev.playing ||
+        s.cropArmed !== prev.cropArmed ||
+        s.textEditId !== prev.textEditId
+      ) {
         refresh();
       }
     });
@@ -223,6 +236,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   }
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
+    if (inTextEditor(e.target)) return;
     if (isMac && e.ctrlKey) return;
     press.current = null;
     if (e.button !== 0) return;
@@ -271,7 +285,19 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     store.getState().select([p.clipId], p.then === "toggle" ? "toggle" : "replace");
   }
 
+  // A double-click on text, locked or not, opens it for typing; a video or image starts nothing. The press before it
+  // has already selected what a press takes.
+  function onDoubleClick(e: MouseEvent<HTMLDivElement>) {
+    if (inTextEditor(e.target)) return;
+    const view = surface.view();
+    if (!view) return;
+    const hit = hitAt(store.getState(), view, e.clientX, e.clientY, true);
+    if (hit) editTextInPlace(store, hit.clipId);
+  }
+
   function onContextMenu(e: MouseEvent<HTMLDivElement>) {
+    // The box's own menu is the browser's, as in any text field.
+    if (inTextEditor(e.target)) return;
     e.preventDefault();
     if (!menu) return;
     const grip = gripOf(e.target);
@@ -318,6 +344,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         press.current = null;
         stopFollowing(e.pointerId);
       }}
+      onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
     >
       <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible">
@@ -374,6 +401,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
           )}
         </div>
       ))}
+      {textEditId !== null && <CanvasTextEditor key={textEditId} clipId={textEditId} surface={surface} />}
     </div>
   );
 }
@@ -409,6 +437,11 @@ function markPoints(grip: Handle): string {
     points = [[ox, oy], [ox - 12 * hx, oy], [ox - 12 * hx, oy - 4 * hy], [ox - 4 * hx, oy - 4 * hy], [ox - 4 * hx, oy - 12 * hy], [ox, oy - 12 * hy]];
   }
   return points.map(([x, y]) => `${x},${y}`).join(" ");
+}
+
+// Whether an event landed in the box text is typed in.
+function inTextEditor(target: EventTarget): boolean {
+  return target instanceof Element && target.closest("[data-canvas-text-editor]") !== null;
 }
 
 // The handle a press or right-click landed on, if any.

@@ -340,4 +340,49 @@ describe("selection and playhead", () => {
     st().revokeEditing();
     expect(st().cropArmed).toBeNull();
   });
+
+  it("text editing is only for an editor's text on an unlocked track", () => {
+    const { st } = fresh();
+    expect(st().textEditId).toBeNull();
+    expect(st().setTextEdit("x1")).toBe(true);
+    expect(st().textEditId).toBe("x1");
+    expect(st().setTextEdit(null)).toBe(true);
+    expect(st().textEditId).toBeNull();
+    // Not text, or not there.
+    expect(st().setTextEdit("c1")).toBe(false);
+    expect(st().setTextEdit("gone")).toBe(false);
+    expect(st().textEditId).toBeNull();
+    // A locked or hidden track.
+    const locked = sampleDoc();
+    locked.tracks[1].locked = true;
+    expect(makeStore({ doc: locked }).getState().setTextEdit("x1")).toBe(false);
+    const hidden = sampleDoc();
+    hidden.tracks[1].hidden = true;
+    expect(makeStore({ doc: hidden }).getState().setTextEdit("x1")).toBe(false);
+    // A viewer.
+    const viewer = makeStore({ canEdit: false });
+    expect(viewer.getState().setTextEdit("x1")).toBe(false);
+    expect(viewer.getState().textEditId).toBeNull();
+    // A remote edit elsewhere keeps it; a remote removal of the clip clears it.
+    st().setTextEdit("x1");
+    st().applyRemote([entry(6, [{ op: "remove_clip", clipId: "x2" }])]);
+    expect(st().textEditId).toBe("x1");
+    st().applyRemote([entry(7, [{ op: "remove_clip", clipId: "x1" }])]);
+    expect(st().textEditId).toBeNull();
+  });
+
+  it("text editing ends when its track is locked or hidden, or editing is revoked", () => {
+    const { st } = fresh();
+    st().setTextEdit("x1");
+    st().applyRemote([entry(6, [{ op: "update_track", trackId: "t1", patch: { locked: true } }])]);
+    expect(st().textEditId).toBeNull();
+    st().applyRemote([entry(7, [{ op: "update_track", trackId: "t1", patch: { locked: false } }])]);
+    st().setTextEdit("x1");
+    st().edit([{ op: "update_track", trackId: "t1", patch: { hidden: true } }], "track change");
+    expect(st().textEditId).toBeNull();
+    st().undo();
+    expect(st().setTextEdit("x1")).toBe(true);
+    st().revokeEditing();
+    expect(st().textEditId).toBeNull();
+  });
 });
