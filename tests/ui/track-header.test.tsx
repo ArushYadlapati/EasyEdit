@@ -108,6 +108,19 @@ describe("track header", () => {
     expect(screen.queryByRole("textbox", { name: "Track name" })).toBeNull();
   });
 
+  it("a click in the open field or on the options popup keeps the clip selection", () => {
+    const { store, openMenu, startRename } = setup();
+    act(() => store.getState().select(["x1", "c1"]));
+    openMenu();
+    fireEvent.click(screen.getByRole("menu")); // the popup's own box, between its items
+    expect(store.getState().selection).toMatchObject({ clipIds: ["x1", "c1"], trackId: null });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Rename" }), { key: "Escape" });
+    const input = startRename();
+    fireEvent.click(input); // placing the caret
+    expect(store.getState().selection).toMatchObject({ clipIds: ["x1", "c1"], trackId: null });
+    expect(screen.getByRole("textbox", { name: "Track name" })).toBe(input);
+  });
+
   it("Enter while composing does not save", () => {
     const { store, track } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Text 1" }));

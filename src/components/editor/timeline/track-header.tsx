@@ -58,9 +58,10 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
     if (canEdit) startRename();
   }
 
-  // A click on the header's background selects the track; its buttons do their own thing.
+  // A click on the header's background selects the track. Its buttons do their own thing, and a
+  // click in the rename field or on the options popup (drawn inside the header) is not the background.
   function onHeaderClick(event: MouseEvent<HTMLDivElement>) {
-    if (event.target instanceof Element && event.target.closest("button")) return;
+    if (event.target instanceof Element && event.target.closest("button, input, [role='menu']")) return;
     selectTrack(track.id);
   }
 
