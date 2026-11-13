@@ -1,9 +1,15 @@
 import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { isStorableText, withSuffix } from "@/lib/text";
-import { FORMAT_PRESETS, type FormatId } from "@/lib/timeline";
-
-const FORMAT_IDS = Object.keys(FORMAT_PRESETS) as [FormatId, ...FormatId[]];
+import {
+  CUSTOM_SIZE_ONLY,
+  FORMAT_PRESETS,
+  FRAME_SIZE_MESSAGE,
+  FormatId,
+  formatFor,
+  isFrameSize,
+  isPresetId,
+} from "@/lib/timeline";
 
 export const projectName: z.ZodType<string> = z
   .string()
@@ -12,10 +18,22 @@ export const projectName: z.ZodType<string> = z
   .max(LIMITS.projectNameChars)
   .refine(isStorableText);
 
-export const createProjectInput = z.object({
-  name: projectName,
-  format: z.enum(FORMAT_IDS),
-});
+export type ProjectFrame = { format: FormatId; width: number; height: number };
+
+// The format and size a new project is made with. A size is given only with "custom", and a custom size equal to
+// a named one is that named size.
+export function projectFrame(input: { format: string; width?: number; height?: number }): ProjectFrame | { error: string } {
+  const format = FormatId.safeParse(input.format);
+  if (!format.success) return { error: "Pick a format." };
+  const { width, height } = input;
+  if (isPresetId(format.data)) {
+    if (width !== undefined || height !== undefined) return { error: CUSTOM_SIZE_ONLY };
+    const preset = FORMAT_PRESETS[format.data];
+    return { format: format.data, width: preset.width, height: preset.height };
+  }
+  if (width === undefined || height === undefined || !isFrameSize(width, height)) return { error: FRAME_SIZE_MESSAGE };
+  return { format: formatFor(width, height), width, height };
+}
 
 const COPY_SUFFIX = " copy";
 

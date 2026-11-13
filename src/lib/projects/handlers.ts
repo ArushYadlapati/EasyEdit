@@ -35,8 +35,13 @@ const opsBody = z.object({
   requestId: z.string().optional(), // the service checks its format
 });
 
-// Only the shape; the service checks the name and format themselves.
-const createBody = z.object({ name: z.string(), format: z.string() });
+// Only the shape; the service checks the name, format and size themselves. A project made here goes in no folder.
+const createBody = z.object({
+  name: z.string(),
+  format: z.string(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+});
 
 const renameBody = z.object({ name: z.string() });
 

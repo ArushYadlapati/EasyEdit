@@ -324,6 +324,7 @@ Some rules:
 | Square 1:1 | 1080 x 1080 |
 | Long 16:9 | 1920 x 1080 |
 | Long 4K | 3840 x 2160 |
+| Custom | Any even width and height from 16 to 4096 pixels, up to the area of 4K (3840 x 2160) |
 
 All projects run at 30 frames per second. Times in the timeline are whole frames.
 
@@ -343,7 +344,7 @@ All routes need you to be signed in (they use the same cookie as the website). B
 | Route | Who may call it | What it does |
 | --- | --- | --- |
 | `GET /api/projects` | viewer and up | List projects: `{ "projects": [...] }` |
-| `POST /api/projects` | editor and up | Create a project from `{ "name", "format" }`. Answers `201` with `{ "id" }`. |
+| `POST /api/projects` | editor and up | Create a project from `{ "name", "format" }`, with `"width"` and `"height"` in pixels when `"format"` is `"custom"`. Answers `201` with `{ "id" }`. |
 | `GET /api/projects/:id` | viewer and up | Get `{ id, name, format, doc, version }`. |
 | `GET /api/projects/:id/version` | viewer and up | Get just the current version: `{ version }`. |
 | `PATCH /api/projects/:id` | editor and up | Rename a project: send `{ "name" }`. Answers `{ id, name }`. |
