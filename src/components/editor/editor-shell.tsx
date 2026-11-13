@@ -10,6 +10,8 @@ import {
 } from "@/lib/editor/settings";
 import { createEditorStore } from "@/lib/editor/store";
 import { createSync } from "@/lib/editor/sync";
+import { renderThumbnail } from "@/lib/editor/thumbnail";
+import { startThumbnailTrigger } from "@/lib/editor/thumbnail-trigger";
 import type { EditorInit } from "@/lib/editor/types";
 import { docAssetIds } from "@/lib/media/library-store";
 import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser-prefs";
@@ -17,6 +19,7 @@ import { EditorProvider } from "./context";
 import { watchDrags } from "./drag-watch";
 import { EditorScreen } from "./editor-screen";
 import { MediaProvider, createMediaServices } from "./media/media-context";
+import { browserThumbnailDeps } from "./thumbnail-deps";
 
 const ACTIVITY_THROTTLE_MS = 1000;
 const LIBRARY_TIMER_MS = 30_000; // the library store decides whether a tick fetches anything
@@ -31,10 +34,10 @@ const localStore = {
 // A refresh or an ensure that fails has nothing to tell the shell: the library store keeps its own problem.
 const quietly = (work: Promise<void>) => void work.catch(() => {});
 
-// Owns the store, the API client, the sync, the media services and this browser's preferences for one open project,
-// and ties them to the page: tab visibility, focus, coming back online, the user's clicks and keys, and leaving with
-// unsent changes or running uploads. The panel sizes and the preferences come from the browser's cookies, which the
-// page read; the keymap is read from local storage once the editor is on screen.
+// Owns the store, the API client, the sync, the media services, the project's dashboard picture and this browser's
+// preferences for one open project, and ties them to the page: tab visibility, focus, coming back online, the user's
+// clicks and keys, and leaving with unsent changes or running uploads. The panel sizes and the preferences come from the
+// browser's cookies, which the page read; the keymap is read from local storage once the editor is on screen.
 export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; layout?: Layout; prefs?: Prefs }) {
   const [{ store, api, sync, clipboard, media, drop, settings, savePrefs }] = useState(() => {
     const store = createEditorStore(initial, { view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones } });
@@ -73,6 +76,19 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       savePrefs({ units, boardZoom, stillSeconds, textSeconds });
     });
   }, [store, settings, savePrefs]);
+
+  // The dashboard's picture of the project, drawn a few seconds after each save, and on open when the stored one is
+  // missing or older. Declared before the page wiring, so on leaving it stops before the media services close.
+  useEffect(() => {
+    const deps = browserThumbnailDeps(media);
+    return startThumbnailTrigger({
+      store,
+      storedVersion: initial.thumbnailVersion ?? null,
+      capture: (doc, isCurrent) => renderThumbnail(doc, deps, isCurrent),
+      upload: (version, jpeg) => api.putThumbnail(version, jpeg),
+      onLibraryChange: (listener) => media.library.subscribe(() => listener()),
+    });
+  }, [store, api, media, initial.thumbnailVersion]);
 
   useEffect(() => {
     const { library, queue } = media;
