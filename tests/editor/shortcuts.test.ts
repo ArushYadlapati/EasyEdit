@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createClipboard } from "@/lib/editor/clipboard";
+import { DEFAULT_KEYMAP, effectiveKeys, matchKeys, type Keymap } from "@/lib/editor/keymap";
 import { runCommand } from "@/lib/editor/run-command";
 import { SHORTCUTS, keyLabel, matchShortcut, shortcutFor, shouldIgnoreKey, type CommandId, type KeyLike } from "@/lib/editor/shortcuts";
 import { makeStore, sampleDoc } from "./fixtures";
@@ -33,6 +34,8 @@ describe("matching keys", () => {
     ["L", key("l"), MAC, "play-forward"],
     ["Cmd+C", key("c", { metaKey: true }), MAC, "copy"],
     ["Ctrl+V", key("v", { ctrlKey: true }), PC, "paste"],
+    ["Cmd+D", key("d", { metaKey: true }), MAC, "duplicate"],
+    ["Ctrl+D", key("d", { ctrlKey: true }), PC, "duplicate"],
     ["Ctrl+A", key("a", { ctrlKey: true }), PC, "select-all"],
     ["Escape", key("Escape"), MAC, "clear-selection"],
     ["=", key("="), MAC, "zoom-in"],
@@ -50,8 +53,15 @@ describe("matching keys", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
-      "cut", "delete", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "ripple-delete", "split", "undo",
+      "cut", "delete", "duplicate", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "ripple-delete", "split", "undo",
     ]);
+  });
+
+  it("a custom Mod+D chosen before Duplicate had it keeps its command", () => {
+    const keymap: Keymap = { on: true, keys: { split: ["Mod+D"] }, off: [] };
+    expect(effectiveKeys(keymap)).toMatchObject({ split: ["Mod+D"], duplicate: [] });
+    expect(matchKeys(key("d", { ctrlKey: true, code: "KeyD" }), PC, keymap)).toBe("split");
+    expect(matchKeys(key("d", { ctrlKey: true, code: "KeyD" }), PC, DEFAULT_KEYMAP)).toBe("duplicate");
   });
 
   it("stays out of the way while typing, and lets a focused button take the space bar", () => {
@@ -93,6 +103,7 @@ describe("matching keys", () => {
       ["copy", "Mod+C", "Copy"],
       ["cut", "Mod+X", "Cut"],
       ["paste", "Mod+V", "Paste"],
+      ["duplicate", "Mod+D", "Duplicate"],
       ["nudge-left", "Alt+ArrowLeft", "Nudge one frame left"],
       ["nudge-right", "Alt+ArrowRight", "Nudge one frame right"],
       ["nudge-left-second", "Alt+Shift+ArrowLeft", "Nudge one second left"],
@@ -120,7 +131,7 @@ describe("matching keys", () => {
       "Playback:frame-back", "Playback:frame-forward", "Playback:second-back", "Playback:second-forward",
       "Playback:prev-edge", "Playback:next-edge", "Playback:go-start", "Playback:go-end",
       "Editing:undo", "Editing:redo", "Editing:split", "Editing:delete", "Editing:ripple-delete",
-      "Editing:copy", "Editing:cut", "Editing:paste",
+      "Editing:copy", "Editing:cut", "Editing:paste", "Editing:duplicate",
       "Editing:nudge-left", "Editing:nudge-right", "Editing:nudge-left-second", "Editing:nudge-right-second",
       "Timeline:select-all", "Timeline:clear-selection", "Timeline:zoom-in", "Timeline:zoom-out", "Timeline:zoom-fit",
       "Timeline:toggle-snapping", "General:show-shortcuts",

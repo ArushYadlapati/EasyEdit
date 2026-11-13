@@ -1,4 +1,5 @@
 import { docDuration } from "@/lib/timeline";
+import { duplicateTrackOps, reorderTrackOps } from "./commands";
 import { zoomLimits } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import type { EditorState } from "./store";
@@ -75,6 +76,7 @@ export function editMenu(input: TopMenuInput): MenuEntry[] {
     { command: "cut", label: "Cut", separatorBefore: true, unavailable: noSelection },
     { command: "copy", label: "Copy", unavailable: noSelection },
     { command: "paste", label: "Paste", unavailable: !input.canPaste },
+    { command: "duplicate", label: "Duplicate", unavailable: noSelection },
     { command: "split", label: "Split", separatorBefore: true },
     { command: "delete", label: "Delete", unavailable: noSelection },
     { command: "ripple-delete", label: "Ripple delete", unavailable: noSelection },
@@ -95,5 +97,31 @@ export function viewMenu(input: TopMenuInput): MenuEntry[] {
     { id: "safe-zones", label: "Safe zones", checked: input.showSafeZones },
     { id: "reset-layout", label: "Reset panel sizes", separatorBefore: true },
     commandEntry(input, { command: "show-shortcuts", label: "Keyboard shortcuts" }),
+  ];
+}
+
+export type TrackMenuId = "rename" | "duplicate" | "up" | "down" | "remove";
+
+// A track's options (label "Track options"), read when the menu opens. Every entry changes the
+// project, so all are greyed for a viewer.
+export function trackMenu(state: EditorState, trackId: string): MenuEntry[] {
+  const { doc, canEdit } = state;
+  const locked = doc.tracks.find((t) => t.id === trackId)?.locked ?? false;
+  const entry = (id: TrackMenuId, label: string, unavailable = false): MenuEntry => ({
+    id,
+    label,
+    disabled: !canEdit || unavailable,
+    edit: true,
+  });
+  return [
+    entry("rename", "Rename"),
+    entry("duplicate", "Duplicate", duplicateTrackOps(doc, trackId, "new").length === 0),
+    entry("up", "Move up", reorderTrackOps(doc, trackId, "up").length === 0),
+    entry("down", "Move down", reorderTrackOps(doc, trackId, "down").length === 0),
+    {
+      ...entry("remove", locked ? "Remove track (unlock first)" : "Remove track", locked),
+      danger: true,
+      separatorBefore: true,
+    },
   ];
 }

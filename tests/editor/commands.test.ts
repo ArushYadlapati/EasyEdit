@@ -1,17 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
-  addMedia, addText, addTrack, copySelection, cutSelection, deleteSelection, goToEdge, moveTrack, nudgeSelection, paste, removeTrack,
-  renameTrack, reorderTrack, selectAll, splitAtPlayhead, toggleTrack,
+  addMedia, addText, addTrack, copySelection, cutSelection, deleteSelection, duplicateSelection, duplicateTrack, goToEdge, moveTrack,
+  nudgeSelection, paste, removeTrack, renameTrack, reorderTrack, selectAll, splitAtPlayhead, toggleTrack,
 } from "@/lib/editor/actions";
 import { CLIPBOARD_KEY, copyClips, createClipboard, pasteItems } from "@/lib/editor/clipboard";
 import {
-  addTrackOps, deleteOps, edgeFrames, moveOps, moveTrackOps, nearestEdge, removeTrackOps, renameTrackOps, reorderTrackOps, splitOps, toggleTrackOps,
+  addTrackOps, copyTrackName, deleteOps, duplicateTrackOps, edgeFrames, moveOps, moveTrackOps, nearestEdge, removeTrackOps, renameTrackOps,
+  reorderTrackOps, splitOps, toggleTrackOps,
 } from "@/lib/editor/commands";
 import { displayRows } from "@/lib/editor/geometry";
 import { MESSAGES } from "@/lib/editor/messages";
+import { runCommand } from "@/lib/editor/run-command";
 import { findClip } from "@/lib/editor/store";
 import { TEXT_PRESETS } from "@/lib/editor/text-presets";
-import { applyOps, prepareOps, type OpInput, type TimelineDoc, type Track } from "@/lib/timeline";
+import { LIMITS } from "@/lib/limits";
+import { applyOps, prepareOps, type Clip, type OpInput, type TimelineDoc, type Track } from "@/lib/timeline";
 import { assetView } from "../helpers/media-services";
 import { makeStore, sampleDoc, text, video } from "./fixtures";
 
@@ -313,6 +316,8 @@ describe("runners", () => {
     roundTrip("reorder", (s) => reorderTrack(s, "t1", "up"));
     roundTrip("move track", (s) => moveTrack(s, "v1", 0));
     roundTrip("remove track", (s) => removeTrack(s, "t1"));
+    roundTrip("duplicate", (s) => { s.getState().select(["x1", "c3"]); duplicateSelection(s); });
+    roundTrip("duplicate track", (s) => duplicateTrack(s, "v1"));
   });
 
   it("say so when there is nothing to paste or split", () => {
@@ -383,8 +388,187 @@ describe("runners", () => {
     cutSelection(store, createClipboard());
     paste(store, createClipboard());
     moveTrack(store, "v1", 0);
+    duplicateSelection(store);
+    duplicateTrack(store, "t1");
     st().seek(500);
     splitAtPlayhead(store);
     expect(st()).toMatchObject({ queue: [], notice: null });
+    const edit = vi.fn();
+    store.setState({ edit });
+    duplicateSelection(store);
+    duplicateTrack(store, "t1");
+    expect(edit).not.toHaveBeenCalled();
+  });
+});
+
+// The sample project with audio tracks added up to the most tracks a project may have.
+const fullDoc = () => {
+  const d = sampleDoc();
+  for (let i = d.tracks.length; i < LIMITS.tracksPerProject; i++) d.tracks.push(emptyTrack(`a${i}`, "audio"));
+  return d;
+};
+
+describe("duplicate", () => {
+  it("duplicate puts a copy right after the clip and selects it", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    st().select(["c2"]);
+    duplicateSelection(store);
+    const v1 = st().doc.tracks.find((t) => t.id === "v1")!;
+    const copy = v1.clips.find((c) => c.id !== "c1" && c.id !== "c2")!;
+    expect(copy).toMatchObject({ type: "video", start: 60, duration: 30 });
+    expect(v1.clips.map((c) => c.start)).toEqual([0, 30, 60]);
+    expect(st().selection.clipIds).toEqual([copy.id]);
+    expect(st().queue.map((e) => e.label)).toEqual(["duplicate"]);
+  });
+
+  it("a copy with no room on its track goes where placement finds room", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    st().select(["x1"]);
+    duplicateSelection(store);
+    expect(st().doc.tracks.find((t) => t.id === "t1")!.clips.map((c) => c.id)).toEqual(["x1", "x2"]);
+    const added = st().doc.tracks.find((t) => t.name === "Text 2")!;
+    expect(added.kind).toBe("text");
+    expect(added.clips).toHaveLength(1);
+    expect(added.clips[0]).toMatchObject({ type: "text", start: 60, duration: 60 });
+    expect(st().selection.clipIds).toEqual([added.clips[0].id]);
+  });
+
+  it("two clips keep their spacing", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    st().select(["c2", "c1"]);
+    duplicateSelection(store);
+    const v1 = st().doc.tracks.find((t) => t.id === "v1")!;
+    expect(v1.clips.map((c) => c.start)).toEqual([0, 30, 60, 90]);
+    expect(st().selection.clipIds).toEqual(v1.clips.slice(2).map((c) => c.id));
+    expect(st().queue.map((e) => e.label)).toEqual(["duplicate"]);
+  });
+
+  it("the copies start where the selection's last clip ends, not where its last-starting clip ends", () => {
+    const d = sampleDoc();
+    d.tracks[1].clips = [text("x1", 0, 100)]; // 0-100, while c2 is 30-60
+    const store = makeStore({ doc: d });
+    const st = () => store.getState();
+    st().select(["x1", "c2"]);
+    duplicateSelection(store);
+    const copies = st().selection.clipIds.map((id) => findClip(st().doc, id)!.clip);
+    expect(copies.map((c) => [c.type, c.start])).toEqual([["text", 100], ["video", 130]]);
+  });
+
+  it("duplicate leaves the clipboard alone and is one undo step", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    const empty = createClipboard();
+    st().select(["c2"]);
+    runCommand("duplicate", { store, clipboard: empty, openShortcuts: () => {} });
+    expect(empty.read()).toBeNull();
+    const board = createClipboard();
+    board.write(copyClips(sampleDoc(), ["x1"])!);
+    const held = board.read();
+    st().select(["c1"]);
+    runCommand("duplicate", { store, clipboard: board, openShortcuts: () => {} });
+    expect(board.read()).toEqual(held);
+    expect(st().queue.map((e) => e.label)).toEqual(["duplicate", "duplicate"]);
+    expect(st().undoStack).toHaveLength(2);
+    st().undo();
+    st().undo();
+    expect(st().doc).toEqual(sampleDoc());
+  });
+
+  it("does nothing without a selection, and says so when there is no room", () => {
+    const store = makeStore();
+    duplicateSelection(store);
+    expect(store.getState()).toMatchObject({ queue: [], notice: null });
+    const full = makeStore({ doc: fullDoc() });
+    full.getState().select(["x1"]);
+    duplicateSelection(full);
+    expect(full.getState().notice).toMatchObject({ tone: "error", text: MESSAGES.noRoom });
+    expect(full.getState().queue).toEqual([]);
+    expect(full.getState().selection.clipIds).toEqual(["x1"]);
+  });
+
+  it("duplicateTrackOps copies a track right above it", () => {
+    const d = sampleDoc();
+    const ops = duplicateTrackOps(d, "t1", "n");
+    expect(ops[0]).toEqual({ op: "add_track", track: { id: "n", kind: "text", name: "Text 1 copy" }, index: 2 });
+    const t1 = d.tracks[1];
+    expect(ops.slice(1)).toEqual(t1.clips.map((clip) => ({ op: "add_clip", trackId: "n", clip: { ...clip, id: undefined } })));
+    for (const op of ops.slice(1)) expect(op.op === "add_clip" && "id" in op.clip).toBe(false);
+    const after = applyOps(d, prepareOps(ops)).doc;
+    expect(rowIds(after)).toEqual(["cap", "n", "t1", "v1", "a1"]);
+    const copy = after.tracks.find((t) => t.id === "n")!;
+    const anyId = (clips: Clip[]) => clips.map((clip) => ({ ...clip, id: "?" }));
+    expect(anyId(copy.clips)).toEqual(anyId(t1.clips));
+    expect(copy.clips.filter((c) => c.id === "x1" || c.id === "x2")).toEqual([]);
+    expect(after.tracks.find((t) => t.id === "t1")).toEqual(t1);
+    const audio = applyOps(d, prepareOps(duplicateTrackOps(d, "a1", "n"))).doc;
+    expect(rowIds(audio)).toEqual(["cap", "t1", "v1", "a1", "n"]);
+    const video = applyOps(d, prepareOps(duplicateTrackOps(d, "v1", "n"))).doc;
+    expect(rowIds(video)).toEqual(["cap", "t1", "n", "v1", "a1"]);
+  });
+
+  it("a copied track keeps hide and mute and is never locked", () => {
+    const d = sampleDoc();
+    Object.assign(d.tracks[3], { hidden: true, muted: true, locked: true });
+    const ops = duplicateTrackOps(d, "a1", "n");
+    expect(ops).toEqual([
+      { op: "add_track", track: { id: "n", kind: "audio", name: "Audio 1 copy" }, index: 4 },
+      { op: "update_track", trackId: "n", patch: { hidden: true, muted: true } },
+    ]);
+    expect(applyOps(d, prepareOps(ops)).doc.tracks[4]).toMatchObject({ hidden: true, muted: true, locked: false });
+    d.tracks[3].hidden = false;
+    expect(duplicateTrackOps(d, "a1", "n")[1]).toEqual({ op: "update_track", trackId: "n", patch: { muted: true } });
+    d.tracks[3].muted = false;
+    d.tracks[0].hidden = true;
+    expect(duplicateTrackOps(d, "a1", "n")).toHaveLength(1);
+    expect(duplicateTrackOps(d, "v1", "n").at(-1)).toEqual({ op: "update_track", trackId: "n", patch: { hidden: true } });
+    expect(duplicateTrackOps(d, "v1", "n").some((op) => op.op === "replace_track")).toBe(false);
+  });
+
+  it("no copy of the caption track, a missing track, in a full project, or of a track of 499 clips", () => {
+    expect(duplicateTrackOps(sampleDoc(), "cap", "n")).toEqual([]);
+    expect(duplicateTrackOps(sampleDoc(), "gone", "n")).toEqual([]);
+    expect(duplicateTrackOps(fullDoc(), "t1", "n")).toEqual([]);
+    const roomForOne = fullDoc();
+    roomForOne.tracks.pop();
+    expect(duplicateTrackOps(roomForOne, "t1", "n")).toHaveLength(3);
+    const many = (count: number) => {
+      const d = sampleDoc();
+      d.tracks[1].clips = Array.from({ length: count }, (_, i) => text(`m${i}`, i * 30, 30));
+      return d;
+    };
+    expect(duplicateTrackOps(many(499), "t1", "n")).toEqual([]);
+    expect(duplicateTrackOps(many(498), "t1", "n")).toHaveLength(499);
+  });
+
+  it("a long name is cut to make room for ' copy'", () => {
+    const d = sampleDoc();
+    d.tracks[1].name = "x".repeat(LIMITS.trackNameChars);
+    const [add] = duplicateTrackOps(d, "t1", "n");
+    const name = add.op === "add_track" ? add.track.name : "";
+    expect(name).toBe("x".repeat(95) + " copy");
+    expect(name).toHaveLength(LIMITS.trackNameChars);
+    expect(copyTrackName("Text 1")).toBe("Text 1 copy");
+    expect(copyTrackName("Logo ")).toBe("Logo  copy"); // a name that fits is kept as it is
+    expect(copyTrackName("a".repeat(94) + "🤖🤖")).toBe("a".repeat(94) + " copy");
+    expect(copyTrackName("a".repeat(93) + " 🤖🤖")).toBe("a".repeat(93) + " copy");
+  });
+
+  it("duplicateTrack makes one change and selects the new track", () => {
+    const store = makeStore();
+    const st = () => store.getState();
+    st().select(["x1"]);
+    duplicateTrack(store, "t1");
+    const copy = st().doc.tracks[2];
+    expect(copy).toMatchObject({ kind: "text", name: "Text 1 copy" });
+    expect(copy.clips).toHaveLength(2);
+    expect(st().selection).toEqual({ clipIds: [], trackId: copy.id });
+    expect(st().queue.map((e) => e.label)).toEqual(["duplicate track"]);
+    duplicateTrack(store, "cap");
+    expect(st().queue).toHaveLength(1);
+    st().undo();
+    expect(st().doc).toEqual(sampleDoc());
   });
 });

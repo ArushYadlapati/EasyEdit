@@ -1,8 +1,9 @@
 import { expect, it } from "vitest";
 import { ZOOM_MAX, ZOOM_MIN, clampZoom, zoomLimits } from "@/lib/editor/geometry";
-import { editMenu, topMenuInput, viewMenu, type MenuEntry, type TopMenuInput } from "@/lib/editor/menus";
+import { editMenu, topMenuInput, trackMenu, viewMenu, type MenuEntry, type TopMenuInput } from "@/lib/editor/menus";
+import { LIMITS } from "@/lib/limits";
 import { docDuration } from "@/lib/timeline";
-import { makeStore } from "./fixtures";
+import { makeStore, sampleDoc } from "./fixtures";
 
 // An editor with nothing selected, nothing copied, empty stacks and room to zoom both ways.
 const BASE: TopMenuInput = {
@@ -25,15 +26,15 @@ const byId = (entries: MenuEntry[], id: string) => entries.find((e) => e.id === 
 it("the Edit menu lists its items in order", () => {
   const entries = editMenu(BASE);
   expect(entries.map((e) => e.id)).toEqual([
-    "undo", "redo", "cut", "copy", "paste", "split", "delete", "ripple-delete", "select-all", "clear-selection",
+    "undo", "redo", "cut", "copy", "paste", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection",
   ]);
   expect(entries.map((e) => e.label)).toEqual([
-    "Undo", "Redo", "Cut", "Copy", "Paste", "Split", "Delete", "Ripple delete", "Select all", "Deselect all",
+    "Undo", "Redo", "Cut", "Copy", "Paste", "Duplicate", "Split", "Delete", "Ripple delete", "Select all", "Deselect all",
   ]);
   expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["cut", "split", "select-all"]);
   for (const entry of entries) expect(entry.command).toBe(entry.id);
   // edit follows the shortcut table: copy, select all and deselect change nothing.
-  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["undo", "redo", "cut", "paste", "split", "delete", "ripple-delete"]);
+  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["undo", "redo", "cut", "paste", "duplicate", "split", "delete", "ripple-delete"]);
 });
 
 it("a viewer may only copy and select", () => {
@@ -48,7 +49,7 @@ it("nothing edits while a gesture is live or the project is deleted", () => {
   for (const input of [{ ...all, busy: true }, { ...all, deleted: true }]) {
     const entries = editMenu(input);
     const edits = entries.filter((e) => e.edit);
-    expect(edits).toHaveLength(7);
+    expect(edits).toHaveLength(8);
     for (const entry of edits) expect(entry.disabled, entry.id).toBe(true);
     expect(enabled(entries)).toEqual(["copy", "select-all", "clear-selection"]);
   }
@@ -59,7 +60,7 @@ it("undo and redo follow their stacks; cut and delete need a selection; paste ne
   expect(enabled(editMenu({ ...BASE, canUndo: true }))).toEqual(["undo", "split", "select-all", "clear-selection"]);
   expect(enabled(editMenu({ ...BASE, canRedo: true }))).toEqual(["redo", "split", "select-all", "clear-selection"]);
   expect(enabled(editMenu({ ...BASE, hasSelection: true }))).toEqual([
-    "cut", "copy", "split", "delete", "ripple-delete", "select-all", "clear-selection",
+    "cut", "copy", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection",
   ]);
   expect(enabled(editMenu({ ...BASE, canPaste: true }))).toEqual(["paste", "split", "select-all", "clear-selection"]);
 });
@@ -131,4 +132,36 @@ it("zoomLimits gives the toolbar's limits", () => {
   const long = zoomLimits(400_000_000, 30);
   expect(long.min).toBe(long.max);
   expect(long.max).toBeLessThan(0.02);
+});
+
+it("trackMenu disables Duplicate on Captions and Remove on a locked track", () => {
+  const store = makeStore();
+  const t1 = trackMenu(store.getState(), "t1");
+  expect(t1.map((e) => [e.id, e.label])).toEqual([
+    ["rename", "Rename"], ["duplicate", "Duplicate"], ["up", "Move up"], ["down", "Move down"], ["remove", "Remove track"],
+  ]);
+  for (const entry of t1) expect([entry.edit, entry.command], entry.id).toEqual([true, undefined]);
+  expect(t1.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["remove"]);
+  expect(t1.filter((e) => e.danger).map((e) => e.id)).toEqual(["remove"]);
+  expect(enabled(t1)).toEqual(["rename", "duplicate", "up", "down", "remove"]);
+
+  // Rows top to bottom: cap, t1, v1, then audio a1.
+  expect(enabled(trackMenu(store.getState(), "cap"))).toEqual(["rename", "down", "remove"]);
+  expect(enabled(trackMenu(store.getState(), "v1"))).toEqual(["rename", "duplicate", "up", "remove"]);
+  expect(enabled(trackMenu(store.getState(), "a1"))).toEqual(["rename", "duplicate", "remove"]);
+
+  store.getState().edit([{ op: "update_track", trackId: "t1", patch: { locked: true } }], "track change");
+  const locked = byId(trackMenu(store.getState(), "t1"), "remove");
+  expect(locked).toMatchObject({ label: "Remove track (unlock first)", danger: true, separatorBefore: true, disabled: true });
+  expect(enabled(trackMenu(store.getState(), "t1"))).toEqual(["rename", "duplicate", "up", "down"]);
+
+  const full = sampleDoc();
+  for (let i = full.tracks.length; i < LIMITS.tracksPerProject; i++) {
+    full.tracks.push({ id: `a${i}`, kind: "audio", name: `Audio ${i}`, muted: false, hidden: false, locked: false, clips: [] });
+  }
+  expect(byId(trackMenu(makeStore({ doc: full }).getState(), "t1"), "duplicate").disabled).toBe(true);
+
+  const viewer = trackMenu(makeStore({ canEdit: false }).getState(), "t1");
+  expect(viewer.map((e) => e.id)).toEqual(["rename", "duplicate", "up", "down", "remove"]);
+  expect(enabled(viewer)).toEqual([]);
 });

@@ -1,7 +1,7 @@
 export type CommandId =
   | "play-pause" | "play-forward" | "pause" | "play-reverse" | "frame-back" | "frame-forward" | "second-back" | "second-forward"
   | "prev-edge" | "next-edge" | "go-start" | "go-end"
-  | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste"
+  | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste" | "duplicate"
   | "nudge-left" | "nudge-right" | "nudge-left-second" | "nudge-right-second"
   | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "show-shortcuts";
 
@@ -57,6 +57,7 @@ export const SHORTCUTS: Shortcut[] = [
   row("Editing", "copy", ["Mod+C"], "Copy"),
   row("Editing", "cut", ["Mod+X"], "Cut", EDITS),
   row("Editing", "paste", ["Mod+V"], "Paste", EDITS),
+  row("Editing", "duplicate", ["Mod+D"], "Duplicate", EDITS),
   row("Editing", "nudge-left", ["Alt+ArrowLeft"], "Nudge one frame left", EDITS_REPEATS),
   row("Editing", "nudge-right", ["Alt+ArrowRight"], "Nudge one frame right", EDITS_REPEATS),
   row("Editing", "nudge-left-second", ["Alt+Shift+ArrowLeft"], "Nudge one second left", EDITS_REPEATS),

@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import { EditorProvider, useEditor } from "@/components/editor/context";
 import { Toolbar } from "@/components/editor/timeline/toolbar";
 import { TrackHeader } from "@/components/editor/timeline/track-header";
+import { displayRows } from "@/lib/editor/geometry";
 import { LIMITS } from "@/lib/limits";
-import type { Track } from "@/lib/timeline";
-import { makeStore, sampleDoc } from "../editor/fixtures";
+import type { Op, Track } from "@/lib/timeline";
+import { entry, makeStore, sampleDoc } from "../editor/fixtures";
 import { act, fireEvent, render, screen } from "../helpers/dom";
 
 // One track's header, re-rendered from the store as the track changes.
@@ -163,6 +164,47 @@ describe("track header", () => {
       expect([item("Move up").disabled, item("Move down").disabled], id).toEqual([up, down]);
       view.unmount();
     }
+  });
+
+  it("the track options list Duplicate, which adds 'Text 1 copy' above the track", () => {
+    const { store, openMenu, item } = setup();
+    openMenu();
+    expect(screen.getAllByRole("menuitem").map((e) => e.textContent)).toEqual(["Rename", "Duplicate", "Move up", "Move down", "Remove track"]);
+    expect((screen.getByRole("separator").nextElementSibling as HTMLElement).textContent).toBe("Remove track");
+    for (const menuItem of screen.getAllByRole("menuitem")) expect(menuItem.hasAttribute("data-edit-control"), menuItem.textContent!).toBe(true);
+    fireEvent.click(item("Duplicate"));
+    const { doc, selection, queue } = store.getState();
+    const copy = doc.tracks[2];
+    expect(copy).toMatchObject({ kind: "text", name: "Text 1 copy" });
+    expect(copy.clips).toHaveLength(2);
+    expect(displayRows(doc).map((t) => t.id)).toEqual(["cap", copy.id, "t1", "v1", "a1"]);
+    expect(selection).toEqual({ clipIds: [], trackId: copy.id });
+    expect(queue.map((e) => e.label)).toEqual(["duplicate track"]);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("the ⋯ menu reads the project when it opens", () => {
+    // The header gets a fixed track, so nothing re-renders it when other tracks come in.
+    const store = makeStore();
+    render(
+      <EditorProvider store={store}>
+        <TrackHeader track={store.getState().doc.tracks[1]} selected={false} />
+      </EditorProvider>,
+    );
+    const openMenu = () => fireEvent.click(screen.getByRole("button", { name: "Track options" }));
+    const item = (name: string) => screen.getByRole("menuitem", { name }) as HTMLButtonElement;
+    openMenu();
+    expect(item("Duplicate").disabled).toBe(false);
+    fireEvent.keyDown(item("Rename"), { key: "Escape" });
+    const added: Op[] = Array.from({ length: LIMITS.tracksPerProject - 4 }, (_, i) => ({
+      op: "add_track",
+      track: { id: `r${i}`, kind: "audio", name: `Audio ${i + 2}` },
+    }));
+    act(() => void store.getState().applyRemote([entry(6, added)]));
+    expect(store.getState().doc.tracks).toHaveLength(LIMITS.tracksPerProject);
+    openMenu();
+    expect(item("Duplicate").disabled).toBe(true);
+    expect(item("Rename").disabled).toBe(false);
   });
 
   it("a viewer's header controls are native controls and all disabled", () => {

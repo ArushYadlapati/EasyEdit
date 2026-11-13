@@ -5,6 +5,7 @@ import { copyClips, pasteItems, type ClipboardStore } from "./clipboard";
 import {
   addTrackOps,
   deleteOps,
+  duplicateTrackOps,
   edgeFrames,
   moveOps,
   moveTrackOps,
@@ -142,6 +143,23 @@ export function paste(store: EditorStore, clipboard: ClipboardStore): void {
   if (result.ok) state.select(placement.clipIds);
 }
 
+// Puts copies of the selected clips right after the selection, on their own tracks when free, else
+// where placeClips finds room, and selects them. Nothing ripples, and the clipboard is left alone.
+export function duplicateSelection(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const copied = copyClips(state.doc, state.selection.clipIds);
+  if (!copied) return;
+  const end = Math.max(...copied.clips.map(({ clip }) => clip.start + clip.duration));
+  const placement = placeClips(state.doc, pasteItems(copied, end), () => nanoid(10));
+  if (!placement.ok) {
+    state.notify("error", MESSAGES.noRoom);
+    return;
+  }
+  const result = state.edit(placement.ops, "duplicate");
+  if (result.ok) state.select(placement.clipIds);
+}
+
 // Track runners, used by the track headers, the timeline toolbar and the inspector.
 
 function editTrack(store: EditorStore, ops: OpInput[], label: string): void {
@@ -167,6 +185,15 @@ export function reorderTrack(store: EditorStore, trackId: string, direction: "up
 
 export function moveTrack(store: EditorStore, trackId: string, toRow: number): void {
   editTrack(store, moveTrackOps(store.getState().doc, trackId, toRow), "reorder tracks");
+}
+
+// Copies a track with its clips and selects the copy.
+export function duplicateTrack(store: EditorStore, trackId: string): void {
+  const state = store.getState();
+  const newTrackId = nanoid(10);
+  const ops = duplicateTrackOps(state.doc, trackId, newTrackId);
+  if (!state.canEdit || ops.length === 0) return;
+  if (state.edit(ops, "duplicate track").ok) state.selectTrack(newTrackId);
 }
 
 export function removeTrack(store: EditorStore, trackId: string): void {

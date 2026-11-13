@@ -3,6 +3,7 @@ import {
   copySelection,
   cutSelection,
   deleteSelection,
+  duplicateSelection,
   goToEdge,
   nudgeSelection,
   paste,
@@ -76,6 +77,8 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return cutSelection(store, clipboard);
     case "paste":
       return paste(store, clipboard);
+    case "duplicate":
+      return duplicateSelection(store);
     case "nudge-left":
       return nudgeSelection(store, -1);
     case "nudge-right":

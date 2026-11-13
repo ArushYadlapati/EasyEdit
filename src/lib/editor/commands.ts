@@ -1,3 +1,5 @@
+import { LIMITS } from "@/lib/limits";
+import { withSuffix } from "@/lib/text";
 import type { OpInput, TimelineDoc, TrackKind } from "@/lib/timeline";
 import { displayRows, trackToggles } from "./geometry";
 import { newTrackIndex, nextTrackName } from "./placement";
@@ -89,6 +91,32 @@ export function removeTrackOps(doc: TimelineDoc, trackId: string): OpInput[] {
   const track = doc.tracks.find((t) => t.id === trackId);
   if (!track || track.locked) return [];
   return [{ op: "remove_track", trackId }];
+}
+
+// The name of a duplicated track, shortened to fit by whole characters.
+export function copyTrackName(name: string): string {
+  return withSuffix(name, " copy", LIMITS.trackNameChars);
+}
+
+// A copy of a track with its clips, hide and mute, never locked, put right after it in doc.tracks:
+// directly above it on the timeline, or below it for audio. Nothing for the caption track (a project
+// has one), in a full project, or when the copy would not fit in one request.
+export function duplicateTrackOps(doc: TimelineDoc, trackId: string, newTrackId: string): OpInput[] {
+  const src = doc.tracks.find((t) => t.id === trackId);
+  if (!src || src.kind === "caption" || doc.tracks.length >= LIMITS.tracksPerProject) return [];
+  if (src.clips.length + 2 > LIMITS.opsPerRequest) return [];
+  const ops: OpInput[] = [
+    { op: "add_track", track: { id: newTrackId, kind: src.kind, name: copyTrackName(src.name) }, index: doc.tracks.indexOf(src) + 1 },
+  ];
+  // Sent without its id, so each copy is given a new one when the ops are prepared.
+  for (const { id, ...clip } of src.clips) {
+    void id;
+    ops.push({ op: "add_clip", trackId: newTrackId, clip });
+  }
+  if (src.hidden || src.muted) {
+    ops.push({ op: "update_track", trackId: newTrackId, patch: { ...(src.hidden && { hidden: true }), ...(src.muted && { muted: true }) } });
+  }
+  return ops;
 }
 
 // 0 and every clip's start and end, sorted, each once.

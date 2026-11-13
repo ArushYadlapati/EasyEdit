@@ -5,13 +5,14 @@ import { memo, useEffect, useRef, useState, type MouseEvent, type PointerEvent }
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { InlineEdit } from "@/components/ui/inline-edit";
-import { Menu, type MenuItem } from "@/components/ui/menu";
-import { removeTrack, renameTrack, reorderTrack, toggleTrack } from "@/lib/editor/actions";
-import { reorderTrackOps } from "@/lib/editor/commands";
+import { Menu } from "@/components/ui/menu";
+import { duplicateTrack, removeTrack, renameTrack, reorderTrack, toggleTrack } from "@/lib/editor/actions";
 import { HEADER_WIDTH, trackToggles } from "@/lib/editor/geometry";
+import { trackMenu } from "@/lib/editor/menus";
 import { LIMITS } from "@/lib/limits";
 import type { Track } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
+import { useToMenuItems } from "../menu-items";
 import { useClipDrag } from "./use-clip-drag";
 
 // Each switch keeps one name, for what it turns on, and shows with aria-pressed whether it is on.
@@ -29,8 +30,7 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
   const drag = useClipDrag();
   const selectTrack = useEditor((s) => s.selectTrack);
   const canEdit = useEditor((s) => s.canEdit);
-  const canMoveUp = useEditor((s) => reorderTrackOps(s.doc, track.id, "up").length > 0);
-  const canMoveDown = useEditor((s) => reorderTrackOps(s.doc, track.id, "down").length > 0);
+  const toItems = useToMenuItems();
   const [editing, setEditing] = useState(false);
   const renaming = editing && canEdit;
   const nameButton = useRef<HTMLButtonElement>(null);
@@ -74,17 +74,9 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
     drag.pressTrack(event, track.id);
   }
 
-  const items: MenuItem[] = [
-    { id: "rename", label: "Rename" },
-    { id: "up", label: "Move up", disabled: !canMoveUp },
-    { id: "down", label: "Move down", disabled: !canMoveDown },
-    track.locked
-      ? { id: "remove", label: "Remove track (unlock first)", danger: true, disabled: true }
-      : { id: "remove", label: "Remove track", danger: true },
-  ];
-
   function onMenuSelect(id: string) {
     if (id === "rename") startRename();
+    else if (id === "duplicate") duplicateTrack(store, track.id);
     else if (id === "up" || id === "down") reorderTrack(store, track.id, id);
     else if (id === "remove") removeTrack(store, track.id);
   }
@@ -156,7 +148,7 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
             disabled={!canEdit}
             label="Track options"
             icon={<Ellipsis />}
-            items={items}
+            items={() => toItems(trackMenu(store.getState(), track.id))}
             onSelect={onMenuSelect}
           />
         </>
