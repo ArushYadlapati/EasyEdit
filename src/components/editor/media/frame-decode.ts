@@ -1,18 +1,6 @@
 import type { ResolvedSource } from "@/lib/render/compositor";
 
-// Decodes an image, made smaller when its longer side is over maxSide.
-export async function decodeImage(blob: Blob, maxSide: number): Promise<{ image: ImageBitmap; width: number; height: number }> {
-  const full = await createImageBitmap(blob);
-  const scale = maxSide / Math.max(full.width, full.height);
-  if (scale >= 1) return { image: full, width: full.width, height: full.height };
-  const width = Math.max(1, Math.round(full.width * scale));
-  const height = Math.max(1, Math.round(full.height * scale));
-  try {
-    return { image: await createImageBitmap(full, { resizeWidth: width, resizeHeight: height, resizeQuality: "high" }), width, height };
-  } finally {
-    full.close();
-  }
-}
+export { decodeImage } from "@/lib/render/decode-image";
 
 // The frame shown at `seconds` of a video, made smaller when its longer side is over maxSide, with the file's rotation
 // kept. Null when the file has no video track, or the time is before its first frame. mediabunny loads on the first
