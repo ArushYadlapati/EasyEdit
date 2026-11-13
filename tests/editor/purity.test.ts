@@ -128,3 +128,19 @@ it("worker-safe code takes timeline values from presets.ts, never from the index
     for (const [file, code] of sources(dir)) expect(valueImports(code), file).not.toContain("@/lib/timeline");
   }
 });
+
+it("the export worker imports no React, Next or store code, uses no page-only globals, and reaches only worker-safe files", () => {
+  // The ingest worker lives beside it and has its own rules (it reads navigator.storage).
+  expect(sources("src/workers").map(([file]) => file)).toEqual(expect.arrayContaining(["src/workers/export.worker.ts", "src/workers/ingest.worker.ts"]));
+  const code = readFileSync("src/workers/export.worker.ts", "utf8");
+  expect(code).not.toMatch(FRAMEWORK_IMPORT);
+  expect(code).not.toMatch(ZUSTAND_IMPORT);
+  expect(valueImports(code)).not.toContain("@/lib/timeline");
+  expect(stripComments(code)).not.toMatch(BROWSER_GLOBAL);
+  const safe = new Set(reach(WORKER_SAFE.flatMap((dir) => sources(dir).map(([file]) => file))));
+  const reached = reach(["src/workers/export.worker.ts"]).filter((file) => file !== "src/workers/export.worker.ts");
+  expect(reached).toEqual(expect.arrayContaining([
+    "src/lib/export/pipeline.ts", "src/lib/export/decode-pool.ts", "src/lib/export/worker-session.ts", "src/lib/render/decode-image.ts",
+  ]));
+  expect(reached.filter((file) => !safe.has(file))).toEqual([]);
+});
