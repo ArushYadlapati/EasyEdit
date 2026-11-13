@@ -350,6 +350,7 @@ All routes need you to be signed in (they use the same cookie as the website). B
 | `PATCH /api/projects/:id` | editor and up | Rename a project: send `{ "name" }`. Answers `{ id, name }`. |
 | `DELETE /api/projects/:id` | editor and up | Delete a project. Answers `204`. |
 | `POST /api/projects/:id/duplicate` | editor and up | Make a copy of a project. Answers `201` with `{ "id" }` of the copy. |
+| `POST /api/projects/:id/opened` | viewer and up | Records that you opened the project, for your Recent list on the dashboard. Answers `204`. |
 | `GET /api/projects/:id/ops?since=N` | viewer and up | Get the changes after version `N`: `{ version, entries, hasMore }`. Each entry is `{ version, ops, inverse, actor, actorName, requestId, createdAt }`. Add `limit` to set the page size (default 100, at most 500). A page holds fewer entries when they are large. When `hasMore` is true, ask again from the `version` in the answer. |
 | `POST /api/projects/:id/ops` | editor and up | Apply changes: send `{ "baseVersion": N, "ops": [...] }` (1 to 500 ops). Answers `{ version, ops, inverse }`. |
 

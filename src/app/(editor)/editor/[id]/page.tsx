@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { EditorShell } from "@/components/editor/editor-shell";
 import { KeepSignedIn } from "@/components/keep-signed-in";
+import { RecordOpen } from "@/components/record-open";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
 import { actorFrom } from "@/lib/actor";
@@ -28,6 +29,7 @@ export default async function EditorPage({ params }: PageProps<"/editor/[id]">) 
   return (
     <>
       <KeepSignedIn />
+      <RecordOpen projectId={project.id} />
       <EditorShell
         key={project.id}
         initial={{

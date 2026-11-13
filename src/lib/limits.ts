@@ -39,6 +39,7 @@ export const LIMITS = {
   frameSideMax: 4096,
   frameAreaMax: 3840 * 2160, // a custom size; 8,294,400 is the area of 4K
   folderNameChars: 60,
+  dashboardRecent: 6, // projects in your Recent list on the dashboard
 } as const;
 
 export type Limits = { readonly [K in keyof typeof LIMITS]: number };

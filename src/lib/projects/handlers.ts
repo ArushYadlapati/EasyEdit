@@ -5,6 +5,7 @@ import { actorFrom } from "@/lib/actor";
 import { apiRoute } from "@/lib/api-route";
 import { LIMITS } from "@/lib/limits";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
+import { recordOpen } from "@/lib/projects/opens";
 import {
   applyProjectOps,
   createProject,
@@ -140,6 +141,15 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       const { id } = await ctx.params;
       const copy = await duplicateProject(deps.db(), actorFrom(user), id);
       return Response.json({ id: copy.id }, { status: 201 });
+    }),
+
+    // An unknown or deleted project records nothing and still answers 204: there is nothing to tell the editor.
+    opened: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
+      const user = await deps.auth(req);
+      if (user instanceof Response) return user;
+      const { id } = await ctx.params;
+      await recordOpen(deps.db(), actorFrom(user), id);
+      return new Response(null, { status: 204 });
     }),
   };
 }
