@@ -54,6 +54,13 @@ export function projectsInView<T extends Sortable & Pick<DashboardProject, "fold
   return sortProjects(shown, view.sort);
 }
 
+// The address of a project's saved picture, with its version in it so a newer picture is a new address; null when it
+// has none.
+export function thumbnailUrl(project: Pick<DashboardProject, "id" | "thumbnailVersion">): string | null {
+  if (project.thumbnailVersion === null) return null;
+  return `/api/projects/${encodeURIComponent(project.id)}/thumbnail?v=${project.thumbnailVersion}`;
+}
+
 // Your most recently opened projects, in the order you opened them; none while a search is typed.
 export function recentProjects<T extends { id: string }>(projects: readonly T[], recentIds: readonly string[], search: string): T[] {
   if (searchText(search) !== "") return [];
