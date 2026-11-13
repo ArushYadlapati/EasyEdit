@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { Component, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NewProjectDialog } from "@/components/dashboard/new-project-dialog";
 import type { DashboardFolder } from "@/lib/dashboard/view";
@@ -87,13 +88,13 @@ it("opens with Untitled project selected, Short 9:16 chosen and its blank frame"
 it("is a large dialog whose fields scroll beside a preview that stays in view", () => {
   render(dialog());
   const box = screen.getByRole("dialog", { name: "New project" });
-  expect(box.className.split(" ")).toContain("h-[min(92vh,760px)]");
+  expect(box.className.split(" ")).toContain("h-[min(92dvh,760px)]");
   const form = textbox("Name").form!;
   const columns = form.parentElement!;
   expect(columns.className.split(" ")).toEqual(
     expect.arrayContaining(["md:grid", "md:h-full", "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]", "md:gap-6", "md:overflow-hidden"]),
   );
-  expect(form.className.split(" ")).toContain("md:overflow-y-auto");
+  expect(form.className.split(" ")).toEqual(expect.arrayContaining(["md:overflow-y-auto", "md:px-1"]));
   const surround = document.querySelector("[data-blank-frame]")!.parentElement!.parentElement!;
   expect(columns.children[1]).toBe(surround);
   expect(surround.className.split(" ")).toEqual(expect.arrayContaining(["bg-ed-raised", "rounded-md", "h-56", "md:h-full"]));
@@ -367,6 +368,47 @@ it("the server's sentence shows in the dialog", async () => {
   expect(textbox("Name")).toBeTruthy();
   expect(onClose).not.toHaveBeenCalled();
   expect(errors).not.toHaveBeenCalled();
+});
+
+it("a create that fails without an answer says so in the dialog", async () => {
+  action = vi.fn<Action>(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  render(dialog());
+  await clickCreate();
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Something went wrong. Try again."));
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  expect(textbox("Name").value).toBe("Untitled project");
+  expect(createButton().disabled).toBe(false);
+  expect(onClose).not.toHaveBeenCalled();
+  action.mockImplementation(async () => ({}));
+  await clickCreate();
+  expect(action).toHaveBeenCalledTimes(2);
+});
+
+// Records the error a child throws while rendering.
+class Boundary extends Component<{ children: ReactNode }, { error: unknown }> {
+  static caught: unknown = null;
+  state = { error: null as unknown };
+  static getDerivedStateFromError(error: unknown) {
+    Boundary.caught = error;
+    return { error };
+  }
+  render() {
+    return this.state.error ? null : this.props.children;
+  }
+}
+
+it("a create that went through still hands its redirect to the router", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  Boundary.caught = null;
+  const digest = "NEXT_REDIRECT;push;/editor/p1;307;";
+  action = vi.fn<Action>(async () => {
+    throw Object.assign(new Error("NEXT_REDIRECT"), { digest });
+  });
+  render(<Boundary>{dialog()}</Boundary>);
+  await clickCreate();
+  expect((Boundary.caught as { digest?: string } | null)?.digest).toBe(digest);
 });
 
 it("Cancel or Escape closes it", () => {

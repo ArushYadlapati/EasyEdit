@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Dashboard } from "@/components/dashboard/dashboard";
 import type { FormState } from "@/lib/projects/dashboard-actions";
-import { renderDashboard } from "../helpers/dashboard";
+import { FOLDERS, NOW, PROJECTS, RECENT_IDS, renderDashboard } from "../helpers/dashboard";
 import { act, fireEvent, screen, within } from "../helpers/dom";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
@@ -248,11 +249,93 @@ describe("duplicating a card", () => {
     expect(actions.duplicate).toHaveBeenCalledTimes(1);
     expect(sent(actions.duplicate)).toEqual({ id: "a" });
     expect(within(li).queryByRole("alert")).toBeNull();
-    actions.duplicate.mockResolvedValue({ error: "That project no longer exists." });
+    actions.duplicate.mockResolvedValue({ error: "Your role doesn't allow this." });
     await pick(li, "Duplicate");
     const alert = within(li).getByRole("alert");
-    expect(alert.textContent).toBe("That project no longer exists.");
+    expect(alert.textContent).toBe("Your role doesn't allow this.");
     expect(alert.className).toContain("text-ed-danger");
+  });
+
+  it("a card's edits wait while one of them runs", async () => {
+    const { actions } = renderDashboard();
+    // The duplicate is held while the test looks, then finished: React holds every later transition until a running
+    // async action settles, and that would reach the tests after this one.
+    let finish: (state: FormState) => void = () => {};
+    actions.duplicate.mockImplementation(() => new Promise<FormState>((resolve) => (finish = resolve)));
+    const li = card("Qual recap");
+    await pick(li, "Duplicate");
+    fireEvent.click(options(li));
+    const itemStates = () =>
+      within(screen.getByRole("menu", { name: "Project options" }))
+        .getAllByRole("menuitem")
+        .map((item) => [item.textContent, (item as HTMLButtonElement).disabled]);
+    expect(itemStates()).toEqual([
+      ["Open", false],
+      ["Rename", true],
+      ["Duplicate", true],
+      ["Move to folder…", true],
+      ["Delete", true],
+    ]);
+    await click(screen.getByRole("menuitem", { name: "Duplicate" }));
+    expect(actions.duplicate).toHaveBeenCalledTimes(1);
+    escape();
+    await act(async () => finish({}));
+    fireEvent.click(options(li));
+    expect(itemStates().every(([, disabled]) => disabled === false)).toBe(true);
+  });
+});
+
+describe("a project deleted elsewhere", () => {
+  it.each(["Rename", "Duplicate", "Move to folder…", "Delete"])("%s says so in the bar after its card goes", async (option) => {
+    const { actions, rerender } = renderDashboard();
+    let answer: (state: FormState) => void = () => {};
+    const wait = () => new Promise<FormState>((resolve) => (answer = resolve));
+    const li = card("Qual recap");
+    if (option === "Rename") {
+      actions.rename.mockImplementation(wait);
+      await pick(li, "Rename");
+      const field = within(li).getByRole("textbox", { name: "New name for Qual recap" });
+      fireEvent.change(field, { target: { value: "Qual recap 2" } });
+      await act(async () => {
+        fireEvent.keyDown(field, { key: "Enter" });
+      });
+    } else if (option === "Duplicate") {
+      actions.duplicate.mockImplementation(wait);
+      await pick(li, "Duplicate");
+    } else if (option === "Move to folder…") {
+      actions.move.mockImplementation(wait);
+      await pick(li, "Move to folder…");
+      fireEvent.click(radio("Sponsors"));
+      await click(button(dialog("Move to folder"), "Move"));
+    } else {
+      actions.remove.mockImplementation(wait);
+      await pick(li, "Delete");
+      await click(button(dialog("Delete project"), "Delete"));
+    }
+    // The refusal refreshes the page, which no longer has the project.
+    rerender(
+      <Dashboard projects={PROJECTS.filter((p) => p.id !== "a")} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={actions} />,
+    );
+    await act(async () => answer({ error: "That project no longer exists." }));
+    expect(screen.queryByRole("link", { name: "Qual recap" })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("That project no longer exists.");
+    expect(alert.closest("[class*=sticky]")).not.toBeNull();
+    expect(alert.className).toContain("text-ed-danger");
+  });
+
+  it("a card in Recent says so in the bar too", async () => {
+    const { actions, rerender } = renderDashboard();
+    let answer: (state: FormState) => void = () => {};
+    actions.duplicate.mockImplementation(() => new Promise<FormState>((resolve) => (answer = resolve)));
+    await pick(within(region("Recent")).getByRole("link", { name: "Finals" }).closest("li")!, "Duplicate");
+    rerender(
+      <Dashboard projects={PROJECTS.filter((p) => p.id !== "c")} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={actions} />,
+    );
+    await act(async () => answer({ error: "That project no longer exists." }));
+    expect(screen.queryByRole("link", { name: "Finals" })).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("That project no longer exists.");
   });
 });
 
@@ -306,7 +389,10 @@ describe("moving a card to a folder", () => {
 
   it("Move is held while moving", async () => {
     const { actions } = renderDashboard();
-    actions.move.mockImplementation(() => new Promise<FormState>(() => {}));
+    // The move never settles while the test looks. It is finished at the end: React holds every later transition
+    // until a running async action settles, and that would reach the tests after this one.
+    let finish: (state: FormState) => void = () => {};
+    actions.move.mockImplementation(() => new Promise<FormState>((resolve) => (finish = resolve)));
     await pick(card("Poster"), "Move to folder…");
     fireEvent.click(radio("Sponsors"));
     const move = button(dialog("Move to folder"), "Move");
@@ -314,6 +400,7 @@ describe("moving a card to a folder", () => {
     expect(move.disabled).toBe(true);
     await click(move);
     expect(actions.move).toHaveBeenCalledTimes(1);
+    await act(async () => finish({}));
   });
 
   it("a folder deleted meanwhile is explained in the dialog", async () => {
@@ -356,6 +443,7 @@ describe("deleting a card", () => {
     const alert = within(dialog("Delete project")).getByRole("alert");
     expect(alert.textContent).toBe("Your role doesn't allow this.");
     expect(alert.className).toContain("text-ed-danger");
+    expect(button(dialog("Delete project"), "Delete").disabled).toBe(false);
     // Closing and asking again starts without the old message.
     await click(button(dialog("Delete project"), "Cancel"));
     await pick(li, "Delete");
@@ -364,10 +452,14 @@ describe("deleting a card", () => {
 
   it("Delete is held while deleting", async () => {
     const { actions } = renderDashboard();
-    actions.remove.mockImplementation(() => new Promise<FormState>(() => {}));
+    // The delete never settles while the test looks. It is finished at the end: React holds every later transition
+    // until a running async action settles, and that would reach the tests after this one.
+    let finish: (state: FormState) => void = () => {};
+    actions.remove.mockImplementation(() => new Promise<FormState>((resolve) => (finish = resolve)));
     await pick(card("Qual recap"), "Delete");
     const del = button(dialog("Delete project"), "Delete");
     await click(del);
     expect(del.disabled).toBe(true);
+    await act(async () => finish({}));
   });
 });

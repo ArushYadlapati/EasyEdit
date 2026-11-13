@@ -26,7 +26,7 @@ export function FormatCards({ value, onChange, disabled }: { value: FormatId; on
   }
 
   return (
-    <div role="radiogroup" aria-label="Format" aria-disabled={disabled || undefined} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <div role="radiogroup" aria-label="Format" aria-disabled={disabled || undefined} className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3">
       {CHOICES.map((format, index) => {
         const chosen = format === value;
         return (

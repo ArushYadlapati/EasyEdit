@@ -116,7 +116,10 @@ describe("folders in the sidebar", () => {
 
   it("Create folder is held while it runs", async () => {
     const { actions } = renderDashboard();
-    actions.createFolder.mockImplementation(() => new Promise<FormState>(() => {}));
+    // The create never settles while the test looks. It is finished at the end: React holds every later transition
+    // until a running async action settles, and that would reach the tests after this one.
+    let finish: (state: FormState) => void = () => {};
+    actions.createFolder.mockImplementation(() => new Promise<FormState>((resolve) => (finish = resolve)));
     await click(within(nav()).getByRole("button", { name: "New folder" }));
     fireEvent.change(nameField(dialog("New folder")), { target: { value: "Season 2027" } });
     const create = button(dialog("New folder"), "Create folder");
@@ -127,6 +130,7 @@ describe("folders in the sidebar", () => {
       fireEvent.submit(nameField(dialog("New folder")).form!);
     });
     expect(actions.createFolder).toHaveBeenCalledTimes(1);
+    await act(async () => finish({}));
   });
 
   it("New folder stays in the folder row on a phone, after the folders", () => {
@@ -144,6 +148,10 @@ describe("folders in the sidebar", () => {
     const menuButton = screen.getByRole("button", { name: "Folder options" });
     expect(menuButton.closest("[class*=sticky]")).not.toBeNull();
     expect(screen.getByRole("heading", { level: 1 }).nextElementSibling?.contains(menuButton)).toBe(true);
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(classes(heading)).not.toContain("flex-1");
+    expect(classes(heading.parentElement)).toContain("flex-1");
+    expect(heading.parentElement!.contains(menuButton)).toBe(true);
     expect(menuButton.querySelector("svg")?.getAttribute("class")).toContain("lucide-ellipsis");
     fireEvent.click(menuButton);
     const items = within(screen.getByRole("menu", { name: "Folder options" })).getAllByRole("menuitem");
@@ -183,6 +191,7 @@ describe("folders in the sidebar", () => {
     await pickFolderOption("Delete folder");
     await click(button(dialog("Delete folder"), "Delete folder"));
     expect(within(dialog("Delete folder")).getByRole("alert").textContent).toBe("That folder no longer exists.");
+    expect(button(dialog("Delete folder"), "Delete folder").disabled).toBe(false);
     expect(router.replace).not.toHaveBeenCalled();
     // The next opening starts with no message.
     await click(button(dialog("Delete folder"), "Cancel"));
@@ -224,13 +233,17 @@ describe("folders in the sidebar", () => {
 
   it("Delete folder is held while it runs", async () => {
     const { actions } = renderDashboard({ view: "f1" });
-    actions.deleteFolder.mockImplementation(() => new Promise<FormState>(() => {}));
+    // The delete never settles while the test looks. It is finished at the end: React holds every later transition
+    // until a running async action settles, and that would reach the tests after this one.
+    let finish: (state: FormState) => void = () => {};
+    actions.deleteFolder.mockImplementation(() => new Promise<FormState>((resolve) => (finish = resolve)));
     await pickFolderOption("Delete folder");
     const confirm = button(dialog("Delete folder"), "Delete folder");
     await click(confirm);
     expect(confirm.disabled).toBe(true);
     await click(confirm);
     expect(actions.deleteFolder).toHaveBeenCalledTimes(1);
+    await act(async () => finish({}));
   });
 
   it("the main view has no folder menu", () => {
@@ -322,6 +335,15 @@ describe("dragging projects into folders", () => {
     // A drop that goes through clears it.
     actions.move.mockResolvedValue({});
     await drag(navLink(/^Season 2026/), "drop", dropOf("a"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("a refused drop's message goes when the view changes", async () => {
+    const { actions, rerender } = renderDashboard();
+    actions.move.mockResolvedValue({ error: "That folder no longer exists." });
+    await drag(navLink(/^Sponsors/), "drop", dropOf("a"));
+    expect(screen.getByRole("alert").textContent).toBe("That folder no longer exists.");
+    rerender(<Dashboard projects={PROJECTS} folders={FOLDERS} recentIds={RECENT_IDS} view="f1" canEdit now={NOW} actions={actions} />);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 

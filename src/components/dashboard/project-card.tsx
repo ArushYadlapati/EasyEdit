@@ -13,7 +13,7 @@ import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { InlineEdit } from "@/components/ui/inline-edit";
 import { Menu, type MenuItem } from "@/components/ui/menu";
-import type { DashboardFolder, DashboardProject } from "@/lib/dashboard/view";
+import { PROJECT_GONE, type DashboardFolder, type DashboardProject } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
 import { formatLabel } from "@/lib/timeline";
@@ -26,6 +26,7 @@ export type ProjectCardProps = {
   canEdit: boolean;
   folders: readonly DashboardFolder[];
   actions: Pick<DashboardActions, "rename" | "duplicate" | "remove" | "move">;
+  onGone(message: string): void; // the project was deleted elsewhere, so its card is leaving the page: the dashboard says why
 };
 
 const OPEN: MenuItem = { id: "open", label: "Open" };
@@ -50,7 +51,7 @@ const withId = (id: string, more: Record<string, string> = {}) => {
 // A project on the dashboard: a blank frame in its shape and its name, which open it in the editor, then its format,
 // who changed it last and when, and its folder. Its ⋯ button and a right-click on it open the same menu: Open for
 // everyone, and for editors Rename (in place), Duplicate, Move to folder… and Delete (after asking).
-export function ProjectCard({ project, folderName, now, canEdit, folders, actions }: ProjectCardProps): ReactNode {
+export function ProjectCard({ project, folderName, now, canEdit, folders, actions, onGone }: ProjectCardProps): ReactNode {
   const router = useRouter();
   const menu = useContextMenu();
   const box = useRef<HTMLLIElement>(null);
@@ -63,7 +64,12 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
   const rename = useAction(actions.rename);
   const duplicate = useAction(actions.duplicate);
   const remove = useAction(actions.remove);
-  const items = canEdit ? EDITOR_ITEMS : VIEWER_ITEMS;
+  const busy = rename.pending || duplicate.pending || remove.pending; // the card's edits wait while one of them runs
+  const items = !canEdit
+    ? VIEWER_ITEMS
+    : busy
+      ? EDITOR_ITEMS.map((item) => (item.id === "open" ? item : { ...item, disabled: true }))
+      : EDITOR_ITEMS;
 
   // The ⋯ button is found in the card rather than by a ref: a ref given to Menu would replace its own.
   const optionsButton = () => box.current?.querySelector<HTMLButtonElement>("[data-card-options]") ?? null;
@@ -75,11 +81,14 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
   }, [renaming]);
 
   // On the card's own failures: cleared when the next one starts, shown when it is refused.
-  const onCard = { onStart: () => setMessage(null), onFailure: setMessage };
+  const onCard = {
+    onStart: () => setMessage(null),
+    onFailure: (message: string) => (message === PROJECT_GONE ? onGone(message) : setMessage(message)),
+  };
 
   function choose(id: string) {
     if (id === "open") router.push(`/editor/${project.id}`);
-    else if (!canEdit) return;
+    else if (!canEdit || busy) return;
     else if (id === "rename") setRenaming(true);
     else if (id === "duplicate") duplicate.submit(withId(project.id), onCard);
     else if (id === "move") setMoving(true);
@@ -172,6 +181,7 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
             folders={folders}
             action={actions.move}
             onClose={() => setMoving(false)}
+            onGone={onGone}
           />
           <ConfirmDialog
             title="Delete project"
@@ -184,7 +194,7 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
               remove.submit(withId(project.id), {
                 onStart: () => setDeleteError(null),
                 onSuccess: () => setDeleting(false),
-                onFailure: setDeleteError,
+                onFailure: (message) => (message === PROJECT_GONE ? onGone(message) : setDeleteError(message)),
               })
             }
             onClose={() => setDeleting(false)}

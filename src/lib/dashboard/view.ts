@@ -8,6 +8,8 @@ export type DashboardProject = ProjectSummary & { changedBy: string }; // displa
 export type DashboardFolder = FolderSummary;
 export type SortKey = "changed" | "name" | "created";
 
+export const PROJECT_GONE = "That project no longer exists.";
+
 export const SORT_OPTIONS: readonly { value: SortKey; label: string }[] = [
   { value: "changed", label: "Last changed" },
   { value: "name", label: "Name" },

@@ -43,13 +43,14 @@ const FOLDER_ITEMS: MenuItem[] = [
 const HEADING = "mb-3 text-sm font-semibold text-ed-text";
 const EMPTY = "text-[13px] text-ed-muted";
 
-function CardGrid({ projects, folderName, now, canEdit, folders, actions }: {
+function CardGrid({ projects, folderName, now, canEdit, folders, actions, onGone }: {
   projects: readonly DashboardProject[];
   folderName(project: DashboardProject): string | null;
   now: Date;
   canEdit: boolean;
   folders: readonly DashboardFolder[];
   actions: DashboardActions;
+  onGone(message: string): void;
 }) {
   // Each card is its own <li>, which takes the card's right-click.
   return (
@@ -63,6 +64,7 @@ function CardGrid({ projects, folderName, now, canEdit, folders, actions }: {
           canEdit={canEdit}
           folders={folders}
           actions={actions}
+          onGone={onGone}
         />
       ))}
     </ul>
@@ -86,6 +88,13 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteFolder = useAction(actions.deleteFolder);
   const dropMove = useAction(actions.move);
+  const [notice, setNotice] = useState<string | null>(null); // the bar's message: a refused drop, or a project gone
+  // The message belongs to the view it was given in.
+  const [noticeView, setNoticeView] = useState(view);
+  if (view !== noticeView) {
+    setNoticeView(view);
+    setNotice(null);
+  }
   const titleId = useId();
   const recentId = useId();
   const allId = useId();
@@ -105,7 +114,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
     const formData = new FormData();
     formData.set("id", project.id);
     formData.set("folderId", folderId ?? "");
-    dropMove.submit(formData);
+    dropMove.submit(formData, { onStart: () => setNotice(null), onFailure: setNotice });
   }
 
   function chooseFolderOption(id: string) {
@@ -159,7 +168,15 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   const noFolder = () => null;
   const list = (folderName: (project: DashboardProject) => string | null) =>
     shown.length > 0 ? (
-      <CardGrid projects={shown} folderName={folderName} now={now} canEdit={canEdit} folders={folders} actions={actions} />
+      <CardGrid
+        projects={shown}
+        folderName={folderName}
+        now={now}
+        canEdit={canEdit}
+        folders={folders}
+        actions={actions}
+        onGone={setNotice}
+      />
     ) : (
       empty()
     );
@@ -176,12 +193,14 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
         />
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-ed-line bg-ed-bg px-4 py-3">
-            <h1 id={titleId} className="min-w-0 flex-1 truncate text-base font-semibold">
-              {title}
-            </h1>
-            {canEdit && folderName !== null && (
-              <Menu label="Folder options" icon={<Ellipsis />} items={FOLDER_ITEMS} onSelect={chooseFolderOption} />
-            )}
+            <div className="flex min-w-0 flex-1 items-center gap-1">
+              <h1 id={titleId} className="min-w-0 truncate text-base font-semibold">
+                {title}
+              </h1>
+              {canEdit && folderName !== null && (
+                <Menu label="Folder options" icon={<Ellipsis />} items={FOLDER_ITEMS} onSelect={chooseFolderOption} />
+              )}
+            </div>
             {/* Below sm the search and the sort share a second row, under the title and New project. */}
             <div className="order-last flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto">
               <TextInput
@@ -206,9 +225,9 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
               </Select>
             </div>
             {canEdit && newProjectButton("shrink-0")}
-            {dropMove.error && (
+            {notice && (
               <p role="alert" className="order-last basis-full text-xs text-ed-danger">
-                {dropMove.error}
+                {notice}
               </p>
             )}
           </div>
@@ -227,6 +246,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
                       canEdit={canEdit}
                       folders={folders}
                       actions={actions}
+                      onGone={setNotice}
                     />
                   </section>
                 )}

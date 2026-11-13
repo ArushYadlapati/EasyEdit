@@ -23,7 +23,7 @@ it("six cards in a radio group; the chosen one is checked and alone in the tab o
     expect(classes.includes("border-ed-accent") && classes.includes("bg-ed-accent-weak")).toBe(isChosen);
   }
   expect(within(chosen).getByText("1920 × 1080")).toBeTruthy();
-  expect(group.className.split(" ")).toEqual(expect.arrayContaining(["grid", "grid-cols-2", "sm:grid-cols-3", "gap-2"]));
+  expect(group.className.split(" ")).toEqual(expect.arrayContaining(["grid", "grid-cols-2", "sm:grid-cols-3", "md:grid-cols-2", "lg:grid-cols-3", "gap-2"]));
 
   // Each card has a small shape: a preset's outline in its own aspect ratio, the custom card's icon.
   PresetId.options.forEach((id, index) => {

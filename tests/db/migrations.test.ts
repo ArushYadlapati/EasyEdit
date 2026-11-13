@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { rowsOf } from "@/db";
-import { AFTER_COMING_FORWARD, BEFORE_GOING_BACK, REFILL_PROJECT_SIZES } from "@/db/refill-project-sizes";
+import { AFTER_COMING_FORWARD, BEFORE_GOING_BACK, CUSTOM_AFTER_COMING_FORWARD, REFILL_PROJECT_SIZES } from "@/db/refill-project-sizes";
 import { makeTestDb } from "../helpers/db";
 
 describe("migrations", () => {
@@ -163,17 +163,47 @@ describe("migrations", () => {
     expect(readFileSync("README.md", "utf8")).toContain(REFILL_PROJECT_SIZES);
   });
 
-  it("going back and coming forward keep custom projects' timelines", async () => {
+  it("going back keeps the earlier version's writes off custom, and coming forward brings custom sizes back", async () => {
     const db = await makeTestDb();
-    const doc = { format: "custom", width: 816, height: 1056 };
-    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'custom', ${JSON.stringify(doc)}, 'u', 'u')`);
-    const row = async () => rowsOf<{ format: string; doc: unknown }>(await db.execute(sql`select format, doc from projects`))[0];
+    const p1doc = { format: "custom", width: 816, height: 1056, tracks: [] };
+    const p2doc = { format: "custom", width: 384, height: 576, tracks: [] };
+    const p3doc = { format: "long_16x9", width: 1920, height: 1080, tracks: [] };
+    const p4doc = { format: "short_9x16", width: 1080, height: 1920, tracks: [] };
+    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values
+      ('p1', 'P1', 'custom', ${JSON.stringify(p1doc)}, 'u', 'u'),
+      ('p2', 'P2', 'long_16x9', ${JSON.stringify(p2doc)}, 'u', 'u'),
+      ('p3', 'P3', 'long_16x9', ${JSON.stringify(p3doc)}, 'u', 'u'),
+      ('p4', 'P4', 'short_9x16', ${JSON.stringify(p4doc)}, 'u', 'u')`);
+    const rows = async () =>
+      rowsOf<{ id: string; format: string; doc: unknown }>(await db.execute(sql`select id, format, doc from projects order by id`)).map((r) => [r.id, r.format, r.doc]);
+    const affected = (result: unknown) => (result as { affectedRows: number }).affectedRows;
+
     await db.execute(sql.raw(BEFORE_GOING_BACK));
-    expect(await row()).toEqual({ format: "long_16x9", doc });
+    // The earlier version sets the column from the timeline on every op write.
+    await db.execute(sql`update projects set format = doc->>'format'`);
+    expect(await rows()).toEqual([
+      ["p1", "long_16x9", { ...p1doc, format: "long_16x9" }],
+      ["p2", "long_16x9", { ...p2doc, format: "long_16x9" }],
+      ["p3", "long_16x9", p3doc],
+      ["p4", "short_9x16", p4doc],
+    ]);
+
+    await db.execute(sql.raw(CUSTOM_AFTER_COMING_FORWARD));
     await db.execute(sql.raw(AFTER_COMING_FORWARD));
-    expect(await row()).toEqual({ format: "custom", doc });
+    const back = [
+      ["p1", "custom", p1doc],
+      ["p2", "custom", p2doc],
+      ["p3", "long_16x9", p3doc],
+      ["p4", "short_9x16", p4doc],
+    ];
+    expect(await rows()).toEqual(back);
+    expect(affected(await db.execute(sql.raw(CUSTOM_AFTER_COMING_FORWARD)))).toBe(0);
+    expect(affected(await db.execute(sql.raw(AFTER_COMING_FORWARD)))).toBe(0);
+    expect(await rows()).toEqual(back);
+
     const readme = readFileSync("README.md", "utf8");
     expect(readme).toContain(BEFORE_GOING_BACK);
+    expect(readme).toContain(CUSTOM_AFTER_COMING_FORWARD);
     expect(readme).toContain(AFTER_COMING_FORWARD);
   });
 });

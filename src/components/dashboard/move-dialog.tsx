@@ -5,7 +5,7 @@ import { useAction } from "@/app/(app)/action-ui";
 import { Button } from "@/components/ui/button";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { Dialog } from "@/components/ui/dialog";
-import type { DashboardFolder } from "@/lib/dashboard/view";
+import { PROJECT_GONE, type DashboardFolder } from "@/lib/dashboard/view";
 import type { FormState } from "@/lib/projects/dashboard-actions";
 
 export type MoveToFolderDialogProps = {
@@ -14,6 +14,7 @@ export type MoveToFolderDialogProps = {
   folders: readonly DashboardFolder[];
   action(formData: FormData): Promise<FormState>;
   onClose(): void;
+  onGone?(message: string): void; // the project was deleted elsewhere, so this dialog is leaving the page with its card
 };
 
 const NO_FOLDER = ""; // the choice, and the folderId sent, for no folder
@@ -31,7 +32,7 @@ export function MoveToFolderDialog(props: MoveToFolderDialogProps): ReactNode {
   return <MoveToFolder key={openings} {...props} />;
 }
 
-function MoveToFolder({ open, project, folders, action, onClose }: MoveToFolderDialogProps): ReactNode {
+function MoveToFolder({ open, project, folders, action, onClose, onGone }: MoveToFolderDialogProps): ReactNode {
   const name = useId();
   const current = project.folderId ?? NO_FOLDER;
   const [choice, setChoice] = useState(current);
@@ -42,7 +43,12 @@ function MoveToFolder({ open, project, folders, action, onClose }: MoveToFolderD
     const formData = new FormData();
     formData.set("id", project.id);
     formData.set("folderId", choice);
-    submit(formData, { onSuccess: onClose });
+    submit(formData, {
+      onSuccess: onClose,
+      onFailure: (message) => {
+        if (message === PROJECT_GONE) onGone?.(message);
+      },
+    });
   }
 
   return (

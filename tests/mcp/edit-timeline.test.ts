@@ -68,6 +68,13 @@ describe("edit_timeline", () => {
     expect(named.text).toContain("Give a width and height only with the custom format.");
   });
 
+  it("a custom size equal to a named size becomes that named size", async () => {
+    const { edit, project } = await setup();
+    const r = await edit(0, [{ op: "set_format", format: "custom", width: 1920, height: 1080 }]);
+    expect(r.isError).toBe(false);
+    expect((await project()).doc).toMatchObject({ format: "long_16x9", width: 1920, height: 1080 });
+  });
+
   it("Claude can stretch a clip", async () => {
     const { edit, project } = await setup();
     expect((await edit(0, [addText(0)])).isError).toBe(false);

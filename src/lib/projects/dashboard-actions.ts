@@ -2,6 +2,7 @@ import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
 import { actorFrom, type Actor } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
+import { PROJECT_GONE } from "@/lib/dashboard/view";
 import { createFolder, deleteFolder, FOLDER_GONE, moveProject, renameFolder } from "@/lib/projects/folders";
 import { createProject, deleteProject, duplicateProject, renameProject } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
@@ -40,7 +41,7 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
       if (error.code !== "NOT_FOUND") return { error: error.message };
       // Deleted elsewhere: refresh the list so its card or folder goes away.
       deps.revalidate("/dashboard");
-      return { error: error.message === FOLDER_GONE ? FOLDER_GONE : "That project no longer exists." };
+      return { error: error.message === FOLDER_GONE ? FOLDER_GONE : PROJECT_GONE };
     }
   }
 

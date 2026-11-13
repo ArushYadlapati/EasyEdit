@@ -19,7 +19,7 @@ export type DialogProps = {
 const SIZES = {
   md: "max-h-[min(80vh,640px)] w-[min(32rem,calc(100vw-32px))]",
   // The last width term keeps a 16 px gutter on a phone.
-  lg: "h-[min(92vh,760px)] max-h-[min(92vh,760px)] w-[min(92vw,1120px,calc(100vw-32px))]",
+  lg: "h-[min(92dvh,760px)] max-h-[min(92dvh,760px)] w-[min(92vw,1120px,calc(100vw-32px))]",
 };
 
 // A modal on the native <dialog>, so focus stays inside it and the page behind is inert. Escape and

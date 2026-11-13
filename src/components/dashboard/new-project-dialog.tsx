@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowLeftRight } from "lucide-react";
+import { unstable_rethrow } from "next/navigation";
 import { startTransition, useActionState, useId, useState, type FormEvent, type ReactNode } from "react";
 import { BlankFrame } from "@/components/dashboard/blank-frame";
 import { FormatCards } from "@/components/dashboard/format-cards";
@@ -68,7 +69,14 @@ export function NewProjectDialog(props: NewProjectDialogProps): ReactNode {
 
 function NewProject({ open, onClose, folders, folderId, action }: NewProjectDialogProps): ReactNode {
   const formId = useId();
-  const [state, dispatch, pending] = useActionState(action, {});
+  const [state, dispatch, pending] = useActionState(async (prev: FormState, formData: FormData): Promise<FormState> => {
+    try {
+      return await action(prev, formData);
+    } catch (error) {
+      unstable_rethrow(error); // a create that went through redirects to the editor, which Next sends as a rejection
+      return { error: "Something went wrong. Try again." };
+    }
+  }, {});
   const [name, setName] = useState(DEFAULT_NAME);
   const [format, setFormat] = useState<FormatId>(DEFAULT_FORMAT);
   const [draft, setDraft] = useState(() => draftFor(DEFAULT_SIZE, readDialogUnits(localStore)));
@@ -153,7 +161,7 @@ function NewProject({ open, onClose, folders, folderId, action }: NewProjectDial
       }
     >
       <div className="flex flex-col gap-6 md:grid md:h-full md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)] md:gap-6 md:overflow-hidden">
-        <form id={formId} onSubmit={create} className="flex flex-col gap-5 md:overflow-y-auto md:pr-1">
+        <form id={formId} onSubmit={create} className="flex flex-col gap-5 md:overflow-y-auto md:px-1">
           <Field label="Name">
             <TextInput data-autofocus maxLength={LIMITS.projectNameChars} value={name} onChange={(event) => setName(event.target.value)} />
           </Field>

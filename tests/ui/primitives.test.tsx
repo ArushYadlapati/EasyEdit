@@ -160,7 +160,7 @@ it("a large dialog takes most of the window", () => {
   );
   const large = screen.getByRole("dialog");
   const classes = large.className.split(" ");
-  expect(classes).toEqual(expect.arrayContaining(["w-[min(92vw,1120px,calc(100vw-32px))]", "h-[min(92vh,760px)]", "max-h-[min(92vh,760px)]"]));
+  expect(classes).toEqual(expect.arrayContaining(["w-[min(92vw,1120px,calc(100vw-32px))]", "h-[min(92dvh,760px)]", "max-h-[min(92dvh,760px)]"]));
   expect(classes).not.toContain("w-[min(32rem,calc(100vw-32px))]");
   expect(classes).not.toContain("max-h-[min(80vh,640px)]");
   expect(screen.getByText("Body").parentElement!.className.split(" ")).toContain("flex-1");
@@ -173,7 +173,7 @@ it("a large dialog takes most of the window", () => {
   );
   const regular = screen.getByRole("dialog").className.split(" ");
   expect(regular).toEqual(expect.arrayContaining(["w-[min(32rem,calc(100vw-32px))]", "max-h-[min(80vh,640px)]"]));
-  expect(regular).not.toContain("h-[min(92vh,760px)]");
+  expect(regular).not.toContain("h-[min(92dvh,760px)]");
   expect(screen.getByText("Body").parentElement!.className.split(" ")).not.toContain("flex-1");
 });
 

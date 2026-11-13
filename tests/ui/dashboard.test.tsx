@@ -172,7 +172,9 @@ describe("the dashboard", () => {
     const bar = main().firstElementChild!;
     expect(classes(bar)).toEqual(expect.arrayContaining(["sticky", "top-0", "z-10", "bg-ed-bg", "flex-wrap", "px-4"]));
     expect(classes(search().parentElement)).toEqual(expect.arrayContaining(["order-last", "w-full", "sm:order-none"]));
-    expect(classes(screen.getByRole("heading", { level: 1 }))).toEqual(expect.arrayContaining(["min-w-0", "flex-1", "truncate"]));
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(classes(heading)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(classes(heading.parentElement)).toEqual(expect.arrayContaining(["min-w-0", "flex-1"]));
     expect(classes(within(region("All projects")).getByRole("list"))).toContain("grid-cols-[repeat(auto-fill,minmax(200px,1fr))]");
   });
 
