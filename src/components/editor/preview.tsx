@@ -5,11 +5,11 @@ import { cx } from "@/components/ui/cx";
 import { boardLayout, boardScale, centreOf, scrollFor, type BoardLayout, type Size } from "@/lib/editor/board";
 import { canvasItems, createPreviewSurface, viewOf, visibleBox } from "@/lib/editor/canvas-geometry";
 import type { Sizer } from "@/lib/editor/clip-box";
-import { makeFontResolver, textFonts } from "@/lib/editor/fonts";
 import { mediaWants, upcomingAssetIds } from "@/lib/editor/media-plan";
 import { previewSize } from "@/lib/editor/preview-size";
 import type { BoardZoom } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
+import { probeRequests } from "@/lib/export/fonts";
 import { drawFrame } from "@/lib/render/compositor";
 import { SAFE_ZONES } from "@/lib/render/safe-zones";
 import type { TimelineDoc } from "@/lib/timeline";
@@ -18,7 +18,7 @@ import { useEditor, useEditorStore, useSettings } from "./context";
 import { decodeImage } from "./media/frame-decode";
 import { useMedia, type MediaServices } from "./media/media-context";
 import { createMediaPool, upcomingWants, type PoolDeps } from "./media/media-pool";
-import { cachedCssVar } from "./page-fonts";
+import { pageFontResolver } from "./page-fonts";
 import { Transport } from "./transport";
 import { useBoardDrop } from "./use-board-drop";
 import { usePlayback } from "./use-playback";
@@ -139,8 +139,8 @@ export function Preview() {
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const resolveFont = makeFontResolver(cachedCssVar());
-    const requested = new Set<string>();
+    const resolveFont = pageFontResolver();
+    const requested = new Set<string>(); // each font and text asked for, so a new character asks again
     let raf = 0;
     let disposed = false;
 
@@ -168,14 +168,15 @@ export function Preview() {
       });
       raf = id;
     };
-    // Asks the browser for every face the text uses and draws again once each has loaded, so text
-    // never stays in a fallback face.
+    // Asks the browser for every face the drawn text uses, with the characters it must draw (a face may hold only some
+    // of them, such as the Ž of "Žofia"), and draws again once each has loaded, so text never stays in a fallback face.
     const loadFonts = (doc: TimelineDoc) => {
       if (!("fonts" in document)) return;
-      for (const font of textFonts(doc, resolveFont)) {
-        if (requested.has(font)) continue;
-        requested.add(font);
-        document.fonts.load(font).then(schedule, schedule);
+      for (const { font, text } of probeRequests(doc, resolveFont)) {
+        const key = `${font}\n${text}`;
+        if (requested.has(key)) continue;
+        requested.add(key);
+        document.fonts.load(font, text).then(schedule, schedule);
       }
     };
 
