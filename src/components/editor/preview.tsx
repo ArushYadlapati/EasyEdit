@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cx } from "@/components/ui/cx";
 import { boardLayout, boardScale, centreOf, scrollFor, type BoardLayout, type Size } from "@/lib/editor/board";
+import { canvasItems, createPreviewSurface, viewOf, visibleBox } from "@/lib/editor/canvas-geometry";
+import type { Sizer } from "@/lib/editor/clip-box";
 import { makeFontResolver } from "@/lib/editor/fonts";
 import { mediaWants, upcomingAssetIds } from "@/lib/editor/media-plan";
 import { previewSize } from "@/lib/editor/preview-size";
@@ -11,6 +13,7 @@ import { viewDoc } from "@/lib/editor/store";
 import { drawFrame } from "@/lib/render/compositor";
 import { SAFE_ZONES } from "@/lib/render/safe-zones";
 import type { TimelineDoc } from "@/lib/timeline";
+import { CanvasOverlay } from "./canvas-overlay";
 import { useEditor, useEditorStore, useSettings } from "./context";
 import { useMedia, type MediaServices } from "./media/media-context";
 import { createMediaPool, upcomingWants, type PoolDeps } from "./media/media-pool";
@@ -29,6 +32,8 @@ type Shown = { zoom: BoardZoom; layout: BoardLayout; pane: Size; scroll: { left:
 // from them.
 // The frame sits on a board: in Fill it fits the pane, and at a percentage it keeps its size and the board scrolls.
 // The canvas keeps its backing size at every zoom and CSS scales it, so a zoom or a scroll never redraws.
+// Over the board lies the overlay where clips are pressed and outlined. It learns what is drawn, and where, from
+// the surface, which is told after every draw and every change to the board's layout or scroll.
 export function Preview() {
   const drawNow = useRef<(() => void) | null>(null);
   const redraw = useRef<(() => void) | null>(null);
@@ -44,7 +49,9 @@ export function Preview() {
   const showSafeZones = useEditor((s) => s.showSafeZones);
   const boardZoom = useSettings((s) => s.boardZoom);
   const paneRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [surface] = useState(() => createPreviewSurface());
   const [pane, setPane] = useState<Size>({ width: 0, height: 0 });
 
   const backing = previewSize({ width, height });
@@ -89,6 +96,27 @@ export function Preview() {
     shown.current = { zoom: boardZoom, layout, pane, scroll: { left: el.scrollLeft, top: el.scrollTop } };
   }, [boardZoom, layout, pane, width, height]);
 
+  // The frame moved on screen: a new pane size or zoom (after the scroll that keeps the middle), or a scroll of the
+  // board, told at most once per animation frame.
+  useLayoutEffect(() => surface.changed(), [surface, layout]);
+  useEffect(() => {
+    const el = paneRef.current;
+    if (!el) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        surface.changed();
+      });
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [surface]);
+
   // A play, a pause or a new rate is drawn, so the media starts, stops or changes speed. This effect comes after
   // usePlayback's, and asks for its frame anew, so on a play the loop's animation frame comes first and a frame it
   // moves to is drawn once.
@@ -123,6 +151,7 @@ export function Preview() {
       const { scale } = previewSize(doc);
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
       drawFrame(ctx, doc, s.playhead, { resolveFont, resolveSource: pool.resolveSource, placeholderLabel: pool.label });
+      surface.changed();
     };
     // A frame asked for is skipped if a draw came first: the playback loop draws in its own animation frame.
     const schedule = () => {
@@ -142,6 +171,41 @@ export function Preview() {
         document.fonts.load(font).then(schedule, schedule);
       }
     };
+
+    // What is drawn now, measured as the draw measures it: each picture at the size the pool gives for the
+    // playhead (or none, the frame-sized placeholder), and text in its font on this canvas's context.
+    const detach = surface.attach({
+      items() {
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return [];
+        const s = store.getState();
+        const sizer: Sizer = {
+          source(clip) {
+            const source = pool.resolveSource(clip, s.playhead);
+            return source ? { width: source.width, height: source.height } : null;
+          },
+          measure(clip, text) {
+            ctx.save();
+            ctx.font = `${clip.style.fontWeight} ${clip.style.fontSize}px ${resolveFont(clip.style.fontFamily)}`;
+            const width = ctx.measureText(text).width;
+            ctx.restore();
+            return width;
+          },
+        };
+        return canvasItems(viewDoc(s), s.playhead, sizer);
+      },
+      view() {
+        const box = canvas.getBoundingClientRect();
+        return box.width > 0 ? viewOf(box, viewDoc(store.getState()).width) : null;
+      },
+      visible() {
+        const el = paneRef.current;
+        const content = contentRef.current;
+        if (!el || !content) return null;
+        const box = el.getBoundingClientRect();
+        return visibleBox({ left: box.left, top: box.top, width: el.clientWidth, height: el.clientHeight }, content.getBoundingClientRect());
+      },
+    });
 
     const unsubscribe = store.subscribe((s, prev) => {
       const doc = viewDoc(s);
@@ -168,6 +232,7 @@ export function Preview() {
     };
     return () => {
       disposed = true;
+      detach();
       drawNow.current = null;
       redraw.current = null;
       if (raf) cancelAnimationFrame(raf);
@@ -175,7 +240,7 @@ export function Preview() {
       unsubscribeLibrary();
       stopListening();
     };
-  }, [store, media, pool, backing.width, backing.height]);
+  }, [store, media, pool, surface, backing.width, backing.height]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -189,7 +254,7 @@ export function Preview() {
             if (shown.current) shown.current.scroll = { left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop };
           }}
         >
-          <div className="relative" style={{ width: layout.content.width, height: layout.content.height }}>
+          <div ref={contentRef} className="relative" style={{ width: layout.content.width, height: layout.content.height }}>
             {/* Placed by its offset, never by flex centring, which would push an overflowing frame past where scrolling
                 reaches. The edge is an outline, outside the box, so the canvas and the safe-zone box cover exactly the
                 picture. */}
@@ -209,6 +274,9 @@ export function Preview() {
                 </div>
               )}
             </div>
+            {/* The overlay fills the content box, so it covers the frame and its margin and is never smaller than the
+                pane; its corner is the content's, which visible() measures from. */}
+            <CanvasOverlay surface={surface} pane={paneRef} />
           </div>
         </div>
       </div>

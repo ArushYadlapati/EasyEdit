@@ -1,7 +1,8 @@
 import { expect, it } from "vitest";
 import { ZOOM_MAX, ZOOM_MIN, clampZoom, zoomLimits } from "@/lib/editor/geometry";
 import {
-  assetMenu, clipMenu, editMenu, laneMenu, presetMenu, rightClickEntries, topMenuInput, trackMenu, viewMenu, type MenuEntry, type TopMenuInput,
+  assetMenu, clipMenu, editMenu, laneMenu, presetMenu, previewMenu, rightClickEntries, topMenuInput, trackMenu, viewMenu, type MenuEntry,
+  type TopMenuInput,
 } from "@/lib/editor/menus";
 import { LIMITS } from "@/lib/limits";
 import { docDuration } from "@/lib/timeline";
@@ -339,6 +340,32 @@ it("a viewer's right-click keeps only what a viewer can use", () => {
   const editor = makeStore();
   editor.getState().select(["x1"]);
   expect(rightClickEntries(clipMenu(editor.getState()), true)).toEqual(clipMenu(editor.getState()));
+});
+
+it("the preview menu offers Paste and the Safe zones switch, and a viewer only the switch", () => {
+  const store = makeStore();
+  const st = () => store.getState();
+  const entries = previewMenu(st(), false);
+  expect(entries).toEqual([
+    { id: "paste", label: "Paste", command: "paste", disabled: true, edit: true },
+    { id: "safe-zones", label: "Safe zones", checked: true, separatorBefore: true },
+  ]);
+  expect(byId(previewMenu(st(), true), "paste").disabled).toBe(false);
+  st().toggleSafeZones();
+  expect(byId(previewMenu(st(), true), "safe-zones").checked).toBe(false);
+  // Paste is an edit: greyed while a gesture is live, and in a deleted project.
+  st().setGesture([{ op: "update_clip", clipId: "x1", patch: { transform: { x: 0.4 } } }]);
+  expect(byId(previewMenu(st(), true), "paste").disabled).toBe(true);
+  st().setGesture(null);
+  expect(byId(previewMenu(st(), true), "paste").disabled).toBe(false);
+  st().setStatus("deleted");
+  expect(byId(previewMenu(st(), true), "paste").disabled).toBe(true);
+
+  const viewer = makeStore({ canEdit: false }).getState();
+  const kept = rightClickEntries(previewMenu(viewer, false), false);
+  expect(ids(kept)).toEqual(["safe-zones"]);
+  expect("separatorBefore" in kept[0]).toBe(false);
+  expect(byId(previewMenu(viewer, true), "paste").disabled).toBe(true);
 });
 
 it("rightClickEntries drops the separator before the first entry left", () => {

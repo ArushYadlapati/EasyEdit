@@ -212,6 +212,17 @@ export function laneMenu(state: EditorState, canPaste: boolean, trackId: string 
   return entries;
 }
 
+export type PreviewMenuId = "paste" | "safe-zones";
+
+// The menu of the preview where no clip takes the right-click, or a clip on a locked track does (label "Preview").
+// Paste runs the paste command, at the playhead. Safe zones is this browser's switch, so a viewer keeps it.
+export function previewMenu(state: EditorState, canPaste: boolean): MenuEntry[] {
+  return [
+    { id: "paste", label: "Paste", command: "paste", disabled: editBlocked(state) || !canPaste, edit: true },
+    { id: "safe-zones", label: "Safe zones", checked: state.showSafeZones, separatorBefore: true },
+  ] satisfies (MenuEntry & { id: PreviewMenuId })[];
+}
+
 export type AssetMenuId = "add" | "rename" | "event" | "remove";
 
 // A media tile's menu (label "More for <name>").
