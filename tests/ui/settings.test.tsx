@@ -216,3 +216,199 @@ it("the gear opens the section shown last", () => {
   fireEvent.click(gear());
   expect(selected("Project")).toBe("true");
 });
+
+// Settings → Shortcuts, the playhead at 45 on c2 and nothing selected.
+function showShortcuts(keymap?: Keymap, over: Partial<EditorInit> = {}) {
+  const shown = show(over, keymap);
+  act(() => shown.st().seek(45));
+  fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
+  return shown;
+}
+
+const SPLIT = "Split at the playhead";
+const keyButton = (label: string) => dialog().getByRole("button", { name: `Change the key for ${label}` });
+const recorder = (label: string) => dialog().getByRole("button", { name: `Press the new key for ${label}` });
+const rowSwitch = (label: string) => dialog().getByRole("switch", { name: `Shortcut for ${label}` }) as HTMLButtonElement;
+const rowOf = (label: string) => dialog().getByText(label).closest("li")!;
+const statusOf = (label: string) => within(rowOf(label)).getByRole("status");
+const dimmed = (label: string) => [...rowOf(label).querySelectorAll("kbd")].map((kbd) => kbd.classList.contains("opacity-40"));
+const closeSettings = () => fireEvent.click(dialog().getByRole("button", { name: "Close" }));
+
+it("recording a new key for Split", () => {
+  const { st, settings, save } = showShortcuts();
+  fireEvent.click(keyButton(SPLIT));
+  expect(recorder(SPLIT).textContent).toBe("Press a key");
+  expect(document.activeElement).toBe(recorder(SPLIT));
+  // A modifier alone keeps waiting for the key.
+  expect(press(recorder(SPLIT), "Control", { ctrlKey: true })).toBe(false);
+  // So do a held key's repeats and a key still being composed.
+  expect(press(recorder(SPLIT), "x", { repeat: true })).toBe(false);
+  expect(press(recorder(SPLIT), "x", { isComposing: true })).toBe(false);
+  expect(recorder(SPLIT)).toBeTruthy();
+  expect(settings.getState().keymap.keys).toEqual({});
+  expect(fireEvent.keyDown(recorder(SPLIT), { key: "S", code: "KeyS", ctrlKey: true, shiftKey: true })).toBe(false);
+  expect(settings.getState().keymap.keys.split).toEqual(["Mod+Shift+S"]);
+  expect(save.keymap).toHaveBeenCalledWith(expect.objectContaining({ keys: { split: ["Mod+Shift+S"] } }));
+  expect(document.activeElement).toBe(keyButton(SPLIT));
+  expect(keysOf(dialog().getByRole("tabpanel"), SPLIT)).toEqual(["Ctrl+Shift+S"]);
+  closeSettings();
+  expect(press(document.body, "s")).toBe(true);
+  expect(st().queue).toEqual([]);
+  expect(press(document.body, "S", { ctrlKey: true, shiftKey: true })).toBe(false);
+  expect(st().queue.map((e) => e.label)).toEqual(["split"]);
+});
+
+it("a key in use asks before taking it", () => {
+  const { settings } = showShortcuts();
+  fireEvent.click(keyButton(SPLIT));
+  expect(press(recorder(SPLIT), "n")).toBe(false);
+  expect(within(statusOf(SPLIT)).getByText("N is used by Snapping on or off.")).toBeTruthy();
+  expect(settings.getState().keymap.keys).toEqual({});
+  const useIt = within(statusOf(SPLIT)).getByRole("button", { name: "Use it here" });
+  expect(document.activeElement).toBe(useIt);
+  fireEvent.click(useIt);
+  expect(settings.getState().keymap.keys).toEqual({ split: ["N"], "toggle-snapping": [] });
+  expect(keyButton("Snapping on or off").textContent).toBe("No key");
+  expect(keysOf(dialog().getByRole("tabpanel"), SPLIT)).toEqual(["N"]);
+  expect(statusOf(SPLIT).textContent).toBe("");
+  expect(document.activeElement).toBe(keyButton(SPLIT));
+});
+
+it("Cancel, or Escape, leaves a key in use where it was", () => {
+  const { settings, save } = showShortcuts();
+  const before = settings.getState().keymap;
+  fireEvent.click(keyButton(SPLIT));
+  press(recorder(SPLIT), "n");
+  fireEvent.click(within(statusOf(SPLIT)).getByRole("button", { name: "Cancel" }));
+  expect(settings.getState().keymap).toBe(before);
+  expect(statusOf(SPLIT).textContent).toBe("");
+  expect(document.activeElement).toBe(keyButton(SPLIT));
+  // Escape while the question shows is Cancel, and Settings stays open.
+  fireEvent.click(keyButton(SPLIT));
+  press(recorder(SPLIT), "n");
+  const useIt = within(statusOf(SPLIT)).getByRole("button", { name: "Use it here" });
+  expect(press(useIt, "Escape")).toBe(false);
+  expect(openDialog()).not.toBeNull();
+  expect(statusOf(SPLIT).textContent).toBe("");
+  expect(settings.getState().keymap).toBe(before);
+  expect(document.activeElement).toBe(keyButton(SPLIT));
+  expect(save.keymap).not.toHaveBeenCalled();
+});
+
+it("Escape while recording cancels recording and leaves Settings open", () => {
+  const { settings, save } = showShortcuts();
+  const before = settings.getState().keymap;
+  fireEvent.click(keyButton(SPLIT));
+  expect(press(recorder(SPLIT), "Escape")).toBe(false);
+  expect(openDialog()).not.toBeNull();
+  expect(settings.getState().keymap).toBe(before);
+  expect(save.keymap).not.toHaveBeenCalled();
+  expect(keyButton(SPLIT).textContent).toBe("S");
+  expect(statusOf(SPLIT).textContent).toBe(""); // ended, not refused
+  expect(document.activeElement).toBe(keyButton(SPLIT));
+  press(keyButton(SPLIT), "Escape");
+  expect(openDialog()).toBeNull();
+});
+
+it("Tab while recording cancels and moves on", () => {
+  const { settings } = showShortcuts();
+  const before = settings.getState().keymap;
+  fireEvent.click(keyButton(SPLIT));
+  expect(press(recorder(SPLIT), "Tab")).toBe(true);
+  expect(keyButton(SPLIT).textContent).toBe("S");
+  expect(settings.getState().keymap).toBe(before);
+});
+
+it("moving away while recording cancels it", () => {
+  const { settings } = showShortcuts();
+  const before = settings.getState().keymap;
+  fireEvent.click(keyButton(SPLIT));
+  fireEvent.blur(recorder(SPLIT));
+  expect(keyButton(SPLIT).textContent).toBe("S");
+  expect(press(keyButton(SPLIT), "n")).toBe(true);
+  expect(settings.getState().keymap).toBe(before);
+});
+
+it("a browser key is refused with a reason", () => {
+  const { settings } = showShortcuts();
+  const before = settings.getState().keymap;
+  fireEvent.click(keyButton(SPLIT));
+  expect(press(recorder(SPLIT), "r", { code: "KeyR", ctrlKey: true })).toBe(false);
+  expect(statusOf(SPLIT).textContent).toBe("That key belongs to the browser. Pick another key.");
+  expect(settings.getState().keymap).toBe(before);
+  expect(document.activeElement).toBe(keyButton(SPLIT));
+  // The next recording starts afresh.
+  fireEvent.click(keyButton(SPLIT));
+  expect(statusOf(SPLIT).textContent).toBe("");
+});
+
+it("turning one shortcut off", () => {
+  const { st, settings } = showShortcuts();
+  expect(rowSwitch(SPLIT).getAttribute("aria-checked")).toBe("true");
+  expect(dimmed(SPLIT)).toEqual([false]);
+  fireEvent.click(rowSwitch(SPLIT));
+  expect(settings.getState().keymap.off).toEqual(["split"]);
+  expect(rowSwitch(SPLIT).getAttribute("aria-checked")).toBe("false");
+  expect(dimmed(SPLIT)).toEqual([true]);
+  expect(dimmed("Copy")).toEqual([false]);
+  closeSettings();
+  expect(press(document.body, "s")).toBe(true);
+  expect(st().queue).toEqual([]);
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  expect(screen.getByRole("menuitem", { name: "Split" }).querySelector("[data-shortcut]")).toBeNull();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  // On again, with its key.
+  fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
+  fireEvent.click(rowSwitch(SPLIT));
+  expect(settings.getState().keymap.off).toEqual([]);
+});
+
+it("turning all shortcuts off", () => {
+  const { st, settings } = showShortcuts();
+  const all = dialog().getByRole("switch", { name: "Use keyboard shortcuts" });
+  expect(all.getAttribute("aria-checked")).toBe("true");
+  // Above the groups.
+  expect(all.compareDocumentPosition(dialog().getByRole("heading", { name: "Playback" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(rowSwitch(SPLIT).disabled).toBe(false);
+  fireEvent.click(all);
+  expect(settings.getState().keymap.on).toBe(false);
+  expect(all.getAttribute("aria-checked")).toBe("false");
+  expect(rowSwitch(SPLIT).disabled).toBe(true);
+  expect(rowSwitch(SPLIT).getAttribute("aria-checked")).toBe("true");
+  expect(dimmed(SPLIT)).toEqual([true]);
+  expect(dimmed("Redo")).toEqual([true, true]);
+  closeSettings();
+  expect(press(document.body, " ")).toBe(true);
+  expect(st().playing).toBe(false);
+  expect(screen.getByRole("button", { name: "Split" }).getAttribute("title")).toBe("Split");
+});
+
+it("Escape stays with Clear the selection", () => {
+  const { settings } = showShortcuts();
+  expect(dialog().queryByRole("button", { name: "Change the key for Clear the selection" })).toBeNull();
+  expect(keysOf(dialog().getByRole("tabpanel"), "Clear the selection")).toEqual(["Escape"]);
+  fireEvent.click(rowSwitch("Clear the selection"));
+  expect(settings.getState().keymap.off).toEqual(["clear-selection"]);
+  expect(dimmed("Clear the selection")).toEqual([true]);
+});
+
+it("Restore default keys brings the default keys back and keeps the master switch", () => {
+  const { settings } = showShortcuts({ on: false, keys: { split: ["Mod+Shift+S"] }, off: ["copy"] });
+  const restore = () => dialog().getByRole("button", { name: "Restore default keys" }) as HTMLButtonElement;
+  expect(restore().compareDocumentPosition(dialog().getByRole("heading", { name: "Playback" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(restore().disabled).toBe(false);
+  fireEvent.click(restore());
+  expect(settings.getState().keymap).toEqual({ on: false, keys: {}, off: [] });
+  expect(restore().disabled).toBe(true);
+  expect(keyButton(SPLIT).textContent).toBe("S");
+  expect(dialog().getByRole("switch", { name: "Use keyboard shortcuts" }).getAttribute("aria-checked")).toBe("false");
+});
+
+it("a viewer changes their own keys, and nothing here is marked", () => {
+  const { settings } = showShortcuts(undefined, { canEdit: false });
+  expect(dialog().getByRole("tabpanel").querySelector("[data-edit-control]")).toBeNull();
+  expect(rowSwitch(SPLIT).disabled).toBe(false);
+  fireEvent.click(keyButton(SPLIT));
+  press(recorder(SPLIT), "x");
+  expect(settings.getState().keymap.keys).toEqual({ split: ["X"] });
+});
