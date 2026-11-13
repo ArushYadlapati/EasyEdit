@@ -37,7 +37,7 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
       <PanelGrid
         layout={layout}
         deleted={deleted}
-        top={<TopBar onShowShortcuts={openShortcuts} />}
+        top={<TopBar onShowShortcuts={openShortcuts} onResetLayout={() => layout.getState().reset()} />}
         left={<LeftPanel />}
         center={
           deleted ? (

@@ -5,7 +5,7 @@ import { Magnet } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { addTrack, deleteSelection, splitAtPlayhead } from "@/lib/editor/actions";
-import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP, clampZoom } from "@/lib/editor/geometry";
+import { ZOOM_STEP, zoomLimits } from "@/lib/editor/geometry";
 import { shortcutFor, type CommandId } from "@/lib/editor/shortcuts";
 import { LIMITS } from "@/lib/limits";
 import type { TrackKind } from "@/lib/timeline";
@@ -39,8 +39,7 @@ export function Toolbar({ duration, fps }: { duration: number; fps: number }) {
   const setSnapping = useEditor((s) => s.setSnapping);
   const isMac = useIsMac();
   const key = (command: CommandId) => shortcutFor(command, isMac);
-  const maxZoom = clampZoom(ZOOM_MAX, duration, fps);
-  const minZoom = Math.min(ZOOM_MIN, maxZoom);
+  const { min: minZoom, max: maxZoom } = zoomLimits(duration, fps);
 
   return (
     <div className="flex h-8 shrink-0 items-center gap-1 border-b border-ed-line px-3 [&_button:focus-visible]:-outline-offset-2">

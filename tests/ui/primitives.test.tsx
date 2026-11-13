@@ -260,3 +260,122 @@ it("Enter while composing does not save", () => {
   fireEvent.keyDown(input, { key: "Enter" });
   expect(onDone).toHaveBeenCalledTimes(1);
 });
+
+it("a text menu button is named by its label", () => {
+  render(<Menu label="Edit" items={[{ id: "undo", label: "Undo" }]} onSelect={() => {}} />);
+  const trigger = screen.getByRole("button", { name: "Edit" });
+  expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  expect(trigger.textContent).toBe("Edit");
+  expect(trigger.className.split(" ")).toEqual(expect.arrayContaining(["h-7", "rounded-md", "px-2", "text-xs", "font-medium", "text-ed-muted"]));
+  expect(trigger.hasAttribute("data-edit-control")).toBe(false);
+  fireEvent.click(trigger);
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByRole("menu", { name: "Edit" })).toBeTruthy();
+});
+
+it("a menu's items are read when it opens", () => {
+  let n = 0;
+  const items = vi.fn(() => [{ id: "a", label: `Item ${++n}` }]);
+  const onSelect = vi.fn();
+  const { rerender } = render(<Menu label="Edit" items={items} onSelect={onSelect} />);
+  expect(items).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  expect(items).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("menuitem").textContent).toBe("Item 1");
+  // Kept while open: a render does not read them again.
+  rerender(<Menu label="Edit" items={items} onSelect={onSelect} />);
+  expect(items).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("menuitem").textContent).toBe("Item 1");
+  fireEvent.click(screen.getByRole("menuitem"));
+  expect(onSelect).toHaveBeenCalledWith("a");
+  // Opening again, here with the keyboard, reads them afresh.
+  fireEvent.keyDown(screen.getByRole("button", { name: "Edit" }), { key: "ArrowDown" });
+  expect(items).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("menuitem").textContent).toBe("Item 2");
+});
+
+it("a shortcut shows but is not part of the item's name", () => {
+  render(
+    <Menu
+      label="Edit"
+      items={[
+        { id: "split", label: "Split", shortcut: "S", edit: true },
+        { id: "copy", label: "Copy" },
+      ]}
+      onSelect={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  const split = screen.getByRole("menuitem", { name: "Split" });
+  const hint = split.querySelector("[data-shortcut]") as HTMLElement;
+  expect(hint.textContent).toBe("S");
+  expect(hint.getAttribute("aria-hidden")).toBe("true");
+  expect(hint.className.split(" ")).toEqual(expect.arrayContaining(["ml-auto", "text-ed-muted"]));
+  expect(split.textContent).toBe("SplitS");
+  // edit marks the item's button; an item without it is not marked.
+  expect(split.hasAttribute("data-edit-control")).toBe(true);
+  expect(screen.getByRole("menuitem", { name: "Copy" }).hasAttribute("data-edit-control")).toBe(false);
+  // With no checkable item there is no check column.
+  expect(screen.getByRole("menu").querySelector("[data-check]")).toBeNull();
+});
+
+it("checkbox items carry aria-checked", () => {
+  render(
+    <Menu
+      label="View"
+      items={[
+        { id: "fit", label: "Fit the timeline" },
+        { id: "snap", label: "Snapping", checked: true, separatorBefore: true },
+        { id: "safe", label: "Safe zones", checked: false },
+      ]}
+      onSelect={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "View" }));
+  const snap = screen.getByRole("menuitemcheckbox", { name: "Snapping" });
+  expect(snap.getAttribute("aria-checked")).toBe("true");
+  expect(screen.getByRole("menuitemcheckbox", { name: "Safe zones" }).getAttribute("aria-checked")).toBe("false");
+  const fit = screen.getByRole("menuitem", { name: "Fit the timeline" });
+  expect(fit.hasAttribute("aria-checked")).toBe(false);
+  // Every item has the 16 px check column, so the labels line up; only a checked one draws the mark.
+  const columns = [...screen.getByRole("menu").querySelectorAll("[data-check]")];
+  expect(columns).toHaveLength(3);
+  for (const column of columns) expect(column.className.split(" ")).toContain("w-4");
+  expect(columns.map((c) => c.querySelector("svg") !== null)).toEqual([false, true, false]);
+  // The separator is a 1 px rule just before its item.
+  const separator = screen.getByRole("separator");
+  expect(separator.nextElementSibling).toBe(snap);
+  expect(separator.className.split(" ")).toEqual(expect.arrayContaining(["h-px", "bg-ed-line"]));
+  expect(screen.getAllByRole("separator")).toHaveLength(1);
+});
+
+it("arrow keys skip separators and disabled items", () => {
+  render(
+    <Menu
+      label="Edit"
+      items={[
+        { id: "undo", label: "Undo" },
+        { id: "redo", label: "Redo", disabled: true },
+        { id: "cut", label: "Cut", separatorBefore: true },
+        { id: "snap", label: "Snapping", checked: false, separatorBefore: true },
+      ]}
+      onSelect={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  const menu = screen.getByRole("menu");
+  expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Undo" }));
+  fireEvent.keyDown(menu, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Cut" }));
+  fireEvent.keyDown(menu, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(screen.getByRole("menuitemcheckbox", { name: "Snapping" }));
+  fireEvent.keyDown(menu, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Undo" }));
+  fireEvent.keyDown(menu, { key: "ArrowUp" });
+  expect(document.activeElement).toBe(screen.getByRole("menuitemcheckbox", { name: "Snapping" }));
+  fireEvent.keyDown(menu, { key: "Home" });
+  expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Undo" }));
+  fireEvent.keyDown(menu, { key: "End" });
+  expect(document.activeElement).toBe(screen.getByRole("menuitemcheckbox", { name: "Snapping" }));
+});

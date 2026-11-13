@@ -1,15 +1,28 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { FADE, cx } from "./cx";
+import { Check } from "lucide-react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { DISABLED, FADE, FOCUS_RING, cx } from "./cx";
 import { IconButton, type IconButtonProps } from "./icon-button";
 
-export type MenuItem = { id: string; label: string; disabled?: boolean; danger?: boolean };
+// shortcut: a key hint drawn at the right, not part of the item's name. checked: a switch, drawn
+// with a check mark. separatorBefore: a rule above the item. edit: it changes the project, so its
+// button is marked as an edit control.
+export type MenuItem = {
+  id: string;
+  label: string;
+  disabled?: boolean;
+  danger?: boolean;
+  shortcut?: string;
+  checked?: boolean;
+  separatorBefore?: boolean;
+  edit?: boolean;
+};
 
 export type MenuProps = Omit<IconButtonProps, "label" | "children" | "pressed" | "onSelect"> & {
   label: string;
-  icon: ReactNode;
-  items: MenuItem[];
+  icon?: ReactNode; // without one, the button shows the label as text
+  items: MenuItem[] | (() => MenuItem[]); // a function is called each time the menu opens
   onSelect(id: string): void;
 };
 
@@ -17,20 +30,31 @@ const GAP = 4; // between the button and the list
 const EDGE = 8; // the list keeps this far from the window's edges
 
 function enabledItems(list: HTMLElement | null): HTMLButtonElement[] {
-  return [...(list?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
+  return [...(list?.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)') ?? [])];
 }
 
-// An icon button that opens a list of actions under it. The arrow keys, Home and End move between
-// the items. Escape, a click outside or picking an item closes it, and focus goes back to the button.
-// Extra props go on the button.
-export function Menu({ label, icon, items, onSelect, disabled, className, onClick, onKeyDown, ...rest }: MenuProps) {
+// A button that opens a list of actions under it: an icon button, or a text button showing its label.
+// The arrow keys, Home and End move between the items. Escape, a click outside or picking an item
+// closes it, and focus goes back to the button. Items given as a function are read as the menu opens
+// and kept while it is open. Extra props go on the button.
+export function Menu({ label, icon, items, onSelect, disabled, shortcut, className, onClick, onKeyDown, ...rest }: MenuProps) {
   const [openAt, setOpenAt] = useState<"first" | "last" | null>(null);
+  const [opened, setOpened] = useState<MenuItem[]>([]);
   // Turning disabled closes the menu for good, so enabling it again does not reopen it.
   if (disabled && openAt !== null) setOpenAt(null);
   const open = openAt !== null && !disabled;
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const menuId = useId();
+
+  const shown = typeof items === "function" ? opened : items;
+  // When any item is a switch, every item keeps a column for the check, so the labels line up.
+  const checkable = shown.some((item) => item.checked !== undefined);
+
+  function openList(at: "first" | "last") {
+    if (!open && typeof items === "function") setOpened(items());
+    setOpenAt(at);
+  }
 
   function close(refocus: boolean) {
     setOpenAt(null);
@@ -88,7 +112,7 @@ export function Menu({ label, icon, items, onSelect, disabled, className, onClic
     if (event.defaultPrevented || disabled) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      setOpenAt(event.key === "ArrowDown" ? "first" : "last");
+      openList(event.key === "ArrowDown" ? "first" : "last");
     } else if (event.key === "Escape" && open) {
       event.preventDefault();
       close(false);
@@ -116,25 +140,50 @@ export function Menu({ label, icon, items, onSelect, disabled, className, onClic
     }
   }
 
+  const triggerProps = {
+    ref: trigger,
+    "aria-haspopup": "menu",
+    "aria-expanded": open,
+    "aria-controls": open ? menuId : undefined,
+    disabled,
+    onClick: (event: MouseEvent<HTMLButtonElement>) => {
+      onClick?.(event);
+      if (event.defaultPrevented) return;
+      if (open) setOpenAt(null);
+      else openList("first");
+    },
+    onKeyDown: handleTriggerKeyDown,
+    ...rest,
+  } as const;
+
   return (
     <span className="relative inline-flex">
-      <IconButton
-        ref={trigger}
-        label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        disabled={disabled}
-        className={cx("aria-expanded:bg-ed-hover aria-expanded:text-ed-text", className)}
-        onClick={(event) => {
-          onClick?.(event);
-          if (!event.defaultPrevented) setOpenAt(open ? null : "first");
-        }}
-        onKeyDown={handleTriggerKeyDown}
-        {...rest}
-      >
-        {icon}
-      </IconButton>
+      {icon ? (
+        <IconButton
+          label={label}
+          shortcut={shortcut}
+          className={cx("aria-expanded:bg-ed-hover aria-expanded:text-ed-text", className)}
+          {...triggerProps}
+        >
+          {icon}
+        </IconButton>
+      ) : (
+        <button
+          type="button"
+          title={shortcut ? `${label} (${shortcut})` : undefined}
+          className={cx(
+            "inline-flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-medium text-ed-muted select-none",
+            "enabled:hover:bg-ed-hover enabled:hover:text-ed-text aria-expanded:bg-ed-hover aria-expanded:text-ed-text",
+            FOCUS_RING,
+            FADE,
+            DISABLED,
+            className,
+          )}
+          {...triggerProps}
+        >
+          {label}
+        </button>
+      )}
       {open && (
         <div
           ref={list}
@@ -145,27 +194,41 @@ export function Menu({ label, icon, items, onSelect, disabled, className, onClic
           className="fixed z-50 flex max-h-80 min-w-40 flex-col overflow-y-auto rounded-md border border-ed-line bg-ed-raised py-1 shadow-lg"
           onKeyDown={handleListKeyDown}
         >
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              disabled={item.disabled}
-              className={cx(
-                "flex h-7 shrink-0 items-center px-3 text-left text-xs whitespace-nowrap select-none",
-                item.danger ? "text-ed-danger" : "text-ed-text",
-                "enabled:hover:bg-ed-hover focus-visible:bg-ed-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ed-accent",
-                "disabled:cursor-not-allowed disabled:opacity-40",
-                FADE,
-              )}
-              onClick={() => {
-                close(true);
-                onSelect(item.id);
-              }}
-            >
-              {item.label}
-            </button>
+          {shown.map((item) => (
+            <Fragment key={item.id}>
+              {item.separatorBefore && <div role="separator" className="my-1 h-px shrink-0 bg-ed-line" />}
+              <button
+                type="button"
+                role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+                aria-checked={item.checked}
+                data-edit-control={item.edit || undefined}
+                tabIndex={-1}
+                disabled={item.disabled}
+                className={cx(
+                  "flex h-7 shrink-0 items-center gap-2 px-3 text-left text-xs whitespace-nowrap select-none",
+                  item.danger ? "text-ed-danger" : "text-ed-text",
+                  "enabled:hover:bg-ed-hover focus-visible:bg-ed-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ed-accent",
+                  "disabled:cursor-not-allowed disabled:opacity-40",
+                  FADE,
+                )}
+                onClick={() => {
+                  close(true);
+                  onSelect(item.id);
+                }}
+              >
+                {checkable && (
+                  <span data-check aria-hidden className="flex w-4 shrink-0 justify-center">
+                    {item.checked && <Check size={14} strokeWidth={2} />}
+                  </span>
+                )}
+                {item.label}
+                {item.shortcut && (
+                  <span data-shortcut aria-hidden className="ml-auto pl-6 text-ed-muted">
+                    {item.shortcut}
+                  </span>
+                )}
+              </button>
+            </Fragment>
           ))}
         </div>
       )}

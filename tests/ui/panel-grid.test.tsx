@@ -197,3 +197,12 @@ it("writeLayoutCookie keeps the sizes for editor pages", () => {
   expect(refused).toHaveBeenCalledTimes(1);
   refused.mockRestore();
 });
+
+it("View → Reset panel sizes puts all three edges back and keeps them", () => {
+  const { saveLayout, size } = show({ initialLayout: { left: 260, right: 250, timeline: 300 } });
+  expect([size("Left panel width"), size("Right panel width"), size("Timeline height")]).toEqual(["260", "250", "300"]);
+  fireEvent.click(screen.getByRole("button", { name: "View" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Reset panel sizes" }));
+  expect([size("Left panel width"), size("Right panel width"), size("Timeline height")]).toEqual(["240", "280", "276"]);
+  expect(saveLayout).toHaveBeenCalledWith({ left: 240, right: 280, timeline: null });
+});

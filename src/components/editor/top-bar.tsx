@@ -3,15 +3,29 @@
 import { ChevronLeft, Keyboard, Redo2, Undo2 } from "lucide-react";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
-import { shortcutFor } from "@/lib/editor/shortcuts";
-import { useEditor } from "./context";
+import { Menu } from "@/components/ui/menu";
+import { editMenu, topMenuInput, viewMenu, type MenuEntry, type TopMenuInput } from "@/lib/editor/menus";
+import { shortcutFor, type CommandId } from "@/lib/editor/shortcuts";
+import { useClipboard, useEditor, useEditorStore } from "./context";
 import { EditingIndicator } from "./editing-indicator";
 import { LeaveLink } from "./leave-link";
+import { toMenuItems } from "./menu-items";
 import { ProjectName } from "./project-name";
 import { SaveStatus } from "./save-status";
-import { useIsMac } from "./use-shortcuts";
+import { useCommandRunner, useIsMac } from "./use-shortcuts";
 
-export function TopBar({ onShowShortcuts }: { onShowShortcuts(): void }) {
+type TopBarProps = {
+  onShowShortcuts(): void;
+  onResetLayout?(): void; // View → Reset panel sizes
+};
+
+// The row across the top: Projects, the Edit and View menus, the project's name, then the save
+// status and the undo, redo and shortcuts buttons. The menus read the editor as they open, so what
+// cannot run right then is greyed.
+export function TopBar({ onShowShortcuts, onResetLayout }: TopBarProps) {
+  const store = useEditorStore();
+  const clipboard = useClipboard();
+  const run = useCommandRunner(onShowShortcuts);
   const canEdit = useEditor((s) => s.canEdit);
   const status = useEditor((s) => s.status);
   const undoLabel = useEditor((s) => s.undoStack.at(-1)?.label);
@@ -20,6 +34,14 @@ export function TopBar({ onShowShortcuts }: { onShowShortcuts(): void }) {
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
   const isMac = useIsMac();
+
+  const itemsOf = (menu: (input: TopMenuInput) => MenuEntry[]) => () =>
+    toMenuItems(menu(topMenuInput(store.getState(), clipboard.read() !== null)), isMac);
+  function pick(id: string) {
+    if (id === "safe-zones") store.getState().toggleSafeZones();
+    else if (id === "reset-layout") onResetLayout?.();
+    else run(id as CommandId);
+  }
 
   return (
     <header className="col-span-3 flex min-w-0 items-center gap-2 bg-ed-panel px-3">
@@ -34,6 +56,11 @@ export function TopBar({ onShowShortcuts }: { onShowShortcuts(): void }) {
         <ChevronLeft aria-hidden size={16} strokeWidth={1.75} />
         Projects
       </LeaveLink>
+      <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
+      <div className="flex shrink-0 items-center">
+        <Menu label="Edit" disabled={deleted} items={itemsOf(editMenu)} onSelect={pick} />
+        <Menu label="View" disabled={deleted} items={itemsOf(viewMenu)} onSelect={pick} />
+      </div>
       <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
       <ProjectName />
       {!canEdit && (

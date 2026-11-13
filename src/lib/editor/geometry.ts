@@ -30,6 +30,13 @@ export function clampZoom(zoom: number, duration: number, fps: number): number {
   return Math.min(inRange, MAX_CONTENT_PX / contentFrames(duration, fps));
 }
 
+// The lowest and highest zoom for a project this long. In a project of many hours the highest is
+// below ZOOM_MIN, and then both are that.
+export function zoomLimits(duration: number, fps: number): { min: number; max: number } {
+  const max = clampZoom(ZOOM_MAX, duration, fps);
+  return { min: Math.min(ZOOM_MIN, max), max };
+}
+
 // The zoom that shows the whole project with a 10% margin, or 10 s when it is shorter.
 export function fitZoom(duration: number, fps: number, viewportPx: number): number {
   return clampZoom(viewportPx / Math.max(duration * 1.1, 10 * fps), duration, fps);

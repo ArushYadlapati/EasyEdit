@@ -5,9 +5,10 @@ import { EditorScreen } from "@/components/editor/editor-screen";
 import { MediaProvider } from "@/components/editor/media/media-context";
 import { TopBar } from "@/components/editor/top-bar";
 import type { ProjectApi } from "@/lib/editor/api";
+import { createClipboard } from "@/lib/editor/clipboard";
 import type { SyncStatus } from "@/lib/editor/types";
-import { makeStore } from "../editor/fixtures";
-import { act, fireEvent, render, screen, waitFor } from "../helpers/dom";
+import { makeStore, text } from "../editor/fixtures";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "../helpers/dom";
 import { pretendMediaServices } from "../helpers/media-services";
 
 afterEach(() => {
@@ -187,4 +188,135 @@ it("a deleted project shows the name as a heading with no button", () => {
   act(() => store.getState().setStatus("deleted"));
   expect(screen.getByRole("heading", { name: "Qual recap" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Qual recap" })).toBeNull();
+});
+
+// A top bar with its own clipboard, so a test can copy into it.
+function showMenus(over: Parameters<typeof makeStore>[0] = {}, props: { onResetLayout?(): void; onShowShortcuts?(): void } = {}) {
+  const store = makeStore(over);
+  const clipboard = createClipboard();
+  render(
+    <EditorProvider store={store} clipboard={clipboard}>
+      <TopBar onShowShortcuts={props.onShowShortcuts ?? (() => {})} onResetLayout={props.onResetLayout} />
+    </EditorProvider>,
+  );
+  const open = (name: "Edit" | "View") => fireEvent.click(screen.getByRole("button", { name }));
+  const item = (name: string) => screen.getByRole("menuitem", { name }) as HTMLButtonElement;
+  const check = (name: string) => screen.getByRole("menuitemcheckbox", { name }) as HTMLButtonElement;
+  return { store, clipboard, open, item, check };
+}
+
+it("Edit → Split splits at the playhead", () => {
+  const { store, open, item } = showMenus();
+  act(() => store.getState().seek(45));
+  open("Edit");
+  fireEvent.click(item("Split"));
+  expect(store.getState().queue.map((e) => e.label)).toEqual(["split"]);
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+it("the Edit menu shows each item's key", () => {
+  const { open, item } = showMenus();
+  open("Edit");
+  const hint = (name: string) => item(name).querySelector("[data-shortcut]")?.textContent;
+  expect(hint("Undo")).toBe("Ctrl+Z");
+  expect(hint("Redo")).toBe("Ctrl+Shift+Z");
+  expect(hint("Paste")).toBe("Ctrl+V");
+  expect(hint("Split")).toBe("S");
+  expect(hint("Ripple delete")).toBe("Shift+Del");
+  expect(hint("Deselect all")).toBe("Escape");
+  // Undo changes the project, so it is marked; Copy does not.
+  expect(item("Undo").hasAttribute("data-edit-control")).toBe(true);
+  expect(item("Copy").hasAttribute("data-edit-control")).toBe(false);
+});
+
+it("Edit → Paste is greyed until something is copied", () => {
+  const { store, clipboard, open, item } = showMenus();
+  open("Edit");
+  expect(item("Paste").disabled).toBe(true);
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  clipboard.write({ clips: [{ clip: text("x9", 0, 30), trackId: "t1" }] });
+  open("Edit");
+  expect(item("Paste").disabled).toBe(false);
+  act(() => store.getState().seek(200));
+  fireEvent.click(item("Paste"));
+  expect(store.getState().queue.map((e) => e.label)).toEqual(["paste"]);
+});
+
+it("View → Snapping turns snapping off", () => {
+  const { store, open, check } = showMenus();
+  open("View");
+  expect(check("Snapping").getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(check("Snapping"));
+  expect(store.getState().snapping).toBe(false);
+  open("View");
+  expect(check("Snapping").getAttribute("aria-checked")).toBe("false");
+});
+
+it("View → Safe zones hides them", () => {
+  const { store, open, check } = showMenus();
+  open("View");
+  expect(check("Safe zones").getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(check("Safe zones"));
+  expect(store.getState().showSafeZones).toBe(false);
+  open("View");
+  expect(check("Safe zones").getAttribute("aria-checked")).toBe("false");
+});
+
+it("View → Reset panel sizes calls onResetLayout", () => {
+  const onResetLayout = vi.fn();
+  const onShowShortcuts = vi.fn();
+  const { open, item } = showMenus({}, { onResetLayout, onShowShortcuts });
+  open("View");
+  fireEvent.click(item("Reset panel sizes"));
+  expect(onResetLayout).toHaveBeenCalledTimes(1);
+  open("View");
+  fireEvent.click(item("Keyboard shortcuts"));
+  expect(onShowShortcuts).toHaveBeenCalledTimes(1);
+  expect(onResetLayout).toHaveBeenCalledTimes(1);
+});
+
+it("View → Zoom in on the timeline zooms, and is greyed at the limit", () => {
+  const { store, open, item } = showMenus();
+  const before = store.getState().zoom;
+  open("View");
+  fireEvent.click(item("Zoom in on the timeline"));
+  expect(store.getState().zoom).toBeCloseTo(before * 1.25, 6);
+  act(() => store.getState().setZoom(40));
+  open("View");
+  expect(item("Zoom in on the timeline").disabled).toBe(true);
+  expect(item("Zoom out on the timeline").disabled).toBe(false);
+});
+
+it("a viewer's Edit → Delete is disabled and nothing is queued", () => {
+  const { store, open, item } = showMenus({ canEdit: false });
+  act(() => store.getState().select(["x1"]));
+  open("Edit");
+  expect(item("Delete").disabled).toBe(true);
+  fireEvent.click(item("Delete"));
+  expect(store.getState().queue).toEqual([]);
+  expect(item("Copy").disabled).toBe(false);
+});
+
+it("Edit and View are greyed once the project is deleted", () => {
+  const { store } = showMenus();
+  const trigger = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+  expect(trigger("Edit").disabled).toBe(false);
+  expect(trigger("Edit").hasAttribute("data-edit-control")).toBe(false);
+  expect(trigger("View").hasAttribute("data-edit-control")).toBe(false);
+  act(() => store.getState().setStatus("deleted"));
+  expect(trigger("Edit").disabled).toBe(true);
+  expect(trigger("View").disabled).toBe(true);
+});
+
+it("the top row reads Projects, Edit, View, the name, Undo, Redo, Keyboard shortcuts", () => {
+  showMenus();
+  const header = screen.getByRole("banner");
+  const names = [...header.querySelectorAll<HTMLElement>("a, button")].map((el) => el.getAttribute("aria-label") ?? el.textContent);
+  expect(names).toEqual(["Projects", "Edit", "View", "Qual recap", "Undo", "Redo", "Keyboard shortcuts"]);
+  // For a viewer the name is a heading, between View and the "View only" badge.
+  cleanup();
+  showMenus({ canEdit: false });
+  const order = [screen.getByRole("button", { name: "View" }), screen.getByRole("heading", { name: "Qual recap" }), screen.getByText("View only")];
+  expect(order[0].compareDocumentPosition(order[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(order[1].compareDocumentPosition(order[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

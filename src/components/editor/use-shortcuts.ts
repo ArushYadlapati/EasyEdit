@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { runCommand } from "@/lib/editor/run-command";
-import { SHORTCUTS, isPressable, matchShortcut, shouldIgnoreKey } from "@/lib/editor/shortcuts";
+import { SHORTCUTS, isPressable, matchShortcut, shouldIgnoreKey, type CommandId } from "@/lib/editor/shortcuts";
 import { useClipboard, useEditorStore } from "./context";
 
 const isMacPlatform = () => navigator.platform.startsWith("Mac");
@@ -30,6 +30,14 @@ function hasTextSelection(): boolean {
   return selection !== null && !selection.isCollapsed;
 }
 
+// Runs one command of the shortcut table, from a key or a menu. This is the one place the commands'
+// context is built. Pass a stable openShortcuts: a new one makes a new runner.
+export function useCommandRunner(openShortcuts: () => void): (command: CommandId) => void {
+  const store = useEditorStore();
+  const clipboard = useClipboard();
+  return useCallback((command: CommandId) => runCommand(command, { store, clipboard, openShortcuts }), [store, clipboard, openShortcuts]);
+}
+
 // Runs the shortcut table's commands from key presses anywhere in the window. A key is left alone
 // when a control already handled it, when it is typed into a field or presses a focused button,
 // while the window is too narrow for the editor, and while a dialog or a menu is open. Space plays
@@ -38,7 +46,7 @@ function hasTextSelection(): boolean {
 // only where the table says it repeats. Pass a stable openShortcuts: a new one adds the listener again.
 export function useShortcuts(openShortcuts: () => void): void {
   const store = useEditorStore();
-  const clipboard = useClipboard();
+  const run = useCommandRunner(openShortcuts);
 
   useEffect(() => {
     const isMac = isMacPlatform();
@@ -71,7 +79,7 @@ export function useShortcuts(openShortcuts: () => void): void {
       // Focus leaves the control, so letting go of Space cannot press it.
       clicked?.blur();
       if (event.repeat && !REPEATING.has(command)) return;
-      runCommand(command, { store, clipboard, openShortcuts });
+      run(command);
     }
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("pointerdown", onPointerDown, true);
@@ -81,5 +89,5 @@ export function useShortcuts(openShortcuts: () => void): void {
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("focusin", onFocusIn, true);
     };
-  }, [store, clipboard, openShortcuts]);
+  }, [store, run]);
 }
