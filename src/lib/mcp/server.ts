@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
-import { PresetId } from "@/lib/timeline";
+import { FormatId } from "@/lib/timeline";
 import { UNEXPECTED } from "./errors";
 import { EDIT_DESCRIPTION, buildEditingGuide } from "./guide";
 import { addMediaTool } from "./tools/add-media";
@@ -100,8 +100,14 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "Create a project",
       description:
-        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080) or long_4k (3840×2160). Returns the new project's id, its version (0) and its starting tracks.",
-      inputSchema: z.object({ name: z.string(), format: PresetId }),
+        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks.",
+      // The range tells Claude the limits; evenness and the area are answered by the service's sentence.
+      inputSchema: z.object({
+        name: z.string(),
+        format: FormatId,
+        width: z.number().int().min(LIMITS.frameSideMin).max(LIMITS.frameSideMax).optional(),
+        height: z.number().int().min(LIMITS.frameSideMin).max(LIMITS.frameSideMax).optional(),
+      }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     answer("create_project", (input) => createProjectTool(ctx, input)),

@@ -5,7 +5,7 @@ import { rowsOf, type DB } from "@/db";
 import { removeEntry } from "@/lib/allowlist/service";
 import { makeOpsHandlers } from "@/lib/projects/handlers";
 import { applyProjectOps, getProject } from "@/lib/projects/service";
-import { PresetId } from "@/lib/timeline";
+import { FormatId } from "@/lib/timeline";
 import { BASE_URL, MCP_URL, startConnectorApp, type ConnectorApp } from "../helpers/connector";
 import { insertAsset } from "../media/context";
 import { addText } from "../mcp/context";
@@ -57,7 +57,14 @@ describe("Claude and the website on one project", () => {
       const keysOf = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {}).sort();
       expect(keysOf("list_assets")).toEqual(["cursor", "kind", "search"]);
       expect(keysOf("add_media")).toEqual(["expected_version", "items", "project_id"]);
-      expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.format).toMatchObject({ enum: PresetId.options });
+      expect(keysOf("create_project")).toEqual(["format", "height", "name", "width"]);
+      for (const side of ["width", "height"]) {
+        expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.[side], side).toMatchObject({ type: "integer", minimum: 16, maximum: 4096 });
+      }
+      expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.format).toMatchObject({ enum: FormatId.options });
+      expect(tools.find((t) => t.name === "create_project")?.description).toBe(
+        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks.",
+      );
       const getProject = tools.find((t) => t.name === "get_project");
       expect(Object.keys(getProject?.inputSchema.properties ?? {}).sort()).toEqual(["cursor", "project_id", "version"]);
       expect(getProject?.description).toMatch(

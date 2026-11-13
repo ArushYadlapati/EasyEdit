@@ -44,6 +44,7 @@ export const OP_REFERENCE = `Ops:
 {"op":"move_track","trackId":T,"index":N}                   a later track draws on top
 {"op":"remove_track","trackId":T}
 {"op":"set_format","format":"short_9x16"|"feed_4x5"|"square_1x1"|"long_16x9"|"long_4k"}
+{"op":"set_format","format":"custom","width":W,"height":H}   W and H in pixels: even, 16 to 4096, at most the area of 3840×2160
 
 A text CLIP: {"type":"text","start":F,"duration":F,"text":S,"transform":${JSON.stringify(EXAMPLE_TEXT_CLIP.transform)},"style":${JSON.stringify(EXAMPLE_TEXT_CLIP.style)}}
 A media CLIP: {"type":"video"|"image"|"audio","assetId":A,"start":F,"duration":F,"in":F,"speed":1,"volume":1,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"}}

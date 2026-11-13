@@ -5,7 +5,7 @@ import { checkProjectBudget, checkWriteBudget } from "@/lib/mcp/budget";
 import { createProjectTool } from "@/lib/mcp/tools/create-project";
 import { displayActor } from "@/lib/projects/display-actor";
 import { applyProjectOps, createProject, listProjects } from "@/lib/projects/service";
-import type { OpInput } from "@/lib/timeline";
+import { FRAME_SIZE_MESSAGE, type OpInput } from "@/lib/timeline";
 import { makeTestDb } from "../helpers/db";
 import { addText, toolContext } from "./context";
 
@@ -77,6 +77,68 @@ describe("create_project", () => {
     const roomy = await toolContext(db, { limits: { connectorProjectsPerDay: 5 } });
     expect((await createProjectTool(roomy, { name: 'Say "go"', format: "short_9x16" })).text).toMatch(/^Created project/);
     expect(await rows(db)).toHaveLength(2);
+  });
+
+  it("creates a custom size in pixels, in no folder", async () => {
+    const db = await makeTestDb();
+    const ctx = await toolContext(db);
+    const r = await createProjectTool(ctx, { name: "Poster", format: "custom", width: 816, height: 1056 });
+    expect(r.isError).toBe(false);
+    expect(r.text.split("\n")[3]).toBe("Format custom 816x1056 @30fps · duration 0.00s · version 0");
+    const [listed] = await listProjects(db, ctx.actor);
+    expect(listed.folderId).toBeNull();
+  });
+
+  it("a custom size equal to a named one makes the named one", async () => {
+    const db = await makeTestDb();
+    const ctx = await toolContext(db);
+    const r = await createProjectTool(ctx, { name: "Reel", format: "custom", width: 1080, height: 1920 });
+    expect(r.text.split("\n")[3]).toBe("Format short_9x16 1080x1920 @30fps · duration 0.00s · version 0");
+  });
+
+  it("refuses a size outside the limits, an odd size, or a size with a named format", async () => {
+    const db = await makeTestDb();
+    const ctx = await toolContext(db);
+    expect(await createProjectTool(ctx, { name: "Wide", format: "custom", width: 5000, height: 100 })).toEqual({ isError: true, text: FRAME_SIZE_MESSAGE });
+    expect(await createProjectTool(ctx, { name: "Odd", format: "custom", width: 1081, height: 1920 })).toEqual({ isError: true, text: FRAME_SIZE_MESSAGE });
+    expect(await createProjectTool(ctx, { name: "Half", format: "custom", height: 1920 })).toEqual({ isError: true, text: FRAME_SIZE_MESSAGE });
+    expect(await createProjectTool(ctx, { name: "Named", format: "short_9x16", width: 500, height: 500 })).toEqual({
+      isError: true, text: "Give a width and height only with the custom format.",
+    });
+    expect(await rows(db)).toHaveLength(0);
+  });
+
+  it("a repeat within a minute is the same project only at the same size", async () => {
+    const db = await makeTestDb();
+    const ctx = await toolContext(db);
+    await createProjectTool(ctx, { name: "Poster", format: "custom", width: 816, height: 1056 });
+    const again = await createProjectTool(ctx, { name: "Poster", format: "custom", width: 816, height: 1056 });
+    expect(again.text.split("\n")[0]).toMatch(/^This project was created a moment ago, so it is used again:/);
+    expect(await rows(db)).toHaveLength(1);
+    await createProjectTool(ctx, { name: "Poster", format: "custom", width: 816, height: 1000 });
+    expect(await rows(db)).toHaveLength(2);
+  });
+
+  it("a twin is matched on the format and size it would be made with", async () => {
+    const db = await makeTestDb();
+    const ctx = await toolContext(db);
+    // A custom size equal to a named one is that named one, so it repeats the named project.
+    await createProjectTool(ctx, { name: "Reel", format: "short_9x16" });
+    expect((await createProjectTool(ctx, { name: "Reel", format: "custom", width: 1080, height: 1920 })).text).toMatch(/^This project was created a moment ago/);
+    expect(await rows(db)).toHaveLength(1);
+    // A project changed to a custom size of the same pixels is not a twin of the named one.
+    const [reel] = await rows(db);
+    await applyProjectOps(db, ctx.actor, { projectId: reel.id, baseVersion: 0, ops: [{ op: "set_format", format: "custom", width: 1080, height: 1920 }] });
+    expect((await createProjectTool(ctx, { name: "Reel", format: "short_9x16" })).text).toMatch(/^Created project/);
+    expect(await rows(db)).toHaveLength(2);
+
+    // Another width is another project; a row written without its size columns is read by its doc's size.
+    await createProjectTool(ctx, { name: "Poster", format: "custom", width: 816, height: 1056 });
+    expect((await createProjectTool(ctx, { name: "Poster", format: "custom", width: 800, height: 1056 })).text).toMatch(/^Created project/);
+    expect(await rows(db)).toHaveLength(4);
+    await db.execute(sql`update projects set width = null, height = null`);
+    expect((await createProjectTool(ctx, { name: "Poster", format: "custom", width: 816, height: 1056 })).text).toMatch(/^This project was created a moment ago/);
+    expect(await rows(db)).toHaveLength(4);
   });
 
   it("stops at the daily number of projects, and frees a place a day later", async () => {
