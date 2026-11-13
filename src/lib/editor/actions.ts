@@ -128,6 +128,7 @@ export function cutSelection(store: EditorStore, clipboard: ClipboardStore): voi
 
 // Puts the clipboard's clips at the playhead, or at the point given, where placeClips finds room, and selects
 // them. Each clip would like the point's track when that track takes it, else the track it was copied from.
+// A point below the last row (trackId null) has no wished track: placement chooses.
 export function paste(store: EditorStore, clipboard: ClipboardStore, at?: TimelinePoint): void {
   const state = store.getState();
   if (!state.canEdit) return;
@@ -137,9 +138,10 @@ export function paste(store: EditorStore, clipboard: ClipboardStore, at?: Timeli
     return;
   }
   const target = state.doc.tracks.find((t) => t.id === at?.trackId);
-  const items = pasteItems(copied, at?.frame ?? state.playhead).map((item) =>
-    target && TRACK_ACCEPTS[target.kind].includes(item.clip.type) ? { ...item, trackId: target.id } : item,
-  );
+  const items = pasteItems(copied, at?.frame ?? state.playhead).map((item) => {
+    if (at && at.trackId === null) return { ...item, trackId: null };
+    return target && TRACK_ACCEPTS[target.kind].includes(item.clip.type) ? { ...item, trackId: target.id } : item;
+  });
   const placement = placeClips(state.doc, items, () => nanoid(10));
   if (!placement.ok) {
     state.notify("error", MESSAGES.noRoom);

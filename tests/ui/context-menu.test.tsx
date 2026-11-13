@@ -478,16 +478,17 @@ describe("the timeline's right-click menus", () => {
     expect(st().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toContain((1000 - (LANE_LEFT - 240)) / 2);
   });
 
-  it("below the last row a clip keeps its own track, even when the last row would take it", () => {
-    // Rows top to bottom: cap, t1, v1, v2; c2 was copied from v1.
+  it("below the last row a paste has no wished track, so placement takes the top free row of its kind", () => {
+    // Rows top to bottom: cap, t1, v2, v1; c2 was copied from v1, and v2 is free at 200.
     const doc = makeStore().getState().doc;
-    doc.tracks = [{ id: "v2", kind: "video", name: "Video 2", muted: false, hidden: false, locked: false, clips: [] }, ...doc.tracks.filter((t) => t.kind !== "audio")];
+    const [v1, ...rest] = doc.tracks.filter((t) => t.kind !== "audio");
+    doc.tracks = [v1, { id: "v2", kind: "video", name: "Video 2", muted: false, hidden: false, locked: false, clips: [] }, ...rest];
     const { st, content, rightClick, copyC2 } = setup(makeStore({ doc }));
     copyC2();
     rightClick(content, x(200), BELOW);
     pick("Paste");
-    expect(st().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toEqual([0, 30, 200]);
-    expect(st().doc.tracks.find((t) => t.id === "v2")!.clips).toEqual([]);
+    expect(st().doc.tracks.find((t) => t.id === "v2")!.clips.map((c) => c.start)).toEqual([200]);
+    expect(st().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toEqual([0, 30]);
   });
 
   it("the rename field keeps the browser's menu, and its row opens none", () => {

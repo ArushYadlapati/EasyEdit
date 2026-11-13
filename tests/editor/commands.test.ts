@@ -297,12 +297,24 @@ describe("runners", () => {
     expect(startsOn("v1")).toContain(500);
   });
 
-  it("a paste below the last row keeps each clip's own track", () => {
-    const store = makeStore();
+  it("a paste below the last row has no wished track: placement chooses", () => {
+    // Video 2 comes after Video 1 in doc.tracks, so its row is above Video 1's; c2 was copied from v1.
+    const d = sampleDoc();
+    d.tracks.splice(1, 0, emptyTrack("v2", "video"));
+    const store = makeStore({ doc: d });
+    const st = () => store.getState();
+    const startsOn = (trackId: string) => st().doc.tracks.find((t) => t.id === trackId)!.clips.map((c) => c.start);
+    expect(rowIds(st().doc).slice(0, 4)).toEqual(["cap", "t1", "v2", "v1"]);
     const board = createClipboard();
-    board.write(copyClips(store.getState().doc, ["c2"])!);
+    board.write(copyClips(st().doc, ["c2"])!);
     paste(store, board, { frame: 200, trackId: null });
-    expect(store.getState().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toEqual([0, 30, 200]);
+    expect(startsOn("v2")).toEqual([200]);
+    expect(startsOn("v1")).toEqual([0, 30]);
+    // Mod+V, with no point, still keeps the track the clip was copied from.
+    st().seek(300);
+    paste(store, board);
+    expect(startsOn("v1")).toEqual([0, 30, 300]);
+    expect(startsOn("v2")).toEqual([200]);
   });
 
   it("a refused cut leaves the clipboard and the clip alone", () => {
