@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EDIT_DESCRIPTION, EXAMPLE_CROP, EXAMPLE_MEDIA_CLIP, EXAMPLE_TEXT_CLIP, OP_REFERENCE, SERVER_INSTRUCTIONS, TEAM_STYLE_RULES, buildEditingGuide } from "@/lib/mcp/guide";
+import { EDIT_DESCRIPTION, EXAMPLE_CROP, EXAMPLE_MEDIA_CLIP, EXAMPLE_STRETCH, EXAMPLE_TEXT_CLIP, OP_REFERENCE, SERVER_INSTRUCTIONS, TEAM_STYLE_RULES, buildEditingGuide } from "@/lib/mcp/guide";
 import { checkAllowedOps } from "@/lib/mcp/op-rules";
 import { editTimelineTool } from "@/lib/mcp/tools/edit-timeline";
 import { createProject } from "@/lib/projects/service";
@@ -76,6 +76,7 @@ describe("the guide", () => {
       "assetId comes from list_assets, and type must be the asset's kind. in is the first frame of the footage the clip shows. Video and audio must stay inside the footage: in + duration × speed is at most the asset's length in frames. Video and image clips go on video or overlay tracks, audio clips on audio tracks.",
       "x and y place the clip's center as a fraction of the frame: 0.5, 0.5 is the middle. For plain text, add_text is simpler; for media, add_media is.",
       'A video, image or text transform may also have "crop":{"left":0.1,"top":0,"right":0.1,"bottom":0}: the share cut from each side of the clip, 0 to 1. The rest stays where it was. update_clip replaces the whole crop, so give all four; {"left":0,"top":0,"right":0,"bottom":0} removes it.',
+      'A video, image or text transform may also have "stretch":1.5: the clip is drawn 1.5 times as wide for its height (below 1 is narrower). scale still sizes the whole clip; 1, or no stretch, keeps its own shape.',
     ].join("\n"))).toBe(true);
   });
 
@@ -94,8 +95,19 @@ describe("the guide", () => {
     expect(removed.tracks[1].clips[0].transform.crop).toEqual(NO_CROP);
   });
 
-  it("says crop is possible", () => {
-    expect(buildEditingGuide()).toContain("Change the format. Crop video, images and text.");
+  it("shows a stretch the engine accepts as written, on video and on text", () => {
+    expect(EXAMPLE_STRETCH).toBe(1.5);
+    const added = applyOps(createEmptyDoc("short_9x16"), prepareOps([
+      { op: "add_clip", trackId: "v1", clip: { ...EXAMPLE_MEDIA_CLIP, id: "v" } },
+      { op: "add_clip", trackId: "t1", clip: { ...EXAMPLE_TEXT_CLIP, id: "t" } },
+    ])).doc;
+    const ops = prepareOps(["v", "t"].map((clipId) => ({ op: "update_clip" as const, clipId, patch: { transform: { stretch: EXAMPLE_STRETCH } } })));
+    const { doc } = applyOps(added, ops);
+    expect([doc.tracks[0].clips[0].transform.stretch, doc.tracks[1].clips[0].transform.stretch]).toEqual([EXAMPLE_STRETCH, EXAMPLE_STRETCH]);
+  });
+
+  it("says crop and stretch are possible", () => {
+    expect(buildEditingGuide()).toContain("Change the format. Crop and stretch video, images and text.");
   });
 
   it("has no team section until the team has rules", () => {

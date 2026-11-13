@@ -7,3 +7,8 @@ type HappyDOMWindow = {
 export function happyDOM(): { setViewport(size: { width: number; height: number }): void; setURL(url: string): void } {
   return (window as unknown as HappyDOMWindow).happyDOM;
 }
+
+// A box on screen, for stubbing getBoundingClientRect where happy-dom does no layout.
+export function rect(left: number, top: number, width: number, height: number): DOMRect {
+  return { left, x: left, top, y: top, width, height, right: left + width, bottom: top + height, toJSON() {} } as DOMRect;
+}

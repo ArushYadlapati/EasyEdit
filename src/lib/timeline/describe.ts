@@ -1,5 +1,5 @@
 import { graphemes } from "@/lib/text";
-import { docDuration, isCropped } from "./presets";
+import { NO_STRETCH, docDuration, isCropped, stretchOf } from "./presets";
 import type { Clip, Track, TimelineDoc, Transform } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
@@ -37,10 +37,12 @@ function describeClip(clip: Clip, fps: number): string {
   return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}`;
 }
 
-// Scale, rotation, opacity and crop are only worth a word when they are not the defaults. Audio draws nothing, so its crop is left out.
+// Scale, stretch, rotation, opacity and crop are only worth a word when they are not the defaults. Audio draws nothing, so its
+// stretch and crop are left out.
 function describeTransformChanges(t: Transform, type: Clip["type"]): string {
   let out = "";
   if (t.scale !== 1) out += ` scale=${t.scale}`;
+  if (stretchOf(t) !== NO_STRETCH && type !== "audio") out += ` stretch=${stretchOf(t)}`;
   if (t.rotation !== 0) out += ` rotation=${t.rotation}`;
   if (t.opacity !== 1) out += ` opacity=${t.opacity}`;
   if (t.crop && isCropped(t.crop) && type !== "audio") {

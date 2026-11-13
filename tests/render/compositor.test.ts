@@ -44,6 +44,17 @@ describe("drawFrame", () => {
     ]);
   });
 
+  it("draws a stretched clip wider for its height, and keeps the wrapping", () => {
+    const { ctx, calls } = fakeCtx();
+    const clip = text("x", 0, 30, { text: "seattle solvers robotics team wins", transform: { ...DEFAULT_TRANSFORM, scale: 2, stretch: 1.5 } });
+    drawFrame(ctx, textDoc(clip), 0);
+    expect(only(calls, "scale")).toEqual([["scale", 3, 2]]);
+    expect(only(calls, "fillText")).toEqual([["fillText", "seattle solvers robotics team", 0, -38.4], ["fillText", "wins", 0, 38.4]]);
+    const narrow = fakeCtx();
+    drawFrame(narrow.ctx, textDoc(text("x", 0, 30, { transform: { ...DEFAULT_TRANSFORM, stretch: 0.5 } })), 0);
+    expect(only(narrow.calls, "scale")).toEqual([["scale", 0.5, 1]]);
+  });
+
   it("wraps long text with the real font size, and asks the font resolver for the family", () => {
     const { ctx, calls } = fakeCtx(); // 64 px text measures 32 px per character; the box is 972 px, so 30 characters fit
     drawFrame(ctx, textDoc(text("x", 0, 30, { text: "seattle solvers robotics team wins" })), 0, { resolveFont: (family) => `"Loaded ${family}"` });

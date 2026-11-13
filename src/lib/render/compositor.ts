@@ -1,5 +1,5 @@
 import type { Clip, Crop, MediaClip, TextClip, TimelineDoc, Track } from "@/lib/timeline";
-import { isCropped } from "@/lib/timeline/presets";
+import { isCropped, stretchOf } from "@/lib/timeline/presets";
 import { layoutText, textRect, type LocalRect } from "./text-layout";
 
 export type { LocalRect };
@@ -38,7 +38,7 @@ export function fitRect(srcW: number, srcH: number, dstW: number, dstH: number, 
   return { width: srcW * ratio, height: srcH * ratio };
 }
 
-// The size a video or image is drawn at before scale and rotation: fitted to the frame, or the whole frame for a placeholder.
+// The size a video or image is drawn at before scale, stretch and rotation: fitted to the frame, or the whole frame for a placeholder.
 export function mediaSize(
   doc: { width: number; height: number },
   clip: MediaClip,
@@ -129,7 +129,8 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
     ctx.globalAlpha = t.opacity;
     ctx.translate(t.x * doc.width, t.y * doc.height);
     ctx.rotate((t.rotation * Math.PI) / 180);
-    ctx.scale(t.scale, t.scale);
+    // A stretch widens text glyphs too. Wrapping happens in local units, so it does not change.
+    ctx.scale(t.scale * stretchOf(t), t.scale);
     if (clip.type === "text") drawText(ctx, doc, clip, resolveFont);
     else if (clip.type === "video" || clip.type === "image") drawMedia(ctx, doc, clip as MediaClip & { type: "video" | "image" }, frame, options);
     ctx.restore();

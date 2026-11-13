@@ -150,6 +150,27 @@ Track a1 [audio] "Audio 1"
     expect([none.video, none.text, none.audio].join("\n")).not.toContain("crop=");
   });
 
+  it("prints a stretch right after the scale, only when it is not 1, and never for audio", () => {
+    const lineOf = (stretch: number) => {
+      const d = applyOps(createEmptyDoc("short_9x16"), [
+        { op: "add_clip", trackId: "v1", clip: { id: "c1", type: "video", assetId: "a", start: 0, duration: 30, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM, stretch, rotation: 10 } } },
+        { op: "add_clip", trackId: "t1", clip: { id: "x1", type: "text", start: 0, duration: 30, text: "hi", transform: { ...DEFAULT_TRANSFORM, scale: 2, stretch }, style } },
+        { op: "add_clip", trackId: "a1", clip: { id: "s1", type: "audio", assetId: "m", start: 0, duration: 30, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM, stretch } } },
+      ]).doc;
+      const lines = describe(d, { detail: true }).split("\n");
+      return { video: lines[2], text: lines[4], audio: lines[8], short: describe(d) };
+    };
+    const stretched = lineOf(1.5);
+    expect(stretched.text).toContain(" scale=2 stretch=1.5");
+    expect(stretched.video.endsWith(" fit=cover stretch=1.5 rotation=10")).toBe(true);
+    expect(stretched.audio).toMatch(/^ {2}s1 {2}audio /);
+    expect(stretched.audio).not.toContain("stretch=");
+    expect(stretched.short).not.toContain("stretch=");
+    const plain = lineOf(1);
+    expect([plain.video, plain.text, plain.audio].join("\n")).not.toContain("stretch=");
+    expect(plain.text.endsWith(" scale=2")).toBe(true);
+  });
+
   it("without detail, prints exactly what it printed before", () => {
     expect(describe(withText("A".repeat(43)))).toContain(`  x1  text  0.00–1.00s  "${"A".repeat(40)}…"`);
     expect(describe(withText("hi"), { detail: false })).toBe(describe(withText("hi")));

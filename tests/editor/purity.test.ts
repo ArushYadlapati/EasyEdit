@@ -47,3 +47,16 @@ it("the compositor is worker-safe: no React, Next or store imports, no browser g
     expect(stripComments(code), file).not.toMatch(BROWSER_GLOBAL);
   }
 });
+
+// A value import from the timeline's index would pull zod and the op engine into the compositor, so values come from presets.
+const TIMELINE_INDEX_VALUE_IMPORT = /^\s*import\s+(?!type\b)[^;]*?from\s*["']@\/lib\/timeline["']/m;
+
+it("the compositor takes timeline values from presets, never from the index", () => {
+  expect(TIMELINE_INDEX_VALUE_IMPORT.test('import { stretchOf } from "@/lib/timeline";')).toBe(true);
+  expect(TIMELINE_INDEX_VALUE_IMPORT.test('import {\n  stretchOf,\n} from "@/lib/timeline";')).toBe(true);
+  expect(TIMELINE_INDEX_VALUE_IMPORT.test('import type { Clip } from "@/lib/timeline";')).toBe(false);
+  expect(TIMELINE_INDEX_VALUE_IMPORT.test('import { stretchOf } from "@/lib/timeline/presets";')).toBe(false);
+  for (const [file, code] of sources("src/lib/render")) {
+    expect(code, file).not.toMatch(TIMELINE_INDEX_VALUE_IMPORT);
+  }
+});

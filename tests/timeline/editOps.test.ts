@@ -409,6 +409,44 @@ describe("crop", () => {
   });
 });
 
+describe("stretch", () => {
+  const CUT = { left: 0.1, top: 0, right: 0.2, bottom: 0 };
+  const stretch = (clipId: string, value: unknown) => ({ op: "update_clip" as const, clipId, patch: { transform: { stretch: value } } });
+  const textDoc = () => {
+    const d = doc0();
+    d.tracks[1].clips = [text("x1", 0, 30)];
+    return d;
+  };
+
+  it("a first stretch can be undone, back to 1", () => {
+    const d = textDoc();
+    const { doc, inverse } = applyOps(d, [stretch("x1", 1.5)]);
+    expect(doc.tracks[1].clips[0].transform.stretch).toBe(1.5);
+    expect(inverse).toEqual([{ op: "update_clip", clipId: "x1", patch: { transform: { stretch: 1 } }, expect: { transform: { stretch: 1.5 } } }]);
+    expect(applyOps(doc, inverse).doc.tracks[1].clips[0].transform.stretch).toBe(1);
+  });
+
+  it("stretch must be above 0", () => {
+    const d = textDoc();
+    for (const bad of [0, -1, "a"]) failsWith(() => applyOps(d, [stretch("x1", bad)]), "INVALID");
+  });
+
+  it("one patch of crop and stretch undoes both", () => {
+    const d = withClips(media("c1", 0, 30));
+    const { doc, inverse } = applyOps(d, [{ op: "update_clip", clipId: "c1", patch: { transform: { crop: CUT, stretch: 2 } } }]);
+    expect(clipsOf(doc)[0].transform).toMatchObject({ crop: CUT, stretch: 2 });
+    expect(inverse).toEqual([
+      { op: "update_clip", clipId: "c1", patch: { transform: { crop: NO_CROP, stretch: 1 } }, expect: { transform: { crop: CUT, stretch: 2 } } },
+    ]);
+  });
+
+  it("add_clip keeps the stretch", () => {
+    const stretched = media("c1", 0, 30, { transform: { ...DEFAULT_TRANSFORM, stretch: 0.5 } });
+    const added = applyOps(doc0(), prepareOps([{ op: "add_clip", trackId: "v1", clip: stretched }])).doc;
+    expect(clipsOf(added)[0].transform.stretch).toBe(0.5);
+  });
+});
+
 describe("set_format", () => {
   it("changes dimensions and undoes", () => {
     const d = doc0();

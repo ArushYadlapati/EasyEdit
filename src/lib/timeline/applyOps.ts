@@ -2,7 +2,7 @@ import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { OpError } from "./errors";
 import type { Op } from "./ops";
-import { FORMAT_PRESETS, NO_CROP, TRACK_ACCEPTS } from "./presets";
+import { FORMAT_PRESETS, NO_CROP, NO_STRETCH, TRACK_ACCEPTS } from "./presets";
 import { MediaClip, TextClip, Transform, TextStyle } from "./types";
 import type { Clip, TimelineDoc, Track } from "./types";
 
@@ -13,7 +13,7 @@ const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
 
 // Optional transform fields, each with its neutral value. update_clip fills a missing one before it is set or
 // expected, so the first change records an undo that goes back to the neutral value.
-const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CROP }) };
+const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CROP }), stretch: () => NO_STRETCH };
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);

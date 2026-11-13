@@ -11,7 +11,7 @@ export const TrackKind = z.enum(["video", "overlay", "text", "caption", "audio"]
 export type TrackKind = z.infer<typeof TrackKind>;
 
 const CropSide = z.number().min(0).max(1);
-// The share cut from each side of a clip's full picture or text box, before scale and rotation.
+// The share cut from each side of a clip's full picture or text box, before scale, stretch and rotation.
 export const Crop = z
   .strictObject({ left: CropSide, top: CropSide, right: CropSide, bottom: CropSide })
   .refine((c) => c.left + c.right < 1 && c.top + c.bottom < 1, "a crop must leave part of the picture");
@@ -20,7 +20,8 @@ export type Crop = z.infer<typeof Crop>;
 export const Transform = z.object({
   x: z.number(), // clip centre, normalised 0..1 of canvas (0.5,0.5 = centre)
   y: z.number(),
-  scale: z.number().positive(), // 1 = fitted per `fit`
+  scale: z.number().positive(), // 1 = fitted per `fit`; with a stretch, the height's factor
+  stretch: z.number().positive().optional(), // width over height, as a factor of the clip's own shape: 2 = twice as wide for its height; absent = 1
   rotation: z.number(), // degrees
   opacity: z.number().min(0).max(1),
   fit: z.enum(["cover", "contain"]),

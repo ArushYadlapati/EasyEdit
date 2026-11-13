@@ -7,12 +7,14 @@ const text = (id: string, start: number, duration: number) =>
   ({ id, type: "text", start, duration, text: "hi", transform: { ...DEFAULT_TRANSFORM },
      style: { fontFamily: "Inter", fontSize: 64, fontWeight: 700, color: "#fff", align: "center" } }) as Clip;
 
-// Tracks: v1 [c1 0-30 (in 10, speed 1.5), c2 30-60, c3 60-90], o1 (empty overlay), t1 [x1 0-60], cap, a1
+// Tracks: v1 [c1 0-30 (in 10, speed 1.5), c2 30-60, c3 60-90], o1 (empty overlay), t1 [x1 0-60, stretch 1.5], cap, a1
 function rich(): TimelineDoc {
   const d = createEmptyDoc("short_9x16");
   d.tracks[0].clips = [video("c1", 0, 30, { in: 10, speed: 1.5 }), video("c2", 30, 30), video("c3", 60, 30)];
   d.tracks.splice(1, 0, { id: "o1", kind: "overlay", name: "Overlay 1", muted: false, hidden: false, locked: false, clips: [] });
-  d.tracks.find((t) => t.id === "t1")!.clips = [text("x1", 0, 60)];
+  const x1 = text("x1", 0, 60);
+  x1.transform.stretch = 1.5;
+  d.tracks.find((t) => t.id === "t1")!.clips = [x1];
   return d;
 }
 // rich() with c2 already cropped. rich() itself stays uncropped, because other tests pin its clips.
@@ -42,6 +44,7 @@ const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["trim_clip end", { op: "trim_clip", clipId: "c3", edge: "end", to: 70 }],
   ["split_clip at speed 1.5", { op: "split_clip", clipId: "c1", at: 11, newClipId: "c5" }],
   ["update_clip", { op: "update_clip", clipId: "x1", patch: { text: "GO", style: { color: "#000" } } }],
+  ["update_clip stretch on a stretched clip", { op: "update_clip", clipId: "x1", patch: { transform: { stretch: 2 } } }],
   ["update_clip crop on a cropped clip", { op: "update_clip", clipId: "c2", patch: { transform: { crop: { left: 0.2, top: 0, right: 0, bottom: 0 } } } }, richCropped],
   ["move_track", { op: "move_track", trackId: "t1", index: 0 }],
   ["set_format", { op: "set_format", format: "long_16x9" }],

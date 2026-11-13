@@ -1,17 +1,16 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { EditorProvider } from "@/components/editor/context";
-import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
+import { expect, it, vi } from "vitest";
+import type { MediaServices } from "@/components/editor/media/media-context";
+import type { TimelineDoc } from "@/lib/timeline";
 import { cx } from "@/components/ui/cx";
-import { LANE_GUTTER } from "@/components/editor/timeline/playhead";
-import { Timeline } from "@/components/editor/timeline/timeline";
-import { HEADER_WIDTH, ROW_HEIGHT, RULER_HEIGHT } from "@/lib/editor/geometry";
+import { ROW_HEIGHT, RULER_HEIGHT, displayRows } from "@/lib/editor/geometry";
 import { resolveDrag } from "@/lib/editor/drag";
 import { MESSAGES, explainOpError } from "@/lib/editor/messages";
-import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
-import { act, fireEvent, render, screen } from "../helpers/dom";
-import { entry, makeStore, sampleDoc, text } from "../editor/fixtures";
+import { findClip, viewDoc } from "@/lib/editor/store";
+import { act, fireEvent, screen } from "../helpers/dom";
+import { entry, makeStore, noticesOf, sampleDoc, text } from "../editor/fixtures";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
+import { LANE_LEFT, ZOOM, installTimelineStubs, pendingFrames, renderTimeline, x, y } from "../helpers/timeline-harness";
 
 // Both stay the real functions; the spies only count calls. ClipView calls cx once per render with
 // its fill class, which nothing else on the timeline uses.
@@ -24,83 +23,12 @@ vi.mock("@/components/ui/cx", async (importOriginal) => {
   return { ...real, cx: vi.fn(real.cx) };
 });
 
-// happy-dom does no layout. Every element is 1400 px wide, the scroller's left edge is at 0 on screen
-// and nothing is scrolled, so frame 0 of every lane is at HEADER_WIDTH + LANE_GUTTER and the rows
-// start under the ruler. Rows top to bottom: cap, t1, v1, a1. Animation frames run when frame() says.
-const ZOOM = 2;
-const LANE_LEFT = HEADER_WIDTH + LANE_GUTTER;
-const x = (frame: number) => LANE_LEFT + frame * ZOOM;
-const y = (row: number) => RULER_HEIGHT + row * ROW_HEIGHT + ROW_HEIGHT / 2;
+installTimelineStubs();
+
 const T1 = y(1);
 const V1 = y(2);
-
-let frames = new Map<number, FrameRequestCallback>();
-let nextFrame = 0;
-
-beforeEach(() => {
-  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1400);
-  frames = new Map();
-  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-    frames.set(++nextFrame, cb);
-    return nextFrame;
-  });
-  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
-});
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
-
-const rect = (left: number, top: number, width: number, height: number) =>
-  ({ left, x: left, top, y: top, width, height, right: left + width, bottom: top + height, toJSON() {} }) as DOMRect;
-
-function setup(store = makeStore(), media?: MediaServices) {
-  const view = render(
-    <EditorProvider store={store}>
-      {media ? (
-        <MediaProvider services={media}>
-          <Timeline />
-        </MediaProvider>
-      ) : (
-        <Timeline />
-      )}
-    </EditorProvider>,
-  );
-  act(() => store.getState().setZoom(ZOOM));
-  const scroller = screen.getByRole("slider", { name: "Playhead" }).closest<HTMLElement>(".overflow-auto")!;
-  scroller.getBoundingClientRect = () => rect(0, 0, 1400, 400);
-  const lanes = [...view.container.querySelectorAll<HTMLElement>("[data-lane]")];
-  for (const lane of lanes) lane.getBoundingClientRect = () => rect(LANE_LEFT, 0, 1400 - LANE_LEFT, ROW_HEIGHT);
-  const rows = lanes[0].parentElement!.parentElement!;
-  rows.getBoundingClientRect = () => rect(0, RULER_HEIGHT, 1400, 4 * ROW_HEIGHT);
-  const st = () => store.getState();
-  const clip = (id: string) => view.container.querySelector<HTMLElement>(`[data-clip-id="${id}"]`)!;
-  const at = (clientX: number, clientY: number) => ({ button: 0, pointerId: 1, clientX, clientY });
-  const press = (el: HTMLElement, clientX: number, clientY: number, over: object = {}) => fireEvent.pointerDown(el, { ...at(clientX, clientY), ...over });
-  const move = (clientX: number, clientY: number) => fireEvent.pointerMove(scroller, at(clientX, clientY));
-  const release = (clientX: number, clientY: number) => fireEvent.pointerUp(scroller, at(clientX, clientY));
-  const frame = () =>
-    act(() => {
-      const due = [...frames.values()];
-      frames.clear();
-      for (const cb of due) cb(performance.now());
-    });
-  const startOf = (id: string) => findClip(st().doc, id)!.clip.start;
-  const shownStart = (id: string) => findClip(viewDoc(st()), id)!.clip.start;
-  return { store, st, view, scroller, lanes, rows, clip, press, move, release, frame, startOf, shownStart };
-}
-
-// Every notice the store shows from now on, in order.
-function noticesOf(store: EditorStore): string[] {
-  const texts: string[] = [];
-  store.subscribe((s, prev) => {
-    if (s.notice && s.notice !== prev.notice) texts.push(s.notice.text);
-  });
-  return texts;
-}
-
 it("dragging a clip more than 3 px moves it and saves one edit", () => {
-  const { st, clip, press, move, release, frame, startOf } = setup();
+  const { st, clip, press, move, release, frame, startOf } = renderTimeline();
   expect(clip("x2").className).toContain("touch-none"); // a touch drag moves the clip, not the timeline
   press(clip("x2"), x(94), T1);
   move(x(114), T1);
@@ -115,7 +43,7 @@ it("dragging a clip more than 3 px moves it and saves one edit", () => {
 });
 
 it("dragging one clip of a two-clip selection moves both", () => {
-  const { st, clip, press, move, release, frame, startOf } = setup();
+  const { st, clip, press, move, release, frame, startOf } = renderTimeline();
   act(() => st().select(["x1", "x2"]));
   press(clip("x2"), x(94), T1);
   expect(st().selection.clipIds).toEqual(["x1", "x2"]);
@@ -128,7 +56,7 @@ it("dragging one clip of a two-clip selection moves both", () => {
 });
 
 it("a press and release within 3 px makes no edit and selects the clip alone", () => {
-  const { st, clip, press, move, release, frame, startOf } = setup();
+  const { st, clip, press, move, release, frame, startOf } = renderTimeline();
   act(() => st().select(["x1", "x2"]));
   press(clip("x2"), x(94), T1);
   move(x(94) + 2, T1);
@@ -140,7 +68,7 @@ it("a press and release within 3 px makes no edit and selects the clip alone", (
 });
 
 it("Escape during a drag cancels it, makes no edit and keeps the selection", () => {
-  const { st, clip, press, move, release, frame, startOf } = setup();
+  const { st, clip, press, move, release, frame, startOf } = renderTimeline();
   act(() => st().select(["x1", "x2"]));
   press(clip("x2"), x(94), T1);
   move(x(114), T1);
@@ -162,7 +90,7 @@ it("Escape during a drag cancels it, makes no edit and keeps the selection", () 
 });
 
 it("a drop onto an occupied spot shows the attempted place, makes no edit and shows the store's message", () => {
-  const { st, view, scroller, clip, press, move, release, frame, startOf } = setup();
+  const { st, view, scroller, clip, press, move, release, frame, startOf } = renderTimeline();
   press(clip("x2"), x(94), T1);
   move(x(114), T1); // a free place: x2 is shown at 110
   frame();
@@ -186,7 +114,7 @@ it("a drop onto an occupied spot shows the attempted place, makes no edit and sh
 });
 
 it("a viewer cannot drag and sees no trim handles", () => {
-  const { st, view, clip, press, move, release, frame, startOf } = setup(makeStore({ canEdit: false }));
+  const { st, view, clip, press, move, release, frame, startOf } = renderTimeline(makeStore({ canEdit: false }));
   expect(view.container.querySelector("[data-trim-handle]")).toBeNull();
   press(clip("x2"), x(94), T1);
   move(x(114), T1);
@@ -199,7 +127,7 @@ it("a viewer cannot drag and sees no trim handles", () => {
 });
 
 it("a trim by the right handle changes the duration in one edit", () => {
-  const { st, clip, press, move, release, frame } = setup();
+  const { st, clip, press, move, release, frame } = renderTimeline();
   const handle = clip("x2").querySelector<HTMLElement>('[data-trim-handle="end"]')!;
   press(handle, x(119), T1);
   move(x(129), T1);
@@ -211,7 +139,7 @@ it("a trim by the right handle changes the duration in one edit", () => {
 });
 
 it("box selection from empty row space selects the clips it covers", () => {
-  const { st, view, lanes, press, move, release, frame } = setup();
+  const { st, view, lanes, press, move, release, frame } = renderTimeline();
   act(() => st().select(["x2"]));
   press(lanes[1], x(70), T1); // t1's lane, between x1 and x2
   expect(st().selection.clipIds).toEqual([]);
@@ -226,7 +154,7 @@ it("box selection from empty row space selects the clips it covers", () => {
 });
 
 it("a viewer can box-select too", () => {
-  const { st, lanes, press, move, release, frame } = setup(makeStore({ canEdit: false }));
+  const { st, lanes, press, move, release, frame } = renderTimeline(makeStore({ canEdit: false }));
   press(lanes[2], x(70), V1); // v1's lane, after c2
   move(x(40), V1);
   frame();
@@ -235,7 +163,7 @@ it("a viewer can box-select too", () => {
 });
 
 it("a teammate's edit elsewhere keeps the drag going, and removing the dragged clip ends it", () => {
-  const { store, st, scroller, clip, press, move, release, frame, startOf } = setup();
+  const { store, st, scroller, clip, press, move, release, frame, startOf } = renderTimeline();
   press(clip("x2"), x(94), T1);
   move(x(114), T1);
   frame();
@@ -254,7 +182,7 @@ it("a teammate's edit elsewhere keeps the drag going, and removing the dragged c
 });
 
 it("a drag with nothing to save yet still says so when its clip is removed", () => {
-  const { st, clip, press, move, release, frame } = setup();
+  const { st, clip, press, move, release, frame } = renderTimeline();
   press(clip("x2"), x(94), T1);
   move(x(94), T1 + 5); // a drag, but still on the same frame and row
   frame();
@@ -268,7 +196,7 @@ it("a drag with nothing to save yet still says so when its clip is removed", () 
 });
 
 it("a teammate taking the spot mid-drag shows the attempt, refuses the drop and keeps the clip where it was", () => {
-  const { st, view, scroller, clip, press, move, release, frame, startOf, shownStart } = setup();
+  const { st, view, scroller, clip, press, move, release, frame, startOf, shownStart } = renderTimeline();
   press(clip("x2"), x(94), T1);
   move(x(204), T1); // x2 to 200, a free place
   frame();
@@ -284,7 +212,7 @@ it("a teammate taking the spot mid-drag shows the attempt, refuses the drop and 
 });
 
 it("a clip removed between the press and the start of the drag ends the press with one message", () => {
-  const { store, st, clip, press, move, release, frame } = setup();
+  const { store, st, clip, press, move, release, frame } = renderTimeline();
   press(clip("x2"), x(94), T1);
   const notices = noticesOf(store);
   act(() => void st().applyRemote([entry(6, [{ op: "remove_clip", clipId: "x2" }])]));
@@ -298,7 +226,7 @@ it("a clip removed between the press and the start of the drag ends the press wi
 });
 
 it("turning snapping off, moving the playhead or zooming during a drag updates it without a pointer move", () => {
-  const { st, view, clip, press, move, frame, shownStart } = setup();
+  const { st, view, clip, press, move, frame, shownStart } = renderTimeline();
   const guide = () => view.container.querySelector<HTMLElement>("[data-snap-guide]");
   press(clip("x2"), x(94), T1);
   move(x(67), T1); // x2 to 63, snapped to the edge at 60
@@ -322,7 +250,7 @@ it("turning snapping off, moving the playhead or zooming during a drag updates i
 });
 
 it("works out several pointer moves in one animation frame once", () => {
-  const { clip, press, move, frame } = setup();
+  const { clip, press, move, frame } = renderTimeline();
   const resolve = vi.mocked(resolveDrag);
   press(clip("x2"), x(94), T1);
   resolve.mockClear();
@@ -335,7 +263,7 @@ it("works out several pointer moves in one animation frame once", () => {
 });
 
 it("losing edit access mid-drag ends the drag and saves nothing", () => {
-  const { st, scroller, clip, press, move, release, frame } = setup();
+  const { st, scroller, clip, press, move, release, frame } = renderTimeline();
   press(clip("x2"), x(94), T1);
   move(x(114), T1);
   frame();
@@ -349,7 +277,7 @@ it("losing edit access mid-drag ends the drag and saves nothing", () => {
 
 it("pointercancel, lost capture and unmount each end the drag with nothing left behind", () => {
   for (const exit of ["pointercancel", "lostpointercapture", "unmount"] as const) {
-    const { st, view, scroller, clip, press, move, frame } = setup();
+    const { st, view, scroller, clip, press, move, frame } = renderTimeline();
     const spies = [scroller, window].map((target) => ({
       add: vi.spyOn(target, "addEventListener"),
       remove: vi.spyOn(target, "removeEventListener"),
@@ -359,12 +287,12 @@ it("pointercancel, lost capture and unmount each end the drag with nothing left 
     frame();
     move(x(118), T1); // an animation frame is pending
     expect(st().gesture, exit).not.toBeNull();
-    expect(frames.size, exit).toBe(1);
+    expect(pendingFrames(), exit).toBe(1);
     if (exit === "pointercancel") fireEvent.pointerCancel(scroller, { pointerId: 1 });
     else if (exit === "lostpointercapture") fireEvent.lostPointerCapture(scroller, { pointerId: 1 });
     else view.unmount();
     expect(st().gesture, exit).toBeNull();
-    expect(frames.size, exit).toBe(0);
+    expect(pendingFrames(), exit).toBe(0);
     expect(st().queue, exit).toHaveLength(0);
     for (const { add, remove } of spies) {
       const left = add.mock.calls.filter(([type, fn]) => !remove.mock.calls.some(([t, f]) => t === type && f === fn));
@@ -378,7 +306,7 @@ it("pointercancel, lost capture and unmount each end the drag with nothing left 
 });
 
 it("a Shift box keeps the selection held at the press, gives clips back as it shrinks, and Escape restores it", () => {
-  const { st, lanes, press, move, release, frame } = setup();
+  const { st, lanes, press, move, release, frame } = renderTimeline();
   const selected = () => st().selection.clipIds;
   act(() => st().select(["c1"]));
   press(lanes[1], x(70), T1, { shiftKey: true }); // t1's lane, between x1 and x2
@@ -404,7 +332,7 @@ it("a Shift box keeps the selection held at the press, gives clips back as it sh
 it("moving one clip re-renders only that clip, not the others on screen", () => {
   const doc = sampleDoc();
   doc.tracks[1].clips = Array.from({ length: 300 }, (_, i) => text(`k${i}`, i * 30, 20));
-  const { st, view } = setup(makeStore({ doc }));
+  const { st, view } = renderTimeline(makeStore({ doc }));
   act(() => st().setZoom(0.5));
   expect(view.container.querySelectorAll("[data-clip-id]").length).toBeGreaterThan(50);
   const clipRenders = () => vi.mocked(cx).mock.calls.filter((parts) => parts.some((p) => typeof p === "string" && p.startsWith("bg-ed-clip-"))).length;
@@ -415,7 +343,7 @@ it("moving one clip re-renders only that clip, not the others on screen", () => 
 });
 
 it("a focused clip leaves Space to play and pause, and Enter selects it", () => {
-  const { st, clip } = setup();
+  const { st, clip } = renderTimeline();
   act(() => st().select(["x1"]));
   clip("x2").focus();
   expect(fireEvent.keyDown(clip("x2"), { key: " " })).toBe(true); // not prevented: the window's play/pause shortcut gets it
@@ -427,7 +355,7 @@ it("a focused clip leaves Space to play and pause, and Enter selects it", () => 
 it("an end trim on the timeline stops at the end of the media", () => {
   // c2 is frames 30 to 60, from the start of asset "a". A 2 s asset is 60 frames at 30 fps, so c2 can end at 90.
   const dragEnd = (media?: MediaServices) => {
-    const { st, clip, press, move, release, frame, view } = setup(makeStore(), media);
+    const { st, clip, press, move, release, frame, view } = renderTimeline(makeStore(), { media });
     const handle = clip("c2").querySelector<HTMLElement>('[data-trim-handle="end"]')!;
     press(handle, x(59), V1);
     move(x(300), V1);
@@ -443,7 +371,7 @@ it("an end trim on the timeline stops at the end of the media", () => {
 
 it("the library is read when a trim starts, not when the timeline is drawn", () => {
   const media = pretendMediaServices([]);
-  const { st, clip, press, move, release, frame } = setup(makeStore(), media);
+  const { st, clip, press, move, release, frame } = renderTimeline(makeStore(), { media });
   // The library learns the asset after the timeline is drawn: the next trim stops at its end.
   act(() => media.library.getState().put(assetView({ durationMs: 2_000 })));
   const handle = clip("c2").querySelector<HTMLElement>('[data-trim-handle="end"]')!;
@@ -452,4 +380,228 @@ it("the library is read when a trim starts, not when the timeline is drawn", () 
   frame();
   release(x(300), V1);
   expect(st().queue.flatMap((e) => e.ops)).toEqual([{ op: "trim_clip", clipId: "c2", edge: "end", to: 90 }]);
+});
+
+// Track drags. A track is pressed by its name, left of the lanes, and dragged by its header.
+const HEAD_X = 50;
+const rowOrder = (st: () => { doc: TimelineDoc }) => displayRows(st().doc).map((t) => t.id);
+const insertLine = (view: { container: HTMLElement }) => view.container.querySelector<HTMLElement>("[data-track-insert]");
+
+it("dragging a track's header to the top moves it there in one change", () => {
+  const { st, view, scroller, press, move, release, frame } = renderTimeline();
+  const name = screen.getByRole("button", { name: "Video 1" });
+  expect(name.parentElement!.className).toContain("cursor-grab");
+  const capture = vi.spyOn(scroller, "setPointerCapture");
+  press(name, HEAD_X, y(2));
+  move(HEAD_X, y(2) - 2); // within 3 px: still a press, not captured
+  expect(capture).not.toHaveBeenCalled();
+  move(HEAD_X, RULER_HEIGHT);
+  expect(capture).toHaveBeenCalledWith(1);
+  expect(insertLine(view)).toBeNull(); // worked out on the next animation frame
+  frame();
+  const line = insertLine(view)!;
+  expect(line.style.top).toBe("-1px");
+  expect(line.className).toContain("bg-ed-accent");
+  expect(line.className).toContain("z-30");
+  const tint = view.container.querySelector<HTMLElement>("[data-track-drag-row]")!;
+  expect(tint.className).toContain("bg-ed-accent-weak");
+  expect(tint.className).toContain("pointer-events-none");
+  expect(tint.style.top).toBe(`${2 * ROW_HEIGHT}px`);
+  expect(scroller.dataset.drag).toBe("track");
+  expect(scroller.className).toContain("[&[data-drag=track]_*]:cursor-grabbing");
+  expect(rowOrder(st)).toEqual(["cap", "t1", "v1", "a1"]); // the rows stay put meanwhile
+  release(HEAD_X, RULER_HEIGHT);
+  expect(rowOrder(st)).toEqual(["v1", "cap", "t1", "a1"]);
+  expect(st().queue.map((e) => e.label)).toEqual(["reorder tracks"]);
+  expect(insertLine(view)).toBeNull();
+  expect(scroller.dataset.drag).toBeUndefined();
+});
+
+it("a track drag does not scroll the lanes sideways", () => {
+  const { scroller, press, move, release, frame } = renderTimeline();
+  scroller.scrollLeft = 300;
+  press(screen.getByRole("button", { name: "Video 1" }), HEAD_X, y(2));
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  frame();
+  expect(scroller.scrollLeft).toBe(300);
+  release(HEAD_X, RULER_HEIGHT);
+});
+
+it("a track drag near the rows' bottom scrolls them down by 12 per frame, and never below 0 at the top", () => {
+  const { scroller, press, move, release, frame } = renderTimeline();
+  press(screen.getByRole("button", { name: "Text 1" }), HEAD_X, y(1));
+  move(HEAD_X, RULER_HEIGHT + 4 * ROW_HEIGHT - 10); // 10 px above the rows' bottom
+  frame();
+  expect(scroller.scrollTop).toBe(12);
+  frame();
+  expect(scroller.scrollTop).toBe(24);
+  move(HEAD_X, y(2)); // the middle of the rows: no scroll
+  frame();
+  expect(scroller.scrollTop).toBe(24);
+  move(HEAD_X, RULER_HEIGHT + 5); // near the rows' top
+  frame();
+  expect(scroller.scrollTop).toBe(12);
+  frame();
+  frame();
+  expect(scroller.scrollTop).toBe(0);
+  expect(scroller.scrollLeft).toBe(0);
+  release(HEAD_X, RULER_HEIGHT + 5);
+});
+
+it("an audio track stops at the audio rows", () => {
+  const doc = sampleDoc();
+  doc.tracks.push({ id: "a2", kind: "audio", name: "Audio 2", muted: false, hidden: false, locked: false, clips: [] });
+  const { st, view, press, move, release, frame } = renderTimeline(makeStore({ doc })); // rows: cap, t1, v1, a1, a2
+  press(screen.getByRole("button", { name: "Audio 2" }), HEAD_X, y(4));
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  expect(insertLine(view)!.style.top).toBe(`${3 * ROW_HEIGHT - 1}px`);
+  release(HEAD_X, RULER_HEIGHT);
+  expect(rowOrder(st)).toEqual(["cap", "t1", "v1", "a2", "a1"]);
+  press(screen.getByRole("button", { name: "Video 1" }), HEAD_X, y(2));
+  move(HEAD_X, y(4));
+  frame();
+  expect(insertLine(view)).toBeNull(); // below Video 1 is the audio rows: it stays where it is
+  release(HEAD_X, y(4));
+  expect(rowOrder(st)).toEqual(["cap", "t1", "v1", "a2", "a1"]);
+  expect(st().queue).toHaveLength(1);
+});
+
+it("Escape puts the track back", () => {
+  const { st, view, scroller, press, move, release, frame } = renderTimeline();
+  press(screen.getByRole("button", { name: "Video 1" }), HEAD_X, y(2));
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  expect(insertLine(view)).not.toBeNull();
+  const later = vi.fn();
+  window.addEventListener("keydown", later);
+  const escape = fireEvent.keyDown(document.body, { key: "Escape" });
+  window.removeEventListener("keydown", later);
+  expect(escape).toBe(false);
+  expect(later).not.toHaveBeenCalled();
+  expect(insertLine(view)).toBeNull();
+  expect(scroller.dataset.drag).toBeUndefined();
+  move(HEAD_X, RULER_HEIGHT + 2);
+  frame();
+  release(HEAD_X, RULER_HEIGHT + 2);
+  expect(rowOrder(st)).toEqual(["cap", "t1", "v1", "a1"]);
+  expect(st().queue).toHaveLength(0);
+});
+
+it("a viewer's press moves nothing", () => {
+  const { st, view, scroller, press, move, release, frame } = renderTimeline(makeStore({ canEdit: false }));
+  const name = screen.getByRole("button", { name: "Video 1" });
+  expect(name.parentElement!.className).not.toContain("cursor-grab");
+  const listen = vi.spyOn(window, "addEventListener");
+  press(name, HEAD_X, y(2));
+  expect(listen).not.toHaveBeenCalled(); // no press begins
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  expect(insertLine(view)).toBeNull();
+  expect(scroller.dataset.drag).toBeUndefined();
+  release(HEAD_X, RULER_HEIGHT);
+  expect(rowOrder(st)).toEqual(["cap", "t1", "v1", "a1"]);
+  expect(st().queue).toHaveLength(0);
+});
+
+it("a locked track drags", () => {
+  const doc = sampleDoc();
+  doc.tracks[0].locked = true; // v1
+  const { st, press, move, release, frame } = renderTimeline(makeStore({ doc }));
+  press(screen.getByRole("button", { name: "Video 1" }), HEAD_X, y(2));
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  release(HEAD_X, RULER_HEIGHT);
+  expect(rowOrder(st)).toEqual(["v1", "cap", "t1", "a1"]);
+});
+
+it("a press without moving opens the name field; a drag does not", async () => {
+  const { st, scroller, press, move, release, frame } = renderTimeline();
+  const name = () => screen.getByRole("button", { name: "Video 1" });
+  const field = () => screen.queryByRole("textbox", { name: "Track name" });
+  // A press on a switch is the switch's own, and only the main button drags.
+  press(screen.getAllByRole("button", { name: "Lock track" })[2], HEAD_X + 120, y(2));
+  move(HEAD_X + 120, RULER_HEIGHT);
+  frame();
+  release(HEAD_X + 120, RULER_HEIGHT);
+  press(name(), HEAD_X, y(2), { button: 2 });
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  release(HEAD_X, RULER_HEIGHT);
+  expect(scroller.dataset.drag).toBeUndefined();
+  expect(st().queue).toHaveLength(0);
+  // A drag: the click that follows its release is swallowed, once.
+  press(name(), HEAD_X, y(2));
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  release(HEAD_X, RULER_HEIGHT);
+  expect(fireEvent.click(name())).toBe(false);
+  expect(field()).toBeNull();
+  expect(st().selection.trackId).toBeNull();
+  // A plain press keeps the click: the field opens.
+  press(name(), HEAD_X, y(0));
+  release(HEAD_X, y(0));
+  fireEvent.click(name());
+  expect(field()).not.toBeNull();
+  expect(st().selection.trackId).toBe("v1");
+  // A press in the field is the field's own.
+  press(field()!, HEAD_X, y(0));
+  move(HEAD_X, y(2));
+  frame();
+  release(HEAD_X, y(2));
+  expect(st().queue).toHaveLength(1);
+  fireEvent.keyDown(field()!, { key: "Escape" });
+  // A drag released with no click after it: the swallower goes on the next task.
+  press(name(), HEAD_X, y(0));
+  move(HEAD_X, y(2));
+  frame();
+  release(HEAD_X, y(2));
+  await act(() => new Promise((done) => setTimeout(done, 0)));
+  fireEvent.click(name());
+  expect(field()).not.toBeNull();
+  expect(rowOrder(st)).toEqual(["cap", "t1", "v1", "a1"]);
+  expect(st().queue.map((e) => e.label)).toEqual(["reorder tracks", "reorder tracks"]);
+});
+
+it("a track removed during the drag ends it with a message", () => {
+  const { store, st, view, scroller, press, move, release, frame } = renderTimeline();
+  const spies = [scroller, window].map((target) => ({
+    add: vi.spyOn(target, "addEventListener"),
+    remove: vi.spyOn(target, "removeEventListener"),
+  }));
+  press(screen.getByRole("button", { name: "Video 1" }), HEAD_X, y(2));
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  move(HEAD_X, RULER_HEIGHT + 2); // an animation frame is pending
+  expect(insertLine(view)).not.toBeNull();
+  const notices = noticesOf(store);
+  act(() => void st().applyRemote([entry(6, [{ op: "remove_track", trackId: "v1" }])]));
+  frame();
+  expect(notices).toEqual([MESSAGES.trackGone]);
+  expect(insertLine(view)).toBeNull();
+  expect(scroller.dataset.drag).toBeUndefined();
+  expect(pendingFrames()).toBe(0);
+  for (const { add, remove } of spies) {
+    const left = add.mock.calls.filter(([type, fn]) => !remove.mock.calls.some(([t, f]) => t === type && f === fn));
+    expect(left.map(([type]) => type)).toEqual([]);
+  }
+  expect(spies.reduce((n, { add }) => n + add.mock.calls.length, 0)).toBeGreaterThan(0);
+  release(HEAD_X, RULER_HEIGHT + 2);
+  expect(st().queue).toHaveLength(0);
+  expect(notices).toEqual([MESSAGES.trackGone]);
+});
+
+it("losing edit access mid-drag ends a track drag and saves nothing", () => {
+  const { st, view, scroller, press, move, release, frame } = renderTimeline();
+  press(screen.getByRole("button", { name: "Video 1" }), HEAD_X, y(2));
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  act(() => st().revokeEditing());
+  frame();
+  expect(insertLine(view)).toBeNull();
+  expect(scroller.dataset.drag).toBeUndefined();
+  release(HEAD_X, RULER_HEIGHT);
+  expect(rowOrder(st)).toEqual(["cap", "t1", "v1", "a1"]);
+  expect(st().queue).toHaveLength(0);
 });

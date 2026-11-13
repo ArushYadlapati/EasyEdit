@@ -55,6 +55,17 @@ describe("edit_timeline", () => {
     expect((await project()).doc.tracks[1].clips[0].transform.crop).toEqual(EXAMPLE_CROP);
   });
 
+  it("Claude can stretch a clip", async () => {
+    const { edit, project } = await setup();
+    expect((await edit(0, [addText(0)])).isError).toBe(false);
+    const clipId = (await project()).doc.tracks[1].clips[0].id;
+    const r = await edit(1, [{ op: "update_clip", clipId, patch: { transform: { stretch: 1.5 } } }]);
+    expect(r.isError).toBe(false);
+    expect(r.text.split("\n")[0]).toBe("Applied 1 op as version 2.");
+    expect(r.text).toContain("stretch=1.5");
+    expect((await project()).doc.tracks[1].clips[0].transform.stretch).toBe(1.5);
+  });
+
   it("applies a batch and reports the version, the new ids and the project", async () => {
     const { edit, project, log } = await setup();
     const r = await edit(0, [addText(0), addText(60, "SECOND")]);

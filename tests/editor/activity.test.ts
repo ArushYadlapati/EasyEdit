@@ -70,6 +70,8 @@ describe("summarizeOps with the kind of each clip known", () => {
     [[{ op: "update_clip", clipId: "v", patch: { transform: { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } } } }], "Changed a video clip: crop"],
     [[{ op: "update_clip", clipId: "t", patch: { transform: { crop: { left: 0, top: 0, right: 0, bottom: 0 } } } }], "Changed text: crop"],
     [[{ op: "update_clip", clipId: "i", patch: { volume: 1, transform: { crop: { left: 0, top: 0.2, right: 0, bottom: 0 }, fit: "contain" } } }], "Changed an image: fit, crop and volume"],
+    [[{ op: "update_clip", clipId: "t", patch: { transform: { x: 0.4, scale: 2, stretch: 1.5 } } }], "Changed text: position, scale and stretch"],
+    [[{ op: "update_clip", clipId: "v", patch: { transform: { rotation: 5, stretch: 0.5 } } }], "Changed a video clip: stretch and rotation"],
     [[{ op: "move_clip", clipId: "t", start: 3 }], "Moved text"],
     [[{ op: "move_clip", clipId: "v", start: 3 }], "Moved a video clip"],
     [[{ op: "trim_clip", clipId: "a", edge: "end", to: 9 }], "Trimmed an audio clip"],

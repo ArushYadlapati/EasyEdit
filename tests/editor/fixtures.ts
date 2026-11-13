@@ -1,4 +1,4 @@
-import { createEditorStore } from "@/lib/editor/store";
+import { createEditorStore, type EditorStore } from "@/lib/editor/store";
 import type { ActivityEntry, EditorInit } from "@/lib/editor/types";
 import { DEFAULT_TRANSFORM, createEmptyDoc, type Clip, type Op, type TimelineDoc } from "@/lib/timeline";
 
@@ -26,3 +26,12 @@ export function makeStore(over: Partial<EditorInit> = {}) {
 
 export const entry = (version: number, ops: Op[], actor = "u2", actorName = "Grace"): ActivityEntry =>
   ({ version, ops, inverse: null, actor, actorName, createdAt: "2026-11-11T10:00:00.000Z" });
+
+// Every notice the store shows from now on, in order.
+export function noticesOf(store: EditorStore): string[] {
+  const texts: string[] = [];
+  store.subscribe((s, prev) => {
+    if (s.notice && s.notice !== prev.notice) texts.push(s.notice.text);
+  });
+  return texts;
+}
