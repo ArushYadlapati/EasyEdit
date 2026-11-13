@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, index, integer, jsonb, pgTable, real, serial, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import type { FormatId, Op, TimelineDoc } from "@/lib/timeline";
+import { user } from "./auth-schema";
 
 export * from "./auth-schema";
 
@@ -18,6 +19,19 @@ export const allowlist = pgTable(
   ],
 );
 
+// Team-wide, one level deep. Names are unique regardless of case.
+export const folders = pgTable(
+  "folders",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  () => [uniqueIndex("folders_name_lower_unique").on(sql`lower("name")`)],
+);
+
 export const projects = pgTable("projects", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -30,7 +44,27 @@ export const projects = pgTable("projects", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   // Set when the project is deleted; a deleted project is hidden from every read and write.
   deletedAt: timestamp("deleted_at"),
+  // Deleting a folder leaves its projects in no folder.
+  folderId: text("folder_id").references(() => folders.id, { onDelete: "set null" }),
+  // Kept in step with the doc; empty on rows old code wrote, so readers fall back to the doc.
+  width: integer("width"),
+  height: integer("height"),
 });
+
+// When each person last opened each project, for their Recent list.
+export const projectOpens = pgTable(
+  "project_opens",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    openedAt: timestamp("opened_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.projectId] })],
+);
 
 export const projectOps = pgTable(
   "project_ops",

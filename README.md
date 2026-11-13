@@ -243,6 +243,19 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     `.env.local` must still exist, because `pnpm db:seed` reads it.
 
     **Before deploying a version with media:** run the migration against the production database first, with the command above, then deploy. The version that is live now ignores the new table.
+
+    **Before deploying the version with folders and custom sizes:** run the migration against the production database first, with the command above, then deploy. Run it at a quiet time: while it fills in each project's size, opening and saving projects waits for it. After the deploy, run this once in the Neon SQL editor for the production database. It fills in each project's width and height from its timeline wherever the version that was live during the deploy left them empty or out of date, and it is safe to run again:
+
+    ```sql
+    update projects set width = (doc->>'width')::integer, height = (doc->>'height')::integer where width is distinct from (doc->>'width')::integer or height is distinct from (doc->>'height')::integer;
+    ```
+
+    **Going back to an earlier version after this one:** the earlier version cannot show custom-size projects, and while one exists its dashboard and Claude's project list fail. Before promoting an earlier deployment, run the first statement below. The timelines are untouched; only the label the earlier version reads changes. After coming forward again, run the second statement, then the after-deploy statement above:
+
+    ```sql
+    update projects set format = 'long_16x9' where format = 'custom';
+    update projects set format = doc->>'format' where format is distinct from doc->>'format';
+    ```
 5. Optional: publish the Google app, so teammates no longer have to be test users. In Google Cloud, open **Branding** and fill in the app domain details (home page, privacy policy link, authorized domain) with your deployed web address. You will need a public privacy policy page to link to. Then open **Audience** and click **Publish app**. This app only asks Google for name, email and profile picture, and the allowlist still decides who gets in.
 
 ## Connect Claude
