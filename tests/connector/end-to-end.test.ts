@@ -20,7 +20,7 @@ beforeAll(async () => {
 });
 afterAll(() => app.stop());
 
-const TOOLS = ["add_media", "add_text", "create_project", "edit_timeline", "get_editing_guide", "get_project", "list_assets", "list_projects", "undo_change"];
+const TOOLS = ["add_media", "add_text", "create_project", "edit_timeline", "fetch", "get_editing_guide", "get_project", "list_assets", "list_projects", "search", "undo_change"];
 
 // A conversation: one connected client, and a helper that calls a tool and returns its text.
 async function converse(email: string) {
@@ -47,13 +47,14 @@ const clipIn = (text: string) => /clip (\S+) on track/.exec(text)![1];
 const logRows = async (id: string) => rowsOf<{ version: number; actor: string }>(await app.db.execute(sql`select version, actor from project_ops where project_id = ${id} order by version`));
 
 describe("Claude and the website on one project", () => {
-  it("offers exactly the nine tools, in a list small enough to load into every conversation", async () => {
+  it("offers exactly the eleven tools, in a list small enough to load into every conversation", async () => {
     const { client } = await converse("ada@gmail.com");
     try {
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name).sort()).toEqual(TOOLS);
-      expect(JSON.stringify(tools).length).toBeLessThan(12_000);
-      for (const t of tools) expect(t.annotations?.readOnlyHint, t.name).toBe(["get_editing_guide", "get_project", "list_assets", "list_projects"].includes(t.name));
+      // search and fetch carry output schemas, the shape ChatGPT documents for them.
+      expect(JSON.stringify(tools).length).toBeLessThan(13_000);
+      for (const t of tools) expect(t.annotations?.readOnlyHint, t.name).toBe(["fetch", "get_editing_guide", "get_project", "list_assets", "list_projects", "search"].includes(t.name));
       const keysOf = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {}).sort();
       expect(keysOf("list_assets")).toEqual(["cursor", "kind", "search"]);
       expect(keysOf("add_media")).toEqual(["expected_version", "items", "project_id"]);

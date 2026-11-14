@@ -64,6 +64,13 @@
       "when": 1794590029023,
       "tag": "0008_project_thumbnails",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794613902380,
+      "tag": "0011_agent_tokens",
+      "breakpoints": true
     }
   ]
 }
