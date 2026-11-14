@@ -120,9 +120,11 @@ const labelsOf = (s: EditorState) => s.queue.map((q) => q.label);
 const patchOf = (s: EditorState) => (s.queue[0].ops[0] as { patch: unknown }).patch;
 const gesturePatch = (s: EditorState) => (s.gesture!.ops[0] as { patch: unknown }).patch;
 
-// The e handle dragged 16 CSS px out: the shape kept, or the width alone stretched.
+// The e handle dragged 16 CSS px (32 project px) out: the shape kept, the width alone stretched, or the shape kept about
+// the middle, where 32 out of a half-width of 32 doubles it.
 const KEPT = { transform: { x: 0.5148, scale: 1.5 } };
 const STRETCHED = { transform: { x: 0.5148, stretch: 1.5 } };
+const CENTRED = { transform: { scale: 2 } };
 
 function dragE(mods: Mods = {}) {
   pressHandle("e", 502, 536, mods);
@@ -151,43 +153,32 @@ describe("the keys a handle drag reads on the preview", () => {
     expect(transform.scale).toBeCloseTo(1.2049, 3);
   });
 
-  it("away from a Mac, the Windows key or Ctrl squashes and stretches", () => {
-    let { st } = show();
-    dragE({ metaKey: true });
-    expect(patchOf(st())).toEqual(STRETCHED);
-    document.body.innerHTML = "";
-    ({ st } = show());
-    dragE({ ctrlKey: true });
-    expect(patchOf(st())).toEqual(STRETCHED);
-  });
-
-  it("on a Mac, Cmd squashes and stretches, and Ctrl does not", () => {
-    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-    let { st } = show();
-    dragE({ metaKey: true });
-    expect(patchOf(st())).toEqual(STRETCHED);
-    document.body.innerHTML = "";
-    ({ st } = show());
-    // A Ctrl press on a Mac is a right-click, so Ctrl is held only from after the press.
-    pressHandle("e", 502, 536);
-    move(518, 536, { ctrlKey: true });
-    frame();
-    expect(gesturePatch(st())).toEqual(KEPT);
-    fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
-    frame();
-    expect(gesturePatch(st())).toEqual(KEPT);
-    release(518, 536, { ctrlKey: true });
-  });
-
-  it("Shift keeps the shape with the free key held", () => {
+  it("Shift squashes and stretches", () => {
     const { st } = show();
-    dragE({ metaKey: true, shiftKey: true });
+    dragE({ shiftKey: true });
+    expect(patchOf(st())).toEqual(STRETCHED);
+  });
+
+  it("Cmd and the Windows key no longer change a resize", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const { st } = show();
+    dragE({ metaKey: true });
     expect(patchOf(st())).toEqual(KEPT);
   });
 
-  it("Alt crops with the free key held", () => {
+  it("Alt (Option) resizes about the middle, and with Shift stretches about it", () => {
+    let { st } = show();
+    dragE({ altKey: true });
+    expect(patchOf(st())).toEqual(CENTRED);
+    document.body.innerHTML = "";
+    ({ st } = show());
+    dragE({ altKey: true, shiftKey: true });
+    expect(patchOf(st())).toEqual({ transform: { stretch: 2 } });
+  });
+
+  it("Ctrl crops, whatever else is held", () => {
     const { st } = show();
-    const mods = { metaKey: true, altKey: true };
+    const mods = { ctrlKey: true, altKey: true };
     pressHandle("e", 502, 536, mods);
     move(494, 536, mods);
     frame();
@@ -196,23 +187,60 @@ describe("the keys a handle drag reads on the preview", () => {
     expect(patchOf(st())).toEqual({ transform: { crop: { left: 0, top: 0, right: 0.25, bottom: 0 } } });
   });
 
-  it("pressing and letting go of the free key mid-drag works the drag out again where the pointer is", () => {
+  it("on a Mac a Ctrl press on a resize handle crops, and its right-click opens no menu", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const { st } = show();
+    pressHandle("e", 502, 536, { ctrlKey: true });
+    // The Mac's right-click comes with the press; with the pointer captured it may be aimed at the overlay.
+    expect(fireEvent.contextMenu(overlay(), { ctrlKey: true, clientX: 502, clientY: 536 })).toBe(false);
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    move(494, 536, { ctrlKey: true });
+    frame();
+    release(494, 536, { ctrlKey: true });
+    expect(labelsOf(st())).toEqual(["crop"]);
+    // The next right-click opens the clip's menu as before.
+    fireEvent.contextMenu(handle("e"), { clientX: 502, clientY: 536 });
+    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+  });
+
+  it("on a Mac a Ctrl press on the turn handle is still a right-click", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const { st } = show();
+    const turn = handle("rotate");
+    fireEvent.pointerDown(turn, { clientX: 486, clientY: 480, button: 0, pointerId: 1, ctrlKey: true });
+    move(520, 480, { ctrlKey: true });
+    frame();
+    expect(st().gesture).toBeNull();
+    release(520, 480, { ctrlKey: true });
+    expect(st().queue).toEqual([]);
+    fireEvent.contextMenu(turn, { ctrlKey: true, clientX: 486, clientY: 480 });
+    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+  });
+
+  it("pressing and letting go of Shift, Alt or Ctrl mid-drag works the drag out again where the pointer is", () => {
     const { st } = show();
     pressHandle("e", 502, 536);
     move(518, 536);
     frame();
     expect(gesturePatch(st())).toEqual(KEPT);
-    fireEvent.keyDown(window, { key: "Meta", metaKey: true });
+    fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
     frame();
     expect(gesturePatch(st())).toEqual(STRETCHED);
-    fireEvent.keyUp(window, { key: "Meta" });
+    fireEvent.keyUp(window, { key: "Shift" });
     frame();
     expect(gesturePatch(st())).toEqual(KEPT);
+    fireEvent.keyDown(window, { key: "Alt", altKey: true });
+    frame();
+    expect(gesturePatch(st())).toEqual(CENTRED);
+    fireEvent.keyUp(window, { key: "Alt" });
+    frame();
+    expect(gesturePatch(st())).toEqual(KEPT);
+    // Ctrl turns it into a crop: out past the whole box that cuts nothing.
     fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
     frame();
-    expect(gesturePatch(st())).toEqual(STRETCHED);
+    expect(st().gesture).toBeNull();
     release(518, 536, { ctrlKey: true });
-    expect(patchOf(st())).toEqual(STRETCHED);
+    expect(st().queue).toEqual([]);
   });
 
   it("the inspector's lock does not change what a handle drag does", () => {
@@ -223,7 +251,7 @@ describe("the keys a handle drag reads on the preview", () => {
     document.body.innerHTML = "";
     ({ st, settings } = show());
     expect(settings.getState().lockAspect).toBe(true);
-    dragE({ metaKey: true });
+    dragE({ shiftKey: true });
     expect(patchOf(st())).toEqual(STRETCHED);
   });
 });

@@ -6,9 +6,9 @@ import type { Point } from "@/lib/editor/board";
 import { createEmptyDoc, type Clip, type MediaClip, type TextClip, type TimelineDoc, type Transform } from "@/lib/timeline";
 import { sampleDoc, video } from "./fixtures";
 
-// A handle drag keeps the shape unless the free key is held; Shift keeps it even then, and Alt crops whatever is held.
-// Frame 1080 × 1920. "img" is a 200 × 100 picture, fitted 1080 × 540 about (540, 960); text measures half its font
-// size per character, so "hi" at 64 is 64 wide.
+// A handle drag keeps the shape unless Shift is held; Alt (Option) resizes about the box's middle; the crop flag (Ctrl,
+// or the clip menu's Crop) crops whatever else is held. Frame 1080 × 1920. "img" is a 200 × 100 picture, fitted
+// 1080 × 540 about (540, 960); text measures half its font size per character, so "hi" at 64 is 64 wide.
 const sizer: Sizer = {
   source: (clip) => (clip.assetId === "img" ? { width: 200, height: 100 } : null),
   measure: (clip: TextClip, s: string) => (s.length * clip.style.fontSize) / 2,
@@ -23,7 +23,7 @@ function imageDoc(transform: Partial<Transform> = {}): TimelineDoc {
 
 type Mods = Partial<Omit<CanvasDragInput, "pointer">>;
 
-const input = (pointer: Point, mods: Mods = {}): CanvasDragInput => ({ pointer, shift: false, alt: false, free: false, snapping: false, snapPx: 12, ...mods });
+const input = (pointer: Point, mods: Mods = {}): CanvasDragInput => ({ pointer, shift: false, crop: false, centre: false, snapping: false, snapPx: 12, ...mods });
 
 function dragOn(doc: TimelineDoc, clipId: string, grip: Grip, grab: Point) {
   const item = canvasItems(doc, 10, sizer).find((i) => i.clipId === clipId)!;
@@ -60,38 +60,60 @@ describe("the keys a handle drag reads", () => {
     expect(transformOf(dragOn(sampleDoc(), "c1", "e", P(1080, 960))(P(972, 960)))).toEqual({ x: 0.45, scale: 0.9 });
   });
 
-  it("the free key squashes and stretches", () => {
-    expect(transformOf(image("e", P(1080, 960))(P(972, 960), { free: true }))).toEqual({ x: 0.45, stretch: 0.9 });
-    expect(transformOf(image("se", P(1080, 1230))(P(1134, 1284), { free: true }))).toEqual({ x: 0.525, y: 0.5141, scale: 1.1, stretch: 0.9545 });
-    expect(transformOf(dragOn(sampleDoc(), "x1", "e", P(572, 960))(P(604, 960), { free: true }))).toEqual({ x: 0.5148, stretch: 1.5 });
+  it("Shift squashes and stretches", () => {
+    expect(transformOf(image("e", P(1080, 960))(P(972, 960), { shift: true }))).toEqual({ x: 0.45, stretch: 0.9 });
+    expect(transformOf(image("se", P(1080, 1230))(P(1134, 1284), { shift: true }))).toEqual({ x: 0.525, y: 0.5141, scale: 1.1, stretch: 0.9545 });
+    expect(transformOf(dragOn(sampleDoc(), "x1", "e", P(572, 960))(P(604, 960), { shift: true }))).toEqual({ x: 0.5148, stretch: 1.5 });
   });
 
-  it("Shift keeps the shape even with the free key held", () => {
-    expect(transformOf(image("e", P(1080, 960))(P(972, 960), { free: true, shift: true }))).toEqual({ x: 0.45, scale: 0.9 });
-    expect(transformOf(image("se", P(1080, 1230))(P(1134, 1230), { free: true, shift: true }))).toEqual({ x: 0.52, y: 0.5056, scale: 1.04 });
-    expect(transformOf(image("se", P(1080, 1230))(P(1134, 1230), { shift: true }))).toEqual({ x: 0.52, y: 0.5056, scale: 1.04 });
+  it("centre keeps the box's middle: a side grows on both sides, twice as fast", () => {
+    // e 54 out of a half-width of 540: 1.1, the centre stays at 0.5.
+    expect(transformOf(image("e", P(1080, 960))(P(1134, 960), { centre: true }))).toEqual({ scale: 1.1 });
+    expect(transformOf(image("w", P(0, 960))(P(54, 960), { centre: true }))).toEqual({ scale: 0.9 });
+    // n 27 up out of a half-height of 270.
+    expect(transformOf(image("n", P(540, 690))(P(540, 663), { centre: true }))).toEqual({ scale: 1.1 });
   });
 
-  it("Alt crops whatever else is held, and Alt+Shift keeps the kept part's shape", () => {
-    for (const free of [false, true]) {
-      expect(transformOf(image("w", P(0, 960))(P(108, 960), { alt: true, free }))).toEqual({ crop: { left: 0.1, top: 0, right: 0, bottom: 0 } });
-      expect(transformOf(image("e", P(1080, 960))(P(972, 960), { alt: true, shift: true, free }))).toEqual({
+  it("centre on a corner scales along the line from the middle to the corner", () => {
+    // From the middle to se is (540, 270); a tenth of it is 1.1. Without centre the same move is 1.05.
+    expect(transformOf(image("se", P(1080, 1230))(P(1134, 1257), { centre: true }))).toEqual({ scale: 1.1 });
+    expect(transformOf(image("se", P(1080, 1230))(P(1134, 1257)))).toEqual({ x: 0.525, y: 0.5070, scale: 1.05 });
+  });
+
+  it("centre with Shift squashes and stretches about the middle", () => {
+    expect(transformOf(image("e", P(1080, 960))(P(1134, 960), { centre: true, shift: true }))).toEqual({ stretch: 1.1 });
+    expect(transformOf(image("se", P(1080, 1230))(P(1134, 1230), { centre: true, shift: true }))).toEqual({ stretch: 1.1 });
+  });
+
+  it("centre keeps the middle of a turned clip and of a cropped one", () => {
+    const turned = image("e", P(540, 1500), { rotation: 90 })(P(540, 1554), { centre: true });
+    expect(transformOf(turned)).toEqual({ scale: 1.1 });
+    // Cropped 0.1 off the left: the kept part's middle is 54 right of the clip's centre and stays where it is.
+    const cropped = image("e", P(1080, 960), { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } })(P(1128.6, 960), { centre: true });
+    expect(transformOf(cropped)).toEqual({ x: 0.495, scale: 1.1 });
+  });
+
+  it("crop crops whatever else is held, and crop with Shift keeps the kept part's shape", () => {
+    for (const centre of [false, true]) {
+      expect(transformOf(image("w", P(0, 960))(P(108, 960), { crop: true, centre }))).toEqual({ crop: { left: 0.1, top: 0, right: 0, bottom: 0 } });
+      expect(transformOf(image("e", P(1080, 960))(P(972, 960), { crop: true, shift: true, centre }))).toEqual({
         crop: { left: 0, top: 0.05, right: 0.1, bottom: 0.05 },
       });
     }
   });
 
-  it("the free key is read on every resolve", () => {
+  it("Shift and centre are read on every resolve", () => {
     const e = image("e", P(1080, 960));
     expect(transformOf(e(P(972, 960)))).toEqual({ x: 0.45, scale: 0.9 });
-    expect(transformOf(e(P(972, 960), { free: true }))).toEqual({ x: 0.45, stretch: 0.9 });
+    expect(transformOf(e(P(972, 960), { shift: true }))).toEqual({ x: 0.45, stretch: 0.9 });
+    expect(transformOf(e(P(1134, 960), { centre: true }))).toEqual({ scale: 1.1 });
     expect(transformOf(e(P(972, 960)))).toEqual({ x: 0.45, scale: 0.9 });
   });
 
-  it("the free key does not change a move or a turn", () => {
+  it("centre does not change a move or a turn", () => {
     const move = dragOn(sampleDoc(), "x1", "body", P(540, 960));
-    expect(move(P(594, 970), { free: true })).toEqual(move(P(594, 970)));
+    expect(move(P(594, 970), { centre: true })).toEqual(move(P(594, 970)));
     const turn = dragOn(sampleDoc(), "x1", "rotate", P(540, 860));
-    expect(turn(P(640, 960), { free: true })).toEqual(turn(P(640, 960)));
+    expect(turn(P(640, 960), { centre: true })).toEqual(turn(P(640, 960)));
   });
 });

@@ -27,7 +27,7 @@ function dragOn(doc: TimelineDoc, grip: Grip, grab: Point) {
   const drag = beginCanvasDrag(doc, item, grip, grab);
   if (!drag) throw new Error("no drag");
   return (pointer: Point, mods: Mods = {}) =>
-    resolveCanvasDrag(drag, { pointer, shift: false, alt: false, free: false, snapping: true, snapPx: SNAP_CSS_PX / K, ...mods });
+    resolveCanvasDrag(drag, { pointer, shift: false, crop: false, centre: false, snapping: true, snapPx: SNAP_CSS_PX / K, ...mods });
 }
 
 // x1 at (x, y), pressed on its centre.

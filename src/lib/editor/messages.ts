@@ -16,8 +16,8 @@ export const MESSAGES = {
   noRoom: "No room here, and the project can't take more tracks.",
   mediaNotReady: "This file isn't ready yet.",
   renameFailed: "Couldn't rename the project. Try again.",
-  cropHint: "Drag a handle to crop. Next time, you can hold Alt while you drag.",
-  cropHintMac: "Drag a handle to crop. Next time, you can hold Option while you drag.",
+  cropHint: "Drag a handle to crop. Next time, you can hold Ctrl while you drag.",
+  cropHintMac: "Drag a handle to crop. Next time, you can hold Control while you drag.",
   trackHidden: "That track is hidden.",
   alsoHere: "Also here", // the group of teammates' dots in the top bar
   you: "You", // your own dot in that group

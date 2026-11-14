@@ -275,8 +275,8 @@ it("losing edit access mid-drag ends the drag and saves nothing", () => {
   expect(st().queue).toHaveLength(0);
 });
 
-it("pointercancel, lost capture and unmount each end the drag with nothing left behind", () => {
-  for (const exit of ["pointercancel", "lostpointercapture", "unmount"] as const) {
+it("pointercancel and unmount each end the drag with nothing left behind", () => {
+  for (const exit of ["pointercancel", "unmount"] as const) {
     const { st, view, scroller, clip, press, move, frame } = renderTimeline();
     const spies = [scroller, window].map((target) => ({
       add: vi.spyOn(target, "addEventListener"),
@@ -289,7 +289,6 @@ it("pointercancel, lost capture and unmount each end the drag with nothing left 
     expect(st().gesture, exit).not.toBeNull();
     expect(pendingFrames(), exit).toBe(1);
     if (exit === "pointercancel") fireEvent.pointerCancel(scroller, { pointerId: 1 });
-    else if (exit === "lostpointercapture") fireEvent.lostPointerCapture(scroller, { pointerId: 1 });
     else view.unmount();
     expect(st().gesture, exit).toBeNull();
     expect(pendingFrames(), exit).toBe(0);
@@ -303,6 +302,43 @@ it("pointercancel, lost capture and unmount each end the drag with nothing left 
     vi.restoreAllMocks();
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1400);
   }
+});
+
+// On a quick flick the browser lets the capture go a few milliseconds before the pointerup, and the pointerup then goes
+// to whatever is under the pointer.
+it("a clip drag whose capture is lost before the release saves where the pointer was last seen, leaving nothing behind", () => {
+  const { st, view, scroller, clip, press, move, release, frame, startOf } = renderTimeline();
+  const spies = [scroller, window].map((target) => ({
+    add: vi.spyOn(target, "addEventListener"),
+    remove: vi.spyOn(target, "removeEventListener"),
+  }));
+  press(clip("x2"), x(94), T1);
+  move(x(104), T1);
+  frame();
+  move(x(114), T1); // its frame has not run yet
+  fireEvent.lostPointerCapture(scroller, { pointerId: 1 });
+  expect(st().gesture).toBeNull();
+  expect(pendingFrames()).toBe(0);
+  expect(startOf("x2")).toBe(110);
+  expect(st().undoStack.map((e) => e.label)).toEqual(["move"]);
+  release(x(120), T1); // the late pointerup changes nothing more
+  expect(st().queue).toHaveLength(1);
+  for (const { add, remove } of spies) {
+    const left = add.mock.calls.filter(([type, fn]) => !remove.mock.calls.some(([t, f]) => t === type && f === fn));
+    expect(left.map(([type]) => type)).toEqual([]);
+  }
+  view.unmount();
+});
+
+it("a capture lost from another pointer leaves the drag alone", () => {
+  const { st, scroller, clip, press, move, release, frame, startOf } = renderTimeline();
+  press(clip("x2"), x(94), T1);
+  move(x(114), T1);
+  frame();
+  fireEvent.lostPointerCapture(scroller, { pointerId: 2 });
+  expect(st().gesture).not.toBeNull();
+  release(x(114), T1);
+  expect(startOf("x2")).toBe(110);
 });
 
 it("a Shift box keeps the selection held at the press, gives clips back as it shrinks, and Escape restores it", () => {
@@ -415,6 +451,22 @@ it("dragging a track's header to the top moves it there in one change", () => {
   expect(st().queue.map((e) => e.label)).toEqual(["reorder tracks"]);
   expect(insertLine(view)).toBeNull();
   expect(scroller.dataset.drag).toBeUndefined();
+});
+
+it("a track drag whose capture is lost before the release moves the track, and the click after is swallowed", () => {
+  const { st, scroller, press, move, frame } = renderTimeline();
+  const name = screen.getByRole("button", { name: "Video 1" });
+  press(name, HEAD_X, y(2));
+  move(HEAD_X, RULER_HEIGHT);
+  frame();
+  fireEvent.lostPointerCapture(scroller, { pointerId: 1 });
+  expect(rowOrder(st)).toEqual(["v1", "cap", "t1", "a1"]);
+  expect(st().queue.map((e) => e.label)).toEqual(["reorder tracks"]);
+  expect(scroller.dataset.drag).toBeUndefined();
+  // The late pointerup lands on the name; its click would open the name field.
+  fireEvent.pointerUp(name, { pointerId: 1, clientX: HEAD_X, clientY: RULER_HEIGHT });
+  expect(fireEvent.click(name)).toBe(false);
+  expect(st().queue).toHaveLength(1);
 });
 
 it("a track drag does not scroll the lanes sideways", () => {

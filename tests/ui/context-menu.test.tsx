@@ -417,7 +417,7 @@ describe("the timeline's right-click menus", () => {
     });
     rightClick(clip("c1"), x(10), y(2));
     pick("Crop");
-    expect(st().notice?.text).toBe("Drag a handle to crop. Next time, you can hold Alt while you drag.");
+    expect(st().notice?.text).toBe("Drag a handle to crop. Next time, you can hold Ctrl while you drag.");
     expect(st().selection.clipIds).toEqual(["c1"]);
     expect(st().cropArmed).toBe("c1");
     expect(st().playhead).toBe(0);
@@ -433,7 +433,7 @@ describe("the timeline's right-click menus", () => {
     rightClick(clip("c1"), x(10), y(2));
     pick("Crop");
     expect(st().notice?.text).toBe(MESSAGES.cropHintMac);
-    expect(MESSAGES.cropHintMac).toBe("Drag a handle to crop. Next time, you can hold Option while you drag.");
+    expect(MESSAGES.cropHintMac).toBe("Drag a handle to crop. Next time, you can hold Control while you drag.");
     expect(st().playhead).toBe(29);
     expect(st().cropArmed).toBe("c1");
   });

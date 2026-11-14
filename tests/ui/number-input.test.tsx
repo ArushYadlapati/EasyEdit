@@ -298,14 +298,36 @@ describe("drag a value to change it", () => {
     expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(true); // the listener is gone
   });
 
-  it.each(["pointerCancel", "lostPointerCapture"] as const)("%s puts it back", (name) => {
+  it("pointerCancel puts it back", () => {
     const { input, onCommit, onPreview, release, drag } = setup();
     drag(20);
-    fireEvent[name](input, { pointerId: 1 });
+    fireEvent.pointerCancel(input, { pointerId: 1 });
     expect(onPreview).toHaveBeenLastCalledWith(null);
     expect(input.value).toBe("50");
     release(20);
     expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  // On a quick flick the browser lets the capture go just before the pointerup, which then goes elsewhere.
+  it("a capture lost mid-drag saves the value shown, with the last move worked out", () => {
+    const { input, onCommit, move, release, drag } = setup();
+    drag(10);
+    move(20); // its frame has not run yet
+    fireEvent.lostPointerCapture(input, { pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(70, { scrubbed: true });
+    expect(document.activeElement).not.toBe(input);
+    release(20);
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("a capture lost before the press travels puts it back and does not type", () => {
+    const { input, onCommit, onPreview, press } = setup();
+    press();
+    fireEvent.lostPointerCapture(input, { pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onPreview).toHaveBeenLastCalledWith(null);
+    expect(document.activeElement).not.toBe(input);
   });
 
   it("back where it started saves nothing", () => {
