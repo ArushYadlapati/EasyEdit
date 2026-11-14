@@ -6,6 +6,7 @@ import { useId, useState, type ReactNode } from "react";
 import { useAction } from "@/app/(app)/action-ui";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { FolderNameDialog } from "@/components/dashboard/folder-name-dialog";
+import { FolderTile } from "@/components/dashboard/folder-tile";
 import { NewProjectDialog } from "@/components/dashboard/new-project-dialog";
 import { ProjectCard } from "@/components/dashboard/project-card";
 import { Sidebar } from "@/components/dashboard/sidebar";
@@ -72,8 +73,9 @@ function CardGrid({ projects, folderName, now, canEdit, folders, actions, onGone
 }
 
 // The dashboard: the folders at the side, and a bar that stays at the top with the view's title (and, in a folder,
-// its menu), the search, the sort and New project. The main view lists Recent, then All projects; a folder view lists
-// that folder's projects. A card dropped on a folder in the sidebar moves there, and a refused move says why in the bar.
+// its menu), the search, the sort and New project. The main view lists Recent, then a tile for each folder, then All
+// projects; a folder view lists that folder's projects. A card dropped on a folder, in the sidebar or on its tile,
+// moves there, and a refused move says why in the bar.
 export function Dashboard({ projects, folders, recentIds, view, canEdit, now, actions }: DashboardProps): ReactNode {
   useRefreshOnReturn();
   const router = useRouter();
@@ -97,6 +99,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   }
   const titleId = useId();
   const recentId = useId();
+  const foldersId = useId();
   const allId = useId();
 
   const folderNames = new Map(folders.map((folder) => [folder.id, folder.name]));
@@ -248,6 +251,18 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
                       actions={actions}
                       onGone={setNotice}
                     />
+                  </section>
+                )}
+                {folders.length > 0 && !searching && (
+                  <section aria-labelledby={foldersId}>
+                    <h2 id={foldersId} className={HEADING}>
+                      Folders
+                    </h2>
+                    <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                      {folders.map((folder) => (
+                        <FolderTile key={folder.id} folder={folder} canEdit={canEdit} onDropProject={dropProject} />
+                      ))}
+                    </ul>
                   </section>
                 )}
                 <section aria-labelledby={allId}>
