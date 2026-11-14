@@ -171,7 +171,7 @@ type TestDeps = {
 
 // What the fake canvas recorded: every call on its context, and the arguments of each toBlob.
 let calls: Call[] = [];
-let encoded: [type: string, quality: number][] = [];
+let encoded: [type: string, quality: number | undefined][] = [];
 
 // A canvas whose context records its calls, and whose toBlob answers jpeg.
 function fakeCanvas(jpeg: Blob | null = JPEG, ctx?: Ctx2D | null): ThumbnailCanvas {
