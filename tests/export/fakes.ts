@@ -11,7 +11,7 @@ export const tick = (): Promise<void> => new Promise((resolve) => setTimeout(res
 // A Blob the fakes know by its name.
 export const file = (name: string): File => new File([name], name);
 
-export const NO_MEDIA: ExportMedia = { files: {}, clips: {} };
+export const NO_MEDIA: ExportMedia = { files: {}, clips: {}, sounds: {} };
 
 export type FakePicture = ResolvedSource & { from: string; at: number };
 

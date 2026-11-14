@@ -127,7 +127,7 @@ it("reads media through the editor's library and files", async () => {
 
 it("an asset the server could not be asked about stops the export, and is not drawn as missing", async () => {
   const services = { ...pretendMediaServices([]), library: unreachableLibrary() };
-  const read = gatherMedia(sampleDoc(), exportMediaDeps(services), { signal: new AbortController().signal, onReading: () => {} });
+  const read = gatherMedia(sampleDoc(), exportMediaDeps(services), { signal: new AbortController().signal, onReading: () => {}, sound: false });
   await expect(read).rejects.toMatchObject({ name: "ExportError", code: "media", detail: "a" });
 });
 
@@ -211,7 +211,7 @@ it("names only the assets that got no answer", async () => {
 it("takes fonts from the page, media through the editor's library, and time from the page's clock", async () => {
   const made = browserExportDeps({ ...pretendMediaServices([]), library: unreachableLibrary() });
   expect(made.collectFonts).toBe(collectPageFonts);
-  const read = made.collectMedia(sampleDoc(), { signal: new AbortController().signal, onReading: () => {} });
+  const read = made.collectMedia(sampleDoc(), { signal: new AbortController().signal, onReading: () => {}, sound: false });
   await expect(read).rejects.toMatchObject({ code: "media", detail: "a" });
   vi.spyOn(performance, "now").mockReturnValue(1234);
   expect(made.now()).toBe(1234);

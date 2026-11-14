@@ -15,7 +15,7 @@ function job(frames: number, over: Partial<ExportJob> = {}): ExportJob {
   if (frames > 0) doc.tracks[1].clips = [text("a", 0, frames)];
   return {
     doc, video: videoSettings({ width: 1080, height: 1920 }, 30)!, acceleration: "no-preference",
-    fonts: { families: { Geist: '"Geist"' }, faces: [FACE, LOCAL], probes: [PROBE] }, media: NO_MEDIA, ...over,
+    fonts: { families: { Geist: '"Geist"' }, faces: [FACE, LOCAL], probes: [PROBE] }, media: NO_MEDIA, sound: true, ...over,
   };
 }
 
@@ -162,7 +162,7 @@ describe("media", () => {
   const withMedia = () => {
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2), video("c2", 2, 2, { assetId: "r" })];
-    return job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" }, c2: { label: "Media removed" } } } });
+    return job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" }, c2: { label: "Media removed" } }, sounds: {} } });
   };
 
   it("checks every video file before the encoder opens, gives each frame its pictures, and releases them", async () => {
@@ -181,7 +181,7 @@ describe("media", () => {
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     const { io, log, control } = setup();
-    await runPipeline(job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } } } }), io, control);
+    await runPipeline(job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } }), io, control);
     await tick();
     expect(log.slice(-3)).toEqual(["finish", "dispose a.mp4", "stop a.mp4 from 0"]);
   });
@@ -207,7 +207,7 @@ describe("media", () => {
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     doc.tracks.splice(1, 0, { id: "o1", kind: "overlay", name: "Overlay 1", muted: false, hidden: false, locked: false, clips: [video("c3", 0, 2, { assetId: "b" })] });
-    const media = { files: { "prev-a": file("a.mp4"), "prev-b": file("b.mp4") }, clips: { c1: { fileId: "prev-a" }, c3: { fileId: "prev-b" } } };
+    const media = { files: { "prev-a": file("a.mp4"), "prev-b": file("b.mp4") }, clips: { c1: { fileId: "prev-a" }, c3: { fileId: "prev-b" } }, sounds: {} };
     // c1 is drawn first and never answers; c3 breaks
     const { io, control } = setup({}, {}, { hangs: (name) => name === "a.mp4", breaks: (name) => name === "b.mp4" });
     expect(await runPipeline(job(2, { doc, media }), io, control)).toEqual({ type: "failed", code: "decode", detail: "decoder closed" });
@@ -225,7 +225,7 @@ describe("each step names its own failures", () => {
     const { io, log, control } = setup({ media: { ...media, canDecode: async () => { throw new Error("no demuxer"); } } });
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
-    const withVideo = job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } } } });
+    const withVideo = job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } });
     expect(await runPipeline(withVideo, io, control)).toEqual({ type: "failed", code: "decode", detail: "no demuxer" });
     expect(log.filter((l) => l.startsWith("open"))).toEqual([]);
   });
@@ -237,7 +237,7 @@ describe("each step names its own failures", () => {
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     doc.tracks[1].clips = [text("t", 0, 4)];
-    const withVideo = job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } } } });
+    const withVideo = job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } });
     expect(await runPipeline(withVideo, io, control)).toEqual({ type: "failed", code: "decode", detail: "dispose failed" });
   });
 

@@ -75,7 +75,7 @@ function useChoices({ support, selected }: ChoiceProps) {
   const assets = useLibrary((s) => s.assets);
   const loaded = useLibrary((s) => s.loaded);
   return useMemo(() => {
-    const plan = planExportMedia(doc, { assets, loaded });
+    const plan = planExportMedia(doc, { assets, loaded }, support?.audio ?? false);
     // A size the check did not ask about is not offered; one it said no to is shown, turned off.
     const options = support ? exportOptions(doc).filter((option) => support.sizes[option.id] !== undefined) : [];
     const usable = options.filter((option) => support?.sizes[option.id] === true);
@@ -259,12 +259,13 @@ function StartButton({ exporter, ...choice }: ChoiceProps & { exporter: Exporter
   const [saving, setSaving] = useState(false);
   const savingNow = useRef(false);
   if (!choice.support?.browser) return null;
+  const audio = choice.support.audio;
   // The second click of a double-click lands on what replaced the first's button, or on the same one again: it starts
   // nothing. A key press has detail 0.
   const start = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.detail > 1 || !option) return;
     setAlert(null);
-    void exporter.start(option.id).then((answer) => setAlert(answer === "again" ? AGAIN : null));
+    void exporter.start(option.id, audio).then((answer) => setAlert(answer === "again" ? AGAIN : null));
   };
   const saveFrame = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.detail > 1 || !option || savingNow.current) return;

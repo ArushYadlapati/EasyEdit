@@ -15,7 +15,8 @@ import { useEditorStore, useExportDeps } from "../context";
 
 export type Exporter = {
   store: StoreApi<ExportState>; // the export's own small store: progress redraws only what reads it
-  start(preset: ExportPresetId): Promise<"again" | void>; // "again": the save dialog could not open; ask for another click
+  // "again": the save dialog could not open; ask for another click. sound: this browser can write the file's sound track.
+  start(preset: ExportPresetId, sound: boolean): Promise<"again" | void>;
   cancel(): void;
   reset(): void; // also drops a held file
   download(): void; // hands a held file to the browser; call it inside a click
@@ -59,7 +60,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
       if (running.current.mounted) store.setState(exportReducer(store.getState(), event), true);
     };
 
-    async function start(preset: ExportPresetId): Promise<"again" | void> {
+    async function start(preset: ExportPresetId, sound: boolean): Promise<"again" | void> {
       const now = running.current;
       if (now.busy) return;
       now.busy = true;
@@ -95,6 +96,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
               }
             },
             onReading: (filesRead, totalFiles) => dispatch({ type: "reading", filesRead, totalFiles }),
+            sound,
           },
           deps,
         );

@@ -8,8 +8,8 @@ import { ExportError } from "@/lib/export/messages";
 import { memoryTarget } from "@/lib/export/sinks";
 import { createEmptyDoc } from "@/lib/timeline";
 import { makeStore, sampleDoc, text } from "../editor/fixtures";
-import type { FakeWorker } from "../export/fakes";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { NO_MEDIA, type FakeWorker } from "../export/fakes";
+import { act, cleanup, fireEvent, render, screen } from "../helpers/dom";
 import { assetView } from "../helpers/media-services";
 import { fakeExportDeps } from "./export-fakes";
 import { click, dialog, emit, flush, openDialog, show, startExport } from "./export-helpers";
@@ -108,6 +108,20 @@ it("exports removed media as the preview's placeholder, and says how many clips 
   expect(d.getByText("2 clips have no media to show, so they export as the placeholders in the preview.")).toBeTruthy();
   await click("Export video");
   expect(workers[0].posted[0]).toMatchObject({ job: { media: { files: {}, clips: { c1: { label: "Media removed" }, c2: { label: "Media removed" } } } } });
+});
+
+it("exports with the sound plan this browser can write", async () => {
+  for (const audio of [true, false]) {
+    const seen: boolean[] = [];
+    show({
+      supportProbe: { ...SUPPORTED, canEncode: async () => true, canEncodeAudio: async () => audio },
+      collectMedia: async (_doc, options) => { seen.push(options.sound); return NO_MEDIA; },
+    });
+    await openDialog();
+    await click("Export video");
+    expect(seen).toEqual([audio]);
+    cleanup();
+  }
 });
 
 it("says it is reading the media before the frames start", async () => {
@@ -489,7 +503,7 @@ it("tells its caller how each export ended, and lets a held file go once reset o
   }
   const view = render(<EditorProvider store={makeStore()} exportDeps={made.deps}><Harness /></EditorProvider>);
   const finishHeld = async (worker: number) => {
-    await act(async () => { void exporter!.start("project"); });
+    await act(async () => { void exporter!.start("project", true); });
     await flush();
     await emit(made.workers[worker], { type: "chunk", seq: 0, position: 0, data: new Uint8Array([1, 2]) });
     await emit(made.workers[worker], { type: "done", bytes: 2, hasAudio: true });
@@ -503,7 +517,7 @@ it("tells its caller how each export ended, and lets a held file go once reset o
   expect(made.download).toHaveBeenCalledTimes(1);
 
   vi.spyOn(console, "error").mockImplementation(() => {});
-  await act(async () => { void exporter!.start("draft"); });
+  await act(async () => { void exporter!.start("draft", true); });
   await flush();
   await emit(made.workers[1], { type: "failed", code: "font", detail: "" });
   expect(onFinish).toHaveBeenLastCalledWith(expect.objectContaining({ status: "failed", code: "font" }), "Qual recap (draft).mp4", false);

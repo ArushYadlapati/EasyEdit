@@ -27,6 +27,7 @@ export type ExportRequest = {
   signal: AbortSignal; // abort it to cancel
   onProgress(progress: { attempt: number; framesDone: number; totalFrames: number }): void;
   onReading(filesRead: number, totalFiles: number): void;
+  sound: boolean; // the file will carry a sound track (Support.audio): only then is sound planned and read
 };
 
 export type RunDeps = {
@@ -75,7 +76,7 @@ type Try = {
   attempt: number; // numbered from 1
   acceleration: Acceleration;
   sink: ByteSink;
-  job: { doc: TimelineDoc; video: VideoSettings; fonts: FontBundle; media: ExportMedia };
+  job: { doc: TimelineDoc; video: VideoSettings; fonts: FontBundle; media: ExportMedia; sound: boolean };
 };
 
 // One worker, from its start message to an end. Messages are handled in the order they arrive; a chunk's write and
@@ -223,13 +224,13 @@ async function steps(request: ExportRequest, deps: RunDeps, held: Held): Promise
   };
   let media: ExportMedia;
   try {
-    media = await untilAborted(promised(() => deps.collectMedia(doc, { signal, onReading })), signal);
+    media = await untilAborted(promised(() => deps.collectMedia(doc, { signal, onReading, sound: request.sound })), signal);
   } catch (error) {
     if (signal.aborted) return CANCELED;
     return { status: "failed", ...failureOf(error, "media") };
   }
 
-  const job = { doc, video, fonts, media };
+  const job = { doc, video, fonts, media, sound: request.sound };
   let first: ExportOutcome | null = null;
   for (const [index, acceleration] of ACCELERATION_ORDER.entries()) {
     if (index > 0) {

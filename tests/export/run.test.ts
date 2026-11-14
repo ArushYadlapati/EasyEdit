@@ -11,7 +11,7 @@ import { NO_FONTS, NO_MEDIA, fakeTarget, fakeWorker, file, tick, type FakeTarget
 
 type Over = {
   doc?: TimelineDoc; size?: ExportSize; target?: FakeTarget; collectFonts?: () => Promise<FontBundle>; createWorker?: () => FakeWorker;
-  collectMedia?: RunDeps["collectMedia"]; aborted?: boolean;
+  collectMedia?: RunDeps["collectMedia"]; aborted?: boolean; sound?: boolean;
 };
 
 function start(over: Over = {}) {
@@ -26,7 +26,7 @@ function start(over: Over = {}) {
   const request: ExportRequest = {
     doc: over.doc ?? sampleDoc(), size: over.size ?? { width: 1080, height: 1920 }, target, signal: abort.signal,
     onProgress: (p) => progress.push([p.attempt, p.framesDone, p.totalFrames]),
-    onReading: (filesRead, totalFiles) => reading.push([filesRead, totalFiles]),
+    onReading: (filesRead, totalFiles) => reading.push([filesRead, totalFiles]), sound: over.sound ?? true,
   };
   const createWorker = over.createWorker ?? (() => { const worker = fakeWorker(); workers.push(worker); return worker; });
   const done = exportVideo(request, {
@@ -52,7 +52,7 @@ describe("an ordinary export", () => {
     const [worker] = run.workers;
     expect(worker.posted).toEqual([{ type: "start", job: {
       doc: sampleDoc(), video: { width: 1080, height: 1920, fps: 30, codec: "avc1.640028", bitrate: 8_000_000 },
-      acceleration: "no-preference", fonts: NO_FONTS, media: NO_MEDIA,
+      acceleration: "no-preference", fonts: NO_FONTS, media: NO_MEDIA, sound: true,
     } }]);
     worker.emit(chunk(0));
     worker.emit(chunk(1));
@@ -351,7 +351,7 @@ describe("the second try", () => {
 });
 
 describe("media", () => {
-  const MEDIA = { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" }, c2: { fileId: "prev-a" } } };
+  const MEDIA = { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" }, c2: { fileId: "prev-a" } }, sounds: {} };
 
   it("collects the media after the fonts, passes reading progress on, and posts it with the job", async () => {
     const order: string[] = [];
@@ -418,5 +418,17 @@ describe("media", () => {
     await tick();
     expect(collectMedia).toHaveBeenCalledTimes(1);
     expect(run.workers[1].posted[0]).toMatchObject({ type: "start", job: { media: MEDIA, acceleration: "prefer-software" } });
+  });
+
+  it("tells the media step and the worker whether the file will carry sound", async () => {
+    for (const sound of [true, false]) {
+      const seen: boolean[] = [];
+      const run = start({ sound, collectMedia: async (_doc, options) => { seen.push(options.sound); return NO_MEDIA; } });
+      await tick();
+      expect(seen).toEqual([sound]);
+      expect(run.workers[0].posted[0]).toMatchObject({ type: "start", job: { sound } });
+      run.abort.abort();
+      await run.done;
+    }
   });
 });
