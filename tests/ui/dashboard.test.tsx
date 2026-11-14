@@ -24,10 +24,10 @@ const search = () => screen.getByRole("searchbox", { name: "Search projects" });
 const sortBy = () => screen.getByRole("combobox", { name: "Sort by" }) as HTMLSelectElement;
 
 describe("the dashboard", () => {
-  it("an editor sees Recent, then All projects, under a sticky bar with New project", () => {
+  it("an editor sees Recent, then Folders, then All projects, under a sticky bar with New project", () => {
     renderDashboard();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Projects");
-    expect(mainHeadings()).toEqual(["Recent", "All projects"]);
+    expect(mainHeadings()).toEqual(["Recent", "Folders", "All projects"]);
     expect(linkNames(region("Recent"))).toEqual(["Finals"]);
     expect(linkNames(region("All projects"))).toEqual(["Qual recap", "Poster", "Finals"]);
     const button = screen.getByRole("button", { name: "New project" });
@@ -36,7 +36,7 @@ describe("the dashboard", () => {
 
   it("Recent is hidden when you have opened nothing", () => {
     const { unmount } = renderDashboard({ recentIds: [] });
-    expect(mainHeadings()).toEqual(["All projects"]);
+    expect(mainHeadings()).toEqual(["Folders", "All projects"]);
     expect(linkNames(region("All projects"))).toEqual(["Qual recap", "Poster", "Finals"]);
     unmount();
     renderDashboard({ recentIds: ["gone"] });

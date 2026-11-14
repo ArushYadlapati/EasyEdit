@@ -366,3 +366,98 @@ describe("dragging projects into folders", () => {
     expect(actions.move).not.toHaveBeenCalled();
   });
 });
+
+describe("folders on the home page", () => {
+  const main = () => screen.getByRole("main");
+  const tiles = () => screen.getByRole("region", { name: "Folders" });
+  const tile = (name: RegExp) => within(tiles()).getByRole("link", { name });
+  const sectionHeadings = () => within(main()).getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+
+  it("the main view shows Folders between Recent and All projects", () => {
+    renderDashboard();
+    expect(sectionHeadings()).toEqual(["Recent", "Folders", "All projects"]);
+  });
+
+  it("with nothing recent, Folders comes first", () => {
+    renderDashboard({ recentIds: [] });
+    expect(sectionHeadings()).toEqual(["Folders", "All projects"]);
+  });
+
+  it("each folder is a tile with its name and count that opens the folder", () => {
+    renderDashboard();
+    const links = within(tiles()).getAllByRole("link");
+    expect(links.map((l) => l.getAttribute("aria-label"))).toEqual(["Season 2026, 1 project", "Sponsors, 0 projects"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/dashboard?folder=f1", "/dashboard?folder=f2"]);
+    expect(links[0].querySelector("svg")).not.toBeNull(); // the folder icon
+    expect(links[0].textContent).toBe("Season 20261");
+    expect(classes(within(tiles()).getByRole("list"))).toContain("grid-cols-[repeat(auto-fill,minmax(200px,1fr))]");
+  });
+
+  it("a long name truncates and keeps its count", () => {
+    renderDashboard({ folders: [{ id: "f9", name: "A".repeat(80), projectCount: 12 }] });
+    const link = tile(/^A+, 12 projects$/);
+    const [name, count] = [link.querySelector("span:first-of-type")!, link.querySelector("span:last-of-type")!];
+    expect(classes(name)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(classes(count)).toContain("shrink-0");
+    expect(count.textContent).toBe("12");
+  });
+
+  it("there is no Folders section while searching, in a folder, or with no folders", () => {
+    const { unmount } = renderDashboard();
+    const search = screen.getByRole("searchbox", { name: "Search projects" });
+    fireEvent.change(search, { target: { value: "Qual" } });
+    expect(screen.queryByRole("region", { name: "Folders" })).toBeNull();
+    fireEvent.change(search, { target: { value: "" } });
+    expect(tiles()).toBeTruthy();
+    unmount();
+    const folderView = renderDashboard({ view: "f1" });
+    expect(screen.queryByRole("region", { name: "Folders" })).toBeNull();
+    folderView.unmount();
+    renderDashboard({ folders: [] });
+    expect(screen.queryByRole("region", { name: "Folders" })).toBeNull();
+  });
+
+  it("drag a card from All projects onto a tile to move it there", async () => {
+    const { actions } = renderDashboard();
+    const sponsors = tile(/^Sponsors/);
+    const over = await drag(sponsors, "dragover", projectDrag);
+    expect(over.taken).toBe(true);
+    expect(over.transfer.dropEffect).toBe("move");
+    expect(sponsors.hasAttribute("data-drop-over")).toBe(true);
+    expect(classes(sponsors)).toEqual(
+      expect.arrayContaining(["data-drop-over:outline-2", "data-drop-over:outline-ed-accent", "data-drop-over:bg-ed-accent-weak"]),
+    );
+    // Moving onto the tile's own count keeps the look.
+    await drag(sponsors, "dragleave", { ...projectDrag, relatedTarget: sponsors.lastElementChild });
+    expect(sponsors.hasAttribute("data-drop-over")).toBe(true);
+    const dropped = await drag(sponsors, "drop", dropOf("a"));
+    expect(dropped.taken).toBe(true);
+    expect(actions.move).toHaveBeenCalledTimes(1);
+    expect(sent(actions.move)).toEqual({ id: "a", folderId: "f2" });
+    expect(sponsors.hasAttribute("data-drop-over")).toBe(false);
+    // Poster is already in Season 2026.
+    await drag(tile(/^Season 2026/), "drop", dropOf("b"));
+    expect(actions.move).toHaveBeenCalledTimes(1);
+  });
+
+  it("a refused drop on a tile says so in the bar", async () => {
+    const { actions } = renderDashboard();
+    actions.move.mockResolvedValue({ error: "That folder no longer exists." });
+    await drag(tile(/^Sponsors/), "drop", dropOf("a"));
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("That folder no longer exists.");
+    expect(alert.closest("[class*=sticky]")).not.toBeNull();
+  });
+
+  it("files and viewers are not taken by a tile, but a viewer still sees the tiles", async () => {
+    const { unmount } = renderDashboard();
+    expect((await drag(tile(/^Sponsors/), "dragover", { types: ["Files"] })).taken).toBe(false);
+    expect(tile(/^Sponsors/).hasAttribute("data-drop-over")).toBe(false);
+    unmount();
+    const { actions } = renderDashboard({ canEdit: false });
+    expect(tile(/^Sponsors/).getAttribute("href")).toBe("/dashboard?folder=f2");
+    expect((await drag(tile(/^Sponsors/), "dragover", projectDrag)).taken).toBe(false);
+    expect((await drag(tile(/^Sponsors/), "drop", dropOf("a"))).taken).toBe(false);
+    expect(actions.move).not.toHaveBeenCalled();
+  });
+});
