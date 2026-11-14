@@ -15,6 +15,11 @@ const WIDE_ENOUGH = "(min-width: 64rem)";
 
 const REPEATING = new Set(SHORTCUTS.filter((s) => s.repeats).map((s) => s.command));
 
+// A field the person types into: every key there is the browser's.
+const typedInto = (target: Element | null) =>
+  target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement ||
+  (target instanceof HTMLElement && target.isContentEditable);
+
 // Whether shortcuts read Cmd (a Mac) or Ctrl. The server cannot know, so its render says Ctrl and
 // the browser corrects it after hydration.
 export function useIsMac(): boolean {
@@ -53,7 +58,8 @@ export function useCommandRunner(openShortcuts: () => void, openExport?: () => v
 
 // Runs the shortcut table's commands from key presses anywhere in the window. A key is left alone
 // when a control already handled it, when it is typed into a field or presses a focused button,
-// while the window is too narrow for the editor, and while a dialog or a menu is open. Space plays
+// while the window is too narrow for the editor, and while a dialog or a menu is open; the export
+// key is still taken from the browser then, though it runs nothing. Space plays
 // or pauses even on a button, unless the button was reached with the keyboard. Copy and cut
 // are left to the browser when no clip is selected or text is. A held key runs its command again
 // only where the table says it repeats. The keys are this browser's keymap, read as each key goes
@@ -84,6 +90,12 @@ export function useShortcuts(openShortcuts: () => void, openExport?: () => void)
       if (!keymap.on) return;
       if (event.defaultPrevented) return;
       const target = event.target instanceof Element ? event.target : null;
+      // The export key is taken while a dialog or a menu is open too, so a second press never reaches the browser. It runs
+      // nothing there. In a field it stays the browser's, as every key does.
+      if (document.querySelector('dialog[open], [role="menu"]') && !typedInto(target) && matchKeys(event, isMac, keymap) === "export") {
+        event.preventDefault();
+        return;
+      }
       // A button, link or summary focused by a click: Space is the shortcut, not a second press.
       const clicked =
         event.key === " " && target instanceof HTMLElement && isPressable(target) && target === clickedControl ? target : null;

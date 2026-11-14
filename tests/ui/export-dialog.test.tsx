@@ -2,7 +2,7 @@
 import { useEffect } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
-import type { PickedTarget } from "@/components/editor/export/deps";
+import type { ExportDeps, PickedTarget } from "@/components/editor/export/deps";
 import { useExport, type Exporter } from "@/components/editor/export/use-export";
 import { ExportError } from "@/lib/export/messages";
 import { memoryTarget } from "@/lib/export/sinks";
@@ -328,6 +328,18 @@ it("says when it is trying again with the slower encoder", async () => {
   expect(d.getByText("Frame 10 of 120")).toBeTruthy();
 });
 
+it("offers Cancel and says it is trying again as soon as a second try begins, even after every frame was in", async () => {
+  const { workers } = show();
+  const d = await startExport();
+  await emit(workers[0], { type: "progress", framesDone: 120, totalFrames: 120 });
+  expect(d.queryByRole("button", { name: "Cancel" })).toBeNull();
+  await emit(workers[0], { type: "failed", code: "encoder", detail: "x" });
+  expect(workers).toHaveLength(2);
+  expect(d.getByText("Frame 0 of 120")).toBeTruthy();
+  expect(d.getByText("Trying again with a slower encoder.")).toBeTruthy();
+  expect(d.getByRole("button", { name: "Cancel" })).toBeTruthy();
+});
+
 it("shows the time left once a second has passed, then that it is finishing", async () => {
   let clock = 0;
   const { workers } = show({ now: () => clock });
@@ -352,6 +364,17 @@ it("an edit made during the export does not reach the file, and the result says 
   await emit(workers[0], { type: "done", bytes: 1_000, hasAudio: false });
   expect(d.getByText("The project changed while this was exporting. The file shows it as it was when the export started.")).toBeTruthy();
   expect(d.getByText("This file has no sound track.")).toBeTruthy();
+});
+
+it("a safe area changed during the export is no change to the file", async () => {
+  const { store, workers } = show();
+  const d = await startExport();
+  act(() => {
+    store.getState().edit([{ op: "set_safe_area", format: "short_9x16", size: { width: 0.8, height: 0.5 } }], "safe area");
+  });
+  expect(store.getState().doc.safeAreas).toEqual({ short_9x16: { width: 0.8, height: 0.5 } });
+  await emit(workers[0], { type: "done", bytes: 1_000, hasAudio: true });
+  expect(d.queryByText(/The project changed/)).toBeNull();
 });
 
 it("exports the edits not yet sent: the file is the project as the editor shows it", async () => {
@@ -571,6 +594,47 @@ it("says why a frame could not be saved, without speaking of an export", async (
     expect(d.getByRole("alert").textContent).toBe(text);
     view.unmount();
   }
+});
+
+it("saves one frame at a time: a second click while a save runs does nothing", async () => {
+  let finish: () => void = () => {};
+  const save = vi.fn<ExportDeps["saveFrame"]>(() => new Promise<void>((resolve) => { finish = resolve; }));
+  show({ saveFrame: save });
+  const d = await openDialog();
+  const button = () => d.getByRole("button", { name: "Save frame as image" }) as HTMLButtonElement;
+  await act(async () => { fireEvent.click(button()); fireEvent.click(button()); });
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(button().disabled).toBe(true);
+  await act(async () => { finish(); });
+  await flush();
+  expect(button().disabled).toBe(false);
+  await click("Save frame as image");
+  expect(save).toHaveBeenCalledTimes(2);
+});
+
+it("the second click of a double-click never starts what replaced the first", async () => {
+  const first = show();
+  let d = await startExport();
+  await act(async () => { fireEvent.click(d.getByRole("button", { name: "Cancel" }), { detail: 1 }); });
+  await flush();
+  await act(async () => { fireEvent.click(d.getByRole("button", { name: "Export video" }), { detail: 2 }); });
+  await flush();
+  expect([first.picked, first.workers.length]).toEqual([["Qual recap.mp4"], 1]); // no second save dialog
+  const save = d.getByRole("button", { name: "Save frame as image" });
+  await act(async () => { fireEvent.click(save, { detail: 1 }); });
+  await flush();
+  await act(async () => { fireEvent.click(save, { detail: 2 }); });
+  expect(first.saveFrame).toHaveBeenCalledTimes(1);
+  first.view.unmount();
+
+  let saved: Blob | null = null;
+  const memory = memoryTarget((blob) => { saved = blob; });
+  const held = show({ savesToFile: false, pickTarget: async (name) => ({ target: memory, fileName: name, held: () => saved }) });
+  d = await startExport();
+  await emit(held.workers[0], { type: "done", bytes: 1, hasAudio: true });
+  const download = d.getByRole("button", { name: "Download" });
+  await act(async () => { fireEvent.click(download, { detail: 1 }); fireEvent.click(download, { detail: 2 }); });
+  expect(held.download).toHaveBeenCalledTimes(1);
 });
 
 it("cannot save a frame while media is not ready, or of an empty project", async () => {

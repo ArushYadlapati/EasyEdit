@@ -100,7 +100,8 @@ function sameValue(a: unknown, b: unknown): boolean {
 }
 
 // The same content, whatever the order of keys: the editor replaces its doc object when an edit is confirmed even
-// when nothing changed, and the database returns keys in its own order.
+// when nothing changed, and the database returns keys in its own order. A safe area is a guide over the preview and is
+// never drawn, so it is no change to the file.
 export function sameDoc(a: TimelineDoc, b: TimelineDoc): boolean {
-  return sameValue(a, b);
+  return sameValue({ ...a, safeAreas: undefined }, { ...b, safeAreas: undefined });
 }

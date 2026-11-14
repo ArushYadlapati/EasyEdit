@@ -247,6 +247,9 @@ async function steps(request: ExportRequest, deps: RunDeps, held: Held): Promise
     const again =
       outcome.status === "failed" && RETRIED.includes(outcome.code) && index + 1 < ACCELERATION_ORDER.length && !signal.aborted;
     if (!again) return outcome;
+    // The next try starts again from frame 0: say so now, so Cancel and the slower-encoder line show while the file is
+    // reopened and the worker starts.
+    request.onProgress({ attempt: index + 2, framesDone: 0, totalFrames: frames });
     // Only this try's bytes go; the file stays for the next.
     held.sink = null;
     await promised(() => sink.abort()).catch(ignore);

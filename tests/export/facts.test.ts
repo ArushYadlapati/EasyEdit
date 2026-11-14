@@ -79,6 +79,14 @@ describe("the file's facts", () => {
     expect(sameDoc(a, cropped)).toBe(false); // a key only the second has
     expect(sameDoc(cropped, a)).toBe(false);
   });
+
+  it("leaves the safe area out: it is never drawn, so it is no change to the file", () => {
+    const a = sampleDoc();
+    const guided = { ...sampleDoc(), safeAreas: { short_9x16: { width: 0.8, height: 0.5 } } };
+    expect(sameDoc(a, guided)).toBe(true);
+    expect(sameDoc(guided, a)).toBe(true);
+    expect(sameDoc(a, { ...sampleDoc(), width: 720 })).toBe(false);
+  });
 });
 
 describe("what the dialog says about the media", () => {

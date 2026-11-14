@@ -67,6 +67,7 @@ export type EditorState = {
   // edit access clears it.
   textEditId: string | null;
   exporting: boolean; // an export is running in this tab
+  exportHeld: boolean; // a finished export waits in this tab for its Download click
 
   edit(ops: OpInput[], label: string): EditResult;
   undo(): void;
@@ -104,6 +105,7 @@ export type EditorState = {
   setCropArmed(clipId: string | null): void;
   setTextEdit(clipId: string | null): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
   setExporting(on: boolean): void;
+  setExportHeld(on: boolean): void;
 };
 
 export type EditorStore = StoreApi<EditorState>;
@@ -312,6 +314,7 @@ export function createEditorStore(
       cropArmed: null,
       textEditId: null,
       exporting: false,
+      exportHeld: false,
 
       edit(ops, label) {
         const state = get();
@@ -622,6 +625,10 @@ export function createEditorStore(
 
       setExporting(on) {
         if (on !== get().exporting) set({ exporting: on });
+      },
+
+      setExportHeld(on) {
+        if (on !== get().exportHeld) set({ exportHeld: on });
       },
     };
   });

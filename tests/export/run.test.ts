@@ -299,12 +299,22 @@ describe("the second try", () => {
     expect(run.target.discarded).toBe(0); // the file stays for the second try
     expect(run.workers[1].posted[0]).toMatchObject({ type: "start", job: { acceleration: "prefer-software" } });
     run.workers[1].emit({ type: "progress", framesDone: 10, totalFrames: 120 });
-    expect(run.progress).toEqual([[1, 30, 120], [2, 10, 120]]);
+    expect(run.progress).toEqual([[1, 30, 120], [2, 0, 120], [2, 10, 120]]);
     run.workers[1].emit({ type: "done", bytes: 5, hasAudio: true });
     expect(await run.done).toEqual({ status: "done", bytes: 5, hasAudio: true, acceleration: "prefer-software" });
     await tick();
     expect(run.target.sinks[1]).toMatchObject({ closed: 1, aborted: 0 });
     expect([run.workers[1].terminated, run.target.discarded]).toEqual([1, 0]);
+  });
+
+  it("tells the page at once that a second try has begun, from frame 0", async () => {
+    const run = start();
+    await tick();
+    run.workers[0].emit({ type: "progress", framesDone: 120, totalFrames: 120 });
+    run.workers[0].emit({ type: "failed", code: "encoder", detail: "x" });
+    await tick();
+    expect(run.workers).toHaveLength(2);
+    expect(run.progress).toEqual([[1, 120, 120], [2, 0, 120]]);
   });
 
   it("gives up after the second try, and does not try again after a cancel", async () => {

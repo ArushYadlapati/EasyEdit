@@ -21,6 +21,20 @@ it("Cmd/Ctrl+E opens the export dialog and keeps the key from the browser", asyn
   expect(exportDialog()?.open).toBe(true);
 });
 
+it("a second Cmd/Ctrl+E while the dialog is open is kept from the browser too, except in a field", async () => {
+  show();
+  await act(async () => { fireEvent.keyDown(document.body, { key: "e", ...MOD() }); });
+  await flush();
+  const d = dialog();
+  let passedOn = true;
+  await act(async () => { passedOn = fireEvent.keyDown(d.getByRole("button", { name: "Close" }), { key: "e", ...MOD() }); });
+  expect(passedOn).toBe(false);
+  await act(async () => { passedOn = fireEvent.keyDown(document.body, { key: "e", ...MOD() }); }); // focus lost to the page
+  expect(passedOn).toBe(false);
+  expect(exportDialog()?.open).toBe(true);
+  expect(fireEvent.keyDown(d.getByRole("combobox"), { key: "e", ...MOD() })).toBe(true); // a field keeps the browser's keys
+});
+
 it("a viewer can export: nothing about it is an edit control", async () => {
   const { workers, target } = show({}, { canEdit: false });
   const button = screen.getByRole("button", { name: "Export" }) as HTMLButtonElement;
@@ -74,6 +88,31 @@ it("announces the end of an export when the dialog is closed, and stays quiet wh
   expect(open.store.getState().notice).toBeNull();
 });
 
+it("a finished file waiting for Download is kept like a running export: leaving asks, and a deleted project still reaches it", async () => {
+  let saved: Blob | null = null;
+  const memory = memoryTarget((blob) => { saved = blob; });
+  const { store, workers, download } = show({ savesToFile: false, pickTarget: async (name) => ({ target: memory, fileName: name, held: () => saved }) });
+  const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
+  await startExport();
+  await click("Close");
+  await emit(workers[0], { type: "chunk", seq: 0, position: 0, data: new Uint8Array([1]) });
+  await emit(workers[0], { type: "done", bytes: 1, hasAudio: true });
+  expect([store.getState().exporting, store.getState().exportHeld]).toEqual([false, true]);
+  expect(fireEvent.click(screen.getByRole("link", { name: "Projects" }))).toBe(false); // asked inside the app
+  expect(screen.getByText("Your exported video hasn't been downloaded. Leaving discards it.")).toBeTruthy();
+  await click("Stay");
+  act(() => store.getState().setStatus("deleted"));
+  expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(false);
+  await act(async () => { fireEvent.keyDown(document.body, { key: "e", ...MOD() }); });
+  await flush();
+  await click("Download");
+  expect(download).toHaveBeenCalledWith(saved, "Qual recap.mp4");
+  expect(store.getState().exportHeld).toBe(false);
+  await click("Close");
+  expect(fireEvent.click(screen.getByRole("link", { name: "Projects" }))).toBe(true); // nothing is left to lose
+  expect(assign).not.toHaveBeenCalled();
+});
+
 it("Export has its own row under General in Settings → Shortcuts, and switching it off frees the key", async () => {
   show();
   await click("Keyboard shortcuts");
@@ -89,6 +128,30 @@ it("Export has its own row under General in Settings → Shortcuts, and switchin
 });
 
 // Beyond the brief: each catches a rule the tests above leave free.
+
+it("Done drops a file waiting for Download, and with it the leave guard", async () => {
+  let saved: Blob | null = null;
+  const memory = memoryTarget((blob) => { saved = blob; });
+  const { store, workers } = show({ savesToFile: false, pickTarget: async (name) => ({ target: memory, fileName: name, held: () => saved }) });
+  await startExport();
+  await emit(workers[0], { type: "chunk", seq: 0, position: 0, data: new Uint8Array([1]) });
+  await emit(workers[0], { type: "done", bytes: 1, hasAudio: true });
+  expect(store.getState().exportHeld).toBe(true);
+  await click("Done");
+  expect(store.getState().exportHeld).toBe(false);
+});
+
+it("leaving the editor drops a file waiting for Download, and with it the leave guard", async () => {
+  let saved: Blob | null = null;
+  const memory = memoryTarget((blob) => { saved = blob; });
+  const { store, workers, view } = show({ savesToFile: false, pickTarget: async (name) => ({ target: memory, fileName: name, held: () => saved }) });
+  await startExport();
+  await emit(workers[0], { type: "chunk", seq: 0, position: 0, data: new Uint8Array([1]) });
+  await emit(workers[0], { type: "done", bytes: 1, hasAudio: true });
+  expect(store.getState().exportHeld).toBe(true);
+  act(() => view.unmount());
+  expect(store.getState().exportHeld).toBe(false);
+});
 
 it("says nothing when an export is canceled, even with its dialog closed", async () => {
   const { store, view } = show();

@@ -14,6 +14,7 @@ import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/ed
 import type { ThumbnailCanvas, ThumbnailDeps } from "@/lib/editor/thumbnail";
 import { startThumbnailTrigger } from "@/lib/editor/thumbnail-trigger";
 import type { EditorInit } from "@/lib/editor/types";
+import { memoryTarget } from "@/lib/export/sinks";
 import type { MediaApi } from "@/lib/media/api";
 import { createLibraryStore, type RefreshReason } from "@/lib/media/library-store";
 import type { UploadItem } from "@/lib/media/types";
@@ -322,6 +323,34 @@ it("asks before the page unloads while an export is running", async () => {
   expect(asks()).toBe(true);
   await act(async () => { made.workers[0].emit({ type: "done", bytes: 1, hasAudio: true }); });
   await flush();
+  expect(asks()).toBe(false);
+});
+
+it("asks before the page unloads while a finished file waits for Download, and not once it is downloaded", async () => {
+  stubServer();
+  let saved: Blob | null = null;
+  const memory = memoryTarget((blob) => { saved = blob; });
+  const made = fakeExportDeps({ savesToFile: false, pickTarget: async (name) => ({ target: memory, fileName: name, held: () => saved }) });
+  vi.mocked(browserExportDeps).mockReturnValue(made.deps);
+  vi.mocked(createMediaServices).mockReturnValueOnce(pretendMediaServices([assetView()]));
+  render(<EditorShell initial={initial()} />);
+  const asks = () => {
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    return unload.defaultPrevented;
+  };
+  const press = async (name: string) => {
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name })); });
+    await flush();
+  };
+  await press("Export");
+  await press("Export video");
+  await act(async () => { made.workers[0].emit({ type: "chunk", seq: 0, position: 0, data: new Uint8Array([1]) }); });
+  await flush();
+  await act(async () => { made.workers[0].emit({ type: "done", bytes: 1, hasAudio: true }); });
+  await flush();
+  expect(asks()).toBe(true);
+  await press("Download");
   expect(asks()).toBe(false);
 });
 

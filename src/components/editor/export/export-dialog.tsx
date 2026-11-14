@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -234,7 +234,13 @@ function ExportFooter({ exporter, onClose, ...choice }: ChoiceProps & { exporter
     <>
       <Button onClick={finish}>Done</Button>
       {/* Inside the click, so the browser treats it as the person's own download. */}
-      <Button variant="primary" onClick={() => exporter.download()}>
+      <Button
+        variant="primary"
+        onClick={(event) => {
+          if (event.detail > 1) return;
+          exporter.download();
+        }}
+      >
         Download
       </Button>
     </>
@@ -249,21 +255,34 @@ function StartButton({ exporter, ...choice }: ChoiceProps & { exporter: Exporter
   const { option, frames, canStart, canSaveFrame } = useChoices(choice);
   // The footer's one alert line: a second click wanted, or why a frame wasn't saved. Each click clears it.
   const [alert, setAlert] = useState<string | null>(null);
+  // One frame saved at a time. The ref refuses a second click in the same tick, before the button is drawn off.
+  const [saving, setSaving] = useState(false);
+  const savingNow = useRef(false);
   if (!choice.support?.browser) return null;
-  const start = () => {
-    if (!option) return;
+  // The second click of a double-click lands on what replaced the first's button, or on the same one again: it starts
+  // nothing. A key press has detail 0.
+  const start = (event: MouseEvent<HTMLButtonElement>) => {
+    if (event.detail > 1 || !option) return;
     setAlert(null);
     void exporter.start(option.id).then((answer) => setAlert(answer === "again" ? AGAIN : null));
   };
-  const saveFrame = () => {
-    if (!option) return;
+  const saveFrame = (event: MouseEvent<HTMLButtonElement>) => {
+    if (event.detail > 1 || !option || savingNow.current) return;
+    savingNow.current = true;
+    setSaving(true);
     setAlert(null);
     const { doc, name, playhead } = editor.getState();
     const frame = Math.min(playhead, frames - 1);
     // No export was running, so the sentence is about the frame.
-    deps.saveFrame(doc, frame, option.size, frameFileName(name, frame)).catch((error: unknown) => {
-      setAlert(frameFailureMessage(failureOf(error, "unknown").code));
-    });
+    deps
+      .saveFrame(doc, frame, option.size, frameFileName(name, frame))
+      .catch((error: unknown) => {
+        setAlert(frameFailureMessage(failureOf(error, "unknown").code));
+      })
+      .finally(() => {
+        savingNow.current = false;
+        setSaving(false);
+      });
   };
   return (
     <>
@@ -272,7 +291,7 @@ function StartButton({ exporter, ...choice }: ChoiceProps & { exporter: Exporter
           {alert}
         </p>
       )}
-      <Button variant="ghost" disabled={!canSaveFrame} onClick={saveFrame}>
+      <Button variant="ghost" disabled={!canSaveFrame || saving} onClick={saveFrame}>
         Save frame as image
       </Button>
       <Button variant="primary" disabled={!canStart} onClick={start}>

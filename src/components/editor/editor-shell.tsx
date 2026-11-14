@@ -108,8 +108,10 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       lastActivity = now;
       sync.noteActivity();
     };
-    // Closing the page now would lose edits not yet sent, stop uploads part way, or stop the export that is running.
-    const unsaved = () => store.getState().queue.length > 0 || queue.active() > 0 || store.getState().exporting;
+    // Closing the page now would lose edits not yet sent, stop uploads part way, stop the export that is running, or
+    // drop a finished export not yet downloaded.
+    const unsaved = () =>
+      store.getState().queue.length > 0 || queue.active() > 0 || store.getState().exporting || store.getState().exportHeld;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (unsaved()) event.preventDefault();
     };

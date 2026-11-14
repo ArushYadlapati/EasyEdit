@@ -62,12 +62,13 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
       else if (outcome.status === "failed") store.getState().notify("error", failureMessage(outcome.code));
     },
   });
-  // A deleted project exports nothing new, but a running export stays reachable for its progress and its Cancel. The
-  // guard is read when it runs, so the function stays the same and the keys are not hooked up again as an export
-  // starts and ends.
+  // A deleted project exports nothing new, but a running export stays reachable for its progress and its Cancel, and a
+  // file waiting for Download for its Download. The guard is read when it runs, so the function stays the same and the
+  // keys are not hooked up again as an export starts and ends.
   const exportStore = exporter.store;
   const openExport = useCallback(() => {
-    if (store.getState().status !== "deleted" || isBusy(exportStore.getState())) setExportOpen(true);
+    if (store.getState().status !== "deleted" || isBusy(exportStore.getState()) || store.getState().exportHeld)
+      setExportOpen(true);
   }, [store, exportStore]);
   useShortcuts(openShortcuts, openExport);
 

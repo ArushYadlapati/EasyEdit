@@ -50,8 +50,9 @@ export function useExport(options: ExportOptions = {}): Exporter {
       now.mounted = false;
       now.controller?.abort();
       now.held = null;
+      editor.getState().setExportHeld(false);
     };
-  }, []);
+  }, [editor]);
 
   return useMemo(() => {
     const dispatch = (event: ExportEvent) => {
@@ -99,7 +100,10 @@ export function useExport(options: ExportOptions = {}): Exporter {
         );
         now.controller = null;
         const blob = outcome.status === "done" ? (held?.() ?? null) : null;
-        if (blob !== null && now.mounted) now.held = { blob, fileName };
+        if (blob !== null && now.mounted) {
+          now.held = { blob, fileName };
+          editor.getState().setExportHeld(true); // before exporting ends, so no moment has neither flag set
+        }
         dispatch({ type: "finish", outcome, changed: !sameDoc(editor.getState().doc, doc), held: blob !== null });
         editor.getState().setExporting(false);
         release();
@@ -116,11 +120,14 @@ export function useExport(options: ExportOptions = {}): Exporter {
       cancel: () => running.current.controller?.abort(),
       reset: () => {
         running.current.held = null;
+        editor.getState().setExportHeld(false);
         dispatch({ type: "reset" });
       },
       download: () => {
         const { held } = running.current;
         if (held) deps.download(held.blob, held.fileName);
+        // The file stays held, so Download works again; only the leave guard ends.
+        editor.getState().setExportHeld(false);
       },
     };
   }, [store, deps, editor]);

@@ -35,6 +35,7 @@ export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout, onExpor
   const undoLabel = useEditor((s) => s.undoStack.at(-1)?.label);
   const redoLabel = useEditor((s) => s.redoStack.at(-1)?.label);
   const deleted = status === "deleted";
+  const exportHeld = useEditor((s) => s.exportHeld);
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
   const keyFor = useShortcutLabel();
@@ -104,12 +105,13 @@ export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout, onExpor
           <Keyboard />
         </IconButton>
         <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
-        {/* Not an edit: a viewer exports too. A project deleted during an export keeps the way back to its progress. */}
+        {/* Not an edit: a viewer exports too. A project deleted during an export keeps the way back to its progress,
+            and to a file waiting for Download. */}
         <Button
           variant={exportPercent === null ? "primary" : "default"}
           className="tabular-nums"
           title={keyFor("export") ? `Export (${keyFor("export")})` : "Export"}
-          disabled={deleted && exportPercent === null}
+          disabled={deleted && exportPercent === null && !exportHeld}
           onClick={onExport}
         >
           {exportPercent === null ? "Export" : `Exporting ${exportPercent}%`}

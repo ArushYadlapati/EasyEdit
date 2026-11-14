@@ -130,6 +130,52 @@ it("'Projects' still loads the page for real during an export when edits cannot 
   expect(screen.queryByText("An export is running. Leaving stops it.")).toBeNull();
 });
 
+it("'Leave the editor?' follows the export: it closes when the export ends, speaks of a file waiting for Download, and does not come back by itself", () => {
+  const store = makeStore();
+  store.getState().setExporting(true);
+  render(<EditorProvider store={store}><TopBar onShowShortcuts={() => {}} /></EditorProvider>);
+  const question = () => screen.queryByText("Leave the editor?", { selector: "h2" });
+  fireEvent.click(screen.getByRole("link", { name: "Projects" }));
+  expect(question()).toBeTruthy();
+  act(() => store.getState().setExporting(false)); // saved to a file: nothing is left to stop
+  expect(question()).toBeNull();
+  act(() => store.getState().setExporting(true)); // the next export does not bring the old question back
+  expect(question()).toBeNull();
+  fireEvent.click(screen.getByRole("link", { name: "Projects" }));
+  act(() => { store.getState().setExportHeld(true); store.getState().setExporting(false); });
+  expect(screen.getByText("Your exported video hasn't been downloaded. Leaving discards it.")).toBeTruthy();
+  expect(screen.queryByText("An export is running. Leaving stops it.")).toBeNull();
+  act(() => store.getState().setExportHeld(false)); // downloaded
+  expect(question()).toBeNull();
+});
+
+it("Leave loads the page for real when the queued edits can no longer be sent", () => {
+  const store = makeStore();
+  store.getState().edit([{ op: "move_clip", clipId: "x2", start: 100 }], "move");
+  store.getState().setStatus("saving"); // can still be sent when the question opens
+  store.getState().setExporting(true);
+  const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
+  render(<EditorProvider store={store}><TopBar onShowShortcuts={() => {}} /></EditorProvider>);
+  fireEvent.click(screen.getByRole("link", { name: "Projects" }));
+  act(() => store.getState().setStatus("signed-out")); // the session ended while the question was open
+  expect(fireEvent.click(screen.getByRole("link", { name: "Leave" }))).toBe(false);
+  expect(assign).toHaveBeenCalledWith("/dashboard");
+});
+
+// Added beyond the brief: Leave's own click leaves a click that opens another tab alone, as the link's does.
+it("Leave opened in another tab leaves this one as it is, even with the queued edits at risk", () => {
+  const store = makeStore();
+  store.getState().edit([{ op: "move_clip", clipId: "x2", start: 100 }], "move");
+  store.getState().setStatus("saving");
+  store.getState().setExporting(true);
+  const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
+  render(<EditorProvider store={store}><TopBar onShowShortcuts={() => {}} /></EditorProvider>);
+  fireEvent.click(screen.getByRole("link", { name: "Projects" }));
+  act(() => store.getState().setStatus("signed-out"));
+  expect(fireEvent.click(screen.getByRole("link", { name: "Leave" }), { metaKey: true })).toBe(true);
+  expect(assign).not.toHaveBeenCalled();
+});
+
 // Beyond the brief: a rule of LeaveLink's no test above catches the removal of.
 it("Leave goes where the link it asked for goes, and looks like the primary button", () => {
   const store = makeStore();
