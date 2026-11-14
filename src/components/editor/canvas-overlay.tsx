@@ -113,11 +113,12 @@ const px = (v: number) => Math.round(v * 100) / 100;
 // moves the clip. One selected clip that can be edited, paused, has eight handles and a rotate handle, which keeps off
 // the clip's picture while the pane has room past one of its sides. A right-click opens the clip's menu (a handle's is
 // its clip's), or the preview's when it lands on nothing or on a clip of a locked track. On a Mac a Ctrl press is that
-// right-click. A double-click on text opens its box for typing in place (or says its track is locked); while the box is
-// open its clip has no outline or handles, and what lands in the box is the box's.
-// The handles but rotate show as crop marks while Alt is down with the pointer over the board, while a drag crops, and
-// while the clip menu's Crop has armed the clip; while handles show, a lone Alt never reaches the browser, so it does
-// not open a Windows browser's menu.
+// right-click, except on a resize handle, where Ctrl crops and the browser's right-click is kept from opening a menu.
+// A double-click on text opens its box for typing in place (or says its track is locked); while the box is open its
+// clip has no outline or handles, and what lands in the box is the box's.
+// The handles but rotate show as crop marks while Ctrl is down with the pointer over the board, while a drag crops, and
+// while the clip menu's Crop has armed the clip; while handles show, a lone Alt (which resizes about the middle) never
+// reaches the browser, so it does not open a Windows browser's menu.
 // Teammates' selections are outlined in their colours, outside the clip and under your own outline, with a name pill
 // each; only clips drawn now get them, and none while playing. They never change what a press takes.
 export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane: RefObject<HTMLElement | null> }): ReactNode {
@@ -132,7 +133,9 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const ref = useRef<HTMLDivElement>(null);
   const press = useRef<Press | null>(null);
   const follow = useRef<Follow | null>(null);
-  const altDown = useRef(false);
+  const ctrlDown = useRef(false);
+  // A Mac Ctrl press on a resize handle, whose right-click must open nothing, wherever the browser aims it.
+  const ctrlCrop = useRef(false);
   const pointerOver = useRef(false);
   const refreshRef = useRef<() => void>(() => {});
   const drag = useCanvasDrag(surface, pane);
@@ -158,7 +161,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         const f = follow.current;
         const followed = f?.client ? { grip: f.grip, at: { x: f.client.x - box.left, y: f.client.y - box.top } } : null;
         const cropping = drag.cropping.getState().clipId;
-        const marks = (clipId: string) => (altDown.current && pointerOver.current) || cropping === clipId || state.cropArmed === clipId;
+        const marks = (clipId: string) => (ctrlDown.current && pointerOver.current) || cropping === clipId || state.cropArmed === clipId;
         const cut = items.find((i) => i.clipId === cropping);
         // The text being typed in place shows its own box instead.
         const framed = items.filter((i) => i.clipId !== state.textEditId);
@@ -210,16 +213,16 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     };
   }, [surface, store, drawn, drag, presence]);
 
-  // While handles show, Alt is followed from the keys, and a lone Alt press or release is kept from the browser, which
+  // While handles show, Ctrl is followed from the keys, and a lone Alt press or release is kept from the browser, which
   // would otherwise focus its menu (Firefox opens it on the release). Alt with another key is left alone.
   useEffect(() => {
     if (!handlesShown) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Alt") e.preventDefault();
-      setAlt(e.altKey);
+      setCtrl(e.ctrlKey);
     };
-    // A window left with Alt held (Alt+Tab) never hears the release.
-    const onBlur = () => setAlt(false);
+    // A window left with a key held (Alt+Tab, Ctrl+Tab) never hears the release.
+    const onBlur = () => setCtrl(false);
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("keyup", onKey, true);
     window.addEventListener("blur", onBlur);
@@ -227,13 +230,13 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("keyup", onKey, true);
       window.removeEventListener("blur", onBlur);
-      altDown.current = false;
+      ctrlDown.current = false;
     };
   }, [handlesShown]);
 
-  function setAlt(down: boolean) {
-    if (altDown.current === down) return;
-    altDown.current = down;
+  function setCtrl(down: boolean) {
+    if (ctrlDown.current === down) return;
+    ctrlDown.current = down;
     refreshRef.current();
   }
 
@@ -275,10 +278,11 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     if (inTextEditor(e.target)) return;
-    if (isMac && e.ctrlKey) return;
+    const grip = gripOf(e.target);
+    if (isMac && e.ctrlKey && !resizes(grip)) return; // a right-click
+    ctrlCrop.current = isMac && e.ctrlKey;
     press.current = null;
     if (e.button !== 0) return;
-    const grip = gripOf(e.target);
     if (grip) return onHandleDown(e, grip);
     const view = surface.view();
     if (!view) return;
@@ -303,7 +307,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
 
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
     setOver(true);
-    setAlt(e.altKey);
+    setCtrl(e.ctrlKey);
     const f = follow.current;
     if (f && f.pointerId === e.pointerId) {
       f.client = { x: e.clientX, y: e.clientY };
@@ -315,6 +319,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   }
 
   function onPointerUp(e: PointerEvent<HTMLDivElement>) {
+    ctrlCrop.current = false;
     stopFollowing(e.pointerId);
     const p = press.current;
     press.current = null;
@@ -337,8 +342,13 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     // The box's own menu is the browser's, as in any text field.
     if (inTextEditor(e.target)) return;
     e.preventDefault();
-    if (!menu) return;
     const grip = gripOf(e.target);
+    // On a Mac, Ctrl on a resize handle crops: the right-click its press makes opens nothing.
+    if (ctrlCrop.current) {
+      ctrlCrop.current = false;
+      return;
+    }
+    if (!menu) return;
     const shown = grip ? drawn.getState().handles.find((h) => h.grip === grip) : undefined;
     if (shown) {
       openClipMenu(e, shown.clipId);
@@ -376,10 +386,12 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       onPointerUp={onPointerUp}
       onPointerCancel={(e) => {
         press.current = null;
+        ctrlCrop.current = false;
         stopFollowing(e.pointerId);
       }}
       onLostPointerCapture={(e) => {
         press.current = null;
+        ctrlCrop.current = false;
         stopFollowing(e.pointerId);
       }}
       onDoubleClick={onDoubleClick}
@@ -520,6 +532,9 @@ function inTextEditor(target: EventTarget): boolean {
 }
 
 // The handle a press or right-click landed on, if any.
+// A resize handle: any of the eight, not the turn handle.
+const resizes = (grip: Handle | "rotate" | null): grip is Handle => grip !== null && grip !== "rotate";
+
 function gripOf(target: EventTarget): Handle | "rotate" | null {
   if (!(target instanceof Element)) return null;
   const el = target.closest<HTMLElement>("[data-canvas-handle]");

@@ -60,7 +60,7 @@ export type EditorState = {
   rate: number; // negative when playing backward
   showSafeZones: boolean;
   viewAs: string | null; // the platform view drawn over the preview (platform-views.ts), or none
-  // The clip whose next handle drag on the preview crops without Alt (the clip menu's Crop). Another selection, Play,
+  // The clip whose next handle drag on the preview crops without Ctrl (the clip menu's Crop). Another selection, Play,
   // the clip's removal or the end of any drag on the preview clears it.
   cropArmed: string | null;
   // The text clip being typed in place on the preview. Its clip's removal, a lock or hide of its track, or the loss of

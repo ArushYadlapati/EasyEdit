@@ -189,7 +189,7 @@ function focusClip(store: EditorStore, clipId: string): void {
   state.select([clipId]);
 }
 
-// The clip menu's Crop: shows the clip with its crop marks, and its next handle drag on the preview crops without Alt.
+// The clip menu's Crop: shows the clip with its crop marks, and its next handle drag on the preview crops without Ctrl.
 // A notice says Alt (Option on a Mac) does it any time. Nothing for a viewer, while a drag or a typed value is live, or
 // for audio or a clip on a locked track. On a hidden track it says so instead.
 export function armCrop(store: EditorStore, clipId: string, isMac: boolean): void {

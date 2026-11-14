@@ -278,6 +278,36 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     if (session && e.pointerId === session.pointerId) end(false);
   }
 
+  // A lost capture is a release. On a quick flick the browser lets the capture go a few milliseconds before the
+  // pointerup, which then goes to whatever is under the pointer, so the drop is where the pointer was last seen. A
+  // track drag's click comes after that late pointerup, so it is swallowed from there.
+  function onLost(e: PointerEvent) {
+    const s = session;
+    if (!s || e.pointerId !== s.pointerId) return;
+    if (!s.started) return end(false);
+    resolve(s);
+    end(true);
+    if (s.kind === "track") swallowClickAfterUp(s.pointerId);
+  }
+
+  // Waits for the pointer's late pointerup, then swallows the click after it. A new press, or a second without one,
+  // stops the wait.
+  function swallowClickAfterUp(pointerId: number) {
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      stop();
+      swallowClick();
+    };
+    const stop = () => {
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointerdown", stop, true);
+      clearTimeout(timer);
+    };
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointerdown", stop, true);
+    const timer = setTimeout(stop, 1000);
+  }
+
   // Scrolling, zooming, a remote edit, losing edit access, the playhead or snapping changes where
   // the pointer puts the clips.
   function refresh() {
@@ -312,7 +342,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     pointerSource.addEventListener("pointermove", onMove as EventListener);
     pointerSource.addEventListener("pointerup", onUp as EventListener);
     pointerSource.addEventListener("pointercancel", onCancel as EventListener);
-    scroller.addEventListener("lostpointercapture", onCancel);
+    scroller.addEventListener("lostpointercapture", onLost);
     scroller.addEventListener("scroll", refresh);
     window.addEventListener("keydown", onKey, true);
     unsubscribe = store.subscribe((next, prev) => {
@@ -344,7 +374,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     pointerSource?.removeEventListener("pointercancel", onCancel as EventListener);
     pointerSource = null;
     if (scroller) {
-      scroller.removeEventListener("lostpointercapture", onCancel);
+      scroller.removeEventListener("lostpointercapture", onLost);
       scroller.removeEventListener("scroll", refresh);
       delete scroller.dataset.drag;
       try {

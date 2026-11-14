@@ -171,7 +171,7 @@ export function NumberInput({
     return s;
   }
 
-  // Escape, pointercancel or a lost capture: the value goes back to what it was.
+  // Escape, pointercancel, or a lost capture before the press travels: the value goes back to what it was.
   function cancel() {
     if (!end()) return;
     setScrubText(null);
@@ -272,6 +272,22 @@ export function NumberInput({
     onPointerUp?.(event);
     const s = press.current;
     if (!s || event.pointerId !== s.pointerId) return;
+    release(s);
+  }
+
+  // A lost capture is a release, once the press has travelled: on a quick flick the browser lets the capture go just
+  // before the pointerup, which then goes to whatever is under the pointer.
+  function handleLostPointerCapture(event: PointerEvent<HTMLInputElement>) {
+    onLostPointerCapture?.(event);
+    const s = press.current;
+    if (!s || event.pointerId !== s.pointerId) return;
+    if (s.scrubbing) release(s);
+    else cancel();
+  }
+
+  // The drop: a scrub saves the value shown, with a move whose frame had not run worked out first; a press that never
+  // travelled types in the field.
+  function release(s: Scrub) {
     if (s.frame !== null) {
       // Let go before the frame ran: worked out now.
       cancelAnimationFrame(s.frame);
@@ -316,10 +332,7 @@ export function NumberInput({
           onPointerCancel?.(event);
           if (press.current?.pointerId === event.pointerId) cancel();
         }}
-        onLostPointerCapture={(event) => {
-          onLostPointerCapture?.(event);
-          if (press.current?.pointerId === event.pointerId) cancel();
-        }}
+        onLostPointerCapture={handleLostPointerCapture}
         onMouseDown={(event: MouseEvent<HTMLInputElement>) => {
           onMouseDown?.(event);
           // Some browsers still focus on the mouse event that follows a held press.

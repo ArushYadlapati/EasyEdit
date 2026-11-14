@@ -41,9 +41,8 @@ const itemOf = (doc: TimelineDoc, clipId: string, frame = 10): CanvasItem =>
 
 type Mods = Partial<Omit<CanvasDragInput, "pointer">>;
 
-// The free key is held, so a handle drag here squashes or stretches unless Shift is down; canvas-resize-keys.test.ts
-// covers the drag without it.
-const input = (pointer: Point, mods: Mods = {}): CanvasDragInput => ({ pointer, shift: false, alt: false, free: true, snapping: false, snapPx: 12, ...mods });
+// A handle drag here keeps the shape unless Shift is down; canvas-resize-keys.test.ts covers the keys in full.
+const input = (pointer: Point, mods: Mods = {}): CanvasDragInput => ({ pointer, shift: false, crop: false, centre: false, snapping: false, snapPx: 12, ...mods });
 
 function dragOn(doc: TimelineDoc, clipId: string, grip: Grip, grab: Point, drawn?: Point) {
   const drag = beginCanvasDrag(doc, itemOf(doc, clipId), grip, grab, drawn);
@@ -140,9 +139,9 @@ describe("moves and turns", () => {
     expect(move(P(133.01, 960)).ops).toEqual([]);
     expect(dragOn(sampleDoc(), "x1", "rotate", P(540, 860))(P(540, 860)).ops).toEqual([]);
     expect(image("e", P(1080, 960))(P(1080, 960)).ops).toEqual([]);
-    expect(image("e", P(1080, 960))(P(1080, 960), { alt: true }).ops).toEqual([]);
-    expect(image("e", P(1080, 960))(P(1080, 960), { alt: true, shift: true }).ops).toEqual([]);
-    expect(image("se", P(1080, 1230))(P(1080, 1230), { shift: true }).ops).toEqual([]);
+    expect(image("e", P(1080, 960))(P(1080, 960), { crop: true }).ops).toEqual([]);
+    expect(image("e", P(1080, 960))(P(1080, 960), { crop: true, shift: true }).ops).toEqual([]);
+    expect(image("se", P(1080, 1230))(P(1080, 1230)).ops).toEqual([]);
   });
 
   it("a quarter turn clockwise adds 90°", () => {
@@ -198,23 +197,23 @@ describe("moves and turns", () => {
 
 describe("the image resized and cropped", () => {
   it.each([
-    ["1: e in", "e", P(1080, 960), P(972, 960), {}, {}, { x: 0.45, stretch: 0.9 }, "size change"],
-    ["2: e into the margin", "e", P(1080, 960), P(1188, 960), {}, {}, { x: 0.55, stretch: 1.1 }, "size change"],
-    ["3: turned 90°", "e", P(540, 1500), P(540, 1446), { rotation: 90 }, {}, { y: 0.4859, stretch: 0.95 }, "size change"],
-    ["4: se free", "se", P(1080, 1230), P(1134, 1284), {}, {}, { x: 0.525, y: 0.5141, scale: 1.1, stretch: 0.9545 }, "size change"],
-    ["5: se Shift", "se", P(1080, 1230), P(1134, 1230), {}, { shift: true }, { x: 0.52, y: 0.5056, scale: 1.04 }, "size change"],
-    ["6: se across", "se", P(1080, 1230), P(1134, 1230), {}, {}, { x: 0.525, stretch: 1.05 }, "size change"],
-    ["7: e Shift", "e", P(1080, 960), P(972, 960), {}, { shift: true }, { x: 0.45, scale: 0.9 }, "size change"],
-    ["8: e past the anchor", "e", P(1080, 960), P(-200, 960), {}, {}, { x: 0.005, stretch: 0.01 }, "size change"],
-    ["9: w Alt", "w", P(0, 960), P(108, 960), {}, { alt: true }, { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } }, "crop"],
-    ["10: w Alt at scale 2", "w", P(-540, 960), P(-432, 960), { scale: 2 }, { alt: true }, { crop: { left: 0.05, top: 0, right: 0, bottom: 0 } }, "crop"],
-    ["11: w Alt far in with right 0.5", "w", P(0, 960), P(2000, 960), { crop: { left: 0, top: 0, right: 0.5, bottom: 0 } }, { alt: true }, { crop: { left: 0.45, top: 0, right: 0.5, bottom: 0 } }, "crop"],
-    ["12: nw Alt+Shift", "nw", P(0, 690), P(108, 690), {}, { alt: true, shift: true }, { crop: { left: 0.08, top: 0.08, right: 0, bottom: 0 } }, "crop"],
-    ["13: e Alt+Shift", "e", P(1080, 960), P(972, 960), {}, { alt: true, shift: true }, { crop: { left: 0, top: 0.05, right: 0.1, bottom: 0.05 } }, "crop"],
-    ["14: e on a cropped image", "e", P(1080, 960), P(972, 960), { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } }, {}, { x: 0.4556, stretch: 0.8889 }, "size change"],
-    ["16: e Shift at scale 20", "e", P(11340, 960), P(11330, 960), { scale: 20 }, { shift: true }, { x: 0.4954, scale: 19.9907 }, "size change"],
-    ["ruling: nw Alt free", "nw", P(0, 690), P(108, 744), {}, { alt: true }, { crop: { left: 0.1, top: 0.1, right: 0, bottom: 0 } }, "crop"],
-    ["ruling: se Shift far past the anchor", "se", P(1080, 1230), P(-2000, -2000), {}, { shift: true }, { x: 0.005, y: 0.3608, scale: 0.01 }, "size change"],
+    ["1: e in", "e", P(1080, 960), P(972, 960), {}, { shift: true }, { x: 0.45, stretch: 0.9 }, "size change"],
+    ["2: e into the margin", "e", P(1080, 960), P(1188, 960), {}, { shift: true }, { x: 0.55, stretch: 1.1 }, "size change"],
+    ["3: turned 90°", "e", P(540, 1500), P(540, 1446), { rotation: 90 }, { shift: true }, { y: 0.4859, stretch: 0.95 }, "size change"],
+    ["4: se free", "se", P(1080, 1230), P(1134, 1284), {}, { shift: true }, { x: 0.525, y: 0.5141, scale: 1.1, stretch: 0.9545 }, "size change"],
+    ["5: se Shift", "se", P(1080, 1230), P(1134, 1230), {}, {}, { x: 0.52, y: 0.5056, scale: 1.04 }, "size change"],
+    ["6: se across", "se", P(1080, 1230), P(1134, 1230), {}, { shift: true }, { x: 0.525, stretch: 1.05 }, "size change"],
+    ["7: e Shift", "e", P(1080, 960), P(972, 960), {}, {}, { x: 0.45, scale: 0.9 }, "size change"],
+    ["8: e past the anchor", "e", P(1080, 960), P(-200, 960), {}, { shift: true }, { x: 0.005, stretch: 0.01 }, "size change"],
+    ["9: w crop", "w", P(0, 960), P(108, 960), {}, { crop: true }, { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } }, "crop"],
+    ["10: w crop at scale 2", "w", P(-540, 960), P(-432, 960), { scale: 2 }, { crop: true }, { crop: { left: 0.05, top: 0, right: 0, bottom: 0 } }, "crop"],
+    ["11: w crop far in with right 0.5", "w", P(0, 960), P(2000, 960), { crop: { left: 0, top: 0, right: 0.5, bottom: 0 } }, { crop: true }, { crop: { left: 0.45, top: 0, right: 0.5, bottom: 0 } }, "crop"],
+    ["12: nw crop+Shift", "nw", P(0, 690), P(108, 690), {}, { crop: true, shift: true }, { crop: { left: 0.08, top: 0.08, right: 0, bottom: 0 } }, "crop"],
+    ["13: e crop+Shift", "e", P(1080, 960), P(972, 960), {}, { crop: true, shift: true }, { crop: { left: 0, top: 0.05, right: 0.1, bottom: 0.05 } }, "crop"],
+    ["14: e on a cropped image", "e", P(1080, 960), P(972, 960), { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } }, { shift: true }, { x: 0.4556, stretch: 0.8889 }, "size change"],
+    ["16: e Shift at scale 20", "e", P(11340, 960), P(11330, 960), { scale: 20 }, {}, { x: 0.4954, scale: 19.9907 }, "size change"],
+    ["ruling: nw crop free", "nw", P(0, 690), P(108, 744), {}, { crop: true }, { crop: { left: 0.1, top: 0.1, right: 0, bottom: 0 } }, "crop"],
+    ["ruling: se Shift far past the anchor", "se", P(1080, 1230), P(-2000, -2000), {}, {}, { x: 0.005, y: 0.3608, scale: 0.01 }, "size change"],
   ] as const)("%s", (_, grip, grab, pointer, transform, mods, expected, label) => {
     const r = image(grip, grab, transform)(pointer, mods);
     expect(transformOf(r)).toEqual(expected);
@@ -227,7 +226,7 @@ describe("the image resized and cropped", () => {
     const a = Math.PI / 6;
     const u = P(Math.cos(a), Math.sin(a));
     const e = P(540 + 540 * u.x, 960 + 540 * u.y);
-    expect(transformOf(image("e", e, { rotation: 30 })(P(e.x + 50 * u.x, e.y + 50 * u.y)))).toEqual({ x: 0.52, y: 0.5065, stretch: 1.0463 });
+    expect(transformOf(image("e", e, { rotation: 30 })(P(e.x + 50 * u.x, e.y + 50 * u.y), { shift: true }))).toEqual({ x: 0.52, y: 0.5065, stretch: 1.0463 });
   });
 
   it("a drag across a side's axis changes nothing", () => {
@@ -236,48 +235,48 @@ describe("the image resized and cropped", () => {
   });
 
   it("n and s change the height and keep the opposite side", () => {
-    expect(transformOf(image("s", P(540, 1230))(P(540, 1284)))).toEqual({ y: 0.5141, scale: 1.1, stretch: 0.9091 });
-    expect(transformOf(image("n", P(540, 690))(P(540, 744)))).toEqual({ y: 0.5141, scale: 0.9, stretch: 1.1111 });
-    expect(transformOf(image("n", P(540, 690))(P(540, 744), { shift: true }))).toEqual({ y: 0.5141, scale: 0.9 });
+    expect(transformOf(image("s", P(540, 1230))(P(540, 1284), { shift: true }))).toEqual({ y: 0.5141, scale: 1.1, stretch: 0.9091 });
+    expect(transformOf(image("n", P(540, 690))(P(540, 744), { shift: true }))).toEqual({ y: 0.5141, scale: 0.9, stretch: 1.1111 });
+    expect(transformOf(image("n", P(540, 690))(P(540, 744)))).toEqual({ y: 0.5141, scale: 0.9 });
   });
 
   it("w and sw keep the opposite side", () => {
-    expect(transformOf(image("w", P(0, 960))(P(108, 960)))).toEqual({ x: 0.55, stretch: 0.9 });
-    expect(transformOf(image("sw", P(0, 1230))(P(-54, 1284)))).toEqual({ x: 0.475, y: 0.5141, scale: 1.1, stretch: 0.9545 });
-    expect(transformOf(image("ne", P(1080, 690))(P(1134, 636), { shift: true }))).toEqual({ x: 0.53, y: 0.4916, scale: 1.06 });
+    expect(transformOf(image("w", P(0, 960))(P(108, 960), { shift: true }))).toEqual({ x: 0.55, stretch: 0.9 });
+    expect(transformOf(image("sw", P(0, 1230))(P(-54, 1284), { shift: true }))).toEqual({ x: 0.475, y: 0.5141, scale: 1.1, stretch: 0.9545 });
+    expect(transformOf(image("ne", P(1080, 690))(P(1134, 636)))).toEqual({ x: 0.53, y: 0.4916, scale: 1.06 });
   });
 
   it("a drawn factor never passes 10 when it starts below", () => {
-    expect(transformOf(image("e", P(1080, 960))(P(20000, 960)))).toEqual({ x: 5, stretch: 10 });
-    expect(transformOf(image("se", P(1080, 1230))(P(20000, 20000), { shift: true }))).toEqual({ x: 5, y: 1.7656, scale: 10 });
+    expect(transformOf(image("e", P(1080, 960))(P(20000, 960), { shift: true }))).toEqual({ x: 5, stretch: 10 });
+    expect(transformOf(image("se", P(1080, 1230))(P(20000, 20000)))).toEqual({ x: 5, y: 1.7656, scale: 10 });
   });
 
   it("a factor already below the minimum does not jump up to it", () => {
     // Drawn 0.005 wide: a drag inward keeps that, it is not pulled up to 0.01.
-    expect(image("e", P(542.7, 960), { stretch: 0.005 })(P(541.7, 960)).ops).toEqual([]);
-    expect(transformOf(image("e", P(542.7, 960), { stretch: 0.005 })(P(543.78, 960)))).toEqual({ x: 0.5005, stretch: 0.006 });
+    expect(image("e", P(542.7, 960), { stretch: 0.005 })(P(541.7, 960), { shift: true }).ops).toEqual([]);
+    expect(transformOf(image("e", P(542.7, 960), { stretch: 0.005 })(P(543.78, 960), { shift: true }))).toEqual({ x: 0.5005, stretch: 0.006 });
   });
 
   it("n or s past the anchor stops at the minimum", () => {
-    expect(transformOf(image("s", P(540, 1230))(P(540, -2000)))).toEqual({ y: 0.3608, scale: 0.01, stretch: 100 });
+    expect(transformOf(image("s", P(540, 1230))(P(540, -2000), { shift: true }))).toEqual({ y: 0.3608, scale: 0.01, stretch: 100 });
   });
 
   it("Shift clamps k by the height's range too", () => {
     // Stretched to a quarter: the height reaches 10 when the width is only 2.5.
-    expect(transformOf(image("se", P(675, 1230), { stretch: 0.25 })(P(30000, 30000), { shift: true }))).toEqual({ x: 1.625, y: 1.7656, scale: 10 });
+    expect(transformOf(image("se", P(675, 1230), { stretch: 0.25 })(P(30000, 30000)))).toEqual({ x: 1.625, y: 1.7656, scale: 10 });
   });
 
   it("Shift clamps one factor so both stay in range", () => {
     // Stretched 4 wide: the width reaches 10 when the height is only 2.5.
-    const r = image("se", P(2700, 1230), { stretch: 4 })(P(30000, 30000), { shift: true });
+    const r = image("se", P(2700, 1230), { stretch: 4 })(P(30000, 30000));
     expect(transformOf(r)).toEqual({ x: 3.5, y: 0.7109, scale: 2.5 });
   });
 
   it("text squashes and stretches about its own box", () => {
-    expect(transformOf(dragOn(sampleDoc(), "x1", "e", P(572, 960))(P(604, 960)))).toEqual({ x: 0.5148, stretch: 1.5 });
+    expect(transformOf(dragOn(sampleDoc(), "x1", "e", P(572, 960))(P(604, 960), { shift: true }))).toEqual({ x: 0.5148, stretch: 1.5 });
     const left = leftAligned(sampleDoc());
     expect(itemOf(left, "x1").full).toMatchObject({ left: -486, right: -422 });
-    expect(transformOf(dragOn(left, "x1", "e", P(118, 960))(P(150, 960)))).toEqual({ x: 0.725, stretch: 1.5 });
+    expect(transformOf(dragOn(left, "x1", "e", P(118, 960))(P(150, 960), { shift: true }))).toEqual({ x: 0.725, stretch: 1.5 });
   });
 
   it("a clamped handle starts the cut where it is drawn", () => {
@@ -285,120 +284,120 @@ describe("the image resized and cropped", () => {
     expect(itemOf(doc, "i1", 0).full.right).toBeCloseTo(1706.6667, 3);
     const w = itemOf(doc, "i1", 0).full.left + 540;
     const crop = dragOn(doc, "i1", "w", P(w, 960), P(-8, 960));
-    expect(transformOf(crop(P(w + 10, 960), { alt: true }))).toEqual({ crop: { left: 0.3424, top: 0, right: 0, bottom: 0 } });
+    expect(transformOf(crop(P(w + 10, 960), { crop: true }))).toEqual({ crop: { left: 0.3424, top: 0, right: 0, bottom: 0 } });
     // Only once the pointer moves.
-    expect(crop(P(w, 960), { alt: true }).ops).toEqual([]);
+    expect(crop(P(w, 960), { crop: true }).ops).toEqual([]);
     // A resize ignores it.
-    expect(transformOf(crop(P(w + 10, 960)))).toEqual({ x: 0.5046, stretch: 0.9971 });
+    expect(transformOf(crop(P(w + 10, 960), { shift: true }))).toEqual({ x: 0.5046, stretch: 0.9971 });
   });
 
   it("a drawn point inside the current cut keeps the press value", () => {
     const doc = imageDoc({ crop: { left: 0.4, top: 0, right: 0, bottom: 0 } }, "wide", "cover");
     const w = itemOf(doc, "i1", 0).rect.left + 540;
     const crop = dragOn(doc, "i1", "w", P(w, 960), P(-8, 960));
-    expect(transformOf(crop(P(w + 10, 960), { alt: true }))).toEqual({ crop: { left: 0.4029, top: 0, right: 0, bottom: 0 } });
+    expect(transformOf(crop(P(w + 10, 960), { crop: true }))).toEqual({ crop: { left: 0.4029, top: 0, right: 0, bottom: 0 } });
   });
 
   it("a drawn corner starts both its sides", () => {
     // The image's ne corner drawn 100 px in from each side it moves.
     const crop = dragOn(imageDoc(), "i1", "ne", P(1080, 690), P(980, 790));
-    expect(transformOf(crop(P(1081, 689), { alt: true }))).toEqual({ crop: { left: 0, top: 0.1833, right: 0.0917, bottom: 0 } });
+    expect(transformOf(crop(P(1081, 689), { crop: true }))).toEqual({ crop: { left: 0, top: 0.1833, right: 0.0917, bottom: 0 } });
   });
 
   it("crop sides stay in range", () => {
     // Out past the full box: never below 0.
-    expect(image("e", P(1080, 960))(P(1300, 960), { alt: true }).ops).toEqual([]);
-    expect(transformOf(image("e", P(972, 960), { crop: { left: 0, top: 0, right: 0.1, bottom: 0 } })(P(1300, 960), { alt: true }))).toEqual({
+    expect(image("e", P(1080, 960))(P(1300, 960), { crop: true }).ops).toEqual([]);
+    expect(transformOf(image("e", P(972, 960), { crop: { left: 0, top: 0, right: 0.1, bottom: 0 } })(P(1300, 960), { crop: true }))).toEqual({
       crop: { left: 0, top: 0, right: 0, bottom: 0 },
     });
     // In past the opposite side: 5% kept.
-    expect(transformOf(image("s", P(540, 1230))(P(540, 0), { alt: true }))).toEqual({ crop: { left: 0, top: 0, right: 0, bottom: 0.95 } });
-    expect(transformOf(image("n", P(540, 690), { crop: { left: 0, top: 0, right: 0, bottom: 0.3 } })(P(540, 5000), { alt: true }))).toEqual({
+    expect(transformOf(image("s", P(540, 1230))(P(540, 0), { crop: true }))).toEqual({ crop: { left: 0, top: 0, right: 0, bottom: 0.95 } });
+    expect(transformOf(image("n", P(540, 690), { crop: { left: 0, top: 0, right: 0, bottom: 0.3 } })(P(540, 5000), { crop: true }))).toEqual({
       crop: { left: 0, top: 0.65, right: 0, bottom: 0.3 },
     });
   });
 
   it("a crop on a turned clip follows its axes", () => {
     // Turned 90°: the image's w side is at the top of the screen; moving it down crops the left.
-    expect(transformOf(image("w", P(540, 420), { rotation: 90 })(P(540, 528), { alt: true }))).toEqual({ crop: { left: 0.1, top: 0, right: 0, bottom: 0 } });
+    expect(transformOf(image("w", P(540, 420), { rotation: 90 })(P(540, 528), { crop: true }))).toEqual({ crop: { left: 0.1, top: 0, right: 0, bottom: 0 } });
   });
 
-  it("Alt+Shift keeps the kept part's shape and range", () => {
+  it("crop+Shift keeps the kept part's shape and range", () => {
     // A side pulled in far: the kept width stops at 5%, the height shrinks about its middle with it.
-    expect(transformOf(image("e", P(1080, 960))(P(-5000, 960), { alt: true, shift: true }))).toEqual({
+    expect(transformOf(image("e", P(1080, 960))(P(-5000, 960), { crop: true, shift: true }))).toEqual({
       crop: { left: 0, top: 0.475, right: 0.95, bottom: 0.475 },
     });
     // Out past the full box: the kept part cannot grow past it.
-    expect(image("se", P(1080, 1230))(P(1500, 1500), { alt: true, shift: true }).ops).toEqual([]);
+    expect(image("se", P(1080, 1230))(P(1500, 1500), { crop: true, shift: true }).ops).toEqual([]);
     // Off-middle: the side stops when the other axis reaches its edge.
-    const r = image("e", P(540, 879), { crop: { left: 0, top: 0.05, right: 0.5, bottom: 0.35 } })(P(5000, 879), { alt: true, shift: true });
+    const r = image("e", P(540, 879), { crop: { left: 0, top: 0.05, right: 0.5, bottom: 0.35 } })(P(5000, 879), { crop: true, shift: true });
     expect(transformOf(r)).toEqual({ crop: { left: 0, top: 0, right: 0.4167, bottom: 0.3 } });
     // A side on the down axis.
-    expect(transformOf(image("s", P(540, 1230))(P(540, 1176), { alt: true, shift: true }))).toEqual({
+    expect(transformOf(image("s", P(540, 1230))(P(540, 1176), { crop: true, shift: true }))).toEqual({
       crop: { left: 0.05, top: 0, right: 0.05, bottom: 0.1 },
     });
     // A corner pulled past its opposite corner: 5% kept each way.
-    expect(transformOf(image("se", P(1080, 1230))(P(-3000, -3000), { alt: true, shift: true }))).toEqual({
+    expect(transformOf(image("se", P(1080, 1230))(P(-3000, -3000), { crop: true, shift: true }))).toEqual({
       crop: { left: 0, top: 0, right: 0.95, bottom: 0.95 },
     });
   });
 
   it("a drawn point past the far side still keeps 5%", () => {
     const crop = dragOn(imageDoc(), "i1", "w", P(0, 960), P(1100, 960));
-    expect(transformOf(crop(P(1, 960), { alt: true, shift: true }))).toEqual({ crop: { left: 0.95, top: 0, right: 0, bottom: 0 } });
+    expect(transformOf(crop(P(1, 960), { crop: true, shift: true }))).toEqual({ crop: { left: 0.95, top: 0, right: 0, bottom: 0 } });
   });
 
-  it("Alt+Shift on a corner uses the kept part's own diagonal", () => {
+  it("crop+Shift on a corner uses the kept part's own diagonal", () => {
     // Kept nw at (108, 690), se at (1080, 1230): D = (972, 540); a tenth of D back gives k 0.9.
-    const r = image("se", P(1080, 1230), { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } })(P(982.8, 1176), { alt: true, shift: true });
+    const r = image("se", P(1080, 1230), { crop: { left: 0.1, top: 0, right: 0, bottom: 0 } })(P(982.8, 1176), { crop: true, shift: true });
     expect(transformOf(r)).toEqual({ crop: { left: 0.1, top: 0, right: 0.09, bottom: 0.1 } });
   });
 
-  it("Alt+Shift stops where the first side reaches the full box", () => {
+  it("crop+Shift stops where the first side reaches the full box", () => {
     // A corner: the bottom stops when the right reaches 0.
-    expect(transformOf(image("se", P(1080, 1068), { crop: { left: 0, top: 0, right: 0.1, bottom: 0.3 } })(P(3000, 3000), { alt: true, shift: true }))).toEqual({
+    expect(transformOf(image("se", P(1080, 1068), { crop: { left: 0, top: 0, right: 0.1, bottom: 0.3 } })(P(3000, 3000), { crop: true, shift: true }))).toEqual({
       crop: { left: 0, top: 0, right: 0, bottom: 0.2222 },
     });
     // A side on the across axis: the dragged side reaches the full box first.
-    expect(transformOf(image("e", P(864, 960), { crop: { left: 0, top: 0.3, right: 0.2, bottom: 0.3 } })(P(5000, 960), { alt: true, shift: true }))).toEqual({
+    expect(transformOf(image("e", P(864, 960), { crop: { left: 0, top: 0.3, right: 0.2, bottom: 0.3 } })(P(5000, 960), { crop: true, shift: true }))).toEqual({
       crop: { left: 0, top: 0.25, right: 0, bottom: 0.25 },
     });
     // A side on the down axis: the other axis reaches the full box first.
-    expect(transformOf(image("s", P(540, 960), { crop: { left: 0.05, top: 0, right: 0.05, bottom: 0.5 } })(P(540, 5000), { alt: true, shift: true }))).toEqual({
+    expect(transformOf(image("s", P(540, 960), { crop: { left: 0.05, top: 0, right: 0.05, bottom: 0.5 } })(P(540, 5000), { crop: true, shift: true }))).toEqual({
       crop: { left: 0, top: 0, right: 0, bottom: 0.4444 },
     });
   });
 
-  it("Alt+Shift keeps 5% of the narrower share", () => {
-    expect(transformOf(image("e", P(1080, 960), { crop: { left: 0, top: 0.3, right: 0, bottom: 0.3 } })(P(-5000, 960), { alt: true, shift: true }))).toEqual({
+  it("crop+Shift keeps 5% of the narrower share", () => {
+    expect(transformOf(image("e", P(1080, 960), { crop: { left: 0, top: 0.3, right: 0, bottom: 0.3 } })(P(-5000, 960), { crop: true, shift: true }))).toEqual({
       crop: { left: 0, top: 0.475, right: 0.875, bottom: 0.475 },
     });
   });
 
-  it("Alt+Shift on w and n", () => {
-    expect(transformOf(image("w", P(0, 960))(P(108, 960), { alt: true, shift: true }))).toEqual({ crop: { left: 0.1, top: 0.05, right: 0, bottom: 0.05 } });
-    expect(transformOf(image("n", P(540, 690))(P(540, 744), { alt: true, shift: true }))).toEqual({ crop: { left: 0.05, top: 0.1, right: 0.05, bottom: 0 } });
+  it("crop+Shift on w and n", () => {
+    expect(transformOf(image("w", P(0, 960))(P(108, 960), { crop: true, shift: true }))).toEqual({ crop: { left: 0.1, top: 0.05, right: 0, bottom: 0.05 } });
+    expect(transformOf(image("n", P(540, 690))(P(540, 744), { crop: true, shift: true }))).toEqual({ crop: { left: 0.05, top: 0.1, right: 0.05, bottom: 0 } });
   });
 
   it("text crops by hand about its own box", () => {
-    const r = dragOn(sampleDoc(), "x1", "w", P(508, 960))(P(524, 960), { alt: true });
+    const r = dragOn(sampleDoc(), "x1", "w", P(508, 960))(P(524, 960), { crop: true });
     expect(r.ops).toEqual([{ op: "update_clip", clipId: "x1", patch: { transform: { crop: { left: 0.25, top: 0, right: 0, bottom: 0 } } } }]);
     expect(r.label).toBe("crop");
-    expect(transformOf(dragOn(leftAligned(sampleDoc()), "x1", "e", P(118, 960))(P(102, 960), { alt: true }))).toEqual({
+    expect(transformOf(dragOn(leftAligned(sampleDoc()), "x1", "e", P(118, 960))(P(102, 960), { crop: true }))).toEqual({
       crop: { left: 0, top: 0, right: 0.25, bottom: 0 },
     });
   });
 
-  it("Shift and Alt are read on every resolve", () => {
+  it("Shift and the crop flag are read on every resolve", () => {
     const se = image("se", P(1080, 1230));
     const pointer = P(1134, 1230);
-    expect(transformOf(se(pointer, { shift: true }))).toEqual({ x: 0.52, y: 0.5056, scale: 1.04 });
-    expect(transformOf(se(pointer))).toEqual({ x: 0.525, stretch: 1.05 });
-    // Alt out past the full box cuts nothing, and is still a crop.
-    expect(se(pointer, { alt: true })).toEqual({ ops: [], label: "crop", guides: { x: null, y: null } });
-    expect(transformOf(se(pointer, { shift: true }))).toEqual({ x: 0.52, y: 0.5056, scale: 1.04 });
+    expect(transformOf(se(pointer))).toEqual({ x: 0.52, y: 0.5056, scale: 1.04 });
+    expect(transformOf(se(pointer, { shift: true }))).toEqual({ x: 0.525, stretch: 1.05 });
+    // A crop out past the full box cuts nothing, and is still a crop.
+    expect(se(pointer, { crop: true })).toEqual({ ops: [], label: "crop", guides: { x: null, y: null } });
+    expect(transformOf(se(pointer))).toEqual({ x: 0.52, y: 0.5056, scale: 1.04 });
     const inward = P(1026, 1176);
-    expect(transformOf(se(inward, { alt: true }))).toEqual({ crop: { left: 0, top: 0, right: 0.05, bottom: 0.1 } });
-    expect(transformOf(se(inward))).toEqual({ x: 0.475, y: 0.4859, scale: 0.9, stretch: 1.0556 });
+    expect(transformOf(se(inward, { crop: true }))).toEqual({ crop: { left: 0, top: 0, right: 0.05, bottom: 0.1 } });
+    expect(transformOf(se(inward, { shift: true }))).toEqual({ x: 0.475, y: 0.4859, scale: 0.9, stretch: 1.0556 });
   });
 });

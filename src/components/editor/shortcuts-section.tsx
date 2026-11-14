@@ -12,13 +12,14 @@ import { useIsMac } from "./use-shortcuts";
 const GROUPS: Shortcut["group"][] = ["Playback", "Editing", "Timeline", "General"];
 const LABELS = new Map<CommandId, string>(SHORTCUTS.map((s) => [s.command, s.label]));
 
-// What the mouse does on the preview with a key held. These are not shortcuts, so they cannot be changed. "Free" is
-// Cmd on a Mac and Ctrl or the Windows key elsewhere.
-type MouseRow = { label: string; keys: ("Shift" | "Alt" | "Free")[]; action: string };
+// What the mouse does on the preview with a key held. These are not shortcuts, so they cannot be changed. On a Mac Alt
+// is written ⌥ and Ctrl ⌃.
+type MouseRow = { label: string; keys: ("Shift" | "Alt" | "Ctrl")[]; action: string };
 const PREVIEW_ROWS: MouseRow[] = [
   { label: "Move along one line", keys: ["Shift"], action: "drag a clip" },
-  { label: "Resize freely (squash or stretch)", keys: ["Free"], action: "drag a handle" },
-  { label: "Crop instead of resizing", keys: ["Alt"], action: "drag a handle" },
+  { label: "Resize freely (squash or stretch)", keys: ["Shift"], action: "drag a handle" },
+  { label: "Resize from the middle", keys: ["Alt"], action: "drag a handle" },
+  { label: "Crop instead of resizing", keys: ["Ctrl"], action: "drag a handle" },
   { label: "Turn in 15° steps", keys: ["Shift"], action: "drag the turn handle" },
   { label: "Type in place", keys: [], action: "double-click text" },
 ];
@@ -45,16 +46,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function MouseKey({ name, isMac }: { name: MouseRow["keys"][number]; isMac: boolean }) {
-  if (name === "Free" && !isMac) {
-    return (
-      <>
-        <Kbd>Ctrl</Kbd>
-        <span className="text-ed-muted">or</span>
-        <Kbd>Win</Kbd>
-      </>
-    );
-  }
-  return <Kbd>{name === "Free" ? "⌘" : name === "Alt" && isMac ? "⌥" : name}</Kbd>;
+  return <Kbd>{isMac && name === "Alt" ? "⌥" : isMac && name === "Ctrl" ? "⌃" : name}</Kbd>;
 }
 
 function Keys({ keys, dim, isMac }: { keys: string[]; dim: boolean; isMac: boolean }) {

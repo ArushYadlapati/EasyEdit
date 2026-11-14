@@ -8,7 +8,7 @@ import { findClip } from "./store";
 
 // Moving, turning, resizing and cropping a clip on the preview by hand. A drag records the clip as it was at the press;
 // resolveCanvasDrag turns a pointer position (project pixels) and the modifier keys held now into ops, starting again
-// from the press every time, so Shift, Alt and the free key can change mid-drag. Whether the ops may be applied is
+// from the press every time, so the keys can change mid-drag. Whether the ops may be applied is
 // left to applyOps. Snapping only pulls a clip toward a centre line or a quarter turn it is closer to than at the
 // press, so a clip that starts on one, or moves away from one, follows the pointer.
 
@@ -41,9 +41,11 @@ export function beginCanvasDrag(doc: TimelineDoc, item: CanvasItem, grip: Grip, 
   };
 }
 
-// pointer in project pixels; free: the free key is held (Cmd, or away from a Mac Ctrl or the Windows key), so a
-// handle drag without Shift or Alt squashes or stretches; snapPx: how near the frame's centre lines a moved centre snaps, in project pixels.
-export type CanvasDragInput = { pointer: Point; shift: boolean; alt: boolean; free: boolean; snapping: boolean; snapPx: number };
+// pointer in project pixels. shift: a move keeps to one axis, a turn steps by 15°, a handle drag squashes or stretches,
+// and a crop keeps the kept part's shape. crop: a handle drag crops instead of resizing (Ctrl, or the clip menu's
+// Crop). centre: a handle drag resizes about the box's middle, so the opposite side moves too (Alt, or Option on a
+// Mac). snapPx: how near the frame's centre lines a moved centre snaps, in project pixels.
+export type CanvasDragInput = { pointer: Point; shift: boolean; crop: boolean; centre: boolean; snapping: boolean; snapPx: number };
 
 // guides: the frame's centre lines a moved clip's centre snapped onto, in project pixels.
 export type CanvasDragResult = { ops: OpInput[]; label: "position change" | "size change" | "crop"; guides: { x: number | null; y: number | null } };
@@ -53,7 +55,7 @@ const NO_GUIDES = { x: null, y: null };
 export function resolveCanvasDrag(drag: CanvasDrag, input: CanvasDragInput): CanvasDragResult {
   if (drag.type === "move") return resolveMove(drag, input);
   if (drag.type === "rotate") return resolveRotate(drag, input);
-  return input.alt ? resolveCrop(drag, input) : resolveResize(drag, input);
+  return input.crop ? resolveCrop(drag, input) : resolveResize(drag, input);
 }
 
 const round4 = (n: number) => Number(n.toFixed(4)) + 0; // + 0 turns −0 into 0
@@ -142,8 +144,8 @@ const factorRange = (now: number) => ({ lo: Math.min(SCALE_MIN, now), hi: Math.m
 
 type Resize = Extract<CanvasDrag, { type: "resize" }>;
 
-// A side or corner moves, the opposite side or corner stays put in the clip's turned axes. The shape is kept unless
-// the free key is held without Shift.
+// A side or corner moves and the opposite side or corner stays put in the clip's turned axes; with centre the box's
+// middle stays put instead, so the opposite side moves the other way as far. The shape is kept unless Shift is held.
 function resolveResize(drag: Resize, input: CanvasDragInput): CanvasDragResult {
   const { item, frame } = drag;
   const { hx, hy } = HANDLE_SIGNS[drag.handle];
@@ -154,20 +156,23 @@ function resolveResize(drag: Resize, input: CanvasDragInput): CanvasDragResult {
   const kh = K.bottom - K.top;
   const { sx, sy } = item;
   const G = rectPoint(K, hx, hy);
-  const A = rectPoint(K, -hx, -hy);
+  // What stays put: the opposite side or corner, or the middle. The dragged side is reach from it along each axis.
+  const A = input.centre ? rectPoint(K, 0, 0) : rectPoint(K, -hx, -hy);
+  const reachX = input.centre ? kw / 2 : kw;
+  const reachY = input.centre ? kh / 2 : kh;
   const rangeX = factorRange(sx);
   const rangeY = factorRange(sy);
 
   // Each axis's factor as the dragged side alone would make it.
-  const freeX = hx !== 0 ? (sx * kw + hx * dot(d, u)) / kw : sx;
-  const freeY = hy !== 0 ? (sy * kh + hy * dot(d, v)) / kh : sy;
+  const freeX = hx !== 0 ? (sx * reachX + hx * dot(d, u)) / reachX : sx;
+  const freeY = hy !== 0 ? (sy * reachY + hy * dot(d, v)) / reachY : sy;
 
   let nx: number;
   let ny: number;
-  if (input.shift || !input.free) {
+  if (!input.shift) {
     let k: number;
     if (hx !== 0 && hy !== 0) {
-      // A corner: the pointer's movement projected onto the box's diagonal.
+      // A corner: the pointer's movement projected onto the line from what stays put to the corner.
       const g = toWorld(item, G);
       const a = toWorld(item, A);
       const D = { x: g.x - a.x, y: g.y - a.y };
@@ -183,7 +188,7 @@ function resolveResize(drag: Resize, input: CanvasDragInput): CanvasDragResult {
     ny = clamp(freeY, rangeY.lo, rangeY.hi);
   }
 
-  // The new centre keeps the anchor where it was.
+  // The new centre keeps what stays put where it was.
   const anchor = toWorld(item, A);
   const ax = nx * A.x;
   const ay = ny * A.y;
@@ -227,7 +232,7 @@ function startWhereDrawn(drag: Resize, drawn: Point): Crop {
   return crop;
 }
 
-// Alt: the dragged sides cut the clip, which stays where it is; Alt+Shift keeps the kept part's shape.
+// crop: the dragged sides cut the clip, which stays where it is; with Shift the kept part keeps its shape.
 function resolveCrop(drag: Resize, input: CanvasDragInput): CanvasDragResult {
   const { item } = drag;
   const { hx, hy } = HANDLE_SIGNS[drag.handle];
@@ -289,7 +294,7 @@ function resolveCrop(drag: Resize, input: CanvasDragInput): CanvasDragResult {
   }
 
   // Each side that moved stays in [0, 1 − opposite − CROP_MIN_SHOWN]. A free drag never moves a side's opposite, and
-  // Alt+Shift's k already keeps every side in range.
+  // crop with Shift's k already keeps every side in range.
   const next = { ...crop };
   for (const side of SIDES) next[side] = round4(crop[side] === base[side] ? crop[side] : clamp(crop[side], 0, sideMax(crop, side)));
   const same = SIDES.every((side) => next[side] === round4(drag.from.crop[side]));

@@ -10,7 +10,6 @@ import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import type { OpInput, TimelineDoc } from "@/lib/timeline";
 import { useEditorStore } from "./context";
 import { CLICK_SLOP_PX } from "./timeline/use-clip-drag";
-import { useIsMac } from "./use-shortcuts";
 
 type Guides = { x: number | null; y: number | null };
 
@@ -30,8 +29,8 @@ type Session = {
   x: number; // the pointer now
   y: number;
   shift: boolean;
-  alt: boolean; // Alt (Option) as the latest pointer or key event had it
-  free: boolean; // the free key: Cmd, or away from a Mac Ctrl or the Windows key
+  ctrl: boolean; // Ctrl, the crop key, as the latest pointer or key event had it
+  alt: boolean; // Alt (Option): a resize keeps the box's middle
   travelled: boolean; // the pointer has passed the click slop since the press
   started: boolean;
   drag: CanvasDrag | null;
@@ -45,7 +44,7 @@ export type CanvasDragController = {
   press(e: ReactPointerEvent, grip: Grip, clipId: string, drawn?: Point): void;
   // The frame's centre lines a moved clip's centre sits on, in project pixels, while it is snapped there.
   guides: StoreApi<Guides>;
-  // The clip a handle drag crops now: with Alt, or armed by the clip menu's Crop.
+  // The clip a handle drag crops now: with Ctrl, or armed by the clip menu's Crop.
   cropping: StoreApi<Cropping>;
   dispose(): void;
 };
@@ -53,14 +52,14 @@ export type CanvasDragController = {
 // Moving, turning and resizing a clip on the preview by hand. A press captures the pointer on the overlay. A press on
 // the clip's body becomes a drag once it travels the click slop (and makes that clip the only selection), a press on a
 // handle at once. The pointer is worked out at most once per animation frame, from the press each time, with Shift,
-// Alt and the free key as they are now: one pressed or let go mid-drag, or a scroll of the pane, works it out again
-// where the pointer is. A handle drag keeps the shape unless the free key is held without Shift. It crops instead of
-// resizing while Alt is down or the clip menu's Crop armed the clip; from a handle drawn clamped into the pane, the
-// cut starts only once the pointer passes the click slop. The change is shown through the store's gesture and saved
-// once on release; Escape, a cancelled pointer and a lost capture drop it, and so does the store when the clip is
-// removed. The end of any drag disarms Crop. pointerdown is never prevented, so a focused field blurs, and saves,
-// before the drag sets anything.
-export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pane: () => HTMLElement | null, isMac: boolean): CanvasDragController {
+// Ctrl and Alt as they are now: one pressed or let go mid-drag, or a scroll of the pane, works it out again where the
+// pointer is. A handle drag keeps the shape unless Shift is held, and keeps the box's middle while Alt (Option) is. It
+// crops instead of resizing while Ctrl is down or the clip menu's Crop armed the clip; from a handle drawn clamped into
+// the pane, the cut starts only once the pointer passes the click slop. The change is shown through the store's
+// gesture and saved once on release, or when the capture is lost, which a quick flick can do just before its release;
+// Escape and a cancelled pointer drop it, and so does the store when the clip is removed. The end of any drag disarms
+// Crop. pointerdown is never prevented, so a focused field blurs, and saves, before the drag sets anything.
+export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pane: () => HTMLElement | null): CanvasDragController {
   const guides = createStore<Guides>(() => NO_GUIDES);
   const cropping = createStore<Cropping>(() => ({ clipId: null }));
   let session: Session | null = null;
@@ -83,11 +82,6 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     if (session?.started) schedule();
   }
 
-  // On a Mac a Ctrl press is a right-click, so only Cmd frees a resize there.
-  function freeKey(e: { metaKey: boolean; ctrlKey: boolean }): boolean {
-    return e.metaKey || (!isMac && e.ctrlKey);
-  }
-
   function showGuides(next: Guides) {
     const now = guides.getState();
     if (now.x !== next.x || now.y !== next.y) guides.setState({ x: next.x, y: next.y }, true);
@@ -97,9 +91,9 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     if (cropping.getState().clipId !== clipId) cropping.setState({ clipId }, true);
   }
 
-  // A handle drag crops while Alt is down or while the clip menu's Crop has armed its clip.
+  // A handle drag crops while Ctrl is down or while the clip menu's Crop has armed its clip.
   function crops(s: Session): boolean {
-    return s.drag?.type === "resize" && (s.alt || store.getState().cropArmed === s.clipId);
+    return s.drag?.type === "resize" && (s.ctrl || store.getState().cropArmed === s.clipId);
   }
 
   // The drag begins from the clip as it is drawn now. Null when it cannot: the clip is gone, off the playhead, or on
@@ -138,8 +132,8 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
           : resolveCanvasDrag(s.drag, {
               pointer: fromScreen(view, s.x, s.y),
               shift: s.shift,
-              alt: crop,
-              free: s.free,
+              crop,
+              centre: s.alt,
               snapping: state.snapping,
               snapPx: SNAP_CSS_PX / view.k,
             });
@@ -160,8 +154,8 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     s.x = e.clientX;
     s.y = e.clientY;
     s.shift = e.shiftKey;
+    s.ctrl = e.ctrlKey;
     s.alt = e.altKey;
-    s.free = freeKey(e);
     if (Math.hypot(s.x - s.x0, s.y - s.y0) >= CLICK_SLOP_PX) s.travelled = true;
   }
 
@@ -191,8 +185,18 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     if (s && (!(e instanceof PointerEvent) || e.pointerId === s.pointerId)) end(false);
   }
 
-  // Escape ends a drag before anything else hears it, so it does not also clear the selection. Shift, Alt and the free
-  // key are read live.
+  // A lost capture is a release. On a quick flick the browser lets the capture go a few milliseconds before the
+  // pointerup, which then goes to whatever is under the pointer, so the drop is where the pointer was last seen.
+  function onLost(e: Event) {
+    const s = session;
+    if (!s || (e instanceof PointerEvent && e.pointerId !== s.pointerId)) return;
+    if (!s.started) return end(false);
+    resolve(s);
+    end(true);
+  }
+
+  // Escape ends a drag before anything else hears it, so it does not also clear the selection. Shift, Ctrl and Alt are
+  // read live.
   function onKey(e: KeyboardEvent) {
     const s = session;
     if (!s) return;
@@ -203,10 +207,10 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
       end(false);
       return;
     }
-    if (e.shiftKey !== s.shift || e.altKey !== s.alt || freeKey(e) !== s.free) {
+    if (e.shiftKey !== s.shift || e.ctrlKey !== s.ctrl || e.altKey !== s.alt) {
       s.shift = e.shiftKey;
+      s.ctrl = e.ctrlKey;
       s.alt = e.altKey;
-      s.free = freeKey(e);
       refresh();
     }
   }
@@ -221,7 +225,7 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     s.target.addEventListener("pointermove", onMove);
     s.target.addEventListener("pointerup", onUp);
     s.target.addEventListener("pointercancel", onCancel);
-    s.target.addEventListener("lostpointercapture", onCancel);
+    s.target.addEventListener("lostpointercapture", onLost);
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("keyup", onKey, true);
     scroller = pane();
@@ -252,7 +256,7 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     s.target.removeEventListener("pointermove", onMove);
     s.target.removeEventListener("pointerup", onUp);
     s.target.removeEventListener("pointercancel", onCancel);
-    s.target.removeEventListener("lostpointercapture", onCancel);
+    s.target.removeEventListener("lostpointercapture", onLost);
     window.removeEventListener("keydown", onKey, true);
     window.removeEventListener("keyup", onKey, true);
     scroller?.removeEventListener("scroll", refresh);
@@ -290,8 +294,8 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
         x: e.clientX,
         y: e.clientY,
         shift: e.shiftKey,
+        ctrl: e.ctrlKey,
         alt: e.altKey,
-        free: freeKey(e),
         travelled: false,
         started: false,
         drag: null,
@@ -312,8 +316,7 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
 // One drag controller for the preview's overlay, taken down with it.
 export function useCanvasDrag(surface: PreviewSurface, pane: RefObject<HTMLElement | null>): CanvasDragController {
   const store = useEditorStore();
-  const isMac = useIsMac();
-  const drag = useMemo(() => createCanvasDrag(store, surface, () => pane.current, isMac), [store, surface, pane, isMac]);
+  const drag = useMemo(() => createCanvasDrag(store, surface, () => pane.current), [store, surface, pane]);
   useEffect(() => () => drag.dispose(), [drag]);
   return drag;
 }
