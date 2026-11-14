@@ -1,6 +1,8 @@
 import type { MediaSchedule } from "@/lib/export/media-schedule";
-import { ExportError } from "@/lib/export/messages";
+import { ExportError, errorMessage, readFailure } from "@/lib/export/messages";
 import type { ResolvedSource } from "@/lib/render/compositor";
+
+export { fileGone } from "./messages";
 
 // The worker's decoders, behind MediaIO: each video file is checked once before the first frame, opened as its first
 // clip starts and released after its last use; each clip walks its own moments with its own reader; each image file is
@@ -28,29 +30,6 @@ export type DecodePool = {
 
 type Reader = AsyncIterator<ResolvedSource | null>;
 
-// The file went away under the reader (another tab's cache removed it, for example).
-const FILE_GONE = new Set(["NotReadableError", "NotFoundError", "InputDisposedError"]);
-
-const field = (error: unknown, key: "name" | "message"): string | null =>
-  typeof error === "object" && error !== null && typeof (error as Record<string, unknown>)[key] === "string"
-    ? ((error as Record<string, string>)[key])
-    : null;
-const messageOf = (error: unknown): string => field(error, "message") ?? String(error);
-
-// The error says the file went away under its reader.
-export function fileGone(error: unknown): boolean {
-  return FILE_GONE.has(field(error, "name") ?? "");
-}
-
-// A reader's failure, named by its cause. A decoder the browser took back (as Chrome can in a background tab) is an
-// encoder failure, so the export tries once more in a fresh worker.
-function readerFailure(error: unknown): ExportError {
-  const name = field(error, "name") ?? "";
-  if (fileGone(error)) return new ExportError("media", messageOf(error));
-  if (name === "QuotaExceededError") return new ExportError("encoder", messageOf(error));
-  return new ExportError("decode", messageOf(error));
-}
-
 // Lets a reader go without waiting: a pending next() may hold its return() back, and a decoder may never answer.
 function letGo(reader: Reader): void {
   try {
@@ -76,7 +55,7 @@ export function createDecodePool(schedule: MediaSchedule, files: Record<string, 
     if (open) return open;
     const blob = blobOf(fileId);
     const opened = await io.openVideo(blob, maxSide).catch((error: unknown) => {
-      throw new ExportError("media", messageOf(error));
+      throw new ExportError("media", errorMessage(error));
     });
     videos.set(fileId, opened);
     return opened;
@@ -87,7 +66,7 @@ export function createDecodePool(schedule: MediaSchedule, files: Record<string, 
     if (decoded) return decoded;
     const blob = blobOf(fileId);
     const made = await io.decodeImage(blob, maxSide).catch((error: unknown) => {
-      throw new ExportError("media", messageOf(error));
+      throw new ExportError("media", errorMessage(error));
     });
     images.set(fileId, made);
     return made;
@@ -120,7 +99,7 @@ export function createDecodePool(schedule: MediaSchedule, files: Record<string, 
         checked.add(clip.fileId);
         const blob = blobOf(clip.fileId);
         const decodable = await io.canDecode(blob).catch((error: unknown) => {
-          throw readerFailure(error);
+          throw readFailure(error, "decode");
         });
         if (!decodable) throw new ExportError("decode", clip.fileId);
       }
@@ -146,7 +125,7 @@ export function createDecodePool(schedule: MediaSchedule, files: Record<string, 
         active.map(async (clip): Promise<ResolvedSource | null> => {
           if (clip.kind === "image") return stills.get(clip.clipId)!;
           const result = await readers.get(clip.clipId)!.next().catch((error: unknown) => {
-            throw readerFailure(error);
+            throw readFailure(error, "decode");
           });
           return result.done ? null : result.value;
         }),

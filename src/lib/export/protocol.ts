@@ -23,7 +23,7 @@ export type ExportJob = {
 // Every destination takes a write at any position it already holds, so the worker always writes the index at the
 // end (fastStart: false) and never holds the file itself.
 export type ExportFailure =
-  | "unsupported" | "size" | "empty" | "font" | "font-mismatch" | "waiting" | "media" | "decode"
+  | "unsupported" | "size" | "empty" | "font" | "font-mismatch" | "waiting" | "media" | "decode" | "sound"
   | "encoder" | "write" | "worker" | "too-long" | "unknown";
 
 // There is no cancel message: the page cancels by terminating the worker.
