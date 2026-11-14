@@ -282,8 +282,8 @@ describe("migrations", () => {
     expect(rowsOf(await db.execute(sql`select id, user_id from passkey order by id`))).toEqual([{ id: "k3", user_id: "u2" }]);
   });
 
-  it("migration 0010 only creates the passkey table, its foreign key and two indexes", () => {
-    const statements = readFileSync("drizzle/0010_passkeys.sql", "utf8").split("--> statement-breakpoint").map((s) => s.trim());
+  it("migration 0009 only creates the passkey table, its foreign key and two indexes", () => {
+    const statements = readFileSync("drizzle/0009_passkeys.sql", "utf8").split("--> statement-breakpoint").map((s) => s.trim());
     expect(statements).toHaveLength(4);
     expect(statements[0]).toMatch(/^CREATE TABLE "passkey" \(/);
     expect(statements[1]).toMatch(/^ALTER TABLE "passkey" ADD CONSTRAINT "passkey_user_id_user_id_fk" FOREIGN KEY \("user_id"\) REFERENCES "public"\."user"\("id"\) ON DELETE cascade/);
