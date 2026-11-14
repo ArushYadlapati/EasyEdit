@@ -79,7 +79,7 @@ it("Project → Safe area sizes the box for this format, for everyone, and Reset
   expect(field("Safe area width").value).toBe("88");
   expect(field("Safe area height").value).toBe("51");
   expect(field("Safe area width").hasAttribute("data-edit-control")).toBe(true);
-  expect(dialog().getByText(/For Short 9:16; each format keeps its own\. Centred sideways, from 14% down\. The default follows Instagram's Reels guidance: 88% × 51%\./)).toBeTruthy();
+  expect(dialog().getByText(/For Vertical 9:16; each format keeps its own\. Centred sideways, from 14% down\. The default follows Instagram's Reels guidance: 88% × 51%\./)).toBeTruthy();
   expect(dialog().queryByRole("button", { name: /Reset to default/ })).toBeNull();
 
   setField("Safe area width", "80");
@@ -267,7 +267,7 @@ describe("a custom size", () => {
     fireEvent.click(gear());
     const texts = [...format().options].map((o) => o.textContent);
     expect(texts.at(-1)).toBe("Custom size");
-    expect(texts[0]).toBe("Short 9:16 (1080 × 1920)");
+    expect(texts[0]).toBe("Vertical 9:16 (1080 × 1920)");
   });
 
   it("a viewer sees a custom project's size and cannot change it", () => {

@@ -59,6 +59,7 @@ export type EditorState = {
   playing: boolean;
   rate: number; // negative when playing backward
   showSafeZones: boolean;
+  viewAs: string | null; // the platform view drawn over the preview (platform-views.ts), or none
   // The clip whose next handle drag on the preview crops without Alt (the clip menu's Crop). Another selection, Play,
   // the clip's removal or the end of any drag on the preview clears it.
   cropArmed: string | null;
@@ -96,7 +97,8 @@ export type EditorState = {
   pause(): void;
   shuttle(key: "j" | "k" | "l"): void;
   step(deltaFrames: number): void; // pauses, then moves the playhead; forward stops at the end
-  toggleSafeZones(): void;
+  toggleSafeZones(): void; // showing the safe area turns View as off
+  setViewAs(id: string | null): void; // a platform view turns the safe area off
   setName(name: string): void; // only what the editor shows; renameFromEditor saves it
   setCropArmed(clipId: string | null): void;
   setTextEdit(clipId: string | null): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
@@ -304,6 +306,7 @@ export function createEditorStore(
       playing: false,
       rate: 1,
       showSafeZones: deps.view?.showSafeZones ?? false,
+      viewAs: null,
       cropArmed: null,
       textEditId: null,
 
@@ -591,7 +594,12 @@ export function createEditorStore(
       },
 
       toggleSafeZones() {
-        set({ showSafeZones: !get().showSafeZones });
+        const show = !get().showSafeZones;
+        set(show ? { showSafeZones: true, viewAs: null } : { showSafeZones: false });
+      },
+
+      setViewAs(id) {
+        set(id ? { viewAs: id, showSafeZones: false } : { viewAs: null });
       },
 
       setName(name) {

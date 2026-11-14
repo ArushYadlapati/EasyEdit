@@ -12,6 +12,7 @@ import type { BoardZoom } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
 import { drawFrame } from "@/lib/render/compositor";
 import { SAFE_AREA_LABEL, safeAreaMargins } from "@/lib/render/safe-zones";
+import { platformView } from "@/lib/editor/platform-views";
 import type { TimelineDoc } from "@/lib/timeline";
 import { CanvasOverlay } from "./canvas-overlay";
 import { useEditor, useEditorStore, useSettings } from "./context";
@@ -22,6 +23,7 @@ import { cachedCssVar } from "./page-fonts";
 import { Transport } from "./transport";
 import { useBoardDrop } from "./use-board-drop";
 import { usePlayback } from "./use-playback";
+import { PlatformOverlay } from "./platform-overlay";
 import { BoardScaleContext } from "./zoom-menu";
 
 // What the board last showed, so a zoom change, or a pane resize at a fixed zoom, can keep the same middle.
@@ -51,6 +53,7 @@ export function Preview() {
   const format = useEditor((s) => viewDoc(s).format);
   const safeAreas = useEditor((s) => viewDoc(s).safeAreas);
   const showSafeZones = useEditor((s) => s.showSafeZones);
+  const viewAs = useEditor((s) => s.viewAs);
   const boardZoom = useSettings((s) => s.boardZoom);
   const paneRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -65,6 +68,7 @@ export function Preview() {
     return boardLayout(boardScale(boardZoom, doc, pane), doc, pane);
   }, [boardZoom, width, height, pane]);
   const zone = safeAreaMargins({ format, safeAreas });
+  const platform = platformView({ width, height }, viewAs);
 
   // The pane's inside, before the first paint and on every resize.
   useLayoutEffect(() => {
@@ -283,6 +287,7 @@ export function Preview() {
                   <span className="absolute top-1 left-1.5 text-[11px] leading-4 text-ed-muted">{SAFE_AREA_LABEL}</span>
                 </div>
               )}
+              {platform && <PlatformOverlay view={platform} frameShape={width / height} />}
             </div>
             {/* The overlay fills the content box, so it covers the frame and its margin and is never smaller than the
                 pane; its corner is the content's, which visible() measures from. */}

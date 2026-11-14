@@ -98,7 +98,7 @@ it("a thumbnail's address carries its version", () => {
 });
 
 it("a picture fits its project only in the project's shape", () => {
-  expect(pictureFits({ width: 360, height: 640 }, { width: 1080, height: 1920 })).toBe(true); // Short 9:16
+  expect(pictureFits({ width: 360, height: 640 }, { width: 1080, height: 1920 })).toBe(true); // Vertical 9:16
   expect(pictureFits({ width: 512, height: 640 }, { width: 1080, height: 1350 })).toBe(true); // Feed 4:5
   expect(pictureFits({ width: 640, height: 3 }, { width: 4096, height: 16 })).toBe(true); // the short side rounded from 2.5
   expect(pictureFits({ width: 360, height: 640 }, { width: 1080, height: 1900 })).toBe(true); // about 1 % off

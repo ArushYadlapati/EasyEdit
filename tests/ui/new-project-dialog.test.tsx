@@ -27,7 +27,7 @@ function dialog({ open = true, folderId = null as string | null } = {}) {
 }
 
 const textbox = (name: string) => screen.getByRole("textbox", { name }) as HTMLInputElement;
-const radio = (name: string | RegExp) => screen.getByRole("radio", { name });
+const radio = (name: string | RegExp) => screen.getByRole("radio", { name: typeof name === "string" ? new RegExp(`^${name}`) : name });
 const checked = (name: string | RegExp) => radio(name).getAttribute("aria-checked") === "true";
 const createButton = () => screen.getByRole("button", { name: "Create project" }) as HTMLButtonElement;
 const folderSelect = () => screen.getByRole("combobox", { name: "Folder" }) as HTMLSelectElement;
@@ -54,14 +54,14 @@ async function clickCreate() {
   });
 }
 
-it("opens with Untitled project selected, Short 9:16 chosen and its blank frame", () => {
+it("opens with Untitled project selected, Vertical 9:16 chosen and its blank frame", () => {
   render(dialog());
   const name = textbox("Name");
   expect(name.value).toBe("Untitled project");
   expect(document.activeElement).toBe(name);
   expect([name.selectionStart, name.selectionEnd]).toEqual([0, 16]);
   expect(name.maxLength).toBe(100);
-  expect(checked(/^Short 9:16/)).toBe(true);
+  expect(checked(/^Vertical 9:16/)).toBe(true);
   expect(textbox("Width").value).toBe("1080");
   expect(textbox("Height").value).toBe("1920");
   expect(textbox("Width").inputMode).toBe("decimal");
@@ -107,14 +107,14 @@ it("is a large dialog whose fields scroll beside a preview that stays in view", 
 it("each opening starts fresh", () => {
   const { rerender } = render(dialog());
   type("Name", "Poster");
-  fireEvent.click(radio(/^Long 16:9/));
+  fireEvent.click(radio(/^Landscape 16:9/));
   fireEvent.change(folderSelect(), { target: { value: "f1" } });
   expect(textbox("Name").value).toBe("Poster");
   rerender(dialog({ open: false }));
   rerender(dialog());
   expect(textbox("Name").value).toBe("Untitled project");
   expect(document.activeElement).toBe(textbox("Name"));
-  expect(checked(/^Short 9:16/)).toBe(true);
+  expect(checked(/^Vertical 9:16/)).toBe(true);
   expect(textbox("Width").value).toBe("1080");
   expect(frameStyle()).toContain("aspect-ratio: 1080 / 1920");
   expect(folderSelect().value).toBe("");
@@ -137,7 +137,7 @@ it("starts in the folder in view", () => {
 
 it("a named size fills the size, and a typed size picks Custom or the named size it matches", () => {
   render(dialog());
-  fireEvent.click(radio(/^Long 16:9/));
+  fireEvent.click(radio(/^Landscape 16:9/));
   expect(textbox("Width").value).toBe("1920");
   expect(textbox("Height").value).toBe("1080");
   expect(screen.getByText("1920 × 1080 px · 16:9")).toBeTruthy();
@@ -146,7 +146,7 @@ it("a named size fills the size, and a typed size picks Custom or the named size
   expect(screen.getByText("1000 × 1080 px · 25:27")).toBeTruthy();
   type("Width", "1080");
   type("Height", "1920");
-  expect(checked(/^Short 9:16/)).toBe(true);
+  expect(checked(/^Vertical 9:16/)).toBe(true);
 });
 
 it("Custom size changes nothing else", () => {
@@ -161,7 +161,7 @@ it("Custom size changes nothing else", () => {
 it("swap turns portrait into landscape", () => {
   render(dialog());
   fireEvent.click(screen.getByRole("button", { name: "Swap width and height" }));
-  expect(checked(/^Long 16:9/)).toBe(true);
+  expect(checked(/^Landscape 16:9/)).toBe(true);
   expect(textbox("Width").value).toBe("1920");
   expect(textbox("Height").value).toBe("1080");
 });
@@ -200,7 +200,7 @@ it("centimeters show the pixel size", () => {
 it("a named size fills the size in the unit chosen", () => {
   render(dialog());
   fireEvent.click(radio("Inches"));
-  fireEvent.click(radio(/^Long 16:9/));
+  fireEvent.click(radio(/^Landscape 16:9/));
   expect(textbox("Width").value).toBe("20");
   expect(textbox("Height").value).toBe("11.25");
   expect(screen.getByText("20 × 11.25 in · 1920 × 1080 px · 16:9")).toBeTruthy();

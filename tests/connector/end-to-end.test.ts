@@ -84,7 +84,7 @@ describe("Claude and the website on one project", () => {
       const clipId = clipIn(added.text);
       const edited = await call("edit_timeline", { project_id: id, expected_version: 1, ops: [{ op: "update_clip", clipId, patch: { text: "GO SOLVERS, GO" } }] });
       expect(edited.text.split("\n")[0]).toBe("Applied 1 op as version 2.");
-      expect((await call("list_projects")).text).toContain(`${id}  "Qualifier recap"  Short 9:16  version 2  changed just now by Claude (for Kid)`);
+      expect((await call("list_projects")).text).toContain(`${id}  "Qualifier recap"  Vertical 9:16  version 2  changed just now by Claude (for Kid)`);
 
       // What the editor's Activity list reads, through the website's own route.
       const site = makeOpsHandlers({ db: () => app.db, auth: async () => ({ id: c.userId, email: "kid@gmail.com", name: "Kid", image: null, role: "editor" as const }) });

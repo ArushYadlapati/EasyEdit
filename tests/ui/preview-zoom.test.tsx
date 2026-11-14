@@ -102,9 +102,9 @@ describe("board zoom", () => {
     expect(button.textContent).toBe("Fill");
     expect(button.getAttribute("title")).toBe("Preview zoom");
     expect(classes(button)).toEqual(expect.arrayContaining(["w-16", "tabular-nums"]));
-    // In the transport's right group, just before Safe area.
-    const safeZones = screen.getByRole("button", { name: "Safe area" });
-    expect(button.closest(".ml-auto")).toBe(safeZones.parentElement);
+    // In the transport's right group, just before View as.
+    const safeZones = screen.getByRole("button", { name: "View as: Off" });
+    expect(button.closest(".ml-auto")).toBe(safeZones.closest(".ml-auto"));
     expect(button.compareDocumentPosition(safeZones) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const chevron = button.querySelector("svg")!;
     expect(chevron.getAttribute("aria-hidden")).toBe("true");

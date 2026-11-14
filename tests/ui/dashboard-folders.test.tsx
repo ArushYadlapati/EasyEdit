@@ -269,7 +269,7 @@ describe("dragging projects into folders", () => {
     expect(transfer.getData(PROJECT_DRAG_TYPE)).toBe("a");
     expect(transfer.effectAllowed).toBe("move");
     // A drag that starts on something inside the card, such as selected text, is not the card's.
-    const inner = await drag(within(li).getByText("Short 9:16"), "dragstart");
+    const inner = await drag(within(li).getByText("Vertical 9:16"), "dragstart");
     expect(inner.transfer.getData(PROJECT_DRAG_TYPE)).toBe("");
   });
 

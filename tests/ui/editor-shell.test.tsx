@@ -663,6 +663,11 @@ it("starts from the panel sizes the page read, and keeps a new size in the brows
   expect(document.cookie).toContain("easyedit-layout=284_240_400");
 });
 
+const viewAsButton = () => screen.getByRole("button", { name: /^View as:/ });
+function pickViewAs(name: string) {
+  fireEvent.click(viewAsButton());
+  fireEvent.click(screen.getByRole("menuitemradio", { name }));
+}
 const pressed = (name: string) => screen.getByRole("button", { name }).getAttribute("aria-pressed");
 const leftWidth = () => screen.getByRole("separator", { name: "Left panel width" }).parentElement!.style.getPropertyValue("--ed-left-w");
 const shellSettings = () => vi.mocked(createSettingsStore).mock.results[0].value as SettingsStore;
@@ -672,8 +677,8 @@ it("snapping and the safe area are remembered in this browser", () => {
   happyDOM().setURL(EDITOR_URL);
   const first = render(<EditorShell initial={initial()} />);
   expect(PREFS_TEXT()).toBeUndefined(); // nothing is written until something changes
-  expect(pressed("Safe area")).toBe("false"); // hidden at first
-  fireEvent.click(screen.getByRole("button", { name: "Safe area" }));
+  expect(viewAsButton().textContent).toBe("View as: Off"); // hidden at first
+  pickViewAs("Safe area");
   expect(document.cookie).toContain("sz:1");
   expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:1.z:fill.st:30.tx:30");
   fireEvent.click(screen.getByRole("button", { name: "Snap" }));
@@ -684,7 +689,7 @@ it("snapping and the safe area are remembered in this browser", () => {
   expireCookies();
   render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, snapping: false, safeZones: true }} />);
   expect(pressed("Snap")).toBe("false");
-  expect(pressed("Safe area")).toBe("true");
+  expect(viewAsButton().textContent).toBe("View as: Safe area");
   expect(PREFS_TEXT()).toBeUndefined();
 });
 
@@ -764,7 +769,7 @@ it("under strict mode the keymap and a newer cookie are taken once, and nothing 
       <EditorShell initial={initial()} />
     </StrictMode>,
   );
-  expect(pressed("Safe area")).toBe("true");
+  expect(viewAsButton().textContent).toBe("View as: Safe area");
   const used = vi.mocked(createSettingsStore).mock.results.map((r) => (r.value as SettingsStore).getState());
   expect(used.some((s) => s.units === "in" && s.boardZoom === 50 && s.keymap.off.includes("split"))).toBe(true);
   expect(setItem).not.toHaveBeenCalled();

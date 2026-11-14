@@ -3,11 +3,20 @@ import { PresetId } from "./types";
 import type { Clip, Crop, FormatId, FrameSize, SafeArea, TimelineDoc, Track, TrackKind, Transform } from "./types";
 
 export const FORMAT_PRESETS: Record<PresetId, { width: number; height: number; label: string }> = {
-  short_9x16: { width: 1080, height: 1920, label: "Short 9:16" },
+  short_9x16: { width: 1080, height: 1920, label: "Vertical 9:16" },
   feed_4x5: { width: 1080, height: 1350, label: "Feed 4:5" },
   square_1x1: { width: 1080, height: 1080, label: "Square 1:1" },
-  long_16x9: { width: 1920, height: 1080, label: "Long 16:9" },
-  long_4k: { width: 3840, height: 2160, label: "Long 4K" },
+  long_16x9: { width: 1920, height: 1080, label: "Landscape 16:9" },
+  long_4k: { width: 3840, height: 2160, label: "Landscape 4K" },
+};
+
+// Where each named size is usually posted, shown under its name on the New project cards.
+export const FORMAT_USES: Record<PresetId, string> = {
+  short_9x16: "Reels / Shorts",
+  feed_4x5: "Facebook / LinkedIn",
+  square_1x1: "Square posts",
+  long_16x9: "YouTube",
+  long_4k: "YouTube 4K",
 };
 
 export function isPresetId(format: string): format is PresetId {
@@ -37,7 +46,7 @@ export function formatFields(size: FrameSize): { format: PresetId } | { format: 
   return format === "custom" ? { format, width: size.width, height: size.height } : { format };
 }
 
-// "Short 9:16" for a named size, "Custom 816 × 1056" for a custom one, and "Custom size" when only the id is known.
+// "Vertical 9:16" for a named size, "Custom 816 × 1056" for a custom one, and "Custom size" when only the id is known.
 export function formatLabel(of: { format: FormatId; width?: number; height?: number }): string {
   if (isPresetId(of.format)) return FORMAT_PRESETS[of.format].label;
   return of.width !== undefined && of.height !== undefined ? `Custom ${of.width} × ${of.height}` : "Custom size";
