@@ -99,6 +99,20 @@ it("says nothing when an export is canceled, even with its dialog closed", async
   expect(store.getState().notice).toBeNull();
 });
 
+it("Space still plays on a button clicked before an export ended: the keys are not hooked up again", async () => {
+  const { store, workers } = show();
+  await startExport();
+  await click("Close");
+  const snap = screen.getByRole("button", { name: "Snap" });
+  fireEvent.pointerDown(snap); // focus by a click: the pointer goes down, then focus arrives
+  snap.focus();
+  await emit(workers[0], { type: "done", bytes: 1_000, hasAudio: true });
+  let passedOn = true;
+  await act(async () => { passedOn = fireEvent.keyDown(snap, { key: " " }); });
+  expect(passedOn).toBe(false); // the key is taken, not passed on to press the button
+  expect(store.getState().playing).toBe(true);
+});
+
 it("the Export button's tooltip is its name alone once its shortcut is off", async () => {
   show();
   await click("Keyboard shortcuts");
