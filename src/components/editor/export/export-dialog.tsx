@@ -7,10 +7,10 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import {
-  exportNotes, formatBytes, maxBytes, secondsLeft, timeLeftLabel, waitingReason,
+  exportNotes, formatBytes, frameFileName, maxBytes, secondsLeft, timeLeftLabel, waitingReason,
 } from "@/lib/export/facts";
 import { planExportMedia } from "@/lib/export/media-sources";
-import { failureMessage } from "@/lib/export/messages";
+import { failureMessage, failureOf, frameFailureMessage } from "@/lib/export/messages";
 import { exportOptions, videoSettings, type ExportPresetId } from "@/lib/export/presets";
 import { frameCount } from "@/lib/export/schedule";
 import { MEMORY_LIMIT_BYTES } from "@/lib/export/sinks";
@@ -88,7 +88,9 @@ function useChoices({ support, selected }: ChoiceProps) {
     // Without a save dialog the whole file is held in memory, so a video too long for it is refused before the click.
     const tooLong = !deps.savesToFile && bytes !== null && bytes > MEMORY_LIMIT_BYTES;
     const blocked = empty ? failureMessage("empty") : (waiting ?? (tooLong ? failureMessage("too-long") : null));
-    return { doc, plan, options, option, frames, bytes, empty, blocked, canStart: option !== null && blocked === null };
+    // Save frame is off only while the media is not ready: a too-long video is no reason not to save one frame of it.
+    const canSaveFrame = option !== null && !empty && waiting === null;
+    return { doc, plan, options, option, frames, bytes, empty, blocked, canStart: option !== null && blocked === null, canSaveFrame };
   }, [doc, assets, loaded, support, selected, deps]);
 }
 
@@ -239,22 +241,40 @@ function ExportFooter({ exporter, onClose, ...choice }: ChoiceProps & { exporter
   );
 }
 
+const AGAIN = "Click Export video again to choose where to save.";
+
 function StartButton({ exporter, ...choice }: ChoiceProps & { exporter: Exporter }) {
-  const { option, canStart } = useChoices(choice);
-  const [again, setAgain] = useState(false);
+  const deps = useExportDeps();
+  const editor = useEditorStore();
+  const { option, frames, canStart, canSaveFrame } = useChoices(choice);
+  // The footer's one alert line: a second click wanted, or why a frame wasn't saved. Each click clears it.
+  const [alert, setAlert] = useState<string | null>(null);
   if (!choice.support?.browser) return null;
   const start = () => {
     if (!option) return;
-    setAgain(false);
-    void exporter.start(option.id).then((answer) => setAgain(answer === "again"));
+    setAlert(null);
+    void exporter.start(option.id).then((answer) => setAlert(answer === "again" ? AGAIN : null));
+  };
+  const saveFrame = () => {
+    if (!option) return;
+    setAlert(null);
+    const { doc, name, playhead } = editor.getState();
+    const frame = Math.min(playhead, frames - 1);
+    // No export was running, so the sentence is about the frame.
+    deps.saveFrame(doc, frame, option.size, frameFileName(name, frame)).catch((error: unknown) => {
+      setAlert(frameFailureMessage(failureOf(error, "unknown").code));
+    });
   };
   return (
     <>
-      {again && (
+      {alert && (
         <p role="alert" className="mr-auto min-w-0 text-xs text-ed-danger">
-          Click Export video again to choose where to save.
+          {alert}
         </p>
       )}
+      <Button variant="ghost" disabled={!canSaveFrame} onClick={saveFrame}>
+        Save frame as image
+      </Button>
       <Button variant="primary" disabled={!canStart} onClick={start}>
         Export video
       </Button>

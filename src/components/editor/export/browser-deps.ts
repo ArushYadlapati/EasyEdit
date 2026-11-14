@@ -7,6 +7,7 @@ import type { MediaServices } from "../media/media-context";
 import { collectPageFonts } from "../page-fonts";
 import type { ExportDeps, PickedTarget } from "./deps";
 import { downloadBlob } from "./download";
+import { savePageFrame } from "./save-frame";
 
 // The real ExportDeps of this page, over the editor's media services. Nothing here runs until an export starts, and
 // every browser feature is looked up with typeof, so the file can be loaded on the server.
@@ -117,5 +118,6 @@ export function browserExportDeps(media: MediaServices): ExportDeps {
     download: downloadBlob,
     keepRunning,
     now: () => performance.now(),
+    saveFrame: savePageFrame(exportMediaDeps(media)),
   };
 }

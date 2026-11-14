@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import type { PickedTarget } from "@/components/editor/export/deps";
 import { useExport, type Exporter } from "@/components/editor/export/use-export";
+import { ExportError } from "@/lib/export/messages";
 import { memoryTarget } from "@/lib/export/sinks";
 import { createEmptyDoc } from "@/lib/timeline";
 import { makeStore, sampleDoc, text } from "../editor/fixtures";
@@ -542,5 +543,62 @@ it("takes the request for another click away as soon as the person clicks again"
   await click("Export video");
   expect(d.getByRole("alert")).toBeTruthy();
   await click("Export video");
+  expect(d.queryByRole("alert")).toBeNull();
+});
+
+it("saves the frame under the playhead as an image, at the chosen size", async () => {
+  const { store, saveFrame } = show();
+  act(() => store.getState().seek(45));
+  const d = await openDialog();
+  await click("Save frame as image");
+  expect(saveFrame).toHaveBeenLastCalledWith(sampleDoc(), 45, { width: 1080, height: 1920 }, "Qual recap frame 000045.png");
+  act(() => store.getState().seek(120)); // the end of the project: the last frame is 119
+  await act(async () => { fireEvent.change(d.getByRole("combobox"), { target: { value: "draft" } }); });
+  await click("Save frame as image");
+  expect(saveFrame).toHaveBeenLastCalledWith(sampleDoc(), 119, { width: 720, height: 1280 }, "Qual recap frame 000119.png");
+});
+
+it("says why a frame could not be saved, without speaking of an export", async () => {
+  const cases = [
+    [new ExportError("font", ""), "A font didn't load, so the frame wasn't saved. Check your connection, reload the page and try again."],
+    [new ExportError("decode", "prev-a"), "A video clip couldn't be decoded in this browser, so the frame wasn't saved."],
+    [new Error("odd"), "The frame couldn't be saved. Try again."],
+  ] as const;
+  for (const [error, text] of cases) {
+    const { view } = show({ saveFrame: async () => { throw error; } });
+    const d = await openDialog();
+    await click("Save frame as image");
+    expect(d.getByRole("alert").textContent).toBe(text);
+    view.unmount();
+  }
+});
+
+it("cannot save a frame while media is not ready, or of an empty project", async () => {
+  const waiting = show({}, { assets: [assetView({ status: "uploading" })] });
+  const d = await openDialog();
+  expect((d.getByRole("button", { name: "Save frame as image" }) as HTMLButtonElement).disabled).toBe(true);
+  waiting.view.unmount();
+  show({}, { doc: createEmptyDoc("short_9x16") });
+  const empty = await openDialog();
+  expect((empty.getByRole("button", { name: "Save frame as image" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+// Beyond the brief: rules the tests above do not catch when they are removed.
+it("keeps Save frame quiet beside Export video, on for a video too long to hold, its sentence gone at the next click", async () => {
+  const long = createEmptyDoc("short_9x16");
+  long.tracks[1].clips = [text("a", 0, 36_000)];
+  let saves = 0; // the first save fails, the second never ends
+  show({ savesToFile: false, saveFrame: () => (++saves === 1 ? Promise.reject(new ExportError("font", "")) : new Promise(() => {})) }, { doc: long });
+  const d = await openDialog();
+  const footer = d.getByRole("button", { name: "Export video" }).parentElement!;
+  expect([...footer.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Save frame as image", "Export video"]);
+  const save = d.getByRole("button", { name: "Save frame as image" }) as HTMLButtonElement;
+  expect(save.className).toContain("border-transparent");
+  expect(save.className).not.toContain("bg-ed-accent");
+  expect(d.getByText(TOO_LONG)).toBeTruthy();
+  expect(save.disabled).toBe(false);
+  await click("Save frame as image");
+  expect(d.getByRole("alert")).toBeTruthy();
+  await click("Save frame as image");
   expect(d.queryByRole("alert")).toBeNull();
 });

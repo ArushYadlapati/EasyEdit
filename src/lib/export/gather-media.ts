@@ -18,8 +18,8 @@ export type MediaOptions = { signal: AbortSignal; onReading(filesRead: number, t
 const canceled = () => new DOMException("The export was canceled.", "AbortError");
 
 // The first clip, in drawing order, that cannot be exported yet: media still uploading or being prepared comes
-// first, then an asset the library does not know because it never loaded.
-function refuseWaiting(plan: ExportMediaPlan): void {
+// first, then an asset the library does not know because it never loaded. Save frame refuses the same way.
+export function refuseWaiting(plan: ExportMediaPlan): void {
   const waiting = Object.entries(plan.clips).filter(([, clip]) => clip.kind === "wait");
   const preparing = waiting.find(([, clip]) => clip.kind === "wait" && clip.why !== "library");
   if (preparing) throw new ExportError("waiting", preparing[0]);
