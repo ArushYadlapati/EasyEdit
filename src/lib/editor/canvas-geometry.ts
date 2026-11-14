@@ -103,6 +103,22 @@ export function corners(item: CanvasItem): [Point, Point, Point, Point] {
   ];
 }
 
+// The kept box's corners grown by cssPx screen pixels on every side, at k CSS pixels per project pixel: nw, ne, se,
+// sw. The growth is divided by the clip's own scale on each axis, as hitTest's slop is, so a turned, stretched or
+// cropped clip grows by the same screen distance all round. A clip scaled to nothing is left as it is.
+export function outsetCorners(item: CanvasItem, cssPx: number, k: number): [Point, Point, Point, Point] {
+  if (item.sx === 0 || item.sy === 0 || k === 0) return corners(item);
+  const gx = cssPx / k / Math.abs(item.sx);
+  const gy = cssPx / k / Math.abs(item.sy);
+  const { left, top, right, bottom } = item.rect;
+  return [
+    toWorld(item, { x: left - gx, y: top - gy }),
+    toWorld(item, { x: right + gx, y: top - gy }),
+    toWorld(item, { x: right + gx, y: bottom + gy }),
+    toWorld(item, { x: left - gx, y: bottom + gy }),
+  ];
+}
+
 // The eight handles on a clip's kept box, by compass point, each with the way it points out of the box along the
 // clip's own axes: hx across (−1 the left side, 1 the right), hy down (−1 the top, 1 the bottom), 0 the middle.
 export type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";

@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { EDITING_INDICATOR_MS, editingLabel } from "@/lib/editor/activity";
 import { useEditor } from "./context";
+import { PresentPeople } from "./present-people";
 
-// Shows who else just edited, until EDITING_INDICATOR_MS after their change.
+// Shows who else has the project open, and who else just edited until EDITING_INDICATOR_MS after their change. The
+// dots never shrink, so the "is editing…" text is what truncates.
 export function EditingIndicator() {
   const remote = useEditor((s) => s.remote);
   const [now, setNow] = useState(() => Date.now());
@@ -17,11 +19,15 @@ export function EditingIndicator() {
   }, [remote]);
 
   const label = remote && now < remote.at + EDITING_INDICATOR_MS ? editingLabel(remote.names) : null;
-  if (!label) return null;
   return (
-    <span role="status" className="flex min-w-0 shrink items-center gap-1.5 text-xs leading-4 text-ed-muted">
-      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-ed-text" />
-      <span className="truncate">{label}</span>
-    </span>
+    <>
+      <PresentPeople />
+      {label && (
+        <span role="status" className="flex min-w-0 shrink items-center gap-1.5 text-xs leading-4 text-ed-muted">
+          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-ed-text" />
+          <span className="truncate">{label}</span>
+        </span>
+      )}
+    </>
   );
 }

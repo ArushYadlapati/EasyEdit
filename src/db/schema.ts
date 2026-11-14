@@ -86,6 +86,29 @@ export const projectOpens = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.projectId] })],
 );
 
+// What each open editor tab has selected, so teammates in the same project see it. One row per tab, written by the
+// tab's check for changes. A closing tab marks its row as left. A row not written for LIMITS.presenceTtlMs is left out
+// of every read, and rows older than LIMITS.presenceKeepMs are deleted by anyone's check.
+export const projectPresence = pgTable(
+  "project_presence",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    tabId: text("tab_id").notNull(),
+    clipIds: jsonb("clip_ids").$type<string[]>().notNull(),
+    trackId: text("track_id"),
+    changedAt: timestamp("changed_at").notNull().defaultNow(), // when this tab's selection last changed: a person's latest tab wins
+    seenAt: timestamp("seen_at").notNull().defaultNow(), // the database's clock, never the browser's
+    leftAt: timestamp("left_at"), // set when the tab said it was closing; a late check from that tab then writes nothing
+  },
+  // No timestamp is indexed, so a refresh can be a heap-only update.
+  (t) => [primaryKey({ columns: [t.projectId, t.userId, t.tabId] })],
+);
+
 export const projectOps = pgTable(
   "project_ops",
   {
