@@ -52,12 +52,12 @@ describe("the dashboard", () => {
     expect(within(poster).getByRole("link", { name: "Poster" }).getAttribute("href")).toBe("/editor/b");
     expect(poster.querySelector("[data-blank-frame]")?.getAttribute("style")).toContain("aspect-ratio: 816 / 1056");
     const qual = card("Qual recap");
-    expect(within(qual).getByText("Short 9:16")).toBeTruthy();
+    expect(within(qual).getByText("Vertical 9:16")).toBeTruthy();
     expect(within(qual).getByText("Changed 5 min ago by Sam")).toBeTruthy();
     expect(qual.textContent).not.toContain("Season 2026");
     // Recent and folder views leave the folder's name off.
     const recent = within(region("Recent")).getByRole("link", { name: "Finals" }).closest("li")!;
-    expect(within(recent).getByText("Long 16:9")).toBeTruthy();
+    expect(within(recent).getByText("Landscape 16:9")).toBeTruthy();
   });
 
   it("a card in Recent or a folder view shows no folder name", () => {

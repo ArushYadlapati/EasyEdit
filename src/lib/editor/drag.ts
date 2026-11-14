@@ -68,14 +68,15 @@ export function resolveDrag(doc: TimelineDoc, drag: Drag, input: DragInput): Dra
   const origins = drag.origins.filter((o) => existing.has(o.clipId));
   const primary = origins.find((o) => o.clipId === drag.primary);
   if (!primary) return null;
-  const snapTo = (candidates: number[]) =>
+  // atPress: where the candidates were when the drag began, so an edge only snaps onto a target it is coming closer to.
+  const snapTo = (candidates: number[], atPress: number[]) =>
     input.snapping
-      ? snap(candidates, { edges: clipEdges(doc, origins.map((o) => o.clipId)), playhead: input.playhead, fps: doc.fps, zoom: input.zoom })
+      ? snap(candidates, { edges: clipEdges(doc, origins.map((o) => o.clipId)), playhead: input.playhead, fps: doc.fps, zoom: input.zoom }, atPress)
       : null;
   let delta = Math.round(input.frame - drag.grabFrame);
 
   if (drag.type === "move") {
-    const snapped = snapTo([primary.start + delta, primary.start + primary.duration + delta]);
+    const snapped = snapTo([primary.start + delta, primary.start + primary.duration + delta], [primary.start, primary.start + primary.duration]);
     if (snapped) delta += snapped.delta;
     const tracks = new Set(origins.map((o) => o.trackId));
     const toTrack = tracks.size === 1 && input.rowTrackId !== null && !tracks.has(input.rowTrackId) ? input.rowTrackId : undefined;
@@ -94,7 +95,7 @@ export function resolveDrag(doc: TimelineDoc, drag: Drag, input: DragInput): Dra
 
   const end = primary.start + primary.duration;
   const from = drag.edge === "start" ? primary.start : end;
-  const snapped = snapTo([from + delta]);
+  const snapped = snapTo([from + delta], [from]);
   const wanted = from + delta + (snapped?.delta ?? 0);
   const to =
     drag.edge === "start"

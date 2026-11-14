@@ -60,10 +60,64 @@ it("a viewer sees the format and cannot change it", () => {
   show({ canEdit: false });
   fireEvent.click(gear());
   expect(format().disabled).toBe(true);
-  expect(dialog().getByText("Only editors can change the format.")).toBeTruthy();
+  expect(dialog().getByText("Only editors can change the format and the safe area.")).toBeTruthy();
   expect(dialog().queryByText("Changes this project for everyone who works on it.")).toBeNull();
   fireEvent.click(tab("General"));
   expect((dialog().getByRole("switch", { name: "Snapping" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+const field = (name: string) => dialog().getByRole("textbox", { name }) as HTMLInputElement;
+const setField = (name: string, value: string) => {
+  fireEvent.change(field(name), { target: { value } });
+  press(field(name), "Enter");
+};
+
+it("Project → Safe area sizes the box for this format, for everyone, and Reset goes back", () => {
+  const { st } = show();
+  fireEvent.click(gear());
+  expect(dialog().getByRole("heading", { name: "Safe area" })).toBeTruthy();
+  expect(field("Safe area width").value).toBe("88");
+  expect(field("Safe area height").value).toBe("51");
+  expect(field("Safe area width").hasAttribute("data-edit-control")).toBe(true);
+  expect(dialog().getByText(/For Vertical 9:16; each format keeps its own\. Centred sideways, from 14% down\. The default follows Instagram's Reels guidance: 88% × 51%\./)).toBeTruthy();
+  expect(dialog().queryByRole("button", { name: /Reset to default/ })).toBeNull();
+
+  setField("Safe area width", "80");
+  expect(st().queue.map((e) => e.label)).toEqual(["safe area change"]);
+  expect(st().doc.safeAreas).toEqual({ short_9x16: { width: 0.8, height: 0.51 } });
+  setField("Safe area height", "99"); // more than fits below the top: held to 86%
+  expect(st().doc.safeAreas).toEqual({ short_9x16: { width: 0.8, height: 0.86 } });
+  expect(field("Safe area height").value).toBe("86");
+
+  fireEvent.click(dialog().getByRole("button", { name: "Reset to default (88% × 51%)" }));
+  expect(st().doc.safeAreas).toBeUndefined();
+  expect(field("Safe area width").value).toBe("88");
+  expect(st().queue).toHaveLength(3);
+
+  // Another format has its own size.
+  fireEvent.change(format(), { target: { value: "long_16x9" } });
+  expect(field("Safe area width").value).toBe("90");
+  expect(field("Safe area height").value).toBe("90");
+});
+
+it("a viewer sees the safe area's size and cannot change it", () => {
+  const { st } = show({ canEdit: false });
+  fireEvent.click(gear());
+  expect(field("Safe area width").disabled).toBe(true);
+  expect(field("Safe area height").disabled).toBe(true);
+  expect(st().queue).toHaveLength(0);
+});
+
+it("a custom-sized project has one safe area for every custom size", () => {
+  const { st } = show({ doc: { ...sampleDoc(), format: "custom", width: 816, height: 1056 } });
+  fireEvent.click(gear());
+  expect(field("Safe area width").value).toBe("90");
+  expect(field("Safe area height").value).toBe("90");
+  expect(dialog().getByText(/For custom sizes; each format keeps its own\. Centred sideways, from 5% down\. The default: 90% × 90%\./)).toBeTruthy();
+  setField("Safe area height", "99"); // held to what fits below the top
+  expect(st().doc.safeAreas).toEqual({ custom: { width: 0.9, height: 0.95 } });
+  // The project's own Width and Height are still the frame's.
+  expect(dialog().getByLabelText("Width")).not.toBe(field("Safe area width"));
 });
 
 it("a deleted project's Settings still opens, and its format cannot change", () => {
@@ -72,7 +126,7 @@ it("a deleted project's Settings still opens, and its format cannot change", () 
   expect(gear().disabled).toBe(false);
   fireEvent.click(gear());
   expect(format().disabled).toBe(true);
-  expect(dialog().getByText("Only editors can change the format.")).toBeTruthy();
+  expect(dialog().getByText("Only editors can change the format and the safe area.")).toBeTruthy();
 });
 
 describe("a custom size", () => {
@@ -213,7 +267,7 @@ describe("a custom size", () => {
     fireEvent.click(gear());
     const texts = [...format().options].map((o) => o.textContent);
     expect(texts.at(-1)).toBe("Custom size");
-    expect(texts[0]).toBe("Short 9:16 (1080 × 1920)");
+    expect(texts[0]).toBe("Vertical 9:16 (1080 × 1920)");
   });
 
   it("a viewer sees a custom project's size and cannot change it", () => {
@@ -228,7 +282,7 @@ describe("a custom size", () => {
   });
 });
 
-it("General sets the units, safe zones, snapping and lengths", () => {
+it("General sets the units, safe area, snapping and lengths", () => {
   const { st, settings, save } = show();
   fireEvent.click(gear());
   fireEvent.click(tab("General"));
@@ -246,11 +300,11 @@ it("General sets the units, safe zones, snapping and lengths", () => {
   fireEvent.click(dialog().getByRole("radio", { name: "Inches" }));
   expect(settings.getState().units).toBe("in");
 
-  const safeZones = dialog().getByRole("switch", { name: "Show safe zones" });
-  expect(safeZones.getAttribute("aria-checked")).toBe("true");
-  fireEvent.click(safeZones);
-  expect(st().showSafeZones).toBe(false);
-  expect(safeZones.getAttribute("aria-checked")).toBe("false");
+  const safeArea = dialog().getByRole("switch", { name: "Show safe area" });
+  expect(safeArea.getAttribute("aria-checked")).toBe("false"); // hidden at first
+  fireEvent.click(safeArea);
+  expect(st().showSafeZones).toBe(true);
+  expect(safeArea.getAttribute("aria-checked")).toBe("true");
   const snapping = dialog().getByRole("switch", { name: "Snapping" });
   fireEvent.click(snapping);
   expect(st().snapping).toBe(false);
@@ -325,7 +379,7 @@ it("the Shortcuts list shows the keys chosen in this browser", () => {
 
 const PREVIEW_ROWS: [string, string[]][] = [
   ["Move along one line", ["Shift", "drag a clip"]],
-  ["Keep the shape while resizing", ["Shift", "drag a handle"]],
+  ["Resize freely (squash or stretch)", ["Ctrl", "Win", "drag a handle"]],
   ["Crop instead of resizing", ["Alt", "drag a handle"]],
   ["Turn in 15° steps", ["Shift", "drag the turn handle"]],
   ["Type in place", ["double-click text"]],
@@ -345,10 +399,18 @@ it("the Preview group lists the mouse keys", () => {
   expect(within(group).queryAllByRole("button")).toEqual([]);
 });
 
-it("on a Mac the Preview group writes Alt as ⌥", () => {
+it("the free resize row offers Ctrl or Win away from a Mac", () => {
+  show();
+  const row = within(previewGroup()).getByText("Resize freely (squash or stretch)").closest("li")!;
+  expect(row.textContent).toBe("Resize freely (squash or stretch)CtrlorWin+drag a handle");
+});
+
+it("on a Mac the Preview group writes Alt as ⌥ and the free key as ⌘", () => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   show();
-  expect(keysOf(previewGroup(), "Crop instead of resizing")).toEqual(["⌥", "drag a handle"]);
+  const group = previewGroup();
+  expect(keysOf(group, "Crop instead of resizing")).toEqual(["⌥", "drag a handle"]);
+  expect(keysOf(group, "Resize freely (squash or stretch)")).toEqual(["⌘", "drag a handle"]);
 });
 
 it("the gear opens the section shown last", () => {

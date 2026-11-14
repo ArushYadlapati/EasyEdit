@@ -14,6 +14,7 @@ import {
   fromScreen,
   handlePoints,
   hitTest,
+  rotateSpots,
   toOverlay,
   toWorld,
   type Box,
@@ -39,8 +40,9 @@ const HIT_SLOP_PX = 4;
 // The handles, in CSS pixels: each is an 8 px square in a 24 px target, or just the square on a box under 48 px a
 // side. A handle off the visible pane is drawn 12 px inside its edge, and one that would land within 12 px of a handle
 // placed before it, when either was clamped, is left out. A box thinner than 24 px has its side handles 12 px outside.
-// The rotate handle is 24 px above the top edge (36 when n and s are pushed out), or 36 px inside from n when there is
-// no room above.
+// The rotate handle is 24 px above the top edge (36 when n and s are pushed out). With no room above, it is as far
+// below the bottom edge, or else 24 px past the right side and then the left (36 when e and w are pushed out). With
+// no room on any side, it is 36 px inside from n.
 const SQUARE_PX = 8;
 const TARGET_PX = 24;
 const SMALL_BOX_PX = 48;
@@ -87,10 +89,11 @@ const px = (v: number) => Math.round(v * 100) / 100;
 // turned, resized and cropped. What it draws is worked out outside render, whenever the preview draws or its board
 // moves and whenever the selection, a drag's guides or what shows crop marks change, and only a change is set. A press selects the top-most clip under
 // the pointer, clicking through locked tracks; outside the frame only a selected clip takes it; a press that travels
-// moves the clip. One selected clip that can be edited, paused, has eight handles and a rotate handle. A right-click
-// opens the clip's menu (a handle's is its clip's), or the preview's when it lands on nothing or on a clip of a locked
-// track. On a Mac a Ctrl press is that right-click. A double-click on text opens its box for typing in place (or says its
-// track is locked); while the box is open its clip has no outline or handles, and what lands in the box is the box's.
+// moves the clip. One selected clip that can be edited, paused, has eight handles and a rotate handle, which keeps off
+// the clip's picture while the pane has room past one of its sides. A right-click opens the clip's menu (a handle's is
+// its clip's), or the preview's when it lands on nothing or on a clip of a locked track. On a Mac a Ctrl press is that
+// right-click. A double-click on text opens its box for typing in place (or says its track is locked); while the box is
+// open its clip has no outline or handles, and what lands in the box is the box's.
 // The handles but rotate show as crop marks while Alt is down with the pointer over the board, while a drag crops, and
 // while the clip menu's Crop has armed the clip; while handles show, a lone Alt never reaches the browser, so it does
 // not open a Windows browser's menu.
@@ -454,8 +457,8 @@ function gripOf(target: EventTarget): Handle | "rotate" | null {
 const inside = (p: Point, box: Box) => p.x >= box.left && p.x <= box.right && p.y >= box.top && p.y <= box.bottom;
 
 // The handles of the one selected clip, when it is drawn now, can be edited, is on an unlocked track and nothing
-// plays, in the overlay's pixels. followed: a dragged clamped handle drawn at the pointer. marks: whether a clip's
-// handles show as crop marks.
+// plays, in the overlay's pixels; the rotate handle is placed last, clear of the rest. followed: a dragged clamped
+// handle drawn at the pointer. marks: whether a clip's handles show as crop marks.
 function handlesOf(
   state: EditorState,
   items: CanvasItem[],
@@ -474,8 +477,8 @@ function handlesOf(
   const height = (item.rect.bottom - item.rect.top) * item.sy * k;
   const size = Math.min(width, height) < SMALL_BOX_PX ? SQUARE_PX : TARGET_PX;
   const push = { ew: height < TARGET_PX ? EDGE_PX / k : 0, ns: width < TARGET_PX ? EDGE_PX / k : 0 };
-  const rotateOffset = (push.ns > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k;
-  const at = new Map(handlePoints(item, rotateOffset, push).map((p) => [p.grip, toOverlay(view, overlay, p.at)]));
+  const rotateOffset = { ns: (push.ns > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k, ew: (push.ew > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k };
+  const at = new Map(handlePoints(item, rotateOffset.ns, push).map((p) => [p.grip, toOverlay(view, overlay, p.at)]));
 
   const look = marks(item.clipId) ? "crop" : "resize";
   const placed: HandleView[] = [];
@@ -502,10 +505,16 @@ function handlesOf(
     placed.push(shownAs(grip, p, clamped, cursorFor(grip, item.rotation)));
   }
 
-  // With no room above the clip, the rotate handle goes 36 px inside from n's clamped spot, toward the box's middle.
-  let rotate = at.get("rotate")!;
+  // The rotate handle goes above the clip, or with no room there below it, then past its right side, then its left:
+  // the first spot no nearer than 12 px to the visible pane's edge and not within 12 px of a handle shown. With none, it
+  // goes 36 px inside from n's clamped spot, toward the box's middle.
   const room = { left: visible.left + EDGE_PX, top: visible.top + EDGE_PX, right: visible.right - EDGE_PX, bottom: visible.bottom - EDGE_PX };
-  if (!inside(rotate, room)) {
+  const free = (p: Point) =>
+    inside(p, room) && !placed.some((h) => h.grip !== followed?.grip && Math.hypot(h.left - p.x, h.top - p.y) < EDGE_PX);
+  let rotate = rotateSpots(item, rotateOffset)
+    .map((p) => toOverlay(view, overlay, p))
+    .find(free);
+  if (!rotate) {
     const n = clampInto(at.get("n")!, visible, EDGE_PX);
     const a = (item.rotation * Math.PI) / 180;
     rotate = clampInto({ x: n.x - Math.sin(a) * ROTATE_FAR_PX, y: n.y + Math.cos(a) * ROTATE_FAR_PX }, visible, EDGE_PX);

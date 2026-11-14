@@ -50,8 +50,9 @@ describe("playback in the store", () => {
     st().shuttle("j");
     expect(st()).toMatchObject({ playing: true, rate: -1 });
     st().pause();
+    expect(st().showSafeZones).toBe(false); // the safe area starts hidden
     st().toggleSafeZones();
-    expect(st()).toMatchObject({ playing: false, showSafeZones: false });
+    expect(st()).toMatchObject({ playing: false, showSafeZones: true });
   });
 
   it("does not play an empty project", () => {

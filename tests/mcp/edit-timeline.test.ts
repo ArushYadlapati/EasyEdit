@@ -182,7 +182,7 @@ describe("edit_timeline", () => {
     expect((await edit(0, [addText(300)])).text.split("\n").slice(1, 5)).toEqual([
       "Changes you have not seen:",
       "  version 1 · you · Added text",
-      "  version 2 · Grace Hopper · Changed the format to Long 16:9",
+      "  version 2 · Grace Hopper · Changed the format to Landscape 16:9",
       "  … and 2 more",
     ]);
     const ahead = (await edit(9, [addText(300)])).text.split("\n");

@@ -7,14 +7,14 @@ import { FORMAT_PRESETS } from "@/lib/timeline/presets";
 import { PresetId, type FormatId } from "@/lib/timeline/types";
 import { fireEvent, render, screen, within } from "../helpers/dom";
 
-const NAMES = [/^Short 9:16/, /^Feed 4:5/, /^Square 1:1/, /^Long 16:9/, /^Long 4K/, "Custom size"] as const;
+const NAMES = [/^Vertical 9:16/, /^Feed 4:5/, /^Square 1:1/, /^Landscape 16:9/, /^Landscape 4K/, /^Custom size/] as const;
 
 it("six cards in a radio group; the chosen one is checked and alone in the tab order", () => {
   render(<FormatCards value="long_16x9" onChange={() => {}} />);
   const group = screen.getByRole("radiogroup", { name: "Format" });
   const radios = within(group).getAllByRole("radio");
   expect(radios).toEqual(NAMES.map((name) => screen.getByRole("radio", { name })));
-  const chosen = screen.getByRole("radio", { name: /^Long 16:9/ });
+  const chosen = screen.getByRole("radio", { name: /^Landscape 16:9/ });
   for (const radio of radios) {
     const isChosen = radio === chosen;
     expect(radio.getAttribute("aria-checked")).toBe(String(isChosen));
@@ -22,7 +22,9 @@ it("six cards in a radio group; the chosen one is checked and alone in the tab o
     const classes = radio.className.split(" ");
     expect(classes.includes("border-ed-accent") && classes.includes("bg-ed-accent-weak")).toBe(isChosen);
   }
-  expect(within(chosen).getByText("1920 × 1080")).toBeTruthy();
+  expect(within(chosen).getByText("YouTube")).toBeTruthy(); // where it is usually posted
+  expect(within(radios[0]).getByText("Reels / Shorts")).toBeTruthy();
+  expect(within(radios[5]).getByText("Any size")).toBeTruthy();
   expect(group.className.split(" ")).toEqual(expect.arrayContaining(["grid", "grid-cols-2", "sm:grid-cols-3", "md:grid-cols-2", "lg:grid-cols-3", "gap-2"]));
 
   // Each card has a small shape: a preset's outline in its own aspect ratio, the custom card's icon.
@@ -33,7 +35,7 @@ it("six cards in a radio group; the chosen one is checked and alone in the tab o
     const { width, height } = FORMAT_PRESETS[id];
     expect(shapes[0].getAttribute("style")).toContain(`aspect-ratio: ${width} / ${height}`);
   });
-  const custom = screen.getByRole("radio", { name: "Custom size" });
+  const custom = screen.getByRole("radio", { name: /^Custom size/ });
   expect(custom.querySelector("[data-format-shape]")).toBeNull();
   expect(custom.querySelector("svg.lucide-ellipsis")?.getAttribute("aria-hidden")).toBe("true");
 });
@@ -41,17 +43,17 @@ it("six cards in a radio group; the chosen one is checked and alone in the tab o
 it("arrow keys move the choice and focus, and wrap", () => {
   const onChange = vi.fn();
   const { rerender } = render(<FormatCards value="short_9x16" onChange={onChange} />);
-  expect(fireEvent.keyDown(screen.getByRole("radio", { name: /^Short 9:16/ }), { key: "ArrowLeft" })).toBe(false);
+  expect(fireEvent.keyDown(screen.getByRole("radio", { name: /^Vertical 9:16/ }), { key: "ArrowLeft" })).toBe(false);
   expect(onChange).toHaveBeenLastCalledWith("custom");
-  expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Custom size" }));
+  expect(document.activeElement).toBe(screen.getByRole("radio", { name: /^Custom size/ }));
 
   rerender(<FormatCards value="custom" onChange={onChange} />);
-  fireEvent.keyDown(screen.getByRole("radio", { name: "Custom size" }), { key: "ArrowRight" });
+  fireEvent.keyDown(screen.getByRole("radio", { name: /^Custom size/ }), { key: "ArrowRight" });
   expect(onChange).toHaveBeenLastCalledWith("short_9x16");
-  expect(document.activeElement).toBe(screen.getByRole("radio", { name: /^Short 9:16/ }));
+  expect(document.activeElement).toBe(screen.getByRole("radio", { name: /^Vertical 9:16/ }));
 
   rerender(<FormatCards value="short_9x16" onChange={onChange} />);
-  fireEvent.keyDown(screen.getByRole("radio", { name: /^Short 9:16/ }), { key: "ArrowDown" });
+  fireEvent.keyDown(screen.getByRole("radio", { name: /^Vertical 9:16/ }), { key: "ArrowDown" });
   expect(onChange).toHaveBeenLastCalledWith("feed_4x5");
 
   rerender(<FormatCards value="feed_4x5" onChange={onChange} />);

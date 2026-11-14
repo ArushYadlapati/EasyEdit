@@ -1,5 +1,5 @@
 import { graphemes } from "@/lib/text";
-import { NO_STRETCH, docDuration, isCropped, stretchOf } from "./presets";
+import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
 import type { Clip, Track, TimelineDoc, Transform } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
@@ -94,6 +94,12 @@ export function describe(doc: TimelineDoc, opts?: { version?: number; detail?: b
   const lines = [
     `Format ${doc.format} ${doc.width}x${doc.height} @${doc.fps}fps · duration ${framesToSeconds(docDuration(doc), doc.fps)}s${version}`,
   ];
+  // Only a changed size is worth a line; the guide gives each format's default.
+  const safe = safeAreaOf(doc);
+  if (safe.custom) {
+    const pct = (f: number) => `${Number((f * 100).toFixed(1))}%`;
+    lines.push(`Safe area ${pct(safe.width)} wide × ${pct(safe.height)} tall, centred, from ${pct(safe.top)} down (set for this project)`);
+  }
   for (const track of doc.tracks) lines.push(...describeTrack(track, doc.fps, opts?.detail === true));
   return lines.join("\n");
 }

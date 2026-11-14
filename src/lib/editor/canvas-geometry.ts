@@ -128,23 +128,36 @@ export function rectPoint(rect: LocalRect, hx: number, hy: number): Point {
   };
 }
 
+// The point of the kept box at a handle's signs, in project pixels, moved out by `out` along the clip's own axis
+// through it: across for e and w, down for n and s. A corner is never moved.
+function outFrom(item: CanvasItem, hx: number, hy: number, out: number): Point {
+  const a = radians(item.rotation);
+  const at = toWorld(item, rectPoint(item.rect, hx, hy));
+  const by = hy === 0 ? hx * out : hx === 0 ? hy * out : 0;
+  const axis = hy === 0 ? { x: Math.cos(a), y: Math.sin(a) } : { x: -Math.sin(a), y: Math.cos(a) };
+  return { x: at.x + by * axis.x, y: at.y + by * axis.y };
+}
+
 // Where each handle is in project pixels: the eight on the kept box, then rotate, rotateOffset above the middle of the
 // box's top edge along its up. push moves the side handles out along the clip's axes (e and w by push.ew, n and s by
 // push.ns), so a thin box's side handles can sit just outside it; corners never move.
 export function handlePoints(item: CanvasItem, rotateOffset: number, push = { ew: 0, ns: 0 }): { grip: Handle | "rotate"; at: Point }[] {
-  const a = radians(item.rotation);
-  const u = { x: Math.cos(a), y: Math.sin(a) };
-  const v = { x: -Math.sin(a), y: Math.cos(a) };
   const points: { grip: Handle | "rotate"; at: Point }[] = HANDLES.map((grip) => {
     const { hx, hy } = HANDLE_SIGNS[grip];
-    const at = toWorld(item, rectPoint(item.rect, hx, hy));
-    const out = hy === 0 ? hx * push.ew : hx === 0 ? hy * push.ns : 0;
-    const axis = hy === 0 ? u : v;
-    return { grip, at: { x: at.x + out * axis.x, y: at.y + out * axis.y } };
+    return { grip, at: outFrom(item, hx, hy, hy === 0 ? push.ew : push.ns) };
   });
-  const top = toWorld(item, rectPoint(item.rect, 0, -1));
-  points.push({ grip: "rotate", at: { x: top.x - rotateOffset * v.x, y: top.y - rotateOffset * v.y } });
+  points.push({ grip: "rotate", at: outFrom(item, 0, -1, rotateOffset) });
   return points;
+}
+
+// The spots the rotate handle may take, in project pixels, in the order they are tried: past the middle of the box's
+// top edge, then its bottom edge, its right side and its left side, each along the clip's own axes. ns is how far past
+// the top or bottom, ew how far past a side.
+export function rotateSpots(item: CanvasItem, offset: { ns: number; ew: number }): Point[] {
+  return (["n", "s", "e", "w"] as const).map((grip) => {
+    const { hx, hy } = HANDLE_SIGNS[grip];
+    return outFrom(item, hx, hy, hy === 0 ? offset.ew : offset.ns);
+  });
 }
 
 // A point outside the box moves to inset pixels inside the edge it is past, on each axis; one inside stays.

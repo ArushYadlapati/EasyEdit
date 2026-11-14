@@ -524,7 +524,7 @@ it("checkbox items carry aria-checked", () => {
       items={[
         { id: "fit", label: "Fit the timeline" },
         { id: "snap", label: "Snapping", checked: true, separatorBefore: true },
-        { id: "safe", label: "Safe zones", checked: false },
+        { id: "safe", label: "Safe area", checked: false },
       ]}
       onSelect={() => {}}
     />,
@@ -532,7 +532,7 @@ it("checkbox items carry aria-checked", () => {
   fireEvent.click(screen.getByRole("button", { name: "View" }));
   const snap = screen.getByRole("menuitemcheckbox", { name: "Snapping" });
   expect(snap.getAttribute("aria-checked")).toBe("true");
-  expect(screen.getByRole("menuitemcheckbox", { name: "Safe zones" }).getAttribute("aria-checked")).toBe("false");
+  expect(screen.getByRole("menuitemcheckbox", { name: "Safe area" }).getAttribute("aria-checked")).toBe("false");
   const fit = screen.getByRole("menuitem", { name: "Fit the timeline" });
   expect(fit.hasAttribute("aria-checked")).toBe(false);
   // Every item has the 16 px check column, so the labels line up; only a checked one draws the mark.

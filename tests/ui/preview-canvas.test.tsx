@@ -378,16 +378,16 @@ describe("right-clicking the preview", () => {
     expect(st().selection.clipIds).toEqual(["c1"]);
   });
 
-  it("a right-click on empty picture opens 'Preview', and Safe zones hides them", () => {
+  it("a right-click on empty picture opens 'Preview', and Safe area shows it", () => {
     const { st } = show({ at: 70 });
     rightClick(...TEXT);
     const menu = screen.getByRole("menu", { name: "Preview" });
     const paste = within(menu).getByRole("menuitem", { name: /^Paste/ });
     expect(paste.hasAttribute("disabled") || paste.getAttribute("aria-disabled") === "true").toBe(true);
-    const safe = within(menu).getByRole("menuitemcheckbox", { name: "Safe zones" });
-    expect(safe.getAttribute("aria-checked")).toBe("true");
+    const safe = within(menu).getByRole("menuitemcheckbox", { name: "Safe area" });
+    expect(safe.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(safe);
-    expect(st().showSafeZones).toBe(false);
+    expect(st().showSafeZones).toBe(true);
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
@@ -412,12 +412,12 @@ describe("right-clicking the preview", () => {
     expect(st().queue.map((q) => q.label)).toEqual(["paste"]);
   });
 
-  it("a viewer's preview menu has only Safe zones", () => {
+  it("a viewer's preview menu has only Safe area", () => {
     show({ at: 70, over: { canEdit: false }, copied: ["x1"] });
     rightClick(...TEXT);
     const menu = screen.getByRole("menu", { name: "Preview" });
-    expect([...menu.querySelectorAll("button")].map((i) => i.textContent)).toEqual(["Safe zones"]);
-    expect(within(menu).getByRole("menuitemcheckbox", { name: "Safe zones" }).getAttribute("aria-checked")).toBe("true");
+    expect([...menu.querySelectorAll("button")].map((i) => i.textContent)).toEqual(["Safe area"]);
+    expect(within(menu).getByRole("menuitemcheckbox", { name: "Safe area" }).getAttribute("aria-checked")).toBe("false");
   });
 });
 
@@ -629,13 +629,16 @@ describe("moving, turning and resizing on the preview", () => {
     expect(st().queue).toEqual([]);
   });
 
+  // x1 10 CSS px right of the frame's middle and 4 below it, still under TEXT.
+  const offCentre = () => withTransform(sampleDoc(), "x1", { x: 0.5 + 20 / 1080, y: 0.5 + 8 / 1920 });
+
   it("a moved centre snaps to the frame's middle with a guide across the frame", () => {
-    const { st } = show({ selected: ["x1"] });
+    const { st } = show({ over: { doc: offCentre() }, selected: ["x1"] });
     expect(overlay().querySelectorAll("[data-canvas-guide]")).toHaveLength(0);
     press(...TEXT);
-    move(490, 536); // 8 project px off the middle, inside the 12 px a 6 CSS px snap reaches at k = 0.5
+    move(480, 535); // 8 and 6 project px off the middle, inside the 12 px a 6 CSS px snap reaches at k = 0.5
     frame();
-    expect(st().gesture).toBeNull();
+    expect(gesturePatch(st())).toEqual({ transform: { x: 0.5, y: 0.5 } });
     const lines = [...overlay().querySelectorAll("line[data-canvas-guide]")];
     expect(lines.map((l) => [l.getAttribute("data-canvas-guide"), l.getAttribute("x1"), l.getAttribute("y1"), l.getAttribute("x2"), l.getAttribute("y2")])).toEqual([
       ["x", "286", "16", "286", "976"],
@@ -643,32 +646,32 @@ describe("moving, turning and resizing on the preview", () => {
     ]);
     expect(lines[0].getAttribute("class")).toContain("stroke-ed-accent");
     expect(lines[0].getAttribute("stroke-width")).toBe("1");
-    move(513, 536);
+    move(513, 535);
     frame();
     expect([...overlay().querySelectorAll("[data-canvas-guide]")].map((l) => l.getAttribute("data-canvas-guide"))).toEqual(["y"]);
-    release(513, 536);
+    release(513, 535);
     expect(overlay().querySelectorAll("[data-canvas-guide]")).toHaveLength(0);
   });
 
   it("with snapping off the centre does not snap", () => {
-    const { st } = show({ selected: ["x1"] });
+    const { st } = show({ over: { doc: offCentre() }, selected: ["x1"] });
     act(() => st().setSnapping(false));
     press(...TEXT);
-    move(490, 536);
+    move(480, 535);
     frame();
-    release(490, 536);
-    expect(patchOf(st())).toEqual({ transform: { x: 0.5074 } });
+    release(480, 535);
+    expect(patchOf(st())).toEqual({ transform: { x: 0.5074, y: 0.5031 } });
   });
 
   it("turning snapping off mid-drag works the move out again", () => {
-    const { st } = show({ selected: ["x1"] });
+    const { st } = show({ over: { doc: offCentre() }, selected: ["x1"] });
     press(...TEXT);
-    move(490, 536);
+    move(480, 535);
     frame();
-    expect(st().gesture).toBeNull();
+    expect(gesturePatch(st())).toEqual({ transform: { x: 0.5, y: 0.5 } });
     act(() => st().setSnapping(false));
     frame();
-    expect(gesturePatch(st())).toEqual({ transform: { x: 0.5074 } });
+    expect(gesturePatch(st())).toEqual({ transform: { x: 0.5074, y: 0.5031 } });
   });
 
   it("a scroll of the board mid-drag moves the clip with the pointer's new place on the frame", () => {
@@ -684,14 +687,14 @@ describe("moving, turning and resizing on the preview", () => {
     expect(transformOf(st(), "x1").x).toBeCloseTo(0.537, 4);
   });
 
-  it("dragging a side handle stretches the clip and keeps the opposite side in place", () => {
+  it("dragging a side handle with the free key stretches the clip and keeps the opposite side in place", () => {
     const { st } = show({ selected: ["x1"] });
     expect(placeOf("e")).toEqual(["302px", "496px"]);
     expect(handle("e")!.style.cursor).toBe("ew-resize");
-    expect(pressHandle("e", 502, 536)).toBe(true);
-    move(518, 536);
+    expect(pressHandle("e", 502, 536, { metaKey: true })).toBe(true);
+    move(518, 536, { metaKey: true });
     frame();
-    release(518, 536);
+    release(518, 536, { metaKey: true });
     expect(labelsOf(st())).toEqual(["size change"]);
     expect(patchOf(st())).toEqual({ transform: { x: 0.5148, stretch: 1.5 } });
   });
@@ -704,14 +707,17 @@ describe("moving, turning and resizing on the preview", () => {
     expect(st().gesture).not.toBeNull();
   });
 
-  it("Shift on a corner keeps the shape", () => {
+  it("Shift on a corner keeps the shape, even with the free key held", () => {
     const { st } = show({ selected: ["x1"] });
-    pressHandle("se", 502, 555.2, { shiftKey: true });
-    move(518, 574.4, { shiftKey: true });
+    const keys = { shiftKey: true, metaKey: true };
+    pressHandle("se", 502, 555.2, keys);
+    move(518, 555.2, keys);
     frame();
-    release(518, 574.4, { shiftKey: true });
+    release(518, 555.2, keys);
     expect(labelsOf(st())).toEqual(["size change"]);
-    expect(patchOf(st())).toEqual({ transform: { x: 0.5148, y: 0.51, scale: 1.5 } });
+    const { transform } = patchOf(st()) as { transform: Record<string, number> };
+    expect(transform).not.toHaveProperty("stretch");
+    expect(transform.scale).toBeCloseTo(1.2049, 3);
   });
 
   it("a press on a handle wins over Shift's toggle", () => {
@@ -723,15 +729,15 @@ describe("moving, turning and resizing on the preview", () => {
 
   it("pressing Shift mid-drag without moving re-resolves", () => {
     const { st } = show({ selected: ["x1"] });
-    pressHandle("e", 502, 536);
-    move(518, 536);
+    pressHandle("e", 502, 536, { metaKey: true });
+    move(518, 536, { metaKey: true });
     frame();
     expect(gesturePatch(st())).toEqual({ transform: { x: 0.5148, stretch: 1.5 } });
-    fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
+    fireEvent.keyDown(window, { key: "Shift", shiftKey: true, metaKey: true });
     frame();
     expect(gesturePatch(st())).toMatchObject({ transform: { scale: 1.5 } });
     expect(gesturePatch(st())).not.toHaveProperty("transform.stretch");
-    fireEvent.keyUp(window, { key: "Shift" });
+    fireEvent.keyUp(window, { key: "Shift", metaKey: true });
     frame();
     expect(gesturePatch(st())).toEqual({ transform: { x: 0.5148, stretch: 1.5 } });
   });
@@ -821,10 +827,10 @@ describe("moving, turning and resizing on the preview", () => {
     expect(placeOf("s")[1]).toBe("517.6px");
     // n and s are pushed out, so the rotate handle sits 36 CSS px above the top edge.
     expect(placeOf("rotate")).toEqual(["286px", "450.4px"]);
-    pressHandle("e", 506, 536);
-    move(510, 536);
+    pressHandle("e", 506, 536, { metaKey: true });
+    move(510, 536, { metaKey: true });
     frame();
-    release(510, 536);
+    release(510, 536, { metaKey: true });
     expect(labelsOf(st())).toEqual(["size change"]);
     expect(patchOf(st())).toMatchObject({ transform: { stretch: 1.25 } });
     expect(patchOf(st())).not.toHaveProperty("transform.scale");
@@ -860,17 +866,18 @@ describe("moving, turning and resizing on the preview", () => {
     expect(patchOf(st())).toEqual({ transform: { rotation: 90 } });
   });
 
-  it("a full-frame clip's rotate handle sits inside it when there is no room above", () => {
+  it("a full-frame clip's rotate handle sits inside it when there is no room past any side", () => {
+    // The board has 16 px round the frame here, too little on every side. rotate-handle-place.test.tsx has the rest.
     show({ selected: ["c1"] });
     expect(placeOf("rotate")).toEqual(["286px", "52px"]);
     document.body.innerHTML = "";
     show({ selected: ["x1"] });
     expect(placeOf("rotate")).toEqual(["286px", "452.8px"]);
-    // Above a clip near the top, a rotate handle within 12 px of the pane's edge also moves inside it.
+    // Above a clip near the top, a rotate handle within 12 px of the pane's edge goes below the clip instead.
     document.body.innerHTML = "";
     show({ over: { doc: withTransform(sampleDoc(), "x1", { y: 0.04 }) }, selected: ["x1"] });
     expect(placeOf("n")).toEqual(["286px", "35.2px"]);
-    expect(placeOf("rotate")).toEqual(["286px", "71.2px"]);
+    expect(placeOf("rotate")).toEqual(["286px", "97.6px"]);
   });
 
   it("two handles clamped onto one spot show once", () => {
@@ -975,7 +982,7 @@ describe("moving, turning and resizing on the preview", () => {
     frame();
     release(545, 536);
     expect(labelsOf(st())).toEqual(["position change", "size change"]);
-    expect(patchOf(st(), 1)).toEqual({ transform: { x: 0.5648, stretch: 1.5 } });
+    expect(patchOf(st(), 1)).toEqual({ transform: { x: 0.5648, scale: 1.5 } });
   });
 
   it("a viewer sees no handles and moves nothing", () => {
@@ -1047,7 +1054,7 @@ describe("cropping on the preview", () => {
     pressHandle("e", 756, 536);
     move(702, 536);
     frame();
-    expect(gesturePatch(st())).toHaveProperty("transform.stretch");
+    expect(gesturePatch(st())).toHaveProperty("transform.scale");
     expect(cropFull()).toBeNull();
     expect(fireEvent.keyDown(window, { key: "Alt", altKey: true })).toBe(false);
     frame();
@@ -1055,7 +1062,7 @@ describe("cropping on the preview", () => {
     expect(cropFull()).not.toBeNull();
     expect(fireEvent.keyUp(window, { key: "Alt" })).toBe(false);
     frame();
-    expect(gesturePatch(st())).toHaveProperty("transform.stretch");
+    expect(gesturePatch(st())).toHaveProperty("transform.scale");
     expect(cropFull()).toBeNull();
     expect(gesturePatch(st())).not.toHaveProperty("transform.crop");
     release(702, 536);
@@ -1143,7 +1150,7 @@ describe("cropping on the preview", () => {
     pressHandle("w", 212, 536);
     move(214, 536);
     frame();
-    expect(gesturePatch(st())).toHaveProperty("transform.stretch");
+    expect(gesturePatch(st())).toHaveProperty("transform.scale");
   });
 
   it("text crops by hand too", () => {
@@ -1288,7 +1295,7 @@ describe("cropping on the preview", () => {
     expect(gesturePatch(st())).toHaveProperty("transform.crop");
     act(() => st().setCropArmed(null));
     frame();
-    expect(gesturePatch(st())).toHaveProperty("transform.stretch");
+    expect(gesturePatch(st())).toHaveProperty("transform.scale");
   });
 
   it("an armed crop ends with any canvas drag, and a click does not end it", () => {

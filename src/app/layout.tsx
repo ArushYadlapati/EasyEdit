@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { DARK_READER_LOCK_WHEN_DARK } from "@/lib/color-scheme";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,6 +18,11 @@ export const metadata: Metadata = {
   description: "Video editor for the Seattle Solvers FTC team.",
 };
 
+// <meta name="color-scheme">: pages follow the computer's light or dark setting, and the editor and the dashboard
+// override this with "dark". A browser's own "force dark" mode (Chrome's, Edge's, Samsung Internet's) leaves alone a
+// page that says it has dark colors, and the page background in globals.css follows this value too.
+export const viewport: Viewport = { colorScheme: "light dark" };
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     // Browser extensions that add attributes to <html> otherwise cause a hydration warning.
@@ -25,6 +31,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: DARK_READER_LOCK_WHEN_DARK }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

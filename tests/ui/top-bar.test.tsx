@@ -334,14 +334,16 @@ it("View → Snapping turns snapping off", () => {
   expect(check("Snapping").getAttribute("aria-checked")).toBe("false");
 });
 
-it("View → Safe zones hides them", () => {
+it("View → Safe area shows it, and hides it again", () => {
   const { store, open, check } = showMenus();
   open("View");
-  expect(check("Safe zones").getAttribute("aria-checked")).toBe("true");
-  fireEvent.click(check("Safe zones"));
-  expect(store.getState().showSafeZones).toBe(false);
+  expect(check("Safe area").getAttribute("aria-checked")).toBe("false"); // hidden at first
+  fireEvent.click(check("Safe area"));
+  expect(store.getState().showSafeZones).toBe(true);
   open("View");
-  expect(check("Safe zones").getAttribute("aria-checked")).toBe("false");
+  expect(check("Safe area").getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(check("Safe area"));
+  expect(store.getState().showSafeZones).toBe(false);
 });
 
 it("View → Reset panel sizes calls onResetLayout", () => {

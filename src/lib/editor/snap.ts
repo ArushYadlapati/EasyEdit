@@ -17,39 +17,43 @@ export function clipEdges(doc: TimelineDoc, excludeClipIds: string[]): number[] 
   return [...edges].sort((a, b) => a - b);
 }
 
-// The edge closest to frame, by binary search over the sorted edges.
-function nearest(edges: number[], frame: number): number | null {
-  if (edges.length === 0) return null;
+// The edges either side of frame, by binary search over the sorted edges: the last one before it and
+// the first one at or after it, when there are any.
+function neighbours(edges: number[], frame: number): number[] {
   let lo = 0;
-  let hi = edges.length - 1;
+  let hi = edges.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
     if (edges[mid] < frame) lo = mid + 1;
     else hi = mid;
   }
-  const after = edges[lo];
-  const before = lo > 0 ? edges[lo - 1] : after;
-  return Math.abs(before - frame) <= Math.abs(after - frame) ? before : after;
+  return edges.slice(Math.max(0, lo - 1), lo + 1);
 }
 
 // The frames to add to the candidates so the closest one lands on a target within SNAP_PX, and that
 // target; null when none is in reach. On equal distance a clip edge wins over the playhead, and the
-// playhead over a whole second.
+// playhead over a whole second. atPress, when given, holds where each candidate was at the press: a
+// candidate then snaps only onto a target it is now closer to, so it is never held on a target it
+// started on or is moving away from.
 export function snap(
   candidates: number[],
   ctx: { edges: number[]; playhead: number; fps: number; zoom: number },
+  atPress?: number[],
 ): { delta: number; guide: number } | null {
   const reach = SNAP_PX / ctx.zoom;
   const seconds = ctx.fps * ctx.zoom >= SECOND_SNAP_MIN_PX;
   let best: { delta: number; guide: number } | null = null;
   let bestDistance = Infinity;
   let bestRank = Infinity;
-  for (const candidate of candidates) {
-    const targets = [nearest(ctx.edges, candidate), ctx.playhead, seconds ? Math.round(candidate / ctx.fps) * ctx.fps : null];
-    for (const [rank, target] of targets.entries()) {
-      if (target === null) continue;
+  for (const [i, candidate] of candidates.entries()) {
+    // Each target with its rank: clip edges 0, the playhead 1, the whole second 2.
+    const targets: [number, number][] = neighbours(ctx.edges, candidate).map((edge) => [0, edge]);
+    targets.push([1, ctx.playhead]);
+    if (seconds) targets.push([2, Math.round(candidate / ctx.fps) * ctx.fps]);
+    for (const [rank, target] of targets) {
       const distance = Math.abs(target - candidate);
       if (distance > reach || distance > bestDistance || (distance === bestDistance && rank >= bestRank)) continue;
+      if (atPress && Math.abs(target - atPress[i]) <= distance) continue;
       best = { delta: target - candidate, guide: target };
       bestDistance = distance;
       bestRank = rank;

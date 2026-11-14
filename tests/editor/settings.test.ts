@@ -9,7 +9,7 @@ const saver = () => ({ prefs: vi.fn<SettingsSave["prefs"]>(), keymap: vi.fn<Sett
 
 describe("the preferences cookie", () => {
   it("formats and reads the preferences", () => {
-    expect(formatPrefs(DEFAULT_PREFS)).toBe("u:px.sz:1.sn:1.z:fill.st:30.tx:30");
+    expect(formatPrefs(DEFAULT_PREFS)).toBe("u:px.sz:0.sn:1.z:fill.st:30.tx:30"); // the safe area starts hidden
     const chosen: Prefs = { units: "cm", safeZones: false, snapping: false, boardZoom: 150, stillSeconds: 5, textSeconds: 2.5 };
     expect(formatPrefs(chosen)).toBe("u:cm.sz:0.sn:0.z:150.st:50.tx:25");
     expect(parsePrefs("u:cm.sz:0.sn:0.z:150.st:50.tx:25")).toEqual(chosen);
@@ -18,7 +18,7 @@ describe("the preferences cookie", () => {
   });
 
   it("one bad field keeps the others", () => {
-    expect(parsePrefs("u:mm.sz:0")).toEqual({ ...DEFAULT_PREFS, units: "px", safeZones: false });
+    expect(parsePrefs("u:mm.sz:1")).toEqual({ ...DEFAULT_PREFS, units: "px", safeZones: true });
     expect(parsePrefs("sn:yes.st:45")).toEqual({ ...DEFAULT_PREFS, stillSeconds: 4.5 });
     expect(parsePrefs("sz:0:1.tx:-5.z:-5.u:")).toEqual(DEFAULT_PREFS);
   });
@@ -38,13 +38,13 @@ describe("the preferences cookie", () => {
     expect([clampSeconds(2.46), clampSeconds(0.2), clampSeconds(61)]).toEqual([2.5, 0.5, 60]);
     // What is written stays plain text that reads back the same.
     const odd: Prefs = { ...DEFAULT_PREFS, boardZoom: 150.4, stillSeconds: 2.46, textSeconds: 100 };
-    expect(formatPrefs(odd)).toBe("u:px.sz:1.sn:1.z:150.st:25.tx:600");
+    expect(formatPrefs(odd)).toBe("u:px.sz:0.sn:1.z:150.st:25.tx:600");
     expect(formatPrefs(odd)).toMatch(/^[a-z0-9:.]+$/);
   });
 
   it("the defaults are frozen", () => {
     expect(Object.isFrozen(DEFAULT_PREFS)).toBe(true);
-    expect(DEFAULT_PREFS).toEqual({ units: "px", safeZones: true, snapping: true, boardZoom: "fill", stillSeconds: 3, textSeconds: 3 });
+    expect(DEFAULT_PREFS).toEqual({ units: "px", safeZones: false, snapping: true, boardZoom: "fill", stillSeconds: 3, textSeconds: 3 });
   });
 });
 

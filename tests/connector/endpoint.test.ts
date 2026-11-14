@@ -134,7 +134,7 @@ describe("POST /api/mcp", () => {
     const r = await app.callTool(stays.accessToken, "list_projects");
     expect(r.isError).toBe(false);
     expect(r.text.split("\n")[0]).toBe("Signed in as Annie (editor). You can read and change projects.");
-    expect(r.text).toMatch(/ {2}"Shared client" {2}Short 9:16 {2}version 0 {2}changed just now by Annie$/m);
+    expect(r.text).toMatch(/ {2}"Shared client" {2}Vertical 9:16 {2}version 0 {2}changed just now by Annie$/m);
   });
 
   it("exports only POST, with a time limit", () => {

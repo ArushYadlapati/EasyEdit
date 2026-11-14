@@ -159,7 +159,7 @@ describe("custom sizes", () => {
     expect(formatLabel({ format: "feed_4x5" })).toBe("Feed 4:5");
     expect(formatLabel({ format: "custom", width: 816, height: 1056 })).toBe("Custom 816 × 1056");
     expect(formatLabel({ format: "custom" })).toBe("Custom size");
-    expect(formatLabel({ format: "short_9x16", width: 1, height: 1 })).toBe("Short 9:16");
+    expect(formatLabel({ format: "short_9x16", width: 1, height: 1 })).toBe("Vertical 9:16");
   });
 
   it("createEmptyDoc makes a custom doc at its size", () => {

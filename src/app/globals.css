@@ -36,6 +36,16 @@
   }
 }
 
+/* Behind the editor and the dashboard the page is dark too, whatever the computer's setting, so the browser's own dark
+   mode and extensions like Dark Reader that judge a page by its root and <body> see the colors people see. (Those
+   routes also send <meta name="color-scheme" content="dark">. Not light-dark(): the build rewrites it into variables
+   that only a CSS color-scheme sets, never the meta tag.) */
+html:has(.editor, .ed-theme) {
+  color-scheme: dark;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+}
+
 /* The editor is always dark. Everything inside .editor uses these roles, and the dashboard (.ed-theme) shares them. */
 .editor, .ed-theme {
   color-scheme: dark;

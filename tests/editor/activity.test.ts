@@ -46,8 +46,11 @@ describe("summarizeOps", () => {
     [[{ op: "remove_track", trackId: "t1" }], "Removed a track"],
     [[{ op: "move_track", trackId: "t1", index: 0 }], "Reordered tracks"],
     [[{ op: "replace_track", track, index: 1, restore: true }], "Restored a track"],
-    [[{ op: "set_format", format: "long_16x9" }], "Changed the format to Long 16:9"],
+    [[{ op: "set_format", format: "long_16x9" }], "Changed the format to Landscape 16:9"],
     [[{ op: "set_format", format: "custom", width: 816, height: 1056 }], "Changed the format to Custom 816 × 1056"],
+    [[{ op: "set_safe_area", format: "short_9x16", size: { width: 0.875, height: 0.6 } }], "Resized the safe area to 87.5% × 60%"],
+    [[{ op: "set_safe_area", format: "short_9x16", size: null }], "Reset the safe area"],
+    [[{ op: "set_safe_area", format: "short_9x16", size: null }, { op: "set_format", format: "long_16x9" }], "Changed the format and changed the safe area"],
     [[{ op: "move_clip", clipId: "a", start: 3 }, rm("b")], "Deleted a clip and moved a clip"],
     [[rm("a"), { op: "add_clip", trackId: "t1", clip: text("n", 0, 30) }, { op: "add_clip", trackId: "t1", clip: text("m", 30, 30) }, { op: "update_clip", clipId: "b", patch: { text: "x" } }],
       "Added 2 clips, deleted a clip and edited a clip"],
@@ -124,7 +127,7 @@ describe("the activity list", () => {
       entry(7, [{ op: "set_format", format: "long_16x9" }], "claude:u2", "Claude (for Grace)"),
     ], "u1", new Date("2026-11-11T10:05:00.000Z"));
     expect(rows).toEqual([
-      { version: 7, who: "Claude (for Grace)", summary: "Changed the format to Long 16:9", when: "5 minutes ago", canUndo: false },
+      { version: 7, who: "Claude (for Grace)", summary: "Changed the format to Landscape 16:9", when: "5 minutes ago", canUndo: false },
       { version: 6, who: "You", summary: "Deleted a clip", when: "5 minutes ago", canUndo: true },
     ]);
   });

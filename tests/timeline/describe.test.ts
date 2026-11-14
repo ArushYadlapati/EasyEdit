@@ -27,6 +27,14 @@ const withText = (text: string): TimelineDoc =>
   ]).doc;
 
 suite("describe", () => {
+  it("names the safe area only when the project set its own", () => {
+    const plain = createEmptyDoc("short_9x16");
+    expect(describe(plain)).not.toContain("Safe area");
+    const sized = applyOps(plain, [{ op: "set_safe_area", format: "short_9x16", size: { width: 0.875, height: 0.6 } }]).doc;
+    expect(describe(sized).split("\n")[1]).toBe("Safe area 87.5% wide × 60% tall, centred, from 14% down (set for this project)");
+    expect(describe(applyOps(sized, [{ op: "set_format", format: "long_16x9" }]).doc)).not.toContain("Safe area");
+  });
+
   it("describes a small doc", () => {
     let d = createEmptyDoc("short_9x16");
     d = applyOps(d, [

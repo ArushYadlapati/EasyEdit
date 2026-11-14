@@ -26,8 +26,8 @@ describe("list_projects", () => {
     expect(await listProjectsTool(ctx, {})).toEqual({ isError: false, text: [
       "Signed in as Ada Lovelace (editor). You can read and change projects.",
       "2 projects, most recently changed first:",
-      `${first.id}  "Qualifier \\"recap\\""  Short 9:16  version 1  changed just now by Claude (for Ada Lovelace)`,
-      `${second.id}  "Season"  Long 16:9  version 0  changed just now by Grace Hopper`,
+      `${first.id}  "Qualifier \\"recap\\""  Vertical 9:16  version 1  changed just now by Claude (for Ada Lovelace)`,
+      `${second.id}  "Season"  Landscape 16:9  version 0  changed just now by Grace Hopper`,
       "Open a project in the editor at https://studio.test/editor/<id>.",
     ].join("\n") });
   });

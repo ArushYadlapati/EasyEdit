@@ -87,7 +87,7 @@ export function editMenu(input: TopMenuInput): MenuEntry[] {
   return entries.map((entry) => commandEntry(input, entry));
 }
 
-// The zoom entries name the timeline, so neither reads as the preview's zoom. Safe zones and Reset
+// The zoom entries name the timeline, so neither reads as the preview's zoom. Safe area and Reset
 // panel sizes are not commands: the top bar handles them by id.
 export function viewMenu(input: TopMenuInput): MenuEntry[] {
   return [
@@ -95,7 +95,7 @@ export function viewMenu(input: TopMenuInput): MenuEntry[] {
     commandEntry(input, { command: "zoom-out", label: "Zoom out on the timeline", unavailable: !input.canZoomOut }),
     commandEntry(input, { command: "zoom-fit", label: "Fit the timeline" }),
     { ...commandEntry(input, { command: "toggle-snapping", label: "Snapping", separatorBefore: true }), checked: input.snapping },
-    { id: "safe-zones", label: "Safe zones", checked: input.showSafeZones },
+    { id: "safe-zones", label: "Safe area", checked: input.showSafeZones },
     { id: "reset-layout", label: "Reset panel sizes", separatorBefore: true },
     commandEntry(input, { command: "show-shortcuts", label: "Keyboard shortcuts" }),
   ];
@@ -220,11 +220,11 @@ export function laneMenu(state: EditorState, canPaste: boolean, trackId: string 
 export type PreviewMenuId = "paste" | "safe-zones";
 
 // The menu of the preview where no clip takes the right-click, or a clip on a locked track does (label "Preview").
-// Paste runs the paste command, at the playhead. Safe zones is this browser's switch, so a viewer keeps it.
+// Paste runs the paste command, at the playhead. Safe area is this browser's switch, so a viewer keeps it.
 export function previewMenu(state: EditorState, canPaste: boolean): MenuEntry[] {
   return [
     { id: "paste", label: "Paste", command: "paste", disabled: editBlocked(state) || !canPaste, edit: true },
-    { id: "safe-zones", label: "Safe zones", checked: state.showSafeZones, separatorBefore: true },
+    { id: "safe-zones", label: "Safe area", checked: state.showSafeZones, separatorBefore: true },
   ] satisfies (MenuEntry & { id: PreviewMenuId })[];
 }
 
