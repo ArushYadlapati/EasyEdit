@@ -147,6 +147,25 @@ it("the export worker imports no React, Next or store code, uses no page-only gl
   const reached = reach(["src/workers/export.worker.ts"]).filter((file) => file !== "src/workers/export.worker.ts");
   expect(reached).toEqual(expect.arrayContaining([
     "src/lib/export/pipeline.ts", "src/lib/export/decode-pool.ts", "src/lib/export/worker-session.ts", "src/lib/render/decode-image.ts",
+    "src/lib/export/sound-pool.ts", "src/lib/export/aac.ts",
   ]));
   expect(reached.filter((file) => !safe.has(file))).toEqual([]);
+});
+
+it("the page loads mediabunny only inside the function that needs it, so the editor's first bundle has none", () => {
+  const STATIC_MEDIABUNNY = /\b(?:from|import)\s*["']mediabunny["']/;
+  expect('import { Input } from "mediabunny";').toMatch(STATIC_MEDIABUNNY);
+  expect('import type { Quality } from "mediabunny";').toMatch(STATIC_MEDIABUNNY);
+  expect('const { Input } = await import("mediabunny");').not.toMatch(STATIC_MEDIABUNNY);
+  const files = [...sources("src/lib"), ...sources("src/components")];
+  expect(files.map(([file]) => file)).toContain("src/lib/export/aac.ts");
+  for (const [file, code] of files) expect(code, file).not.toMatch(STATIC_MEDIABUNNY);
+});
+
+it("only Save frame loads mediabunny with import(): beside the export worker's static import, a dynamic one breaks the chunk they share", () => {
+  const DYNAMIC_MEDIABUNNY = /\bimport\s*\(\s*["']mediabunny["']\s*\)/;
+  expect('const { Input } = await import("mediabunny");').toMatch(DYNAMIC_MEDIABUNNY);
+  expect('import { Input } from "mediabunny";').not.toMatch(DYNAMIC_MEDIABUNNY);
+  const files = sources("src").filter(([, code]) => DYNAMIC_MEDIABUNNY.test(code)).map(([file]) => file);
+  expect(files).toEqual(["src/components/editor/media/frame-decode.ts"]);
 });

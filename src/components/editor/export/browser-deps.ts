@@ -1,6 +1,6 @@
+import { canEncodeAac } from "@/lib/export/aac";
 import { gatherMedia, type ExportMediaDeps } from "@/lib/export/gather-media";
 import { ExportError } from "@/lib/export/messages";
-import { AUDIO } from "@/lib/export/presets";
 import { fileTarget, memoryTarget } from "@/lib/export/sinks";
 import type { SupportProbe } from "@/lib/export/support";
 import type { MediaServices } from "../media/media-context";
@@ -65,15 +65,7 @@ const supportProbe = (): SupportProbe => ({
       return false;
     }
   },
-  async canEncodeAudio() {
-    if (typeof AudioEncoder === "undefined") return false;
-    try {
-      const config = { codec: AUDIO.codec, sampleRate: AUDIO.sampleRate, numberOfChannels: AUDIO.channels, bitrate: AUDIO.bitrate };
-      return (await AudioEncoder.isConfigSupported(config)).supported === true;
-    } catch {
-      return false;
-    }
-  },
+  canEncodeAudio: canEncodeAac,
 });
 
 // Tells the browser the tab is busy for as long as the export runs, with a Web Lock of this export's own: one shared

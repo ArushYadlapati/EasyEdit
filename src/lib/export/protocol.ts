@@ -8,6 +8,7 @@ import type { TimelineDoc } from "@/lib/timeline";
 export type ExportMedia = {
   files: Record<string, Blob>; // fileId → its bytes, each file once. A Blob is shared with the worker, not copied.
   clips: Record<string, ClipMedia>; // clipId → the file it draws from, or its placeholder's text
+  sounds: Record<string, string>; // clipId → the file it sounds from; a clip not here is silent
 };
 
 export type ExportJob = {
@@ -16,12 +17,13 @@ export type ExportJob = {
   acceleration: Acceleration; // the encoder hint for this try
   fonts: FontBundle;
   media: ExportMedia;
+  sound: boolean; // the page's answer: the file carries a sound track only if the page said so too
 };
 
 // Every destination takes a write at any position it already holds, so the worker always writes the index at the
 // end (fastStart: false) and never holds the file itself.
 export type ExportFailure =
-  | "unsupported" | "size" | "empty" | "font" | "font-mismatch" | "waiting" | "media" | "decode"
+  | "unsupported" | "size" | "empty" | "font" | "font-mismatch" | "waiting" | "media" | "decode" | "sound"
   | "encoder" | "write" | "worker" | "too-long" | "unknown";
 
 // There is no cancel message: the page cancels by terminating the worker.

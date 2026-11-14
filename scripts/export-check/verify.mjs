@@ -2,8 +2,12 @@
 // upload site would read it, and compares frames of it with images the editor
 // saved. Run by hand; it is not part of `pnpm test`.
 //
-//   pnpm check:export <video.mp4> --size 1080x1920 --fps 30 [--frames 450] [--no-audio]
+//   pnpm check:export <video.mp4> --size 1080x1920 --fps 30 [--frames 450]
+//     [--no-audio | --sound | --silent] [--onset 45]
 //     [--still "<name> frame 000045.png"]… [--media-still "<name> frame 000045.png"]…
+//
+// --sound and --silent check the sound's level; --onset checks that the sound
+// starts on that frame.
 //
 // Exits 0 when every check passes, 1 when one fails, 2 on a usage error or
 // when ffmpeg or ffprobe is missing.
@@ -12,9 +16,10 @@ import { spawn } from "node:child_process";
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { compareFrames, parseStillName } from "./compare.mjs";
+import { OPENING_SILENCE_SECONDS, SOUND_RULES, audioFormatProblems, onsetBeforeEnd, onsetFrameProblem, parseMaxVolume, parseOnset, soundFlagProblem } from "./sound.mjs";
 
 const USAGE =
-  'Usage: pnpm check:export <video.mp4> --size 1080x1920 --fps 30 [--frames 450] [--no-audio] [--still "<name> frame 000045.png"]… [--media-still "<name> frame 000045.png"]…';
+  'Usage: pnpm check:export <video.mp4> --size 1080x1920 --fps 30 [--frames 450] [--no-audio | --sound | --silent] [--onset 45] [--still "<name> frame 000045.png"]… [--media-still "<name> frame 000045.png"]…';
 const NO_FFMPEG = "This check needs ffmpeg and ffprobe (brew install ffmpeg).";
 const PROFILES = ["High", "Main", "Constrained Baseline", "Baseline"];
 const LENGTH_TOLERANCE = 0.001;
@@ -37,6 +42,9 @@ function readArgs() {
         fps: { type: "string" },
         frames: { type: "string" },
         "no-audio": { type: "boolean", default: false },
+        sound: { type: "boolean", default: false },
+        silent: { type: "boolean", default: false },
+        onset: { type: "string" },
         still: { type: "string", multiple: true },
         "media-still": { type: "string", multiple: true },
       },
@@ -53,13 +61,25 @@ function readArgs() {
   if (values.frames !== undefined) {
     frames = /^\d+$/.test(values.frames) ? Number(values.frames) : usageError("--frames must be a whole number.");
   }
+  let onset = null;
+  if (values.onset !== undefined) {
+    onset = /^\d+$/.test(values.onset) ? Number(values.onset) : usageError("--onset must be a whole frame number.");
+  }
+  const flags = { sound: values.sound, silent: values.silent, noAudio: values["no-audio"], onset };
+  const flagProblem = soundFlagProblem(flags);
+  if (flagProblem) usageError(flagProblem);
+  const onsetProblem = onsetFrameProblem(onset, fps);
+  if (onsetProblem) usageError(onsetProblem);
   return {
     video: positionals[0],
     width: Number(size[1]),
     height: Number(size[2]),
     fps,
     frames,
-    noAudio: values["no-audio"],
+    noAudio: flags.noAudio,
+    sound: flags.sound,
+    silent: flags.silent,
+    onset,
     // In the order they were given, so the lines follow the command.
     stills: tokens
       .filter((token) => token.kind === "option" && (token.name === "still" || token.name === "media-still"))
@@ -97,6 +117,7 @@ function report(number, name, ok, seen) {
 }
 
 const firstLine = (text) => text.trim().split("\n")[0] || "no message";
+const lastLine = (text) => text.trim().split("\n").at(-1) || "no message";
 const seconds = (value) => `${value.toFixed(3)} s`;
 const number = (value) => (value === undefined ? NaN : Number(value));
 
@@ -217,22 +238,27 @@ async function main() {
     report(11, "keyframes", false, "no video stream");
   }
 
-  // 12. The sound track.
+  // 12. The sound track: AAC-LC, 48,000 Hz, stereo, as long as the video and starting with it.
+  const audioStart = audio ? number(audio.start_time) : NaN;
   if (args.noAudio) {
     report(12, "audio", !audio, audio ? `an audio stream (${audio.codec_name}), expected none` : "none, as asked");
   } else if (!audio) {
     report(12, "audio", false, "no audio stream");
   } else {
-    const start = number(audio.start_time);
     const length = number(audio.duration);
-    const format = audio.codec_name === "aac" && audio.sample_rate === "48000" && audio.channels === 2;
-    const startsWithVideo = Number.isFinite(start) && Number.isFinite(videoStart) && Math.abs(start - videoStart) <= AUDIO_TOLERANCE;
+    const problems = audioFormatProblems(audio);
+    const startsWithVideo = Number.isFinite(audioStart) && Number.isFinite(videoStart) && Math.abs(audioStart - videoStart) <= AUDIO_TOLERANCE;
     const lastsAsVideo = Number.isFinite(length) && Number.isFinite(videoLength) && Math.abs(length - videoLength) <= AUDIO_TOLERANCE;
+    if (!startsWithVideo) problems.push("start");
+    if (!lastsAsVideo) problems.push("length");
     report(
       12,
       "audio",
-      format && startsWithVideo && lastsAsVideo,
-      `${audio.codec_name}, ${audio.sample_rate} Hz, ${audio.channels} channels, ${Number.isFinite(length) ? seconds(length) : "no length"} from ${Number.isFinite(start) ? seconds(start) : "no start"}`,
+      problems.length === 0,
+      `${audio.codec_name}, profile ${audio.profile ?? "none"}, tag ${audio.codec_tag_string ?? "none"}, ${audio.sample_rate} Hz, ` +
+        `${audio.channels} channels, layout ${audio.channel_layout ?? "none"}, ${audio.bit_rate ?? "no"} bit/s, ` +
+        `${Number.isFinite(length) ? seconds(length) : "no length"} from ${Number.isFinite(audioStart) ? seconds(audioStart) : "no start"}` +
+        (problems.length === 0 ? "" : `; failed: ${problems.join(", ")}`),
     );
   }
 
@@ -246,6 +272,58 @@ async function main() {
     const name = `frame of ${basename(still.path)}${still.media ? " (media)" : ""}`;
     const [ok, seen] = await compareStill(args.video, still, video, frameCount);
     report(14, name, ok, seen);
+  }
+
+  // 15. The sound is there, or is digital silence, as asked.
+  if (args.sound || args.silent) {
+    const name = "sound level";
+    if (!audio) {
+      report(15, name, false, "no audio stream");
+    } else {
+      const detected = await run("ffmpeg", ["-hide_banner", "-nostats", "-i", args.video, "-map", "0:a:0", "-af", "volumedetect", "-f", "null", "-"]);
+      const db = parseMaxVolume(detected.stderr);
+      if (detected.code !== 0 || db === null) {
+        report(15, name, false, `could not measure it: ${lastLine(detected.stderr)}`);
+      } else {
+        const ok = args.sound ? db > SOUND_RULES.soundMinDb : db <= SOUND_RULES.silentMaxDb;
+        const wanted = args.sound ? `over ${SOUND_RULES.soundMinDb} dB` : `at or under ${SOUND_RULES.silentMaxDb} dB`;
+        report(15, name, ok, `max_volume ${db.toFixed(1)} dB, expected ${wanted}`);
+      }
+    }
+  }
+
+  // 16. The sound starts on its frame. -copyts keeps each stream's own times,
+  // so the sound is measured on the picture's clock.
+  if (args.onset !== null) {
+    const name = "sound starts on its frame";
+    if (!audio) {
+      report(16, name, false, "no audio stream");
+    } else if (!Number.isFinite(audioStart) || !Number.isFinite(videoStart)) {
+      report(16, name, false, "no start time");
+    } else {
+      const filter = `silencedetect=noise=${SOUND_RULES.onsetDb}dB:d=${OPENING_SILENCE_SECONDS}`;
+      const detected = await run("ffmpeg", ["-hide_banner", "-nostats", "-copyts", "-i", args.video, "-map", "0:a:0", "-af", filter, "-f", "null", "-"]);
+      const expected = videoStart + args.onset / args.fps;
+      // silencedetect closes a silence still open at the end of the stream with a
+      // silence_end there, so a sound that "starts" at the track's end never started.
+      const audioEnd = audioStart + number(audio.duration);
+      const onset = detected.code === 0 ? onsetBeforeEnd(parseOnset(detected.stderr, audioStart), audioEnd) : null;
+      if (detected.code !== 0) {
+        report(16, name, false, `could not measure it: ${lastLine(detected.stderr)}`);
+      } else if (onset === null) {
+        report(16, name, false, `no sound over ${SOUND_RULES.onsetDb} dB, expected it at ${seconds(expected)} (frame ${args.onset})`);
+      } else {
+        const offset = onset - expected;
+        const ms = offset * 1000;
+        report(
+          16,
+          name,
+          Math.abs(offset) <= SOUND_RULES.onsetSeconds,
+          `sound at ${seconds(onset)}, frame ${args.onset} at ${seconds(expected)}, offset ${ms >= 0 ? "+" : "-"}${Math.abs(ms).toFixed(1)} ms ` +
+            `(late is +, allowed ${SOUND_RULES.onsetSeconds * 1000} ms)`,
+        );
+      }
+    }
   }
 
   const failed = results.filter((result) => !result.ok);

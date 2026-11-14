@@ -12,6 +12,7 @@ export const EXPORT_MESSAGES: Record<ExportFailure, string> = {
   waiting: "Some media is still uploading or being prepared. Export once it's ready.",
   media: "A media file couldn't be read, so the export was stopped. Check your connection and try again.",
   decode: "A video clip couldn't be decoded in this browser, so the export was stopped.",
+  sound: "A clip's sound couldn't be decoded in this browser, so the export was stopped. Mute its track to export without it.",
   encoder: "The video encoder stopped. Try again.",
   write: "The file couldn't be saved. Check that the disk has room and try again.",
   worker: "Export couldn't start. Reload the page and try again.",
@@ -53,4 +54,30 @@ export function failureOf(error: unknown, fallback: ExportFailure): { code: Expo
   if (error instanceof ExportError) return { code: error.code, detail: error.detail };
   if (error instanceof Error) return { code: fallback, detail: error.message };
   return { code: fallback, detail: String(error) };
+}
+
+const field = (error: unknown, key: "name" | "message"): string | null =>
+  typeof error === "object" && error !== null && typeof (error as Record<string, unknown>)[key] === "string"
+    ? ((error as Record<string, string>)[key])
+    : null;
+
+// The error's message, or the value itself as text.
+export function errorMessage(error: unknown): string {
+  return field(error, "message") ?? String(error);
+}
+
+// The file went away under its reader (another tab's cache removed it, for example).
+const FILE_GONE = new Set(["NotReadableError", "NotFoundError", "InputDisposedError"]);
+
+export function fileGone(error: unknown): boolean {
+  return FILE_GONE.has(field(error, "name") ?? "");
+}
+
+// A reader's failure, named by its cause: a file gone is a media failure, and a decoder the browser took back (as
+// Chrome can in a background tab) an encoder failure, so the export tries once more in a fresh worker. Anything else
+// is the reader's own failure, `fallback`.
+export function readFailure(error: unknown, fallback: ExportFailure): ExportError {
+  if (fileGone(error)) return new ExportError("media", errorMessage(error));
+  if (field(error, "name") === "QuotaExceededError") return new ExportError("encoder", errorMessage(error));
+  return new ExportError(fallback, errorMessage(error));
 }

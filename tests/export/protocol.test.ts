@@ -20,6 +20,7 @@ describe("failure messages", () => {
       worker: "Export couldn't start. Reload the page and try again.",
       "too-long": "This video is too long to export in this browser. Use Chrome or Edge, or pick the draft size.",
       unknown: "Export didn't finish. Try again.",
+      sound: "A clip's sound couldn't be decoded in this browser, so the export was stopped. Mute its track to export without it.",
     });
     for (const message of Object.values(EXPORT_MESSAGES)) expect(message).toMatch(/^[A-Z][^!]*\.$/);
     expect(failureMessage("encoder")).toBe("The video encoder stopped. Try again.");
@@ -30,7 +31,7 @@ describe("failure messages", () => {
     expect(frameFailureMessage("media")).toBe("A media file couldn't be read, so the frame wasn't saved. Check your connection and try again.");
     expect(frameFailureMessage("decode")).toBe("A video clip couldn't be decoded in this browser, so the frame wasn't saved.");
     expect(frameFailureMessage("waiting")).toBe("Some media is still uploading or being prepared. Save the frame once it's ready.");
-    for (const code of ["unknown", "write", "worker", "encoder"] as const) expect(frameFailureMessage(code)).toBe("The frame couldn't be saved. Try again.");
+    for (const code of ["unknown", "write", "worker", "encoder", "sound"] as const) expect(frameFailureMessage(code)).toBe("The frame couldn't be saved. Try again.");
   });
 
   it("an ExportError carries its cause, and anything else counts as the fallback", () => {

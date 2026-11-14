@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RULES, compareFrames, parseStillName } from "../../scripts/export-check/compare.mjs";
+import { SOUND_RULES, audioFormatProblems, onsetBeforeEnd, onsetFrameProblem, parseMaxVolume, parseOnset, soundFlagProblem } from "../../scripts/export-check/sound.mjs";
 
 const W = 96;
 const H = 64;
@@ -134,5 +135,71 @@ describe("comparing a frame with footage in it", () => {
 
   it("never treats a dark footage still as blank", () => {
     expect(compareFrames(BLACK, BLACK, W, H, { media: true })).toMatchObject({ pass: true, blank: false, diff: 0, black: null, shifted: null, color: null });
+  });
+});
+
+describe("the sound checks", () => {
+  it("take --onset at frame 0 or at a frame with an opening silence silencedetect can see", () => {
+    expect([onsetFrameProblem(null, 30), onsetFrameProblem(0, 30), onsetFrameProblem(4, 30), onsetFrameProblem(8, 60), onsetFrameProblem(3, 24)]).toEqual([null, null, null, null, null]);
+    expect(onsetFrameProblem(3, 30)).toBe("--onset needs frame 0, or frame 4 or later at 30 fps: a shorter opening silence can't be measured.");
+    expect(onsetFrameProblem(7, 60)).toBe("--onset needs frame 0, or frame 8 or later at 60 fps: a shorter opening silence can't be measured.");
+  });
+
+  it("count a sound that starts within a millisecond of the track's end as no sound", () => {
+    expect([onsetBeforeEnd(null, 4), onsetBeforeEnd(4, 4), onsetBeforeEnd(3.9995, 4)]).toEqual([null, null, null]);
+    expect([onsetBeforeEnd(3.998, 4), onsetBeforeEnd(1.5, Number.NaN)]).toEqual([3.998, 1.5]);
+  });
+
+  it("fixes their thresholds up front", () => {
+    expect(SOUND_RULES).toEqual({ soundMinDb: -60, silentMaxDb: -90, onsetDb: -50, onsetSeconds: 0.021 });
+  });
+
+  it("pass only AAC-LC at 48,000 Hz in stereo", () => {
+    const good = { codec_name: "aac", profile: "LC", sample_rate: "48000", channels: 2 };
+    expect(audioFormatProblems(good)).toEqual([]);
+    expect(audioFormatProblems({ ...good, codec_name: "opus", profile: undefined })).toEqual(["codec opus", "profile none"]);
+    expect(audioFormatProblems({ ...good, profile: "HE-AAC" })).toEqual(["profile HE-AAC"]);
+    expect(audioFormatProblems({ ...good, sample_rate: "44100", channels: 1 })).toEqual(["sample rate 44100", "channels 1"]);
+  });
+
+  it("read the loudest sample from volumedetect", () => {
+    expect(parseMaxVolume("[Parsed_volumedetect_0 @ 0x60] mean_volume: -91.0 dB\n[Parsed_volumedetect_0 @ 0x60] max_volume: -91.0 dB\n")).toBe(-91);
+    expect(parseMaxVolume("[Parsed_volumedetect_0 @ 0x60] max_volume: -0.5 dB")).toBe(-0.5);
+    expect(parseMaxVolume("no stream")).toBeNull();
+  });
+
+  it("find where the sound starts from silencedetect", () => {
+    expect(parseOnset("[silencedetect @ 0x1] silence_start: 0\n[silencedetect @ 0x1] silence_end: 1.00213 | silence_duration: 1.00213\n")).toBe(1.00213);
+    expect(parseOnset("[silencedetect @ 0x1] silence_start: 2.5\n")).toBe(0);
+    expect(parseOnset("")).toBe(0);
+    expect(parseOnset("[silencedetect @ 0x1] silence_start: -0.0008\n")).toBeNull();
+    // with -copyts a track that starts at 0.04 s opens its silence there
+    expect(parseOnset("[silencedetect @ 0x1] silence_start: 0.04\n[silencedetect @ 0x1] silence_end: 1.04 | silence_duration: 1\n", 0.04)).toBe(1.04);
+    expect(parseOnset("[silencedetect @ 0x1] silence_start: 2.5\n", 0.04)).toBe(0.04);
+  });
+
+  it("count a silence as opening the track only within a millisecond of its start", () => {
+    const opened = (at: number) => `[silencedetect @ 0x1] silence_start: ${at}\n[silencedetect @ 0x1] silence_end: 1 | silence_duration: 1\n`;
+    expect(parseOnset(opened(0.0009))).toBe(1);
+    expect(parseOnset(opened(0.0011))).toBe(0);
+    expect(parseOnset(opened(0.0409), 0.04)).toBe(1);
+    expect(parseOnset(opened(0.0411), 0.04)).toBe(0.04);
+  });
+
+  it("allow at most one of --sound, --silent and --no-audio, and --onset only with sound", () => {
+    const flags = { sound: false, silent: false, noAudio: false, onset: null };
+    expect(soundFlagProblem({ ...flags, sound: true, onset: 30 })).toBeNull();
+    expect(soundFlagProblem({ ...flags, onset: 30 })).toBeNull(); // --onset alone checks the track's start without its level
+    expect(soundFlagProblem({ ...flags, sound: true, silent: true })).toBe("Give at most one of --sound, --silent and --no-audio.");
+    expect(soundFlagProblem({ ...flags, noAudio: true, onset: 30 })).toBe("--onset needs a sound track: drop --silent or --no-audio.");
+    expect(soundFlagProblem({ ...flags, silent: true, onset: 30 })).toBe("--onset needs a sound track: drop --silent or --no-audio.");
+  });
+
+  it("take each of --sound, --silent and --no-audio alone", () => {
+    const flags = { sound: false, silent: false, noAudio: false, onset: null };
+    expect(soundFlagProblem(flags)).toBeNull();
+    expect(soundFlagProblem({ ...flags, sound: true })).toBeNull();
+    expect(soundFlagProblem({ ...flags, silent: true })).toBeNull();
+    expect(soundFlagProblem({ ...flags, noAudio: true })).toBeNull();
   });
 });

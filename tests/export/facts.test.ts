@@ -9,10 +9,10 @@ import type { AssetView } from "@/lib/media/types";
 import { createEmptyDoc } from "@/lib/timeline";
 import { sampleDoc, text, video } from "../editor/fixtures";
 import { assetView } from "../helpers/media-services";
+import { soundDoc, SONG, Z } from "./sound-fixtures";
 
-const plan = (assets: AssetView[] = [assetView()], loaded = true, doc = sampleDoc()) =>
-  planExportMedia(doc, { assets: Object.fromEntries(assets.map((a) => [a.id, a])), loaded });
-const SOUND = "Sound isn't exported yet. The file's sound track is silent.";
+const plan = (assets: AssetView[] = [assetView()], loaded = true, doc = sampleDoc(), sound = true) =>
+  planExportMedia(doc, { assets: Object.fromEntries(assets.map((a) => [a.id, a])), loaded }, sound);
 const COPIES = "Video clips export from their 720p preview copies.";
 const FULL = { width: 1080, height: 1920 };
 const DRAFT = { width: 720, height: 1280 };
@@ -89,34 +89,56 @@ describe("the file's facts", () => {
   });
 });
 
+const NO_TRACK = "This browser can't add sound to the file, so it will have no sound track. To include the sound, export in Chrome or Edge on a Mac or Windows computer.";
+
 describe("what the dialog says about the media", () => {
-  it("says what the file will hold: placeholders, the 720p copies above 720, and a silent sound track", () => {
-    expect(exportNotes(plan(), FULL, true)).toEqual([COPIES, SOUND]);
-    expect(exportNotes(plan(), DRAFT, true)).toEqual([SOUND]);
-    expect(exportNotes(plan([assetView({ removed: true })]), FULL, true)).toEqual([
-      "2 clips have no media to show, so they export as the placeholders in the preview.", SOUND,
-    ]);
+  it("says what the file will hold: placeholders and the 720p copies above 720, and nothing more about sound that plays", () => {
+    expect(exportNotes(plan(), FULL, true)).toEqual([COPIES]);
+    expect(exportNotes(plan(), DRAFT, true)).toEqual([]);
+    // c1 and c2 lost their picture and their sound: one line, not a second about their sound
+    expect(exportNotes(plan([assetView({ removed: true })]), FULL, true)).toEqual(["2 clips have no media to show, so they export as the placeholders in the preview."]);
     const mixed = sampleDoc();
     mixed.tracks[0].clips = [video("c1", 0, 30, { assetId: "gone" }), video("c2", 30, 30, { assetId: "small" })];
     const small = assetView({ id: "small", previewStatus: "failed", previewFileId: null });
-    // c2 plays its small original, so there is no 720p line
-    expect(exportNotes(plan([small], true, mixed), FULL, true)).toEqual(["1 clip has no media to show, so it exports as the placeholder in the preview.", SOUND]);
+    expect(exportNotes(plan([small], true, mixed), FULL, true)).toEqual(["1 clip has no media to show, so it exports as the placeholder in the preview."]);
     const textOnly = createEmptyDoc("short_9x16");
     textOnly.tracks[1].clips = [text("x1", 0, 30)];
-    expect(exportNotes(plan([], true, textOnly), FULL, true)).toEqual([SOUND]);
+    expect(exportNotes(plan([], true, textOnly), FULL, true)).toEqual([]);
   });
 
-  it("says the file will have no sound track where this browser cannot encode AAC", () => {
-    expect(exportNotes(plan(), DRAFT, false)).toEqual(["Sound isn't exported yet. This file will have no sound track."]);
+  it("counts the sound clips with no media that the placeholder line does not", () => {
+    expect(exportNotes(plan([assetView(), Z, assetView({ ...SONG, removed: true })], true, soundDoc()), DRAFT, true))
+      .toEqual(["1 sound clip has no media, so it exports silent, as in the preview."]);
+    // c3 is invisible and its asset is unknown; m1's was removed
+    expect(exportNotes(plan([assetView(), assetView({ ...SONG, removed: true })], true, soundDoc()), DRAFT, true))
+      .toEqual(["2 sound clips have no media, so they export silent, as in the preview."]);
   });
 
-  it("says why it cannot export yet", () => {
+  it("says before the export that the file will have no sound track, only when something would sound", () => {
+    expect(exportNotes(plan(undefined, true, sampleDoc(), false), DRAFT, false)).toEqual([NO_TRACK]);
+    const textOnly = createEmptyDoc("short_9x16");
+    textOnly.tracks[1].clips = [text("x1", 0, 30)];
+    expect(exportNotes(plan([], true, textOnly, false), DRAFT, false)).toEqual([]);
+    const muted = sampleDoc();
+    muted.tracks[0].muted = true;
+    expect(exportNotes(plan(undefined, true, muted, false), DRAFT, false)).toEqual([]);
+    expect(exportNotes(plan([assetView({ hasAudio: false })], true, sampleDoc(), false), DRAFT, false)).toEqual([]);
+    // the only clips lost their media: silent in the preview too, so only the placeholder line
+    expect(exportNotes(plan([assetView({ removed: true })], true, sampleDoc(), false), DRAFT, false))
+      .toEqual(["2 clips have no media to show, so they export as the placeholders in the preview."]);
+  });
+
+  it("says why it cannot export yet, counting a clip once whether its picture, its sound or both wait", () => {
     expect(waitingReason(plan())).toBeNull();
     expect(waitingReason(plan([assetView({ status: "uploading" })]))).toBe("2 clips use media that is still uploading or being prepared. Export once it's ready.");
     const one = sampleDoc();
     one.tracks[0].clips = [video("c1", 0, 30)];
     expect(waitingReason(plan([assetView({ previewStatus: "pending" })], true, one))).toBe("1 clip uses media that is still uploading or being prepared. Export once it's ready.");
+    const song = [assetView(), Z, assetView({ ...SONG, status: "uploading" })];
+    expect(waitingReason(plan(song, true, soundDoc()))).toBe("1 clip uses media that is still uploading or being prepared. Export once it's ready.");
+    expect(waitingReason(plan(song, true, soundDoc(), false))).toBeNull();
     expect(waitingReason(plan([], false))).toBe("Checking the media library…");
+    expect(waitingReason(plan([assetView(), Z], false, soundDoc()))).toBe("Checking the media library…");
     expect(waitingReason(plan([assetView({ removed: true })]))).toBeNull(); // a placeholder never waits
   });
 });

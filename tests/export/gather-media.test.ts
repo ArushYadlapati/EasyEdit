@@ -4,6 +4,7 @@ import type { AssetView } from "@/lib/media/types";
 import { createEmptyDoc } from "@/lib/timeline";
 import { sampleDoc, text, video } from "../editor/fixtures";
 import { assetView } from "../helpers/media-services";
+import { SONG, Z, soundDoc } from "./sound-fixtures";
 
 function setup(assets: AssetView[] = [assetView()], over: Partial<ExportMediaDeps> = {}, loaded = true) {
   const order: string[] = [];
@@ -16,7 +17,7 @@ function setup(assets: AssetView[] = [assetView()], over: Partial<ExportMediaDep
   };
   const reading: [number, number][] = [];
   const abort = new AbortController();
-  const options = { signal: abort.signal, onReading: (filesRead: number, totalFiles: number) => reading.push([filesRead, totalFiles]) };
+  const options = { signal: abort.signal, onReading: (filesRead: number, totalFiles: number) => reading.push([filesRead, totalFiles]), sound: true };
   return { deps, order, reading, abort, options };
 }
 const withImage = () => {
@@ -46,7 +47,7 @@ describe("reading the media", () => {
 
   it("a removed asset reads nothing and draws its placeholder", async () => {
     const { deps, order, options } = setup([assetView({ removed: true })]);
-    expect(await gatherMedia(sampleDoc(), deps, options)).toEqual({ files: {}, clips: { c1: { label: "Media removed" }, c2: { label: "Media removed" } } });
+    expect(await gatherMedia(sampleDoc(), deps, options)).toEqual({ files: {}, clips: { c1: { label: "Media removed" }, c2: { label: "Media removed" } }, sounds: {} });
     expect(order).toEqual(["ensure a"]);
   });
 
@@ -54,7 +55,7 @@ describe("reading the media", () => {
     const d = createEmptyDoc("short_9x16");
     d.tracks[1].clips = [text("x1", 0, 30)];
     const { deps, order, reading, options } = setup();
-    expect(await gatherMedia(d, deps, options)).toEqual({ files: {}, clips: {} });
+    expect(await gatherMedia(d, deps, options)).toEqual({ files: {}, clips: {}, sounds: {} });
     expect([order, reading]).toEqual([[], []]);
   });
 });
@@ -102,5 +103,32 @@ describe("what stops it", () => {
     run.deps.ensure = async () => { run.abort.abort(); };
     await expect(gatherMedia(sampleDoc(), run.deps, run.options)).rejects.toMatchObject({ name: "AbortError" });
     expect([run.order, run.reading]).toEqual([[], []]);
+  });
+});
+
+describe("reading the sound", () => {
+  const SOUND_ASSETS = [assetView(), Z, SONG];
+
+  it("reads each file once for its pictures and its sound: an audio clip's original and an invisible video's copy", async () => {
+    const { deps, order, reading, options } = setup(SOUND_ASSETS);
+    const media = await gatherMedia(soundDoc(), deps, options);
+    expect(order).toEqual(["ensure a,z,song", "read prev-a", "read prev-z", "read orig-song"]);
+    expect(media.sounds).toEqual({ c1: "prev-a", c2: "prev-a", c3: "prev-z", m1: "orig-song" });
+    expect(media.clips).toEqual({ c1: { fileId: "prev-a" }, c2: { fileId: "prev-a" } });
+    expect(reading.at(-1)).toEqual([3, 3]);
+  });
+
+  it("asks for, waits for and reads no sound when the file will have no sound track", async () => {
+    const { deps, order, options } = setup([assetView(), Z, assetView({ ...SONG, status: "uploading" })]);
+    const media = await gatherMedia(soundDoc(), deps, { ...options, sound: false });
+    expect(order).toEqual(["ensure a", "read prev-a"]);
+    expect(media.sounds).toEqual({});
+  });
+
+  it("refuses while sound media is uploading, and stops at a sound file that cannot be read", async () => {
+    const waiting = setup([assetView(), Z, assetView({ ...SONG, status: "uploading" })]);
+    await expect(gatherMedia(soundDoc(), waiting.deps, waiting.options)).rejects.toMatchObject({ code: "waiting", detail: "m1" });
+    const unreadable = setup(SOUND_ASSETS, { readFile: async (fileId) => (fileId === "orig-song" ? null : new File([fileId], fileId)) });
+    await expect(gatherMedia(soundDoc(), unreadable.deps, unreadable.options)).rejects.toMatchObject({ code: "media", detail: "orig-song" });
   });
 });

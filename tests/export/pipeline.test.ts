@@ -4,7 +4,7 @@ import { videoSettings } from "@/lib/export/presets";
 import type { ExportJob } from "@/lib/export/protocol";
 import { createEmptyDoc } from "@/lib/timeline";
 import { text, video } from "../editor/fixtures";
-import { NO_MEDIA, fakeMediaIO, file, tick, type FakeMediaOptions } from "./fakes";
+import { NO_MEDIA, fakeMediaIO, fakeSoundIO, file, tick, type FakeMediaOptions, type FakeSoundOptions } from "./fakes";
 
 const FACE = { family: "Geist", source: 'url("https://app.test/a.woff2")', descriptors: {}, required: true };
 const LOCAL = { family: "Geist Fallback", source: "local(Arial)", descriptors: {}, required: false };
@@ -15,17 +15,19 @@ function job(frames: number, over: Partial<ExportJob> = {}): ExportJob {
   if (frames > 0) doc.tracks[1].clips = [text("a", 0, frames)];
   return {
     doc, video: videoSettings({ width: 1080, height: 1920 }, 30)!, acceleration: "no-preference",
-    fonts: { families: { Geist: '"Geist"' }, faces: [FACE, LOCAL], probes: [PROBE] }, media: NO_MEDIA, ...over,
+    fonts: { families: { Geist: '"Geist"' }, faces: [FACE, LOCAL], probes: [PROBE] }, media: NO_MEDIA, sound: true, ...over,
   };
 }
 
-function setup(over: Partial<PipelineIO> = {}, outOver: Partial<PipelineOutput> = {}, media: FakeMediaOptions = {}) {
+function setup(over: Partial<PipelineIO> = {}, outOver: Partial<PipelineOutput> = {}, media: FakeMediaOptions = {}, sound: FakeSoundOptions = {}) {
   const log: string[] = [];
+  const soundLog: string[] = [];
+  const blocks: Float32Array[] = [];
   const times: [number, number, number][] = [];
   const out: PipelineOutput = {
     draw: (frame) => { log.push(`draw ${frame}`); },
     addFrame: async (frame, seconds, duration, keyFrame) => { times.push([frame, seconds, duration]); log.push(`frame ${frame}${keyFrame ? " key" : ""}`); },
-    addSilence: async (startSample, sampleCount) => { log.push(`silence ${startSample}+${sampleCount}`); },
+    addSound: async (startSample, sampleCount, data) => { blocks.push(data); log.push(`sound ${startSample}+${sampleCount}`); },
     finish: async () => { log.push("finish"); return 4_321; },
     cancel: async () => { log.push("cancel"); },
     ...outOver,
@@ -33,6 +35,7 @@ function setup(over: Partial<PipelineIO> = {}, outOver: Partial<PipelineOutput> 
   const io: PipelineIO = {
     supported: () => true,
     media: fakeMediaIO({ ...media, log }),
+    sound: fakeSoundIO({ ...sound, log: soundLog }),
     loadFace: async (spec) => { log.push(`face ${spec.family}`); return true; },
     measure: (_font, t) => t.length * 50,
     canEncode: async (_video, acceleration) => { log.push(`can ${acceleration}`); return true; },
@@ -43,7 +46,7 @@ function setup(over: Partial<PipelineIO> = {}, outOver: Partial<PipelineOutput> 
   const reports: [number, number][] = [];
   let clock = -60;
   const control = { onProgress: (done: number, total: number) => { reports.push([done, total]); }, now: () => (clock += 60) }; // 60 ms per frame
-  return { io, log, times, reports, control };
+  return { io, log, soundLog, blocks, times, reports, control };
 }
 
 describe("an ordinary export", () => {
@@ -52,7 +55,7 @@ describe("an ordinary export", () => {
     expect(await runPipeline(job(4), io, control)).toEqual({ type: "done", bytes: 4_321, hasAudio: true });
     expect(log).toEqual([
       "face Geist", "face Geist Fallback", "can no-preference", "open no-preference audio=true",
-      "silence 0+6400", "draw 0", "frame 0 key", "draw 1", "frame 1", "draw 2", "frame 2", "draw 3", "frame 3", "finish",
+      "sound 0+6400", "draw 0", "frame 0 key", "draw 1", "frame 1", "draw 2", "frame 2", "draw 3", "frame 3", "finish",
     ]);
     expect(times).toEqual([[0, 0, 1 / 30], [1, 1 / 30, 1 / 30], [2, 2 / 30, 1 / 30], [3, 3 / 30, 1 / 30]]);
     expect(reports).toEqual([[1, 4], [3, 4], [4, 4]]); // at once, then at most every 100 ms, and always the last frame
@@ -62,8 +65,8 @@ describe("an ordinary export", () => {
     const { io, log, control } = setup();
     await runPipeline(job(61), io, control);
     expect(log.filter((l) => l.endsWith(" key"))).toEqual(["frame 0 key", "frame 60 key"]);
-    expect(log.slice(log.indexOf("frame 29") + 1, log.indexOf("frame 30") + 1)).toEqual(["silence 48000+48000", "draw 30", "frame 30"]);
-    expect(log.filter((l) => l.startsWith("silence"))).toEqual(["silence 0+48000", "silence 48000+48000", "silence 96000+1600"]);
+    expect(log.slice(log.indexOf("frame 29") + 1, log.indexOf("frame 30") + 1)).toEqual(["sound 48000+48000", "draw 30", "frame 30"]);
+    expect(log.filter((l) => l.startsWith("sound"))).toEqual(["sound 0+48000", "sound 48000+48000", "sound 96000+1600"]);
   });
 
   it("never draws the next frame before the encoder has taken the last one", async () => {
@@ -95,7 +98,7 @@ describe("an ordinary export", () => {
     const { io, log, control } = setup({ canEncodeAudio: async () => false });
     expect(await runPipeline(job(4), io, control)).toEqual({ type: "done", bytes: 4_321, hasAudio: false });
     expect(log).toContain("open no-preference audio=false");
-    expect(log.filter((l) => l.startsWith("silence"))).toEqual([]);
+    expect(log.filter((l) => l.startsWith("sound"))).toEqual([]);
   });
 
   it.each([
@@ -162,7 +165,7 @@ describe("media", () => {
   const withMedia = () => {
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2), video("c2", 2, 2, { assetId: "r" })];
-    return job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" }, c2: { label: "Media removed" } } } });
+    return job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" }, c2: { label: "Media removed" } }, sounds: {} } });
   };
 
   it("checks every video file before the encoder opens, gives each frame its pictures, and releases them", async () => {
@@ -172,7 +175,7 @@ describe("media", () => {
     expect(seen).toEqual(["0:c1", "1:c1", "2:-", "3:-"]);
     expect(log).toEqual([
       "face Geist", "face Geist Fallback", "can no-preference", "can-decode a.mp4", "open no-preference audio=true",
-      "silence 0+6400", "open a.mp4 1920", "pictures a.mp4 from 0", "frame 0 key", "frame 1",
+      "sound 0+6400", "open a.mp4 1920", "pictures a.mp4 from 0", "frame 0 key", "frame 1",
       "stop a.mp4 from 0", "dispose a.mp4", "frame 2", "frame 3", "finish",
     ]);
   });
@@ -181,7 +184,7 @@ describe("media", () => {
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     const { io, log, control } = setup();
-    await runPipeline(job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } } } }), io, control);
+    await runPipeline(job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } }), io, control);
     await tick();
     expect(log.slice(-3)).toEqual(["finish", "dispose a.mp4", "stop a.mp4 from 0"]);
   });
@@ -207,7 +210,7 @@ describe("media", () => {
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     doc.tracks.splice(1, 0, { id: "o1", kind: "overlay", name: "Overlay 1", muted: false, hidden: false, locked: false, clips: [video("c3", 0, 2, { assetId: "b" })] });
-    const media = { files: { "prev-a": file("a.mp4"), "prev-b": file("b.mp4") }, clips: { c1: { fileId: "prev-a" }, c3: { fileId: "prev-b" } } };
+    const media = { files: { "prev-a": file("a.mp4"), "prev-b": file("b.mp4") }, clips: { c1: { fileId: "prev-a" }, c3: { fileId: "prev-b" } }, sounds: {} };
     // c1 is drawn first and never answers; c3 breaks
     const { io, control } = setup({}, {}, { hangs: (name) => name === "a.mp4", breaks: (name) => name === "b.mp4" });
     expect(await runPipeline(job(2, { doc, media }), io, control)).toEqual({ type: "failed", code: "decode", detail: "decoder closed" });
@@ -216,7 +219,7 @@ describe("media", () => {
 
 describe("each step names its own failures", () => {
   it("calls a sound block the encoder refused an encoder failure", async () => {
-    const { io, control } = setup({}, { addSilence: async () => { throw new Error("audio encoder closed"); } });
+    const { io, control } = setup({}, { addSound: async () => { throw new Error("audio encoder closed"); } });
     expect(await runPipeline(job(4), io, control)).toEqual({ type: "failed", code: "encoder", detail: "audio encoder closed" });
   });
 
@@ -225,7 +228,7 @@ describe("each step names its own failures", () => {
     const { io, log, control } = setup({ media: { ...media, canDecode: async () => { throw new Error("no demuxer"); } } });
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
-    const withVideo = job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } } } });
+    const withVideo = job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } });
     expect(await runPipeline(withVideo, io, control)).toEqual({ type: "failed", code: "decode", detail: "no demuxer" });
     expect(log.filter((l) => l.startsWith("open"))).toEqual([]);
   });
@@ -237,7 +240,7 @@ describe("each step names its own failures", () => {
     const doc = createEmptyDoc("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     doc.tracks[1].clips = [text("t", 0, 4)];
-    const withVideo = job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } } } });
+    const withVideo = job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } });
     expect(await runPipeline(withVideo, io, control)).toEqual({ type: "failed", code: "decode", detail: "dispose failed" });
   });
 
@@ -247,5 +250,88 @@ describe("each step names its own failures", () => {
     let clock = -50;
     await runPipeline(job(6), io, { onProgress: (done) => { reports.push(done); }, now: () => (clock += 50) }); // 50 ms per frame
     expect(reports).toEqual([1, 3, 5, 6]);
+  });
+});
+
+describe("sound", () => {
+  // m1: an audio clip of song.mp3 on frames 0–4 at volume 0.5; the fake file holds 0.5 everywhere
+  const withSong = () => {
+    const doc = createEmptyDoc("short_9x16");
+    doc.tracks[3].clips = [video("m1", 0, 4, { type: "audio", assetId: "song", volume: 0.5 })];
+    return job(4, { doc, media: { files: { song: file("song.mp3") }, clips: {}, sounds: { m1: "song" } } });
+  };
+
+  it("mixes each block from the sounding clips and hands it to the encoder before its first frame", async () => {
+    const { io, log, soundLog, blocks, control } = setup();
+    expect(await runPipeline(withSong(), io, control)).toEqual({ type: "done", bytes: 4_321, hasAudio: true });
+    expect(log.slice(3, 5)).toEqual(["open no-preference audio=true", "sound 0+6400"]);
+    expect(soundLog).toEqual(["probe song.mp3", "open song.mp3", "packets song.mp3 0.000-0.183", "stop song.mp3", "dispose song.mp3"]);
+    expect(blocks[0]).toHaveLength(12_800);
+    expect([blocks[0][6_400], blocks[0][6_401]]).toEqual([0.25, 0.25]);
+    expect([blocks[0][0], blocks[0][12_798]]).toEqual([0, 0]);
+  });
+
+  it("writes every second, silent ones too, and reads no sound when nothing sounds", async () => {
+    const { io, blocks, soundLog, control } = setup();
+    await runPipeline(job(61), io, control);
+    expect(blocks.map((b) => [b.length, b.every((v) => v === 0)])).toEqual([[96_000, true], [96_000, true], [3_200, true]]);
+    expect(soundLog).toEqual([]);
+  });
+
+  it("reads no sound where the browser cannot encode AAC", async () => {
+    const { io, log, soundLog, control } = setup({ canEncodeAudio: async () => false });
+    expect(await runPipeline(withSong(), io, control)).toMatchObject({ type: "done", hasAudio: false });
+    expect([soundLog, log.filter((l) => l.startsWith("sound"))]).toEqual([[], []]);
+  });
+
+  it("writes no sound track when the page planned none, even where the worker could encode AAC", async () => {
+    const { io, log, soundLog, control } = setup(); // canEncodeAudio answers true
+    expect(await runPipeline({ ...withSong(), sound: false }, io, control)).toMatchObject({ type: "done", hasAudio: false });
+    expect(log).toContain("open no-preference audio=false");
+    expect([soundLog, log.filter((l) => l.startsWith("sound"))]).toEqual([[], []]);
+  });
+
+  it("stops before the file is made when a clip's sound cannot be decoded", async () => {
+    const { io, log, control } = setup({}, {}, {}, { probe: () => "undecodable" });
+    expect(await runPipeline(withSong(), io, control)).toEqual({ type: "failed", code: "sound", detail: "song" });
+    expect(log.filter((l) => l.startsWith("open") || l.startsWith("sound"))).toEqual([]);
+  });
+
+  it("exports a file without a sound track silent", async () => {
+    const { io, blocks, soundLog, control } = setup({}, {}, {}, { probe: () => "none" });
+    expect(await runPipeline(withSong(), io, control)).toMatchObject({ type: "done" });
+    expect([blocks[0].every((v) => v === 0), soundLog]).toEqual([true, ["probe song.mp3"]]);
+  });
+
+  it.each([
+    ["a decoder error", new Error("decoder error"), "sound"],
+    ["a file gone", Object.assign(new Error("gone"), { name: "NotReadableError" }), "media"],
+    ["a decoder taken back", Object.assign(new Error("reclaimed"), { name: "QuotaExceededError" }), "encoder"],
+  ] as const)("names a sound reader's failure: %s, and lets go after the result", async (_why, error, code) => {
+    const { io, log, soundLog, control } = setup({}, {}, {}, { rejectsWith: () => error });
+    expect(await runPipeline(withSong(), io, control)).toEqual({ type: "failed", code, detail: error.message });
+    await tick();
+    expect([log.at(-1), soundLog.slice(-2)]).toEqual(["cancel", ["dispose song.mp3", "stop song.mp3"]]);
+  });
+
+  it("a video's picture and sound read one file, each on its own", async () => {
+    const doc = createEmptyDoc("short_9x16");
+    doc.tracks[0].clips = [video("c1", 0, 40)];
+    const media = { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: { c1: "prev-a" } };
+    const { io, log, soundLog, control } = setup();
+    expect(await runPipeline(job(40, { doc, media }), io, control)).toMatchObject({ type: "done" });
+    expect(soundLog).toEqual(["probe a.mp4", "open a.mp4", "packets a.mp4 0.000-1.383", "stop a.mp4", "dispose a.mp4"]); // let go after block 1
+    expect(log.slice(log.indexOf("sound 48000+16000") + 1).filter((l) => l.startsWith("frame"))).toHaveLength(10); // frames 30–39 still drawn
+    expect(log.filter((l) => l === "open a.mp4 1920")).toHaveLength(1);
+  });
+
+  it("keeps a picture failure's name mid-file and lets the sound go", async () => {
+    const doc = createEmptyDoc("short_9x16");
+    doc.tracks[0].clips = [video("c1", 0, 90)]; // its sound is open from block 0 to block 2
+    const media = { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: { c1: "prev-a" } };
+    const { io, soundLog, control } = setup({}, {}, { breaks: (_name, at) => at >= 35 / 30 });
+    expect(await runPipeline(job(90, { doc, media }), io, control)).toMatchObject({ type: "failed", code: "decode" });
+    await tick();
+    expect(soundLog.slice(-2)).toEqual(["dispose a.mp4", "stop a.mp4"]);
   });
 });

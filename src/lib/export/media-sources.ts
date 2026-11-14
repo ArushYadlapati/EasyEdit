@@ -1,19 +1,24 @@
 import { PLACEHOLDER_LABELS, playbackFileFor } from "@/lib/media/playback";
 import type { LibraryState } from "@/lib/media/library-store";
+import { soundingClips } from "@/lib/render/clip-sound";
 import type { MediaClip, TimelineDoc } from "@/lib/timeline";
 import type { ClipMedia } from "./media-schedule";
 
-// Which file each clip of an export draws from: the one the editor plays, or why it must wait, or the preview's
-// placeholder. Runs on the page, before the worker starts.
+// Which file each clip of an export draws from and sounds from: the one the editor plays, or why it must wait, or the
+// preview's placeholder. Runs on the page, before the worker starts.
 
 export type ClipPlan =
   | { kind: "use"; fileId: string; from: "preview" | "original" }
   | { kind: "wait"; why: "uploading" | "preparing" | "library" } // library: the asset is not known yet and the library has not loaded
   | { kind: "placeholder"; label: string }; // a PLACEHOLDER_LABELS text
 
+type Library = Pick<LibraryState, "assets" | "loaded">;
+
 export type ExportMediaPlan = {
   clips: Record<string, ClipPlan>; // every clip that draws media
-  fileIds: string[]; // each file once, in the order the timeline first uses it
+  sounds: Record<string, ClipPlan>; // every clip that sounds, from the same files as pictures; {} unless sound was asked for
+  soundClips: number; // the clips that would sound, asked or not: none whose file has no sound, none with no media
+  fileIds: string[]; // each file once: the pictures' in drawing order, then the sounds' not yet listed, in document order
 };
 
 // The video and image clips that draw, in drawing order: tracks in order, each track's clips in order. A clip on a
@@ -31,12 +36,15 @@ function drawnMediaClips(doc: TimelineDoc): MediaClip[] {
   return clips;
 }
 
-// The assets of the clips that draw, each once, in the order the timeline first uses them.
-export function exportAssetIds(doc: TimelineDoc): string[] {
-  return [...new Set(drawnMediaClips(doc).map((clip) => clip.assetId))];
+// The assets of the clips that draw, each once, in the order the timeline first uses them; then, with sound, those of
+// the clips that sound and are not listed yet.
+export function exportAssetIds(doc: TimelineDoc, sound = false): string[] {
+  const drawn = drawnMediaClips(doc).map((clip) => clip.assetId);
+  const heard = sound ? soundingClips(doc).map(({ clip }) => clip.assetId) : [];
+  return [...new Set([...drawn, ...heard])];
 }
 
-function planClip(clip: MediaClip, library: Pick<LibraryState, "assets" | "loaded">): ClipPlan {
+function planClip(clip: MediaClip, library: Library): ClipPlan {
   const asset = library.assets[clip.assetId];
   if (asset === undefined && !library.loaded) return { kind: "wait", why: "library" };
   const file = playbackFileFor(asset);
@@ -46,16 +54,29 @@ function planClip(clip: MediaClip, library: Pick<LibraryState, "assets" | "loade
 }
 
 // The preview's rule for every clip that draws: it plays these files and shows these labels. A removed or missing
-// asset is drawn as its placeholder, never refused.
-export function planExportMedia(doc: TimelineDoc, library: Pick<LibraryState, "assets" | "loaded">): ExportMediaPlan {
+// asset is drawn as its placeholder, never refused. With sound (an export whose file can carry a sound track), the
+// same rule for every clip that sounds; Save frame and thumbnails leave it out. A file the library says has no sound
+// is not heard; one it says has sound may still be silent, and the worker finds that out.
+export function planExportMedia(doc: TimelineDoc, library: Library, sound = false): ExportMediaPlan {
   const clips: Record<string, ClipPlan> = {};
+  const sounds: Record<string, ClipPlan> = {};
   const fileIds = new Set<string>();
   for (const clip of drawnMediaClips(doc)) {
     const plan = planClip(clip, library);
     clips[clip.id] = plan;
     if (plan.kind === "use") fileIds.add(plan.fileId);
   }
-  return { clips, fileIds: [...fileIds] };
+  // A clip with no media is silent in the preview too, so it is not one that would sound.
+  let soundClips = 0;
+  for (const { clip } of soundingClips(doc)) {
+    if (library.assets[clip.assetId]?.hasAudio === false) continue;
+    const plan = planClip(clip, library);
+    if (plan.kind !== "placeholder") soundClips += 1;
+    if (!sound) continue;
+    sounds[clip.id] = plan;
+    if (plan.kind === "use") fileIds.add(plan.fileId);
+  }
+  return { clips, sounds, soundClips, fileIds: [...fileIds] };
 }
 
 // What the worker is told about each clip: its file, or its placeholder's text. A waiting clip is left out.
@@ -66,4 +87,14 @@ export function jobClips(plan: ExportMediaPlan): Record<string, ClipMedia> {
     else if (clip.kind === "placeholder") clips[clipId] = { label: clip.label };
   }
   return clips;
+}
+
+// What the worker is told about each clip's sound: the file it sounds from. Only clips with a file are told; one with
+// no media is silent.
+export function jobSounds(plan: ExportMediaPlan): Record<string, string> {
+  const sounds: Record<string, string> = {};
+  for (const [clipId, clip] of Object.entries(plan.sounds)) {
+    if (clip.kind === "use") sounds[clipId] = clip.fileId;
+  }
+  return sounds;
 }

@@ -74,7 +74,7 @@ describe("the guide", () => {
       "## Media",
       "- Find media with list_assets. You cannot see or hear it yet: go by names, events and lengths, and ask the person which moments they want.",
       "- add_media lays clips end to end in the order you give them. To use part of a video, give in_seconds and duration_seconds.",
-      '- A video\'s own sound plays with it. Set a clip\'s volume with update_clip {"volume": 0} to silence it, or mute a whole track.',
+      "- A video's own sound plays with it, unless its track is hidden or muted. Volume runs from 0 (silent) to 1 (as recorded); above 1 plays at 1 for now. A clip at another speed keeps its pitch.",
       "- A clip cannot run past the end of its footage. A trim that would is refused.",
     ].join("\n"));
     expect(OP_REFERENCE).toContain('{"op":"update_clip","clipId":C,"patch":{...}}               text, style{...}, transform{...}, volume, speed; never start or duration');

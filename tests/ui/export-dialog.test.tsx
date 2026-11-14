@@ -7,9 +7,10 @@ import { useExport, type Exporter } from "@/components/editor/export/use-export"
 import { ExportError } from "@/lib/export/messages";
 import { memoryTarget } from "@/lib/export/sinks";
 import { createEmptyDoc } from "@/lib/timeline";
-import { makeStore, sampleDoc, text } from "../editor/fixtures";
-import type { FakeWorker } from "../export/fakes";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { makeStore, sampleDoc, text, video } from "../editor/fixtures";
+import { NO_MEDIA, type FakeWorker } from "../export/fakes";
+import { SONG } from "../export/sound-fixtures";
+import { act, cleanup, fireEvent, render, screen } from "../helpers/dom";
 import { assetView } from "../helpers/media-services";
 import { fakeExportDeps } from "./export-fakes";
 import { click, dialog, emit, flush, openDialog, show, startExport } from "./export-helpers";
@@ -20,15 +21,15 @@ afterEach(() => {
 });
 
 const SUPPORTED = { hasWorkers: true, hasOffscreenCanvas: true, hasVideoEncoder: true, canEncodeAudio: async () => true };
-const SOUND = "Sound isn't exported yet. The file's sound track is silent.";
 const COPIES = "Video clips export from their 720p preview copies.";
+const NO_TRACK = "This browser can't add sound to the file, so it will have no sound track. To include the sound, export in Chrome or Edge on a Mac or Windows computer.";
 const TOO_LONG = "This video is too long to export in this browser. Use Chrome or Edge, or pick the draft size.";
 
 it("shows what will be made, then reads the media, exports, counts frames and names the saved file", async () => {
   const { store, workers, target, picked } = show();
   const d = await openDialog();
   expect(d.getByRole("combobox").textContent).toBe("Same as project (1080 × 1920)Draft (720 × 1280)");
-  for (const fact of ["1080 × 1920", "30 fps", "0:04:00", "Up to about 4.1 MB", "MP4, H.264 video", COPIES, SOUND]) expect(d.getByText(fact)).toBeTruthy();
+  for (const fact of ["1080 × 1920", "30 fps", "0:04:00", "Up to about 4.1 MB", "MP4, H.264 video", COPIES]) expect(d.getByText(fact)).toBeTruthy();
 
   await click("Export video");
   expect(picked).toEqual(["Qual recap.mp4"]);
@@ -108,6 +109,20 @@ it("exports removed media as the preview's placeholder, and says how many clips 
   expect(d.getByText("2 clips have no media to show, so they export as the placeholders in the preview.")).toBeTruthy();
   await click("Export video");
   expect(workers[0].posted[0]).toMatchObject({ job: { media: { files: {}, clips: { c1: { label: "Media removed" }, c2: { label: "Media removed" } } } } });
+});
+
+it("exports with the sound plan this browser can write", async () => {
+  for (const audio of [true, false]) {
+    const seen: boolean[] = [];
+    show({
+      supportProbe: { ...SUPPORTED, canEncode: async () => true, canEncodeAudio: async () => audio },
+      collectMedia: async (_doc, options) => { seen.push(options.sound); return NO_MEDIA; },
+    });
+    await openDialog();
+    await click("Export video");
+    expect(seen).toEqual([audio]);
+    cleanup();
+  }
 });
 
 it("says it is reading the media before the frames start", async () => {
@@ -263,11 +278,32 @@ it("waits for the media library before it offers Export video", async () => {
   expect((d.getByRole("button", { name: "Export video" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
-it("says the file will have no sound track where this browser cannot encode AAC", async () => {
-  show({ supportProbe: { ...SUPPORTED, canEncode: async () => true, canEncodeAudio: async () => false } });
+it("says before the export that the file will have no sound track where this browser can't add sound", async () => {
+  show({ supportProbe: { ...SUPPORTED, canEncode: async () => true, canEncodeAudio: async () => false } }, { doc: sampleDoc(), assets: [assetView()] });
+  expect((await openDialog()).getByText(NO_TRACK)).toBeTruthy();
+  cleanup();
+  show({}, { doc: sampleDoc(), assets: [assetView()] }); // canEncodeAudio answers true
+  expect((await openDialog()).queryByText(NO_TRACK)).toBeNull();
+});
+
+it("turns Export off while a song uploads, where the file will carry sound, and leaves Save frame on", async () => {
+  const doc = sampleDoc();
+  doc.tracks[3].clips = [video("m1", 0, 30, { type: "audio", assetId: "song" })];
+  show({}, { doc, assets: [assetView(), assetView({ ...SONG, status: "uploading" })] });
   const d = await openDialog();
-  expect(d.getByText("Sound isn't exported yet. This file will have no sound track.")).toBeTruthy();
-  expect(d.queryByText(SOUND)).toBeNull();
+  expect(d.getByText("1 clip uses media that is still uploading or being prepared. Export once it's ready.")).toBeTruthy();
+  expect((d.getByRole("button", { name: "Export video" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((d.getByRole("button", { name: "Save frame as image" }) as HTMLButtonElement).disabled).toBe(false); // a frame has no sound
+});
+
+it("leaves Export on while a song uploads where this browser can't add sound, since nothing of it is written", async () => {
+  const doc = sampleDoc();
+  doc.tracks[3].clips = [video("m1", 0, 30, { type: "audio", assetId: "song" })];
+  show({ supportProbe: { ...SUPPORTED, canEncode: async () => true, canEncodeAudio: async () => false } }, { doc, assets: [assetView(), assetView({ ...SONG, status: "uploading" })] });
+  const d = await openDialog();
+  expect(d.queryByText(/still uploading or being prepared/)).toBeNull();
+  expect((d.getByRole("button", { name: "Export video" }) as HTMLButtonElement).disabled).toBe(false);
+  expect(d.getByText(NO_TRACK)).toBeTruthy();
 });
 
 it("says up front when a video is too long to hold in a browser without a save dialog", async () => {
@@ -489,7 +525,7 @@ it("tells its caller how each export ended, and lets a held file go once reset o
   }
   const view = render(<EditorProvider store={makeStore()} exportDeps={made.deps}><Harness /></EditorProvider>);
   const finishHeld = async (worker: number) => {
-    await act(async () => { void exporter!.start("project"); });
+    await act(async () => { void exporter!.start("project", true); });
     await flush();
     await emit(made.workers[worker], { type: "chunk", seq: 0, position: 0, data: new Uint8Array([1, 2]) });
     await emit(made.workers[worker], { type: "done", bytes: 2, hasAudio: true });
@@ -503,7 +539,7 @@ it("tells its caller how each export ended, and lets a held file go once reset o
   expect(made.download).toHaveBeenCalledTimes(1);
 
   vi.spyOn(console, "error").mockImplementation(() => {});
-  await act(async () => { void exporter!.start("draft"); });
+  await act(async () => { void exporter!.start("draft", true); });
   await flush();
   await emit(made.workers[1], { type: "failed", code: "font", detail: "" });
   expect(onFinish).toHaveBeenLastCalledWith(expect.objectContaining({ status: "failed", code: "font" }), "Qual recap (draft).mp4", false);

@@ -1,5 +1,6 @@
+import { playsInPreview, soundGain } from "@/lib/render/clip-sound";
 import { sourceSeconds } from "@/lib/render/source-time";
-import type { Clip, MediaClip, TimelineDoc, Track } from "@/lib/timeline";
+import type { MediaClip, TimelineDoc } from "@/lib/timeline";
 
 // What the preview's media should be doing at a frame: which clips show and sound, at what moment of their media,
 // how fast and how loud. Pure, so the pool that drives the browser's elements only has to follow it.
@@ -12,12 +13,6 @@ export const PRELOAD_SECONDS = 2;
 export const DRIFT_SECONDS = 0.1; // while playing, an element this far off is moved
 export const STILL_SECONDS = 0.02; // while paused
 
-// A media clip the preview uses: audio wherever it is, a picture only on a track that is shown.
-function used(track: Track, clip: Clip): clip is MediaClip {
-  if (clip.type === "audio") return true;
-  return (clip.type === "video" || clip.type === "image") && !track.hidden;
-}
-
 const under = (clip: MediaClip, frame: number) => clip.start <= frame && frame < clip.start + clip.duration;
 
 // What should be showing and sounding at this frame. A clip that cannot play at the browser's rate stands still and
@@ -26,8 +21,7 @@ export function mediaWants(doc: TimelineDoc, frame: number, play: { playing: boo
   const wants: MediaWant[] = [];
   for (const track of doc.tracks) {
     for (const clip of track.clips) {
-      if (!used(track, clip) || !under(clip, frame)) continue;
-      const image = clip.type === "image";
+      if (!playsInPreview(track, clip) || !under(clip, frame)) continue;
       const product = play.rate * clip.speed;
       const rate = play.playing && product >= MIN_ELEMENT_RATE && product <= MAX_ELEMENT_RATE ? product : 0;
       wants.push({
@@ -36,7 +30,7 @@ export function mediaWants(doc: TimelineDoc, frame: number, play: { playing: boo
         type: clip.type,
         seconds: sourceSeconds(clip, frame, doc.fps),
         rate,
-        volume: image || rate === 0 || track.muted ? 0 : Math.min(clip.volume, 1),
+        volume: rate === 0 ? 0 : soundGain(track, clip),
       });
     }
   }
@@ -49,7 +43,7 @@ export function upcomingAssetIds(doc: TimelineDoc, frame: number): string[] {
   const ids = new Set<string>();
   for (const track of doc.tracks) {
     for (const clip of track.clips) {
-      if (used(track, clip) && clip.start <= ahead && frame < clip.start + clip.duration) ids.add(clip.assetId);
+      if (playsInPreview(track, clip) && clip.start <= ahead && frame < clip.start + clip.duration) ids.add(clip.assetId);
     }
   }
   return [...ids];
