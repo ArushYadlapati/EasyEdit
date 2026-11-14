@@ -22,7 +22,9 @@ describe("limits", () => {
       mediaIdsPerRequest: 200, mediaPosterBytes: 1_048_576, mediaDirectPlayBytes: 209_715_200,
       mediaPreviewWaitMs: 7_200_000, mediaCacheBytes: 2_147_483_648, mediaReadTokenMinSeconds: 600,
       connectorAssetsPage: 50, connectorMediaItems: 20, frameSideMin: 16, frameSideMax: 4096, frameAreaMax: 8_294_400,
-      folderNameChars: 60, dashboardRecent: 6, thumbnailBytes: 307_200 });
+      folderNameChars: 60, dashboardRecent: 6, thumbnailBytes: 307_200, presenceClipIds: 100, presenceIdChars: 64,
+      presenceBodyBytes: 16_384, presencePeers: 20, presenceTabsPerPerson: 5, presenceRefreshMs: 15_000,
+      presenceTtlMs: 50_000, presenceKeepMs: 600_000, presenceSweepRows: 50 });
   });
 
   it("text up to 2,000 characters is accepted; 2,001 is INVALID on add and on update", () => {

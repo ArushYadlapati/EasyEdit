@@ -21,6 +21,7 @@ import { viewDoc } from "@/lib/editor/store";
 import { docDuration, type Track } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
 import { useLibrary, useMediaDrop, useMediaDropState } from "../media/media-context";
+import { PeerSelections } from "./peer-selections";
 import { LANE_GUTTER, PlayheadLine } from "./playhead";
 import { Ruler } from "./ruler";
 import { Toolbar } from "./toolbar";
@@ -231,6 +232,7 @@ export function Timeline() {
                   />
                 ))}
                 <UploadPlaceholders />
+                <PeerSelections rows={rows} zoom={zoom} fromFrame={fromFrame} toFrame={toFrame} />
                 <DragOverlay view={drag.view} hover={hover} rows={rows} zoom={zoom} />
               </div>
             </TimelineDragContext>

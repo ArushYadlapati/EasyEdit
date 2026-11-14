@@ -14,6 +14,7 @@ import {
   fromScreen,
   handlePoints,
   hitTest,
+  outsetCorners,
   rotateSpots,
   toOverlay,
   toWorld,
@@ -25,11 +26,14 @@ import {
 } from "@/lib/editor/canvas-geometry";
 import { editTextInPlace } from "@/lib/editor/actions";
 import { previewMenu, rightClickEntries } from "@/lib/editor/menus";
+import { clipMarks, type Peer } from "@/lib/editor/presence";
 import { viewDoc, type EditorState } from "@/lib/editor/store";
 import { CanvasTextEditor } from "./canvas-text-editor";
 import { useClipboard, useEditor, useEditorStore } from "./context";
 import { useToMenuItems } from "./menu-items";
 import { CLICK_SLOP_PX } from "./timeline/use-clip-drag";
+import { PEER_MORE, peerLook } from "./peer-look";
+import { usePresenceStore } from "./presence-context";
 import { useCanvasDrag } from "./use-canvas-drag";
 import { useClipMenu } from "./use-clip-menu";
 import { useCommandRunner, useIsMac } from "./use-shortcuts";
@@ -53,6 +57,16 @@ const ROTATE_FAR_PX = 36;
 // The order handles are placed in; a later one clamped onto an earlier one's spot is the one left out.
 const PLACING: Handle[] = ["nw", "ne", "se", "sw", "n", "e", "s", "w"];
 
+// Teammates' outlines sit 3 CSS px outside a clip, then 6 px for the second; a clip outlines at most two of them.
+const PEER_RING_PX = 3;
+const PEERS_OUTLINED = 2;
+// A name pill is 16 px tall, 2 px clear of its outline and of the pane's edge, at most 160 px wide (max-w-40), and
+// one that would overlap a pill placed before it moves to 18 px below that one.
+const PILL_PX = 16;
+const PILL_GAP_PX = 2;
+const PILL_MAX_PX = 160;
+const PILL_STEP_PX = 18;
+
 // No preview menu offers "Keyboard shortcuts", so its commands never open them.
 const noShortcuts = () => {};
 
@@ -71,9 +85,16 @@ type HandleView = {
   turn: number;
 };
 type Guide = { axis: "x" | "y"; x1: number; y1: number; x2: number; y2: number };
+// A teammate's outline round one clip, in their colour slot.
+type PeerOutline = { key: string; clipId: string; colour: number; points: string };
+// A name pill, placed by its left edge or, near the pane's right, by its right (CSS right, from the overlay's right
+// edge). userId null is the "+N" pill of a clip with more people on it than are outlined; it has no colour.
+type PeerLabel = { key: string; userId: string | null; text: string; colour: number | null; top: number; left?: number; right?: number };
+type PeerMarks = { peerOutlines: PeerOutline[]; peerLabels: PeerLabel[] };
+const NO_PEER_MARKS: PeerMarks = { peerOutlines: [], peerLabels: [] };
 // full: the whole box of a clip being cropped, uncut, while a crop drag runs.
-type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[]; full: string | null };
-const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], full: null };
+type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[]; full: string | null } & PeerMarks;
+const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], full: null, ...NO_PEER_MARKS };
 
 // A clamped handle being dragged is drawn at the pointer (client pixels, null until it moves), clamped the same way.
 type Follow = { pointerId: number; grip: Handle; client: Point | null };
@@ -97,8 +118,11 @@ const px = (v: number) => Math.round(v * 100) / 100;
 // The handles but rotate show as crop marks while Alt is down with the pointer over the board, while a drag crops, and
 // while the clip menu's Crop has armed the clip; while handles show, a lone Alt never reaches the browser, so it does
 // not open a Windows browser's menu.
+// Teammates' selections are outlined in their colours, outside the clip and under your own outline, with a name pill
+// each; only clips drawn now get them, and none while playing. They never change what a press takes.
 export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane: RefObject<HTMLElement | null> }): ReactNode {
   const store = useEditorStore();
+  const presence = usePresenceStore();
   const clipboard = useClipboard();
   const menu = useContextMenu();
   const toItems = useToMenuItems();
@@ -117,6 +141,8 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const handles = useStore(drawn, (s) => s.handles);
   const guides = useStore(drawn, (s) => s.guides);
   const full = useStore(drawn, (s) => s.full);
+  const peerOutlines = useStore(drawn, (s) => s.peerOutlines);
+  const peerLabels = useStore(drawn, (s) => s.peerLabels);
   const handlesShown = handles.length > 0;
   const textEditId = useEditor((s) => s.textEditId);
 
@@ -136,11 +162,13 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         const cut = items.find((i) => i.clipId === cropping);
         // The text being typed in place shows its own box instead.
         const framed = items.filter((i) => i.clipId !== state.textEditId);
+        const visible = surface.visible();
         next = {
           outlines: outlinesOf(framed, state.selection.clipIds, view, box),
-          handles: handlesOf(state, framed, view, box, surface.visible(), followed, marks),
+          handles: handlesOf(state, framed, view, box, visible, followed, marks),
           guides: guidesOf(drag.guides.getState(), viewDoc(state), view, box),
           full: cut ? fullOf(cut, view, box) : null,
+          ...(state.playing ? NO_PEER_MARKS : peerMarksOf(framed, presence.getState().peers, view, box, visible)),
         };
       }
       const now = drawn.getState();
@@ -149,6 +177,9 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       if (JSON.stringify(now.handles) !== JSON.stringify(next.handles)) patch.handles = next.handles;
       if (JSON.stringify(now.guides) !== JSON.stringify(next.guides)) patch.guides = next.guides;
       if (now.full !== next.full) patch.full = next.full;
+      // Playback refreshes every frame; an unchanged list must not render again.
+      if (JSON.stringify(now.peerOutlines) !== JSON.stringify(next.peerOutlines)) patch.peerOutlines = next.peerOutlines;
+      if (JSON.stringify(now.peerLabels) !== JSON.stringify(next.peerLabels)) patch.peerLabels = next.peerLabels;
       if (Object.keys(patch).length > 0) drawn.setState(patch);
     };
     refreshRef.current = refresh;
@@ -166,14 +197,18 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     });
     const stopGuides = drag.guides.subscribe(refresh);
     const stopCropping = drag.cropping.subscribe(refresh);
+    const stopPresence = presence.subscribe((s, prev) => {
+      if (s.peers !== prev.peers) refresh();
+    });
     return () => {
       stopSurface();
       stopStore();
       stopGuides();
       stopCropping();
+      stopPresence();
       refreshRef.current = () => {};
     };
-  }, [surface, store, drawn, drag]);
+  }, [surface, store, drawn, drag, presence]);
 
   // While handles show, Alt is followed from the keys, and a lone Alt press or release is kept from the browser, which
   // would otherwise focus its menu (Firefox opens it on the release). Alt with another key is left alone.
@@ -351,6 +386,29 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       onContextMenu={onContextMenu}
     >
       <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible">
+        {peerOutlines.map((o) => (
+          <g key={o.key}>
+            <polygon
+              data-peer-outline={o.clipId}
+              data-peer-halo
+              points={o.points}
+              fill="none"
+              strokeWidth={3}
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+              className="stroke-ed-bg opacity-50"
+            />
+            <polygon
+              data-peer-outline={o.clipId}
+              points={o.points}
+              fill="none"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+              className={peerLook(o.colour).stroke}
+            />
+          </g>
+        ))}
         {full && (
           <polygon
             data-crop-full
@@ -389,6 +447,20 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
           />
         ))}
       </svg>
+      {peerLabels.map((l) => (
+        <div
+          key={l.key}
+          aria-hidden
+          data-peer-label={l.userId ?? "more"}
+          className={cx(
+            "pointer-events-none absolute max-w-40 truncate rounded-[3px] px-1 text-[11px] leading-4 font-medium",
+            l.colour === null ? PEER_MORE : cx(peerLook(l.colour).bg, "text-ed-bg"),
+          )}
+          style={{ top: l.top, left: l.left, right: l.right }}
+        >
+          {l.text}
+        </div>
+      ))}
       {handles.map((h) => (
         <div
           key={h.grip}
@@ -567,6 +639,85 @@ function outlinesOf(items: CanvasItem[], selected: string[], view: View, overlay
         .map((p) => `${px(p.x)},${px(p.y)}`)
         .join(" "),
     }));
+}
+
+// Teammates' outlines round the clips drawn now that they selected, at most two per clip, back to front, and a name
+// pill per person by the top-most corner of their outline on the top-most of their clips. A clip with more people
+// than outlines gets a "+N" pill beside its outer outline. No pills while the pane is not measured.
+function peerMarksOf(
+  items: CanvasItem[],
+  peers: readonly Peer[],
+  view: View,
+  overlay: { left: number; top: number; width: number },
+  visible: Box | null,
+): PeerMarks {
+  if (peers.length === 0) return NO_PEER_MARKS;
+  const marks = clipMarks(peers);
+  const peerOutlines: PeerOutline[] = [];
+  const anchors = new Map<string, Point>();
+  const crowded: { clipId: string; at: Point; more: number }[] = [];
+  for (const item of items) {
+    const on = marks.get(item.clipId);
+    if (!on) continue;
+    const rings = Array.from({ length: Math.min(on.length, PEERS_OUTLINED) }, (_, i) =>
+      outsetCorners(item, (i + 1) * PEER_RING_PX, view.k)
+        .map((p) => toOverlay(view, overlay, p))
+        .map((p) => ({ x: px(p.x), y: px(p.y) })),
+    );
+    on.forEach((peer, i) => {
+      const ring = rings[Math.min(i, rings.length - 1)];
+      // Items run back to front, so the last clip a person is on is their top-most.
+      anchors.set(peer.userId, topCorner(ring));
+      if (i < PEERS_OUTLINED) {
+        peerOutlines.push({ key: `${item.clipId}:${peer.userId}`, clipId: item.clipId, colour: peer.colour, points: ring.map((p) => `${p.x},${p.y}`).join(" ") });
+      }
+    });
+    if (on.length > PEERS_OUTLINED) crowded.push({ clipId: item.clipId, at: topCorner(rings[rings.length - 1]), more: on.length - PEERS_OUTLINED });
+  }
+  if (!visible) return { peerOutlines, peerLabels: [] };
+
+  const placed: { top: number; from: number; to: number }[] = [];
+  const pill = (at: Point, text: string, beside: boolean) => {
+    let top = at.y - PILL_GAP_PX - PILL_PX;
+    if (top < visible.top + PILL_GAP_PX) top = at.y + PILL_GAP_PX;
+    // A corner past the pane's edge, as on a clip larger than the view, still leaves its pill on screen.
+    top = Math.min(Math.max(top, visible.top + PILL_GAP_PX), visible.bottom - PILL_GAP_PX - PILL_PX);
+    // The width is a guess from the text; it only decides what counts as overlapping.
+    const width = Math.min(PILL_MAX_PX, 8 + text.length * 6.5);
+    let edge: { left: number } | { right: number };
+    let from: number;
+    if (beside && at.x - PILL_GAP_PX - width >= visible.left + PILL_GAP_PX) {
+      from = at.x - PILL_GAP_PX - width;
+      edge = { right: px(overlay.width - (at.x - PILL_GAP_PX)) };
+    } else if (at.x > visible.right - PILL_MAX_PX) {
+      const x = Math.min(at.x, visible.right - PILL_GAP_PX);
+      from = x - width;
+      edge = { right: px(overlay.width - x) };
+    } else {
+      from = Math.max(at.x, visible.left + PILL_GAP_PX);
+      edge = { left: px(from) };
+    }
+    const to = from + width;
+    const overlapping = () => placed.filter((p) => p.top < top + PILL_PX && top < p.top + PILL_PX && p.from < to && from < p.to);
+    for (let over = overlapping(); over.length > 0; over = overlapping()) top = Math.max(...over.map((p) => p.top)) + PILL_STEP_PX;
+    placed.push({ top, from, to });
+    return { top: px(top), ...edge };
+  };
+  const peerLabels: PeerLabel[] = [];
+  for (const peer of peers) {
+    const at = anchors.get(peer.userId);
+    if (at) peerLabels.push({ key: peer.userId, userId: peer.userId, text: peer.short, colour: peer.colour, ...pill(at, peer.short, false) });
+  }
+  for (const c of crowded) {
+    const text = `+${c.more}`;
+    peerLabels.push({ key: `more:${c.clipId}`, userId: null, text, colour: null, ...pill(c.at, text, true) });
+  }
+  return { peerOutlines, peerLabels };
+}
+
+// The highest corner on screen, the leftmost of a tie.
+function topCorner(points: Point[]): Point {
+  return points.reduce((a, b) => (b.y < a.y || (b.y === a.y && b.x < a.x) ? b : a));
 }
 
 function sameOutlines(a: Outline[], b: Outline[]): boolean {

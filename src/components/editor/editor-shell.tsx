@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createProjectApi } from "@/lib/editor/api";
+import { createPresenceApi, createProjectApi } from "@/lib/editor/api";
 import { createClipboard } from "@/lib/editor/clipboard";
 import type { Layout } from "@/lib/editor/layout";
 import { carriesFiles, createMediaDrop } from "@/lib/editor/media-drop";
+import { createPresenceStore } from "@/lib/editor/presence";
 import {
   DEFAULT_PREFS, PREFS_COOKIE, createSettingsStore, formatPrefs, parsePrefs, type Prefs, type SettingsSave,
 } from "@/lib/editor/settings";
@@ -19,6 +20,7 @@ import { EditorProvider } from "./context";
 import { watchDrags } from "./drag-watch";
 import { EditorScreen } from "./editor-screen";
 import { MediaProvider, createMediaServices } from "./media/media-context";
+import { PresenceProvider } from "./presence-context";
 import { browserThumbnailDeps } from "./thumbnail-deps";
 
 const ACTIVITY_THROTTLE_MS = 1000;
@@ -39,10 +41,12 @@ const quietly = (work: Promise<unknown>) => void work.catch(() => {});
 // clicks and keys, and leaving with unsent changes or running uploads. The panel sizes and the preferences come from the
 // browser's cookies, which the page read; the keymap is read from local storage once the editor is on screen.
 export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; layout?: Layout; prefs?: Prefs }) {
-  const [{ store, api, sync, clipboard, media, drop, settings, savePrefs }] = useState(() => {
+  const [{ store, api, sync, clipboard, media, drop, settings, savePrefs, presenceStore }] = useState(() => {
     const store = createEditorStore(initial, { view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones } });
     const api = createProjectApi(initial.projectId);
-    const sync = createSync({ store, api, isVisible: () => document.visibilityState === "visible" });
+    const presenceStore = createPresenceStore(initial.me.id);
+    const presence = { api: createPresenceApi(initial.projectId), store: presenceStore };
+    const sync = createSync({ store, api, isVisible: () => document.visibilityState === "visible", presence });
     // Snapping and the safe area switch live in the editor store; the cookie holds them with the rest.
     const savePrefs: SettingsSave["prefs"] = (chosen) => {
       const { snapping, showSafeZones } = store.getState();
@@ -51,7 +55,7 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
     const settings = createSettingsStore({ prefs }, { prefs: savePrefs, keymap: (k) => writeKeymap(localStore, k) });
     const media = createMediaServices();
     const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
-    return { store, api, sync, clipboard: createClipboard(localStore), media, drop, settings, savePrefs };
+    return { store, api, sync, clipboard: createClipboard(localStore), media, drop, settings, savePrefs, presenceStore };
   });
 
   useEffect(() => {
@@ -94,6 +98,12 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
     const { library, queue } = media;
     let lastActivity = 0;
     const onVisibilityChange = () => sync.visibilityChanged();
+    // Teammates stop seeing this tab at once. Unlike unload, pagehide still lets the page be kept for Back, and a page
+    // brought back from there checks at once.
+    const onPageHide = () => sync.leave();
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) sync.visibilityChanged();
+    };
     const onOnline = () => {
       sync.retryNow();
       queue.resume();
@@ -176,6 +186,8 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
     window.addEventListener("dragover", onFileDragOver);
     window.addEventListener("drop", onFileDrop);
     window.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
     guardUnload(unsaved());
     const unsubscribe = store.subscribe((state, before) => {
       guardUnload(unsaved());
@@ -195,6 +207,8 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       window.removeEventListener("dragover", onFileDragOver);
       window.removeEventListener("drop", onFileDrop);
       window.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
       unsubscribe();
       unsubscribeLibrary();
       guardUnload(false);
@@ -211,7 +225,9 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
   return (
     <EditorProvider store={store} api={api} clipboard={clipboard} settings={settings}>
       <MediaProvider services={media} drop={drop}>
-        <EditorScreen initialLayout={layout} />
+        <PresenceProvider store={presenceStore}>
+          <EditorScreen initialLayout={layout} />
+        </PresenceProvider>
       </MediaProvider>
     </EditorProvider>
   );

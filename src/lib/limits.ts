@@ -41,6 +41,15 @@ export const LIMITS = {
   folderNameChars: 60,
   dashboardRecent: 6, // projects in your Recent list on the dashboard
   thumbnailBytes: 300 * 1024, // one project's dashboard picture, a JPEG
+  presenceClipIds: 100, // clips of one tab's selection shown to teammates; a bigger selection shows its first 100 (sorted)
+  presenceIdChars: 64, // a clip or track id longer than this is not shown to teammates
+  presenceBodyBytes: 16 * 1024, // a check's body; a bigger one is checked without its selection
+  presencePeers: 20, // other people listed back to one tab
+  presenceTabsPerPerson: 5, // one person's rows kept per project; their oldest other tabs go first
+  presenceRefreshMs: 15_000, // an unchanged selection is written again at most this often
+  presenceTtlMs: 50_000, // a tab not heard from for this long is no longer shown
+  presenceKeepMs: 10 * 60_000, // rows this old are deleted by the next check from anyone
+  presenceSweepRows: 50, // rows one check deletes at most
 } as const;
 
 export type Limits = { readonly [K in keyof typeof LIMITS]: number };

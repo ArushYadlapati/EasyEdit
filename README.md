@@ -197,7 +197,7 @@ These checks need a real Google client and a real database, so work through them
 
 ## What to click to check the editor
 
-The editor cannot be opened without a Google sign-in, so the tests cannot click through it. Do this once after a change to the editor, signed in on your own computer. It takes about ten minutes. Use an editor account, and a second account in another browser profile for lines 9, 10 and 12.
+The editor cannot be opened without a Google sign-in, so the tests cannot click through it. Do this once after a change to the editor, signed in on your own computer. It takes about ten minutes. Use an editor account, and a second account in another browser profile for lines 9, 10, 11 and 13.
 
 1. Open a project from the dashboard. The editor fills the window, dark, with no site header. The top bar shows "Projects", the project's name and "Saved".
 2. In the left panel click **Title**. A clip appears on Text 1 at the playhead and the preview shows "Your title". The status flips to "Saving…" and back to "Saved".
@@ -208,13 +208,14 @@ The editor cannot be opened without a Google sign-in, so the tests cannot click 
 7. Select a clip, press `Cmd/Ctrl+C`, move the playhead, press `Cmd/Ctrl+V`. A copy appears at the playhead and is selected.
 8. Press `Space` to play and `K` to stop. Click a button such as **Safe zones**, then press `Space`: it plays, and the button is not pressed again. Try `L` twice (2×), `J`, the arrow keys, `Home` and `End`. Turn **Safe zones** off and on. With nothing selected, switch **Format** to Long 16:9: the canvas changes shape.
 9. In the second profile open the same project and move a clip. Within about two seconds the first window shows the move and "<name> is editing…". Open **Activity** in the first window: both people's changes are listed. Click **Undo this change** on the other person's move: it moves back in both windows.
-10. Change a clip's text in the first window, then change the same text in the second. In the first window press `Cmd/Ctrl+Z`. It says "Can't undo. This was changed afterwards." and the second person's text stays.
-11. In the browser's developer tools set the network to Offline and move a clip. The status reads "Offline. Changes will save when you reconnect." Click **Projects**: the browser asks before leaving; stay on the page. Go back online: it reads "Saved". Reload: the move is still there.
-12. On the Admin page make the second account a viewer and reload its editor. It shows "View only", every edit control is greyed out, clips cannot be dragged, and Play still works.
-13. Sign out in another tab, then move a clip in the editor. It says "You're signed out. Sign in again to save your changes." and the status reads "Signed out". Click **Sign in**: it opens in a new tab. Sign in there and come back to the editor: the status returns to "Saved" and the move is kept.
-14. Press `?`. The list of shortcuts opens. Close it with `Escape`.
-15. Make the window narrower than 1024 px. The editor is replaced by "The editor needs a wider window."
-16. Add a title. Once the status reads "Saved", wait ten seconds, then click **Projects**: the project's card shows the title on its picture.
+10. In the second profile select a clip. Within a few seconds the first window rings it on the timeline in a colour, outlines it on the preview with that person's name (when the playhead is over it), and shows their dot in the top bar. Click the dot: the playhead moves to that clip. Select a track in the second profile: its row gets a coloured bar and lines. Close the second window: the marks go within a few seconds. Switch it to another browser tab instead: they go within about a minute.
+11. Change a clip's text in the first window, then change the same text in the second. In the first window press `Cmd/Ctrl+Z`. It says "Can't undo. This was changed afterwards." and the second person's text stays.
+12. In the browser's developer tools set the network to Offline and move a clip. The status reads "Offline. Changes will save when you reconnect." Click **Projects**: the browser asks before leaving; stay on the page. Go back online: it reads "Saved". Reload: the move is still there.
+13. On the Admin page make the second account a viewer and reload its editor. It shows "View only", every edit control is greyed out, clips cannot be dragged, and Play still works.
+14. Sign out in another tab, then move a clip in the editor. It says "You're signed out. Sign in again to save your changes." and the status reads "Signed out". Click **Sign in**: it opens in a new tab. Sign in there and come back to the editor: the status returns to "Saved" and the move is kept.
+15. Press `?`. The list of shortcuts opens. Close it with `Escape`.
+16. Make the window narrower than 1024 px. The editor is replaced by "The editor needs a wider window."
+17. Add a title. Once the status reads "Saved", wait ten seconds, then click **Projects**: the project's card shows the title on its picture.
 
 ## What to click to check export
 
@@ -288,6 +289,8 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     ```
 
     **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard, editor, project API and Claude's tools fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.
+
+    **Before deploying the version with teammates' selections:** run the migration against the production database first, with the command above, then deploy. Then check it ran: in the Neon SQL editor, `select to_regclass('public.project_presence')` must not be empty. Deployed first, the editor still saves and syncs, shows no one's selection, and logs 'The project_presence table is missing'. Going back to an earlier version needs nothing: it ignores the new table, and open editors keep syncing without selections until they are reloaded.
 5. Optional: publish the Google app, so teammates no longer have to be test users. In Google Cloud, open **Branding** and fill in the app domain details (home page, privacy policy link, authorized domain) with your deployed web address. You will need a public privacy policy page to link to. Then open **Audience** and click **Publish app**. This app only asks Google for name, email and profile picture, and the allowlist still decides who gets in.
 
 ## Connect an AI agent
@@ -352,6 +355,7 @@ Some rules:
 - Removing someone also ends all their AI agent connections and access tokens right away.
 - A file that a project uses cannot be removed from the library. Take it out of that project first.
 - You stay signed in for 30 days after your last visit. Each visit starts the 30 days again.
+- People in a project see which projects you have open in the editor and what you have selected.
 
 ## Project formats
 
@@ -385,6 +389,8 @@ All routes need you to be signed in (they use the same cookie as the website). B
 | `POST /api/projects` | editor and up | Create a project from `{ "name", "format" }`, with `"width"` and `"height"` in pixels when `"format"` is `"custom"`. Answers `201` with `{ "id" }`. |
 | `GET /api/projects/:id` | viewer and up | Get `{ id, name, format, doc, version }`. |
 | `GET /api/projects/:id/version` | viewer and up | Get just the current version: `{ version }`. |
+| `POST /api/projects/:id/presence` | viewer and up | The editor's check for changes. Send `{ tabId, clipIds, trackId, changedAgoMs }` for what this tab has selected. Answers `{ version, peers }`, where each peer is `{ userId, name, clipIds, trackId }`, or just `{ version }` when selections cannot be read. |
+| `DELETE /api/projects/:id/presence?tab=…` | viewer and up | A tab going away. Answers `204`. |
 | `PATCH /api/projects/:id` | editor and up | Rename a project: send `{ "name" }`. Answers `{ id, name }`. |
 | `DELETE /api/projects/:id` | editor and up | Delete a project. Answers `204`. |
 | `POST /api/projects/:id/duplicate` | editor and up | Make a copy of a project. Answers `201` with `{ "id" }` of the copy. |

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createProjectApi } from "@/lib/editor/api";
+import { REQUEST_TIMEOUT_MS, createPresenceApi, createProjectApi } from "@/lib/editor/api";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 function apiWith(respond: (url: string) => Response) {
@@ -101,5 +101,73 @@ describe("project api", () => {
     const html = () => new Response("<html>Bad gateway</html>", { status: 502, headers: { "content-type": "text/html" } });
     await expect(apiWith(html).api.postOps({ baseVersion: 5, ops: [] })).resolves.toEqual({ ok: false, kind: "network" });
     await expect(apiWith(html).api.getOpsSince(5)).resolves.toEqual({ ok: false, kind: "network" });
+  });
+});
+
+describe("presence api", () => {
+  const share = { tabId: "tab_0001", clipIds: ["c1", "c2"], trackId: null, changedAgoMs: 1200 };
+  function presenceWith(respond: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+    const fetchFn = vi.fn<typeof fetch>(async (url, init) => respond(String(url), init));
+    return { api: createPresenceApi("p 1", fetchFn), fetchFn };
+  }
+
+  it("share POSTs JSON to /presence with no-store and reads the version and the peers", async () => {
+    const peers = [{ userId: "u2", name: "Grace", clipIds: ["c1"], trackId: null }];
+    const { api, fetchFn } = presenceWith(() => json(200, { version: 7, peers }));
+    expect(await api.share(share)).toEqual({ ok: true, version: 7, peers });
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe("/api/projects/p%201/presence");
+    expect(init).toMatchObject({ method: "POST", headers: { "content-type": "application/json" }, cache: "no-store" });
+    expect(init!.signal).toBeInstanceOf(AbortSignal);
+    expect(JSON.parse(String(init!.body))).toEqual(share);
+  });
+
+  it("an answer without peers, or with peers that are not a list, reads them as null", async () => {
+    expect(await presenceWith(() => json(200, { version: 7 })).api.share(share)).toEqual({ ok: true, version: 7, peers: null });
+    expect(await presenceWith(() => json(200, { version: 7, peers: "x" })).api.share(share)).toEqual({ ok: true, version: 7, peers: null });
+    expect(await presenceWith(() => json(200, { peers: [] })).api.share(share)).toEqual({ ok: false, kind: "network" });
+  });
+
+  it.each([
+    ["a 400", () => json(400, { code: "INVALID", message: "m" })],
+    ["a 403", () => json(403, { code: "FORBIDDEN", message: "m" })],
+    ["a 405", () => new Response(null, { status: 405 })],
+    ["a 413", () => new Response("too big", { status: 413 })],
+    ["a 404 page", () => new Response("<html>Not here</html>", { status: 404, headers: { "content-type": "text/html" } })],
+    ["a 404 with another code", () => json(404, { code: "ROUTE_MISSING", message: "m" })],
+  ])("reads %s as share-refused, never as forbidden", async (_name, answer) => {
+    expect(await presenceWith(answer).api.share(share)).toEqual({ ok: false, kind: "share-refused" });
+  });
+
+  it("keeps the usual kinds for the server's own signed-out and not-found", async () => {
+    expect(await presenceWith(() => json(401, { code: "UNAUTHENTICATED", message: "m" })).api.share(share)).toEqual({ ok: false, kind: "signed-out" });
+    expect(await presenceWith(() => json(404, { code: "NOT_FOUND", message: "m" })).api.share(share)).toEqual({ ok: false, kind: "not-found" });
+  });
+
+  it.each([
+    ["a thrown fetch", () => { throw new TypeError("Failed to fetch"); }],
+    ["a timeout", () => { throw new DOMException("The operation timed out.", "TimeoutError"); }],
+    ["a 500", () => json(500, { code: "INTERNAL", message: "m" })],
+    ["a 502 page", () => new Response("<html>Bad gateway</html>", { status: 502, headers: { "content-type": "text/html" } })],
+    ["a 401 page", () => new Response("<html>", { status: 401 })],
+    ["a 200 that is not JSON", () => new Response("<html>", { status: 200 })],
+  ])("reads %s as a network failure", async (_name, answer) => {
+    expect(await presenceWith(answer).api.share(share)).toEqual({ ok: false, kind: "network" });
+  });
+
+  it("times a share out like every other request", () => {
+    expect(REQUEST_TIMEOUT_MS).toBe(15_000);
+  });
+
+  it("leave sends a keepalive DELETE for the tab and swallows errors", async () => {
+    const { api, fetchFn } = presenceWith(() => new Response(null, { status: 204 }));
+    api.leave("tab/1");
+    expect(fetchFn).toHaveBeenCalledWith("/api/projects/p%201/presence?tab=tab%2F1", { method: "DELETE", keepalive: true, credentials: "same-origin" });
+
+    const rejecting = presenceWith(() => Promise.reject(new TypeError("Failed to fetch")));
+    expect(() => rejecting.api.leave("tab_0001")).not.toThrow();
+    await Promise.resolve();
+    const throwing = createPresenceApi("p1", () => { throw new TypeError("bad"); });
+    expect(() => throwing.leave("tab_0001")).not.toThrow();
   });
 });

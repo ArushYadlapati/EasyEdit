@@ -3,12 +3,15 @@ import { StrictMode, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { Inspector } from "@/components/editor/inspector";
+import { peerLook, PEER_MORE } from "@/components/editor/peer-look";
+import { PresenceProvider } from "@/components/editor/presence-context";
 import { Preview } from "@/components/editor/preview";
 import { useShortcuts } from "@/components/editor/use-shortcuts";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { editTextInPlace } from "@/lib/editor/actions";
 import { copyClips, createClipboard } from "@/lib/editor/clipboard";
 import { MESSAGES } from "@/lib/editor/messages";
+import { createPresenceStore, type PeerWire, type PresenceStore } from "@/lib/editor/presence";
 import { DEFAULT_PREFS, createSettingsStore, type BoardZoom } from "@/lib/editor/settings";
 import { findClip, viewDoc, type EditorState, type EditorStore } from "@/lib/editor/store";
 import type { EditorInit } from "@/lib/editor/types";
@@ -122,6 +125,8 @@ type ShowOptions = {
   strict?: boolean;
   inspector?: boolean;
   shortcuts?: boolean;
+  // Teammates' selections, as the last check answered them; without it there is no presence provider at all.
+  peers?: PeerWire[];
 };
 
 function Keys() {
@@ -136,18 +141,23 @@ function show(opts: ShowOptions = {}) {
   const clipboard = createClipboard();
   if (opts.copied) clipboard.write(copyClips(store.getState().doc, opts.copied)!);
   const settings = createSettingsStore({ prefs: { ...DEFAULT_PREFS, boardZoom: opts.boardZoom ?? "fill" } }, { prefs: vi.fn(), keymap: vi.fn() });
+  const presence: PresenceStore = createPresenceStore("u1");
+  if (opts.peers) presence.getState().receive(opts.peers, 0);
+  const preview: ReactNode = (
+    <ContextMenuProvider>
+      {opts.inspector && <Inspector />}
+      {opts.shortcuts && <Keys />}
+      <Preview />
+    </ContextMenuProvider>
+  );
   const tree: ReactNode = (
     <EditorProvider store={store} settings={settings} clipboard={clipboard}>
-      <ContextMenuProvider>
-        {opts.inspector && <Inspector />}
-        {opts.shortcuts && <Keys />}
-        <Preview />
-      </ContextMenuProvider>
+      {opts.peers ? <PresenceProvider store={presence}>{preview}</PresenceProvider> : preview}
     </EditorProvider>
   );
   render(opts.strict ? <StrictMode>{tree}</StrictMode> : tree);
   const st = () => store.getState();
-  return { store, st };
+  return { store, st, presence };
 }
 
 const overlay = () => document.querySelector<HTMLElement>("[data-canvas-overlay]")!;
@@ -1643,5 +1653,178 @@ describe("typing text in place", () => {
     expect(st().textEditId).toBeNull();
     expect(textBox()).toBeNull();
     expect(st().queue).toEqual([]);
+  });
+});
+
+// Teammates' marks. Polygons are counted by their data attributes, since outlines() above collects every one.
+const GRACE = { userId: "u2", name: "Grace Hopper", trackId: null };
+const LIN = { userId: "u3", name: "Lin Chen", trackId: null };
+const MAE = { userId: "u4", name: "Mae Jemison", trackId: null };
+const peerOutlines = () =>
+  [...overlay().querySelectorAll("[data-peer-outline]:not([data-peer-halo])")].map((p) => p.getAttribute("points"));
+const peerLabels = () => [...overlay().querySelectorAll<HTMLElement>("[data-peer-label]")];
+const pillAt = (el: HTMLElement) => ({ top: parseFloat(el.style.top), left: el.style.left, right: el.style.right });
+const colourOf = (presence: PresenceStore, userId: string) => presence.getState().peers.find((p) => p.userId === userId)!.colour;
+
+describe("teammates' selections on the preview", () => {
+  it("a teammate's clip under the playhead is outlined 3 px outside it, with their name", () => {
+    const { presence } = show({ peers: [{ ...GRACE, clipIds: ["x1"] }] });
+    // x1's own outline would be 270..302 × 476.8..515.2.
+    expect(peerOutlines()).toEqual(["267,473.8 305,473.8 305,518.2 267,518.2"]);
+    const look = peerLook(colourOf(presence, "u2"));
+    const line = overlay().querySelector("[data-peer-outline]:not([data-peer-halo])")!;
+    expect(line.getAttribute("data-peer-outline")).toBe("x1");
+    expect(line.getAttribute("class")).toContain(look.stroke);
+    expect(line.getAttribute("stroke-width")).toBe("1");
+    expect(line.getAttribute("vector-effect")).toBe("non-scaling-stroke");
+    expect(line.getAttribute("fill")).toBe("none");
+    expect(line.getAttribute("pointer-events")).toBe("none");
+    const halo = overlay().querySelector("[data-peer-halo]")!;
+    expect(halo.getAttribute("points")).toBe(line.getAttribute("points"));
+    expect(halo.getAttribute("stroke-width")).toBe("3");
+    expect(halo.getAttribute("class")).toContain("stroke-ed-bg");
+    expect(halo.getAttribute("class")).toContain("opacity-50");
+    expect(halo.getAttribute("vector-effect")).toBe("non-scaling-stroke");
+
+    const [pill] = peerLabels();
+    expect(peerLabels()).toHaveLength(1);
+    expect(pill.textContent).toBe("Grace");
+    expect(pill.dataset.peerLabel).toBe("u2");
+    expect(pill.getAttribute("aria-hidden")).toBe("true");
+    expect(pill.className.split(" ")).toEqual(expect.arrayContaining([look.bg, "text-ed-bg", "pointer-events-none", "truncate", "max-w-40"]));
+    // 16 px tall, 2 px above the outline's top-left corner.
+    expect(pillAt(pill)).toEqual({ top: 455.8, left: "267px", right: "" });
+
+    // A new list moves the marks without anything else changing.
+    act(() => presence.getState().receive([{ ...GRACE, clipIds: ["c1"] }], 1));
+    expect(peerOutlines()).toEqual(["13,13 559,13 559,979 13,979"]);
+    act(() => presence.getState().forget());
+    expect(peerOutlines()).toEqual([]);
+    expect(peerLabels()).toEqual([]);
+  });
+
+  it("nothing is drawn for a clip off the playhead, on a hidden track, deleted, or being typed in place", () => {
+    const peers = [{ ...GRACE, clipIds: ["x1"] }];
+    show({ peers, at: 70 });
+    expect(peerOutlines()).toEqual([]);
+    expect(peerLabels()).toEqual([]);
+    document.body.innerHTML = "";
+
+    const hidden = sampleDoc();
+    hidden.tracks[1].hidden = true;
+    show({ peers, over: { doc: hidden } });
+    expect(peerOutlines()).toEqual([]);
+    expect(peerLabels()).toEqual([]);
+    document.body.innerHTML = "";
+
+    // A clip this tab does not have, then one deleted while shown.
+    show({ peers: [{ ...GRACE, clipIds: ["zz"] }] });
+    expect(peerOutlines()).toEqual([]);
+    document.body.innerHTML = "";
+    const deleted = show({ peers });
+    expect(peerOutlines()).toHaveLength(1);
+    act(() => void deleted.st().applyRemote([entry(6, [{ op: "remove_clip", clipId: "x1" }])]));
+    frame();
+    expect(peerOutlines()).toEqual([]);
+    expect(peerLabels()).toEqual([]);
+    document.body.innerHTML = "";
+
+    const typing = show({ peers });
+    act(() => editTextInPlace(typing.store, "x1"));
+    expect(textBox()).not.toBeNull();
+    expect(peerOutlines()).toEqual([]);
+    expect(peerLabels()).toEqual([]);
+  });
+
+  it("teammates' marks hide while playing", () => {
+    const { st } = show({ peers: [{ ...GRACE, clipIds: ["x1"] }] });
+    expect(peerOutlines()).toHaveLength(1);
+    act(() => st().play());
+    expect(peerOutlines()).toEqual([]);
+    expect(peerLabels()).toEqual([]);
+    act(() => st().pause());
+    expect(peerOutlines()).toHaveLength(1);
+    expect(peerLabels()).toHaveLength(1);
+  });
+
+  it("on a full-frame clip in Fill the pill flips inside the outline, 2 px inside the pane", () => {
+    show({ peers: [{ ...GRACE, clipIds: ["c1"] }] });
+    expect(peerOutlines()).toEqual(["13,13 559,13 559,979 13,979"]);
+    const pill = pillAt(peerLabels()[0]);
+    // Above the outline it would start at -5, off the pane; inside it starts 2 px below the outline's top.
+    expect(pill.top).toBe(15);
+    expect(pill.top).toBeGreaterThanOrEqual(2);
+    expect(pill.left).toBe("13px");
+  });
+
+  it("on a clip larger than the view the pill stays inside the pane", () => {
+    show({ peers: [{ ...GRACE, clipIds: ["c1"] }], over: { doc: withTransform(sampleDoc(), "c1", { scale: 3 }) } });
+    expect(peerOutlines()).toEqual(["-527,-947 1099,-947 1099,1939 -527,1939"]);
+    expect(pillAt(peerLabels()[0])).toEqual({ top: 2, left: "2px", right: "" });
+    document.body.innerHTML = "";
+
+    // Near the pane's right edge the pill is placed by its right side, still inside.
+    show({ peers: [{ ...GRACE, clipIds: ["x1"] }], over: { doc: withTransform(sampleDoc(), "x1", { x: 0.95 }) } });
+    // x1's outline starts at overlay x 510, past 572 - 160, so the pill's right edge sits there: 62 px from the right.
+    expect(pillAt(peerLabels()[0])).toEqual({ top: 455.8, left: "", right: "62px" });
+    document.body.innerHTML = "";
+
+    // A clip wholly past the pane's right edge keeps its pill 2 px inside it.
+    show({ peers: [{ ...GRACE, clipIds: ["c1"] }], over: { doc: withTransform(sampleDoc(), "c1", { x: 1.6 }) } });
+    expect(peerOutlines()).toEqual(["607,13 1153,13 1153,979 607,979"]);
+    expect(pillAt(peerLabels()[0])).toEqual({ top: 15, left: "", right: "2px" });
+  });
+
+  it("two teammates on one clip are outlined 3 and 6 px out, each with their name", () => {
+    const { presence } = show({ peers: [{ ...LIN, clipIds: ["x1"] }, { ...GRACE, clipIds: ["x1"] }] });
+    // In name order: Grace, then Lin.
+    expect(peerOutlines()).toEqual(["267,473.8 305,473.8 305,518.2 267,518.2", "264,470.8 308,470.8 308,521.2 264,521.2"]);
+    const strokes = [...overlay().querySelectorAll("[data-peer-outline]:not([data-peer-halo])")].map((p) => p.getAttribute("class"));
+    expect(strokes).toEqual([peerLook(colourOf(presence, "u2")).stroke, peerLook(colourOf(presence, "u3")).stroke]);
+    expect(peerLabels().map((p) => p.textContent)).toEqual(["Grace", "Lin"]);
+    // Lin's pill would overlap Grace's, so it goes 18 px below hers.
+    const [grace, lin] = peerLabels().map(pillAt);
+    expect(grace.top).toBe(455.8);
+    expect(lin.top).toBe(473.8);
+  });
+
+  it("a third teammate on a clip gets a name but no outline, and the clip a +1 pill", () => {
+    show({ peers: [{ ...GRACE, clipIds: ["x1"] }, { ...LIN, clipIds: ["x1"] }, { ...MAE, clipIds: ["x1"] }] });
+    expect(peerOutlines()).toHaveLength(2);
+    expect(peerLabels().map((p) => p.textContent)).toEqual(["Grace", "Lin", "Mae", "+1"]);
+    const more = peerLabels()[3];
+    expect(more.dataset.peerLabel).toBe("more");
+    expect(more.className.split(" ")).toEqual(expect.arrayContaining(PEER_MORE.split(" ")));
+    expect(more.className).not.toContain("text-ed-bg");
+    // Beside the outer outline's top-left corner, to its left.
+    expect(pillAt(more)).toMatchObject({ top: 452.8, left: "" });
+  });
+
+  it("a teammate who selected several clips gets one pill, on the top-most", () => {
+    show({ peers: [{ ...GRACE, clipIds: ["c1", "x1"] }] });
+    expect(peerOutlines()).toHaveLength(2);
+    expect(peerLabels()).toHaveLength(1);
+    expect(pillAt(peerLabels()[0])).toEqual({ top: 455.8, left: "267px", right: "" });
+  });
+
+  it("teammates' outlines come before your own, and their pills before your handles", () => {
+    show({ selected: ["x1"], peers: [{ ...GRACE, clipIds: ["x1"] }] });
+    const polygons = [...overlay().querySelectorAll("polygon")];
+    expect(polygons.map((p) => (p.hasAttribute("data-peer-halo") ? "halo" : p.hasAttribute("data-peer-outline") ? "peer" : "mine"))).toEqual([
+      "halo",
+      "peer",
+      "mine",
+    ]);
+    expect(polygons[2].getAttribute("points")).toBe("270,476.8 302,476.8 302,515.2 270,515.2");
+    const pill = peerLabels()[0];
+    expect(pill.compareDocumentPosition(handle("nw")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(handleNames()).toHaveLength(9);
+  });
+
+  it("a press beside the frame does not grab a teammate's clip", () => {
+    const { st } = show({ peers: [{ ...GRACE, clipIds: ["c1"] }], over: { doc: withTransform(sampleDoc(), "c1", { scale: 3 }) } });
+    expect(peerOutlines()).toHaveLength(1);
+    click(206, 300); // project (-20, 488)
+    expect(st().selection.clipIds).toEqual([]);
   });
 });

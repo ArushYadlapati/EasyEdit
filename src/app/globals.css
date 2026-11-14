@@ -27,6 +27,11 @@
   --color-ed-clip-image: var(--ed-clip-image);
   --color-ed-clip-text: var(--ed-clip-text);
   --color-ed-clip-audio: var(--ed-clip-audio);
+  --color-ed-peer-1: var(--ed-peer-1);
+  --color-ed-peer-2: var(--ed-peer-2);
+  --color-ed-peer-3: var(--ed-peer-3);
+  --color-ed-peer-4: var(--ed-peer-4);
+  --color-ed-peer-5: var(--ed-peer-5);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -67,6 +72,13 @@ html:has(.editor, .ed-theme) {
   --ed-clip-image: #3b3160;
   --ed-clip-text: #2d4a3e;
   --ed-clip-audio: #4d3d2a;
+  /* Teammates' selections, one colour per person present (src/components/editor/peer-look.ts). None is the accent,
+     danger or warn colour, and dark --ed-bg text on each is well above 4.5:1. Violet, the nearest to the accent, is last. */
+  --ed-peer-1: #f472b6; /* pink */
+  --ed-peer-2: #2dd4bf; /* teal */
+  --ed-peer-3: #fb923c; /* orange */
+  --ed-peer-4: #a3e635; /* lime */
+  --ed-peer-5: #c084fc; /* violet */
 }
 
 body {

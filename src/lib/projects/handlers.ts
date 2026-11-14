@@ -6,6 +6,7 @@ import { apiRoute } from "@/lib/api-route";
 import { LIMITS } from "@/lib/limits";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
 import { recordOpen } from "@/lib/projects/opens";
+import { checkIn, leavePresence, type Share } from "@/lib/projects/presence";
 import {
   applyProjectOps,
   createProject,
@@ -72,6 +73,73 @@ async function readJson(req: Request): Promise<{ ok: true; value: unknown } | { 
   } catch {
     return { ok: false };
   }
+}
+
+const TAB_ID = /^[A-Za-z0-9_-]{8,64}$/; // the request-id character set (service.ts:62)
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const fitsId = (value: unknown): value is string =>
+  typeof value === "string" && value.length >= 1 && value.length <= LIMITS.presenceIdChars;
+
+// The body as text, or null when there is none or it passes the limit. Counted as it streams, so a chunked body with
+// no content-length is cut off too.
+async function readCappedText(req: Request, maxBytes: number): Promise<string | null> {
+  const length = req.headers.get("content-length");
+  if (length !== null && Number(length) > maxBytes) return null;
+  if (!req.body) return null;
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  }
+  const bytes = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+// The share in a check's body, cleaned. Null when the body is too large, is not a JSON object, or has no valid tabId;
+// the check then answers the version alone. With a valid tabId the rest is cleaned, never refused, so a tab that keeps
+// checking stays listed.
+async function readShare(req: Request): Promise<Share | null> {
+  const text = await readCappedText(req, LIMITS.presenceBodyBytes);
+  if (text === null) return null;
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!isPlainObject(body)) return null;
+  const { tabId, clipIds, trackId, changedAgoMs } = body;
+  if (typeof tabId !== "string" || !TAB_ID.test(tabId)) return null;
+  const ids = Array.isArray(clipIds) ? clipIds.filter(fitsId) : [];
+  return {
+    tabId,
+    clipIds: [...new Set(ids)].sort().slice(0, LIMITS.presenceClipIds),
+    trackId: fitsId(trackId) ? trackId : null,
+    changedAgoMs:
+      typeof changedAgoMs === "number" && Number.isFinite(changedAgoMs)
+        ? Math.min(Math.max(Math.round(changedAgoMs), 0), LIMITS.presenceKeepMs)
+        : 0,
+  };
 }
 
 export function makeProjectHandlers(deps: HandlerDeps) {
@@ -150,6 +218,27 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       if (user instanceof Response) return user;
       const { id } = await ctx.params;
       await recordOpen(deps.db(), actorFrom(user), id);
+      return new Response(null, { status: 204 });
+    }),
+
+    // The editor's check for changes, carrying this tab's selection. The version is answered exactly as GET /version
+    // answers it, and nothing about the selection can make the check fail.
+    presence: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
+      const user = await deps.auth(req);
+      if (user instanceof Response) return user;
+      const { id } = await ctx.params;
+      const answer = await checkIn(deps.db(), actorFrom(user), id, await readShare(req));
+      if (!answer) return notFound(id);
+      return Response.json(answer);
+    }),
+
+    // A tab going away. An unknown tab or project still answers 204: there is nothing to tell a closing page.
+    leave: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
+      const user = await deps.auth(req);
+      if (user instanceof Response) return user;
+      const { id } = await ctx.params;
+      const tab = new URL(req.url).searchParams.get("tab");
+      if (tab !== null && TAB_ID.test(tab)) await leavePresence(deps.db(), actorFrom(user), id, tab);
       return new Response(null, { status: 204 });
     }),
 

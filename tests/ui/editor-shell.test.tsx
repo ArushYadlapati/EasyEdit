@@ -21,7 +21,7 @@ import type { UploadItem } from "@/lib/media/types";
 import type { UploadQueue } from "@/lib/media/upload-queue";
 import { sampleDoc } from "../editor/fixtures";
 import { dragEvent } from "../helpers/drag-events";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { act, cleanup, fireEvent, render, screen } from "../helpers/dom";
 import { happyDOM } from "../helpers/layout";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 import { fakeCtx } from "../render/fake-ctx";
@@ -67,7 +67,8 @@ const expireCookies = () => {
 
 const initial = (): EditorInit => ({ projectId: "p1", name: "Qual recap", doc: sampleDoc(), version: 5, me: { id: "u1", name: "Ada" }, canEdit: true });
 
-// The projects API as the shell's fetch sees it. While `hold` is on, each post waits for release().
+// The projects API as the shell's fetch sees it. While `hold` is on, each post of edits waits for release(). The check for
+// changes is POST /presence, answered with nobody else here; a version check is either kind of check.
 function stubServer() {
   const requests: string[] = [];
   const waiting: (() => void)[] = [];
@@ -75,8 +76,9 @@ function stubServer() {
   const server = {
     requests,
     hold: false,
-    posts: () => requests.filter((r) => r.startsWith("POST")).length,
-    versionChecks: () => requests.filter((r) => r.endsWith("/version")).length,
+    posts: () => requests.filter((r) => r.startsWith("POST") && r.endsWith("/ops")).length,
+    versionChecks: () => requests.filter((r) => r.endsWith("/version") || (r.startsWith("POST") && r.endsWith("/presence"))).length,
+    leaves: () => requests.filter((r) => r.startsWith("DELETE") && r.includes("/presence?tab=")).length,
     release() {
       server.hold = false;
       waiting.splice(0).forEach((answer) => answer());
@@ -85,6 +87,8 @@ function stubServer() {
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     requests.push(`${method} ${url}`);
+    if (url.endsWith("/presence") && method === "POST") return Response.json({ version, peers: [] });
+    if (url.includes("/presence?") && method === "DELETE") return new Response(null, { status: 204 });
     if (method === "POST") {
       const answer = () => Response.json({ version: ++version, ops: [], inverse: [] });
       return server.hold ? new Promise<Response>((resolve) => waiting.push(() => resolve(answer()))) : answer();
@@ -107,6 +111,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Unmounted while the stub still answers: an editor that shared lately tells the server it is gone as it closes.
+  cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -169,6 +175,24 @@ it("under strict mode one sync runs", async () => {
   expect(server.posts()).toBe(1);
   await after(2000);
   expect(server.versionChecks()).toBe(1);
+});
+
+// happy-dom's PageTransitionEvent is a plain Event, without `persisted`.
+const pageEvent = (type: "pagehide" | "pageshow", persisted: boolean) => Object.assign(new Event(type), { persisted });
+
+it("pagehide tells the server once that this tab is gone; a page brought back from the cache checks at once", async () => {
+  const server = stubServer();
+  render(<EditorShell initial={initial()} />);
+  await after(2000);
+  expect(server.versionChecks()).toBe(1);
+  act(() => void window.dispatchEvent(pageEvent("pagehide", true)));
+  expect(server.leaves()).toBe(1);
+  act(() => void window.dispatchEvent(pageEvent("pageshow", true)));
+  await flush();
+  expect(server.versionChecks()).toBe(2);
+  act(() => void window.dispatchEvent(pageEvent("pagehide", false)));
+  expect(server.leaves()).toBe(2); // the page shared again under a new tab id
+  expect(new Set(server.requests.filter((r) => r.startsWith("DELETE")))).toHaveProperty("size", 2);
 });
 
 // Media services that write down what the shell asks of them: a real library store over routes that answer an
