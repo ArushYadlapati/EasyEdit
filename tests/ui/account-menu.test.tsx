@@ -1,12 +1,20 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountMenu } from "@/components/dashboard/account-menu";
-import { fireEvent, render, screen, waitFor } from "../helpers/dom";
+import { act, fireEvent, render, screen, waitFor } from "../helpers/dom";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
 vi.mock("next/navigation", () => ({ useRouter: () => router, unstable_rethrow: () => {} }));
 const signOut = vi.hoisted(() => vi.fn(async (): Promise<{ error: unknown }> => ({ error: null })));
-vi.mock("@/lib/auth-client", () => ({ authClient: { signOut } }));
+const passkey = vi.hoisted(() => ({
+  listUserPasskeys: vi.fn(async () => ({ data: [], error: null })),
+  addPasskey: vi.fn(async () => ({ data: {}, error: null })),
+  updatePasskey: vi.fn(async () => ({ data: {}, error: null })),
+  deletePasskey: vi.fn(async () => ({ data: { status: true }, error: null })),
+}));
+const signIn = vi.hoisted(() => ({ passkey: vi.fn(async () => ({ data: {}, error: null })), social: vi.fn(async () => ({ data: {}, error: null })) }));
+const revokeOtherSessions = vi.hoisted(() => vi.fn(async () => ({ data: { status: true }, error: null })));
+vi.mock("@/lib/auth-client", () => ({ authClient: { signOut, passkey, signIn, revokeOtherSessions } }));
 
 beforeEach(() => {
   router.push.mockClear();
@@ -14,6 +22,8 @@ beforeEach(() => {
   router.refresh.mockClear();
   router.bfcacheId = "b0";
   signOut.mockClear();
+  passkey.listUserPasskeys.mockClear();
+  window.history.replaceState(null, "", "/dashboard");
 });
 
 const account = () => screen.getByRole("button", { name: "Account" });
@@ -52,5 +62,43 @@ describe("the account menu", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("Couldn't sign out. Try again.");
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it("lists Passkeys, then Sign out", () => {
+    render(<AccountMenu name="Ada Lovelace" image={null} />);
+    fireEvent.click(account());
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Passkeys", "Sign out"]);
+  });
+
+  it("Passkeys opens the Passkeys dialog", async () => {
+    render(<AccountMenu name="Ada Lovelace" image={null} />);
+    expect(screen.queryByRole("dialog", { name: "Passkeys" })).toBeNull();
+    fireEvent.click(account());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Passkeys" }));
+    });
+    expect(screen.getByRole("dialog", { name: "Passkeys" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("No passkeys yet.")).toBeTruthy());
+    expect(passkey.listUserPasskeys).toHaveBeenCalledTimes(1);
+    expect(signOut).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Passkeys" })).toBeNull();
+  });
+
+  it("coming back from signing in again with ?passkeys=1 opens the dialog and drops the parameter", async () => {
+    window.history.replaceState(null, "", "/dashboard?folder=f1&passkeys=1");
+    render(<AccountMenu name="Ada Lovelace" image={null} />);
+    expect(await screen.findByRole("dialog", { name: "Passkeys" })).toBeTruthy();
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith("/dashboard?folder=f1", { scroll: false });
+    await waitFor(() => expect(passkey.listUserPasskeys).toHaveBeenCalledTimes(1));
+  });
+
+  it("without the parameter the dialog stays closed", () => {
+    window.history.replaceState(null, "", "/dashboard?folder=f1");
+    render(<AccountMenu name="Ada Lovelace" image={null} />);
+    expect(screen.queryByRole("dialog", { name: "Passkeys" })).toBeNull();
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(passkey.listUserPasskeys).not.toHaveBeenCalled();
   });
 });

@@ -13,11 +13,12 @@ export type ConfirmDialogProps = {
   error: string | null; // why the action was refused, shown in the dialog, which stays open
   onConfirm(): void;
   onClose(): void;
+  children?: ReactNode; // shown after the question, such as a note or a checkbox that goes with the action
 };
 
 // Asks before something that cannot be taken back from the page, such as a delete. Focus starts on Cancel, so
 // Enter on opening does nothing harmful; the caller sends the action and closes the dialog once it went through.
-export function ConfirmDialog({ title, question, confirmLabel, open, pending, error, onConfirm, onClose }: ConfirmDialogProps): ReactNode {
+export function ConfirmDialog({ title, question, confirmLabel, open, pending, error, onConfirm, onClose, children }: ConfirmDialogProps): ReactNode {
   return (
     <Dialog
       title={title}
@@ -40,6 +41,7 @@ export function ConfirmDialog({ title, question, confirmLabel, open, pending, er
       }
     >
       <p>{question}</p>
+      {children}
     </Dialog>
   );
 }
