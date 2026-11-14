@@ -6,9 +6,10 @@ import { audioBlocks } from "@/lib/export/schedule";
 import { soundSchedule, type SoundSchedule } from "@/lib/export/sound-schedule";
 import { createSourceRing, type SoundPacket } from "@/lib/export/source-ring";
 import { createVoicePlayer } from "@/lib/export/voice";
+import { createStretcher } from "@/lib/export/wsola";
 import { createEmptyDoc, type Clip } from "@/lib/timeline";
 import { video } from "../editor/fixtures";
-import { fitTone, impulses, peakIndex, peaks, planar, tone } from "./audio-helpers";
+import { fitTone, impulses, levelDb, maxDiff, peakIndex, peaks, planar, tone, zeroCrossHz } from "./audio-helpers";
 
 const K = sincKernel();
 // The file as decoded: planes at `rate`, cut into packets of 1,024 frames, the first at `first` seconds.
@@ -162,10 +163,32 @@ describe("a voice from decoded packets", () => {
     close.mockRestore();
   });
 
-  it("reads a clip at speed 2 twice as fast", async () => {
-    const s = schedule(onAudio(song("m1", 0, 30, { speed: 2 })), { m1: "song" });
-    const out = await play(s, { song: () => decoded([impulses(144_000, 3_200, 1_600)], 48_000) }, 30);
-    expect(peaks(out.left, 0.3)).toEqual(Array.from({ length: 30 }, (_, m) => 800 + m * 1_600));
+  it("plays a clip at speed 2 twice as fast and at its own pitch", async () => {
+    const file = new Float32Array(240_000);
+    file.set(tone(440, 48_000, 96_000)); // two seconds of 440 Hz, then silence
+    const s = schedule(onAudio(song("m1", 0, 60, { speed: 2 })), { m1: "song" });
+    const out = await play(s, { song: () => decoded([file], 48_000) }, 60);
+    expect(Math.abs(zeroCrossHz(out.left.subarray(2_000, 46_000), 48_000) - 440)).toBeLessThan(1);
+    expect(levelDb(out.left, 50_000, 94_000)).toBeLessThan(-60);
+  });
+
+  it("plays a stretched clip exactly as the stretcher does, across block edges", async () => {
+    const file = tone(440, 48_000, 240_000);
+    const s = schedule(onAudio(song("m1", 0, 60, { speed: 2 })), { m1: "song" });
+    const out = await play(s, { song: () => decoded([file], 48_000) }, 60);
+    const ref = { left: new Float32Array(96_000), right: new Float32Array(96_000) };
+    createStretcher(2, (_ch, m) => (m >= 0 && m < file.length ? file[m] : 0)).render(ref, 96_000);
+    expect(maxDiff(out.left.subarray(192, 95_808), ref.left.subarray(192, 95_808))).toBeLessThan(1e-6); // inside the ramps
+  });
+
+  it.each([0.25, 1.5, 4])("plays at speed %s across blocks without reading behind what it kept, holding a fraction of a second", async (speed) => {
+    const s = schedule(onAudio(song("m1", 0, 150, { speed })), { m1: "song" });
+    const player = createVoicePlayer(s, s.voices[0], reader(decoded([tone(440, 44_100, 44_100 * 21)], 44_100)).it, K);
+    for (const block of audioBlocks(150, 30, 48_000)) {
+      await player.render(block); // a RangeError here is a read behind what the stage or the ring dropped
+      expect(player.held()).toBeLessThan(200_000);
+    }
+    player.stop();
   });
 });
 
@@ -248,5 +271,23 @@ describe("the source ring and the voice, rule by rule", () => {
     let worst = 0;
     for (let i = 0; i < 48_000; i++) worst = Math.max(worst, Math.abs(part!.left[i] - whole[i]));
     expect(worst).toBeLessThan(1e-6);
+  });
+
+  it("stretches from the in point in spans exactly as one pass over the whole stage would, from packets of any size", async () => {
+    // 16-frame packets at 44.1 kHz: the ring must reach the filter's whole reach past the stage's top before it resamples
+    const file = tone(1_000, 44_100, 60_000);
+    const packets: SoundPacket[] = [];
+    for (let at = 0; at < file.length; at += 16) packets.push(new AudioSample({ data: file.slice(at, at + 16), format: "f32-planar", numberOfChannels: 1, sampleRate: 44_100, timestamp: at / 44_100 }));
+    const s = schedule(onAudio(song("m1", 0, 30, { in: 3, speed: 1.5 })), { m1: "song" });
+    const part = await createVoicePlayer(s, s.voices[0], reader(packets).it, K).render(audioBlocks(30, 30, 48_000)[0]);
+    // the stage in one pass: index m is file frame 4,410 + m × 44,100 / 48,000
+    const ref = createStretcher(1.5, (_ch, m) => stage[m - from]);
+    const from = ref.keeps();
+    const stage = new Float32Array(ref.needs(48_000) - from);
+    resampleInto(stage, stage.length, (j) => (j >= 0 && j < file.length ? file[j] : 0), 4_410 + (from * 44_100) / 48_000, 44_100 / 48_000, K);
+    const whole = { at: 0, left: new Float32Array(48_000), right: new Float32Array(48_000) };
+    ref.render(whole, 48_000);
+    applyGain(whole, 1, 0, 48_000);
+    expect(maxDiff(part!.left, whole.left)).toBeLessThan(1e-6);
   });
 });
