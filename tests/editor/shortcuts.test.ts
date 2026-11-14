@@ -36,6 +36,9 @@ describe("matching keys", () => {
     ["Ctrl+V", key("v", { ctrlKey: true }), PC, "paste"],
     ["Cmd+D", key("d", { metaKey: true }), MAC, "duplicate"],
     ["Ctrl+D", key("d", { ctrlKey: true }), PC, "duplicate"],
+    ["Cmd+E", key("e", { metaKey: true }), MAC, "export"],
+    ["Ctrl+E", key("e", { ctrlKey: true }), PC, "export"],
+    ["E alone", key("e"), MAC, null],
     ["Ctrl+A", key("a", { ctrlKey: true }), PC, "select-all"],
     ["Escape", key("Escape"), MAC, "clear-selection"],
     ["=", key("="), MAC, "zoom-in"],
@@ -114,6 +117,7 @@ describe("matching keys", () => {
       ["zoom-out", "-", "Zoom out"],
       ["zoom-fit", "Shift+Z", "Fit the timeline"],
       ["toggle-snapping", "N", "Snapping on or off"],
+      ["export", "Mod+E", "Export"],
       ["show-shortcuts", "?", "Show shortcuts"],
     ]);
   });
@@ -134,7 +138,7 @@ describe("matching keys", () => {
       "Editing:copy", "Editing:cut", "Editing:paste", "Editing:duplicate",
       "Editing:nudge-left", "Editing:nudge-right", "Editing:nudge-left-second", "Editing:nudge-right-second",
       "Timeline:select-all", "Timeline:clear-selection", "Timeline:zoom-in", "Timeline:zoom-out", "Timeline:zoom-fit",
-      "Timeline:toggle-snapping", "General:show-shortcuts",
+      "Timeline:toggle-snapping", "General:export", "General:show-shortcuts",
     ]);
   });
 
@@ -174,7 +178,7 @@ describe("matching keys", () => {
 describe("running commands", () => {
   function setup(canEdit = true) {
     const store = makeStore({ canEdit });
-    return { st: () => store.getState(), ctx: { store, clipboard: createClipboard(), openShortcuts: vi.fn() } };
+    return { st: () => store.getState(), ctx: { store, clipboard: createClipboard(), openShortcuts: vi.fn(), openExport: vi.fn() } };
   }
 
   it("runs each command against the store", () => {
@@ -194,6 +198,8 @@ describe("running commands", () => {
     expect(st().playing).toBe(true);
     runCommand("show-shortcuts", ctx);
     expect(ctx.openShortcuts).toHaveBeenCalledTimes(1);
+    runCommand("export", ctx);
+    expect(ctx.openExport).toHaveBeenCalledTimes(1);
   });
 
   it("a viewer's editing commands do nothing; the rest still work", () => {
@@ -207,6 +213,8 @@ describe("running commands", () => {
     expect(st().playhead).toBe(46);
     runCommand("select-all", ctx);
     expect(st().selection.clipIds).toHaveLength(4);
+    runCommand("export", ctx);
+    expect(ctx.openExport).toHaveBeenCalledTimes(1);
   });
 
   it("runs the rest of the table", () => {

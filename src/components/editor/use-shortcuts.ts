@@ -41,11 +41,14 @@ function hasTextSelection(): boolean {
 }
 
 // Runs one command of the shortcut table, from a key or a menu. This is the one place the commands'
-// context is built. Pass a stable openShortcuts: a new one makes a new runner.
-export function useCommandRunner(openShortcuts: () => void): (command: CommandId) => void {
+// context is built. Pass a stable openShortcuts and openExport: a new one makes a new runner.
+export function useCommandRunner(openShortcuts: () => void, openExport?: () => void): (command: CommandId) => void {
   const store = useEditorStore();
   const clipboard = useClipboard();
-  return useCallback((command: CommandId) => runCommand(command, { store, clipboard, openShortcuts }), [store, clipboard, openShortcuts]);
+  return useCallback(
+    (command: CommandId) => runCommand(command, { store, clipboard, openShortcuts, openExport }),
+    [store, clipboard, openShortcuts, openExport],
+  );
 }
 
 // Runs the shortcut table's commands from key presses anywhere in the window. A key is left alone
@@ -54,12 +57,12 @@ export function useCommandRunner(openShortcuts: () => void): (command: CommandId
 // or pauses even on a button, unless the button was reached with the keyboard. Copy and cut
 // are left to the browser when no clip is selected or text is. A held key runs its command again
 // only where the table says it repeats. The keys are this browser's keymap, read as each key goes
-// down; with every shortcut off the browser gets every key. Pass a stable openShortcuts: a new one
-// adds the listener again.
-export function useShortcuts(openShortcuts: () => void): void {
+// down; with every shortcut off the browser gets every key. Pass a stable openShortcuts and openExport:
+// a new one adds the listener again.
+export function useShortcuts(openShortcuts: () => void, openExport?: () => void): void {
   const store = useEditorStore();
   const settings = useSettingsStore();
-  const run = useCommandRunner(openShortcuts);
+  const run = useCommandRunner(openShortcuts, openExport);
 
   useEffect(() => {
     const isMac = isMacPlatform();

@@ -5,9 +5,11 @@ import { useStore } from "zustand";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { DEFAULT_LAYOUT, LAYOUT_COOKIE, createLayoutStore, formatLayout, parseLayout, type Layout } from "@/lib/editor/layout";
+import { failureMessage } from "@/lib/export/messages";
+import type { ExportOutcome } from "@/lib/export/protocol";
 import { isBusy, progressFraction, type ExportState } from "@/lib/export/state";
 import { readCookie, writeLayoutCookie } from "./browser-prefs";
-import { useEditor } from "./context";
+import { useEditor, useEditorStore } from "./context";
 import { ExportDialog } from "./export/export-dialog";
 import { useExport, type Exporter } from "./export/use-export";
 import { LeaveLink } from "./leave-link";
@@ -31,6 +33,7 @@ type EditorScreenProps = {
 // The keyboard shortcuts work anywhere in the window, and any part can open a right-click menu. The panel
 // grid alone follows the panel sizes, so resizing a panel does not draw the panels again.
 export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writeLayoutCookie }: EditorScreenProps) {
+  const store = useEditorStore();
   const deleted = useEditor((s) => s.status === "deleted");
   const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
   const [lastSection, setLastSection] = useState<SettingsSection>("project"); // the gear opens it again
@@ -48,14 +51,23 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
     setLastSection(section);
   }, []);
   const openShortcuts = useCallback(() => showSettingsAt("shortcuts"), [showSettingsAt]);
-  useShortcuts(openShortcuts);
-  const exporter = useExport();
   const [exportOpen, setExportOpen] = useState(false);
+  // An export that ends while its dialog is closed says so in a notice; an open dialog says it all itself. A held file
+  // keeps the export's state at done, so Export opens again at its Download.
+  const exporter = useExport({
+    onFinish: (outcome: ExportOutcome, fileName: string, held: boolean) => {
+      if (exportOpen) return;
+      if (outcome.status === "done")
+        store.getState().notify("info", held ? "Export finished. Open Export to download it." : `Export saved as ${fileName}.`);
+      else if (outcome.status === "failed") store.getState().notify("error", failureMessage(outcome.code));
+    },
+  });
   const busy = useStore(exporter.store, isBusy);
   // A deleted project exports nothing new, but a running export stays reachable for its progress and its Cancel.
   const openExport = useCallback(() => {
     if (!deleted || busy) setExportOpen(true);
   }, [deleted, busy]);
+  useShortcuts(openShortcuts, openExport);
 
   return (
     <div className="editor relative h-dvh overflow-hidden bg-ed-bg font-sans text-ed-text [--ed-left-w:240px] [--ed-right-w:280px] [--ed-timeline-h:clamp(220px,36vh,360px)]">

@@ -3,7 +3,7 @@ export type CommandId =
   | "prev-edge" | "next-edge" | "go-start" | "go-end"
   | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste" | "duplicate"
   | "nudge-left" | "nudge-right" | "nudge-left-second" | "nudge-right-second"
-  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "show-shortcuts";
+  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "export" | "show-shortcuts";
 
 // edits: the command changes the project, so it does nothing for a viewer. repeats: holding the key
 // down runs it again with each repeat; other commands run once per press.
@@ -68,6 +68,7 @@ export const SHORTCUTS: Shortcut[] = [
   row("Timeline", "zoom-out", ["-"], "Zoom out", REPEATS),
   row("Timeline", "zoom-fit", ["Shift+Z"], "Fit the timeline"),
   row("Timeline", "toggle-snapping", ["N"], "Snapping on or off"),
+  row("General", "export", ["Mod+E"], "Export"),
   row("General", "show-shortcuts", ["?"], "Show shortcuts"),
 ];
 

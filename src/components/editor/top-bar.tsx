@@ -29,7 +29,7 @@ type TopBarProps = {
 export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout, onExport, exportPercent = null }: TopBarProps) {
   const store = useEditorStore();
   const clipboard = useClipboard();
-  const run = useCommandRunner(onShowShortcuts);
+  const run = useCommandRunner(onShowShortcuts, onExport);
   const canEdit = useEditor((s) => s.canEdit);
   const status = useEditor((s) => s.status);
   const undoLabel = useEditor((s) => s.undoStack.at(-1)?.label);
@@ -108,6 +108,7 @@ export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout, onExpor
         <Button
           variant={exportPercent === null ? "primary" : "default"}
           className="tabular-nums"
+          title={keyFor("export") ? `Export (${keyFor("export")})` : "Export"}
           disabled={deleted && exportPercent === null}
           onClick={onExport}
         >

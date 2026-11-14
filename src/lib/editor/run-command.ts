@@ -15,7 +15,8 @@ import { ZOOM_STEP } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import type { EditorState, EditorStore } from "./store";
 
-export type CommandContext = { store: EditorStore; clipboard: ClipboardStore; openShortcuts(): void };
+// openExport is left out where no export can be opened (the clip and canvas menus); the key then does nothing.
+export type CommandContext = { store: EditorStore; clipboard: ClipboardStore; openShortcuts(): void; openExport?(): void };
 
 const EDITS = new Set(SHORTCUTS.filter((s) => s.edits).map((s) => s.command));
 
@@ -102,6 +103,8 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return state.zoomToFit();
     case "toggle-snapping":
       return state.setSnapping(!state.snapping);
+    case "export":
+      return ctx.openExport?.();
     case "show-shortcuts":
       return ctx.openShortcuts();
     default: {
