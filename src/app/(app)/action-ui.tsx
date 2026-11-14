@@ -27,12 +27,3 @@ export function useAction(action: (formData: FormData) => Promise<ActionResult>)
   }
   return { error, pending, submit };
 }
-
-export function ErrorText({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <p role="alert" className="text-sm text-red-700 dark:text-red-400">
-      {message}
-    </p>
-  );
-}
