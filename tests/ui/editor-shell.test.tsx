@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { EditorShell } from "@/components/editor/editor-shell";
+import { browserExportDeps } from "@/components/editor/export/browser-deps";
 import { createMediaServices, type MediaServices } from "@/components/editor/media/media-context";
 import { browserThumbnailDeps } from "@/components/editor/thumbnail-deps";
 import { formatTimecode } from "@/lib/editor/geometry";
@@ -21,8 +22,9 @@ import { sampleDoc } from "../editor/fixtures";
 import { dragEvent } from "../helpers/drag-events";
 import { act, fireEvent, render, screen } from "../helpers/dom";
 import { happyDOM } from "../helpers/layout";
-import { assetView } from "../helpers/media-services";
+import { assetView, pretendMediaServices } from "../helpers/media-services";
 import { fakeCtx } from "../render/fake-ctx";
+import { fakeExportDeps } from "./export-fakes";
 
 // The existing tests get the real services; a test of the media wiring hands the shell its own for one render.
 vi.mock("@/components/editor/media/media-context", async (importOriginal) => {
@@ -47,6 +49,11 @@ vi.mock("@/lib/editor/thumbnail-trigger", async (importOriginal) => {
 vi.mock("@/components/editor/thumbnail-deps", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/components/editor/thumbnail-deps")>();
   return { ...real, browserThumbnailDeps: vi.fn(real.browserThumbnailDeps) };
+});
+// The real export deps, wrapped so a test can hand the shell its own.
+vi.mock("@/components/editor/export/browser-deps", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/components/editor/export/browser-deps")>();
+  return { ...real, browserExportDeps: vi.fn(real.browserExportDeps) };
 });
 
 const EDITOR_URL = "http://localhost:3000/editor/p1";
@@ -105,6 +112,7 @@ afterEach(() => {
   // Back to the real functions, with no calls kept: every test renders the shell.
   vi.mocked(startThumbnailTrigger).mockReset();
   vi.mocked(browserThumbnailDeps).mockReset();
+  vi.mocked(browserExportDeps).mockReset();
   expireCookies();
   localStorage.clear();
 });
@@ -291,6 +299,30 @@ it("asks before the page unloads while an upload is running", async () => {
   const later = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(later);
   expect(later.defaultPrevented).toBe(false);
+});
+
+it("asks before the page unloads while an export is running", async () => {
+  stubServer();
+  const made = fakeExportDeps();
+  vi.mocked(browserExportDeps).mockReturnValue(made.deps);
+  vi.mocked(createMediaServices).mockReturnValueOnce(pretendMediaServices([assetView()]));
+  render(<EditorShell initial={initial()} />);
+  const asks = () => {
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    return unload.defaultPrevented;
+  };
+  const press = async (name: string) => {
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name })); });
+    await flush();
+  };
+  expect(asks()).toBe(false);
+  await press("Export");
+  await press("Export video");
+  expect(asks()).toBe(true);
+  await act(async () => { made.workers[0].emit({ type: "done", bytes: 1, hasAudio: true }); });
+  await flush();
+  expect(asks()).toBe(false);
 });
 
 it("leaving the editor stops uploads and removes nothing", async () => {
