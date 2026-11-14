@@ -50,11 +50,12 @@ class DomError extends Error {
 
 // One passkey in a passkey manager, as navigator.credentials would hand it over: a P-256 key made here, "none"
 // attestation, a counter that goes up with every use, and the account's user handle (a discoverable credential). The
-// key exists from the start, so a passkey that was never added to EasyEdit can still try to sign in.
-export function createSoftAuthenticator(opts: { aaguid?: string } = {}): SoftAuthenticator {
+// key exists from the start, so a passkey that was never added to EasyEdit can still try to sign in. `credentialId`
+// gives it another passkey's id with its own key, as a forged authenticator could: "none" attestation signs nothing.
+export function createSoftAuthenticator(opts: { aaguid?: string; credentialId?: string } = {}): SoftAuthenticator {
   const aaguid = Buffer.from((opts.aaguid ?? ANONYMOUS_AAGUID).replaceAll("-", ""), "hex");
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const rawId = new Uint8Array(randomBytes(32));
+  const rawId = opts.credentialId === undefined ? new Uint8Array(randomBytes(32)) : isoBase64URL.toBuffer(opts.credentialId);
   const credentialId = isoBase64URL.fromBuffer(rawId);
   let counter = 0;
   let rpId: string | undefined;

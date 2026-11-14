@@ -166,6 +166,27 @@ describe("adding a passkey", () => {
     expect(await res.json()).toMatchObject({ code: "SESSION_NOT_FRESH" });
     expect(await testDb.select().from(passkeyTable)).toHaveLength(0);
   });
+
+  it("a passkey id that's already added can't be added again, so the first passkey keeps signing in", async () => {
+    // A member who has used the shared team account can read its passkey's id, then sign in as herself and answer
+    // with a forged authenticator that reuses that id with a key of her own.
+    const team = await member("team@gmail.com");
+    const teamPasskey = createSoftAuthenticator({ aaguid: ONE_PASSWORD_AAGUID });
+    await added(team.cookie, teamPasskey);
+    const mallory = await member("mallory@gmail.com");
+
+    const res = await addPasskey(send, {
+      cookie: mallory.cookie, authenticator: createSoftAuthenticator({ credentialId: teamPasskey.credentialId }), ip: ip(),
+    });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ code: "FAILED_TO_VERIFY_REGISTRATION" });
+    expect(await passkeysOf(mallory.userId)).toHaveLength(0);
+    const holders = await testDb.select().from(passkeyTable).where(eq(passkeyTable.credentialID, teamPasskey.credentialId));
+    expect(holders.map((row) => row.userId)).toEqual([team.userId]);
+    const signIn = await signInWithPasskey(send, { authenticator: teamPasskey, ip: ip() });
+    expect(signIn.status).toBe(200);
+  });
 });
 
 describe("signing in with a passkey", () => {

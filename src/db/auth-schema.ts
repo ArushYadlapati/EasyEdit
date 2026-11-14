@@ -302,7 +302,7 @@ export const passkey = pgTable(
   },
   (table) => [
     index("passkey_userId_idx").on(table.userId),
-    index("passkey_credentialID_idx").on(table.credentialID),
+    uniqueIndex("passkey_credentialID_idx").on(table.credentialID),
   ],
 );
 

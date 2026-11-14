@@ -12,6 +12,8 @@ import { authClient } from "@/lib/auth-client";
 export type PasskeysDialogProps = {
   open: boolean;
   onClose(): void;
+  // The error code a Google sign-in from Sign in again came back with, when it failed.
+  signInError?: string | null;
 };
 
 type Passkey = { id: string; name: string; createdAt: Date };
@@ -24,12 +26,12 @@ const NAME_CHARS = 60;
 const UNNAMED = "Passkey";
 
 // What the passkey client answers when the browser's passkey sheet is closed or times out (a NotAllowedError passed
-// through, or an aborted ceremony). The person chose that, so it needs no message.
+// through, or an aborted ceremony). The person chose that, so it needs no message. Not AUTH_CANCELLED: despite its
+// name, a passkey sign-in answers it when the request that checks an approved passkey throws, which is a failure.
 const CANCELLED = new Set([
   "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY",
   "ERROR_CEREMONY_ABORTED",
   "REGISTRATION_CANCELLED",
-  "AUTH_CANCELLED",
   "NotAllowedError",
   "AbortError",
 ]);
@@ -43,6 +45,8 @@ const MESSAGES = {
   tooOld: "For your safety, sign in again before adding a passkey.",
   passkeySignIn: "Passkey sign-in didn't finish. Try again, or sign in with Google.",
   googleSignIn: "Google sign-in didn't start. Try again.",
+  googleNotAllowed: "That Google account isn't on the Seattle Solvers allowlist. Sign in again with the one you use for EasyEdit.",
+  googleDidNotFinish: "Google sign-in didn't finish. Try again.",
   rename: "The passkey wasn't renamed. Try again.",
   remove: "The passkey wasn't removed. Try again.",
   removedNotSignedOut: "The passkey was removed, but other devices weren't signed out. Try Sign out all other devices.",
@@ -51,6 +55,12 @@ const MESSAGES = {
 };
 
 const cancelled = (error: Failure) => CANCELLED.has(error.code ?? "");
+
+// Why a Google sign-in from Sign in again came back without signing in, or null when it didn't fail.
+function googleSignInMessage(code: string | null | undefined): string | null {
+  if (!code) return null;
+  return code.toUpperCase() === "NOT_ALLOWLISTED" ? MESSAGES.googleNotAllowed : MESSAGES.googleDidNotFinish;
+}
 
 // The auth client answers a refusal with an error; a request that got no answer at all throws, and reads the same here.
 async function settle<T>(send: () => Promise<{ data: T | null; error: unknown }>): Promise<Outcome<T>> {
@@ -62,11 +72,14 @@ async function settle<T>(send: () => Promise<{ data: T | null; error: unknown }>
   }
 }
 
-// The member's passkeys, oldest first as the server keeps them, or null when they could not be loaded.
+// The member's passkeys, newest first, or null when they could not be loaded. The server keeps no order (a sign-in or
+// a rename rewrites a passkey's row, which can move it), so the list is sorted here, by id among passkeys added together.
 async function fetchPasskeys(): Promise<Passkey[] | null> {
   const { data, error } = await settle(() => authClient.passkey.listUserPasskeys());
   if (error || !data) return null;
-  return data.map((passkey) => ({ id: passkey.id, name: passkey.name || UNNAMED, createdAt: new Date(passkey.createdAt) }));
+  return data
+    .map((passkey) => ({ id: passkey.id, name: passkey.name || UNNAMED, createdAt: new Date(passkey.createdAt) }))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 // "Nov 13" this year, "May 2, 2025" before.
@@ -89,20 +102,23 @@ export function PasskeysDialog(props: PasskeysDialogProps): ReactNode {
 
 // One action runs at a time, and every action button is off while it does, so nothing is sent twice or crosses.
 // Adding a passkey needs a sign-in from the last day; when the server says it is older, the dialog offers to sign in
-// again: with Google, which comes back to /dashboard?passkeys=1 (the account menu reopens this dialog from that), or
-// with one of the member's passkeys, which stays here.
-function Passkeys({ open, onClose }: PasskeysDialogProps): ReactNode {
+// again: with Google, which comes back to /dashboard?passkeys=1 whether it worked or not (the account menu reopens this
+// dialog from that, with the error if there was one), or with one of the member's passkeys, which stays here.
+function Passkeys({ open, onClose, signInError }: PasskeysDialogProps): ReactNode {
   const router = useRouter();
   const [passkeys, setPasskeys] = useState<Passkey[] | null>(null); // null until loaded
   const [loadFailed, setLoadFailed] = useState(false);
   const [pending, setPending] = useState<Action | null>(null);
   const busy = useRef(false); // set at once, before the buttons turn off, so a second press in the same moment stops here
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [reauth, setReauth] = useState<string | null>(null); // why to sign in again, shown with the ways to do it
+  // Why to sign in again, shown with the ways to do it.
+  const [reauth, setReauth] = useState<string | null>(() => googleSignInMessage(signInError));
   const [renaming, setRenaming] = useState<string | null>(null);
   const refocus = useRef<string | null>(null); // the passkey whose Rename button takes focus back once its rename ends
   const list = useRef<HTMLUListElement>(null);
   const [removing, setRemoving] = useState<Passkey | null>(null);
+  const removedAt = useRef<number | null>(null); // where the removed passkey's row was, so focus can go to the one now there
+  const addButton = useRef<HTMLButtonElement>(null);
   const [alsoSignOut, setAlsoSignOut] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -137,6 +153,17 @@ function Passkeys({ open, onClose }: PasskeysDialogProps): ReactNode {
     [...buttons].find((button) => button.dataset.rename === id)?.focus();
   }, [renaming, pending]);
 
+  // A removed passkey's row leaves with the Remove button that opened the confirm dialog, so closing it has nowhere to
+  // put focus back, and focus would drop to the page. It goes to the row now in that place (the last row, if the
+  // removed one was last), or to Add a passkey when none are left.
+  useEffect(() => {
+    const at = removedAt.current;
+    if (at === null || removing !== null || pending !== null) return;
+    removedAt.current = null;
+    const buttons = [...(list.current?.querySelectorAll<HTMLButtonElement>("[data-remove]") ?? [])];
+    (buttons[Math.min(at, buttons.length - 1)] ?? addButton.current)?.focus();
+  }, [removing, pending]);
+
   async function run(action: Action, work: () => Promise<"leaving" | void>) {
     if (busy.current) return;
     busy.current = true;
@@ -168,7 +195,9 @@ function Passkeys({ open, onClose }: PasskeysDialogProps): ReactNode {
   function signInWithGoogle() {
     void run("sign-in", async () => {
       const { error } = await settle(() =>
-        authClient.signIn.social({ provider: "google", callbackURL: "/dashboard?passkeys=1", errorCallbackURL: "/login" }),
+        // A refused sign-in comes back here too: /login would see the session this page still has and send the member
+        // on to the dashboard, with the dialog closed and the reason dropped.
+        authClient.signIn.social({ provider: "google", callbackURL: "/dashboard?passkeys=1", errorCallbackURL: "/dashboard?passkeys=1" }),
       );
       if (!error) return "leaving";
       setReauth(MESSAGES.googleSignIn);
@@ -227,6 +256,7 @@ function Passkeys({ open, onClose }: PasskeysDialogProps): ReactNode {
         setRemoveError(MESSAGES.remove);
         return;
       }
+      removedAt.current = Math.max(0, passkeys?.findIndex((each) => each.id === passkey.id) ?? 0);
       setPasskeys((all) => all && all.filter((each) => each.id !== passkey.id));
       if (alsoSignOut) {
         const signedOut = await settle(() => authClient.revokeOtherSessions());
@@ -303,7 +333,14 @@ function Passkeys({ open, onClose }: PasskeysDialogProps): ReactNode {
                   >
                     Rename
                   </Button>
-                  <Button size="sm" variant="danger" aria-label={`Remove ${passkey.name}`} disabled={waiting} onClick={() => askToRemove(passkey)}>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    aria-label={`Remove ${passkey.name}`}
+                    data-remove={passkey.id}
+                    disabled={waiting}
+                    onClick={() => askToRemove(passkey)}
+                  >
                     Remove
                   </Button>
                 </li>
@@ -336,7 +373,7 @@ function Passkeys({ open, onClose }: PasskeysDialogProps): ReactNode {
             {notice.text}
           </p>
         )}
-        <Button variant="primary" className="mt-3" disabled={waiting} onClick={add}>
+        <Button ref={addButton} variant="primary" className="mt-3" disabled={waiting} onClick={add}>
           Add a passkey
         </Button>
       </Dialog>

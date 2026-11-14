@@ -3,8 +3,9 @@
 type PasskeySignInError = { code?: string; message?: string };
 
 // Closing the sheet or letting it time out is NotAllowedError, which SimpleWebAuthn passes through under its own
-// code. AUTH_CANCELLED is the plugin's code for a browser error that isn't one of SimpleWebAuthn's.
-const CANCELLED = new Set(["ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY", "ERROR_CEREMONY_ABORTED", "AUTH_CANCELLED"]);
+// code. AUTH_CANCELLED isn't one: despite its name, the plugin answers it when the request that checks an approved
+// passkey throws (a dropped connection) or for a browser error SimpleWebAuthn couldn't name, so it gets a message.
+const CANCELLED = new Set(["ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY", "ERROR_CEREMONY_ABORTED"]);
 
 // PASSKEY_NOT_FOUND: no stored passkey has that credential (deleted from EasyEdit, or never added).
 // AUTHENTICATION_FAILED: one does, but the response doesn't verify against it.

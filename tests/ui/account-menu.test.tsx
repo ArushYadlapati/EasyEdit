@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountMenu } from "@/components/dashboard/account-menu";
-import { act, fireEvent, render, screen, waitFor } from "../helpers/dom";
+import { act, fireEvent, render, screen, waitFor, within } from "../helpers/dom";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
 vi.mock("next/navigation", () => ({ useRouter: () => router, unstable_rethrow: () => {} }));
@@ -92,6 +92,28 @@ describe("the account menu", () => {
     expect(router.replace).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith("/dashboard?folder=f1", { scroll: false });
     await waitFor(() => expect(passkey.listUserPasskeys).toHaveBeenCalledTimes(1));
+  });
+
+  it("back from a Google sign-in that was refused, the dialog says why, and drops the error from the address", async () => {
+    window.history.replaceState(null, "", "/dashboard?folder=f1&passkeys=1&error=NOT_ALLOWLISTED&error_description=NOT_ALLOWLISTED");
+    render(<AccountMenu name="Ada Lovelace" image={null} />);
+    const dialog = await screen.findByRole("dialog", { name: "Passkeys" });
+    expect(within(dialog).getByRole("alert").textContent).toBe(
+      "That Google account isn't on the Seattle Solvers allowlist. Sign in again with the one you use for EasyEdit.",
+    );
+    expect(within(dialog).getByRole("button", { name: "Sign in again" })).toBeTruthy();
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith("/dashboard?folder=f1", { scroll: false });
+    await waitFor(() => expect(passkey.listUserPasskeys).toHaveBeenCalledTimes(1));
+
+    // Opened again from the menu, it starts afresh.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(account());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Passkeys" }));
+    });
+    await waitFor(() => expect(screen.getByText("No passkeys yet.")).toBeTruthy());
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("without the parameter the dialog stays closed", () => {

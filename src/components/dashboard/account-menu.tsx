@@ -8,29 +8,37 @@ import { authClient } from "@/lib/auth-client";
 import { signOutAndLeave } from "@/lib/sign-out";
 
 const noChanges = () => () => {};
-const backFromSigningIn = () => new URLSearchParams(window.location.search).get("passkeys") === "1";
+// The parameters signing in again from the Passkeys dialog comes back with: its own, and Better Auth's when it failed.
+const BACK_PARAMS = ["passkeys", "error", "error_description"];
+// null when the address isn't back from signing in again; otherwise the error it came back with, "" for none.
+function backFromSigningIn(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("passkeys") === "1" ? (params.get("error") ?? "") : null;
+}
 
 // The header's account button: the person's picture and name, opening a menu with Passkeys and Sign out.
 export function AccountMenu({ name, image }: { name: string; image: string | null }): ReactNode {
   const router = useRouter();
   const [failed, setFailed] = useState(false);
   const [passkeysOpen, setPasskeysOpen] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
-  // Signing in again from the Passkeys dialog comes back to ?passkeys=1, which opens it again. The parameter is then
-  // taken out of the address, so a reload or a copied link does not open it. The server cannot see it, so hydration
-  // renders it closed and the browser opens it right after.
-  const reopen = useSyncExternalStore(noChanges, backFromSigningIn, () => false);
+  // Signing in again from the Passkeys dialog comes back to ?passkeys=1, which opens it again, with the error when the
+  // sign-in failed. The parameters are then taken out of the address, so a reload or a copied link does not open it.
+  // The server cannot see them, so hydration renders it closed and the browser opens it right after.
+  const back = useSyncExternalStore(noChanges, backFromSigningIn, () => null);
   const [reopened, setReopened] = useState(false);
-  if (reopen && !reopened) {
+  if (back !== null && !reopened) {
     setReopened(true);
     setPasskeysOpen(true);
+    setSignInError(back || null);
   }
   useEffect(() => {
-    if (!reopen) return;
+    if (back === null) return;
     const url = new URL(window.location.href);
-    url.searchParams.delete("passkeys");
+    for (const name of BACK_PARAMS) url.searchParams.delete(name);
     router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
-  }, [reopen, router]);
+  }, [back, router]);
 
   async function signOut() {
     setFailed(false);
@@ -63,7 +71,14 @@ export function AccountMenu({ name, image }: { name: string; image: string | nul
           if (id === "sign-out") void signOut();
         }}
       />
-      <PasskeysDialog open={passkeysOpen} onClose={() => setPasskeysOpen(false)} />
+      <PasskeysDialog
+        open={passkeysOpen}
+        signInError={signInError}
+        onClose={() => {
+          setPasskeysOpen(false);
+          setSignInError(null);
+        }}
+      />
     </div>
   );
 }

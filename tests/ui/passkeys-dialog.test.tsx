@@ -81,7 +81,7 @@ async function openDialog() {
 
 describe("the Passkeys dialog", () => {
   it("loads the passkeys when it opens and lists each with the day it was added", async () => {
-    client.listUserPasskeys.mockResolvedValueOnce({ data: [ONE_PASSWORD, KEYCHAIN, OLD_KEY, { ...KEYCHAIN, id: "pk4", name: undefined }], error: null });
+    client.listUserPasskeys.mockResolvedValueOnce({ data: [ONE_PASSWORD, KEYCHAIN, OLD_KEY, { ...KEYCHAIN, id: "pk4", name: undefined, createdAt: new Date(Date.UTC(THIS_YEAR, 9, 1, 12)) }], error: null });
     const { rerender } = render(<PasskeysDialog open={false} onClose={onClose} />);
     expect(client.listUserPasskeys).not.toHaveBeenCalled();
     rerender(<PasskeysDialog open onClose={onClose} />);
@@ -91,17 +91,30 @@ describe("the Passkeys dialog", () => {
     expect(listed()).toEqual([
       expect.stringContaining("1Password"),
       expect.stringContaining("Passkey"),
-      expect.stringContaining("YubiKey"),
       expect.stringContaining("Passkey"),
+      expect.stringContaining("YubiKey"),
     ]);
     const rows = within(dialog()).getAllByRole("listitem");
     expect(within(rows[0]).getByText("Added Nov 13")).toBeTruthy();
     expect(within(rows[1]).getByText("Added Nov 10")).toBeTruthy();
-    expect(within(rows[2]).getByText(`Added May 2, ${THIS_YEAR - 1}`)).toBeTruthy();
+    expect(within(rows[2]).getByText("Added Oct 1")).toBeTruthy();
+    expect(within(rows[3]).getByText(`Added May 2, ${THIS_YEAR - 1}`)).toBeTruthy();
     expect(button("Rename 1Password").textContent).toBe("Rename");
     expect(button("Remove 1Password").textContent).toBe("Remove");
     expect(button("Add a passkey")).toBeTruthy();
     expect(button("Sign out all other devices")).toBeTruthy();
+  });
+
+  it("lists the newest first, whatever order the server sends them in", async () => {
+    // The server keeps no order: a sign-in or a rename rewrites a passkey's row, which can move it in the table.
+    client.listUserPasskeys.mockResolvedValueOnce({ data: [OLD_KEY, KEYCHAIN, ONE_PASSWORD], error: null });
+    await openDialog();
+    expect(listed()).toEqual([expect.stringContaining("1Password"), expect.stringContaining("Passkey"), expect.stringContaining("YubiKey")]);
+    // Passkeys added in the same moment keep one order too.
+    const twins = [{ ...KEYCHAIN, id: "pk9", name: "B" }, { ...KEYCHAIN, id: "pk8", name: "A" }];
+    client.listUserPasskeys.mockResolvedValueOnce({ data: [twins[0], twins[1]], error: null });
+    await click(button("Add a passkey"));
+    await waitFor(() => expect(listed()).toEqual([expect.stringContaining("A"), expect.stringContaining("B")]));
   });
 
   it("with no passkeys it says so and still offers Add", async () => {
@@ -133,12 +146,13 @@ describe("the Passkeys dialog", () => {
 describe("adding a passkey", () => {
   it("Add a passkey opens the browser's sheet, then the new one shows in the list", async () => {
     await openDialog();
-    client.listUserPasskeys.mockResolvedValueOnce({ data: [ONE_PASSWORD, KEYCHAIN, { ...OLD_KEY, name: "Google Password Manager" }], error: null });
+    const added: Row = { id: "pk5", name: "Google Password Manager", createdAt: new Date(Date.UTC(THIS_YEAR, 10, 20, 12)) };
+    client.listUserPasskeys.mockResolvedValueOnce({ data: [ONE_PASSWORD, KEYCHAIN, added], error: null });
     await click(button("Add a passkey"));
     expect(client.addPasskey).toHaveBeenCalledTimes(1);
     expect(client.addPasskey).toHaveBeenCalledWith();
     await waitFor(() => expect(listed()).toHaveLength(3));
-    expect(listed()[2]).toContain("Google Password Manager");
+    expect(listed()[0]).toContain("Google Password Manager");
     expect(within(dialog()).queryByRole("alert")).toBeNull();
   });
 
@@ -207,10 +221,23 @@ describe("adding a passkey", () => {
     expect(alert.textContent).toContain("For your safety, sign in again before adding a passkey.");
     await click(button("Sign in again"));
     expect(client.signInSocial).toHaveBeenCalledTimes(1);
-    expect(client.signInSocial).toHaveBeenCalledWith({ provider: "google", callbackURL: "/dashboard?passkeys=1", errorCallbackURL: "/login" });
+    // A refused sign-in comes back to the dialog too: the old session is still there, so /login would only send the
+    // member on to the dashboard and drop the reason.
+    expect(client.signInSocial).toHaveBeenCalledWith({ provider: "google", callbackURL: "/dashboard?passkeys=1", errorCallbackURL: "/dashboard?passkeys=1" });
     // The page is leaving for Google, so nothing else can be pressed meanwhile.
     expect(button("Sign in again").disabled).toBe(true);
     expect(button("Add a passkey").disabled).toBe(true);
+  });
+
+  it.each([
+    ["NOT_ALLOWLISTED", "That Google account isn't on the Seattle Solvers allowlist. Sign in again with the one you use for EasyEdit."],
+    ["access_denied", "Google sign-in didn't finish. Try again."],
+  ])("back from a Google sign-in that failed (%s), it says why and offers Sign in again", async (code, message) => {
+    render(<PasskeysDialog open signInError={code} onClose={onClose} />);
+    await waitFor(() => expect(listed()).toHaveLength(2));
+    expect(within(dialog()).getByRole("alert").textContent).toBe(message);
+    expect(button("Sign in again").disabled).toBe(false);
+    expect(button("Use a passkey").disabled).toBe(false);
   });
 
   it("with no passkey yet, Google is the only way to sign in again", async () => {
@@ -240,11 +267,15 @@ describe("adding a passkey", () => {
     expect(button("Add a passkey").disabled).toBe(false);
   });
 
-  it("a passkey sign-in that fails says so and keeps Sign in again", async () => {
+  it.each([
+    { code: "PASSKEY_NOT_FOUND", status: 400 },
+    // What the passkey client answers when the request to check the passkey got no answer, after the member approved it.
+    { code: "AUTH_CANCELLED", message: "Auth cancelled", status: 400 },
+  ])("a passkey sign-in that fails says so and keeps Sign in again ($code)", async (error) => {
     await openDialog();
     client.addPasskey.mockResolvedValueOnce({ data: null, error: TOO_OLD });
     await click(button("Add a passkey"));
-    client.signInPasskey.mockResolvedValueOnce({ data: null, error: { code: "PASSKEY_NOT_FOUND", status: 400 } });
+    client.signInPasskey.mockResolvedValueOnce({ data: null, error });
     await click(button("Use a passkey"));
     expect(within(dialog()).getByRole("alert").textContent).toContain("Passkey sign-in didn't finish. Try again, or sign in with Google.");
     expect(button("Sign in again").disabled).toBe(false);
@@ -335,6 +366,23 @@ describe("removing a passkey", () => {
     expect(client.revokeOtherSessions).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove passkey" })).toBeNull());
     expect(listed()).toEqual([expect.stringContaining("Passkey")]);
+    // The button that opened the confirm dialog left with its row, so focus goes to the row now in its place.
+    expect(document.activeElement).toBe(button("Remove Passkey"));
+  });
+
+  it("removing the last row puts focus on the row above, and removing the only one on Add a passkey", async () => {
+    await openDialog();
+    await click(button("Remove Passkey"));
+    await click(button("Remove", confirm()));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove passkey" })).toBeNull());
+    expect(document.activeElement).toBe(button("Remove 1Password"));
+
+    await click(button("Remove 1Password"));
+    await click(checkbox());
+    await click(button("Remove", confirm()));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove passkey" })).toBeNull());
+    expect(within(dialog()).getByText("No passkeys yet.")).toBeTruthy();
+    expect(document.activeElement).toBe(button("Add a passkey"));
   });
 
   it("Cancel keeps it", async () => {

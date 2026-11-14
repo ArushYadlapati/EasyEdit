@@ -120,6 +120,16 @@ describe("the passkey sign-in button", () => {
     );
   });
 
+  it("a passkey approved in the sheet whose check got no answer says it didn't finish", async () => {
+    // The passkey client's answer when its request to verify-authentication throws, as on a dropped connection.
+    signInAnswers({ data: null, error: { code: "AUTH_CANCELLED", message: "Auth cancelled", status: 400, statusText: "BAD_REQUEST" } });
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Passkey sign-in didn't finish. Try again, or sign in with Google.",
+    );
+    expect(button().disabled).toBe(false);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
   it("a sign-in that throws says it didn't finish, and trying again clears the message", async () => {
     passkey.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     render(<PasskeySignInButton />);

@@ -18,8 +18,6 @@ describe("passkeySignInErrorMessage", () => {
     expect(passkeySignInErrorMessage({ code: "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY", message: "Auth cancelled" })).toBeNull();
     // Aborted by the browser or by a newer ceremony.
     expect(passkeySignInErrorMessage({ code: "ERROR_CEREMONY_ABORTED", message: "Auth cancelled" })).toBeNull();
-    // The plugin's own code for a browser error it couldn't name.
-    expect(passkeySignInErrorMessage({ code: "AUTH_CANCELLED", message: "Auth cancelled" })).toBeNull();
     expect(
       passkeySignInErrorMessage({ message: "NotAllowedError: The operation either timed out or was not allowed." }),
     ).toBeNull();
@@ -47,5 +45,11 @@ describe("passkeySignInErrorMessage", () => {
     // The rate limiter answers 429 with a message and no code.
     expect(passkeySignInErrorMessage({ message: "Too many requests. Please try again later." })).toBe(DID_NOT_FINISH);
     expect(passkeySignInErrorMessage({})).toBe(DID_NOT_FINISH);
+  });
+
+  it("says it didn't finish when the passkey was approved but the check never got an answer", () => {
+    // The plugin's code for a request to verify-authentication that threw (a dropped connection, say), and for a
+    // browser error SimpleWebAuthn couldn't name. Neither is the member closing the sheet.
+    expect(passkeySignInErrorMessage({ code: "AUTH_CANCELLED", message: "Auth cancelled" })).toBe(DID_NOT_FINISH);
   });
 });

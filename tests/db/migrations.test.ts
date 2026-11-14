@@ -275,6 +275,9 @@ describe("migrations", () => {
     await add("k2", "u1");
     await add("k3", "u2");
     await expect(add("k4", "nobody")).rejects.toThrow();
+    // A credential id belongs to one passkey: sign-in looks a passkey up by it alone.
+    await expect(db.execute(sql`insert into passkey (id, name, public_key, user_id, credential_id, counter, device_type, backed_up)
+      values ('k5', 'Passkey', 'other key', 'u2', 'cred-k1', 0, 'multiDevice', true)`)).rejects.toThrow();
     await db.execute(sql`delete from "user" where id = 'u1'`);
     expect(rowsOf(await db.execute(sql`select id, user_id from passkey order by id`))).toEqual([{ id: "k3", user_id: "u2" }]);
   });
@@ -284,7 +287,10 @@ describe("migrations", () => {
     expect(statements).toHaveLength(4);
     expect(statements[0]).toMatch(/^CREATE TABLE "passkey" \(/);
     expect(statements[1]).toMatch(/^ALTER TABLE "passkey" ADD CONSTRAINT "passkey_user_id_user_id_fk" FOREIGN KEY \("user_id"\) REFERENCES "public"\."user"\("id"\) ON DELETE cascade/);
-    expect(statements.slice(2).map((s) => s.match(/^CREATE INDEX "(\w+)"/)?.[1]).sort()).toEqual(["passkey_credentialID_idx", "passkey_userId_idx"]);
+    expect(statements.slice(2).sort()).toEqual([
+      'CREATE INDEX "passkey_userId_idx" ON "passkey" USING btree ("user_id");',
+      'CREATE UNIQUE INDEX "passkey_credentialID_idx" ON "passkey" USING btree ("credential_id");',
+    ]);
   });
 
   it("the README says to migrate before deploying, and that 0007 may run with it", () => {
