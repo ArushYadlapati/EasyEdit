@@ -14,7 +14,7 @@ This README gets the app running on your own computer. You will set up three thi
   - add, rename, lock, hide, mute, reorder and remove tracks
   - play the project in the preview, with frame steps, J, K and L, and safe-zone guides for each format
   - undo and redo your own changes, and undo any change listed under Activity, including a teammate's
-- Export: the **Export** button (or `Cmd/Ctrl+E`) makes an MP4 of the project on your own computer, in the browser; nothing is uploaded. You pick a size, watch the progress and can cancel, and you can keep editing while it runs. Video and image clips export from the files the editor plays, so video comes from its 720p preview copy. Sound isn't exported yet: the file's sound track is silent. Viewers can export too. It needs a recent Chrome or Edge on a computer.
+- Export: the **Export** button (or `Cmd/Ctrl+E`) makes an MP4 of the project on your own computer, in the browser; nothing is uploaded. You pick a size, watch the progress and can cancel, and you can keep editing while it runs. Video and image clips export from the files the editor plays, so video comes from its 720p preview copy. The sound is mixed as the preview plays it: each video's own sound and the audio tracks, at each clip's volume (up to 1), with muted tracks and hidden video tracks silent; a clip at another speed keeps its pitch. Without an AAC encoder (Firefox, Chrome on Linux) the file has no sound track, and the dialog says so before you export. Viewers can export too. It needs a recent Chrome or Edge on a computer.
 - Upload video, images and audio in the editor's Media tab (up to 2 GB a file). Uploads go straight from your browser to the team's Google Shared Drive and resume after an interruption.
 - Put media on the timeline, trim it, and play it in the preview. Each video gets a small 720p preview copy, so phone footage plays on any laptop.
 - Every change is saved as you make it. Other people's changes show up within about two seconds while you are working, and the top bar says who is editing.
@@ -24,7 +24,7 @@ This README gets the app running on your own computer. You will set up three thi
 
 The editor needs a window at least 1024 px wide. Changes made while offline or signed out wait in the open tab and are sent once you are back. They are not kept if the tab is closed or reloaded first, and the browser asks before that happens. The browser's Back button does not ask, so use **Projects** to leave while changes are waiting. Closing the tab or clicking **Projects** during an export asks first; the Back button does not, and cancels the export. Without a save dialog (Firefox, Safari), closing the tab or clicking **Projects** also asks while a finished video waits for **Download**. Keep the tab open until the export finishes: on battery, Chrome may pause a tab that is in the background. If the tab is closed, reloaded or crashes during an export, the empty file the save dialog made stays where you saved it.
 
-What's next: thumbnails and waveforms on the timeline, transcripts and footage search for Claude, captions, text animation and effects, a brand kit and templates, sound and full-quality video in exports, the render station, voiceover, and posting.
+What's next: thumbnails and waveforms on the timeline, transcripts and footage search for Claude, captions, text animation and effects, a brand kit and templates, full-quality video in exports, the render station, voiceover, and posting.
 
 ## Before you start
 
@@ -222,10 +222,10 @@ The editor cannot be opened without a Google sign-in, so the tests cannot click 
 Export cannot be tested without a real browser and a real sign-in. Do this once after a change to export. It takes about five minutes.
 
 1. Open a project. Add a **Title** and a **Subtitle**. Give the title the color `#ffd400`. Type `Žofia & Ángel 🤖` into the subtitle.
-2. From the Media tab, add a video and an image. Split the video once, and crop the image in the details panel.
-3. Click **Export** (or press `Cmd/Ctrl+E`). The dialog shows the size, 30 fps, the length, "Up to about …", and that sound isn't exported yet.
+2. From the Media tab, add a video and an image. Split the video once, and crop the image in the details panel. Add a song to the audio track.
+3. Click **Export** (or press `Cmd/Ctrl+E`). The dialog shows the size, 30 fps, the length, and "Up to about …".
 4. Click **Export video** and choose where to save. It says it is reading the media, the frames count up, and it ends with "Saved" and the file's name.
-5. Open the file. It plays to the end, its length matches the dialog, and it looks like the preview: same font, same line breaks, same colors, the same moment of each clip. Send it to a phone and play it there.
+5. Open the file. It plays to the end, its length matches the dialog, and it looks like the preview: same font, same line breaks, same colors, the same moment of each clip. The song and the video's own sound play as they do in the preview. Send it to a phone and play it there.
 6. Make a clip one minute long, export again and click **Cancel** halfway. The dialog goes back to the choices. No new file is left where you saved; a file you chose to replace is unchanged.
 7. Start one more export, switch to another tab until it should be done, and come back. It finished.
 
@@ -241,6 +241,8 @@ Before the team is told to use export, the owner runs this list once on a Window
    `pnpm check:export "Test reel.mp4" --size 1080x1920 --fps 30 --still "Test reel frame 000000.png" --still "Test reel frame 000045.png" --still "Test reel frame 000089.png"`
 
    For a frame with video or a picture in it, or with a placeholder where media is missing ("Media removed" and the like), pass it with `--media-still` instead of `--still`.
+
+   Add `--sound` when the project has sound, `--silent` when it has none, or `--no-audio` when the dialog said the file would have no sound track. `--onset 45` checks that the first sound starts on frame 45, to within one AAC frame.
 
 Every line should say PASS. A FAIL on a frame line means the video does not match what the editor drew. This check is run by hand; it is not part of `pnpm test`.
 
@@ -462,6 +464,7 @@ When a route refuses a request, the answer has this shape:
 - **Export says "A font didn't load, so the export was stopped. Check your connection, reload the page and try again."** Check the connection, then reload the page and export again.
 - **Export says "A media file couldn't be read, so the export was stopped. Check your connection and try again."** Check the connection and export again. Once the media is cached it plays in the preview; then it can be read for the export too.
 - **Export says "A video clip couldn't be decoded in this browser, so the export was stopped."** Try Chrome or Edge on another computer, and tell the owner which file it was.
+- **Export says "A clip's sound couldn't be decoded in this browser, so the export was stopped. Mute its track to export without it."** Mute that clip's track to export without it. If it is a song, upload it again as mp3 or AAC, and tell the owner which file it was.
 - **Export says "The video encoder stopped. Try again."** Try again. The second try already used the slower encoder, so if it stops again, pick the **Draft** size or use another computer.
 - **An empty video file after leaving an export.** The export was stopped. Delete the file and export again.
 - **After an update, an editor that was open before it says "Export couldn't start. Reload the page and try again."** Reload the page.
