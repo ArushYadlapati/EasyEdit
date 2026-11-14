@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeFontResolver } from "@/lib/editor/fonts";
 import {
-  PROBE_BASE, buildFontBundle, fontFaceSpecs, fontRulesFrom, jobFontResolver, mismatchedProbe, probeRequests, type FontRule,
+  PROBE_BASE, buildFontBundle, fontFaceSpecs, fontRulesFrom, jobFontResolver, mismatchedProbe, probeRequests, strictFontRequest, type FontRule,
 } from "@/lib/export/fonts";
 import { drawFrame } from "@/lib/render/compositor";
 import { graphemes } from "@/lib/text";
@@ -68,6 +68,29 @@ describe("reading the page's font rules", () => {
       { family: "Geist Fallback", source: "local(Arial)",
         descriptors: { ascentOverride: "95.94%", descentOverride: "28.16%", lineGapOverride: "0.0%", sizeAdjust: "104.76%" }, required: false },
     ]);
+  });
+
+  it("leaves out of the strict request a family whose faces point only at an installed font", () => {
+    const rules: FontRule[] = [
+      { family: "Geist", src: 'url("/g.woff2") format("woff2")', baseUrl: SHEET, descriptors: {} },
+      { family: "Geist Fallback", src: 'local("Arial")', baseUrl: SHEET, descriptors: {} },
+    ];
+    expect(strictFontRequest({ font: "700 100px 'Geist', 'Geist Fallback'", text: "Hi" }, rules)).toEqual({ font: "700 100px 'Geist'", text: "Hi" });
+    expect(strictFontRequest({ font: '700 100px "Geist Fallback"', text: "Hi" }, rules)).toBeNull();
+    const plain = { font: '700 100px "Geist", sans-serif', text: "Hi" };
+    expect(strictFontRequest(plain, rules)).toBe(plain); // a family with no rule, and a generic name, stay
+    // names are compared without case
+    expect(strictFontRequest({ font: '400 100px "geist fallback", "Geist"', text: "Hi" }, rules)).toEqual({ font: '400 100px "Geist"', text: "Hi" });
+  });
+
+  // Added beyond the brief: catches the removal of "no rule of that name has a url(...) source".
+  it("keeps in the strict request a family with any face that has a file to fetch", () => {
+    const rules: FontRule[] = [
+      { family: "Mixed", src: "local(Mixed)", baseUrl: SHEET, descriptors: {} },
+      { family: "Mixed", src: 'url("/m.woff2")', baseUrl: SHEET, descriptors: {} },
+      { family: "Geist Fallback", src: 'local("Arial")', baseUrl: SHEET, descriptors: {} },
+    ];
+    expect(strictFontRequest({ font: '400 100px "Mixed", "Geist Fallback"', text: "Hi" }, rules)).toEqual({ font: '400 100px "Mixed"', text: "Hi" });
   });
 });
 

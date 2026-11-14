@@ -37,11 +37,16 @@ const field = (error: unknown, key: "name" | "message"): string | null =>
     : null;
 const messageOf = (error: unknown): string => field(error, "message") ?? String(error);
 
+// The error says the file went away under its reader.
+export function fileGone(error: unknown): boolean {
+  return FILE_GONE.has(field(error, "name") ?? "");
+}
+
 // A reader's failure, named by its cause. A decoder the browser took back (as Chrome can in a background tab) is an
 // encoder failure, so the export tries once more in a fresh worker.
 function readerFailure(error: unknown): ExportError {
   const name = field(error, "name") ?? "";
-  if (FILE_GONE.has(name)) return new ExportError("media", messageOf(error));
+  if (fileGone(error)) return new ExportError("media", messageOf(error));
   if (name === "QuotaExceededError") return new ExportError("encoder", messageOf(error));
   return new ExportError("decode", messageOf(error));
 }
@@ -113,7 +118,11 @@ export function createDecodePool(schedule: MediaSchedule, files: Record<string, 
       for (const clip of schedule.clips) {
         if (clip.kind !== "video" || checked.has(clip.fileId)) continue;
         checked.add(clip.fileId);
-        if (!(await io.canDecode(blobOf(clip.fileId)))) throw new ExportError("decode", clip.fileId);
+        const blob = blobOf(clip.fileId);
+        const decodable = await io.canDecode(blob).catch((error: unknown) => {
+          throw readerFailure(error);
+        });
+        if (!decodable) throw new ExportError("decode", clip.fileId);
       }
     },
 

@@ -72,7 +72,12 @@ it("the compositor takes timeline values from presets, never from the index", ()
 
 // A value import or re-export, with the module it names. Type-only imports are skipped: they are erased.
 const VALUE_IMPORT = /^\s*(?:import|export)\s+(?!type\b)(?:[^"';]*?\sfrom\s*)?["']([^"']+)["']/gm;
-const valueImports = (code: string) => [...code.matchAll(VALUE_IMPORT)].map((m) => m[1]);
+// An import() of a module named by a string literal: it loads at run time, in the worker too.
+const DYNAMIC_IMPORT = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
+const valueImports = (code: string) => [
+  ...[...code.matchAll(VALUE_IMPORT)].map((m) => m[1]),
+  ...[...code.matchAll(DYNAMIC_IMPORT)].map((m) => m[1]),
+];
 
 // The file under src/ that an import names, or null for a package.
 function resolveImport(from: string, spec: string): string | null {
@@ -102,8 +107,9 @@ it("the import walker follows value imports and skips type-only ones", () => {
   const code = [
     'import { a } from "./a";', 'import type { B } from "./b";', 'export * from "./c";', 'import "./d";',
     "import {\n  e,\n  f,\n} from \"@/lib/e\";", 'export type { G } from "./g";', 'export const label = "from";',
+    'const later = await import("./h");',
   ].join("\n");
-  expect(valueImports(code)).toEqual(["./a", "./c", "./d", "@/lib/e"]);
+  expect(valueImports(code)).toEqual(["./a", "./c", "./d", "@/lib/e", "./h"]);
   expect(resolveImport("src/lib/render/compositor.ts", "./text-layout")).toBe("src/lib/render/text-layout.ts");
   expect(resolveImport("src/lib/render/text-layout.ts", "@/lib/text")).toBe("src/lib/text.ts");
   expect(resolveImport("src/lib/render/compositor.ts", "@/lib/timeline")).toBe("src/lib/timeline/index.ts");

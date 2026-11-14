@@ -91,6 +91,7 @@ function runTry(request: ExportRequest, deps: RunDeps, run: Try): Promise<Export
     let worker: ExportWorker | null = null;
     let ended = false;
     let busy = false; // a write or the close is under way
+    let finishing = false; // the done message was handled: only the close decides the outcome
     const backlog: FromWorker[] = [];
 
     let listening = false;
@@ -146,8 +147,9 @@ function runTry(request: ExportRequest, deps: RunDeps, run: Try): Promise<Export
           request.onProgress({ attempt: run.attempt, framesDone: message.framesDone, totalFrames: message.totalFrames });
           return;
         case "done": {
-          // The file is finished: from here on a cancel changes nothing.
+          // The file is finished: from here on a cancel, a worker error or an unreadable message changes nothing.
           busy = true;
+          finishing = true;
           stopListening();
           promised(() => run.sink.close()).then(
             () => afterward(() => end({ status: "done", bytes: message.bytes, hasAudio: message.hasAudio, acceleration: run.acceleration })),
@@ -161,7 +163,10 @@ function runTry(request: ExportRequest, deps: RunDeps, run: Try): Promise<Export
       }
     };
 
-    const broke = (detail: string) => () => end(failed("worker", detail));
+    const broke = (detail: string) => () => {
+      if (finishing) return;
+      end(failed("worker", detail));
+    };
 
     try {
       worker = deps.createWorker();
@@ -212,15 +217,20 @@ async function steps(request: ExportRequest, deps: RunDeps, held: Held): Promise
     return failed("font", failureOf(error, "font").detail);
   }
 
+  // A canceled export's read may finish later: it says nothing once the signal has aborted.
+  const onReading = (filesRead: number, totalFiles: number) => {
+    if (!signal.aborted) request.onReading(filesRead, totalFiles);
+  };
   let media: ExportMedia;
   try {
-    media = await untilAborted(promised(() => deps.collectMedia(doc, { signal, onReading: request.onReading })), signal);
+    media = await untilAborted(promised(() => deps.collectMedia(doc, { signal, onReading })), signal);
   } catch (error) {
     if (signal.aborted) return CANCELED;
     return { status: "failed", ...failureOf(error, "media") };
   }
 
   const job = { doc, video, fonts, media };
+  let first: ExportOutcome | null = null;
   for (const [index, acceleration] of ACCELERATION_ORDER.entries()) {
     if (index > 0) {
       try {
@@ -231,6 +241,9 @@ async function steps(request: ExportRequest, deps: RunDeps, held: Held): Promise
     }
     const sink = held.sink!;
     const outcome = await runTry(request, deps, { attempt: index + 1, acceleration, sink, job });
+    // A later try refused at this size says nothing about why the first one stopped: the first try's failure stands.
+    if (first && outcome.status === "failed" && outcome.code === "size") return first;
+    first ??= outcome;
     const again =
       outcome.status === "failed" && RETRIED.includes(outcome.code) && index + 1 < ACCELERATION_ORDER.length && !signal.aborted;
     if (!again) return outcome;

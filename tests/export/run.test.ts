@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { FontBundle } from "@/lib/export/fonts";
 import { ExportError } from "@/lib/export/messages";
 import type { ExportSize } from "@/lib/export/presets";
-import type { ExportOutcome } from "@/lib/export/protocol";
+import type { ExportMedia, ExportOutcome } from "@/lib/export/protocol";
 import { exportVideo, type ExportRequest, type RunDeps } from "@/lib/export/run";
 import { MEMORY_LIMIT_BYTES } from "@/lib/export/sinks";
 import { createEmptyDoc, type TimelineDoc } from "@/lib/timeline";
@@ -269,6 +269,21 @@ describe("a cancel never waits", () => {
     await tick();
     expect([run.target.sinks[0].closed, run.target.sinks[0].aborted, run.target.discarded]).toEqual([1, 0, 0]);
   });
+
+  it("a worker error or an unreadable message while the finished file is being closed keeps the file", async () => {
+    for (const name of ["crash", "garble"] as const) {
+      let closed = () => {};
+      const run = start({ target: fakeTarget({ close: () => new Promise<void>((resolve) => { closed = resolve; }) }) });
+      await tick();
+      run.workers[0].emit({ type: "done", bytes: 4, hasAudio: true });
+      await tick();
+      run.workers[0][name]();
+      closed();
+      expect(await run.done, name).toEqual({ status: "done", bytes: 4, hasAudio: true, acceleration: "no-preference" });
+      await tick();
+      expect([run.target.sinks[0].closed, run.target.sinks[0].aborted, run.target.discarded, run.workers[0].terminated], name).toEqual([1, 0, 0, 1]);
+    }
+  });
 });
 
 describe("the second try", () => {
@@ -310,6 +325,18 @@ describe("the second try", () => {
     canceled.workers[0].emit({ type: "failed", code: "encoder", detail: "x" });
     expect(await canceled.done).toEqual({ status: "canceled" });
     expect(canceled.workers).toHaveLength(1);
+  });
+
+  it("keeps the first failure when the second try is refused at this size", async () => {
+    const run = start();
+    await tick();
+    run.workers[0].emit({ type: "failed", code: "encoder", detail: "x" });
+    await tick();
+    run.workers[1].emit({ type: "failed", code: "size", detail: "y" });
+    expect(await run.done).toEqual({ status: "failed", code: "encoder", detail: "x" });
+    await tick();
+    expect(run.target.sinks.map((s) => s.aborted)).toEqual([1, 1]);
+    expect(run.target.discarded).toBe(1);
   });
 });
 
@@ -360,6 +387,17 @@ describe("media", () => {
     await tick();
     expect(run.workers).toEqual([]);
     expect([run.target.sinks[0].aborted, run.target.discarded]).toEqual([1, 1]);
+  });
+
+  it("says nothing about reading once canceled", async () => {
+    let report: (read: number, total: number) => void = () => {};
+    const run = start({ collectMedia: (_doc, options) => new Promise<ExportMedia>(() => { report = options.onReading; }) });
+    await tick();
+    report(1, 3);
+    run.abort.abort();
+    expect(await run.done).toEqual({ status: "canceled" });
+    report(3, 3);
+    expect(run.reading).toEqual([[1, 3]]);
   });
 
   it("the second try posts the same files again, read once", async () => {

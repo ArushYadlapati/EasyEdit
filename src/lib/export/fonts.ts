@@ -86,6 +86,24 @@ export function fontFaceSpecs(rules: FontRule[], families: string[]): FontFaceSp
     });
 }
 
+// The part of a font request that must load for an export or a saved frame: its font string without each family
+// whose @font-face rules on the page all point only at a font installed on the computer (next/font's
+// "Geist Fallback", local(Arial)), or null when no family is left. The request itself when none is left out. A
+// family with no rule at all stays: the browser answers nothing for it.
+export function strictFontRequest(request: FontRequest, rules: FontRule[]): FontRequest | null {
+  const installedOnly = (family: string) => {
+    const name = unquote(family).toLowerCase();
+    const own = rules.filter((rule) => rule.family.toLowerCase() === name);
+    return own.length > 0 && own.every((rule) => !rule.src.includes("url("));
+  };
+  const cut = request.font.indexOf("px ") + "px ".length;
+  const families = request.font.slice(cut).split(",").map((family) => family.trim());
+  const kept = families.filter((family) => !installedOnly(family));
+  if (kept.length === families.length) return request;
+  if (kept.length === 0) return null;
+  return { font: request.font.slice(0, cut) + kept.join(", "), text: request.text };
+}
+
 // The text clips that draw: on tracks that are shown, at an opacity above 0.
 function drawnTextClips(doc: TimelineDoc): TextClip[] {
   const clips: TextClip[] = [];

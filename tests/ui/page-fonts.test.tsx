@@ -4,7 +4,7 @@ import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
 import { collectPageFonts, loadFonts, loadFontsStrict } from "@/components/editor/page-fonts";
 import { Preview } from "@/components/editor/preview";
-import { PROBE_BASE } from "@/lib/export/fonts";
+import { PROBE_BASE, type FontRule } from "@/lib/export/fonts";
 import { makeStore, sampleDoc } from "../editor/fixtures";
 import { act, render } from "../helpers/dom";
 import { fakeCtx } from "../render/fake-ctx";
@@ -56,6 +56,51 @@ it("the strict loader refuses a face that did not load; the other never refuses"
   await expect(loadFontsStrict(request)).resolves.toBeUndefined();
   stubFonts(async () => []); // a font only the computer has, or none: nothing to load
   await expect(loadFontsStrict(request)).resolves.toBeUndefined();
+});
+
+it("the strict loader lets a face of an installed font fail, but not a face with a file to fetch", async () => {
+  const rules: FontRule[] = [
+    { family: "Geist", src: 'url("/g.woff2") format("woff2")', baseUrl: "https://app.test/a.css", descriptors: {} },
+    { family: "Geist Fallback", src: 'local("Arial")', baseUrl: "https://app.test/a.css", descriptors: {} },
+  ];
+  const request = [{ font: '700 100px "Geist", "Geist Fallback"', text: "hi" }];
+  // Chrome without Arial: any load that names the fallback rejects
+  const load = stubFonts(async (font) => {
+    if (font.includes("Geist Fallback")) throw new DOMException("x", "NetworkError");
+    return [{ status: "loaded" }];
+  });
+  await expect(loadFontsStrict(request, rules)).resolves.toBeUndefined();
+  expect(load).toHaveBeenCalledWith('700 100px "Geist"', "hi");
+  stubFonts(async (font) => (font.includes("Geist Fallback") ? [] : [{ status: "error" }]));
+  await expect(loadFontsStrict(request, rules)).rejects.toThrow();
+});
+
+// Added beyond the brief: each catches the removal of one rule of the strict loader the test above leaves unchecked.
+
+it("the strict loader still asks for the whole font as the preview does, and asks nothing strict of an installed-only font", async () => {
+  const rules: FontRule[] = [
+    { family: "Geist", src: 'url("/g.woff2") format("woff2")', baseUrl: "https://app.test/a.css", descriptors: {} },
+    { family: "Geist Fallback", src: 'local("Arial")', baseUrl: "https://app.test/a.css", descriptors: {} },
+  ];
+  let load = stubFonts(async () => [{ status: "loaded" }]);
+  await loadFontsStrict([{ font: '700 100px "Geist", "Geist Fallback"', text: "hi" }], rules);
+  expect(load.mock.calls).toEqual([['700 100px "Geist", "Geist Fallback"', "hi"], ['700 100px "Geist"', "hi"]]);
+  load = stubFonts(async () => [{ status: "error" }]);
+  await expect(loadFontsStrict([{ font: '700 100px "Geist Fallback"', text: "hi" }], rules)).resolves.toBeUndefined();
+  expect(load.mock.calls).toEqual([['700 100px "Geist Fallback"', "hi"]]);
+});
+
+it("the strict loader reads the page's own font rules when it is given none", async () => {
+  const style = document.createElement("style");
+  style.textContent = '@font-face { font-family: "Geist Fallback"; src: local("Arial"); } @font-face { font-family: "Geist"; src: url("/g.woff2"); }';
+  document.head.appendChild(style);
+  try {
+    const load = stubFonts(async (font) => (font.includes("Geist Fallback") ? [{ status: "error" }] : [{ status: "loaded" }]));
+    await expect(loadFontsStrict([{ font: '700 100px "Geist", "Geist Fallback"', text: "hi" }])).resolves.toBeUndefined();
+    expect(load).toHaveBeenCalledWith('700 100px "Geist"', "hi");
+  } finally {
+    style.remove();
+  }
 });
 
 it("collects the export's fonts: each loaded with its characters, then measured on this page", async () => {

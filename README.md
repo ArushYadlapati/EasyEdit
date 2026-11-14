@@ -239,7 +239,7 @@ Before the team is told to use export, the owner runs this list once on a Window
 
    `pnpm check:export "Test reel.mp4" --size 1080x1920 --fps 30 --still "Test reel frame 000000.png" --still "Test reel frame 000045.png" --still "Test reel frame 000089.png"`
 
-   For a frame with video or a picture in it, pass it with `--media-still` instead of `--still`.
+   For a frame with video or a picture in it, or with a placeholder where media is missing ("Media removed" and the like), pass it with `--media-still` instead of `--still`.
 
 Every line should say PASS. A FAIL on a frame line means the video does not match what the editor drew. This check is run by hand; it is not part of `pnpm test`.
 

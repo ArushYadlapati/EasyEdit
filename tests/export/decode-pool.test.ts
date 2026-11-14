@@ -31,6 +31,12 @@ describe("one picture per clip per frame", () => {
     expect(log.slice(-2)).toEqual(["dispose a.mp4", "stop a.mp4 from 0"]); // close disposes first, then lets the readers go
   });
 
+  it("gives two clips of one file at the same frame each their own reader and their own moments", async () => {
+    const { got, log } = await walk({ clips: [v("c1", "a", 0, [0, 1, 2]), v("c3", "a", 0, [5, 6, 7])], lastUse: { a: 2 } }, 3);
+    expect(got).toEqual([["c1@0", "c3@5"], ["c1@1", "c3@6"], ["c1@2", "c3@7"]]);
+    expect(log).toEqual(["can-decode a.mp4", "open a.mp4 1920", "pictures a.mp4 from 0", "pictures a.mp4 from 5"]);
+  });
+
   it("floors each time at the file's first frame", async () => {
     const { got, log } = await walk({ clips: [v("c1", "a", 0, [0, 0.04, 0.1])], lastUse: { a: 2 } }, 3, fakeMediaIO({ firstTimestamp: 0.05 }));
     expect(got).toEqual([["c1@0.05"], ["c1@0.05"], ["c1@0.1"]]);
@@ -89,6 +95,22 @@ describe("what stops it", () => {
     await expect(pool.open()).rejects.toMatchObject({ name: "ExportError", code: "decode", detail: "b" });
     const lost = createDecodePool({ clips: [v("c9", "gone", 0, [0])], lastUse: { gone: 0 } }, FILES, fakeMediaIO(), 1920);
     await expect(lost.open()).rejects.toMatchObject({ code: "media", detail: "gone" });
+  });
+
+  it("a video file that cannot be read when it is checked is a media failure, not a decode one", async () => {
+    const unreadable: MediaIO = { ...fakeMediaIO(), canDecode: async () => { throw new DOMException("gone", "NotReadableError"); } };
+    const pool = createDecodePool({ clips: [v("c1", "a", 0, [0])], lastUse: { a: 0 } }, FILES, unreadable, 1920);
+    await expect(pool.open()).rejects.toMatchObject({ name: "ExportError", code: "media", detail: "gone" });
+  });
+
+  // Added beyond the brief: the check's other causes are named as a reader's are.
+  it("names any other failure of the check by its cause: a decoder the browser took back, or anything else", async () => {
+    const causes = [[new DOMException("reclaimed", "QuotaExceededError"), "encoder"], [new Error("odd"), "decode"]] as const;
+    for (const [error, code] of causes) {
+      const io: MediaIO = { ...fakeMediaIO(), canDecode: async () => { throw error; } };
+      const pool = createDecodePool({ clips: [v("c1", "a", 0, [0])], lastUse: { a: 0 } }, FILES, io, 1920);
+      await expect(pool.open(), error.name).rejects.toMatchObject({ name: "ExportError", code, detail: error.message });
+    }
   });
 
   it("a reader that breaks is a decode failure; a file that cannot be opened or an image that cannot be decoded is a media failure", async () => {

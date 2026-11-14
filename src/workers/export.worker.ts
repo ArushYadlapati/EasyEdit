@@ -16,7 +16,7 @@ import {
   type WrappedCanvas,
 } from "mediabunny";
 import { CHUNK_BYTES, type ChunkBridge } from "@/lib/export/chunk-bridge";
-import type { MediaIO } from "@/lib/export/decode-pool";
+import { fileGone, type MediaIO } from "@/lib/export/decode-pool";
 import { jobFontResolver, type FontFaceSpec } from "@/lib/export/fonts";
 import { exportPlaceholderLabel } from "@/lib/export/media-schedule";
 import { runPipeline, type OpenOptions, type PipelineIO, type PipelineOutput } from "@/lib/export/pipeline";
@@ -80,18 +80,21 @@ async function canEncodeAudio(): Promise<boolean> {
 // Mediabunny reads each Blob in place; a sink makes OffscreenCanvases here, with the file's rotation drawn in.
 const media: MediaIO = {
   async canDecode(blob) {
-    const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
+    // A read-ahead that fails while nothing waits for it is dropped: the read that needs those bytes fails through its reader.
+    const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob, { handleUnhandledError: () => {} }) });
     try {
       const track = await input.getPrimaryVideoTrack();
       return track !== null && (await track.canDecode());
-    } catch {
+    } catch (error) {
+      if (fileGone(error)) throw error;
       return false;
     } finally {
       input.dispose();
     }
   },
   async openVideo(blob, maxSide) {
-    const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
+    // A read-ahead that fails while nothing waits for it is dropped: the read that needs those bytes fails through its reader.
+    const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob, { handleUnhandledError: () => {} }) });
     try {
       const track = await input.getPrimaryVideoTrack();
       if (!track) throw new Error("The file has no video track.");

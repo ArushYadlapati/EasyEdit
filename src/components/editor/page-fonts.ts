@@ -1,5 +1,7 @@
 import { makeFontResolver } from "@/lib/editor/fonts";
-import { buildFontBundle, fontRulesFrom, probeRequests, type FontBundle, type FontRequest } from "@/lib/export/fonts";
+import {
+  buildFontBundle, fontRulesFrom, probeRequests, strictFontRequest, type FontBundle, type FontRequest, type FontRule,
+} from "@/lib/export/fonts";
 import type { TimelineDoc } from "@/lib/timeline";
 
 // The page's one font rule, shared by the preview, thumbnails and export: which font strings the text is drawn with
@@ -38,13 +40,19 @@ export async function loadFonts(requests: Iterable<FontRequest>): Promise<void> 
 }
 
 // As loadFonts, but rejects when a face cannot be loaded, so nothing is drawn in a substitute: for export and Save
-// frame. A font no face on this page provides answers nothing, and is drawn as the page draws it.
-export async function loadFontsStrict(requests: Iterable<FontRequest>): Promise<void> {
+// frame. A font no face on this page provides answers nothing, and is drawn as the page draws it. A family whose
+// faces all point at a font installed on the computer (strictFontRequest) is loaded as the preview loads it, and may
+// fail.
+export async function loadFontsStrict(requests: Iterable<FontRequest>, rules?: FontRule[]): Promise<void> {
   if (typeof document === "undefined" || !("fonts" in document)) throw new Error("This page cannot load fonts.");
-  const load = async ({ font, text }: FontRequest) => {
-    const faces = await document.fonts.load(font, text);
+  const pageRules = rules ?? fontRulesFrom(Array.from(document.styleSheets), document.baseURI);
+  const load = async (request: FontRequest) => {
+    const strict = strictFontRequest(request, pageRules);
+    if (strict !== request) await loadFonts([request]);
+    if (strict === null) return;
+    const faces = await document.fonts.load(strict.font, strict.text);
     const failed = faces.find((face) => face.status !== "loaded");
-    if (failed) throw new Error(`The font ${font} did not load (${failed.status}).`);
+    if (failed) throw new Error(`The font ${strict.font} did not load (${failed.status}).`);
   };
   await Promise.all(Array.from(requests, load));
 }
