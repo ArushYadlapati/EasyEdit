@@ -19,7 +19,7 @@ This README gets the app running on your own computer. You will set up three thi
 - Every change is saved as you make it. Other people's changes show up within about two seconds while you are working, and the top bar says who is editing.
 - Viewers get the same editor, read-only: they can play and look, but not change anything.
 - A project API (see [The project API](#the-project-api)).
-- Claude can list, read, create and edit projects for a signed-in member, through a connector added in claude.ai. It can also list the team's media and put it on a timeline.
+- Claude, ChatGPT and other AI agents can list, read, create and edit projects for a signed-in member, through the connector (set up on the AI agents page). They can also list the team's media and put it on a timeline. A member can connect several agents at once.
 
 The editor needs a window at least 1024 px wide. Changes made while offline or signed out wait in the open tab and are sent once you are back. They are not kept if the tab is closed or reloaded first, and the browser asks before that happens. The browser's Back button does not ask, so use **Projects** to leave while changes are waiting.
 
@@ -262,20 +262,24 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard, editor, project API and Claude's tools fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.
 5. Optional: publish the Google app, so teammates no longer have to be test users. In Google Cloud, open **Branding** and fill in the app domain details (home page, privacy policy link, authorized domain) with your deployed web address. You will need a public privacy policy page to link to. Then open **Audience** and click **Publish app**. This app only asks Google for name, email and profile picture, and the allowlist still decides who gets in.
 
-## Connect Claude
+## Connect an AI agent
 
-A member can connect Claude to the app and ask it to read and change projects for them. Claude works as that member, with their role.
+A member can connect an AI agent to the app and ask it to read and change projects for them. Claude is the main one, but anything that speaks MCP works: ChatGPT, Claude Code, Cursor, VS Code (Copilot), Codex, Gemini CLI, the OpenAI API, or another MCP client. Each agent works as that member, with their role. A member can connect as many agents as they like, and each one is listed and disconnected on its own.
 
-**Before deploying a version with the connector:** run the migration against the database first (`pnpm db:migrate`, with the production `DATABASE_URL` as in [Deploy to Vercel](#deploy-to-vercel), step 4), then deploy. With the tables missing, sign-in fails.
+The **AI agents** page (account menu → **AI agents**, or `/agents`) shows the server address, step-by-step setup for each agent (Claude first), every agent the member has connected, and their access tokens.
 
-**Add the connector:**
+**Before deploying a version with the connector:** run the migration against the database first (`pnpm db:migrate`, with the production `DATABASE_URL` as in [Deploy to Vercel](#deploy-to-vercel), step 4), then deploy. With the tables missing, sign-in fails, and the version with access tokens fails on `/agents` and on token calls.
+
+**Add Claude (recommended):**
 
 1. In claude.ai open **Settings**, then **Connectors**, then **Add custom connector**.
 2. Enter exactly `<BETTER_AUTH_URL>/api/mcp`, for example `https://your-app.vercel.app/api/mcp`. Add it, then click **Connect**.
 3. Sign in with Google if you are asked to.
 4. Check the "Connect Claude" page: it names your account and says what Claude will be able to do. Press **Allow**.
 
-**What Claude can do:**
+**Add another agent:** open the **AI agents** page, pick the agent and follow its steps. Agents that sign in (ChatGPT, Claude Code, Cursor, VS Code, Codex, Gemini CLI) open the same consent page, titled with their name. Agents that can only send a header (the OpenAI Responses API and Agents SDK, scripts, automation tools) use an **access token**: make one on the AI agents page, copy it once, and send it as `Authorization: Bearer <token>`. Tokens start with `ee_at_`, are stored only as a hash, last 90 days unless the member picks 30 days, a year or no end date, and can be revoked on the same page. A token works like the member's password for that agent: anyone holding it acts as the member until it ends or is revoked.
+
+**What an agent can do:**
 
 | Tool | What it does |
 | --- | --- |
@@ -284,20 +288,22 @@ A member can connect Claude to the app and ask it to read and change projects fo
 | `create_project` | Creates an empty project with a name and one of the five formats, or a custom width and height in pixels. |
 | `edit_timeline` | Applies a list of changes to a project, all or nothing. |
 | `add_text` | Adds one or more text clips from a preset (title, subtitle or lower third). |
-| `undo_change` | Undoes one earlier change, Claude's or a person's, like **Undo this change** in the editor. |
+| `undo_change` | Undoes one earlier change, an agent's or a person's, like **Undo this change** in the editor. |
 | `list_assets` | Lists the team's uploaded video, images and audio, newest first, with each one's id, kind, length and size. |
-| `add_media` | Puts one or more uploaded files on a project's timeline, laid end to end unless Claude gives start times. |
+| `add_media` | Puts one or more uploaded files on a project's timeline, laid end to end unless the agent gives start times. |
 | `get_editing_guide` | Reads the guide to how projects are built and what is possible today. |
+| `search` | Finds projects and media by name. ChatGPT's deep research uses it. |
+| `fetch` | Reads one search result in full. ChatGPT's deep research uses it. |
 
-Claude cannot see inside footage yet.
+No agent can see inside footage yet.
 
-**Roles:** a viewer's Claude can read projects but not change them. An editor's Claude can create and change them. Every change Claude makes is listed in the editor's **Activity** as "Claude (for <name>)" and can be undone there. A change from Claude is refused if the project changed since Claude last read it, and Claude is told what changed, so it never overwrites an edit it has not seen.
+**Roles:** a viewer's agents can read projects but not change them. An editor's agents can create and change them. Every change an agent makes is listed in the editor's **Activity** with the agent's name, for example "Claude (for <name>)" or "ChatGPT (for <name>)", and can be undone there. A change from an agent is refused if the project changed since it last read it, and it is told what changed, so it never overwrites an edit it has not seen.
 
-**Limits:** through Claude, each member gets 30 changes a minute, 10 MB of change data a day and 50 new projects a day. One page of a read is 16,000 characters; longer projects come in several pages.
+**Limits:** through agents, each member gets 30 changes a minute, 10 MB of change data a day and 50 new projects a day. One page of a read is 16,000 characters; longer projects come in several pages.
 
-**Ending a connection:** the Admin page shows "Connected" next to each member who has allowed Claude. An admin ends a connection by clicking **Disconnect** next to the member, and removing a member ends it too. Removing the connector in claude.ai stops Claude from using it, but the member stays listed as "Connected" until an admin disconnects them. Signing out of the website does not end a connection.
+**Ending a connection:** on the **AI agents** page a member disconnects one agent or revokes one token, and the others keep working. The Admin page shows "Connected" next to each member with any agent or token; an admin's **Disconnect** there ends all of that member's agents and tokens at once, and removing a member ends them too. Removing the connector inside an agent stops it from using it, but it stays listed until it is disconnected here. Signing out of the website does not end a connection.
 
-**Only claude.ai can connect.** Claude identifies itself with a client metadata document: its client ID is an https address on claude.ai, and the app reads that document only from claude.ai or claude.com. Apps cannot register themselves. Every connection must also send the member back to one of Claude's callback addresses. The allowed callback addresses and hosts are in `src/lib/connector/config.ts`.
+**Which agents can connect.** The sign-in server only sends a member back to an address it knows: each agent's callback address or app link (for example `https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/connector_platform_oauth_redirect` or `cursor://anysphere.cursor-mcp/oauth/callback`), or a loopback address on the member's own computer (`http://127.0.0.1:<port>/…` or `http://localhost:<port>/…`, with no query), which the command-line agents use. VS Code's `https://vscode.dev/redirect` is on the list because VS Code registers it; that page passes a code on only to a loopback address or to a VS Code extension, so a member who allows VS Code also trusts the extensions installed in it. Apps may register themselves, but a registration is refused unless every callback address is on that list (at most 10, each at most 512 characters, with a name of at most 100). Registration ignores logo, policy and other descriptive addresses, and apps that registered more than a week ago but were never allowed are cleaned up the next time any app registers. The consent page names the agent only when its own published description or its callback address proves it, otherwise it shows the name the app gave itself in quotes, and it always says where the member will be sent next. Client metadata documents are read only from the hosts on the list (claude.ai, claude.com, chatgpt.com, vscode.dev, zed.dev and goose-docs.ai). The consent page is always shown, and the allowlist is checked on every request. The list is in `src/lib/connector/agents.ts`; adding an agent means adding it there.
 
 ## Who can do what
 
@@ -315,7 +321,7 @@ Some rules:
 - A Google account whose email Google has not verified is always rejected.
 - There must always be at least one admin. The last admin cannot be demoted or removed.
 - Removing someone signs them out right away. They are sent to `/login` on their next request.
-- Removing someone also ends their Claude connection right away.
+- Removing someone also ends all their AI agent connections and access tokens right away.
 - A file that a project uses cannot be removed from the library. Take it out of that project first.
 - You stay signed in for 30 days after your last visit. Each visit starts the 30 days again.
 
@@ -407,12 +413,12 @@ When a route refuses a request, the answer has this shape:
 - **You land on `/login` with the allowlist message.** Ask an admin to add your email on the Admin page.
 - **You land on `/login` with "Sign-in didn't finish".** Sign-in was cancelled or failed partway. Try again. If it keeps happening, ask an admin to check that you're on the allowlist.
 - **claude.ai cannot reach or add the connector.** A discovery address is wrong, or `BETTER_AUTH_URL` has a slash at the end. Check that `<BETTER_AUTH_URL>/.well-known/oauth-protected-resource/api/mcp` shows `"resource":"<BETTER_AUTH_URL>/api/mcp"` and `<BETTER_AUTH_URL>/.well-known/oauth-authorization-server/api/auth` shows `"issuer":"<BETTER_AUTH_URL>/api/auth"`, and remove any slash at the end of `BETTER_AUTH_URL`.
-- **While connecting Claude, the browser lands on `/api/auth/error?error=invalid_redirect`.** Claude used a callback address that is not on the list. Note the `redirect_uri` from the address bar and add it to `CLAUDE_REDIRECT_URIS` in `src/lib/connector/config.ts`.
-- **While connecting Claude, the browser shows `invalid_client`, or "client_id URL is not permitted".** Claude's metadata document is on another host. Note the `client_id` from the address bar and add its host to `CLIENT_DOCUMENT_HOSTS` in `src/lib/connector/config.ts`.
-- **After Google you land on the dashboard, not on "Connect Claude".** The login hand-off did not carry the request. Start Connect again in claude.ai while signed in to the website, and report it.
+- **While connecting an agent, the browser lands on `/api/auth/error?error=invalid_redirect`, or the agent says registration failed with `invalid_redirect_uri`.** The agent used a callback address that is not on the list. Note the `redirect_uri` from the address bar (or the agent's log) and add it to that agent's `redirectUris` in `src/lib/connector/agents.ts`.
+- **While connecting an agent, the browser shows `invalid_client`, or "client_id URL is not permitted".** The agent's metadata document is on another host. Note the `client_id` from the address bar and add its host to that agent's `clientDocumentHosts` in `src/lib/connector/agents.ts`.
+- **After Google you land on the dashboard, not on the "Connect <agent>" page.** The login hand-off did not carry the request. Start Connect again in the agent while signed in to the website, and report it.
 - **Claude is connected, but every tool call fails and claude.ai asks to reconnect in a loop.** Claude did not send the `resource` value, so its token is not bound to `<BETTER_AUTH_URL>/api/mcp`. The endpoint has to be changed to check such tokens another way; report it.
 - **"Too many requests" while signing in or connecting.** The rate limit. Wait a minute.
-- **The website's own sign-in answers with an error after a deploy.** The migration is not on the live database. Run `pnpm db:migrate` against it (see [Connect Claude](#connect-claude)), or use Vercel's **Promote** on the previous deployment to go back.
+- **The website's own sign-in answers with an error after a deploy.** The migration is not on the live database. Run `pnpm db:migrate` against it (see [Connect an AI agent](#connect-an-ai-agent)), or use Vercel's **Promote** on the previous deployment to go back.
 - **The Media tab says uploads are not set up.** `GOOGLE_SERVICE_ACCOUNT_KEY` or `DRIVE_FOLDER_ID` is missing where the app runs: in `.env.local` on your computer, or in Vercel's Environment Variables on the deployed app. See [Set up media storage](#set-up-media-storage), then restart or redeploy.
 - **The Media tab says "Couldn't load the library" or that uploads are not set up, while both settings are there.** The key was pasted as the raw JSON file instead of in base64, and the server log says "Drive settings could not be read". Encode the key file with the command in [Set up media storage](#set-up-media-storage), item 7, put what it prints after `GOOGLE_SERVICE_ACCOUNT_KEY=`, then restart or redeploy.
 - **Uploads fail at once on the deployed app but work locally.** `BETTER_AUTH_URL` is not the address in the browser. Set it to the exact address people open, with no slash at the end, and redeploy.

@@ -528,7 +528,7 @@ export function createEditorStore(
           applied.push(entry);
         }
         if (applied.length > 0) {
-          // A change by Claude on my behalf has actor "claude:<my id>", so it counts as someone else.
+          // A change by an AI agent on my behalf has actor "claude:<my id>" or "agent:<kind>:<my id>", so it counts as someone else.
           const others = applied.filter((e) => e.actor !== state.me.id);
           const extra: Partial<EditorState> = { activity: mergeActivity(state.activity, applied) };
           if (others.length > 0) extra.remote = { names: [...new Set(others.map((e) => e.actorName))], at: now() };

@@ -4,13 +4,16 @@ import { LIMITS } from "@/lib/limits";
 import { FormatId } from "@/lib/timeline";
 import { UNEXPECTED } from "./errors";
 import { EDIT_DESCRIPTION, buildEditingGuide } from "./guide";
+import { withStructuredContent } from "./structured";
 import { addMediaTool } from "./tools/add-media";
 import { addTextTool } from "./tools/add-text";
 import { createProjectTool } from "./tools/create-project";
 import { editTimelineTool } from "./tools/edit-timeline";
+import { FetchOutput, fetchTool } from "./tools/fetch";
 import { getProjectTool } from "./tools/get-project";
 import { listAssetsTool } from "./tools/list-assets";
 import { listProjectsTool } from "./tools/list-projects";
+import { SEARCH_RESULTS_MAX, SearchOutput, searchTool } from "./tools/search";
 import { undoChangeTool } from "./tools/undo-change";
 import { ok, type ToolContext, type ToolResult } from "./types";
 
@@ -212,5 +215,31 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     answer("undo_change", (input) => undoChangeTool(ctx, input)),
+  );
+
+  // The two tools ChatGPT's deep research and company knowledge read a server with, in the shapes OpenAI documents.
+  server.registerTool(
+    "search",
+    {
+      title: "Search projects and media",
+      description: `Find the team's video projects (by name or folder name) and uploaded media (by name or event). Returns up to ${SEARCH_RESULTS_MAX} results as JSON {"results":[{"id","title","url"}]}, best match first. An empty query gives the most recently changed projects. Read a result with fetch.`,
+      inputSchema: z.object({ query: z.string().max(500) }),
+      outputSchema: SearchOutput,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    withStructuredContent(answer("search", (input: { query: string }) => searchTool(ctx, input))),
+  );
+
+  server.registerTool(
+    "fetch",
+    {
+      title: "Fetch a project or media",
+      description:
+        'Read one search result by its id ("project:<id>" or "asset:<id>"). A project comes back as its timeline in text, like get_project; media as its kind, length, size and event. Returns JSON {"id","title","text","url","metadata"}.',
+      inputSchema: z.object({ id: z.string().min(1) }),
+      outputSchema: FetchOutput,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    withStructuredContent(answer("fetch", (input: { id: string }) => fetchTool(ctx, input))),
   );
 }

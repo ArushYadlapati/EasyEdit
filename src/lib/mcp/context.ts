@@ -1,11 +1,12 @@
 import { getDb } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
-import { claudeActorFor } from "@/lib/actor";
+import { agentActorFor } from "@/lib/actor";
+import type { AgentKind } from "@/lib/connector/agents";
 import { appBaseUrl } from "@/lib/connector/config";
 import { LIMITS } from "@/lib/limits";
 import type { ToolContext } from "./types";
 
-// Everything a tool needs to act for the member whose Claude is calling.
-export function toolContextFor(user: CurrentUser): ToolContext {
-  return { db: getDb(), user, actor: claudeActorFor(user), baseUrl: appBaseUrl(), limits: LIMITS, now: () => new Date() };
+// Everything a tool needs to act for the member whose AI agent is calling. The op log names that agent.
+export function toolContextFor(user: CurrentUser, agent: AgentKind = "claude"): ToolContext {
+  return { db: getDb(), user, actor: agentActorFor(user, agent), baseUrl: appBaseUrl(), limits: LIMITS, now: () => new Date() };
 }

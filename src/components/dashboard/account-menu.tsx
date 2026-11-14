@@ -16,7 +16,7 @@ function backFromSigningIn(): string | null {
   return params.get("passkeys") === "1" ? (params.get("error") ?? "") : null;
 }
 
-// The header's account button: the person's picture and name, opening a menu with Passkeys and Sign out.
+// The header's account button: the person's picture and name, opening a menu with Passkeys, AI agents and Sign out.
 export function AccountMenu({ name, image }: { name: string; image: string | null }): ReactNode {
   const router = useRouter();
   const [failed, setFailed] = useState(false);
@@ -65,9 +65,14 @@ export function AccountMenu({ name, image }: { name: string; image: string | nul
             <img src={image} alt="" width={20} height={20} referrerPolicy="no-referrer" className="size-5 rounded-full" />
           )
         }
-        items={[{ id: "passkeys", label: "Passkeys" }, { id: "sign-out", label: "Sign out" }]}
+        items={[
+          { id: "passkeys", label: "Passkeys" },
+          { id: "agents", label: "AI agents" },
+          { id: "sign-out", label: "Sign out", separatorBefore: true },
+        ]}
         onSelect={(id) => {
           if (id === "passkeys") setPasskeysOpen(true);
+          if (id === "agents") router.push("/agents");
           if (id === "sign-out") void signOut();
         }}
       />

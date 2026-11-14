@@ -30,6 +30,6 @@ it("a failure says so and goes nowhere", async () => {
   const navigate = vi.fn();
   render(<ConsentButtons navigate={navigate} />);
   fireEvent.click(screen.getByRole("button", { name: "Allow" }));
-  expect((await screen.findByRole("alert")).textContent).toBe("That didn't work. Go back to Claude and connect again.");
+  expect((await screen.findByRole("alert")).textContent).toBe("That didn't work. Go back to your AI agent and connect again.");
   expect(navigate).not.toHaveBeenCalled();
 });

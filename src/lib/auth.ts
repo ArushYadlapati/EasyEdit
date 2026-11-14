@@ -7,7 +7,8 @@ import { betterAuth } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { getDb } from "@/db";
 import { makeSessionCreateBefore, makeUserCreateBefore } from "@/lib/auth-hooks";
-import { connectorBeforeHook, isClaudeClientDocument, isClaudeRedirect } from "@/lib/connector/auth-rules";
+import { isAllowedClientDocument, isAllowedRedirect } from "@/lib/connector/agents";
+import { connectorBeforeHook } from "@/lib/connector/auth-rules";
 import { DYNAMIC_REGISTRATION, mcpResourceUrl } from "@/lib/connector/config";
 import { requiredEnv } from "@/lib/env";
 
@@ -51,16 +52,18 @@ function createAuth() {
         consentPage: "/consent",
         allowDynamicClientRegistration: DYNAMIC_REGISTRATION,
         allowUnauthenticatedClientRegistration: DYNAMIC_REGISTRATION,
+        // Desktop agents register loopback or app-scheme addresses without saying they are native apps.
+        clientRegistrationDefaultApplicationType: "infer",
         grantTypes: ["authorization_code", "refresh_token"],
-        // A member is only ever sent back to Claude, whatever an app's document or stored row lists.
-        validateRedirectUri: (uri, _registered, matches) => matches && isClaudeRedirect(uri),
+        // A member is only ever sent back to a known agent or their own computer, whatever an app's row lists.
+        validateRedirectUri: (uri, _registered, matches) => matches && isAllowedRedirect(uri),
         // Nobody manages apps through the API.
         clientPrivileges: () => false,
       }),
       cimd({
         fetchClientMetadataResource,
         metadataProfile: "mcp-2026-07-28",
-        isMetadataDocumentUrlAllowed: (url) => isClaudeClientDocument(url),
+        isMetadataDocumentUrlAllowed: (url) => isAllowedClientDocument(url),
       }),
       passkey({
         rpID: new URL(requiredEnv("BETTER_AUTH_URL")).hostname,

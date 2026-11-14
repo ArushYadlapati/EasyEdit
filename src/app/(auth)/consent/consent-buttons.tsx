@@ -14,7 +14,7 @@ export function ConsentButtons({ navigate = (url) => window.location.assign(url)
     setFailed(false);
     const result = await decideConsent(accept);
     if ("url" in result) {
-      // Stays disabled while the browser leaves for Claude.
+      // Stays disabled while the browser leaves for the AI agent.
       navigate(result.url);
       return;
     }
@@ -26,7 +26,7 @@ export function ConsentButtons({ navigate = (url) => window.location.assign(url)
     <div className="flex w-full flex-col gap-3">
       {failed && (
         <p role="alert" className="text-sm text-red-700 dark:text-red-400">
-          That didn&apos;t work. Go back to Claude and connect again.
+          That didn&apos;t work. Go back to your AI agent and connect again.
         </p>
       )}
       <button type="button" onClick={() => decide(true)} disabled={pending} className={`${BUTTON} bg-foreground text-background`}>

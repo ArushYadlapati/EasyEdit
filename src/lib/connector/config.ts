@@ -1,16 +1,13 @@
 import { requiredEnv } from "@/lib/env";
 
-// Where claude.ai and claude.com send a member back after they allow the connection.
-export const CLAUDE_REDIRECT_URIS: readonly string[] = [
-  "https://claude.ai/api/mcp/auth_callback",
-  "https://claude.com/api/mcp/auth_callback",
-];
+// Which addresses a member may be sent back to, and which hosts' client metadata documents are read, come from the
+// agent registry in ./agents (isAllowedRedirect and isAllowedClientDocument).
 
-// Hosts whose client metadata documents the sign-in server reads.
-export const CLIENT_DOCUMENT_HOSTS: readonly string[] = ["claude.ai", "claude.com"];
-
-// Clients may not register themselves at /api/auth/oauth2/register. Claude identifies itself by its metadata document.
-export const DYNAMIC_REGISTRATION = false;
+// AI agents may register themselves at /api/auth/oauth2/register, as Claude Code, Cursor, VS Code, Codex and Gemini CLI
+// do. connectorBeforeHook refuses a registration unless every address it lists is one a known agent uses or a
+// loopback address, and the consent page is shown whatever the registration says. Claude identifies itself by its
+// metadata document instead.
+export const DYNAMIC_REGISTRATION = true;
 
 export function appBaseUrl(): string {
   return requiredEnv("BETTER_AUTH_URL").replace(/\/+$/, "");
