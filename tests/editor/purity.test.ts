@@ -1,4 +1,5 @@
-import { readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join, normalize } from "node:path";
 import { expect, it } from "vitest";
 import { FRAMEWORK_IMPORT, sources } from "../helpers/sources";
 
@@ -67,4 +68,85 @@ it("the compositor takes timeline values from presets, never from the index", ()
   for (const [file, code] of sources("src/lib/render")) {
     expect(code, file).not.toMatch(TIMELINE_INDEX_VALUE_IMPORT);
   }
+});
+
+// A value import or re-export, with the module it names. Type-only imports are skipped: they are erased.
+const VALUE_IMPORT = /^\s*(?:import|export)\s+(?!type\b)(?:[^"';]*?\sfrom\s*)?["']([^"']+)["']/gm;
+// An import() of a module named by a string literal: it loads at run time, in the worker too.
+const DYNAMIC_IMPORT = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
+const valueImports = (code: string) => [
+  ...[...code.matchAll(VALUE_IMPORT)].map((m) => m[1]),
+  ...[...code.matchAll(DYNAMIC_IMPORT)].map((m) => m[1]),
+];
+
+// The file under src/ that an import names, or null for a package.
+function resolveImport(from: string, spec: string): string | null {
+  const base = spec.startsWith("@/") ? `src/${spec.slice(2)}` : spec.startsWith(".") ? normalize(join(dirname(from), spec)) : null;
+  if (!base) return null;
+  return [`${base}.ts`, `${base}.tsx`, `${base}/index.ts`].find((path) => existsSync(path)) ?? null;
+}
+
+// Every file the given files reach through value imports inside src/, themselves included.
+function reach(files: string[]): string[] {
+  const seen = new Set<string>();
+  const visit = (file: string) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    for (const spec of valueImports(readFileSync(file, "utf8"))) {
+      const next = resolveImport(file, spec);
+      if (next) visit(next);
+    }
+  };
+  files.forEach(visit);
+  return [...seen].sort();
+}
+
+const WORKER_SAFE = ["src/lib/render", "src/lib/export"];
+
+it("the import walker follows value imports and skips type-only ones", () => {
+  const code = [
+    'import { a } from "./a";', 'import type { B } from "./b";', 'export * from "./c";', 'import "./d";',
+    "import {\n  e,\n  f,\n} from \"@/lib/e\";", 'export type { G } from "./g";', 'export const label = "from";',
+    'const later = await import("./h");',
+  ].join("\n");
+  expect(valueImports(code)).toEqual(["./a", "./c", "./d", "@/lib/e", "./h"]);
+  expect(resolveImport("src/lib/render/compositor.ts", "./text-layout")).toBe("src/lib/render/text-layout.ts");
+  expect(resolveImport("src/lib/render/text-layout.ts", "@/lib/text")).toBe("src/lib/text.ts");
+  expect(resolveImport("src/lib/render/compositor.ts", "@/lib/timeline")).toBe("src/lib/timeline/index.ts");
+  expect(resolveImport("src/lib/render/compositor.ts", "zod")).toBeNull();
+});
+
+it("worker-safe code is clean all the way down: every file it imports is checked too", () => {
+  for (const dir of WORKER_SAFE) expect(sources(dir).length, dir).toBeGreaterThan(0);
+  const reached = reach(WORKER_SAFE.flatMap((dir) => sources(dir).map(([file]) => file)));
+  expect(reached).toContain("src/lib/text.ts"); // the walk leaves the two folders
+  for (const file of reached) {
+    const code = readFileSync(file, "utf8");
+    expect(code, file).not.toMatch(FRAMEWORK_IMPORT);
+    expect(code, file).not.toMatch(ZUSTAND_IMPORT);
+    expect(stripComments(code), file).not.toMatch(BROWSER_GLOBAL);
+  }
+  expect(reached.filter((file) => file.startsWith("src/lib/editor/"))).toEqual([]);
+});
+
+it("worker-safe code takes timeline values from presets.ts, never from the index", () => {
+  for (const dir of WORKER_SAFE) {
+    for (const [file, code] of sources(dir)) expect(valueImports(code), file).not.toContain("@/lib/timeline");
+  }
+});
+
+it("the export worker imports no React, Next or store code, uses no page-only globals, and reaches only worker-safe files", () => {
+  // The ingest worker lives beside it and has its own rules (it reads navigator.storage).
+  expect(sources("src/workers").map(([file]) => file)).toEqual(expect.arrayContaining(["src/workers/export.worker.ts", "src/workers/ingest.worker.ts"]));
+  const code = readFileSync("src/workers/export.worker.ts", "utf8");
+  expect(code).not.toMatch(FRAMEWORK_IMPORT);
+  expect(code).not.toMatch(ZUSTAND_IMPORT);
+  expect(valueImports(code)).not.toContain("@/lib/timeline");
+  expect(stripComments(code)).not.toMatch(BROWSER_GLOBAL);
+  const safe = new Set(reach(WORKER_SAFE.flatMap((dir) => sources(dir).map(([file]) => file))));
+  const reached = reach(["src/workers/export.worker.ts"]).filter((file) => file !== "src/workers/export.worker.ts");
+  expect(reached).toEqual(expect.arrayContaining([
+    "src/lib/export/pipeline.ts", "src/lib/export/decode-pool.ts", "src/lib/export/worker-session.ts", "src/lib/render/decode-image.ts",
+  ]));
+  expect(reached.filter((file) => !safe.has(file))).toEqual([]);
 });

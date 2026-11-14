@@ -248,6 +248,7 @@ it("buttons that have a key show it in their tooltip", () => {
     "Go to start (Home)", "Back one frame (←)", "Forward one frame (→)", "Go to end (End)",
   ]);
   expect(hint("Keyboard shortcuts")).toBe("Keyboard shortcuts (?)");
+  expect(hint("Export")).toBe(`Export (${shortcutFor("export", mac)})`);
 });
 
 it("holding a key repeats steps, nudges, zoom, undo and redo, and nothing else", () => {

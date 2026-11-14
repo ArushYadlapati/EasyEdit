@@ -8,7 +8,7 @@ export type ThumbnailTriggerDeps = {
   store: EditorStore;
   storedVersion: number | null; // the stored picture's version when the page loaded; null: none
   // isCurrent turns false once the capture is stale (a newer save, leaving, edit access lost, the project deleted,
-  // or the editor playing, dragging or typing in place); renderThumbnail then stops at its next step.
+  // the editor playing, dragging or typing in place, or an export starting); renderThumbnail then stops at its next step.
   capture(doc: TimelineDoc, isCurrent: () => boolean): Promise<ThumbnailResult>;
   upload(version: number, jpeg: Blob): Promise<unknown>;
   onLibraryChange(listener: () => void): () => void;
@@ -33,9 +33,10 @@ export function startThumbnailTrigger(deps: ThumbnailTriggerDeps): () => void {
     const { canEdit, status, queue, server } = store.getState();
     return canEdit && status === "saved" && queue.length === 0 && server.version > last;
   };
+  // An export running in this tab counts as busy too, so no picture competes with it for decoders.
   const quiet = () => {
-    const { playing, gesture, textEditId } = store.getState();
-    return !playing && gesture === null && textEditId === null;
+    const { playing, gesture, textEditId, exporting } = store.getState();
+    return !playing && gesture === null && textEditId === null && !exporting;
   };
 
   const endWait = () => {
@@ -51,7 +52,7 @@ export function startThumbnailTrigger(deps: ThumbnailTriggerDeps): () => void {
     timer = setTimeout(fire, delay);
   };
 
-  // Not quiet: the change that ends the playing, the drag or the typing arms the timer again.
+  // Not quiet: the change that ends the playing, the drag, the typing or the export arms the timer again.
   function fire() {
     timer = null;
     if (!wanted() || !quiet()) return;
@@ -108,7 +109,8 @@ export function startThumbnailTrigger(deps: ThumbnailTriggerDeps): () => void {
       state.canEdit !== before.canEdit ||
       state.playing !== before.playing ||
       state.gesture !== before.gesture ||
-      state.textEditId !== before.textEditId
+      state.textEditId !== before.textEditId ||
+      state.exporting !== before.exporting
     ) {
       arm(delayMs);
     }

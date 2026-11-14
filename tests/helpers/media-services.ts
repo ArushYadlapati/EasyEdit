@@ -1,6 +1,6 @@
 import type { MediaServices } from "@/components/editor/media/media-context";
 import type { MediaApi } from "@/lib/media/api";
-import { createLibraryStore } from "@/lib/media/library-store";
+import { createLibraryStore, type LibraryStore } from "@/lib/media/library-store";
 import type { AssetView } from "@/lib/media/types";
 import type { UploadQueue } from "@/lib/media/upload-queue";
 
@@ -42,4 +42,17 @@ export function pretendMediaServices(assets: AssetView[], options: { loaded?: bo
   library.setState({ assets: Object.fromEntries(assets.map((asset) => [asset.id, asset])), loaded: options.loaded ?? true });
   const queue: UploadQueue = { add: () => [], cancel() {}, retry() {}, resume() {}, dismiss() {}, stop() {}, items: () => [], active: () => 0 };
   return { library, queue, files: { get: never, put: async () => {} }, dispose() {} };
+}
+
+// A loaded library whose every request for more assets fails as if the network were down. Nothing else it could ask
+// the server ever answers.
+export function unreachableLibrary(): LibraryStore {
+  const api: MediaApi = {
+    list: async () => ({ ok: false, kind: "network", message: "" }),
+    open: never, offset: never, complete: never, openFile: never, completeFile: never, previewFailed: never,
+    update: never, remove: never, readToken: never,
+  };
+  const library = createLibraryStore({ api });
+  library.setState({ loaded: true });
+  return library;
 }

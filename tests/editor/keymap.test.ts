@@ -238,8 +238,8 @@ describe("storing the keymap", () => {
 
     const raw = JSON.stringify({
       v: 1,
-      keys: { export: ["Mod+E"], copy: ["Mod+R"], split: ["S"], undo: ["mod+u"] },
-      off: ["export", "pause"],
+      keys: { render: ["Mod+E"], copy: ["Mod+R"], split: ["S"], undo: ["mod+u"] },
+      off: ["render", "pause"],
     });
     expect(parseKeymap(raw)).toEqual({ on: true, keys: { undo: ["Mod+U"] }, off: ["pause"] });
 

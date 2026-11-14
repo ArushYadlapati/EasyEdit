@@ -1,11 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
+import { useStore } from "zustand";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { DEFAULT_LAYOUT, LAYOUT_COOKIE, createLayoutStore, formatLayout, parseLayout, type Layout } from "@/lib/editor/layout";
+import { failureMessage } from "@/lib/export/messages";
+import type { ExportOutcome } from "@/lib/export/protocol";
+import { isBusy, progressFraction, type ExportState } from "@/lib/export/state";
 import { readCookie, writeLayoutCookie } from "./browser-prefs";
-import { useEditor } from "./context";
+import { useEditor, useEditorStore } from "./context";
+import { ExportDialog } from "./export/export-dialog";
+import { useExport, type Exporter } from "./export/use-export";
 import { LeaveLink } from "./leave-link";
 import { LeftPanel } from "./left-panel";
 import { NoticeBar } from "./notice-bar";
@@ -27,6 +33,7 @@ type EditorScreenProps = {
 // The keyboard shortcuts work anywhere in the window, and any part can open a right-click menu. The panel
 // grid alone follows the panel sizes, so resizing a panel does not draw the panels again.
 export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writeLayoutCookie }: EditorScreenProps) {
+  const store = useEditorStore();
   const deleted = useEditor((s) => s.status === "deleted");
   const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
   const [lastSection, setLastSection] = useState<SettingsSection>("project"); // the gear opens it again
@@ -44,7 +51,26 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
     setLastSection(section);
   }, []);
   const openShortcuts = useCallback(() => showSettingsAt("shortcuts"), [showSettingsAt]);
-  useShortcuts(openShortcuts);
+  const [exportOpen, setExportOpen] = useState(false);
+  // An export that ends while its dialog is closed says so in a notice; an open dialog says it all itself. A held file
+  // keeps the export's state at done, so Export opens again at its Download.
+  const exporter = useExport({
+    onFinish: (outcome: ExportOutcome, fileName: string, held: boolean) => {
+      if (exportOpen) return;
+      if (outcome.status === "done")
+        store.getState().notify("info", held ? "Export finished. Open Export to download it." : `Export saved as ${fileName}.`);
+      else if (outcome.status === "failed") store.getState().notify("error", failureMessage(outcome.code));
+    },
+  });
+  // A deleted project exports nothing new, but a running export stays reachable for its progress and its Cancel, and a
+  // file waiting for Download for its Download. The guard is read when it runs, so the function stays the same and the
+  // keys are not hooked up again as an export starts and ends.
+  const exportStore = exporter.store;
+  const openExport = useCallback(() => {
+    if (store.getState().status !== "deleted" || isBusy(exportStore.getState()) || store.getState().exportHeld)
+      setExportOpen(true);
+  }, [store, exportStore]);
+  useShortcuts(openShortcuts, openExport);
 
   return (
     <div className="editor relative h-dvh overflow-hidden bg-ed-bg font-sans text-ed-text [--ed-left-w:240px] [--ed-right-w:280px] [--ed-timeline-h:clamp(220px,36vh,360px)]">
@@ -53,10 +79,12 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
           layout={layout}
           deleted={deleted}
           top={
-            <TopBar
+            <ExportingTopBar
+              exporter={exporter}
               onShowShortcuts={openShortcuts}
               onShowSettings={() => showSettingsAt(lastSection)}
               onResetLayout={() => layout.getState().reset()}
+              onExport={openExport}
             />
           }
           left={<LeftPanel />}
@@ -84,7 +112,18 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
           <p className="text-[13px] leading-5 text-ed-muted">Open this project on a laptop or desktop.</p>
         </div>
         <SettingsDialog at={settingsAt} onSection={showSettingsAt} onClose={() => setSettingsAt(null)} />
+        <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} exporter={exporter} />
       </ContextMenuProvider>
     </div>
   );
+}
+
+// The whole percentage of a running export; null when none runs.
+const exportPercentOf = (state: ExportState) => (isBusy(state) ? Math.floor(progressFraction(state) * 100) : null);
+
+// The top bar with the export's percentage. Only this reads it, so a percentage that changes draws the top bar again
+// and not the panels.
+function ExportingTopBar({ exporter, ...props }: Omit<ComponentProps<typeof TopBar>, "exportPercent"> & { exporter: Exporter }) {
+  const exportPercent = useStore(exporter.store, exportPercentOf);
+  return <TopBar {...props} exportPercent={exportPercent} />;
 }

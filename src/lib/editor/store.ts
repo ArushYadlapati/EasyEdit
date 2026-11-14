@@ -66,6 +66,8 @@ export type EditorState = {
   // The text clip being typed in place on the preview. Its clip's removal, a lock or hide of its track, or the loss of
   // edit access clears it.
   textEditId: string | null;
+  exporting: boolean; // an export is running in this tab
+  exportHeld: boolean; // a finished export waits in this tab for its Download click
 
   edit(ops: OpInput[], label: string): EditResult;
   undo(): void;
@@ -102,6 +104,8 @@ export type EditorState = {
   setName(name: string): void; // only what the editor shows; renameFromEditor saves it
   setCropArmed(clipId: string | null): void;
   setTextEdit(clipId: string | null): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
+  setExporting(on: boolean): void;
+  setExportHeld(on: boolean): void;
 };
 
 export type EditorStore = StoreApi<EditorState>;
@@ -309,6 +313,8 @@ export function createEditorStore(
       viewAs: null,
       cropArmed: null,
       textEditId: null,
+      exporting: false,
+      exportHeld: false,
 
       edit(ops, label) {
         const state = get();
@@ -615,6 +621,14 @@ export function createEditorStore(
         if (clipId !== null && (!state.canEdit || !typeableText(state.doc, clipId))) return false;
         if (clipId !== state.textEditId) set({ textEditId: clipId });
         return true;
+      },
+
+      setExporting(on) {
+        if (on !== get().exporting) set({ exporting: on });
+      },
+
+      setExportHeld(on) {
+        if (on !== get().exportHeld) set({ exportHeld: on });
       },
     };
   });

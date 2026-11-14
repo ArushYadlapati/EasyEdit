@@ -47,6 +47,7 @@ it("a viewer sees the same screen with no working edit control", () => {
   expect(container.querySelector("[data-canvas-handle]")).toBeNull();
   expect(screen.getByText("View only")).toBeTruthy();
   expect((screen.getByRole("button", { name: /^Play/ }) as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(false);
   expect(screen.getByRole("img", { name: "Preview" })).toBeTruthy();
   fireEvent.keyDown(document.body, { key: "Delete" });
   fireEvent.keyDown(document.body, { key: "s" });

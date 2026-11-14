@@ -34,7 +34,7 @@ const localStore = {
 };
 
 // A refresh or an ensure that fails has nothing to tell the shell: the library store keeps its own problem.
-const quietly = (work: Promise<void>) => void work.catch(() => {});
+const quietly = (work: Promise<unknown>) => void work.catch(() => {});
 
 // Owns the store, the API client, the sync, the media services, the project's dashboard picture and this browser's
 // preferences for one open project, and ties them to the page: tab visibility, focus, coming back online, the user's
@@ -118,8 +118,10 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       lastActivity = now;
       sync.noteActivity();
     };
-    // Closing the page now would lose edits not yet sent, or stop uploads part way.
-    const unsaved = () => store.getState().queue.length > 0 || queue.active() > 0;
+    // Closing the page now would lose edits not yet sent, stop uploads part way, stop the export that is running, or
+    // drop a finished export not yet downloaded.
+    const unsaved = () =>
+      store.getState().queue.length > 0 || queue.active() > 0 || store.getState().exporting || store.getState().exportHeld;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (unsaved()) event.preventDefault();
     };

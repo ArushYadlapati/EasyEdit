@@ -1,8 +1,8 @@
-import { textFonts } from "@/lib/editor/fonts";
+import { renderFrame, type FrameCanvas, type FrameDeps, type FrameRequest, type FrameSource } from "@/lib/editor/frame-render";
 import { mediaWants } from "@/lib/editor/media-plan";
 import type { LibraryState } from "@/lib/media/library-store";
 import { playbackFileFor, posterFileFor } from "@/lib/media/playback";
-import { activeClips, drawFrame, type Ctx2D, type ResolvedSource } from "@/lib/render/compositor";
+import { activeClips } from "@/lib/render/compositor";
 import { thumbnailFrame } from "@/lib/render/thumbnail-frame";
 import type { TimelineDoc } from "@/lib/timeline";
 
@@ -16,9 +16,8 @@ export function thumbnailSize(doc: { width: number; height: number }): { width: 
   return { width: Math.max(1, Math.round(doc.width * k)), height: Math.max(1, Math.round(doc.height * k)) };
 }
 
-// One picture the frame needs. fileId: the file to decode, or null to draw the still. stillId: the asset's library
-// still, the fallback when the file cannot be read or decoded.
-export type ThumbnailSource = { clipId: string; kind: "video" | "image"; fileId: string | null; seconds: number; stillId: string | null };
+// One picture the frame needs: its file, and its library still as the fallback.
+export type ThumbnailSource = FrameSource;
 export type ThumbnailPlan =
   | { kind: "draw"; frame: number; sources: ThumbnailSource[] }
   | { kind: "wait" } // shown media is uploading or having its preview made, or the library has not loaded
@@ -58,116 +57,22 @@ export function planThumbnail(doc: TimelineDoc, library: Pick<LibraryState, "ass
 }
 
 // The detached canvas the picture is drawn on.
-export type ThumbnailCanvas = {
-  getContext(kind: "2d"): Ctx2D | null;
-  toBlob(done: (blob: Blob | null) => void, type: string, quality: number): void;
-};
+export type ThumbnailCanvas = FrameCanvas;
 
 // What drawing the picture needs from the page: the library, its files, the browser's decoders and fonts, and a canvas.
-export type ThumbnailDeps = {
-  library(): Pick<LibraryState, "assets" | "loaded">;
-  readFile(fileId: string): Promise<Blob | null>; // null: it could not be read
-  decodeVideo(blob: Blob, seconds: number): Promise<ResolvedSource | null>;
-  decodeImage(blob: Blob): Promise<ResolvedSource | null>;
-  loadFonts(fonts: Iterable<string>): Promise<void>;
-  resolveFont(family: string): string;
-  makeCanvas(width: number, height: number): ThumbnailCanvas;
-};
+export type ThumbnailDeps = FrameDeps & { library(): Pick<LibraryState, "assets" | "loaded"> };
 
 // stopped: isCurrent() turned false partway; nothing more was read, drawn or encoded.
 export type ThumbnailResult = { kind: "picture"; jpeg: Blob } | { kind: "wait" } | { kind: "skip" } | { kind: "stopped" };
 
-const STOPPED = Symbol("stopped");
-
-// A decode that throws, answers nothing or has no size counts as a failure.
-async function tryDecode(decode: () => Promise<ResolvedSource | null>, toClose: ResolvedSource[]): Promise<ResolvedSource | null> {
-  let value: ResolvedSource | null;
-  try {
-    value = await decode();
-  } catch {
-    return null;
-  }
-  if (!value) return null;
-  toClose.push(value);
-  return value.width > 0 && value.height > 0 ? value : null;
-}
-
-// One source's picture: its file, or its still when the file is missing, cannot be read or cannot be decoded. Null when
-// the still fails too; STOPPED when the capture stopped being current before a read or a decode.
-async function decodeSource(
-  source: ThumbnailSource,
-  deps: ThumbnailDeps,
-  isCurrent: () => boolean,
-  toClose: ResolvedSource[],
-): Promise<ResolvedSource | null | typeof STOPPED> {
-  const { fileId, stillId } = source;
-  if (fileId !== null) {
-    if (!isCurrent()) return STOPPED;
-    const blob = await deps.readFile(fileId);
-    if (blob) {
-      if (!isCurrent()) return STOPPED;
-      const value = await tryDecode(() => (source.kind === "video" ? deps.decodeVideo(blob, source.seconds) : deps.decodeImage(blob)), toClose);
-      if (value) return value;
-    }
-  }
-  if (stillId === null) return null;
-  if (!isCurrent()) return STOPPED;
-  const still = await deps.readFile(stillId);
-  if (!still) return null;
-  if (!isCurrent()) return STOPPED;
-  return tryDecode(() => deps.decodeImage(still), toClose);
-}
-
-function closeImage(value: ResolvedSource): void {
-  const image = value.image as { close?: unknown };
-  if (typeof image.close !== "function") return; // a video decoder's canvas is left to the garbage collector
-  try {
-    image.close();
-  } catch {
-    // already closed
-  }
-}
-
-// Draws one complete frame of the doc, the one planThumbnail names, off-screen, and encodes it as a small JPEG. Nothing
-// is read before the canvas has a 2D context. The sources decode one after another while the text's fonts load, and
-// every decoded bitmap is closed on every path. isCurrent is asked before each read, each decode, the drawing and the
-// encoding, so a capture that has gone stale stops at its next step.
+// Draws the frame planThumbnail names off-screen with renderFrame, and encodes it as a small JPEG. A frame that could
+// not be drawn (no canvas, a file and its still that could not be read or decoded) is skipped.
 export async function renderThumbnail(doc: TimelineDoc, deps: ThumbnailDeps, isCurrent: () => boolean = () => true): Promise<ThumbnailResult> {
   const plan = planThumbnail(doc, deps.library());
   if (plan.kind !== "draw") return { kind: plan.kind };
-
-  const { width, height } = thumbnailSize(doc);
-  let canvas: ThumbnailCanvas;
-  let ctx: Ctx2D | null;
-  try {
-    canvas = deps.makeCanvas(width, height);
-    ctx = canvas.getContext("2d");
-  } catch {
-    return { kind: "skip" };
-  }
-  if (!ctx) return { kind: "skip" };
-
-  const toClose: ResolvedSource[] = [];
-  try {
-    const fontsLoaded = deps.loadFonts(textFonts(doc, deps.resolveFont));
-    const decoded = new Map<string, ResolvedSource>();
-    for (const source of plan.sources) {
-      const value = await decodeSource(source, deps, isCurrent, toClose);
-      if (value === STOPPED) return { kind: "stopped" };
-      if (value === null) return { kind: "skip" };
-      decoded.set(source.clipId, value);
-    }
-    await fontsLoaded;
-    if (!isCurrent()) return { kind: "stopped" };
-    const k = THUMBNAIL_LONG_SIDE / Math.max(doc.width, doc.height);
-    ctx.setTransform(k, 0, 0, k, 0, 0);
-    drawFrame(ctx, doc, plan.frame, { resolveFont: deps.resolveFont, resolveSource: (clip) => decoded.get(clip.id) ?? null });
-  } finally {
-    for (const value of toClose) closeImage(value);
-  }
-
-  if (!isCurrent()) return { kind: "stopped" };
-  const jpeg = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", THUMBNAIL_QUALITY));
-  if (!jpeg || jpeg.size === 0) return { kind: "skip" };
-  return { kind: "picture", jpeg };
+  const request: FrameRequest = { frame: plan.frame, size: thumbnailSize(doc), sources: plan.sources, type: "image/jpeg", quality: THUMBNAIL_QUALITY };
+  const result = await renderFrame(doc, request, deps, isCurrent);
+  if (result.kind === "picture") return { kind: "picture", jpeg: result.blob };
+  if (result.kind === "failed") return { kind: "skip" };
+  return { kind: "stopped" };
 }

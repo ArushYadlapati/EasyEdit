@@ -1,3 +1,4 @@
+import { sourceSeconds } from "@/lib/render/source-time";
 import type { Clip, MediaClip, TimelineDoc, Track } from "@/lib/timeline";
 
 // What the preview's media should be doing at a frame: which clips show and sound, at what moment of their media,
@@ -33,7 +34,7 @@ export function mediaWants(doc: TimelineDoc, frame: number, play: { playing: boo
         clipId: clip.id,
         assetId: clip.assetId,
         type: clip.type,
-        seconds: image ? 0 : (clip.in + (frame - clip.start) * clip.speed) / doc.fps,
+        seconds: sourceSeconds(clip, frame, doc.fps),
         rate,
         volume: image || rate === 0 || track.muted ? 0 : Math.min(clip.volume, 1),
       });

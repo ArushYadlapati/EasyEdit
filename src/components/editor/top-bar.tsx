@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, Keyboard, Redo2, SettingsIcon, Undo2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { Menu } from "@/components/ui/menu";
@@ -18,20 +19,23 @@ type TopBarProps = {
   onShowShortcuts(): void;
   onShowSettings?(): void;
   onResetLayout?(): void; // View → Reset panel sizes
+  onExport?(): void; // opens the Export dialog
+  exportPercent?: number | null; // how far a running export is; null or absent when none runs
 };
 
 // The row across the top: Projects, the Edit and View menus, the project's name, then the save
-// status and the undo, redo, settings and shortcuts buttons. The menus read the editor as they open, so what
+// status, the undo, redo, settings and shortcuts buttons, and Export. The menus read the editor as they open, so what
 // cannot run right then is greyed.
-export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout }: TopBarProps) {
+export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout, onExport, exportPercent = null }: TopBarProps) {
   const store = useEditorStore();
   const clipboard = useClipboard();
-  const run = useCommandRunner(onShowShortcuts);
+  const run = useCommandRunner(onShowShortcuts, onExport);
   const canEdit = useEditor((s) => s.canEdit);
   const status = useEditor((s) => s.status);
   const undoLabel = useEditor((s) => s.undoStack.at(-1)?.label);
   const redoLabel = useEditor((s) => s.redoStack.at(-1)?.label);
   const deleted = status === "deleted";
+  const exportHeld = useEditor((s) => s.exportHeld);
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
   const keyFor = useShortcutLabel();
@@ -100,6 +104,18 @@ export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout }: TopBa
         <IconButton label="Keyboard shortcuts" shortcut={keyFor("show-shortcuts")} onClick={onShowShortcuts}>
           <Keyboard />
         </IconButton>
+        <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
+        {/* Not an edit: a viewer exports too. A project deleted during an export keeps the way back to its progress,
+            and to a file waiting for Download. */}
+        <Button
+          variant={exportPercent === null ? "primary" : "default"}
+          className="tabular-nums"
+          title={keyFor("export") ? `Export (${keyFor("export")})` : "Export"}
+          disabled={deleted && exportPercent === null && !exportHeld}
+          onClick={onExport}
+        >
+          {exportPercent === null ? "Export" : `Exporting ${exportPercent}%`}
+        </Button>
       </div>
     </header>
   );

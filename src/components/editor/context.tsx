@@ -6,8 +6,17 @@ import type { ApiFailure, ProjectApi } from "@/lib/editor/api";
 import { createClipboard, type ClipboardStore } from "@/lib/editor/clipboard";
 import { DEFAULT_PREFS, createSettingsStore, type SettingsState, type SettingsStore } from "@/lib/editor/settings";
 import type { EditorState, EditorStore } from "@/lib/editor/store";
+import { browserExportDeps } from "./export/browser-deps";
+import type { ExportDeps } from "./export/deps";
+import { useMedia } from "./media/media-context";
 
-type EditorContextValue = { store: EditorStore; api: ProjectApi; clipboard: ClipboardStore; settings: SettingsStore };
+type EditorContextValue = {
+  store: EditorStore;
+  api: ProjectApi;
+  clipboard: ClipboardStore;
+  settings: SettingsStore;
+  exportDeps: ExportDeps | null;
+};
 
 const EditorContext = createContext<EditorContextValue | null>(null);
 
@@ -28,17 +37,24 @@ type EditorProviderProps = {
   api?: ProjectApi;
   clipboard?: ClipboardStore;
   settings?: SettingsStore;
+  exportDeps?: ExportDeps;
   children: ReactNode;
 };
 
 // Without a clipboard, as in tests, copied clips are kept in memory. Without settings, the defaults are used and
-// changes are kept in memory.
-export function EditorProvider({ store, api, clipboard, settings, children }: EditorProviderProps) {
+// changes are kept in memory. Without exportDeps, an export uses this browser's, over the editor's media services.
+export function EditorProvider({ store, api, clipboard, settings, exportDeps, children }: EditorProviderProps) {
   const [memoryClipboard] = useState(createClipboard);
   const [memorySettings] = useState(() => createSettingsStore({ prefs: DEFAULT_PREFS }));
   const value = useMemo(
-    () => ({ store, api: api ?? OFFLINE_API, clipboard: clipboard ?? memoryClipboard, settings: settings ?? memorySettings }),
-    [store, api, clipboard, memoryClipboard, settings, memorySettings],
+    () => ({
+      store,
+      api: api ?? OFFLINE_API,
+      clipboard: clipboard ?? memoryClipboard,
+      settings: settings ?? memorySettings,
+      exportDeps: exportDeps ?? null,
+    }),
+    [store, api, clipboard, memoryClipboard, settings, memorySettings, exportDeps],
   );
   return <EditorContext value={value}>{children}</EditorContext>;
 }
@@ -75,4 +91,12 @@ export function useSettings<T>(selector: (state: SettingsState) => T): T {
 
 export function useSettingsStore(): SettingsStore {
   return useEditorContext().settings;
+}
+
+// What an export needs from the browser: the provider's when given (tests pass fakes), else this browser's over the
+// editor's media services, made once per media services.
+export function useExportDeps(): ExportDeps {
+  const given = useEditorContext().exportDeps;
+  const media = useMedia();
+  return useMemo(() => given ?? browserExportDeps(media), [given, media]);
 }

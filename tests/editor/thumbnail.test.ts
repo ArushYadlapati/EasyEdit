@@ -9,6 +9,7 @@ import {
   type ThumbnailCanvas,
   type ThumbnailDeps,
 } from "@/lib/editor/thumbnail";
+import { PROBE_BASE } from "@/lib/export/fonts";
 import type { AssetView } from "@/lib/media/types";
 import { PLACEHOLDER_FILL, type Ctx2D, type ResolvedSource } from "@/lib/render/compositor";
 import { DEFAULT_TRANSFORM, createEmptyDoc, type TimelineDoc, type Track } from "@/lib/timeline";
@@ -170,7 +171,7 @@ type TestDeps = {
 
 // What the fake canvas recorded: every call on its context, and the arguments of each toBlob.
 let calls: Call[] = [];
-let encoded: [type: string, quality: number][] = [];
+let encoded: [type: string, quality: number | undefined][] = [];
 
 // A canvas whose context records its calls, and whose toBlob answers jpeg.
 function fakeCanvas(jpeg: Blob | null = JPEG, ctx?: Ctx2D | null): ThumbnailCanvas {
@@ -240,7 +241,7 @@ describe("renderThumbnail", () => {
     const d = deps({ loadFonts: vi.fn(() => new Promise<void>((resolve) => (settle = resolve))) });
     const done = renderThumbnail(sampleDoc(), d);
     await new Promise((r) => setTimeout(r, 0));
-    expect([...d.loadFonts.mock.calls[0][0]]).toEqual(['700 16px "Geist"']);
+    expect(d.loadFonts.mock.calls[0][0]).toEqual([{ font: '700 100px "Geist"', text: `${PROBE_BASE}h` }]);
     expect(d.decodeVideo).toHaveBeenCalledTimes(1);
     expect(calls).toEqual([]);
     settle();
