@@ -1,12 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { AccountMenu } from "@/components/dashboard/account-menu";
 import { KeepSignedIn } from "@/components/keep-signed-in";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { requireUser } from "@/lib/access";
 
-// The dashboard is always dark, in the editor's colors. This asks the Dark Reader browser extension to leave it alone.
+// The dashboard is always dark, in the editor's colors. This asks the Dark Reader browser extension to leave it alone,
+// and the color scheme tells the browser's own dark mode the same (and darkens the page behind it, see globals.css).
 export const metadata: Metadata = { other: { "darkreader-lock": "true" } };
+export const viewport: Viewport = { colorScheme: "dark" };
 
 // The dashboard's own frame: a header with the person's account menu, and the page filling the rest of the window.
 // Admin and sign-in keep the (app) and (auth) looks.

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import DashboardLayout, { metadata } from "@/app/(dashboard)/layout";
+import DashboardLayout, { metadata, viewport } from "@/app/(dashboard)/layout";
 import DashboardPage from "@/app/(dashboard)/dashboard/page";
 import {
   createFolderAction,
@@ -144,5 +144,6 @@ describe("the dashboard page", () => {
     // With no name, the email stands in.
     expect(screen.getByRole("button", { name: "Account" }).textContent).toContain("ada@gmail.com");
     expect(metadata.other).toEqual({ "darkreader-lock": "true" });
+    expect(viewport).toEqual({ colorScheme: "dark" });
   });
 });

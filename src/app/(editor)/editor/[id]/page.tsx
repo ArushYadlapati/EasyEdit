@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { EditorShell } from "@/components/editor/editor-shell";
@@ -12,8 +12,10 @@ import { PREFS_COOKIE, parsePrefs } from "@/lib/editor/settings";
 import { getProject } from "@/lib/projects/service";
 
 // The editor is always dark. This asks the Dark Reader browser extension to leave the page alone: on a screen that
-// is already dark it darkens the few light elements, and the playhead all but disappears.
+// is already dark it darkens the few light elements, and the playhead all but disappears. The color scheme tells the
+// browser's own dark mode the same (and darkens the page behind the editor, see globals.css).
 export const metadata: Metadata = { other: { "darkreader-lock": "true" } };
+export const viewport: Viewport = { colorScheme: "dark" };
 
 // The editor fills the window on its own: the (editor) group has no layout, so the site header is not drawn.
 export default async function EditorPage({ params }: PageProps<"/editor/[id]">) {

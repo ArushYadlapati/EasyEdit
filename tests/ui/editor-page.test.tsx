@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import EditorPage from "@/app/(editor)/editor/[id]/page";
+import EditorPage, { metadata, viewport } from "@/app/(editor)/editor/[id]/page";
 import { EditorShell } from "@/components/editor/editor-shell";
 import type { CurrentUser } from "@/lib/access-rules";
 import { createEmptyDoc } from "@/lib/timeline";
@@ -30,6 +30,11 @@ vi.mock("@/components/keep-signed-in", () => ({ KeepSignedIn: () => null }));
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the editor page", () => {
+  it("is always dark, and says so to Dark Reader and to the browser's own dark mode", () => {
+    expect(metadata.other).toEqual({ "darkreader-lock": "true" });
+    expect(viewport).toEqual({ colorScheme: "dark" });
+  });
+
   it("opening the editor records the open once, for a viewer too", async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
