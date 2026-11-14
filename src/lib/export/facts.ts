@@ -1,6 +1,6 @@
 import { graphemes } from "@/lib/text";
 import type { TimelineDoc } from "@/lib/timeline";
-import type { ExportMediaPlan } from "./media-sources";
+import type { ClipPlan, ExportMediaPlan } from "./media-sources";
 import { AUDIO, type ExportPresetId, type ExportSize, type VideoSettings } from "./presets";
 
 // What the export dialog says about the file before and while it is made: its largest size, its name, the time
@@ -56,8 +56,18 @@ export function timeLeftLabel(seconds: number | null): string {
   return minutes === 1 ? "About 1 minute left" : `About ${minutes} minutes left`;
 }
 
-const countOf = (plan: ExportMediaPlan, matches: (clip: ExportMediaPlan["clips"][string]) => boolean) =>
-  Object.values(plan.clips).filter(matches).length;
+type Matches = (clip: ClipPlan) => boolean;
+
+const countOf = (plan: ExportMediaPlan, matches: Matches) => Object.values(plan.clips).filter(matches).length;
+
+// Each clip once, whether its picture, its sound or both match: a visible video is in both plans.
+const clipsEither = (plan: ExportMediaPlan, matches: Matches) => {
+  const ids = new Set<string>();
+  for (const plans of [plan.clips, plan.sounds]) {
+    for (const [id, clip] of Object.entries(plans)) if (matches(clip)) ids.add(id);
+  }
+  return ids.size;
+};
 
 // What the person should know before exporting at this size. audio: this browser can encode AAC.
 export function exportNotes(plan: ExportMediaPlan, size: ExportSize, audio: boolean): string[] {
@@ -67,20 +77,24 @@ export function exportNotes(plan: ExportMediaPlan, size: ExportSize, audio: bool
   else if (placeholders > 1) notes.push(`${placeholders} clips have no media to show, so they export as the placeholders in the preview.`);
   const fromCopies = countOf(plan, (clip) => clip.kind === "use" && clip.from === "preview") > 0;
   if (Math.min(size.width, size.height) > 720 && fromCopies) notes.push("Video clips export from their 720p preview copies.");
-  notes.push(
-    audio
-      ? "Sound isn't exported yet. The file's sound track is silent."
-      : "Sound isn't exported yet. This file will have no sound track.",
-  );
+  if (audio) {
+    // A clip the line above counts is not counted again for its sound.
+    const silent = Object.entries(plan.sounds)
+      .filter(([id, clip]) => clip.kind === "placeholder" && plan.clips[id]?.kind !== "placeholder").length;
+    if (silent === 1) notes.push("1 sound clip has no media, so it exports silent, as in the preview.");
+    else if (silent > 1) notes.push(`${silent} sound clips have no media, so they export silent, as in the preview.`);
+  } else if (plan.soundClips > 0) {
+    notes.push("This browser can't add sound to the file, so it will have no sound track. To include the sound, export in Chrome or Edge on a Mac or Windows computer.");
+  }
   return notes;
 }
 
 // Why Export is off for now; null when nothing waits.
 export function waitingReason(plan: ExportMediaPlan): string | null {
-  const preparing = countOf(plan, (clip) => clip.kind === "wait" && (clip.why === "uploading" || clip.why === "preparing"));
+  const preparing = clipsEither(plan, (clip) => clip.kind === "wait" && (clip.why === "uploading" || clip.why === "preparing"));
   if (preparing === 1) return "1 clip uses media that is still uploading or being prepared. Export once it's ready.";
   if (preparing > 1) return `${preparing} clips use media that is still uploading or being prepared. Export once it's ready.`;
-  if (countOf(plan, (clip) => clip.kind === "wait" && clip.why === "library") > 0) return "Checking the media library…";
+  if (clipsEither(plan, (clip) => clip.kind === "wait" && clip.why === "library") > 0) return "Checking the media library…";
   return null;
 }
 
