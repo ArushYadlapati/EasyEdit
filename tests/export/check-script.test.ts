@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RULES, compareFrames, parseStillName } from "../../scripts/export-check/compare.mjs";
-import { SOUND_RULES, audioFormatProblems, parseMaxVolume, parseOnset, soundFlagProblem } from "../../scripts/export-check/sound.mjs";
+import { SOUND_RULES, audioFormatProblems, onsetBeforeEnd, onsetFrameProblem, parseMaxVolume, parseOnset, soundFlagProblem } from "../../scripts/export-check/sound.mjs";
 
 const W = 96;
 const H = 64;
@@ -139,6 +139,17 @@ describe("comparing a frame with footage in it", () => {
 });
 
 describe("the sound checks", () => {
+  it("take --onset at frame 0 or at a frame with an opening silence silencedetect can see", () => {
+    expect([onsetFrameProblem(null, 30), onsetFrameProblem(0, 30), onsetFrameProblem(4, 30), onsetFrameProblem(8, 60), onsetFrameProblem(3, 24)]).toEqual([null, null, null, null, null]);
+    expect(onsetFrameProblem(3, 30)).toBe("--onset needs frame 0, or frame 4 or later at 30 fps: a shorter opening silence can't be measured.");
+    expect(onsetFrameProblem(7, 60)).toBe("--onset needs frame 0, or frame 8 or later at 60 fps: a shorter opening silence can't be measured.");
+  });
+
+  it("count a sound that starts within a millisecond of the track's end as no sound", () => {
+    expect([onsetBeforeEnd(null, 4), onsetBeforeEnd(4, 4), onsetBeforeEnd(3.9995, 4)]).toEqual([null, null, null]);
+    expect([onsetBeforeEnd(3.998, 4), onsetBeforeEnd(1.5, Number.NaN)]).toEqual([3.998, 1.5]);
+  });
+
   it("fixes their thresholds up front", () => {
     expect(SOUND_RULES).toEqual({ soundMinDb: -60, silentMaxDb: -90, onsetDb: -50, onsetSeconds: 0.021 });
   });

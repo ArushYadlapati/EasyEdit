@@ -121,6 +121,8 @@ describe("the worker's sound", () => {
     const pool = createSoundPool(schedule([video("c1", 0, 30)], [song("m1", 0, 30)], { c1: "prev-a", m1: "song" }), FILES, io);
     await pool.open();
     await expect(pool.block(blocks(30)[0])).rejects.toMatchObject({ code: "sound", detail: "decoder error" });
+    await pool.close();
+    expect(io.log.slice(-4)).toEqual(["dispose a.mp4", "dispose song.mp3", "stop a.mp4", "stop song.mp3"]);
   });
 
   it("close lets go of everything still open without waiting, once", async () => {

@@ -19,6 +19,9 @@ export const SOUND_RULES = Object.freeze({
 // A silence that opens this close to the track's start opens the track.
 const OPENS_AT = 0.001;
 
+// The shortest silence silencedetect reports (its d=): the shortest opening silence check 16 can see.
+export const OPENING_SILENCE_SECONDS = 0.1;
+
 /**
  * @typedef {object} AudioStream  the fields of ffprobe's audio stream the format check reads
  * @property {string} codec_name
@@ -90,4 +93,28 @@ export function soundFlagProblem(flags) {
   if ([flags.sound, flags.silent, flags.noAudio].filter(Boolean).length > 1) return "Give at most one of --sound, --silent and --no-audio.";
   if (flags.onset !== null && (flags.silent || flags.noAudio)) return "--onset needs a sound track: drop --silent or --no-audio.";
   return null;
+}
+
+/**
+ * The usage sentence for an --onset frame whose opening silence silencedetect
+ * cannot see, or null when it can be measured.
+ * @param {number | null} onset  the frame given to --onset, or null
+ * @param {number} fps
+ * @returns {string | null}
+ */
+export function onsetFrameProblem(onset, fps) {
+  if (onset === null || onset === 0) return null;
+  const first = Math.ceil((OPENING_SILENCE_SECONDS + SOUND_RULES.onsetSeconds) * fps);
+  return onset < first ? `--onset needs frame 0, or frame ${first} or later at ${fps} fps: a shorter opening silence can't be measured.` : null;
+}
+
+/**
+ * The onset, or null when it is the track's end: silencedetect closes a silence
+ * still open at the end of the stream there, so that sound never started.
+ * @param {number | null} found  the onset parseOnset found
+ * @param {number} end  the track's end, in seconds
+ * @returns {number | null}
+ */
+export function onsetBeforeEnd(found, end) {
+  return found !== null && Number.isFinite(end) && found >= end - 0.001 ? null : found;
 }

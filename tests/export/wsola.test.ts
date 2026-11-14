@@ -4,8 +4,8 @@ import { levelDb, maxDiff, tone, zeroCrossHz } from "./audio-helpers";
 
 // 440 Hz at 0.5 for the first `n` stream samples (all of them by default), silence after; the same on both channels.
 const a440 = (n = Infinity) => (_ch: 0 | 1, i: number) => (i >= 0 && i < n ? 0.5 * Math.sin((2 * Math.PI * 440 * i) / 48_000) : 0);
-function stretch(tempo: number, count: number, read = a440(), chunks = [count]) {
-  const s = createStretcher(tempo, read);
+function stretch(tempo: number, count: number, read = a440(), chunks = [count], length = Infinity) {
+  const s = createStretcher(tempo, read, length);
   const out = { left: new Float32Array(count), right: new Float32Array(count) };
   let at = 0;
   for (const n of chunks) {
@@ -83,7 +83,7 @@ describe("time-stretching that keeps the pitch", () => {
     const out = { left: new Float32Array(4_810).fill(7), right: new Float32Array(4_810).fill(7) };
     let lo = Infinity;
     let hi = -Infinity;
-    const s = createStretcher(tempo, (_ch, i) => { lo = Math.min(lo, i); hi = Math.max(hi, i); return 0.1; });
+    const s = createStretcher(tempo, (_ch, i) => { lo = Math.min(lo, i); hi = Math.max(hi, i); return 0.1; }, Infinity);
     // frames −1 … 9: from τ_{−1} − S = −960 to τ_9 + S + N = round(4,800 × tempo) + 960
     expect([s.keeps(), s.needs(4_800)]).toEqual([-960, Math.round(4_800 * tempo) + 960]);
     s.render(out, 4_800);
@@ -91,6 +91,28 @@ describe("time-stretching that keeps the pitch", () => {
     expect(lo).toBeGreaterThanOrEqual(-960);
     expect(hi).toBeLessThan(Math.round(4_800 * tempo) + 960);
     expect(s.keeps()).toBe(Math.round(11 * 480 * tempo) - 960); // frame 10 is next: τ_10 − S
+  });
+
+  it.each([0.0625, 0.25, 0.5, 1, 1.5, 4, 16])("never sounds what lies outside its span at tempo %s", (tempo) => {
+    // loud noise before index 0 and from the span on, silence inside it: every output is exactly 0
+    const count = 49_600; // 31 frames at 30 fps: not a whole number of hops
+    const span = Math.ceil(count * tempo);
+    const noise = (i: number) => 0.9 * ((Math.sin(i * 12.9898) * 43_758.5453) % 1);
+    const s = createStretcher(tempo, (ch, i) => (i < 0 || i >= span ? noise(i + 7 * ch) : 0), count);
+    const out = { left: new Float32Array(count), right: new Float32Array(count) };
+    s.render(out, count);
+    expect(out.left.findIndex((v) => v !== 0)).toBe(-1);
+    expect(out.right.findIndex((v) => v !== 0)).toBe(-1);
+  });
+
+  it.each([0.0625, 0.25, 0.5, 0.75])("keeps its level to the last sample at tempo %s, sounding only what lies inside its span", (tempo) => {
+    // a tone that runs on past the span's end, which reads as silence: frames near the end must fit what of them is heard inside
+    for (const count of [48_000, 49_600]) {
+      const out = stretch(tempo, count, (_ch, i) => 0.5 * Math.sin((2 * Math.PI * 440 * i) / 48_000) + 0.2 * Math.sin((2 * Math.PI * 1_310 * i) / 48_000 + 1), [count], count);
+      const middle = levelDb(out.left, 9_600, 38_400);
+      expect(Math.abs(levelDb(out.left, count - 960, count - 480) - middle), `${count} 20-10 ms`).toBeLessThan(1);
+      expect(Math.abs(levelDb(out.left, count - 480, count) - middle), `${count} last 10 ms`).toBeLessThan(1);
+    }
   });
 });
 
@@ -120,7 +142,7 @@ describe("the stretcher, rule by rule", () => {
     // exactly (every product and square is ±0.25). Frame 0 at 80 reads up to 1,039, inside its search's 1,079; at 160 it
     // would read up to 1,119.
     let hi = -Infinity;
-    const s = createStretcher(1.25, (_ch, i) => { hi = Math.max(hi, i); return Math.floor(i / 40) % 2 === 0 ? 0.5 : -0.5; });
+    const s = createStretcher(1.25, (_ch, i) => { hi = Math.max(hi, i); return Math.floor(i / 40) % 2 === 0 ? 0.5 : -0.5; }, Infinity);
     s.render({ left: new Float32Array(1), right: new Float32Array(1) }, 1);
     expect(hi).toBe(1_079);
   });

@@ -35,7 +35,7 @@ export function createVoicePlayer(
   let stopped = false;
   // Other speeds keep their pitch: the file is resampled at speed 1 into a stage, which the stretcher reads at
   // tempo = speed. The voice's output sample k is the stretcher's output k − voice.start.
-  const stretcher = voice.speed === 1 ? null : createStretcher(voice.speed, (ch, m) => stage.read(ch, m));
+  const stretcher = voice.speed === 1 ? null : createStretcher(voice.speed, (ch, m) => stage.read(ch, m), voice.end - voice.start);
   const stage = createStage(stretcher ? stretcher.keeps() : 0);
   const readLeft = (j: number) => ring.read(0, j);
   const readRight = (j: number) => ring.read(1, j);

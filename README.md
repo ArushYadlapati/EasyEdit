@@ -14,7 +14,7 @@ This README gets the app running on your own computer. You will set up three thi
   - add, rename, lock, hide, mute, reorder and remove tracks
   - play the project in the preview, with frame steps, J, K and L, and safe-zone guides for each format
   - undo and redo your own changes, and undo any change listed under Activity, including a teammate's
-- Export: the **Export** button (or `Cmd/Ctrl+E`) makes an MP4 of the project on your own computer, in the browser; nothing is uploaded. You pick a size, watch the progress and can cancel, and you can keep editing while it runs. Video and image clips export from the files the editor plays, so video comes from its 720p preview copy. The sound is mixed as the preview plays it: each video's own sound and the audio tracks, at each clip's volume (up to 1), with muted tracks and hidden video tracks silent; a clip at another speed keeps its pitch. Without an AAC encoder (Firefox, Chrome on Linux) the file has no sound track, and the dialog says so before you export. Viewers can export too. It needs a recent Chrome or Edge on a computer.
+- Export: the **Export** button (or `Cmd/Ctrl+E`) makes an MP4 of the project on your own computer, in the browser; nothing is uploaded. You pick a size, watch the progress and can cancel, and you can keep editing while it runs. Video and image clips export from the files the editor plays, so video comes from its 720p preview copy. The sound is mixed as the preview plays it: each video's own sound and the audio tracks, at each clip's volume (up to 1), with muted tracks and hidden video tracks silent; a clip at another speed keeps its pitch. Without an AAC encoder (Firefox, Chrome on Linux) the file has no sound track; when the project has sound, the dialog says so before you export. Viewers can export too. It needs a recent Chrome or Edge on a computer.
 - Upload video, images and audio in the editor's Media tab (up to 2 GB a file). Uploads go straight from your browser to the team's Google Shared Drive and resume after an interruption.
 - Put media on the timeline, trim it, and play it in the preview. Each video gets a small 720p preview copy, so phone footage plays on any laptop.
 - Every change is saved as you make it. Other people's changes show up within about two seconds while you are working, and the top bar says who is editing.
@@ -242,7 +242,7 @@ Before the team is told to use export, the owner runs this list once on a Window
 
    For a frame with video or a picture in it, or with a placeholder where media is missing ("Media removed" and the like), pass it with `--media-still` instead of `--still`.
 
-   Add `--sound` when the project has sound, `--silent` when it has none, or `--no-audio` when the dialog said the file would have no sound track. `--onset 45` checks that the first sound starts on frame 45, to within one AAC frame.
+   Add `--no-audio` when the done screen said "This file has no sound track."; otherwise add `--sound` when the project has sound, or `--silent` when it has none. `--onset 45` checks that the first sound starts on frame 45, to within one AAC frame.
 
 Every line should say PASS. A FAIL on a frame line means the video does not match what the editor drew. This check is run by hand; it is not part of `pnpm test`.
 

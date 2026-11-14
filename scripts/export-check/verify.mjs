@@ -16,7 +16,7 @@ import { spawn } from "node:child_process";
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { compareFrames, parseStillName } from "./compare.mjs";
-import { SOUND_RULES, audioFormatProblems, parseMaxVolume, parseOnset, soundFlagProblem } from "./sound.mjs";
+import { OPENING_SILENCE_SECONDS, SOUND_RULES, audioFormatProblems, onsetBeforeEnd, onsetFrameProblem, parseMaxVolume, parseOnset, soundFlagProblem } from "./sound.mjs";
 
 const USAGE =
   'Usage: pnpm check:export <video.mp4> --size 1080x1920 --fps 30 [--frames 450] [--no-audio | --sound | --silent] [--onset 45] [--still "<name> frame 000045.png"]… [--media-still "<name> frame 000045.png"]…';
@@ -68,6 +68,8 @@ function readArgs() {
   const flags = { sound: values.sound, silent: values.silent, noAudio: values["no-audio"], onset };
   const flagProblem = soundFlagProblem(flags);
   if (flagProblem) usageError(flagProblem);
+  const onsetProblem = onsetFrameProblem(onset, fps);
+  if (onsetProblem) usageError(onsetProblem);
   return {
     video: positionals[0],
     width: Number(size[1]),
@@ -299,14 +301,13 @@ async function main() {
     } else if (!Number.isFinite(audioStart) || !Number.isFinite(videoStart)) {
       report(16, name, false, "no start time");
     } else {
-      const filter = `silencedetect=noise=${SOUND_RULES.onsetDb}dB:d=0.1`;
+      const filter = `silencedetect=noise=${SOUND_RULES.onsetDb}dB:d=${OPENING_SILENCE_SECONDS}`;
       const detected = await run("ffmpeg", ["-hide_banner", "-nostats", "-copyts", "-i", args.video, "-map", "0:a:0", "-af", filter, "-f", "null", "-"]);
       const expected = videoStart + args.onset / args.fps;
       // silencedetect closes a silence still open at the end of the stream with a
       // silence_end there, so a sound that "starts" at the track's end never started.
       const audioEnd = audioStart + number(audio.duration);
-      const found = detected.code === 0 ? parseOnset(detected.stderr, audioStart) : null;
-      const onset = found !== null && Number.isFinite(audioEnd) && found >= audioEnd - 0.001 ? null : found;
+      const onset = detected.code === 0 ? onsetBeforeEnd(parseOnset(detected.stderr, audioStart), audioEnd) : null;
       if (detected.code !== 0) {
         report(16, name, false, `could not measure it: ${lastLine(detected.stderr)}`);
       } else if (onset === null) {

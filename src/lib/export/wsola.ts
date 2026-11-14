@@ -16,11 +16,16 @@ export type Stretcher = {
 const COARSE = 4;
 const FINE = 3;
 
-// read(channel, m) is the 48 kHz stream at speed 1, index 0 at the voice's start; negative indices are the file before it.
-// It is called only for indices in [keeps(), needs(count)) of the render that calls it.
-// At tempo 1 the stretcher copies: out[o] = read(channel, o), each index read once per channel; needs(count) is o + count
+// source(channel, m) is the 48 kHz stream at speed 1, index 0 at the voice's start. It is called only for indices in
+// [keeps(), needs(count)) of the render that calls it that lie in [0, ceil(length × tempo)), the voice's own source, and
+// never for a negative index. `length` is the number of outputs the stretcher will give.
+// At tempo 1 the stretcher copies: out[o] = source(channel, o), each index read once per channel; needs(count) is o + count
 // and keeps() is o, with o the outputs already given.
-export function createStretcher(tempo: number, read: (channel: 0 | 1, index: number) => number): Stretcher {
+export function createStretcher(tempo: number, source: (channel: 0 | 1, index: number) => number, length: number): Stretcher {
+  // Only the voice's own source sounds: [0, span), its in point to its out point at speed 1, for `length` outputs. What
+  // lies either side reads as silence, and the search keeps the part of each frame that reaches the output inside it.
+  const span = Math.ceil(length * tempo);
+  const read = (channel: 0 | 1, index: number) => (index >= 0 && index < span ? source(channel, index) : 0);
   if (tempo === 1) return copier(read);
   const N = WSOLA.frame;
   const H = WSOLA.hop;
@@ -45,7 +50,8 @@ export function createStretcher(tempo: number, read: (channel: 0 | 1, index: num
 
   // The offset in [−S, S] where the mid best matches the template, normalised by its energy; ties go to the smaller
   // |δ|, then the smaller δ.
-  function search(t: number): number {
+  function search(t: number, heard: number): number {
+    const hi = Math.max(-S, Math.min(S, span - heard - t)); // what of the frame is heard ends by the span's end, where it fits
     for (let j = 0; j < scratch.length; j++) scratch[j] = (read(0, t - S + j) + read(1, t - S + j)) / 2;
     energy[0] = 0;
     for (let j = 0; j < scratch.length; j++) energy[j + 1] = energy[j] + scratch[j] * scratch[j];
@@ -67,9 +73,9 @@ export function createStretcher(tempo: number, read: (channel: 0 | 1, index: num
         bestScore = value;
       }
     };
-    for (let delta = -S; delta <= S; delta += COARSE) consider(delta);
+    for (let delta = -S; delta <= S; delta += COARSE) if (delta <= hi) consider(delta);
     const coarse = best;
-    for (let delta = Math.max(-S, coarse - FINE); delta <= Math.min(S, coarse + FINE); delta++) consider(delta);
+    for (let delta = Math.max(-S, coarse - FINE); delta <= Math.min(hi, coarse + FINE); delta++) consider(delta);
     return best;
   }
 
@@ -77,7 +83,7 @@ export function createStretcher(tempo: number, read: (channel: 0 | 1, index: num
   function addFrame(): void {
     const k = next;
     const t = tau(k);
-    const p = k < 0 ? t : t + search(t);
+    const p = k < 0 ? t : t + search(t, Math.min(N, length - k * H));
     for (let i = 0; i < N; i++) {
       frame[0][i] = read(0, p + i);
       frame[1][i] = read(1, p + i);

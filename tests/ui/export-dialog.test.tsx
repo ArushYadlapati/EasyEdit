@@ -296,6 +296,16 @@ it("turns Export off while a song uploads, where the file will carry sound, and 
   expect((d.getByRole("button", { name: "Save frame as image" }) as HTMLButtonElement).disabled).toBe(false); // a frame has no sound
 });
 
+it("leaves Export on while a song uploads where this browser can't add sound, since nothing of it is written", async () => {
+  const doc = sampleDoc();
+  doc.tracks[3].clips = [video("m1", 0, 30, { type: "audio", assetId: "song" })];
+  show({ supportProbe: { ...SUPPORTED, canEncode: async () => true, canEncodeAudio: async () => false } }, { doc, assets: [assetView(), assetView({ ...SONG, status: "uploading" })] });
+  const d = await openDialog();
+  expect(d.queryByText(/still uploading or being prepared/)).toBeNull();
+  expect((d.getByRole("button", { name: "Export video" }) as HTMLButtonElement).disabled).toBe(false);
+  expect(d.getByText(NO_TRACK)).toBeTruthy();
+});
+
 it("says up front when a video is too long to hold in a browser without a save dialog", async () => {
   const long = createEmptyDoc("short_9x16");
   long.tracks[1].clips = [text("a", 0, 36_000)]; // 20 minutes: about 1.2 GB at full size, about 394 MB as a draft

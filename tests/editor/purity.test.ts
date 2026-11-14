@@ -161,3 +161,11 @@ it("the page loads mediabunny only inside the function that needs it, so the edi
   expect(files.map(([file]) => file)).toContain("src/lib/export/aac.ts");
   for (const [file, code] of files) expect(code, file).not.toMatch(STATIC_MEDIABUNNY);
 });
+
+it("only Save frame loads mediabunny with import(): beside the export worker's static import, a dynamic one breaks the chunk they share", () => {
+  const DYNAMIC_MEDIABUNNY = /\bimport\s*\(\s*["']mediabunny["']\s*\)/;
+  expect('const { Input } = await import("mediabunny");').toMatch(DYNAMIC_MEDIABUNNY);
+  expect('import { Input } from "mediabunny";').not.toMatch(DYNAMIC_MEDIABUNNY);
+  const files = sources("src").filter(([, code]) => DYNAMIC_MEDIABUNNY.test(code)).map(([file]) => file);
+  expect(files).toEqual(["src/components/editor/media/frame-decode.ts"]);
+});

@@ -177,8 +177,19 @@ describe("a voice from decoded packets", () => {
     const s = schedule(onAudio(song("m1", 0, 60, { speed: 2 })), { m1: "song" });
     const out = await play(s, { song: () => decoded([file], 48_000) }, 60);
     const ref = { left: new Float32Array(96_000), right: new Float32Array(96_000) };
-    createStretcher(2, (_ch, m) => (m >= 0 && m < file.length ? file[m] : 0)).render(ref, 96_000);
+    createStretcher(2, (_ch, m) => (m >= 0 && m < file.length ? file[m] : 0), 96_000).render(ref, 96_000);
     expect(maxDiff(out.left.subarray(192, 95_808), ref.left.subarray(192, 95_808))).toBeLessThan(1e-6); // inside the ramps
+  });
+
+  it.each([0.0625, 0.25, 0.5, 4, 16])("at speed %s sounds nothing of the file before its in point or after its out point", async (speed) => {
+    // a 48 kHz file of loud noise, silent only between the in point (1 s) and the out point
+    const at = 48_000;
+    const out = at + 31 * 1_600 * speed;
+    const file = Float32Array.from({ length: 900_000 }, (_, j) => (j >= at && j < out ? 0 : 0.9 * ((Math.sin(j * 12.9898) * 43_758.5453) % 1)));
+    const s = schedule(onAudio(song("m1", 0, 31, { in: 30, speed })), { m1: "song" });
+    const heard = await play(s, { song: () => decoded([file], 48_000) }, 31);
+    expect(heard.left.findIndex((v) => v !== 0)).toBe(-1);
+    expect(heard.right.findIndex((v) => v !== 0)).toBe(-1);
   });
 
   it.each([0.25, 1.5, 4])("plays at speed %s across blocks without reading behind what it kept, holding a fraction of a second", async (speed) => {
@@ -240,7 +251,8 @@ describe("the source ring and the voice, rule by rule", () => {
     ring.place(packet([filled(200, 0.25)], 0));
     ring.dropBefore(150);
     ring.place(packet([filled(10, 0.5)], 210));
-    expect([149, 150, 199, 200, 209, 210].map((j) => (j < 150 ? "let go" : ring.read(0, j)))).toEqual(["let go", 0.25, 0.25, 0, 0, 0.5]);
+    expect(() => ring.read(0, 149)).toThrow(RangeError);
+    expect([150, 199, 200, 209, 210].map((j) => ring.read(0, j))).toEqual([0.25, 0.25, 0, 0, 0.5]);
   });
 
   it("folds 5.1 to stereo by the speaker rules", () => {
@@ -281,7 +293,7 @@ describe("the source ring and the voice, rule by rule", () => {
     const s = schedule(onAudio(song("m1", 0, 30, { in: 3, speed: 1.5 })), { m1: "song" });
     const part = await createVoicePlayer(s, s.voices[0], reader(packets).it, K).render(audioBlocks(30, 30, 48_000)[0]);
     // the stage in one pass: index m is file frame 4,410 + m × 44,100 / 48,000
-    const ref = createStretcher(1.5, (_ch, m) => stage[m - from]);
+    const ref = createStretcher(1.5, (_ch, m) => stage[m - from], 48_000);
     const from = ref.keeps();
     const stage = new Float32Array(ref.needs(48_000) - from);
     resampleInto(stage, stage.length, (j) => (j >= 0 && j < file.length ? file[j] : 0), 4_410 + (from * 44_100) / 48_000, 44_100 / 48_000, K);
