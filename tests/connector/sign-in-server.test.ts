@@ -26,9 +26,9 @@ describe("the sign-in server for the connector", () => {
         client_id_metadata_document_supported: true,
       });
     }
-    // Open registration is off, so no registration address is offered.
+    // Agents may register themselves, so the registration address is offered. Every registration is checked first.
     const meta = await (await app.send(new Request(`${BASE_URL}/.well-known/oauth-authorization-server/api/auth`))).json();
-    expect(meta.registration_endpoint).toBeUndefined();
+    expect(meta.registration_endpoint).toBe(`${BASE_URL}/api/auth/oauth2/register`);
     for (const url of [`${BASE_URL}/.well-known/oauth-protected-resource/api/mcp`, `${BASE_URL}/.well-known/oauth-protected-resource`]) {
       const res = await app.send(new Request(url));
       expect(res.status, url).toBe(200);

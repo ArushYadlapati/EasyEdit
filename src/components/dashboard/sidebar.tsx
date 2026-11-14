@@ -2,8 +2,8 @@
 
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { useState, type DragEvent, type ReactNode } from "react";
-import { PROJECT_DRAG_TYPE } from "@/components/dashboard/drag";
+import type { ReactNode } from "react";
+import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-drop";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import type { DashboardFolder } from "@/lib/dashboard/view";
@@ -16,10 +16,8 @@ export type SidebarProps = {
   onDropProject(projectId: string, folderId: string | null): void; // null: out of its folder, onto Projects
 };
 
-const carriesProject = (event: DragEvent) => [...event.dataTransfer.types].includes(PROJECT_DRAG_TYPE);
-
-// A view's link. For editors it also takes a dragged project, showing the accent outline while one is over it; every
-// other drag (files, text, links) is left to the browser.
+// A view's link. For editors it also takes a dragged project (useProjectDrop), showing the accent outline while one is
+// over it.
 function SidebarLink({ href, current, folderId, canEdit, onDropProject, children }: {
   href: string;
   current: boolean;
@@ -28,38 +26,20 @@ function SidebarLink({ href, current, folderId, canEdit, onDropProject, children
   onDropProject: SidebarProps["onDropProject"];
   children: ReactNode;
 }) {
-  const [over, setOver] = useState(false);
-  const takes = (event: DragEvent) => canEdit && carriesProject(event);
+  const drop = useProjectDrop(canEdit, (projectId) => onDropProject(projectId, folderId));
 
   return (
     <Link
       href={href}
       aria-current={current ? "page" : undefined}
-      data-drop-over={over || undefined}
       className={cx(
         "flex h-7 shrink-0 items-center justify-between gap-3 rounded-md px-2 text-xs font-medium whitespace-nowrap",
         current ? "bg-ed-accent-weak text-ed-accent" : "text-ed-text hover:bg-ed-hover",
-        "data-drop-over:bg-ed-accent-weak data-drop-over:outline-2 data-drop-over:-outline-offset-2 data-drop-over:outline-ed-accent",
+        DROP_OVER,
         FOCUS_RING_INSET,
         FADE,
       )}
-      onDragOver={(event) => {
-        if (!takes(event)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-        setOver(true);
-      }}
-      onDragLeave={(event) => {
-        // Moving onto the link's own text is not leaving it.
-        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
-        setOver(false);
-      }}
-      onDrop={(event) => {
-        if (!takes(event)) return;
-        event.preventDefault();
-        setOver(false);
-        onDropProject(event.dataTransfer.getData(PROJECT_DRAG_TYPE), folderId);
-      }}
+      {...drop}
     >
       {children}
     </Link>

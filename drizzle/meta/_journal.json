@@ -64,6 +64,20 @@
       "when": 1794590029023,
       "tag": "0008_project_thumbnails",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794622834073,
+      "tag": "0009_passkeys",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794622998321,
+      "tag": "0010_agent_tokens",
+      "breakpoints": true
     }
   ]
 }

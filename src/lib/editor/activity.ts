@@ -1,3 +1,5 @@
+import { AGENT_KINDS } from "@/lib/connector/agents";
+import { agentLabel, UNKNOWN_AGENT_LABEL } from "@/lib/projects/display-actor";
 import { formatLabel, type Clip, type Op, type TimelineDoc } from "@/lib/timeline";
 import { timeAgo } from "@/lib/time-ago";
 import type { ProjectApi } from "./api";
@@ -164,11 +166,16 @@ export function whoLabel(entry: ActivityEntry, meId: string): string {
   return entry.actor === meId ? "You" : entry.actorName;
 }
 
-// The log names the assistant "Claude" or "Claude (for <name>)"; both show as Claude.
-const ASSISTANT_NAME = /^Claude(?: \(for .*\))?$/;
+// The log names an AI agent "<agent>" or "<agent> (for <name>)", as in "Claude (for Ada)"; both show as the agent.
+const AGENT_LABELS = [...new Set([...AGENT_KINDS.map(agentLabel), UNKNOWN_AGENT_LABEL])];
+
+function withoutMember(name: string): string {
+  const agent = AGENT_LABELS.find((label) => name === label || (name.startsWith(`${label} (for `) && name.endsWith(")")));
+  return agent ?? name;
+}
 
 export function editingLabel(names: string[]): string | null {
-  const people = [...new Set(names.map((name) => (ASSISTANT_NAME.test(name) ? "Claude" : name)))];
+  const people = [...new Set(names.map(withoutMember))];
   if (people.length === 0) return null;
   if (people.length === 1) return `${people[0]} is editing…`;
   return `${people.length} people are editing…`;

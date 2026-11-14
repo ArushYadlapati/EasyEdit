@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { rowsOf, type DB } from "@/db";
-import { isClaudeClientDocument, isClaudeRedirect } from "@/lib/connector/auth-rules";
-import { BASE_URL, CLAUDE_CALLBACK, clientDocument, startConnectorApp, type ConnectorApp } from "../helpers/connector";
+import { resolveConnectorCaller } from "@/lib/connector/caller";
+import { BASE_URL, CLAUDE_CALLBACK, MCP_URL, claimsOf, clientDocument, startConnectorApp, type ConnectorApp } from "../helpers/connector";
 
 let testDb: DB;
 vi.mock("@/db", async (original) => ({ ...(await original<typeof import("@/db")>()), getDb: () => testDb }));
@@ -17,36 +17,135 @@ afterAll(() => app.stop());
 const clientRows = async () =>
   rowsOf<{ n: number }>(await app.db.execute(sql`select count(*)::int as n from oauth_client`))[0].n;
 
-describe("address checks", () => {
-  it("knows Claude's callback addresses exactly", () => {
-    expect(isClaudeRedirect("https://claude.ai/api/mcp/auth_callback")).toBe(true);
-    expect(isClaudeRedirect("https://claude.com/api/mcp/auth_callback")).toBe(true);
-    for (const uri of [
-      "https://claude.ai/api/mcp/auth_callback/", "https://claude.ai/api/mcp/auth_callback?x=1", "http://claude.ai/api/mcp/auth_callback",
-      "https://claude.ai.evil.example/api/mcp/auth_callback", "https://evil.example/api/mcp/auth_callback", "http://localhost:6274/oauth/callback",
-    ]) expect(isClaudeRedirect(uri), uri).toBe(false);
+// Each registration from its own address, so the per-address limit is not what answers.
+let registrations = 0;
+function registerRaw(body: unknown, ip = `192.0.2.${++registrations}`) {
+  return app.send(new Request(`${BASE_URL}/api/auth/oauth2/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-forwarded-for": ip },
+    body: JSON.stringify(body),
+  }));
+}
+
+// What Claude Code, Cursor and VS Code send when they register themselves.
+const LOOPBACK = "http://localhost:43117/callback";
+const CURSOR_CALLBACK = "cursor://anysphere.cursor-mcp/oauth/callback";
+const claudeCode = {
+  client_name: "Claude Code (easyedit)", redirect_uris: [LOOPBACK], grant_types: ["authorization_code", "refresh_token"],
+  response_types: ["code"], token_endpoint_auth_method: "none",
+};
+const cursor = { ...claudeCode, client_name: "Cursor", redirect_uris: [CURSOR_CALLBACK] };
+const vscode = {
+  client_name: "Visual Studio Code", client_uri: "https://code.visualstudio.com/",
+  grant_types: ["authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"], response_types: ["code"],
+  redirect_uris: [
+    "https://insiders.vscode.dev/redirect", "https://vscode.dev/redirect", "http://localhost", "http://127.0.0.1",
+    "http://localhost:33418", "http://127.0.0.1:33418",
+  ],
+  token_endpoint_auth_method: "none",
+};
+
+type Registered = { client_id: string; client_secret?: string };
+const clientRow = async (clientId: string) =>
+  rowsOf<{ grant_types: string[]; skip_consent: boolean | null; user_id: string | null; client_credentials_scopes: string[] }>(
+    await app.db.execute(sql`select grant_types, skip_consent, user_id, client_credentials_scopes from oauth_client where client_id = ${clientId}`),
+  )[0];
+
+describe("agents registering themselves", () => {
+  it("are offered the registration address", async () => {
+    const meta = await (await app.send(new Request(`${BASE_URL}/.well-known/oauth-authorization-server/api/auth`))).json();
+    expect(meta.registration_endpoint).toBe(`${BASE_URL}/api/auth/oauth2/register`);
   });
 
-  it("accepts metadata documents only from Claude's hosts", () => {
-    expect(isClaudeClientDocument("https://claude.ai/oauth/client.json")).toBe(true);
-    expect(isClaudeClientDocument("https://CLAUDE.com/x")).toBe(true);
-    for (const url of [
-      "http://claude.ai/x", "https://claude.ai:8443/x", "https://claude.ai@evil.example/x", "https://claude.ai.evil.example/x",
-      "https://sub.claude.ai/x", "https://evil.example/claude.ai", "not a url",
-    ]) expect(isClaudeClientDocument(url), url).toBe(false);
+  it("registers Claude Code, Cursor and VS Code as they ask, with only the code and refresh grants", async () => {
+    for (const body of [claudeCode, cursor, vscode]) {
+      const res = await registerRaw(body);
+      expect(res.status, body.client_name).toBe(201);
+      const { client_id } = (await res.json()) as Registered;
+      const row = await clientRow(client_id);
+      expect(row.grant_types, body.client_name).toEqual(["authorization_code", "refresh_token"]);
+      expect(row.skip_consent, body.client_name).toBeNull();
+      expect(row.user_id, body.client_name).toBeNull();
+      expect(row.client_credentials_scopes, body.client_name).toEqual([]);
+    }
+  });
+
+  it("refuses a registration that lists any address no known agent uses, or none, and keeps nothing", async () => {
+    const before = await clientRows();
+    for (const redirect_uris of [
+      ["https://evil.example/callback"], [LOOPBACK, "https://evil.example/callback"], [CLAUDE_CALLBACK, `${CLAUDE_CALLBACK}/`],
+      ["https://127.0.0.1/cb"], ["http://127.0.0.1.evil.com/cb"], ["javascript:alert(1)"], ["myapp://callback"], [], [7], "http://localhost/cb",
+    ]) {
+      const res = await registerRaw({ ...claudeCode, redirect_uris });
+      expect(res.status, JSON.stringify(redirect_uris)).toBe(400);
+      expect(((await res.json()) as { error: string }).error, JSON.stringify(redirect_uris)).toBe("invalid_redirect_uri");
+    }
+    const res = await registerRaw({ ...claudeCode, redirect_uris: undefined });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("invalid_redirect_uri");
+    expect(await clientRows()).toBe(before);
+  });
+
+  it("refuses a registration that asks to skip the consent page or to be told of logouts, and keeps nothing", async () => {
+    const before = await clientRows();
+    for (const extra of [
+      { skip_consent: true }, { skip_consent: false }, { skip_consent: "true" }, { backchannel_logout_uri: "https://example.com/logout" },
+      { backchannel_logout_session_required: true },
+    ]) {
+      const res = await registerRaw({ ...claudeCode, ...extra });
+      expect(res.status, JSON.stringify(extra)).toBe(400);
+      expect(((await res.json()) as { error: string }).error, JSON.stringify(extra)).toBe("invalid_client_metadata");
+    }
+    expect(await clientRows()).toBe(before);
+  });
+
+  it("never grants a registration the client-credentials grant, which needs no member", async () => {
+    const res = await registerRaw({ ...claudeCode, grant_types: ["authorization_code", "refresh_token", "client_credentials"] });
+    if (res.status === 201) {
+      const { client_id } = (await res.json()) as Registered;
+      expect((await clientRow(client_id)).grant_types).not.toContain("client_credentials");
+    } else {
+      expect(res.status).toBe(400);
+    }
+    const only = await registerRaw({ ...claudeCode, grant_types: ["client_credentials"], response_types: undefined });
+    expect(only.status).toBe(400);
+  });
+
+  it("still limits registrations per address", async () => {
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) statuses.push((await registerRaw({ ...claudeCode, client_name: `Burst ${i}` }, "192.0.2.250")).status);
+    expect(statuses.slice(0, 5).every((s) => s !== 429)).toBe(true);
+    expect(statuses[5]).toBe(429);
+  });
+
+  it("asks the member every time, sends the code only to the agent's own address, and names the agent in the op log", async () => {
+    const { userId, cookie } = await app.signIn("hedy@gmail.com");
+    const { client_id: clientId } = (await (await registerRaw(cursor)).json()) as Registered;
+    const elsewhere = await app.authorize({ clientId, cookie, redirectUri: "https://evil.example/callback" });
+    expect(elsewhere.searchParams.get("error")).toBe("invalid_redirect");
+
+    const { verifier, challenge } = app.pkce();
+    const asked = await app.authorize({ clientId, cookie, challenge, redirectUri: CURSOR_CALLBACK, prompt: "none" });
+    expect(asked.pathname).toBe("/consent");
+    const back = await app.decide({ cookie, consentUrl: asked, accept: true });
+    expect(back.href.startsWith(`${CURSOR_CALLBACK}?`)).toBe(true);
+    const tokens = (await (await app.token({
+      grant_type: "authorization_code", code: back.searchParams.get("code")!, redirect_uri: CURSOR_CALLBACK,
+      client_id: clientId, code_verifier: verifier, resource: MCP_URL,
+    })).json()) as { access_token: string };
+    expect(await resolveConnectorCaller(app.db, claimsOf(tokens.access_token))).toMatchObject({ ok: true, agent: "cursor" });
+    expect((await app.authorize({ clientId, cookie, redirectUri: CURSOR_CALLBACK })).pathname).toBe("/consent");
+
+    const made = await app.callTool(tokens.access_token, "create_project", { name: "From Cursor", format: "short_9x16" });
+    expect(made.isError, made.text).toBe(false);
+    const [row] = rowsOf<{ created_by: string }>(await app.db.execute(sql`select created_by from projects where name = 'From Cursor'`));
+    expect(row.created_by).toBe(`agent:cursor:${userId}`);
+    const listed = await app.callTool(tokens.access_token, "list_projects");
+    expect(listed.text).toContain("Cursor (for Hedy)");
   });
 });
 
 describe("what the sign-in server refuses", () => {
-  it("1. registers no app, whatever addresses it lists", async () => {
-    const before = await clientRows();
-    for (const redirectUris of [[CLAUDE_CALLBACK], ["https://evil.example/callback"], [CLAUDE_CALLBACK, "https://evil.example/callback"]]) {
-      const res = await app.register({ redirectUris });
-      expect(res.status, redirectUris.join(" ")).toBe(403);
-      expect(((await res.json()) as { error: string }).error).toBe("access_denied");
-    }
-    expect(await clientRows()).toBe(before);
-  });
 
   it("2. never sends a member to another address, even for an app row that lists one", async () => {
     await app.db.execute(sql`

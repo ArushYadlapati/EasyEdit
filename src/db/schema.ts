@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import type { AgentKind } from "@/lib/connector/agents";
 import type { FormatId, Op, TimelineDoc } from "@/lib/timeline";
 import { user } from "./auth-schema";
 
@@ -146,5 +147,33 @@ export const assets = pgTable(
     // One unfinished upload per member and file: choosing the same file again finds it.
     uniqueIndex("assets_unfinished_upload_unique").on(t.uploadedBy, t.fileName, t.sizeBytes, t.lastModifiedMs).where(sql`${t.status} = 'uploading'`),
     index("assets_created_at_idx").on(t.createdAt),
+  ],
+);
+
+// A member's personal access token for an AI agent that cannot sign in through a browser and sends a header instead.
+// Only the sha256 of the token is kept; the token itself is shown once, when it is made. The agent kinds are listed
+// here as in AGENT_KINDS (src/lib/connector/agents.ts): adding a kind there needs a migration that widens the check.
+export const agentToken = pgTable(
+  "agent_token",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    agent: text("agent").$type<AgentKind>().notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    // The token's last 4 characters, so the member can tell their tokens apart.
+    preview: text("preview").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at"),
+    expiresAt: timestamp("expires_at"),
+  },
+  (t) => [
+    check(
+      "agent_token_agent_check",
+      sql`${t.agent} in ('claude', 'chatgpt', 'claude-code', 'cursor', 'vscode', 'codex', 'gemini-cli', 'openai-api', 'other')`,
+    ),
+    index("agent_token_user_id_idx").on(t.userId),
   ],
 );

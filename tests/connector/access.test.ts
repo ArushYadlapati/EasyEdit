@@ -24,9 +24,11 @@ const refresh = (c: { refreshToken?: string; clientId: string }) =>
   app.token({ grant_type: "refresh_token", refresh_token: c.refreshToken!, client_id: c.clientId });
 
 describe("who is calling", () => {
-  it("a connected member resolves with the role they have now", async () => {
+  it("a connected member resolves with the role they have now, and the agent their app is", async () => {
     const c = await app.connect("ada@gmail.com");
-    expect(await who(c)).toEqual({ ok: true, user: { id: c.userId, email: "ada@gmail.com", name: "Ada", image: null, role: "editor" } });
+    expect(await who(c)).toEqual({
+      ok: true, user: { id: c.userId, email: "ada@gmail.com", name: "Ada", image: null, role: "editor" }, agent: "claude",
+    });
     await setRole(app.db, "ada@gmail.com", "viewer");
     expect(await who(c)).toMatchObject({ ok: true, user: { role: "viewer" } });
     expect(await connectedEmails(app.db)).toContain("ada@gmail.com");
@@ -104,7 +106,7 @@ describe("who is calling", () => {
     expect(ended.headers.get("www-authenticate")).toBe(
       `Bearer error="invalid_token", error_description="The connection was ended", resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource/api/mcp"`,
     );
-    expect(await ended.json()).toMatchObject({ error: { message: "Claude was disconnected from this account. Connect again." } });
+    expect(await ended.json()).toMatchObject({ error: { message: "This AI agent was disconnected from your EasyEdit account. Connect it again." } });
   });
 
   it("signing out of the website leaves the Claude connection working", async () => {

@@ -147,7 +147,7 @@ describe("create_project", () => {
     await createProjectTool(ctx, { name: "One", format: "short_9x16" });
     await createProjectTool(ctx, { name: "Two", format: "short_9x16" });
     expect(await createProjectTool(ctx, { name: "Three", format: "short_9x16" })).toEqual({
-      isError: true, text: "Claude has created 2 projects for you in the last day, which is the limit. Use an existing project, or create one in the app.",
+      isError: true, text: "Your AI agents have created 2 projects for you in the last day, which is the limit. Use an existing project, or create one in the app.",
     });
     expect(await rows(db)).toHaveLength(2);
     await db.execute(sql`update projects set created_at = now() - interval '25 hours' where name = 'One'`);
@@ -180,11 +180,30 @@ describe("the write budget", () => {
     expect(await checkWriteBudget(db, "claude:u1", { ...LOOSE, connectorWritesPerMinute: 2 })).toEqual({ ok: true });
   });
 
+  it("shares one allowance across all of a member's agents", async () => {
+    const { db } = await withTwoChanges();
+    // Claude made both changes; Cursor and ChatGPT for the same member are already at the limit too.
+    const two = { ...LOOSE, connectorWritesPerMinute: 2 };
+    expect((await checkWriteBudget(db, "agent:cursor:u1", two)).ok).toBe(false);
+    expect((await checkWriteBudget(db, "agent:chatgpt:u1", two)).ok).toBe(false);
+    // Another member's agents, and an id that only looks like an agent of this member, are not counted together.
+    expect(await checkWriteBudget(db, "agent:cursor:u2", two)).toEqual({ ok: true });
+    expect(await checkWriteBudget(db, "agent:cursor:u1%", two)).toEqual({ ok: true });
+  });
+
+  it("shares the daily project count across all of a member's agents", async () => {
+    const db = await makeTestDb();
+    const claude = (await toolContext(db)).actor;
+    await createProject(db, claude, { name: "By Claude", format: "short_9x16" });
+    expect(await checkProjectBudget(db, "agent:codex:u1", { connectorProjectsPerDay: 1 })).toMatchObject({ ok: false });
+    expect(await checkProjectBudget(db, "agent:codex:u2", { connectorProjectsPerDay: 1 })).toEqual({ ok: true });
+  });
+
   it("counts one actor's stored change data over the last day", async () => {
     const { db } = await withTwoChanges();
     const tight = { ...LOOSE, connectorBytesPerDay: 1 };
     expect(await checkWriteBudget(db, "claude:u1", tight)).toEqual({
-      ok: false, message: "Today's allowance for changes made through Claude is used up. It frees up over the next 24 hours. Editing in the app still works.",
+      ok: false, message: "Today's allowance for changes made through your AI agents is used up. It frees up over the next 24 hours. Editing in the app still works.",
     });
     expect(await checkWriteBudget(db, "claude:u2", tight)).toEqual({ ok: true });
     await db.execute(sql`update project_ops set created_at = now() - interval '25 hours'`);

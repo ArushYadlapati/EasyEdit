@@ -2,11 +2,13 @@ import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { mcp } from "@better-auth/mcp";
+import { getAuthenticatorName, passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { getDb } from "@/db";
 import { makeSessionCreateBefore, makeUserCreateBefore } from "@/lib/auth-hooks";
-import { connectorBeforeHook, isClaudeClientDocument, isClaudeRedirect } from "@/lib/connector/auth-rules";
+import { isAllowedClientDocument, isAllowedRedirect } from "@/lib/connector/agents";
+import { connectorBeforeHook } from "@/lib/connector/auth-rules";
 import { DYNAMIC_REGISTRATION, mcpResourceUrl } from "@/lib/connector/config";
 import { requiredEnv } from "@/lib/env";
 
@@ -50,21 +52,44 @@ function createAuth() {
         consentPage: "/consent",
         allowDynamicClientRegistration: DYNAMIC_REGISTRATION,
         allowUnauthenticatedClientRegistration: DYNAMIC_REGISTRATION,
+        // Desktop agents register loopback or app-scheme addresses without saying they are native apps.
+        clientRegistrationDefaultApplicationType: "infer",
         grantTypes: ["authorization_code", "refresh_token"],
-        // A member is only ever sent back to Claude, whatever an app's document or stored row lists.
-        validateRedirectUri: (uri, _registered, matches) => matches && isClaudeRedirect(uri),
+        // A member is only ever sent back to a known agent or their own computer, whatever an app's row lists.
+        validateRedirectUri: (uri, _registered, matches) => matches && isAllowedRedirect(uri),
         // Nobody manages apps through the API.
         clientPrivileges: () => false,
       }),
       cimd({
         fetchClientMetadataResource,
         metadataProfile: "mcp-2026-07-28",
-        isMetadataDocumentUrlAllowed: (url) => isClaudeClientDocument(url),
+        isMetadataDocumentUrlAllowed: (url) => isAllowedClientDocument(url),
+      }),
+      passkey({
+        rpID: new URL(requiredEnv("BETTER_AUTH_URL")).hostname,
+        rpName: "EasyEdit",
+        origin: new URL(requiredEnv("BETTER_AUTH_URL")).origin,
+        // No authenticatorAttachment, so 1Password, phones and security keys are offered, not only this device.
+        authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+        registration: {
+          // Named after the passkey manager when it says which it is. Apple's all-zero AAGUID gets "Passkey".
+          afterVerification: ({ verification }) => ({
+            name: getAuthenticatorName(verification.registrationInfo?.aaguid) ?? "Passkey",
+          }),
+        },
       }),
     ],
     // On everywhere, not only in production. Counted in the database: an in-memory count would
     // reset with every new server instance.
-    rateLimit: { enabled: true, storage: "database" },
+    rateLimit: {
+      enabled: true,
+      storage: "database",
+      // A passkey sign-in gets the same limit as Better Auth's own sign-in rule.
+      customRules: {
+        "/passkey/verify-authentication": { window: 10, max: 3 },
+        "/passkey/generate-authenticate-options": { window: 10, max: 10 },
+      },
+    },
     // The jwt plugin's session-to-token endpoint is off. The only tokens handed out are the connector's.
     disabledPaths: ["/token"],
     hooks: { before: connectorBeforeHook() },

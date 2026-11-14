@@ -108,6 +108,11 @@ describe("activity helpers", () => {
     expect(editingLabel(["Grace", "Claude"])).toBe("2 people are editing…");
     expect(editingLabel(["Claudette"])).toBe("Claudette is editing…");
     expect(editingLabel(["Claudette", "Claude (for Ada)"])).toBe("2 people are editing…");
+    expect(editingLabel(["Cursor (for Ada)", "Cursor"])).toBe("Cursor is editing…");
+    expect(editingLabel(["Claude Code (for Ada)"])).toBe("Claude Code is editing…");
+    expect(editingLabel(["VS Code (Copilot) (for Ada)"])).toBe("VS Code (Copilot) is editing…");
+    expect(editingLabel(["AI agent (for Ada)"])).toBe("AI agent is editing…");
+    expect(editingLabel(["Claude (for Ada)", "ChatGPT (for Grace)"])).toBe("2 people are editing…");
   });
 
   it("pages the log 50 changes at a time", () => {
