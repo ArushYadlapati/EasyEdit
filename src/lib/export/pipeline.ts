@@ -5,6 +5,8 @@ import { ExportError, failureOf } from "@/lib/export/messages";
 import { AUDIO, type Acceleration, type VideoSettings } from "@/lib/export/presets";
 import type { ExportFailure, ExportJob, FromWorker } from "@/lib/export/protocol";
 import { PROGRESS_INTERVAL_MS, audioBlocks, frameCount, frameTime, isKeyFrame, type AudioBlock } from "@/lib/export/schedule";
+import { createSoundPool, type SoundIO, type SoundPool } from "@/lib/export/sound-pool";
+import { soundSchedule } from "@/lib/export/sound-schedule";
 import type { ResolvedSource } from "@/lib/render/compositor";
 
 // The order of steps for one export inside the worker, against an injected encoder and decoders. Each step either
@@ -17,7 +19,7 @@ export type OpenOptions = { video: VideoSettings; acceleration: Acceleration; au
 export type PipelineOutput = {
   draw(frame: number, sources: ReadonlyMap<string, ResolvedSource>): void; // paints the frame; a clip with no picture here draws its placeholder
   addFrame(frame: number, seconds: number, duration: number, keyFrame: boolean): Promise<void>; // encodes what is painted; resolves when there is room for the next
-  addSilence(startSample: number, sampleCount: number): Promise<void>;
+  addSound(startSample: number, sampleCount: number, data: Float32Array): Promise<void>; // interleaved stereo f32, sampleCount × 2
   finish(): Promise<number>; // closes the file; its size in bytes
   cancel(): Promise<void>; // releases the encoders
 };
@@ -29,6 +31,7 @@ export type PipelineIO = {
   canEncode(video: VideoSettings, acceleration: Acceleration): Promise<boolean>;
   canEncodeAudio(): Promise<boolean>;
   media: MediaIO;
+  sound: SoundIO;
   open(options: OpenOptions): Promise<PipelineOutput>;
 };
 
@@ -37,7 +40,7 @@ export type PipelineControl = { onProgress(framesDone: number, totalFrames: numb
 export type PipelineResult = Extract<FromWorker, { type: "done" | "failed" }>;
 
 // What is still open when the steps end: released after the result, never waited on.
-type Held = { out: PipelineOutput | null; pool: DecodePool | null };
+type Held = { out: PipelineOutput | null; pool: DecodePool | null; sounds: SoundPool | null };
 
 const failed = (code: ExportFailure, detail = ""): PipelineResult => ({ type: "failed", code, detail });
 
@@ -100,8 +103,24 @@ async function steps(job: ExportJob, io: PipelineIO, control: PipelineControl, h
   }
   held.pool = pool;
 
-  // 7–8. The sound track where the browser can encode AAC, and the encoder.
-  const audio = await answer(() => io.canEncodeAudio());
+  // 7. A sound track only when the page planned one and this worker can encode AAC: the page and the worker ask
+  // separately, so a page that said "no sound track" never gets a silent one.
+  const audio = job.sound && (await answer(() => io.canEncodeAudio()));
+
+  // 7b. Every sounding file can be decoded here, before the file is made.
+  let sounds: SoundPool | null = null;
+  if (audio) {
+    try {
+      sounds = createSoundPool(soundSchedule(job.doc, job.media.sounds, fps, AUDIO.sampleRate), job.media.files, io.sound);
+      held.sounds = sounds;
+      await sounds.open();
+    } catch (error) {
+      const { code, detail } = failureOf(error, "sound");
+      return failed(code, detail);
+    }
+  }
+
+  // 8. The encoder.
   let out: PipelineOutput;
   try {
     out = await io.open({ video, acceleration, audio });
@@ -115,7 +134,13 @@ async function steps(job: ExportJob, io: PipelineIO, control: PipelineControl, h
   let reported: number | null = null;
   for (let n = 0; n < total; n++) {
     const block = blocks.get(n);
-    if (block) await as("encoder", () => out.addSilence(block.startSample, block.sampleCount));
+    if (block && sounds) {
+      const data = await sounds.block(block).catch((error: unknown) => {
+        const { code, detail } = failureOf(error, "sound"); // the pool names media, sound or encoder itself
+        throw new ExportError(code, detail);
+      });
+      await as("encoder", () => out.addSound(block.startSample, block.sampleCount, data));
+    }
     const sources = await pool.frame(n).catch((error: unknown) => {
       const { code, detail } = failureOf(error, "decode"); // the pool names media, decode or encoder itself
       throw new ExportError(code, detail);
@@ -143,15 +168,16 @@ async function steps(job: ExportJob, io: PipelineIO, control: PipelineControl, h
 // Never rejects: anything unexpected is an unknown failure. The result settles first; what is still open is released
 // after it, one after the other, without waiting.
 export function runPipeline(job: ExportJob, io: PipelineIO, control: PipelineControl): Promise<PipelineResult> {
-  const held: Held = { out: null, pool: null };
+  const held: Held = { out: null, pool: null, sounds: null };
   const result = steps(job, io, control, held).catch((error: unknown): PipelineResult => {
     const { code, detail } = failureOf(error, "unknown");
     return failed(code, detail);
   });
   void result.then(() => {
-    const { out, pool } = held;
+    const { out, pool, sounds } = held;
     if (out) letGo(() => out.cancel());
     if (pool) letGo(() => pool.close());
+    if (sounds) letGo(() => sounds.close());
   });
   return result;
 }

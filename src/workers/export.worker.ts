@@ -4,6 +4,7 @@
 import {
   ALL_FORMATS,
   AudioSample,
+  AudioSampleSink,
   AudioSampleSource,
   BlobSource,
   CanvasSink,
@@ -15,6 +16,7 @@ import {
   StreamTarget,
   type WrappedCanvas,
 } from "mediabunny";
+import { canEncodeAac } from "@/lib/export/aac";
 import { CHUNK_BYTES, type ChunkBridge } from "@/lib/export/chunk-bridge";
 import { fileGone, type MediaIO } from "@/lib/export/decode-pool";
 import { jobFontResolver, type FontFaceSpec } from "@/lib/export/fonts";
@@ -22,6 +24,7 @@ import { exportPlaceholderLabel } from "@/lib/export/media-schedule";
 import { runPipeline, type OpenOptions, type PipelineIO, type PipelineOutput } from "@/lib/export/pipeline";
 import { AUDIO, KEYFRAME_SECONDS, encoderConfig, type Acceleration, type VideoSettings } from "@/lib/export/presets";
 import type { ExportJob, ToWorker } from "@/lib/export/protocol";
+import type { SoundIO } from "@/lib/export/sound-pool";
 import { createWorkerSession } from "@/lib/export/worker-session";
 import { drawFrame, type ResolvedSource } from "@/lib/render/compositor";
 import { decodeImage } from "@/lib/render/decode-image";
@@ -62,16 +65,6 @@ function measure(font: string, text: string): number {
 async function canEncode(video: VideoSettings, acceleration: Acceleration): Promise<boolean> {
   try {
     return (await VideoEncoder.isConfigSupported(encoderConfig(video, acceleration))).supported === true;
-  } catch {
-    return false;
-  }
-}
-
-async function canEncodeAudio(): Promise<boolean> {
-  try {
-    if (typeof AudioEncoder === "undefined") return false;
-    const config = { codec: AUDIO.codec, sampleRate: AUDIO.sampleRate, numberOfChannels: AUDIO.channels, bitrate: AUDIO.bitrate };
-    return (await AudioEncoder.isConfigSupported(config)).supported === true;
   } catch {
     return false;
   }
@@ -118,6 +111,34 @@ const media: MediaIO = {
   },
 };
 
+// The sound decoders: their own Input per file, apart from the pictures', so one letting go never cuts the other.
+const soundIO: SoundIO = {
+  async probe(blob) {
+    // A read-ahead that fails while nothing waits for it is dropped: the read that needs those bytes fails through its reader.
+    const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob, { handleUnhandledError: () => {} }) });
+    try {
+      const track = await input.getPrimaryAudioTrack();
+      if (!track) return "none";
+      return (await track.canDecode()) ? "decodable" : "undecodable";
+    } finally {
+      input.dispose();
+    }
+  },
+  async open(blob) {
+    // A read-ahead that fails while nothing waits for it is dropped: the read that needs those bytes fails through its reader.
+    const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob, { handleUnhandledError: () => {} }) });
+    try {
+      const track = await input.getPrimaryAudioTrack();
+      if (!track) throw new Error("The file has no sound track.");
+      const sink = new AudioSampleSink(track);
+      return { packets: (from, to) => sink.samples(from, to), dispose: () => input.dispose() };
+    } catch (error) {
+      input.dispose();
+      throw error;
+    }
+  },
+};
+
 // A sink's canvases as the pool's pictures. Returning early stops the sink and closes what it holds. The last two
 // canvases it gave (the sink's pool) are shrunk to nothing at the end, so their memory goes at once, not whenever
 // the worker's garbage collector runs: a montage of many short cuts makes a sink per cut.
@@ -159,6 +180,7 @@ async function open(job: ExportJob, options: OpenOptions, bridge: ChunkBridge): 
     keyFrameInterval: KEYFRAME_SECONDS,
   });
   output.addVideoTrack(picture, { frameRate: video.fps }); // snaps every timestamp to the frame rate: the length is exact
+  // No `transform` here: its resampler holds five seconds back, and every block is already 48 kHz stereo.
   const sound = options.audio ? new AudioSampleSource({ codec: "aac", quality: new Quality({ bitrate: AUDIO.bitrate }) }) : null;
   if (sound) output.addAudioTrack(sound);
   await output.start();
@@ -167,13 +189,16 @@ async function open(job: ExportJob, options: OpenOptions, bridge: ChunkBridge): 
     draw: (frame, sources) =>
       drawFrame(ctx, job.doc, frame, { resolveFont, placeholderLabel, resolveSource: (clip) => sources.get(clip.id) ?? null }),
     addFrame: (_frame, seconds, duration, keyFrame) => picture.add(seconds, duration, { keyFrame }),
-    async addSilence(startSample, sampleCount) {
+    async addSound(startSample, _sampleCount, data) {
       const sample = new AudioSample({
-        data: new Float32Array(sampleCount * AUDIO.channels), format: "f32",
+        data, format: "f32",
         numberOfChannels: AUDIO.channels, sampleRate: AUDIO.sampleRate, timestamp: startSample / AUDIO.sampleRate,
       });
-      await sound?.add(sample);
-      sample.close();
+      try {
+        await sound?.add(sample);
+      } finally {
+        sample.close();
+      }
     },
     async finish() {
       picture.close();
@@ -187,7 +212,7 @@ async function open(job: ExportJob, options: OpenOptions, bridge: ChunkBridge): 
 
 // The PipelineIO for one job.
 function makeIO(job: ExportJob, bridge: ChunkBridge): PipelineIO {
-  return { supported, loadFace, measure, canEncode, canEncodeAudio, media, open: (options) => open(job, options, bridge) };
+  return { supported, loadFace, measure, canEncode, canEncodeAudio: canEncodeAac, media, sound: soundIO, open: (options) => open(job, options, bridge) };
 }
 
 const session = createWorkerSession(
