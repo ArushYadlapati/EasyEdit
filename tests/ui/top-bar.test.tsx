@@ -340,11 +340,11 @@ it("Edit and View are greyed once the project is deleted", () => {
   expect(trigger("View").disabled).toBe(true);
 });
 
-it("the top row reads Projects, Edit, View, the name, Undo, Redo, Settings, Keyboard shortcuts", () => {
+it("the top row reads Projects, Edit, View, the name, Undo, Redo, Settings, Keyboard shortcuts, Export", () => {
   showMenus();
   const header = screen.getByRole("banner");
   const names = [...header.querySelectorAll<HTMLElement>("a, button")].map((el) => el.getAttribute("aria-label") ?? el.textContent);
-  expect(names).toEqual(["Projects", "Edit", "View", "Qual recap", "Undo", "Redo", "Settings", "Keyboard shortcuts"]);
+  expect(names).toEqual(["Projects", "Edit", "View", "Qual recap", "Undo", "Redo", "Settings", "Keyboard shortcuts", "Export"]);
   // For a viewer the name is a heading, between View and the "View only" badge.
   cleanup();
   showMenus({ canEdit: false });
