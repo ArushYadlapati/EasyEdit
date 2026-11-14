@@ -160,6 +160,30 @@ describe("startThumbnailTrigger", () => {
     expect(upload.mock.calls.map(([version]) => version)).toEqual([6, 7, 8]);
   });
 
+  it("waits while an export runs, and a capture under way stops when one starts", async () => {
+    const { capture } = setup();
+    const s = () => store.getState();
+    s().setExporting(true);
+    saved(6);
+    await wait(10_000);
+    expect(capture).not.toHaveBeenCalled();
+    s().setExporting(false);
+    await wait(4_000);
+    expect(capture).toHaveBeenCalledTimes(1);
+
+    const held = deferred<ThumbnailResult>();
+    let current = () => true;
+    capture.mockImplementationOnce((_doc, isCurrent) => {
+      current = isCurrent;
+      return held.promise;
+    });
+    saved(7);
+    await wait(4_000);
+    expect([capture.mock.calls.length, current()]).toEqual([2, true]);
+    s().setExporting(true);
+    expect(current()).toBe(false);
+  });
+
   it("never for a viewer or a deleted project", async () => {
     const viewer = setup({ init: { canEdit: false }, storedVersion: null });
     await wait(60_000);
