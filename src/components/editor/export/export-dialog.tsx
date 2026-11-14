@@ -89,7 +89,8 @@ function useChoices({ support, selected }: ChoiceProps) {
     const tooLong = !deps.savesToFile && bytes !== null && bytes > MEMORY_LIMIT_BYTES;
     const blocked = empty ? failureMessage("empty") : (waiting ?? (tooLong ? failureMessage("too-long") : null));
     // Save frame is off only while the media is not ready: a too-long video is no reason not to save one frame of it.
-    const canSaveFrame = option !== null && !empty && waiting === null;
+    // A frame has no sound, so only its pictures' media counts.
+    const canSaveFrame = option !== null && !empty && waitingReason(planExportMedia(doc, { assets, loaded })) === null;
     return { doc, plan, options, option, frames, bytes, empty, blocked, canStart: option !== null && blocked === null, canSaveFrame };
   }, [doc, assets, loaded, support, selected, deps]);
 }
