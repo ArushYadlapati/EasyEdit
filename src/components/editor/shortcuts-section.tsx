@@ -12,11 +12,12 @@ import { useIsMac } from "./use-shortcuts";
 const GROUPS: Shortcut["group"][] = ["Playback", "Editing", "Timeline", "General"];
 const LABELS = new Map<CommandId, string>(SHORTCUTS.map((s) => [s.command, s.label]));
 
-// What the mouse does on the preview with a key held. These are not shortcuts, so they cannot be changed.
-type MouseRow = { label: string; keys: ("Shift" | "Alt")[]; action: string };
+// What the mouse does on the preview with a key held. These are not shortcuts, so they cannot be changed. "Free" is
+// Cmd on a Mac and Ctrl or the Windows key elsewhere.
+type MouseRow = { label: string; keys: ("Shift" | "Alt" | "Free")[]; action: string };
 const PREVIEW_ROWS: MouseRow[] = [
   { label: "Move along one line", keys: ["Shift"], action: "drag a clip" },
-  { label: "Keep the shape while resizing", keys: ["Shift"], action: "drag a handle" },
+  { label: "Resize freely (squash or stretch)", keys: ["Free"], action: "drag a handle" },
   { label: "Crop instead of resizing", keys: ["Alt"], action: "drag a handle" },
   { label: "Turn in 15° steps", keys: ["Shift"], action: "drag the turn handle" },
   { label: "Type in place", keys: [], action: "double-click text" },
@@ -41,6 +42,19 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
       <span className="flex shrink-0 items-center gap-1 text-xs text-ed-muted">{children}</span>
     </li>
   );
+}
+
+function MouseKey({ name, isMac }: { name: MouseRow["keys"][number]; isMac: boolean }) {
+  if (name === "Free" && !isMac) {
+    return (
+      <>
+        <Kbd>Ctrl</Kbd>
+        <span className="text-ed-muted">or</span>
+        <Kbd>Win</Kbd>
+      </>
+    );
+  }
+  return <Kbd>{name === "Free" ? "⌘" : name === "Alt" && isMac ? "⌥" : name}</Kbd>;
 }
 
 function Keys({ keys, dim, isMac }: { keys: string[]; dim: boolean; isMac: boolean }) {
@@ -204,7 +218,7 @@ export function ShortcutsSection() {
           <Row key={row.label} label={row.label}>
             {row.keys.map((key) => (
               <Fragment key={key}>
-                <Kbd>{key === "Alt" && isMac ? "⌥" : key}</Kbd>
+                <MouseKey name={key} isMac={isMac} />
                 <span aria-hidden>+</span>
               </Fragment>
             ))}

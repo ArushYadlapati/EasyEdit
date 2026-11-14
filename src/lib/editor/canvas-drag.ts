@@ -8,7 +8,9 @@ import { findClip } from "./store";
 
 // Moving, turning, resizing and cropping a clip on the preview by hand. A drag records the clip as it was at the press;
 // resolveCanvasDrag turns a pointer position (project pixels) and the modifier keys held now into ops, starting again
-// from the press every time, so Shift and Alt can change mid-drag. Whether the ops may be applied is left to applyOps.
+// from the press every time, so Shift, Alt and the free key can change mid-drag. Whether the ops may be applied is
+// left to applyOps. Snapping only pulls a clip toward a centre line or a quarter turn it is closer to than at the
+// press, so a clip that starts on one, or moves away from one, follows the pointer.
 
 export const SCALE_MIN = 0.01, SCALE_MAX = 10, ROTATE_STEP = 15, ROTATE_SNAP_DEG = 3, SNAP_CSS_PX = 6;
 
@@ -39,10 +41,11 @@ export function beginCanvasDrag(doc: TimelineDoc, item: CanvasItem, grip: Grip, 
   };
 }
 
-// pointer in project pixels; snapPx: how near the frame's centre lines a moved centre snaps, in project pixels.
-export type CanvasDragInput = { pointer: Point; shift: boolean; alt: boolean; snapping: boolean; snapPx: number };
+// pointer in project pixels; free: the free key is held (Cmd, or away from a Mac Ctrl or the Windows key), so a
+// handle drag without Shift or Alt squashes or stretches; snapPx: how near the frame's centre lines a moved centre snaps, in project pixels.
+export type CanvasDragInput = { pointer: Point; shift: boolean; alt: boolean; free: boolean; snapping: boolean; snapPx: number };
 
-// guides: the frame's centre lines a moved clip's centre sits on, in project pixels.
+// guides: the frame's centre lines a moved clip's centre snapped onto, in project pixels.
 export type CanvasDragResult = { ops: OpInput[]; label: "position change" | "size change" | "crop"; guides: { x: number | null; y: number | null } };
 
 const NO_GUIDES = { x: null, y: null };
@@ -84,16 +87,17 @@ function resolveMove(drag: Extract<CanvasDrag, { type: "move" }>, input: CanvasD
   }
   let x = drag.from.x + dx / W;
   let y = drag.from.y + dy / H;
+  // A centre snaps onto a centre line within snapPx of it, and only when it is closer to the line than at the press.
+  const snaps = (now: number, from: number, size: number) =>
+    input.snapping && Math.abs(now - 0.5) * size <= input.snapPx && Math.abs(now - 0.5) < Math.abs(from - 0.5);
   const guides: CanvasDragResult["guides"] = { x: null, y: null };
-  if (input.snapping) {
-    if (held !== "x" && Math.abs(x * W - W / 2) <= input.snapPx) {
-      x = 0.5;
-      guides.x = W / 2;
-    }
-    if (held !== "y" && Math.abs(y * H - H / 2) <= input.snapPx) {
-      y = 0.5;
-      guides.y = H / 2;
-    }
+  if (held !== "x" && snaps(x, drag.from.x, W)) {
+    x = 0.5;
+    guides.x = W / 2;
+  }
+  if (held !== "y" && snaps(y, drag.from.y, H)) {
+    y = 0.5;
+    guides.y = H / 2;
   }
   const patch = changedKeys({ x, y }, drag.from);
   return { ops: Object.keys(patch).length ? update(drag.clipId, patch) : [], label: "position change", guides };
@@ -105,6 +109,12 @@ function tenth(deg: number): number {
   return (r <= -180 ? r + 360 : r) + 0;
 }
 
+// How far apart two turns are, the short way round, in degrees.
+function apart(a: number, b: number): number {
+  const d = (((a - b) % 360) + 360) % 360;
+  return Math.min(d, 360 - d);
+}
+
 function resolveRotate(drag: Extract<CanvasDrag, { type: "rotate" }>, input: CanvasDragInput): CanvasDragResult {
   const { center: c, grab } = drag;
   const p = input.pointer;
@@ -112,8 +122,9 @@ function resolveRotate(drag: Extract<CanvasDrag, { type: "rotate" }>, input: Can
   if (input.shift) {
     theta = Math.round(theta / ROTATE_STEP) * ROTATE_STEP;
   } else if (input.snapping) {
+    // A turn snaps onto a quarter turn within ROTATE_SNAP_DEG of it, and only when closer to it than at the press.
     const quarter = Math.round(theta / 90) * 90;
-    if (Math.abs(theta - quarter) <= ROTATE_SNAP_DEG) theta = quarter;
+    if (Math.abs(theta - quarter) <= ROTATE_SNAP_DEG && Math.abs(theta - quarter) < apart(drag.from, quarter)) theta = quarter;
   }
   const rotation = tenth(theta);
   const unchanged = rotation === drag.from || rotation === tenth(drag.from);
@@ -131,7 +142,8 @@ const factorRange = (now: number) => ({ lo: Math.min(SCALE_MIN, now), hi: Math.m
 
 type Resize = Extract<CanvasDrag, { type: "resize" }>;
 
-// A side or corner moves, the opposite side or corner stays put in the clip's turned axes. Shift keeps the shape.
+// A side or corner moves, the opposite side or corner stays put in the clip's turned axes. The shape is kept unless
+// the free key is held without Shift.
 function resolveResize(drag: Resize, input: CanvasDragInput): CanvasDragResult {
   const { item, frame } = drag;
   const { hx, hy } = HANDLE_SIGNS[drag.handle];
@@ -152,7 +164,7 @@ function resolveResize(drag: Resize, input: CanvasDragInput): CanvasDragResult {
 
   let nx: number;
   let ny: number;
-  if (input.shift) {
+  if (input.shift || !input.free) {
     let k: number;
     if (hx !== 0 && hy !== 0) {
       // A corner: the pointer's movement projected onto the box's diagonal.

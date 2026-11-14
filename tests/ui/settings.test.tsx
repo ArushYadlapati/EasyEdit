@@ -379,7 +379,7 @@ it("the Shortcuts list shows the keys chosen in this browser", () => {
 
 const PREVIEW_ROWS: [string, string[]][] = [
   ["Move along one line", ["Shift", "drag a clip"]],
-  ["Keep the shape while resizing", ["Shift", "drag a handle"]],
+  ["Resize freely (squash or stretch)", ["Ctrl", "Win", "drag a handle"]],
   ["Crop instead of resizing", ["Alt", "drag a handle"]],
   ["Turn in 15° steps", ["Shift", "drag the turn handle"]],
   ["Type in place", ["double-click text"]],
@@ -399,10 +399,18 @@ it("the Preview group lists the mouse keys", () => {
   expect(within(group).queryAllByRole("button")).toEqual([]);
 });
 
-it("on a Mac the Preview group writes Alt as ⌥", () => {
+it("the free resize row offers Ctrl or Win away from a Mac", () => {
+  show();
+  const row = within(previewGroup()).getByText("Resize freely (squash or stretch)").closest("li")!;
+  expect(row.textContent).toBe("Resize freely (squash or stretch)CtrlorWin+drag a handle");
+});
+
+it("on a Mac the Preview group writes Alt as ⌥ and the free key as ⌘", () => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   show();
-  expect(keysOf(previewGroup(), "Crop instead of resizing")).toEqual(["⌥", "drag a handle"]);
+  const group = previewGroup();
+  expect(keysOf(group, "Crop instead of resizing")).toEqual(["⌥", "drag a handle"]);
+  expect(keysOf(group, "Resize freely (squash or stretch)")).toEqual(["⌘", "drag a handle"]);
 });
 
 it("the gear opens the section shown last", () => {

@@ -41,7 +41,9 @@ const itemOf = (doc: TimelineDoc, clipId: string, frame = 10): CanvasItem =>
 
 type Mods = Partial<Omit<CanvasDragInput, "pointer">>;
 
-const input = (pointer: Point, mods: Mods = {}): CanvasDragInput => ({ pointer, shift: false, alt: false, snapping: false, snapPx: 12, ...mods });
+// The free key is held, so a handle drag here squashes or stretches unless Shift is down; canvas-resize-keys.test.ts
+// covers the drag without it.
+const input = (pointer: Point, mods: Mods = {}): CanvasDragInput => ({ pointer, shift: false, alt: false, free: true, snapping: false, snapPx: 12, ...mods });
 
 function dragOn(doc: TimelineDoc, clipId: string, grip: Grip, grab: Point, drawn?: Point) {
   const drag = beginCanvasDrag(doc, itemOf(doc, clipId), grip, grab, drawn);
@@ -75,8 +77,8 @@ describe("moves and turns", () => {
     const r = dragOn(sampleDoc(), "x1", "body", P(540, 960))(P(594, 960), { snapping: true });
     expect(r.ops).toEqual([{ op: "update_clip", clipId: "x1", patch: { transform: { x: 0.55 } } }]);
     expect(r.label).toBe("position change");
-    // The centre stays on the middle line across, and says so.
-    expect(r.guides).toEqual({ x: null, y: 960 });
+    // The centre stays on the middle line across, where it started, so no guide shows.
+    expect(r.guides).toEqual({ x: null, y: null });
   });
 
   it("a drag moves both ways by the frame's size", () => {
@@ -94,11 +96,11 @@ describe("moves and turns", () => {
 
   it("Shift keeps the other axis off its centre line too", () => {
     const doc = patch(sampleDoc(), "x1", { y: 0.503 });
-    const r = dragOn(doc, "x1", "body", P(540, 965.76))(P(594, 967.76), { shift: true, snapping: true });
+    const r = dragOn(doc, "x1", "body", P(540, 965.76))(P(594, 963.76), { shift: true, snapping: true });
     expect(transformOf(r)).toEqual({ x: 0.55 });
     expect(r.guides).toEqual({ x: null, y: null });
-    // Without Shift the centre snaps onto the line.
-    expect(transformOf(dragOn(doc, "x1", "body", P(540, 965.76))(P(594, 967.76), { snapping: true }))).toEqual({ x: 0.55, y: 0.5 });
+    // Without Shift the centre snaps onto the line it comes closer to.
+    expect(transformOf(dragOn(doc, "x1", "body", P(540, 965.76))(P(594, 963.76), { snapping: true }))).toEqual({ x: 0.55, y: 0.5 });
   });
 
   it("the centre snaps to the middle with a guide", () => {
