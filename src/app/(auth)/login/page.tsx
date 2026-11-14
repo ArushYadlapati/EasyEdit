@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/access";
 import { isConnectorRequest, readConsentRequest } from "@/lib/connector/consent";
 import { requiredEnv } from "@/lib/env";
 import { loginErrorMessage } from "@/lib/login-error-message";
+import { PasskeySignInButton } from "./passkey-sign-in-button";
 import { SignInButton } from "./sign-in-button";
 
 const ERROR = "rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800";
@@ -35,6 +36,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           </p>
         )}
         <SignInButton />
+        <PasskeySignInButton />
       </div>
     </main>
   );
