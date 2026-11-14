@@ -20,7 +20,7 @@ export type ProjectApi = {
   putThumbnail(version: number, jpeg: Blob): Promise<ApiResult<{ saved: boolean }>>; // the dashboard picture; not an op: no version, no undo
 };
 
-const TIMEOUT_MS = 15_000;
+export const REQUEST_TIMEOUT_MS = 15_000;
 
 const NETWORK: ApiFailure = { ok: false, kind: "network" };
 
@@ -69,31 +69,39 @@ function failureFor(status: number, body: Body | null): ApiFailure {
   }
 }
 
+// Sends one request and reads its JSON body. `pick` takes the fields of a 2xx body, or null when they are missing.
+// `mapFailure` reads an error status; a fetch that threw, timed out or gave a 2xx without JSON is always a network failure.
+async function send<T, F = ApiFailure>(
+  doFetch: typeof fetch,
+  url: string,
+  init: RequestInit,
+  pick: (body: Body) => T | null,
+  mapFailure: (status: number, body: Body | null) => F | ApiFailure = failureFor,
+): Promise<({ ok: true } & T) | ApiFailure | F> {
+  let response: Response;
+  try {
+    response = await doFetch(url, { ...init, cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  } catch {
+    return NETWORK;
+  }
+  let body: Body | null = null;
+  try {
+    const parsed: unknown = await response.json();
+    if (isBody(parsed)) body = parsed;
+  } catch {
+    // Not JSON, or cut off by the time-out. An error status is still mapped, without a body.
+    if (response.ok) return NETWORK;
+  }
+  if (!response.ok) return mapFailure(response.status, body);
+  const fields = body && pick(body);
+  return fields ? { ok: true, ...fields } : NETWORK;
+}
+
 export function createProjectApi(projectId: string, fetchFn?: typeof fetch): ProjectApi {
   const doFetch: typeof fetch = fetchFn ?? ((input, init) => fetch(input, init));
   const base = `/api/projects/${encodeURIComponent(projectId)}`;
 
-  // Sends one request and reads its JSON body. `pick` takes the fields of a 2xx body, or null when they are missing.
-  async function request<T>(url: string, init: RequestInit, pick: (body: Body) => T | null): Promise<ApiResult<T>> {
-    let response: Response;
-    try {
-      response = await doFetch(url, { ...init, cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
-    } catch {
-      return NETWORK;
-    }
-    let body: Body | null = null;
-    try {
-      const parsed: unknown = await response.json();
-      if (isBody(parsed)) body = parsed;
-    } catch {
-      // Not JSON, or cut off by the time-out. An error status is still mapped, without a body.
-      if (response.ok) return NETWORK;
-    }
-    if (!response.ok) return failureFor(response.status, body);
-    const fields = body && pick(body);
-    return fields ? { ok: true, ...fields } : NETWORK;
-  }
-
+  const request = <T>(url: string, init: RequestInit, pick: (body: Body) => T | null) => send(doFetch, url, init, pick);
   const get = <T>(path: string, pick: (body: Body) => T | null) => request(`${base}${path}`, { method: "GET" }, pick);
 
   return {
@@ -135,6 +143,51 @@ export function createProjectApi(projectId: string, fetchFn?: typeof fetch): Pro
         { method: "PUT", headers: { "content-type": "image/jpeg" }, body: jpeg },
         (b) => (typeof b.saved === "boolean" ? { saved: b.saved } : null),
       );
+    },
+  };
+}
+
+export type PresenceShare = { tabId: string; clipIds: string[]; trackId: string | null; changedAgoMs: number };
+// "share-refused": the server answered, and the answer says the presence route itself is broken or refused this
+// request (a 400, 403, 405, 413, or a 404 without the NOT_FOUND code). Other failures keep their usual kinds.
+export type PresenceResult = ApiResult<{ version: number; peers: unknown[] | null }> | { ok: false; kind: "share-refused" };
+export type PresenceApi = {
+  share(input: PresenceShare): Promise<PresenceResult>; // the check for changes with this tab's selection
+  leave(tabId: string): void; // fire and forget, with keepalive; never throws
+};
+
+const SHARE_REFUSED = { ok: false, kind: "share-refused" } as const;
+
+// A refusal of the share itself (a rollback to a build without the route, a misfiring cross-site check) must not
+// revoke editing or stop the editor: the caller falls back to the plain check. A 403 here is never "forbidden".
+function shareFailureFor(status: number, body: Body | null): ApiFailure | typeof SHARE_REFUSED {
+  if (status === 400 || status === 403 || status === 405 || status === 413) return SHARE_REFUSED;
+  if (status === 404 && body?.code !== "NOT_FOUND") return SHARE_REFUSED;
+  return failureFor(status, body);
+}
+
+export function createPresenceApi(projectId: string, fetchFn?: typeof fetch): PresenceApi {
+  const doFetch: typeof fetch = fetchFn ?? ((input, init) => fetch(input, init));
+  const base = `/api/projects/${encodeURIComponent(projectId)}/presence`;
+
+  return {
+    share({ tabId, clipIds, trackId, changedAgoMs }) {
+      return send(
+        doFetch,
+        base,
+        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tabId, clipIds, trackId, changedAgoMs }) },
+        (b) => (typeof b.version === "number" ? { version: b.version, peers: Array.isArray(b.peers) ? (b.peers as unknown[]) : null } : null),
+        shareFailureFor,
+      );
+    },
+    leave(tabId) {
+      try {
+        doFetch(`${base}?tab=${encodeURIComponent(tabId)}`, { method: "DELETE", keepalive: true, credentials: "same-origin" }).catch(() => {
+          // Offline or cut off: the row ages out after LIMITS.presenceTtlMs instead.
+        });
+      } catch {
+        // A fetch that throws at once is treated the same way.
+      }
     },
   };
 }

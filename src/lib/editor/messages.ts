@@ -19,7 +19,30 @@ export const MESSAGES = {
   cropHint: "Drag a handle to crop. Next time, you can hold Alt while you drag.",
   cropHintMac: "Drag a handle to crop. Next time, you can hold Option while you drag.",
   trackHidden: "That track is hidden.",
+  alsoHere: "Also here", // the group of teammates' dots in the top bar
+  you: "You", // your own dot in that group
+  someone: "Someone", // a teammate whose name is empty
+  nothingSelected: "nothing selected",
 } as const;
+
+// What a teammate has selected, as the top bar says it: "2 clips selected", "Text 1 track selected".
+export function clipsSelected(n: number): string {
+  return n === 1 ? "1 clip selected" : `${n} clips selected`;
+}
+
+export function trackSelected(trackName: string): string {
+  return `${trackName} track selected`;
+}
+
+// A teammate's dot that moves your playhead to what they selected.
+export function goToSelection(name: string, clips: number): string {
+  return `Go to ${name}'s selection (${clips === 1 ? "1 clip" : `${clips} clips`})`;
+}
+
+// A teammate's dot with nowhere to go: "Grace Hopper, Text 1 track selected".
+export function peerStatus(name: string, summary: string): string {
+  return `${name}, ${summary}`;
+}
 
 const OP_ERROR_MESSAGES: Record<OpErrorCode, string> = {
   OVERLAP: "There's another clip in the way.",

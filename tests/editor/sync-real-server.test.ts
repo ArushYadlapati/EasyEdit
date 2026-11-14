@@ -7,8 +7,9 @@ import { user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { UNAUTHENTICATED_BODY } from "@/lib/api-errors";
 import { loadRecentActivity } from "@/lib/editor/activity";
-import { createProjectApi } from "@/lib/editor/api";
+import { createPresenceApi, createProjectApi } from "@/lib/editor/api";
 import { MESSAGES, explainOpError } from "@/lib/editor/messages";
+import { createPresenceStore } from "@/lib/editor/presence";
 import { createEditorStore, findClip } from "@/lib/editor/store";
 import { createSync } from "@/lib/editor/sync";
 import { makeOpsHandlers, makeProjectHandlers } from "@/lib/projects/handlers";
@@ -42,7 +43,7 @@ function routedFetch(db: DB, wire: Wire): typeof fetch {
     headers.set("host", new URL(ORIGIN).host);
     if (method !== "GET") headers.set("origin", wire.origin);
     const req = new Request(url, { method, headers, body: init?.body as string | undefined });
-    const route = url.pathname.match(/^\/api\/projects\/([^/]+)(\/ops|\/version)?$/);
+    const route = url.pathname.match(/^\/api\/projects\/([^/]+)(\/ops|\/version|\/presence)?$/);
     if (!route) throw new Error(`No route for ${url.pathname}`);
     const ctx = { params: Promise.resolve({ id: decodeURIComponent(route[1]) }) };
     const path = route[2] ?? "";
@@ -57,6 +58,7 @@ function routedFetch(db: DB, wire: Wire): typeof fetch {
     }
     if (path === "/ops") return ops.getSince(req, ctx);
     if (path === "/version") return projects.version(req, ctx);
+    if (path === "/presence") return method === "DELETE" ? projects.leave(req, ctx) : projects.presence(req, ctx);
     return projects.get(req, ctx);
   }) as typeof fetch;
 }
@@ -90,8 +92,8 @@ async function project() {
 }
 
 // An open editor for `who`, loaded from the stored project; `versionOffset` makes it think the
-// project is further along than it is.
-async function openEditor(db: DB, id: string, who: CurrentUser, wire: Partial<Wire> = {}, versionOffset = 0) {
+// project is further along than it is. With `presence`, its checks share its selection, as the real editor's do.
+async function openEditor(db: DB, id: string, who: CurrentUser, wire: Partial<Wire> = {}, versionOffset = 0, opts: { presence?: boolean } = {}) {
   const w: Wire = { user: who, origin: ORIGIN, requests: [], loseNextPostAnswer: false, ...wire };
   const api = createProjectApi(id, routedFetch(db, w));
   const loaded = (await getProject(db, actor(ADA), id))!;
@@ -103,11 +105,15 @@ async function openEditor(db: DB, id: string, who: CurrentUser, wire: Partial<Wi
     me: { id: who.id, name: who.name },
     canEdit: who.role !== "viewer",
   });
-  const sync = createSync({ store, api, isVisible: () => true });
+  const presence = createPresenceStore(who.id);
+  const sync = createSync({
+    store, api, isVisible: () => true,
+    ...(opts.presence && { presence: { api: createPresenceApi(id, routedFetch(db, w)), store: presence } }),
+  });
   sync.start();
   onTestFinished(() => sync.stop());
   const posts = () => w.requests.filter((r) => r.startsWith("POST")).length;
-  return { wire: w, api, store, sync, posts, st: () => store.getState() };
+  return { wire: w, api, store, sync, posts, st: () => store.getState(), peers: () => presence.getState().peers };
 }
 
 const moveX2 = (start: number): OpInput[] => [{ op: "move_clip", clipId: "x2", start }];
@@ -277,6 +283,37 @@ describe("the editor against the real server", () => {
     await until(() => !ada.st().canEdit);
     expect(ada.st()).toMatchObject({ queue: [], notice: { text: MESSAGES.lostAccess } });
     expect((await stored()).version).toBe(1);
+  });
+
+  it("two people see each other's selection through the real routes", async () => {
+    const { db, id } = await project();
+    const ada = await openEditor(db, id, ADA, {}, 0, { presence: true });
+    const grace = await openEditor(db, id, GRACE, {}, 0, { presence: true });
+    ada.st().select(["x2", "x1"]);
+    grace.st().selectTrack("t1");
+    // Each check answers with what the other had shared by then; checking again until both have heard.
+    await until(() => {
+      const done = ada.peers().length === 1 && grace.peers()[0]?.clipIds.length === 2;
+      if (!done) {
+        ada.sync.visibilityChanged();
+        grace.sync.visibilityChanged();
+      }
+      return done;
+    });
+    expect(grace.peers()).toMatchObject([{ userId: "u1", name: "Ada", clipIds: ["x1", "x2"], trackId: null }]);
+    expect(ada.peers()).toMatchObject([{ userId: "u2", name: "Grace", clipIds: [], trackId: "t1" }]);
+    expect(ada.wire.requests).not.toContain("GET /version");
+    expect(ada.wire.requests).toContain("POST /presence");
+
+    // Grace closes her editor: one DELETE, and Ada's next check no longer lists her.
+    grace.sync.stopWhenSent();
+    await until(() => grace.wire.requests.some((r) => r.startsWith("DELETE /presence?tab=")));
+    await until(() => {
+      if (ada.peers().length === 0) return true;
+      ada.sync.visibilityChanged();
+      return false;
+    });
+    expect(grace.wire.requests.filter((r) => r.startsWith("DELETE"))).toHaveLength(1);
   });
 
   it("a gap whose first page is cut short by size is caught up completely, by the sync and by the activity list", async () => {

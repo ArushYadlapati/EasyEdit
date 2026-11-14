@@ -13,7 +13,7 @@ describe("migrations", () => {
       sql`select table_name from information_schema.tables where table_schema='public' order by 1`,
     );
     expect(rowsOf<{ table_name: string }>(r).map((x) => x.table_name)).toEqual(
-      expect.arrayContaining(["account", "allowlist", "assets", "folders", "project_ops", "project_opens", "projects", "session", "user", "verification"]),
+      expect.arrayContaining(["account", "allowlist", "assets", "folders", "project_ops", "project_opens", "project_presence", "projects", "session", "user", "verification"]),
     );
   });
 
@@ -129,6 +129,39 @@ describe("migrations", () => {
     expect(await opens()).toEqual([{ user_id: "u1", project_id: "p2" }]);
     await db.execute(sql`delete from "user" where id = 'u1'`);
     expect(await opens()).toEqual([]);
+  });
+
+  it("one row per project, person and tab; rows go when the project or the user is hard-deleted", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Sam', 'sam@example.com'), ('u2', 'Kit', 'kit@example.com')`);
+    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u1', 'u1'), ('p2', 'P', 'short_9x16', '{}', 'u1', 'u1')`);
+    const share = (projectId: string, userId: string, tabId: string) =>
+      db.execute(sql`insert into project_presence (project_id, user_id, tab_id, clip_ids) values (${projectId}, ${userId}, ${tabId}, '[]')`);
+    await share("p1", "u1", "tab-1");
+    await share("p1", "u1", "tab-2");
+    await share("p1", "u2", "tab-1");
+    await share("p2", "u1", "tab-1");
+    await expect(share("p1", "u1", "tab-1")).rejects.toThrow();
+    await expect(share("p9", "u1", "tab-1")).rejects.toThrow();
+    await expect(share("p1", "u9", "tab-1")).rejects.toThrow();
+    const rows = async () =>
+      rowsOf(await db.execute(sql`select project_id, user_id, tab_id from project_presence order by project_id, user_id, tab_id`));
+    const [row] = rowsOf<{ left_at: unknown; seen: boolean }>(
+      await db.execute(sql`select left_at, seen_at is not null and changed_at is not null as seen from project_presence limit 1`),
+    );
+    expect(row).toEqual({ left_at: null, seen: true });
+    await db.execute(sql`delete from projects where id = 'p1'`);
+    expect(await rows()).toEqual([{ project_id: "p2", user_id: "u1", tab_id: "tab-1" }]);
+    await db.execute(sql`delete from "user" where id = 'u1'`);
+    expect(await rows()).toEqual([]);
+  });
+
+  it("journal when values strictly increase with idx", () => {
+    // The migrator skips a migration older than the newest one a database has run, so a branch's migration must be
+    // regenerated after merging main.
+    const { entries } = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")) as { entries: { idx: number; when: number }[] };
+    expect(entries.map((e) => e.idx)).toEqual(entries.map((_, i) => i));
+    for (let i = 1; i < entries.length; i++) expect(entries[i].when).toBeGreaterThan(entries[i - 1].when);
   });
 
   it("the migration's last statement fills width and height from each doc", async () => {

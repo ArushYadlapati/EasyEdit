@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  HANDLE_SIGNS, canvasItems, clampInto, corners, createPreviewSurface, cursorFor, fromScreen, handlePoints, hitTest, toLocal, toOverlay,
-  toScreen, toWorld, viewOf, visibleBox, type CanvasItem, type Handle, type View,
+  HANDLE_SIGNS, canvasItems, clampInto, corners, createPreviewSurface, cursorFor, fromScreen, handlePoints, hitTest, outsetCorners, toLocal,
+  toOverlay, toScreen, toWorld, viewOf, visibleBox, type CanvasItem, type Handle, type View,
 } from "@/lib/editor/canvas-geometry";
 import type { Sizer } from "@/lib/editor/clip-box";
 import { createEmptyDoc, type Clip, type MediaClip, type TextClip, type TimelineDoc, type Transform } from "@/lib/timeline";
@@ -143,6 +143,51 @@ describe("the hit test", () => {
     expect(hit(items, 1081, 960, 0, { frame: FRAME })).toBeNull();
     // Inside the frame the selection does not matter.
     expect(hit(items, 540, 960, 0, { frame: FRAME, keep: [] })).toBe("x1");
+  });
+});
+
+describe("teammates' outlines", () => {
+  // How far each outset corner lies from the kept box's corner along the clip's own axes, in screen pixels at k.
+  const outBy = (item: CanvasItem, cssPx: number, k: number) => {
+    const a = (item.rotation * Math.PI) / 180;
+    return outsetCorners(item, cssPx, k).map((p, i) => {
+      const c = corners(item)[i];
+      const dx = p.x - c.x;
+      const dy = p.y - c.y;
+      return { x: (dx * Math.cos(a) + dy * Math.sin(a)) * k, y: (-dx * Math.sin(a) + dy * Math.cos(a)) * k };
+    });
+  };
+  const OUT = [[-3, -3], [3, -3], [3, 3], [-3, 3]];
+
+  it("outsetCorners grows the box by N screen px at 0° and 30°, with stretch and with crop", () => {
+    // x1 spans 508..572 across and 921.6..998.4 down; at k = 0.5, 3 screen px is 6 project px.
+    const [nw, ne, se, sw] = outsetCorners(canvasItems(sampleDoc(), 10, sizer)[1], 3, 0.5);
+    expectPoint(nw, 502, 915.6);
+    expectPoint(ne, 578, 915.6);
+    expectPoint(se, 578, 1004.4);
+    expectPoint(sw, 502, 1004.4);
+
+    const cases = [
+      patch(sampleDoc(), "x1", { rotation: 30 }),
+      patch(sampleDoc(), "x1", { scale: 2, stretch: 1.5 }),
+      patch(sampleDoc(), "x1", { rotation: 30, scale: 0.5, stretch: 3 }),
+      patch(sampleDoc(), "x1", { rotation: 30, crop: { left: 0.5, top: 0.2, right: 0, bottom: 0 } }),
+    ];
+    for (const doc of cases) {
+      const x1 = canvasItems(doc, 10, sizer)[1];
+      outBy(x1, 3, 0.5).forEach((d, i) => expectPoint(d, OUT[i][0], OUT[i][1]));
+    }
+    // A crop grows from the kept box, not the whole one.
+    const cropped = canvasItems(imageDoc({ crop: { left: 0.1, top: 0, right: 0, bottom: 0 } }), 0, sizer)[0];
+    expectPoint(outsetCorners(cropped, 4, 1)[0], 104, 686);
+    // The same distance on screen whatever the board's zoom.
+    const turned = canvasItems(patch(sampleDoc(), "x1", { rotation: 30, stretch: 2 }), 10, sizer)[1];
+    outBy(turned, 6, 2).forEach((d, i) => expectPoint(d, OUT[i][0] * 2, OUT[i][1] * 2));
+  });
+
+  it("a clip scaled to nothing keeps its corners", () => {
+    const flat = canvasItems(patch(sampleDoc(), "x1", { scale: 0 }), 10, sizer)[1];
+    expect(outsetCorners(flat, 3, 0.5)).toEqual(corners(flat));
   });
 });
 
