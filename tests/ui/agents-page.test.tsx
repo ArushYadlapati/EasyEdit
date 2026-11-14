@@ -377,7 +377,7 @@ describe("the account menu", () => {
   it("AI agents opens the AI agents page, above Sign out", async () => {
     render(<AccountMenu name="Ada" image={null} />);
     fireEvent.click(screen.getByRole("button", { name: "Account" }));
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["AI agents", "Sign out"]);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Passkeys", "AI agents", "Sign out"]);
     await click(screen.getByRole("menuitem", { name: "AI agents" }));
     expect(router.push).toHaveBeenCalledWith("/agents");
   });

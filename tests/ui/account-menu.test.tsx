@@ -64,10 +64,10 @@ describe("the account menu", () => {
     expect(router.push).not.toHaveBeenCalled();
   });
 
-  it("lists Passkeys, then Sign out", () => {
+  it("lists Passkeys, AI agents, then Sign out", () => {
     render(<AccountMenu name="Ada Lovelace" image={null} />);
     fireEvent.click(account());
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Passkeys", "Sign out"]);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Passkeys", "AI agents", "Sign out"]);
   });
 
   it("Passkeys opens the Passkeys dialog", async () => {
