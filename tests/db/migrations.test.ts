@@ -246,6 +246,47 @@ describe("migrations", () => {
     expect(out.buffer.byteLength).toBe(3);
   });
 
+  it("has the passkey table, removed with its user", async () => {
+    const db = await makeTestDb();
+    const columns = rowsOf<{ column_name: string; data_type: string; is_nullable: string }>(
+      await db.execute(sql`select column_name, data_type, is_nullable from information_schema.columns where table_name = 'passkey' order by column_name`),
+    );
+    expect(columns).toEqual([
+      { column_name: "aaguid", data_type: "text", is_nullable: "YES" },
+      { column_name: "backed_up", data_type: "boolean", is_nullable: "NO" },
+      { column_name: "counter", data_type: "integer", is_nullable: "NO" },
+      { column_name: "created_at", data_type: "timestamp without time zone", is_nullable: "YES" },
+      { column_name: "credential_id", data_type: "text", is_nullable: "NO" },
+      { column_name: "device_type", data_type: "text", is_nullable: "NO" },
+      { column_name: "id", data_type: "text", is_nullable: "NO" },
+      { column_name: "name", data_type: "text", is_nullable: "YES" },
+      { column_name: "public_key", data_type: "text", is_nullable: "NO" },
+      { column_name: "transports", data_type: "text", is_nullable: "YES" },
+      { column_name: "user_id", data_type: "text", is_nullable: "NO" },
+    ]);
+    const indexes = rowsOf<{ indexname: string }>(await db.execute(sql`select indexname from pg_indexes where tablename = 'passkey'`)).map((r) => r.indexname);
+    expect(indexes).toEqual(expect.arrayContaining(["passkey_userId_idx", "passkey_credentialID_idx"]));
+
+    await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Ann', 'ann@example.com'), ('u2', 'Bob', 'bob@example.com')`);
+    const add = (id: string, userId: string) =>
+      db.execute(sql`insert into passkey (id, name, public_key, user_id, credential_id, counter, device_type, backed_up)
+        values (${id}, 'Passkey', 'key', ${userId}, ${`cred-${id}`}, 0, 'multiDevice', true)`);
+    await add("k1", "u1");
+    await add("k2", "u1");
+    await add("k3", "u2");
+    await expect(add("k4", "nobody")).rejects.toThrow();
+    await db.execute(sql`delete from "user" where id = 'u1'`);
+    expect(rowsOf(await db.execute(sql`select id, user_id from passkey order by id`))).toEqual([{ id: "k3", user_id: "u2" }]);
+  });
+
+  it("migration 0010 only creates the passkey table, its foreign key and two indexes", () => {
+    const statements = readFileSync("drizzle/0010_passkeys.sql", "utf8").split("--> statement-breakpoint").map((s) => s.trim());
+    expect(statements).toHaveLength(4);
+    expect(statements[0]).toMatch(/^CREATE TABLE "passkey" \(/);
+    expect(statements[1]).toMatch(/^ALTER TABLE "passkey" ADD CONSTRAINT "passkey_user_id_user_id_fk" FOREIGN KEY \("user_id"\) REFERENCES "public"\."user"\("id"\) ON DELETE cascade/);
+    expect(statements.slice(2).map((s) => s.match(/^CREATE INDEX "(\w+)"/)?.[1]).sort()).toEqual(["passkey_credentialID_idx", "passkey_userId_idx"]);
+  });
+
   it("the README says to migrate before deploying, and that 0007 may run with it", () => {
     expect(readFileSync("README.md", "utf8")).toContain(
       "    **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard, editor, project API and Claude's tools fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.",

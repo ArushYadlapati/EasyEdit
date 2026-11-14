@@ -2,6 +2,7 @@ import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { mcp } from "@better-auth/mcp";
+import { getAuthenticatorName, passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { getDb } from "@/db";
@@ -61,10 +62,31 @@ function createAuth() {
         metadataProfile: "mcp-2026-07-28",
         isMetadataDocumentUrlAllowed: (url) => isClaudeClientDocument(url),
       }),
+      passkey({
+        rpID: new URL(requiredEnv("BETTER_AUTH_URL")).hostname,
+        rpName: "EasyEdit",
+        origin: new URL(requiredEnv("BETTER_AUTH_URL")).origin,
+        // No authenticatorAttachment, so 1Password, phones and security keys are offered, not only this device.
+        authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+        registration: {
+          // Named after the passkey manager when it says which it is. Apple's all-zero AAGUID gets "Passkey".
+          afterVerification: ({ verification }) => ({
+            name: getAuthenticatorName(verification.registrationInfo?.aaguid) ?? "Passkey",
+          }),
+        },
+      }),
     ],
     // On everywhere, not only in production. Counted in the database: an in-memory count would
     // reset with every new server instance.
-    rateLimit: { enabled: true, storage: "database" },
+    rateLimit: {
+      enabled: true,
+      storage: "database",
+      // A passkey sign-in gets the same limit as Better Auth's own sign-in rule.
+      customRules: {
+        "/passkey/verify-authentication": { window: 10, max: 3 },
+        "/passkey/generate-authenticate-options": { window: 10, max: 10 },
+      },
+    },
     // The jwt plugin's session-to-token endpoint is off. The only tokens handed out are the connector's.
     disabledPaths: ["/token"],
     hooks: { before: connectorBeforeHook() },

@@ -64,6 +64,13 @@
       "when": 1794590029023,
       "tag": "0008_project_thumbnails",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794616014633,
+      "tag": "0010_passkeys",
+      "breakpoints": true
     }
   ]
 }
