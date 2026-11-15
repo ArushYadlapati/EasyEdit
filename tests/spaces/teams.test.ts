@@ -26,6 +26,32 @@ describe("team names and slugs", () => {
     expect((await createTeam(db, { name: "x".repeat(LIMITS.teamNameChars), byUserId: "u1" })).name).toHaveLength(60);
   });
 
+  it("strips control, zero-width and direction characters and collapses spaces before the length check", async () => {
+    const db = await setup();
+    const team = await createTeam(db, { name: " Robo\u0000tics\u200B \t\n Club\u202E\u2066\uFEFF\u0085\u007F ", byUserId: "u1" });
+    expect(team.name).toBe("Robotics Club");
+    const [row] = await db.select({ name: organization.name }).from(organization).where(eq(organization.id, team.id));
+    expect(row.name).toBe("Robotics Club");
+    // 60 visible characters padded with invisible ones still fit.
+    const padded = `${"x".repeat(LIMITS.teamNameChars)}${"\u200F".repeat(20)}`;
+    expect((await createTeam(db, { name: padded, byUserId: "u1" })).name).toBe("x".repeat(LIMITS.teamNameChars));
+  });
+
+  it("refuses a name that is empty once cleaned, with the usual message", async () => {
+    const db = await setup();
+    for (const name of ["\u200B\u200C\u200D", "\u202A\u202B\u202C\u202D\u202E", "\u2060\u2069\uFEFF", "\u0001 \u009F \t"]) {
+      await expect(createTeam(db, { name, byUserId: "u1" }), JSON.stringify(name)).rejects.toMatchObject({ code: "INVALID", message: "Give the team a name of up to 60 characters." });
+    }
+  });
+
+  it("refuses the name Personal in any case", async () => {
+    const db = await setup();
+    for (const name of ["Personal", "personal", "  PERSONAL  ", "Per\u200Bsonal", "PeRsOnAl\u202E"]) {
+      await expect(createTeam(db, { name, byUserId: "u1" }), JSON.stringify(name)).rejects.toMatchObject({ code: "INVALID", message: 'Pick a different name. "Personal" is your own space.' });
+    }
+    expect((await createTeam(db, { name: "Personal Projects", byUserId: "u1" })).name).toBe("Personal Projects");
+  });
+
   it("gives an emoji-only name the slug team", async () => {
     const db = await setup();
     const team = await createTeam(db, { name: "🚀🚀", byUserId: "u1" });
@@ -35,7 +61,7 @@ describe("team names and slugs", () => {
 
   it("never gives the slug personal", async () => {
     const db = await setup();
-    const team = await createTeam(db, { name: "Personal", byUserId: "u1" });
+    const team = await createTeam(db, { name: "Personal!", byUserId: "u1" });
     expect(team.slug).not.toBe("personal");
     expect(isReservedSlug(team.slug)).toBe(false);
   });

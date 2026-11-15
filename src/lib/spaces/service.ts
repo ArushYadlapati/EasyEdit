@@ -122,13 +122,25 @@ const SLUG_INDEX = "organization_slug_unique";
 const SLUG_ATTEMPTS = 50;
 const SLUG_EXHAUSTED = "Couldn't make a web address for that name. Try a different name.";
 const TEAM_NAME_INVALID = `Give the team a name of up to ${LIMITS.teamNameChars} characters.`;
+const TEAM_NAME_PERSONAL = 'Pick a different name. "Personal" is your own space.';
+
+// Characters a name could hide or reorder text with: C0 and C1 controls (and DEL), zero-width spaces and joiners,
+// direction marks, embeddings and overrides, invisible operators and isolates, and the byte order mark.
+const HIDDEN_CHARS = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
+
+// A team's name as it is kept: runs of whitespace (tabs and newlines too) become one space, hidden characters go, and
+// the ends are trimmed.
+function cleanTeamName(raw: string): string {
+  return raw.replace(/\s+/g, " ").replace(HIDDEN_CHARS, "").replace(/\s+/g, " ").trim();
+}
 
 // A new team with the creator as its admin. The address comes from the name, made unique (case-insensitively) with -2,
 // -3 …; the organization and the member row go in as one statement, and a clash from a simultaneous create tries the
 // next suffix.
 export async function createTeam(db: DB, input: { name: string; byUserId: string; now?: Date }): Promise<MySpace> {
-  const name = input.name.trim();
+  const name = cleanTeamName(input.name);
   if (name.length < 1 || name.length > LIMITS.teamNameChars) throw new ServiceError("INVALID", 400, TEAM_NAME_INVALID);
+  if (name.toLowerCase() === "personal") throw new ServiceError("INVALID", 400, TEAM_NAME_PERSONAL);
   const now = input.now ?? new Date();
   const stamp = now.toISOString();
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
