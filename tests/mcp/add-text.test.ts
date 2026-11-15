@@ -60,7 +60,7 @@ describe("add_text", () => {
 
   it("refuses when there is no room, when the version is old, for a viewer, and for text that cannot be saved", async () => {
     const { db, id, add, project } = await setup();
-    const tracks = Array.from({ length: 16 }, (_, i) => ({ op: "add_track", track: { id: `a${i + 2}`, kind: "audio", name: `Audio ${i + 2}` } }));
+    const tracks = Array.from({ length: 17 }, (_, i) => ({ op: "add_track", track: { id: `a${i + 2}`, kind: "audio", name: `Audio ${i + 2}` } }));
     await applyProjectOps(db, grace, { projectId: id, baseVersion: 0, ops: [...tracks, addText(0, "TAKEN")] as OpInput[] });
     expect(await add(1, [{ text: "NO ROOM" }])).toEqual({ isError: true, text: "There is no room for that text: the project has 20 tracks and none is free at that time. Remove a track or pick another time." });
     expect((await add(0, [{ text: "OLD", start_seconds: 30 }])).text.split("\n")[0]).toBe("Edit refused: the project changed after version 0. It is now at version 1. Nothing was applied.");
@@ -92,7 +92,7 @@ describe("add_text", () => {
 
   it("checks the version before looking for room", async () => {
     const { db, id, add } = await setup();
-    const tracks = Array.from({ length: 16 }, (_, i) => ({ op: "add_track", track: { id: `a${i + 2}`, kind: "audio", name: `Audio ${i + 2}` } }));
+    const tracks = Array.from({ length: 17 }, (_, i) => ({ op: "add_track", track: { id: `a${i + 2}`, kind: "audio", name: `Audio ${i + 2}` } }));
     await applyProjectOps(db, grace, { projectId: id, baseVersion: 0, ops: [...tracks, addText(0, "TAKEN")] as OpInput[] });
     expect((await add(0, [{ text: "OLD AND NO ROOM" }])).text.split("\n")[0]).toBe("Edit refused: the project changed after version 0. It is now at version 1. Nothing was applied.");
   });

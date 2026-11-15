@@ -120,6 +120,67 @@ describe("moves and turns", () => {
     expect(transformOf(move(P(530, 576), { snapping: true, snapPx: 5 }))).toEqual({ x: 0.4907 });
   });
 
+  // The image at half size: 540 × 270, its left side 270 left of its centre.
+  const half = (transform: Partial<Transform> = {}) => imageDoc({ scale: 0.5, ...transform });
+
+  it("a side snaps onto the frame's edge with a guide", () => {
+    const left = dragOn(half({ x: 0.3 }), "i1", "body", P(324, 960));
+    // Its left side 9 px from the frame's left edge snaps onto it; the centre is then 270 in.
+    const r = left(P(279, 960), { snapping: true });
+    expect(transformOf(r)).toEqual({ x: 0.25 });
+    expect(r.guides).toEqual({ x: 0, y: null });
+    expect(transformOf(left(P(279, 960)))).toEqual({ x: 0.2583 });
+    // The right side onto the right edge, and the top onto the top.
+    const right = dragOn(half({ x: 0.7 }), "i1", "body", P(756, 960))(P(801, 960), { snapping: true });
+    expect(transformOf(right)).toEqual({ x: 0.75 });
+    expect(right.guides).toEqual({ x: 1080, y: null });
+    const top = dragOn(half({ y: 0.1 }), "i1", "body", P(540, 192))(P(540, 142), { snapping: true });
+    expect(transformOf(top)).toEqual({ y: 0.0703 });
+    expect(top.guides).toEqual({ x: null, y: 0 });
+  });
+
+  it("a side that starts on an edge and moves off it follows the pointer", () => {
+    const r = dragOn(half({ x: 0.25 }), "i1", "body", P(270, 960))(P(275, 960), { snapping: true });
+    expect(transformOf(r)).toEqual({ x: 0.2546 });
+    expect(r.guides).toEqual({ x: null, y: null });
+  });
+
+  it("a turned clip snaps by the box it fills on screen", () => {
+    // Turned a quarter, it is 270 across: its left side is 135 left of its centre.
+    const r = dragOn(half({ x: 0.3, rotation: 90 }), "i1", "body", P(324, 960))(P(144, 960), { snapping: true });
+    expect(transformOf(r)).toEqual({ x: 0.125 });
+    expect(r.guides).toEqual({ x: 0, y: null });
+  });
+
+  it("a side snaps onto another clip's side, and clips not seen are left out", () => {
+    const doc = half({ x: 0.3 });
+    const item = itemOf(doc, "i1");
+    // Another clip of the same size about (700, 400): 430 to 970 across.
+    const other: CanvasItem = { ...item, clipId: "o1", center: P(700, 400) };
+    const drag = beginCanvasDrag(doc, item, "body", P(324, 960), undefined, [item, other, { ...other, clipId: "o2", center: P(100, 100), opacity: 0 }]);
+    expect(drag).toMatchObject({
+      lines: { x: { sides: [0, 540, 1080, 430, 970], middles: [540, 700] }, y: { sides: [0, 960, 1920, 265, 535], middles: [960, 400] } },
+    });
+    // Its left side, at 434, snaps onto the other's at 430; its middle would too, but a side wins the tie.
+    const r = resolveCanvasDrag(drag!, input(P(704, 960), { snapping: true }));
+    expect(transformOf(r)).toEqual({ x: 0.6481 });
+    expect(r.guides).toEqual({ x: 430, y: null });
+  });
+
+  it("a middle snaps onto another clip's middle, never onto its side", () => {
+    const doc = half({ x: 0.3 });
+    const item = itemOf(doc, "i1");
+    // A clip 100 across about (800, 400): its sides at 750 and 850.
+    const other: CanvasItem = { ...item, clipId: "o1", center: P(800, 400), sx: 100 / 1080, sy: 100 / 1080 };
+    const move = (x: number) => resolveCanvasDrag(beginCanvasDrag(doc, item, "body", P(324, 960), undefined, [other])!, input(P(x, 960), { snapping: true }));
+    // The centre at 795 snaps onto the other's middle, at 800.
+    expect(transformOf(move(795))).toEqual({ x: 0.7407 });
+    expect(move(795).guides).toEqual({ x: 800, y: null });
+    // At 846 it is near the other's right side, but a middle never snaps onto a side.
+    expect(transformOf(move(846))).toEqual({ x: 0.7833 });
+    expect(move(846).guides).toEqual({ x: null, y: null });
+  });
+
   it("Shift never snaps the held axis", () => {
     const doc = patch(sampleDoc(), "x1", { x: 0.503 });
     const r = dragOn(doc, "x1", "body", P(543.24, 960))(P(545.24, 1152), { shift: true, snapping: true });
@@ -184,7 +245,7 @@ describe("moves and turns", () => {
   it("a drag records where it began", () => {
     const doc = patch(imageDoc({ x: 0.3, y: 0.6, rotation: 20, scale: 2, stretch: 1.5, crop: { left: 0.1, top: 0, right: 0, bottom: 0.2 } }), "i1", {});
     const item = itemOf(doc, "i1", 0);
-    expect(beginCanvasDrag(doc, item, "body", P(1, 2))).toEqual({ type: "move", clipId: "i1", grab: P(1, 2), from: { x: 0.3, y: 0.6 }, frame: { width: 1080, height: 1920 } });
+    expect(beginCanvasDrag(doc, item, "body", P(1, 2))).toMatchObject({ type: "move", clipId: "i1", grab: P(1, 2), from: { x: 0.3, y: 0.6 }, frame: { width: 1080, height: 1920 }, lines: { x: { sides: [0, 540, 1080], middles: [540] }, y: { sides: [0, 960, 1920], middles: [960] } } });
     expect(beginCanvasDrag(doc, item, "rotate", P(1, 2))).toEqual({ type: "rotate", clipId: "i1", grab: P(1, 2), center: item.center, from: 20 });
     expect(beginCanvasDrag(doc, item, "sw", P(1, 2), P(3, 4))).toEqual({
       type: "resize", clipId: "i1", handle: "sw", grab: P(1, 2), item, frame: { width: 1080, height: 1920 },

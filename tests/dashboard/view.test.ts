@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   matchesSearch,
   pictureFits,
+  pinnedProjects,
   projectsInView,
   ALL_VIEW,
   RECENT_VIEW,
@@ -135,4 +136,10 @@ it("a picture fits its project only in the project's shape", () => {
   expect(pictureFits({ width: 360, height: 640 }, { width: 1920, height: 1080 })).toBe(false);
   expect(pictureFits({ width: 512, height: 640 }, { width: 1080, height: 1080 })).toBe(false);
   expect(pictureFits({ width: 0, height: 0 }, { width: 1080, height: 1920 })).toBe(false);
+});
+
+it("pinnedProjects keeps the pins' order and drops ids it doesn't have", () => {
+  const projects = [{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name: "C" }];
+  expect(pinnedProjects(projects, ["c", "gone", "a"]).map((p) => p.id)).toEqual(["c", "a"]);
+  expect(pinnedProjects(projects, [])).toEqual([]);
 });

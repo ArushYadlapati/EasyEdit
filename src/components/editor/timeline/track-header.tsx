@@ -119,6 +119,7 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
         <InlineEdit
           data-edit-control
           label="Track name"
+          className="select-text"
           defaultValue={track.name}
           maxLength={LIMITS.trackNameChars}
           onDone={endRename}

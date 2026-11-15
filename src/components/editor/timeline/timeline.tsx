@@ -53,7 +53,8 @@ function keepAnchor(scrollLeft: number, anchorPx: number, zoom: number, nextZoom
 
 // The tracks along the bottom: a toolbar, then one scrolling area with the ruler stuck to the top and
 // the track headers stuck to the left. Only the playhead and its readout follow the playhead; the
-// rows render only the clips in view.
+// rows render only the clips in view. Nothing in the area takes a text selection, so dragging a track header or a box
+// across it does not also highlight the track names; the rename field opts back in.
 export function Timeline() {
   const store = useEditorStore();
   const doc = useEditor(viewDoc);
@@ -212,7 +213,7 @@ export function Timeline() {
           onScroll={onScroll}
           onDoubleClick={onDoubleClick}
           {...dropHandlers}
-          className={cx("absolute inset-0 overflow-auto overscroll-contain", DRAG_CURSOR)}
+          className={cx("absolute inset-0 overflow-auto overscroll-contain select-none", DRAG_CURSOR)}
         >
           <div className="relative min-h-full" style={{ width }} onContextMenu={onContentContextMenu}>
             <Ruler zoom={zoom} fps={fps} fromFrame={fromFrame} toFrame={toFrame} max={frames} end={duration} onScrub={onScrub} />

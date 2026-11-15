@@ -3,11 +3,11 @@ import {
   DEFAULT_TRANSFORM,
   NO_CROP,
   applyOps,
-  createEmptyDoc,
   describe,
   framesToSeconds,
   type TimelineDoc,
 } from "@/lib/timeline";
+import { docWithCaptions } from "../helpers/docs";
 
 const style = {
   fontFamily: "Inter",
@@ -18,7 +18,7 @@ const style = {
 } as const;
 
 const withText = (text: string): TimelineDoc =>
-  applyOps(createEmptyDoc("short_9x16"), [
+  applyOps(docWithCaptions("short_9x16"), [
     {
       op: "add_clip",
       trackId: "t1",
@@ -28,7 +28,7 @@ const withText = (text: string): TimelineDoc =>
 
 suite("describe", () => {
   it("names the safe area only when the project set its own", () => {
-    const plain = createEmptyDoc("short_9x16");
+    const plain = docWithCaptions("short_9x16");
     expect(describe(plain)).not.toContain("Safe area");
     const sized = applyOps(plain, [{ op: "set_safe_area", format: "short_9x16", size: { width: 0.875, height: 0.6 } }]).doc;
     expect(describe(sized).split("\n")[1]).toBe("Safe area 87.5% wide × 60% tall, centred, from 14% down (set for this project)");
@@ -36,7 +36,7 @@ suite("describe", () => {
   });
 
   it("describes a small doc", () => {
-    let d = createEmptyDoc("short_9x16");
+    let d = docWithCaptions("short_9x16");
     d = applyOps(d, [
       { op: "add_clip", trackId: "v1", clip: { id: "c1", type: "video", assetId: "as1", start: 0, duration: 120, in: 36, speed: 1, volume: 1, transform: DEFAULT_TRANSFORM } },
       { op: "add_clip", trackId: "t1", clip: { id: "x1", type: "text", start: 15, duration: 45, text: "QUALIFIER RECAP", transform: DEFAULT_TRANSFORM, style } },
@@ -54,7 +54,7 @@ Track a1 [audio] "Audio 1"
   });
 
   it("omits the version part when no version is given", () => {
-    expect(describe(createEmptyDoc("long_16x9")).split("\n")[0]).toBe(
+    expect(describe(docWithCaptions("long_16x9")).split("\n")[0]).toBe(
       "Format long_16x9 1920x1080 @30fps · duration 0.00s",
     );
   });
@@ -73,7 +73,7 @@ Track a1 [audio] "Audio 1"
   });
 
   it("marks hidden/muted/locked tracks", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks[0] = { ...d.tracks[0], hidden: true, locked: true };
     d.tracks[1] = { ...d.tracks[1], muted: true };
     d.tracks[2] = { ...d.tracks[2], hidden: true, muted: true, locked: true };
@@ -90,7 +90,7 @@ Track a1 [audio] "Audio 1"
       trackId: "v1",
       clip: { id, type: "video" as const, assetId: "a", start, duration: 30, in: 0, speed: 1.5, volume: 0.5, transform: DEFAULT_TRANSFORM },
     });
-    const d = applyOps(createEmptyDoc("short_9x16"), [mk("late", 60), mk("early", 0)]).doc;
+    const d = applyOps(docWithCaptions("short_9x16"), [mk("late", 60), mk("early", 0)]).doc;
     const lines = describe(d).split("\n");
     expect(lines[2]).toBe("  early  video  0.00–1.00s  asset=a in=0.00s speed=1.5 vol=0.5");
     expect(lines[3]).toBe("  late  video  2.00–3.00s  asset=a in=0.00s speed=1.5 vol=0.5");
@@ -102,7 +102,7 @@ Track a1 [audio] "Audio 1"
   });
 
   it("escapes quotes, backslashes, newlines and line separators in track names", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks[0].name = 'Say "hi"\\\nnext\u2028line\u2029end';
     const out = describe(d);
     expect(out.split("\n")).toHaveLength(9);
@@ -118,7 +118,7 @@ Track a1 [audio] "Audio 1"
   });
 
   it("in detail, shows frames, the whole text, style and position on one line per clip", () => {
-    let d = createEmptyDoc("short_9x16");
+    let d = docWithCaptions("short_9x16");
     d = applyOps(d, [
       { op: "add_clip", trackId: "v1", clip: { id: "c1", type: "video", assetId: "as 1", start: 0, duration: 120, in: 36, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM, scale: 1.5, rotation: -10, opacity: 0.4 } } },
       { op: "add_clip", trackId: "t1", clip: { id: "x1", type: "text", start: 15, duration: 45, text: `SAY "GO"\n${"A".repeat(50)}`, transform: DEFAULT_TRANSFORM, style: { ...style, fontFamily: "Geist Mono" } } },
@@ -139,7 +139,7 @@ Track a1 [audio] "Audio 1"
     const CUT = { left: 0.1, top: 0, right: 0.2, bottom: 0 };
     const printed = 'crop={"left":0.1,"top":0,"right":0.2,"bottom":0}';
     const lineOf = (crop: typeof CUT) => {
-      const d = applyOps(createEmptyDoc("short_9x16"), [
+      const d = applyOps(docWithCaptions("short_9x16"), [
         { op: "add_clip", trackId: "v1", clip: { id: "c1", type: "video", assetId: "a", start: 0, duration: 30, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM, scale: 2, crop } } },
         { op: "add_clip", trackId: "t1", clip: { id: "x1", type: "text", start: 0, duration: 30, text: "hi", transform: { ...DEFAULT_TRANSFORM, crop }, style } },
         { op: "add_clip", trackId: "a1", clip: { id: "s1", type: "audio", assetId: "m", start: 0, duration: 30, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM, crop } } },
@@ -160,7 +160,7 @@ Track a1 [audio] "Audio 1"
 
   it("prints a stretch right after the scale, only when it is not 1, and never for audio", () => {
     const lineOf = (stretch: number) => {
-      const d = applyOps(createEmptyDoc("short_9x16"), [
+      const d = applyOps(docWithCaptions("short_9x16"), [
         { op: "add_clip", trackId: "v1", clip: { id: "c1", type: "video", assetId: "a", start: 0, duration: 30, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM, stretch, rotation: 10 } } },
         { op: "add_clip", trackId: "t1", clip: { id: "x1", type: "text", start: 0, duration: 30, text: "hi", transform: { ...DEFAULT_TRANSFORM, scale: 2, stretch }, style } },
         { op: "add_clip", trackId: "a1", clip: { id: "s1", type: "audio", assetId: "m", start: 0, duration: 30, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM, stretch } } },

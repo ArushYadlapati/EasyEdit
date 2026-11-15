@@ -32,6 +32,22 @@ describe("home page", () => {
     expect(screen.getByRole("link", { name: "Privacy" }).getAttribute("href")).toBe("/privacy");
   });
 
+  it("says EasyEdit is in closed beta while sign-up is closed", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "");
+    render(await Home());
+    expect(screen.getByText("Closed beta")).toBeTruthy();
+    expect(screen.getByText("Sign-in is by invitation only for now.")).toBeTruthy();
+    vi.unstubAllEnvs();
+  });
+
+  it("drops the closed beta note once sign-up is open", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    render(await Home());
+    expect(screen.queryByText("Closed beta")).toBeNull();
+    expect(screen.queryByText(/by invitation only/)).toBeNull();
+    vi.unstubAllEnvs();
+  });
+
   it("signed in goes to the dashboard", async () => {
     signedIn.user = ada;
     await expect(Home()).rejects.toMatchObject({ to: "/dashboard" });

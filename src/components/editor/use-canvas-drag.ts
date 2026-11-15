@@ -42,7 +42,8 @@ type Session = {
 
 export type CanvasDragController = {
   press(e: ReactPointerEvent, grip: Grip, clipId: string, drawn?: Point): void;
-  // The frame's centre lines a moved clip's centre sits on, in project pixels, while it is snapped there.
+  // The lines a moved clip is snapped onto (the frame's edges and centre lines, another clip's side or middle), in
+  // project pixels, while it is snapped there.
   guides: StoreApi<Guides>;
   // The clip a handle drag crops now: with Ctrl, or armed by the clip menu's Crop.
   cropping: StoreApi<Cropping>;
@@ -101,9 +102,10 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
   function start(s: Session): boolean {
     const state = store.getState();
     const view = surface.view();
-    const item = surface.items().find((i) => i.clipId === s.clipId);
+    const items = surface.items();
+    const item = items.find((i) => i.clipId === s.clipId);
     const doc = viewDoc(state);
-    const drag = view && item ? beginCanvasDrag(doc, item, s.grip, fromScreen(view, s.x0, s.y0), s.drawn) : null;
+    const drag = view && item ? beginCanvasDrag(doc, item, s.grip, fromScreen(view, s.x0, s.y0), s.drawn, items) : null;
     if (!drag) {
       if (!findClip(doc, s.clipId)) state.notify("error", MESSAGES.clipGone);
       end(false);

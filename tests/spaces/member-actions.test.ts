@@ -96,11 +96,11 @@ describe("actions re-check the caller", () => {
     expect(revalidate).toHaveBeenCalledTimes(3);
   });
 
-  it("leave redirects to /s/personal", async () => {
+  it("leave goes on to /dashboard, which picks where the person lands", async () => {
     const { db, team } = await setup();
     const { actions, revalidate, redirect } = actionsAs(db, person("u2"));
-    await expect(actions.leave(team)).rejects.toMatchObject({ to: "/s/personal" });
-    expect(redirect).toHaveBeenCalledWith("/s/personal");
+    await expect(actions.leave(team)).rejects.toMatchObject({ to: "/dashboard" });
+    expect(redirect).toHaveBeenCalledWith("/dashboard");
     expect(revalidate).toHaveBeenCalled();
     expect(await roleOf(db, team, "u2")).toBeNull();
   });

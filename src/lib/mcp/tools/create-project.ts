@@ -5,7 +5,9 @@ import { projectFrame } from "@/lib/projects/schemas";
 import { createProject, getProject, storedHeight, storedWidth } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 import { isStorableText } from "@/lib/text";
-import { PERSONAL_ALIAS } from "@/lib/spaces/types";
+import { personalSpacesOpen } from "@/lib/spaces/personal";
+import { lastSpace } from "@/lib/spaces/service";
+import { PERSONAL_ALIAS, type MySpace } from "@/lib/spaces/types";
 import { escapeQuoted } from "@/lib/timeline";
 import { actorInSpace } from "../actors";
 import { checkProjectBudget } from "../budget";
@@ -20,20 +22,60 @@ const TWIN_WINDOW = sql`interval '60 seconds'`;
 
 type CreateInput = { name: string; format: string; width?: number; height?: number; space?: string };
 
-// The space a person names: a slug, or "personal" for their own. Left out, it is their personal space.
-function chosenSpace(ctx: ToolContext, slug: string | undefined) {
-  if (slug === undefined || slug === PERSONAL_ALIAS) return ctx.spaces.find((s) => s.kind === "personal");
-  return ctx.spaces.find((s) => s.slug === slug);
+type Chosen = { space: MySpace } | { error: string };
+
+const canEditIn = (space: MySpace) => meetsRole(space.role, "editor");
+
+// The team a project goes in when none is named and personal spaces are not offered: the one the person opened last
+// in EasyEdit when they can edit there, else their first by name where they can, else any team of theirs (whose role
+// answer says why not).
+async function defaultTeam(ctx: ToolContext): Promise<MySpace | undefined> {
+  const teams = ctx.spaces.filter((s) => s.kind === "team");
+  if (teams.length === 0) return undefined;
+  const last = await lastSpace(ctx.db, ctx.user.id);
+  const lastTeam = teams.find((s) => s.id === last.id);
+  return lastTeam && canEditIn(lastTeam) ? lastTeam : (teams.find(canEditIn) ?? lastTeam ?? teams[0]);
 }
 
+const teamList = (ctx: ToolContext) =>
+  ctx.spaces.filter((s) => s.kind === "team").map((s) => `${quotedSpace(s.name)} (space: ${s.slug})`).join(", ");
+
+// Personal spaces are not offered yet: a project goes in a team.
+export function personalSoon(ctx: ToolContext): string {
+  const teams = teamList(ctx);
+  return teams
+    ? `Personal spaces are coming soon, so a project goes in a team. Your teams: ${teams}.`
+    : "Personal spaces are coming soon, and you are not in a team yet. Create a team in EasyEdit first.";
+}
+
+// The space a person names: a slug, or "personal" for their own. Left out, it is their personal space. While personal
+// spaces are not offered (personalSpacesOpen), left out is a team of theirs (defaultTeam), and the personal space,
+// by its alias or its own slug, is refused.
+async function chosenSpace(ctx: ToolContext, slug: string | undefined): Promise<Chosen> {
+  const open = personalSpacesOpen();
+  if (slug === undefined && !open) {
+    const team = await defaultTeam(ctx);
+    return team ? { space: team } : { error: personalSoon(ctx) };
+  }
+  const space = slug === undefined || slug === PERSONAL_ALIAS ? ctx.spaces.find((s) => s.kind === "personal") : ctx.spaces.find((s) => s.slug === slug);
+  if (!space) return { error: noSuchSpace(ctx, slug ?? PERSONAL_ALIAS) };
+  if (space.kind === "personal" && !open) return { error: personalSoon(ctx) };
+  return { space };
+}
+
+// The person's spaces as create_project takes them; the personal space is left out while it is not offered.
 export function noSuchSpace(ctx: ToolContext, slug: string): string {
-  return `No space "${escapeQuoted(oneLine(slug))}". Your spaces: ${ctx.spaces.map((s) => `${quotedSpace(s.name)} (space: ${s.kind === "personal" ? PERSONAL_ALIAS : s.slug})`).join(", ")}.`;
+  const offered = personalSpacesOpen() ? ctx.spaces : ctx.spaces.filter((s) => s.kind === "team");
+  if (offered.length === 0) return personalSoon(ctx); // in no team, and personal spaces are not offered
+  return `No space "${escapeQuoted(oneLine(slug))}". Your spaces: ${offered.map((s) => `${quotedSpace(s.name)} (space: ${s.kind === "personal" ? PERSONAL_ALIAS : s.slug})`).join(", ")}.`;
 }
 
 // Claude's projects land in no folder: no folder is passed, and no tool mentions folders.
 export async function createProjectTool(base: ToolContext, input: CreateInput): Promise<ToolResult> {
-  const space = chosenSpace(base, input.space);
-  const actor = space && actorInSpace(base, space.id);
+  const chosen = await chosenSpace(base, input.space);
+  if ("error" in chosen) return fail(chosen.error);
+  const { space } = chosen;
+  const actor = actorInSpace(base, space.id);
   if (!actor) return fail(noSuchSpace(base, input.space ?? PERSONAL_ALIAS));
   const ctx: SpaceToolContext = { ...base, actor };
   if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
@@ -54,7 +96,7 @@ export async function createProjectTool(base: ToolContext, input: CreateInput): 
   }
   const project = await getProject(ctx.db, ctx.actor, id);
   if (!project) throw new Error("A project just created could not be read");
-  return answer(ctx, project, `Created project "${escapeQuoted(project.name)}" (id ${project.id}) in space ${quotedSpace(space!.name)}, version 0.`);
+  return answer(ctx, project, `Created project "${escapeQuoted(project.name)}" (id ${project.id}) in space ${quotedSpace(space.name)}, version 0.`);
 }
 
 // A live project this actor created in the last minute with the same trimmed name, format and size.

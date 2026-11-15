@@ -144,7 +144,7 @@ describe("add_media", () => {
       'No project with id "no-such-project". It may have been deleted. Call list_projects to see the ids.',
     );
     // 20 tracks, and the only one that takes video is locked.
-    const textTracks = Array.from({ length: 16 }, (_, i) => ({ op: "add_track", track: { id: `x${i}`, kind: "text", name: `Text ${i + 2}` } }));
+    const textTracks = Array.from({ length: 17 }, (_, i) => ({ op: "add_track", track: { id: `x${i}`, kind: "text", name: `Text ${i + 2}` } }));
     await applyProjectOps(db, ctx.actor, { projectId: id, baseVersion: 0, ops: [...textTracks, { op: "update_track", trackId: "v1", patch: { locked: true } }] as OpInput[] });
     expect(await addMediaTool(ctx, { project_id: id, expected_version: 1, items: [{ asset_id: video }] })).toEqual({
       isError: true,

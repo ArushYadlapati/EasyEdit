@@ -1,8 +1,10 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { StorageSettings } from "@/components/storage/storage-settings";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
+import { slugFor, spacePath } from "@/lib/spaces/paths";
+import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace } from "@/lib/spaces/service";
 import { storageSettings } from "@/lib/storage/settings-view";
 import { chooseConnectionAction } from "./actions";
@@ -15,6 +17,8 @@ export default async function StorageSettingsPage({ params, searchParams }: Page
   const db = getDb();
   const space = await findMySpace(db, user.id, (await params).space);
   if (!space || space.role !== "admin") notFound();
+  // No storage to set up for a personal space while personal spaces are not offered: back to its coming-soon page.
+  if (space.kind === "personal" && !personalSpacesOpen()) redirect(spacePath(slugFor(space)));
   const view = await storageSettings(db, space, user.id);
   const { storage, first } = await searchParams;
   const note = (Array.isArray(storage) ? storage[0] : storage) ?? null;

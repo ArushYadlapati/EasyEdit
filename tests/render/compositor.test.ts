@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { PLACEHOLDER_FILL, activeClips, cropRect, drawFrame, fitRect, mediaSize, type LocalRect } from "@/lib/render/compositor";
 import { SAFE_AREA_LABEL, safeAreaMargins } from "@/lib/render/safe-zones";
 import { layoutText, wrapLines } from "@/lib/render/text-layout";
-import { DEFAULT_TRANSFORM, NO_CROP, createEmptyDoc, type Clip, type MediaClip, type TextClip, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, NO_CROP, type Clip, type MediaClip, type TextClip, type TimelineDoc } from "@/lib/timeline";
 import { text, video } from "../editor/fixtures";
 import { fakeCtx, type Call } from "./fake-ctx";
+import { docWithCaptions } from "../helpers/docs";
 
 const only = (calls: Call[], ...names: string[]) => calls.filter(([name]) => names.includes(name));
 function textDoc(...clips: Clip[]): TimelineDoc {
-  const d = createEmptyDoc("short_9x16"); // 1080 × 1920
+  const d = docWithCaptions("short_9x16"); // 1080 × 1920
   d.tracks[1].clips = clips;
   return d;
 }
@@ -88,7 +89,7 @@ describe("drawFrame", () => {
   });
 
   it("draws a labeled placeholder for video and image, and nothing for audio", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks[0].clips = [video("v", 0, 30)];
     d.tracks[3].clips = [video("s", 0, 30, { type: "audio" })];
     const { ctx, calls } = fakeCtx();
@@ -105,7 +106,7 @@ describe("drawFrame", () => {
     const cover = fitRect(1920, 1080, 1080, 1920, "cover");
     expect([Math.round(cover.width), Math.round(cover.height)]).toEqual([3413, 1920]);
     const image = {} as CanvasImageSource;
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks[0].clips = [video("v", 0, 30, { type: "image" })];
     const { ctx, calls } = fakeCtx();
     drawFrame(ctx, d, 0, { resolveSource: (clip) => (clip.assetId === "a" ? { image, width: 1920, height: 1080 } : null) });
@@ -120,7 +121,7 @@ describe("the media seam", () => {
   const texts = (calls: Call[]) => only(calls, "fillText").map((c) => c[1]);
 
   it("asks for a source with the clip and the frame, so two clips of one asset can differ", () => {
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 30), video("c2", 30, 30, { in: 300 })];
     const asked: [string, string, number, number][] = [];
     const resolveSource = (clip: MediaClip, frame: number) => { asked.push([clip.id, clip.assetId, clip.in, frame]); return null; };
@@ -131,14 +132,14 @@ describe("the media seam", () => {
 
   it("a clip with no picture says what its label says", () => {
     const { ctx, calls } = fakeCtx();
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 30)];
     drawFrame(ctx, doc, 0, { resolveSource: () => null, placeholderLabel: () => "Preparing preview" });
     expect(texts(calls)).toEqual(["Preparing preview"]);
   });
 
   it("says Video or Image when no label is given", () => {
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 30), video("c2", 30, 30, { type: "image" })];
     const first = fakeCtx();
     drawFrame(first.ctx, doc, 0);
@@ -151,7 +152,7 @@ describe("the media seam", () => {
 
 describe("drawFrame with an empty source", () => {
   it("draws the placeholder when the resolved source has no size", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks[0].clips = [video("v", 0, 30)];
     const { ctx, calls } = fakeCtx();
     drawFrame(ctx, d, 0, { resolveSource: () => ({ image: {} as CanvasImageSource, width: 0, height: 1080 }) });
@@ -170,7 +171,7 @@ describe("crop", () => {
     for (const [side, value] of Object.entries(expected)) expect(rect[side as keyof LocalRect], side).toBeCloseTo(value, 6);
   };
   const imageDoc = (transform: Record<string, unknown>) => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks[0].clips = [video("v", 0, 30, { type: "image", transform: { ...DEFAULT_TRANSFORM, fit: "contain", ...transform } })];
     return d;
   };

@@ -51,10 +51,9 @@ describe("timeline presets", () => {
     expect(d.tracks.map((t) => [t.id, t.kind])).toEqual([
       ["v1", "video"],
       ["t1", "text"],
-      ["cap", "caption"],
       ["a1", "audio"],
     ]);
-    expect(d.tracks.map((t) => t.name)).toEqual(["Video 1", "Text 1", "Captions", "Audio 1"]);
+    expect(d.tracks.map((t) => t.name)).toEqual(["Video 1", "Text 1", "Audio 1"]);
     for (const t of d.tracks) {
       expect([t.muted, t.hidden, t.locked, t.clips]).toEqual([false, false, false, []]);
     }
@@ -165,7 +164,7 @@ describe("custom sizes", () => {
   it("createEmptyDoc makes a custom doc at its size", () => {
     const d = createEmptyDoc("custom", { width: 816, height: 1056 });
     expect(d).toMatchObject({ format: "custom", width: 816, height: 1056, fps: 30 });
-    expect(d.tracks.map((t) => t.id)).toEqual(["v1", "t1", "cap", "a1"]);
+    expect(d.tracks.map((t) => t.id)).toEqual(["v1", "t1", "a1"]);
     expect(TimelineDoc.parse(d)).toEqual(d);
     expect(createEmptyDoc("long_16x9", { width: 10, height: 10 })).toMatchObject({ width: 1920, height: 1080 });
     expect(() => createEmptyDoc("custom")).toThrow("A custom format needs a width and height");

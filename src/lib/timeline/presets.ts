@@ -133,7 +133,6 @@ export function createEmptyDoc(format: FormatId, size?: FrameSize): TimelineDoc 
     tracks: [
       emptyTrack("v1", "video", "Video 1"),
       emptyTrack("t1", "text", "Text 1"),
-      emptyTrack("cap", "caption", "Captions"),
       emptyTrack("a1", "audio", "Audio 1"),
     ],
   };

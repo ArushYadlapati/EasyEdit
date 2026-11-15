@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LIMITS } from "@/lib/limits";
-import { DEFAULT_TRANSFORM, applyOps, createEmptyDoc, prepareOps, type Clip, type TimelineDoc, type Transform } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, applyOps, prepareOps, type Clip, type TimelineDoc, type Transform } from "@/lib/timeline";
+import { docWithCaptions } from "../helpers/docs";
 
 const video = (id: string, start: number, duration: number, extra: Record<string, unknown> = {}) =>
   ({ id, type: "video", assetId: "a", start, duration, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM }, ...extra }) as Clip;
@@ -30,12 +31,12 @@ describe("limits", () => {
   it("text up to 2,000 characters is accepted; 2,001 is INVALID on add and on update", () => {
     expect(prepareOps([{ op: "add_clip", trackId: "t1", clip: textClip("x1", "x".repeat(2000)) }])).toHaveLength(1);
     fails(() => prepareOps([{ op: "add_clip", trackId: "t1", clip: textClip("x1", "x".repeat(2001)) }]), "INVALID");
-    const d = applyOps(createEmptyDoc("short_9x16"), [{ op: "add_clip", trackId: "t1", clip: textClip("x1", "hi") }]).doc;
+    const d = applyOps(docWithCaptions("short_9x16"), [{ op: "add_clip", trackId: "t1", clip: textClip("x1", "hi") }]).doc;
     fails(() => applyOps(d, [{ op: "update_clip", clipId: "x1", patch: { text: "x".repeat(2001) } }]), "INVALID");
   });
 
   it("a 21st track is LIMIT_EXCEEDED; the 20th is fine", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     for (let i = 0; i < 15; i++) d.tracks.push(track(`x${i}`));
     const twenty = applyOps(d, [{ op: "add_track", track: { id: "n20", kind: "audio", name: "20" } }]).doc;
     expect(twenty.tracks).toHaveLength(20);
@@ -44,7 +45,7 @@ describe("limits", () => {
   });
 
   it("a 1,001st clip on a track is LIMIT_EXCEEDED for add, split and a cross-track move", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks[0].clips = Array.from({ length: 999 }, (_, i) => video(`k${i}`, i * 2, 2));
     d.tracks.push({ ...track("o1", "overlay"), clips: [video("m", 0, 5)] });
     const full = applyOps(d, [{ op: "add_clip", trackId: "v1", clip: video("k999", 5000, 2) }]).doc;
@@ -56,7 +57,7 @@ describe("limits", () => {
 
 describe("timeline rules", () => {
   it("a project can have only one caption track", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     expect(() => applyOps(d, [{ op: "add_track", track: { id: "cap2", kind: "caption", name: "More" } }]))
       .toThrow(expect.objectContaining({ code: "INVALID", message: expect.stringContaining("only one caption track") }));
     fails(() => applyOps(d, [{ op: "replace_track", track: track("cap2", "caption"), index: 0 }]), "INVALID");
@@ -65,7 +66,7 @@ describe("timeline rules", () => {
   });
 
   it("an image clip can be trimmed from the left; its in stays 0 and undo restores it", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks[0].clips = [video("i1", 30, 60, { type: "image" })];
     const { doc, inverse } = applyOps(d, [{ op: "trim_clip", clipId: "i1", edge: "start", to: 10 }]);
     expect(doc.tracks[0].clips[0]).toMatchObject({ start: 10, duration: 80, in: 0 });
@@ -83,14 +84,14 @@ describe("rules only apply when a count grows", () => {
     ({ ...track(id, kind), clips: Array.from({ length: n }, (_, i) => video(`${id}c${i}`, i * 2, 2)) }) as TimelineDoc["tracks"][number];
 
   it("replace_track with 1,001 clips over a 1,000-clip track is LIMIT_EXCEEDED; 1,000 is fine", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks[0] = withClips("v1", 1000);
     fails(() => applyOps(d, [{ op: "replace_track", track: withClips("v1", 1001), index: 0 }]), "LIMIT_EXCEEDED");
     expect(applyOps(d, [{ op: "replace_track", track: withClips("v1", 1000), index: 0 }]).doc.tracks[0].clips).toHaveLength(1000);
   });
 
   it("replacing an existing track at 20 tracks is fine", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     for (let i = 0; i < 16; i++) d.tracks.push(track(`x${i}`));
     expect(d.tracks).toHaveLength(20);
     const out = applyOps(d, [{ op: "replace_track", track: { ...track("x0"), name: "renamed" }, index: 0 }]).doc;
@@ -99,7 +100,7 @@ describe("rules only apply when a count grows", () => {
   });
 
   it("a document already over the track limit can still be edited down", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     for (let i = 0; i < 17; i++) d.tracks.push(track(`x${i}`));
     d.tracks[0].clips = [video("k1", 0, 10)];
     expect(d.tracks).toHaveLength(21);
@@ -110,7 +111,7 @@ describe("rules only apply when a count grows", () => {
   });
 
   it("with two caption tracks already, replacing one with a caption track works and a third is refused", () => {
-    const d = createEmptyDoc("short_9x16");
+    const d = docWithCaptions("short_9x16");
     d.tracks.push(track("cap2", "caption"));
     const out = applyOps(d, [{ op: "replace_track", track: { ...track("cap2", "caption"), name: "n" }, index: 0 }]).doc;
     expect(out.tracks.filter((t) => t.kind === "caption")).toHaveLength(2);
@@ -171,7 +172,7 @@ describe("text Postgres can store", () => {
       fails(() => prepareOps([{ op: "add_clip", trackId: "t1", clip: textClip("x1", text) }]), "INVALID");
       fails(() => prepareOps([{ op: "replace_track", track: { ...track("t9", "text"), clips: [textClip("x1", text)] }, index: 0 }] as never), "INVALID");
     }
-    const d = applyOps(createEmptyDoc("short_9x16"), [{ op: "add_clip", trackId: "t1", clip: textClip("x1", "GO 🤖🇺🇸") }]).doc;
+    const d = applyOps(docWithCaptions("short_9x16"), [{ op: "add_clip", trackId: "t1", clip: textClip("x1", "GO 🤖🇺🇸") }]).doc;
     fails(() => applyOps(d, [{ op: "update_clip", clipId: "x1", patch: { text: "a\u0000b" } }]), "INVALID");
     fails(() => applyOps(d, [{ op: "update_clip", clipId: "x1", patch: { text: "a\ud800" } }]), "INVALID");
   });

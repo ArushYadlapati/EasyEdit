@@ -7,9 +7,10 @@ import { soundSchedule, type SoundSchedule } from "@/lib/export/sound-schedule";
 import { createSourceRing, type SoundPacket } from "@/lib/export/source-ring";
 import { createVoicePlayer } from "@/lib/export/voice";
 import { createStretcher } from "@/lib/export/wsola";
-import { createEmptyDoc, type Clip } from "@/lib/timeline";
+import { type Clip } from "@/lib/timeline";
 import { video } from "../editor/fixtures";
 import { fitTone, impulses, levelDb, maxDiff, peakIndex, peaks, planar, tone, zeroCrossHz } from "./audio-helpers";
+import { docWithCaptions } from "../helpers/docs";
 
 const K = sincKernel();
 // The file as decoded: planes at `rate`, cut into packets of 1,024 frames, the first at `first` seconds.
@@ -33,7 +34,7 @@ function reader(list: SoundPacket[]) {
 const song = (id: string, start: number, duration: number, extra: Record<string, unknown> = {}) =>
   video(id, start, duration, { type: "audio", assetId: "song", ...extra }) as Clip;
 function onAudio(...clips: Clip[]) {
-  const d = createEmptyDoc("short_9x16");
+  const d = docWithCaptions("short_9x16");
   d.tracks[3].clips = clips;
   return d;
 }

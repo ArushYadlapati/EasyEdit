@@ -21,8 +21,6 @@ Track v1 [video] "Video 1"
   (empty)
 Track t1 [text] "Text 1"
   x1  text  0.50–2.00s  frames 15–60  "QUALIFIER RECAP"  font="Geist" size=96 weight=700 color="#ffffff" align=center x=0.5 y=0.5
-Track cap [caption] "Captions"
-  (empty)
 Track a1 [audio] "Audio 1"
   (empty)` });
   });

@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { LIMITS } from "@/lib/limits";
 import { failedOn } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
+import { personalSpacesOpen } from "./personal";
 import { isReservedSlug, slugFromName, withSuffix } from "./slugs";
 import { PERSONAL_ALIAS, SEED_TEAM_ID, personalSpaceId, type MySpace } from "./types";
 
@@ -81,8 +82,11 @@ export async function rememberSpace(db: DB, userId: string, spaceId: string): Pr
   `);
 }
 
-// The last space visited if the viewer is still a member, else their personal space.
-export async function lastSpace(db: DB, userId: string): Promise<MySpace> {
+// The last space visited if the viewer is still a member, else their personal space. While personal spaces are not
+// offered (personalSpacesOpen), a team instead: the last one visited, else their first by name. Only someone in no
+// team at all gets their personal space, whose page says it is coming soon.
+export async function lastSpace(db: DB, userId: string, env: NodeJS.ProcessEnv = process.env): Promise<MySpace> {
+  const open = personalSpacesOpen(env);
   const result = await db.execute(sql`
     select o.id, o.slug, o.name, o.kind, m.role
     from space_visits v
@@ -91,7 +95,11 @@ export async function lastSpace(db: DB, userId: string): Promise<MySpace> {
     where v.user_id = ${userId}
   `);
   const row = rowsOf<SpaceRow>(result)[0];
-  if (row) return toMySpace(row);
+  if (row && (open || row.kind === "team")) return toMySpace(row);
+  if (!open) {
+    const team = (await listMySpaces(db, userId)).find((space) => space.kind === "team");
+    if (team) return team;
+  }
   const personal = await findMySpace(db, userId, PERSONAL_ALIAS);
   if (!personal) throw new Error(`No personal space for user ${userId}`);
   return personal;
