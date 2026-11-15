@@ -53,8 +53,9 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
   // For the Media tab's setup card: who may set storage up (the space's admins), and whether this server can.
   const isAdmin = actor.role === "admin";
   const block = storageProblem === "none" ? storageBlock(space.kind) : null;
-  // Only the person who connected the account can reconnect it; another admin is told who.
-  const owner = storageProblem === "broken" ? await connectionOwner(db, space.id) : null;
+  // Only the person who connected the account can reconnect it; another admin is told who. Only admins are told
+  // anything about it: no one else's page carries the owner's address.
+  const owner = storageProblem === "broken" && isAdmin ? await connectionOwner(db, space.id) : null;
 
   return (
     <>

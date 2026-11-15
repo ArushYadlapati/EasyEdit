@@ -157,6 +157,12 @@ describe("the space editor", () => {
       await testDb.insert(spaceStorage).values({ spaceId: personalSpaceId("u1"), kind: "google_account", connectionId: "dc_1", rootFolderId: "root1", folderName: "EasyEdit – Personal", createdBy: "u1" });
       expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: false, storageProblem: "broken" });
       expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ ownsConnection: true, ownerEmail: "ada@gmail.com" });
+      // In a team where they aren't admins, nobody is handed whose connection it is, the person who made it included.
+      await testDb.update(spaceStorage).set({ kind: "google_account", connectionId: "dc_1", rootFolderId: "root2" }).where(eq(spaceStorage.spaceId, SEED_TEAM_ID));
+      for (const editor of [ada, bea]) {
+        const { space } = await editorAt(editor, "seattle-solvers", teamProject);
+        expect(space).toMatchObject({ storageProblem: "broken", isAdmin: false, ownsConnection: false, ownerEmail: null });
+      }
       await testDb.update(driveConnection).set({ brokenAt: null, brokenReason: null }).where(eq(driveConnection.id, "dc_1"));
       expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: true, storageProblem: null });
     } finally {
