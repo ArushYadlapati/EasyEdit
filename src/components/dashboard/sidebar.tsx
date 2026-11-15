@@ -7,7 +7,7 @@ import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-dr
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { ALL_VIEW, folderOf, viewQuery, type DashboardFolder, type DashboardView } from "@/lib/dashboard/view";
-import { SIDEBAR_HEADING, SpaceSwitcher, useMySpaces } from "@/components/dashboard/space-switcher";
+import { SIDEBAR_HEADING, SpaceSwitcher, useCreateTeam, useMySpaces } from "@/components/dashboard/space-switcher";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 
 export type SidebarProps = {
@@ -56,6 +56,7 @@ function SidebarLink({ href, current, folderId, takesDrops, onDropProject, child
 // dragged onto a folder goes into it, or onto All projects out of its folder.
 export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
   const spaces = useMySpaces();
+  const createTeam = useCreateTeam();
   const current = spaces.find((space) => slugFor(space) === spaceSlug);
   const shownFolder = folderOf(view);
   return (
@@ -66,7 +67,7 @@ export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDrop
       )}
     >
       {/* The person's spaces (from the dashboard layout), above what is in this one. Not drawn without any, as in tests. */}
-      {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} />}
+      {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} createTeam={createTeam} />}
       <nav aria-label="Projects" className="flex shrink-0 flex-row items-center gap-1 md:flex-col md:items-stretch">
         <h2 className={SIDEBAR_HEADING}>Projects</h2>
         <SidebarLink href={spacePath(spaceSlug)} current={view.kind === "recent"} folderId={null} takesDrops={false} onDropProject={onDropProject}>

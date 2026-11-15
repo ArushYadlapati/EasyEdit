@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
+import { createTeamAction } from "@/app/(dashboard)/s/new/actions";
 import { AccountMenu } from "@/components/dashboard/account-menu";
 import { AdminLink } from "@/components/dashboard/admin-link";
 import { SpacesProvider } from "@/components/dashboard/space-switcher";
@@ -7,6 +8,7 @@ import { KeepSignedIn } from "@/components/keep-signed-in";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
+import { canCreateTeam } from "@/lib/spaces/create-team-access";
 import { listMySpaces } from "@/lib/spaces/service";
 
 // The dashboard is always dark, in the editor's colors. This asks the Dark Reader browser extension to leave it alone,
@@ -22,7 +24,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   const spaces = await listMySpaces(getDb(), user.id);
 
   return (
-    <SpacesProvider spaces={spaces}>
+    <SpacesProvider spaces={spaces} createTeam={canCreateTeam(spaces) ? createTeamAction : undefined}>
       <div className="ed-theme flex h-dvh flex-col bg-ed-bg font-sans text-ed-text">
         <header className="flex h-11 shrink-0 items-center gap-4 border-b border-ed-line bg-ed-panel px-4">
           {/* The wordmark leads back to the projects, from Admin too. The negative margin keeps it where the plain text was. */}

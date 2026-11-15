@@ -35,6 +35,8 @@ export const LIMITS = {
   mediaReadTokenMinSeconds: 600, // a read token handed to a browser has at least this long left
   connectorAssetsPage: 50, // assets per list_assets page
   connectorMediaItems: 20, // clips per add_media call
+  teamNameChars: 60, // a team's name
+  teamsPerDay: 10, // teams one person may create in 24 hours
   frameSideMin: 16, // a custom size, each side in pixels
   frameSideMax: 4096,
   frameAreaMax: 3840 * 2160, // a custom size; 8,294,400 is the area of 4K
