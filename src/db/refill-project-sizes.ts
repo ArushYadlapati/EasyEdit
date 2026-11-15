@@ -1,4 +1,4 @@
-// Statements the owner runs by hand in the Neon SQL editor; the README quotes them.
+// Statements the owner runs by hand in the Neon SQL editor; docs/deploy.md quotes them.
 
 // After deploying the version with folders and custom sizes: fills each project's width and height from its
 // timeline wherever the version live during the deploy left them empty or out of date. Safe to run again.

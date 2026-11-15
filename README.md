@@ -1,431 +1,132 @@
+<div align="center">
+
 # EasyEdit
 
-EasyEdit is the Seattle Solvers browser video editor. Only people on the team's allowlist can sign in, and they sign in with Google.
+**The AI-first video editor for teams, right in your browser.**
 
-This README gets the app running on your own computer. You will set up three things: a Google sign-in key, a free database, and a small settings file.
+[![Website](https://img.shields.io/website?url=https%3A%2F%2Feasyedit-pi.vercel.app&label=easyedit-pi.vercel.app&style=flat-square)](https://easyedit-pi.vercel.app)
+[![Version](https://img.shields.io/github/package-json/v/ArushYadlapati/EasyEdit?style=flat-square&color=blue)](package.json)
+[![Last commit](https://img.shields.io/github/last-commit/ArushYadlapati/EasyEdit?style=flat-square)](https://github.com/ArushYadlapati/EasyEdit/commits/main)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/ArushYadlapati/EasyEdit?style=flat-square)](https://github.com/ArushYadlapati/EasyEdit/pulse)
+[![Issues](https://img.shields.io/github/issues/ArushYadlapati/EasyEdit?style=flat-square)](https://github.com/ArushYadlapati/EasyEdit/issues)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-## What works today
+[![Next.js](https://img.shields.io/github/package-json/dependency-version/ArushYadlapati/EasyEdit/next?style=flat-square&logo=nextdotjs&logoColor=white&label=Next.js&color=000000)](https://nextjs.org)
+[![React](https://img.shields.io/github/package-json/dependency-version/ArushYadlapati/EasyEdit/react?style=flat-square&logo=react&logoColor=black&label=React&color=61DAFB)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/github/package-json/dependency-version/ArushYadlapati/EasyEdit/dev/tailwindcss?style=flat-square&logo=tailwindcss&logoColor=white&label=Tailwind%20CSS&color=06B6D4)](https://tailwindcss.com)
+[![Postgres](https://img.shields.io/badge/Postgres-Neon-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://neon.tech)
+[![Drizzle](https://img.shields.io/badge/ORM-Drizzle-C5F74F?style=flat-square&logo=drizzle&logoColor=black)](https://orm.drizzle.team)
+[![MCP](https://img.shields.io/badge/AI%20agents-MCP-D97757?style=flat-square&logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
+[![Vitest](https://img.shields.io/badge/tested%20with-Vitest-6E9F18?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Vercel](https://img.shields.io/badge/deployed%20on-Vercel-000000?style=flat-square&logo=vercel&logoColor=white)](https://vercel.com)
 
-- Sign in with Google. Anyone not on the allowlist is turned away.
-- An Admin page where admins add people, change their role, and remove them.
-- A dashboard where editors create projects in one of five video formats or at a custom size (in pixels, centimeters or inches), keep them in folders, and rename, duplicate and delete them. Recent shows the projects you opened last. A deleted project is hidden and not shown again. Each card shows a picture of its project, which the editor draws a few seconds after a change is saved; a project changed from outside the editor shows its new picture once an editor opens it.
-- The editor, which opens a project in the whole window: an add panel on the left, the preview in the middle, the details on the right and the timeline along the bottom. It is always dark, and it asks the Dark Reader browser extension to leave it alone. In it you can:
-  - add text clips from three presets (Title, Subtitle, Lower third) and video, image and audio clips from the Media tab, and move, trim, split, delete, ripple-delete, copy and paste clips of every kind
-  - add, rename, lock, hide, mute, reorder and remove tracks
-  - play the project in the preview, with frame steps, J, K and L, and safe-zone guides for each format
-  - undo and redo your own changes, and undo any change listed under Activity, including a teammate's
-- Export: the **Export** button (or `Cmd/Ctrl+E`) makes an MP4 of the project on your own computer, in the browser; nothing is uploaded. You pick a size, watch the progress and can cancel, and you can keep editing while it runs. Video and image clips export from the files the editor plays, so video comes from its 720p preview copy. The sound is mixed as the preview plays it: each video's own sound and the audio tracks, at each clip's volume (up to 1), with muted tracks and hidden video tracks silent; a clip at another speed keeps its pitch. Without an AAC encoder (Firefox, Chrome on Linux) the file has no sound track; when the project has sound, the dialog says so before you export. Viewers can export too. It needs a recent Chrome or Edge on a computer.
-- Upload video, images and audio in the editor's Media tab (up to 2 GB a file). Uploads go straight from your browser to the team's Google Shared Drive and resume after an interruption.
-- Put media on the timeline, trim it, and play it in the preview. Each video gets a small 720p preview copy, so phone footage plays on any laptop.
-- Every change is saved as you make it. Other people's changes show up within about two seconds while you are working, and the top bar says who is editing.
-- Viewers get the same editor, read-only: they can play and look, but not change anything.
-- A project API (see [The project API](#the-project-api)).
-- Claude, ChatGPT and other AI agents can list, read, create and edit projects for a signed-in member, through the connector (set up on the AI agents page). They can also list the team's media and put it on a timeline. A member can connect several agents at once.
+[Live app](https://easyedit-pi.vercel.app) · [Documentation](#documentation) · [Roadmap](#roadmap) · [Report a bug](https://github.com/ArushYadlapati/EasyEdit/issues)
 
-The editor needs a window at least 1024 px wide. Changes made while offline or signed out wait in the open tab and are sent once you are back. They are not kept if the tab is closed or reloaded first, and the browser asks before that happens. The browser's Back button does not ask, so use **Projects** to leave while changes are waiting. Closing the tab or clicking **Projects** during an export asks first; the Back button does not, and cancels the export. Without a save dialog (Firefox, Safari), closing the tab or clicking **Projects** also asks while a finished video waits for **Download**. Keep the tab open until the export finishes: on battery, Chrome may pause a tab that is in the background. If the tab is closed, reloaded or crashes during an export, the empty file the save dialog made stays where you saved it.
+</div>
 
-What's next: thumbnails and waveforms on the timeline, transcripts and footage search for Claude, captions, text animation and effects, a brand kit and templates, full-quality video in exports, the render station, voiceover, and posting.
+---
 
-## Before you start
+## About
 
-You need:
+EasyEdit is an AI-first video editor built for teams. Everyone on a team works in the same project at the same time, footage lives in the team's Google Drive for cloud storage, and finished videos export straight from the browser. AI agents such as Claude and ChatGPT connect over MCP and do real editing work alongside you, and every change they make is listed and can be undone.
+
+## Features
+
+- **Multi-track timeline.** Text, video, image and audio clips on separate tracks, with trimming, splitting, ripple delete, copy and paste, snapping, and track lock, hide and mute.
+- **Real-time collaboration.** Every change saves as you make it. Teammates' edits appear within about two seconds, their selections are highlighted on the timeline and preview, and anyone can undo any change from the Activity list, including a teammate's.
+- **Export in the browser.** Renders an H.264/AAC MP4 on your own machine with WebCodecs. Nothing is uploaded, and you can keep editing while it runs.
+- **Shared media library.** Uploads of up to 2 GB go straight from the browser to a Google shared drive and resume after an interruption. Each video gets a 720p preview copy, so phone footage plays smoothly on any laptop.
+- **Formats for every platform.** Short 9:16, Feed 4:5, Square 1:1, Long 16:9, Long 4K, or a custom size, all at 30 fps, with safe-zone guides.
+- **AI agents over MCP.** Claude, ChatGPT, Cursor, VS Code, Codex and other MCP clients can list, read, create and edit projects for a signed-in member. Every agent change is listed in Activity and can be undone.
+- **Roles and access control.** Viewers, editors and admins, with an Admin page for managing who can sign in.
+- **Keyboard-first editing.** J/K/L playback, frame stepping, and a full shortcut list behind `?`.
+- **Versioned project API.** JSON endpoints for reading projects and applying edits, with conflict detection and safe retries.
+
+## Roadmap
+
+EasyEdit is moving from one team's invite-only editor to an editor anyone can sign up for, in Canva-style personal and team spaces. The work ships in stages, in this order:
+
+- [ ] **Spaces.** Everyone gets a personal space alongside their teams, with a switcher between them. Every project, folder and upload belongs to one space, and only that space's members can see it. Pages move under `/s/<space>/`, and old links redirect. AI agents work across all of a person's spaces, with results labelled by space. Existing Seattle Solvers projects move into a Seattle Solvers team unchanged.
+- [ ] **Storage per space, and open sign-up.** Each space stores its media in a Google Drive account its owner connects. EasyEdit only asks for access to the files it creates itself, never your whole Drive. Each team gets its own read-only key, so one team can never read another's media. Once every new space can have storage, anyone with a Google account can sign up.
+- [ ] **Team invites.** Team admins add people by email, including people who don't have an account yet, with invite links first and email invites later.
+- [ ] **A new sign-up flow.** Choose where your videos live and set up AI agents as you join. People invited to a team go straight into it.
+- [ ] **Moving projects between spaces.** A project's media is copied to the new space, so a project never ends up half-moved.
+
+Also planned: thumbnails and waveforms on the timeline, captions, text animation and effects, transcripts and footage search for AI agents, and full-quality video in exports. See [Project status](docs/status.md) for what works today.
+
+## Tech stack
+
+| Area | Built with |
+| --- | --- |
+| App | [Next.js](https://nextjs.org) 16 (App Router), React 19, TypeScript, Tailwind CSS 4 |
+| Editor state | [Zustand](https://zustand.docs.pmnd.rs) |
+| Auth | [Better Auth](https://www.better-auth.com): Google sign-in, passkeys, and the OAuth server behind the AI agent connector |
+| Database | Postgres on [Neon](https://neon.tech), through [Drizzle ORM](https://orm.drizzle.team) |
+| Media | Google Drive API (shared drive and service account); [Mediabunny](https://mediabunny.dev) and WebCodecs for export |
+| AI agents | [Model Context Protocol](https://modelcontextprotocol.io) server |
+| Tests | [Vitest](https://vitest.dev), Testing Library, [PGlite](https://pglite.dev) (in-memory Postgres) |
+| Hosting | [Vercel](https://vercel.com) |
+
+## Getting started
+
+### Prerequisites
 
 - [Node.js](https://nodejs.org) 24 or newer
-- [pnpm](https://pnpm.io/installation) version 11
-- A Google account that can use Google Cloud
-- A free [Neon](https://neon.tech) account
+- [pnpm](https://pnpm.io/installation) 11
+- A Google Cloud project, for the sign-in client
+- A free [Neon](https://neon.tech) Postgres database
 
-Download the code and install it:
+### Run it locally
 
-```bash
-git clone https://github.com/FTC-23511/EasyEdit.git
-cd EasyEdit
-pnpm install
-```
+1. **Clone the repository and install dependencies.**
 
-## 1. Set up Google sign-in
+    ```bash
+    git clone https://github.com/ArushYadlapati/EasyEdit.git
+    cd EasyEdit
+    pnpm install
+    ```
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and sign in.
-2. At the top of the page, click the project picker, then **New Project**. Name it `EasyEdit` and click **Create**. Make sure the new project is selected.
-3. Open the menu (three lines, top left) and click **APIs & Services**, then **OAuth consent screen**. If you see **Get started**, click it.
-4. Fill in the app name (`EasyEdit`) and your email for support. Click **Next**.
-5. For Audience, choose **External**. Click **Next**.
-6. Enter your email as the contact, agree to the policy, and click **Create**.
-7. Add the people who may sign in as test users. Open **Audience**, find **Test users**, click **Add users**, enter each person's Google account, and click **Save** (up to 100 people). Start with `admin@seattlesolvers.com`.
-
-    A new Google app starts in "Testing", where only test users can reach the Google sign-in. So everyone you add on the Admin page also has to be added here.
-
-    Publishing the app lifts that limit, but Google keeps **Publish app** greyed out until the **Branding** page is filled in. That needs a deployed site, so come back to it after [Deploy to Vercel](#deploy-to-vercel).
-8. Open **Clients** (or **APIs & Services**, then **Credentials**) and click **Create client** (or **Create credentials**, then **OAuth client ID**).
-9. For Application type, choose **Web application**. Name it `EasyEdit web`.
-10. Under **Authorized redirect URIs**, click **Add URI** and enter exactly:
+2. **Create a Google OAuth client** (type **Web application**) with this redirect URI:
 
     ```
     http://localhost:3000/api/auth/callback/google
     ```
 
-    When you later put the app on a real web address, add a second URI with that address, for example:
+    While the Google app is in Testing, add everyone who will sign in as a test user. The [setup guide](docs/setup.md#1-set-up-google-sign-in) walks through every click.
 
-    ```
-    https://your-app.vercel.app/api/auth/callback/google
-    ```
-
-    The path (`/api/auth/callback/google`) must be exact, with no slash at the end.
-11. Click **Create**. Copy the **Client ID** and **Client secret**. You will paste them into the settings file in step 3.
-
-## 2. Set up the database
-
-1. Go to [neon.tech](https://neon.tech), sign up (free), and click **Create project**. Pick any name and region.
-2. On the project dashboard, click **Connect**.
-3. Turn **Connection pooling** on, and copy the connection string. It starts with `postgresql://`. This is your `DATABASE_URL`.
-
-## 3. Fill in the settings file
-
-1. Copy the example file:
+3. **Create your settings file** and fill it in:
 
     ```bash
     cp .env.example .env.local
     ```
 
-2. Generate a secret for `BETTER_AUTH_SECRET`:
-
-    ```bash
-    openssl rand -base64 32
-    ```
-
-3. Open `.env.local` and fill it in:
-
-    | Name | What to put |
+    | Variable | Value |
     | --- | --- |
-    | `DATABASE_URL` | The Neon connection string from step 2 |
-    | `BETTER_AUTH_SECRET` | The random text from `openssl rand -base64 32` |
-    | `BETTER_AUTH_URL` | `http://localhost:3000` on your computer. On a deployed app, its web address. |
-    | `GOOGLE_CLIENT_ID` | The Client ID from step 1 |
-    | `GOOGLE_CLIENT_SECRET` | The Client secret from step 1 |
+    | `DATABASE_URL` | Your Neon connection string, with connection pooling on |
+    | `BETTER_AUTH_SECRET` | The output of `openssl rand -base64 32` |
+    | `BETTER_AUTH_URL` | `http://localhost:3000` |
+    | `GOOGLE_CLIENT_ID` | From your OAuth client |
+    | `GOOGLE_CLIENT_SECRET` | From your OAuth client |
+    | `GOOGLE_SERVICE_ACCOUNT_KEY`, `DRIVE_FOLDER_ID` | Optional. Leave them empty to run without uploads. |
 
-    The two media settings at the end of the file, `GOOGLE_SERVICE_ACCOUNT_KEY` and `DRIVE_FOLDER_ID`, can stay empty for now. See [Set up media storage](#set-up-media-storage).
+    Never commit `.env.local`. It holds secrets.
 
-Never share `.env.local` or commit it to git. It holds secrets.
-
-## Set up media storage
-
-Uploaded video, images and audio are kept in a folder of a Google shared drive. This is optional: without it the app runs and edits as usual, and the Media tab says uploads are not set up. You can skip this section now and come back after step 4.
-
-1. **A folder in a shared drive.** In Google Drive, in a team shared drive where you may share folders: New folder, name it `EasyEdit`. Open the folder and copy the id from the address bar (the part after `/folders/`). This is `DRIVE_FOLDER_ID`.
-2. **Let an outside account in (only if step 6 is refused).** The service account's address ends in `gserviceaccount.com`, so it is outside the domain, and it will not be a member of the shared drive. A manager of the shared drive opens the drive's name, Shared drive settings, and turns on "Allow people outside Seattle Solvers to access files" and "Allow people who aren't shared drive members to access files". If the switch is missing or greyed out, a Workspace admin must allow it first: admin.google.com, Apps, Google Workspace, Drive and Docs, Sharing settings, "Sharing outside of Seattle Solvers" on for the unit that owns the drive.
-3. **The Drive API.** In the Google Cloud project that holds the sign-in client: APIs & Services, Library, "Google Drive API", Enable.
-4. **A service account.** IAM & Admin, Service Accounts, Create service account, name `easyedit-media`. Give it no project role. Skip the optional steps.
-5. **Its key.** Open the service account, Keys, Add key, Create new key, JSON. Move the downloaded file to `~/.config/easyedit/drive-service-account.json` and run `chmod 600` on it. If Google refuses with a policy named `iam.disableServiceAccountKeyCreation`, an organization admin must switch that policy off for this project first.
-6. **Share the folder with it.** On the `EasyEdit` folder: Share, add the service account's address (it ends in `iam.gserviceaccount.com`; the service account's page in Google Cloud shows it), role **Content manager**, untick "Notify people". Do not add it as a member of the drive.
-7. **Put the two settings in `.env.local`.** Encode the key on one line:
+4. **Create the tables, add the first admin, and start the dev server.**
 
     ```bash
-    base64 -i ~/.config/easyedit/drive-service-account.json | tr -d '\n'
+    pnpm db:migrate
+    pnpm db:seed
+    pnpm dev
     ```
 
-    Put what it prints after `GOOGLE_SERVICE_ACCOUNT_KEY=`, and the folder id from item 1 after `DRIVE_FOLDER_ID=`. The key is a secret, like the rest of `.env.local`: never paste it into a chat, an issue or a commit.
-8. **Restart the app.** Stop `pnpm dev` and start it again, so it reads the new settings.
+5. **Open [http://localhost:3000](http://localhost:3000)** and sign in with Google as the admin that `pnpm db:seed` adds (`admin@seattlesolvers.com`; to use your own account, change `SEED_ADMIN_EMAIL` in `src/lib/allowlist/service.ts` before seeding). Add everyone else from the Admin page.
 
-**Check it.** From the project folder, run the Drive check with the key file and the folder id:
+After pulling changes that add migrations (new files in `drizzle/`), run `pnpm db:migrate` again.
 
-```bash
-GOOGLE_SERVICE_ACCOUNT_KEY_FILE=~/.config/easyedit/drive-service-account.json DRIVE_FOLDER_ID=<the folder id> node scripts/drive-check/run.mjs
-```
+### Media uploads (optional)
 
-Open `http://localhost:3101` in the browser the team really uses (Edge), press **Run check**, and keep the tab in front until the page says it is done (64 MiB up, so one to a few minutes). The terminal prints F1 to F12 and exits 0. In Google Drive, the shared drive's trash holds the `drive-check` folder. If a line fails, see [If something goes wrong](#if-something-goes-wrong).
-
-Good to know:
-
-- The app keeps files in two folders it makes inside the `EasyEdit` folder: `Originals` for what was uploaded, and `Previews` for the preview copies and still pictures.
-- Removing a file in the app moves it to the shared drive's trash, where it stays for 30 days.
-- Do not rename or move the files in the drive by hand. Rename and remove them in the app instead.
-- Uploads work only from the address in `BETTER_AUTH_URL`. A preview deployment or another address cannot upload.
-
-## 4. Run it
-
-Create the database tables, add the first admin, and start the app:
-
-```bash
-pnpm db:migrate
-pnpm db:seed
-pnpm dev
-```
-
-`pnpm db:seed` adds `admin@seattlesolvers.com` as an admin. It is safe to run again.
-
-When you pull changes that add migrations (new files in the `drizzle` folder), run `pnpm db:migrate` again before `pnpm dev`.
-
-Open [http://localhost:3000](http://localhost:3000) and click the Google sign-in button.
-
-## First-run checklist
-
-These checks need a real Google client and a real database, so work through them once after setup. Tick each one off.
-
-**Database**
-
-- [ ] `pnpm db:migrate` finishes with no errors against your Neon database.
-- [ ] `pnpm db:seed` prints `Seeded admin@seattlesolvers.com`.
-
-**Sign-in**
-
-- [ ] Signing in as `admin@seattlesolvers.com` takes you to `/dashboard`.
-- [ ] A teammate who is on the allowlist and is a Google test user (step 1, item 7) can sign in.
-- [ ] Signing in with a Google account that is not on the allowlist sends you back to `/login` with the message that the account isn't on the allowlist.
-
-**Admin page** (signed in as the admin)
-
-- [ ] Add a second Google account as `viewer`. That account can sign in, and does not see an **Admin** link.
-- [ ] While signed in as that viewer, open `/admin`. You see "You don't have access to this page."
-- [ ] Back as admin, change your own role to something else while you are the only admin. You get the last-admin error.
-- [ ] Remove the viewer. Their next page load sends them to `/login`.
-
-**Projects** (signed in as admin)
-
-- [ ] On the dashboard, create a project and open it. The editor opens with an empty timeline.
-- [ ] Add a clip through the API while the editor is open. Within a few seconds the clip shows up on Text 1, without a reload. To try it, copy the project id from the page address (`/editor/<id>`), copy the value of the `Cookie` request header from your browser's developer tools (Network tab, click any request to the app, then look under **Request Headers**), and run:
-
-    ```bash
-    curl -X POST http://localhost:3000/api/projects/<id>/ops \
-      -H 'content-type: application/json' \
-      -H "cookie: <paste cookie here>" \
-      -d '{"baseVersion":0,"ops":[{"op":"add_clip","trackId":"t1","clip":{"type":"text","start":0,"duration":60,"text":"GO SOLVERS","transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"contain"},"style":{"fontFamily":"Inter","fontSize":96,"fontWeight":800,"color":"#FFFFFF","align":"center"}}}]}'
-    ```
-
-    The answer starts with `{"version":1`.
-
-    The cookie is a secret, like `.env.local`: anyone who has it is signed in as you. Do not paste it into chats, issues or commits.
-
-## What to click to check the editor
-
-The editor cannot be opened without a Google sign-in, so the tests cannot click through it. Do this once after a change to the editor, signed in on your own computer. It takes about ten minutes. Use an editor account, and a second account in another browser profile for lines 9, 10, 11 and 13.
-
-1. Open a project from the dashboard. The editor fills the window, dark, with no site header. The top bar shows "Projects", the project's name and "Saved".
-2. In the left panel click **Title**. A clip appears on Text 1 at the playhead and the preview shows "Your title". The status flips to "Saving…" and back to "Saved".
-3. With the clip selected, type in **Text** in the inspector. The preview follows as you type. Change **Size** and **Color**. Click away: each change is saved once.
-4. Drag the clip to the right. It snaps to whole seconds and a guide line shows. Drag its right edge to make it shorter.
-5. Put the playhead in the middle of the clip and press `S`: it becomes two clips. Select the second and press `Delete`. Press `Cmd/Ctrl+Z`: it comes back. Press `Shift+Cmd/Ctrl+Z`: it goes again.
-6. Click **Subtitle** with the playhead over the first clip. It lands on a new track, "Text 2", in the row just above Text 1: a new track goes just in front of the other tracks of its kind. Open that track's options: **Move down**, then **Move up**. Lock it, then hide it: its text leaves the preview.
-7. Select a clip, press `Cmd/Ctrl+C`, move the playhead, press `Cmd/Ctrl+V`. A copy appears at the playhead and is selected.
-8. Press `Space` to play and `K` to stop. Click a button such as **Safe zones**, then press `Space`: it plays, and the button is not pressed again. Try `L` twice (2×), `J`, the arrow keys, `Home` and `End`. Turn **Safe zones** off and on. With nothing selected, switch **Format** to Long 16:9: the canvas changes shape.
-9. In the second profile open the same project and move a clip. Within about two seconds the first window shows the move and "<name> is editing…". Open **Activity** in the first window: both people's changes are listed. Click **Undo this change** on the other person's move: it moves back in both windows.
-10. In the second profile select a clip. Within a few seconds the first window rings it on the timeline in a colour, outlines it on the preview with that person's name (when the playhead is over it), and shows their dot in the top bar. Click the dot: the playhead moves to that clip. Select a track in the second profile: its row gets a coloured bar and lines. Close the second window: the marks go within a few seconds. Switch it to another browser tab instead: they go within about a minute.
-11. Change a clip's text in the first window, then change the same text in the second. In the first window press `Cmd/Ctrl+Z`. It says "Can't undo. This was changed afterwards." and the second person's text stays.
-12. In the browser's developer tools set the network to Offline and move a clip. The status reads "Offline. Changes will save when you reconnect." Click **Projects**: the browser asks before leaving; stay on the page. Go back online: it reads "Saved". Reload: the move is still there.
-13. On the Admin page make the second account a viewer and reload its editor. It shows "View only", every edit control is greyed out, clips cannot be dragged, and Play still works.
-14. Sign out in another tab, then move a clip in the editor. It says "You're signed out. Sign in again to save your changes." and the status reads "Signed out". Click **Sign in**: it opens in a new tab. Sign in there and come back to the editor: the status returns to "Saved" and the move is kept.
-15. Press `?`. The list of shortcuts opens. Close it with `Escape`.
-16. Make the window narrower than 1024 px. The editor is replaced by "The editor needs a wider window."
-17. Add a title. Once the status reads "Saved", wait ten seconds, then click **Projects**: the project's card shows the title on its picture.
-
-## What to click to check export
-
-Export cannot be tested without a real browser and a real sign-in. Do this once after a change to export. It takes about five minutes.
-
-1. Open a project. Add a **Title** and a **Subtitle**. Give the title the color `#ffd400`. Type `Žofia & Ángel 🤖` into the subtitle.
-2. From the Media tab, add a video and an image. Split the video once, and crop the image in the details panel. Add a song to the audio track.
-3. Click **Export** (or press `Cmd/Ctrl+E`). The dialog shows the size, 30 fps, the length, and "Up to about …".
-4. Click **Export video** and choose where to save. It says it is reading the media, the frames count up, and it ends with "Saved" and the file's name.
-5. Open the file. It plays to the end, its length matches the dialog, and it looks like the preview: same font, same line breaks, same colors, the same moment of each clip. The song and the video's own sound play as they do in the preview. Send it to a phone and play it there.
-6. Make a clip one minute long, export again and click **Cancel** halfway. The dialog goes back to the choices. No new file is left where you saved; a file you chose to replace is unchanged.
-7. Start one more export, switch to another tab until it should be done, and come back. It finished.
-
-Before the team is told to use export, the owner runs this list once on a Windows laptop and once on a Chromebook the team uses.
-
-## Checking an exported file
-
-`pnpm check:export` reads a finished file with ffmpeg (`brew install ffmpeg`) and checks what a player needs: H.264, the right size, the exact frame rate and length, keyframes, the sound track. It can also compare frames of the video with frames the editor saved.
-
-1. In the editor, put the playhead on the first frame, open **Export** and click **Save frame as image**. Do the same on a frame in the middle and on the last frame. Use the same size you exported.
-2. Run, with your own file names:
-
-   `pnpm check:export "Test reel.mp4" --size 1080x1920 --fps 30 --still "Test reel frame 000000.png" --still "Test reel frame 000045.png" --still "Test reel frame 000089.png"`
-
-   For a frame with video or a picture in it, or with a placeholder where media is missing ("Media removed" and the like), pass it with `--media-still` instead of `--still`.
-
-   Add `--no-audio` when the done screen said "This file has no sound track."; otherwise add `--sound` when the project has sound, or `--silent` when it has none. `--onset 45` checks that the first sound starts on frame 45, to within one AAC frame.
-
-Every line should say PASS. A FAIL on a frame line means the video does not match what the editor drew. This check is run by hand; it is not part of `pnpm test`.
-
-## Deploy to Vercel
-
-The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run these steps yet, so expect to fix small things the first time.
-
-1. Sign in at [vercel.com](https://vercel.com), click **Add New**, then **Project**, and import the `EasyEdit` repository from GitHub. Vercel recognizes it as a Next.js app. Leave the build settings as they are.
-2. Before you deploy, open **Environment Variables** and add the same five names as in `.env.local`:
-
-    | Name | What to put |
-    | --- | --- |
-    | `DATABASE_URL` | The Neon connection string for the database the deployed app should use |
-    | `BETTER_AUTH_SECRET` | A new random text from `openssl rand -base64 32` |
-    | `BETTER_AUTH_URL` | The deployed web address, for example `https://your-app.vercel.app`, with no slash at the end |
-    | `GOOGLE_CLIENT_ID` | The Client ID from step 1 |
-    | `GOOGLE_CLIENT_SECRET` | The Client secret from step 1 |
-
-    For uploads, also add `GOOGLE_SERVICE_ACCOUNT_KEY` and `DRIVE_FOLDER_ID`, with the same values as in `.env.local` (see [Set up media storage](#set-up-media-storage)). Add these two for **Production** only, and mark them **Sensitive**.
-
-    Then click **Deploy**. If you don't know the web address until the first deploy finishes, set `BETTER_AUTH_URL` afterwards and redeploy.
-3. In Google Cloud, open your OAuth client (step 1, item 10) and add the deployed redirect URI, for example `https://your-app.vercel.app/api/auth/callback/google`. Click **Save**.
-4. Once, from the project folder on your computer, create the tables and the first admin in the production database. Put the production connection string in front of each command. It takes precedence over the one in `.env.local`:
-
-    ```bash
-    DATABASE_URL='<production connection string>' pnpm db:migrate
-    DATABASE_URL='<production connection string>' pnpm db:seed
-    ```
-
-    `.env.local` must still exist, because `pnpm db:seed` reads it.
-
-    **Before deploying a version with media:** run the migration against the production database first, with the command above, then deploy. The version that is live now ignores the new table.
-
-    **Before deploying the version with folders and custom sizes:** run the migration against the production database first, with the command above, then deploy. Run it at a quiet time: while it fills in each project's size, opening and saving projects waits for it. After the deploy, run this once in the Neon SQL editor for the production database. It fills in each project's width and height from its timeline wherever the version that was live during the deploy left them empty or out of date, and it is safe to run again:
-
-    ```sql
-    update projects set width = (doc->>'width')::integer, height = (doc->>'height')::integer where width is distinct from (doc->>'width')::integer or height is distinct from (doc->>'height')::integer;
-    ```
-
-    **Going back to an earlier version after this one:** the earlier version does not know custom sizes. Run the first statement below just before promoting an earlier deployment, and once more right after. It labels each custom-size project Long 16:9 in its timeline as well as in the project list, and keeps its size and clips, so the earlier version's dashboard, editor and Claude's project list keep working while people edit. There those projects read as Long 16:9 at their own size. The earlier editor's Activity list and Claude's undo can fail on a project whose format was changed to a custom size on this version, and undoing a format change made on the earlier version gives Long 16:9 at 1920 × 1080. After coming forward again, run the second and third statements, in that order, then the after-deploy statement above. The second makes every Long 16:9 project whose size is not 1920 × 1080 custom again:
-
-    ```sql
-    update projects set format = 'long_16x9', doc = jsonb_set(doc, '{format}', '"long_16x9"') where format = 'custom' or doc->>'format' = 'custom';
-    update projects set format = 'custom', doc = jsonb_set(doc, '{format}', '"custom"') where doc->>'format' = 'long_16x9' and ((doc->>'width')::integer, (doc->>'height')::integer) <> (1920, 1080);
-    update projects set format = doc->>'format' where format is distinct from doc->>'format';
-    ```
-
-    **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard, editor, project API and Claude's tools fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.
-
-    **Before deploying the version with teammates' selections:** run the migration against the production database first, with the command above, then deploy. Then check it ran: in the Neon SQL editor, `select to_regclass('public.project_presence')` must not be empty. Deployed first, the editor still saves and syncs, shows no one's selection, and logs 'The project_presence table is missing'. Going back to an earlier version needs nothing: it ignores the new table, and open editors keep syncing without selections until they are reloaded.
-5. Optional: publish the Google app, so teammates no longer have to be test users. In Google Cloud, open **Branding** and fill in the app domain details (home page, privacy policy link, authorized domain) with your deployed web address. You will need a public privacy policy page to link to. Then open **Audience** and click **Publish app**. This app only asks Google for name, email and profile picture, and the allowlist still decides who gets in.
-
-## Connect an AI agent
-
-A member can connect an AI agent to the app and ask it to read and change projects for them. Claude is the main one, but anything that speaks MCP works: ChatGPT, Claude Code, Cursor, VS Code (Copilot), Codex, Gemini CLI, the OpenAI API, or another MCP client. Each agent works as that member, with their role. A member can connect as many agents as they like, and each one is listed and disconnected on its own.
-
-The **AI agents** page (account menu → **AI agents**, or `/agents`) shows the server address, step-by-step setup for each agent (Claude first), every agent the member has connected, and their access tokens.
-
-**Before deploying a version with the connector:** run the migration against the database first (`pnpm db:migrate`, with the production `DATABASE_URL` as in [Deploy to Vercel](#deploy-to-vercel), step 4), then deploy. With the tables missing, sign-in fails, and the version with access tokens fails on `/agents` and on token calls.
-
-**Add Claude (recommended):**
-
-1. In claude.ai open **Settings**, then **Connectors**, then **Add custom connector**.
-2. Enter exactly `<BETTER_AUTH_URL>/api/mcp`, for example `https://your-app.vercel.app/api/mcp`. Add it, then click **Connect**.
-3. Sign in with Google if you are asked to.
-4. Check the "Connect Claude" page: it names your account and says what Claude will be able to do. Press **Allow**.
-
-**Add another agent:** open the **AI agents** page, pick the agent and follow its steps. Agents that sign in (ChatGPT, Claude Code, Cursor, VS Code, Codex, Gemini CLI) open the same consent page, titled with their name. Agents that can only send a header (the OpenAI Responses API and Agents SDK, scripts, automation tools) use an **access token**: make one on the AI agents page, copy it once, and send it as `Authorization: Bearer <token>`. Tokens start with `ee_at_`, are stored only as a hash, last 90 days unless the member picks 30 days, a year or no end date, and can be revoked on the same page. A token works like the member's password for that agent: anyone holding it acts as the member until it ends or is revoked.
-
-**What an agent can do:**
-
-| Tool | What it does |
-| --- | --- |
-| `list_projects` | Lists the team's projects, newest change first, and says who you are signed in as. |
-| `get_project` | Reads one project's timeline as text: tracks, clips, times and the current version. |
-| `create_project` | Creates an empty project with a name and one of the five formats, or a custom width and height in pixels. |
-| `edit_timeline` | Applies a list of changes to a project, all or nothing. |
-| `add_text` | Adds one or more text clips from a preset (title, subtitle or lower third). |
-| `undo_change` | Undoes one earlier change, an agent's or a person's, like **Undo this change** in the editor. |
-| `list_assets` | Lists the team's uploaded video, images and audio, newest first, with each one's id, kind, length and size. |
-| `add_media` | Puts one or more uploaded files on a project's timeline, laid end to end unless the agent gives start times. |
-| `get_editing_guide` | Reads the guide to how projects are built and what is possible today. |
-| `search` | Finds projects and media by name. ChatGPT's deep research uses it. |
-| `fetch` | Reads one search result in full. ChatGPT's deep research uses it. |
-
-No agent can see inside footage yet.
-
-**Roles:** a viewer's agents can read projects but not change them. An editor's agents can create and change them. Every change an agent makes is listed in the editor's **Activity** with the agent's name, for example "Claude (for <name>)" or "ChatGPT (for <name>)", and can be undone there. A change from an agent is refused if the project changed since it last read it, and it is told what changed, so it never overwrites an edit it has not seen.
-
-**Limits:** through agents, each member gets 30 changes a minute, 10 MB of change data a day and 50 new projects a day. One page of a read is 16,000 characters; longer projects come in several pages.
-
-**Ending a connection:** on the **AI agents** page a member disconnects one agent or revokes one token, and the others keep working. The Admin page shows "Connected" next to each member with any agent or token; an admin's **Disconnect** there ends all of that member's agents and tokens at once, and removing a member ends them too. Removing the connector inside an agent stops it from using it, but it stays listed until it is disconnected here. Signing out of the website does not end a connection.
-
-**Which agents can connect.** The sign-in server only sends a member back to an address it knows: each agent's callback address or app link (for example `https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/connector_platform_oauth_redirect` or `cursor://anysphere.cursor-mcp/oauth/callback`), or a loopback address on the member's own computer (`http://127.0.0.1:<port>/…` or `http://localhost:<port>/…`, with no query), which the command-line agents use. VS Code's `https://vscode.dev/redirect` is on the list because VS Code registers it; that page passes a code on only to a loopback address or to a VS Code extension, so a member who allows VS Code also trusts the extensions installed in it. Apps may register themselves, but a registration is refused unless every callback address is on that list (at most 10, each at most 512 characters, with a name of at most 100). Registration ignores logo, policy and other descriptive addresses, and apps that registered more than a week ago but were never allowed are cleaned up the next time any app registers. The consent page names the agent only when its own published description or its callback address proves it, otherwise it shows the name the app gave itself in quotes, and it always says where the member will be sent next. Client metadata documents are read only from the hosts on the list (claude.ai, claude.com, chatgpt.com, vscode.dev, zed.dev and goose-docs.ai). The consent page is always shown, and the allowlist is checked on every request. The list is in `src/lib/connector/agents.ts`; adding an agent means adding it there.
-
-## Who can do what
-
-Every person on the allowlist has one of three roles.
-
-| Role | What they can do today |
-| --- | --- |
-| Viewer | Sign in, see the dashboard and its folders, open projects, see the media library and play media. Cannot create or change anything. |
-| Editor | Everything a viewer can, plus create, rename, duplicate and delete projects, keep them in folders (make, rename and delete folders), and change them. Upload media, and rename and remove it. Deleting hides a project; it is not shown again. Deleting a folder never deletes its projects. |
-| Admin | Everything an editor can, plus open the Admin page to add, re-role and remove people. |
-
-Some rules:
-
-- Only emails on the allowlist can sign in. Emails are stored in lowercase.
-- A Google account whose email Google has not verified is always rejected.
-- There must always be at least one admin. The last admin cannot be demoted or removed.
-- Removing someone signs them out right away. They are sent to `/login` on their next request.
-- Removing someone also ends all their AI agent connections and access tokens right away.
-- A file that a project uses cannot be removed from the library. Take it out of that project first.
-- You stay signed in for 30 days after your last visit. Each visit starts the 30 days again.
-- People in a project see which projects you have open in the editor and what you have selected.
-
-## Project formats
-
-| Format | Size |
-| --- | --- |
-| Short 9:16 | 1080 x 1920 |
-| Feed 4:5 | 1080 x 1350 |
-| Square 1:1 | 1080 x 1080 |
-| Long 16:9 | 1920 x 1080 |
-| Long 4K | 3840 x 2160 |
-| Custom | Any even width and height from 16 to 4096 pixels, up to the area of 4K (3840 x 2160) |
-
-All projects run at 30 frames per second. Times in the timeline are whole frames.
-
-## Media limits
-
-- File types: video in MP4, M4V, MOV or WebM; images in JPEG, PNG or WebP; audio in MP3, M4A, WAV or AAC. HEIC photos are not taken: save them as JPEG first.
-- Up to 2 GB a file. Two uploads run at a time; the rest wait their turn. Each member can have up to 20 unfinished uploads.
-- An upload stops if you leave the editor. It goes on from where it stopped when you choose the same file again within 7 days.
-- A video's preview copy is made in the uploader's browser. If you leave the editor or press Cancel while the preview is still being made, the video ends up with no preview: at once after Cancel, after up to two hours if you left the editor or closed the tab. Choosing the file again then uploads a second copy, so remove the first one.
-- The preview plays the 720p copy. Playing backward is silent, and a volume above 100% sounds like 100% in the preview.
-- The browser keeps about 2 GB of playback files, so footage you played before does not download again.
-
-## The project API
-
-All routes need you to be signed in (they use the same cookie as the website). Bodies and answers are JSON, except the thumbnail route's picture, which is a JPEG.
-
-| Route | Who may call it | What it does |
-| --- | --- | --- |
-| `GET /api/projects` | viewer and up | List projects: `{ "projects": [...] }` |
-| `POST /api/projects` | editor and up | Create a project from `{ "name", "format" }`, with `"width"` and `"height"` in pixels when `"format"` is `"custom"`. Answers `201` with `{ "id" }`. |
-| `GET /api/projects/:id` | viewer and up | Get `{ id, name, format, doc, version }`. |
-| `GET /api/projects/:id/version` | viewer and up | Get just the current version: `{ version }`. |
-| `POST /api/projects/:id/presence` | viewer and up | The editor's check for changes. Send `{ tabId, clipIds, trackId, changedAgoMs }` for what this tab has selected. Answers `{ version, peers }`, where each peer is `{ userId, name, clipIds, trackId }`, or just `{ version }` when selections cannot be read. |
-| `DELETE /api/projects/:id/presence?tab=…` | viewer and up | A tab going away. Answers `204`. |
-| `PATCH /api/projects/:id` | editor and up | Rename a project: send `{ "name" }`. Answers `{ id, name }`. |
-| `DELETE /api/projects/:id` | editor and up | Delete a project. Answers `204`. |
-| `POST /api/projects/:id/duplicate` | editor and up | Make a copy of a project. Answers `201` with `{ "id" }` of the copy. |
-| `POST /api/projects/:id/opened` | viewer and up | Records that you opened the project, for your Recent list on the dashboard. Answers `204`. |
-| `GET /api/projects/:id/thumbnail?v=N` | viewer and up | Get the project's picture for its dashboard card, a JPEG. `N` is `thumbnailVersion` from the project list; each new picture has a new `N`, so browsers keep each one. Answers `404` when the project has no picture. |
-| `PUT /api/projects/:id/thumbnail?v=N` | editor and up | Store the project's picture: send a JPEG of at most 300 KB drawn from version `N`. It is kept only when `N` is newer than the stored picture's and not past the project's version, and it changes neither the version nor when the project last changed. Answers `{ saved }`. The editor sends it by itself. |
-| `GET /api/projects/:id/ops?since=N` | viewer and up | Get the changes after version `N`: `{ version, entries, hasMore }`. Each entry is `{ version, ops, inverse, actor, actorName, requestId, createdAt }`. Add `limit` to set the page size (default 100, at most 500). A page holds fewer entries when they are large. When `hasMore` is true, ask again from the `version` in the answer. |
-| `POST /api/projects/:id/ops` | editor and up | Apply changes: send `{ "baseVersion": N, "ops": [...] }` (1 to 500 ops). Answers `{ version, ops, inverse }`. |
-
-Edits are versioned. Send the version you last saw as `baseVersion`. Changes that do not clash with newer edits still apply. A `baseVersion` newer than the project is refused.
-
-`inverse` is the ops that undo this change, to send back later as an ordinary edit. To make a write that is refused unless `baseVersion` is exactly the current version, add `"strict": true`. A strict write is never applied on top of newer edits.
-
-To make a write safe to retry, add a `"requestId"` of 8 to 64 letters, digits, `-` or `_`. If a write with that `requestId` already landed in this project, the answer is the original one and nothing is applied again. Use a new `requestId` for every change and repeat it only to resend that same change: a different change sent under a used `requestId` is not applied. Each op-log entry shows its `requestId`, or `null` when none was sent.
-
-When a route refuses a request, the answer has this shape:
-
-```json
-{ "code": "CONFLICT", "message": "...", "opIndex": 0, "currentVersion": 3 }
-```
-
-`opIndex` (which op failed) and `currentVersion` only appear when they apply. An unexpected failure answers `500` with `{ "code": "INTERNAL", "message" }`.
-
-| Status | `code` | Meaning |
-| --- | --- | --- |
-| 400 | `INVALID` | The body, query, project name or an op is malformed, `ops` is empty, or the `requestId` is malformed or was already used by someone else. |
-| 400 | `LIMIT_EXCEEDED` | Too many ops (more than 500), tracks or clips, a change too large to store or too large to undo in one step, or the project is too large. |
-| 400 | `STALE` | An undo no longer applies, because that part of the project was changed since. |
-| 400 | `NOT_FOUND`, `OVERLAP`, `WRONG_TRACK_KIND`, `TRACK_LOCKED`, `TRIM_OUT_OF_RANGE`, `DUPLICATE_ID` | A valid op could not be applied to the project. `opIndex` says which one. |
-| 401 | `UNAUTHENTICATED` | Not signed in. |
-| 403 | `FORBIDDEN` | Your role does not allow this, or the request came from another site. |
-| 404 | `NOT_FOUND` | No project with that id. |
-| 409 | `CONFLICT` | The base version is ahead of the project, a strict write was not at the current version, or the project kept changing. Reload and retry. |
+Without media storage the app runs and edits as usual, and the Media tab says uploads are not set up. To turn uploads on, share a folder in a Google shared drive with a service account, then set `DRIVE_FOLDER_ID` and `GOOGLE_SERVICE_ACCOUNT_KEY` (the JSON key, base64-encoded on one line). The [setup guide](docs/setup.md#set-up-media-storage) has every step, plus a script that checks the setup end to end.
 
 ## Commands
 
@@ -434,48 +135,52 @@ When a route refuses a request, the answer has this shape:
 | `pnpm dev` | Start the app at http://localhost:3000 |
 | `pnpm build` | Build the app for production |
 | `pnpm start` | Run the built app |
-| `pnpm test` | Run the tests |
+| `pnpm test` | Run the test suite (no database needed) |
 | `pnpm typecheck` | Check the TypeScript types |
 | `pnpm lint` | Check code style |
 | `pnpm db:generate` | Create a new migration after changing `src/db/schema.ts` |
 | `pnpm db:migrate` | Apply migrations to the database in `DATABASE_URL` |
-| `pnpm db:seed` | Add `admin@seattlesolvers.com` as an admin |
+| `pnpm db:seed` | Add the first admin to the allowlist |
 | `pnpm check:export <video.mp4> --size 1080x1920 --fps 30` | Check an exported file (needs ffmpeg) |
 
-## If something goes wrong
+## Project structure
 
-- **Google says `redirect_uri_mismatch`.** The redirect URI in Google Cloud does not exactly match `<BETTER_AUTH_URL>/api/auth/callback/google`. Fix it in step 1.
-- **Google blocks an account that is on the allowlist.** While the Google app is in Testing, that account also has to be a test user. Add it under **Audience**, then **Test users** in Google Cloud (step 1, item 7).
-- **"DATABASE_URL is not set" or similar.** `.env.local` is missing or has an empty value.
-- **You land on `/login` with the allowlist message.** Ask an admin to add your email on the Admin page.
-- **You land on `/login` with "Sign-in didn't finish".** Sign-in was cancelled or failed partway. Try again. If it keeps happening, ask an admin to check that you're on the allowlist.
-- **claude.ai cannot reach or add the connector.** A discovery address is wrong, or `BETTER_AUTH_URL` has a slash at the end. Check that `<BETTER_AUTH_URL>/.well-known/oauth-protected-resource/api/mcp` shows `"resource":"<BETTER_AUTH_URL>/api/mcp"` and `<BETTER_AUTH_URL>/.well-known/oauth-authorization-server/api/auth` shows `"issuer":"<BETTER_AUTH_URL>/api/auth"`, and remove any slash at the end of `BETTER_AUTH_URL`.
-- **While connecting an agent, the browser lands on `/api/auth/error?error=invalid_redirect`, or the agent says registration failed with `invalid_redirect_uri`.** The agent used a callback address that is not on the list. Note the `redirect_uri` from the address bar (or the agent's log) and add it to that agent's `redirectUris` in `src/lib/connector/agents.ts`.
-- **While connecting an agent, the browser shows `invalid_client`, or "client_id URL is not permitted".** The agent's metadata document is on another host. Note the `client_id` from the address bar and add its host to that agent's `clientDocumentHosts` in `src/lib/connector/agents.ts`.
-- **After Google you land on the dashboard, not on the "Connect <agent>" page.** The login hand-off did not carry the request. Start Connect again in the agent while signed in to the website, and report it.
-- **Claude is connected, but every tool call fails and claude.ai asks to reconnect in a loop.** Claude did not send the `resource` value, so its token is not bound to `<BETTER_AUTH_URL>/api/mcp`. The endpoint has to be changed to check such tokens another way; report it.
-- **"Too many requests" while signing in or connecting.** The rate limit. Wait a minute.
-- **The website's own sign-in answers with an error after a deploy.** The migration is not on the live database. Run `pnpm db:migrate` against it (see [Connect an AI agent](#connect-an-ai-agent)), or use Vercel's **Promote** on the previous deployment to go back.
-- **The Media tab says uploads are not set up.** `GOOGLE_SERVICE_ACCOUNT_KEY` or `DRIVE_FOLDER_ID` is missing where the app runs: in `.env.local` on your computer, or in Vercel's Environment Variables on the deployed app. See [Set up media storage](#set-up-media-storage), then restart or redeploy.
-- **The Media tab says "Couldn't load the library" or that uploads are not set up, while both settings are there.** The key was pasted as the raw JSON file instead of in base64, and the server log says "Drive settings could not be read". Encode the key file with the command in [Set up media storage](#set-up-media-storage), item 7, put what it prints after `GOOGLE_SERVICE_ACCOUNT_KEY=`, then restart or redeploy.
-- **Uploads fail at once on the deployed app but work locally.** `BETTER_AUTH_URL` is not the address in the browser. Set it to the exact address people open, with no slash at the end, and redeploy.
-- **A video shows "No preview".** Either the uploader's browser could not read it: upload it again from Chrome or Edge on a Mac, or convert it to H.264 first. Or the uploader left the editor or canceled while the preview was being made: remove it and upload it again.
-- **Export says "This browser can't export video. Use a recent version of Chrome or Edge on a computer."** The browser lacks what export needs. Use Chrome or Edge on a computer.
-- **Export says "A font didn't load, so the export was stopped. Check your connection, reload the page and try again."** Check the connection, then reload the page and export again.
-- **Export says "A media file couldn't be read, so the export was stopped. Check your connection and try again."** Check the connection and export again. Once the media is cached it plays in the preview; then it can be read for the export too.
-- **Export says "A video clip couldn't be decoded in this browser, so the export was stopped."** Try Chrome or Edge on another computer, and tell the owner which file it was.
-- **Export says "A clip's sound couldn't be decoded in this browser, so the export was stopped. Mute its track to export without it."** Mute that clip's track to export without it. If it is a song, upload it again as mp3 or AAC, and tell the owner which file it was.
-- **Export says "The video encoder stopped. Try again."** Try again. The second try already used the slower encoder, so if it stops again, pick the **Draft** size or use another computer.
-- **An empty video file after leaving an export.** The export was stopped. Delete the file and export again.
-- **After an update, an editor that was open before it says "Export couldn't start. Reload the page and try again."** Reload the page.
+```
+src/
+  app/          Next.js routes: login, dashboard, admin, AI agents page, editor, and the API under api/
+  components/   React components for the dashboard and editor
+  db/           Drizzle schema and seed script
+  lib/          Core logic: timeline model, editor, export, rendering, media, Drive, auth, MCP connector
+  workers/      Web workers for export and for making video preview copies
+drizzle/        SQL migrations
+scripts/        Hand-run checks for Drive uploads and exported files
+tests/          Vitest suites
+docs/           Guides
+```
 
-**The Drive check** (`node scripts/drive-check/run.mjs`, in [Set up media storage](#set-up-media-storage)):
+## Documentation
 
-| What the script prints | Likely cause | What to do |
-| --- | --- | --- |
-| F1 fails with `invalid_grant` | The key file is not this service account's, or the computer's clock is wrong | Make a new key ([Set up media storage](#set-up-media-storage), item 5); check the clock |
-| F1 passes, F2 fails with `404` | The `EasyEdit` folder is not shared with the service account, or the id is not that folder's | Item 6; copy the id again from the folder's address |
-| F2 fails with `403` and a reason about the Drive API | The Drive API is not enabled in the project that owns the service account | Item 3 |
-| Sharing the folder in item 6 is refused | Outside members are not allowed | Item 2, with a Workspace admin |
-| F4 fails; the console names `Access-Control-Allow-Origin` | Google Drive no longer lets a page send upload pieces to a session the server opened, so uploads from the browser cannot work | Report it; do not retry with other headers |
-| F12 fails with `403` | The role is Contributor, not Content manager | Change the role in the folder's Share dialog |
+| Guide | What it covers |
+| --- | --- |
+| [Setup](docs/setup.md) | Step-by-step Google, Neon, settings and media storage setup, plus a first-run checklist |
+| [Deploy to Vercel](docs/deploy.md) | Deploying, and the migrations to run before each release |
+| [AI agents](docs/ai-agents.md) | Connecting Claude and other MCP clients, their tools, limits and security |
+| [Project API](docs/api.md) | Routes, versioned edits and error codes |
+| [Roles, formats and limits](docs/reference.md) | Who can do what, video formats, and media limits |
+| [Project status](docs/status.md) | What the current release can do, and what's planned next |
+| [Manual checks](docs/manual-checks.md) | Click-through checks for the editor and export, and checking an exported file |
+| [Troubleshooting](docs/troubleshooting.md) | Common sign-in, connector, upload and export errors |
+
+## Contributing
+
+Bug reports and ideas are welcome in [Issues](https://github.com/ArushYadlapati/EasyEdit/issues). To send a change:
+
+1. Fork the repository and create a branch from `main`.
+2. Make your change, with tests where it makes sense.
+3. Run `pnpm test`, `pnpm typecheck` and `pnpm lint`, and make sure they all pass.
+4. For changes to the editor or export, also run the matching list in [Manual checks](docs/manual-checks.md). These need a real sign-in and browser, so the automated tests can't cover them.
+5. Open a pull request that describes what changed and why.
+
+## License
+
+EasyEdit is open source under the [MIT License](LICENSE).

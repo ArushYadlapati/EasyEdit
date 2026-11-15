@@ -51,7 +51,7 @@ export const MEDIA_MESSAGES = {
   emptyEditor: "No media yet. Upload video, images or audio to use them in projects.",
   emptyViewer: "No media yet.",
   noMatch: "Nothing matches.",
-  notSetUp: 'Uploads are not set up yet. See "Set up media storage" in the README.',
+  notSetUp: 'Uploads are not set up yet. See "Set up media storage" in docs/setup.md.',
   loadFailed: "Couldn't load the library.",
   signedOutLibrary: "You're signed out. Sign in again to see media.",
   // A change to an asset that was not made, when the server gave no sentence of its own.
