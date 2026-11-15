@@ -52,6 +52,8 @@ export const MEDIA_MESSAGES = {
   emptyViewer: "No media yet.",
   noMatch: "Nothing matches.",
   notSetUp: 'Uploads are not set up yet. See "Set up media storage" in the README.',
+  storageNextTitle: "Storage comes next",
+  storageNext: "Uploading to your personal space isn't ready yet. Seattle Solvers' media works as before.",
   loadFailed: "Couldn't load the library.",
   signedOutLibrary: "You're signed out. Sign in again to see media.",
   // A change to an asset that was not made, when the server gave no sentence of its own.

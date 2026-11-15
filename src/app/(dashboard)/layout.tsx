@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { AccountMenu } from "@/components/dashboard/account-menu";
+import { SpacesProvider } from "@/components/dashboard/space-switcher";
 import { KeepSignedIn } from "@/components/keep-signed-in";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
+import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
+import { listMySpaces } from "@/lib/spaces/service";
 
 // The dashboard is always dark, in the editor's colors. This asks the Dark Reader browser extension to leave it alone,
 // and the color scheme tells the browser's own dark mode the same (and darkens the page behind it, see globals.css).
@@ -14,6 +17,7 @@ export const viewport: Viewport = { colorScheme: "dark" };
 // Admin shares this frame; sign-in keeps the (auth) look.
 export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
+  const spaces = await listMySpaces(getDb(), user.id);
 
   return (
     <div className="ed-theme flex h-dvh flex-col bg-ed-bg font-sans text-ed-text">
@@ -38,7 +42,9 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
         </div>
       </header>
       <KeepSignedIn />
-      <div className="flex min-h-0 flex-1">{children}</div>
+      <SpacesProvider spaces={spaces}>
+        <div className="flex min-h-0 flex-1">{children}</div>
+      </SpacesProvider>
     </div>
   );
 }

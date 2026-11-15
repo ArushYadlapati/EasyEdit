@@ -1,0 +1,33 @@
+// @vitest-environment happy-dom
+import { describe, expect, it } from "vitest";
+import { SpaceSwitcher } from "@/components/dashboard/space-switcher";
+import type { MySpace } from "@/lib/spaces/types";
+import { render, screen } from "../helpers/dom";
+
+const PERSONAL: MySpace = { id: "personal_u1", slug: "personal_u1", name: "Ada's space", kind: "personal", role: "admin" };
+const TEAM: MySpace = { id: "team_seattle_solvers", slug: "seattle-solvers", name: "Seattle Solvers", kind: "team", role: "editor" };
+
+describe("SpaceSwitcher", () => {
+  it("lists Personal first, then teams by name, linked to their addresses", () => {
+    render(<SpaceSwitcher spaces={[PERSONAL, TEAM]} current={TEAM.id} />);
+    const links = screen.getAllByRole("link");
+    expect(links.map((l) => l.textContent)).toEqual(["Personal", "Seattle Solvers"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/s/personal", "/s/seattle-solvers"]);
+  });
+
+  it("marks only the current space", () => {
+    render(<SpaceSwitcher spaces={[PERSONAL, TEAM]} current={PERSONAL.id} />);
+    expect(screen.getByRole("link", { name: "Personal" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Seattle Solvers" }).getAttribute("aria-current")).toBeNull();
+  });
+
+  it("marks nothing when no space is current", () => {
+    render(<SpaceSwitcher spaces={[PERSONAL, TEAM]} current={null} />);
+    expect(document.querySelector("[aria-current]")).toBeNull();
+  });
+
+  it("has no Create a team item", () => {
+    render(<SpaceSwitcher spaces={[PERSONAL, TEAM]} current={PERSONAL.id} />);
+    expect(screen.queryByText(/create a team/i)).toBeNull();
+  });
+});

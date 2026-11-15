@@ -7,7 +7,8 @@ import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-dr
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import type { DashboardFolder } from "@/lib/dashboard/view";
-import { spacePath } from "@/lib/spaces/paths";
+import { SpaceSwitcher, useMySpaces } from "@/components/dashboard/space-switcher";
+import { slugFor, spacePath } from "@/lib/spaces/paths";
 
 export type SidebarProps = {
   folders: readonly DashboardFolder[];
@@ -54,6 +55,8 @@ function SidebarLink({ href, current, folderId, canEdit, onDropProject, children
 // heading's text is hidden; and a project dragged onto a folder goes into it, or onto Projects out of its folder.
 export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
   const drop = { canEdit, onDropProject };
+  const spaces = useMySpaces();
+  const current = spaces.find((space) => slugFor(space) === spaceSlug);
   return (
     <nav
       aria-label="Folders"
@@ -62,6 +65,8 @@ export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDrop
         "md:w-56 md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-b-0 md:px-2 md:py-3",
       )}
     >
+      {/* The person's spaces (from the dashboard layout), above the views. Not drawn without any, as in tests. */}
+      {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} />}
       <SidebarLink href={spacePath(spaceSlug)} current={view === null} folderId={null} {...drop}>
         Projects
       </SidebarLink>

@@ -17,7 +17,7 @@ import { MEDIA_MESSAGES } from "@/lib/media/messages";
 import type { AssetKind, AssetView, UploadItem } from "@/lib/media/types";
 import { useEditor, useEditorStore } from "../context";
 import { AssetTile, type AssetAction, type WatchView } from "./asset-tile";
-import { useLibrary, useMedia, useMediaDropState } from "./media-context";
+import { useLibrary, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
 import { UploadRow } from "./upload-row";
 
 const ACCEPT = ".mp4,.m4v,.mov,.webm,.jpg,.jpeg,.png,.webp,.mp3,.m4a,.wav,.aac";
@@ -92,6 +92,7 @@ type MediaTabProps = {
 // dropped files.
 export function MediaTab({ panel, onAdd }: MediaTabProps) {
   const { library, queue } = useMedia();
+  const { storageReady } = useMediaSpace();
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const { loaded, setUp, problem, query, kind, uploadEvent } = useLibrary(
@@ -114,12 +115,13 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   // The library is fetched when the tab opens, and again after each refused edit while it is open: an asset that a
   // teammate removed is then gone from the list, so a second click cannot repeat the refusal.
   useEffect(() => {
+    if (!storageReady) return; // no storage, no library to fetch
     const refresh = () => void library.getState().refresh("tab").catch(() => {});
     refresh();
     return store.subscribe((state, before) => {
       if (state.notice && state.notice.tone === "error" && state.notice.id !== before.notice?.id) refresh();
     });
-  }, [library, store]);
+  }, [library, store, storageReady]);
 
   const onAction = useCallback((action: AssetAction, asset: AssetView) => setEditing({ action, asset }), []);
 
@@ -162,6 +164,19 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
     setDragging(false);
     const files = [...event.dataTransfer.files];
     if (canUpload && files.length > 0) queue.add(files);
+  }
+
+  // A space with no storage says so, in place of everything else: no upload, no drop target. This wins over setUp
+  // being false, which is for a Drive that should work but is not set up.
+  if (!storageReady) {
+    return (
+      <div {...panel} className="min-h-0 flex-1">
+        <div className="flex flex-col gap-2 p-3">
+          <h3 className="text-sm font-semibold">{MEDIA_MESSAGES.storageNextTitle}</h3>
+          <p className="text-[13px] leading-5 text-ed-muted">{MEDIA_MESSAGES.storageNext}</p>
+        </div>
+      </div>
+    );
   }
 
   return (
