@@ -231,6 +231,7 @@ export async function getAppliedRequest(db: DB, actor: Actor, projectId: string,
   const rows = await db
     .select({ version: projectOps.version, ops: projectOps.ops, inverse: projectOps.inverse, actor: projectOps.actor })
     .from(projectOps)
+    .innerJoin(projects, and(eq(projects.id, projectOps.projectId), eq(projects.spaceId, actor.spaceId)))
     .where(and(eq(projectOps.projectId, projectId), eq(projectOps.requestId, requestId)));
   const row = rows[0];
   if (!row) return null;

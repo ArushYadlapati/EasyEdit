@@ -5,6 +5,7 @@ import { createFolder, listFolders, moveProject } from "@/lib/projects/folders";
 import { listRecentProjectIds, recordOpen } from "@/lib/projects/opens";
 import {
   applyProjectOps,
+  getAppliedRequest,
   createProject,
   deleteProject,
   duplicateProject,
@@ -42,7 +43,7 @@ const addClip = {
 
 describe("projects are scoped to the actor's space", () => {
   it("cross-space ids answer as missing", async () => {
-    const { db, u1Personal, u2Team } = await setup();
+    const { db, u1Team, u1Personal, u2Team } = await setup();
     const { id } = await createProject(db, u1Personal, { name: "Mine", format: "short_9x16" });
     await saveThumbnail(db, u1Personal, id, 0, JPEG);
     expect(await getProject(db, u2Team, id)).toBeNull();
@@ -56,11 +57,16 @@ describe("projects are scoped to the actor's space", () => {
     await expect(deleteProject(db, u2Team, id)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(duplicateProject(db, u2Team, id)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(applyProjectOps(db, u2Team, { projectId: id, baseVersion: 0, ops: [addClip] })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    // A request id logged in another space answers as an unknown one, even for the same person.
+    await applyProjectOps(db, u1Personal, { projectId: id, baseVersion: 0, ops: [addClip], requestId: "req-12345678" });
+    expect(await getAppliedRequest(db, u1Personal, id, "req-12345678")).not.toBeNull();
+    expect(await getAppliedRequest(db, u1Team, id, "req-12345678")).toBeNull();
+    expect(await getAppliedRequest(db, u2Team, id, "req-12345678")).toEqual(await getAppliedRequest(db, u2Team, "unknown", "req-12345678"));
     await recordOpen(db, u2Team, id);
     expect(await listRecentProjectIds(db, u2Team)).toEqual([]);
     // Nothing changed for the owner.
     expect((await getProject(db, u1Personal, id))?.name).toBe("Mine");
-    expect(await getProjectVersion(db, u1Personal, id)).toBe(0);
+    expect(await getProjectVersion(db, u1Personal, id)).toBe(1);
   });
 
   it("lists show only the actor's space", async () => {
