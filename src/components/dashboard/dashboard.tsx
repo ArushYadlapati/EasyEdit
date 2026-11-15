@@ -40,6 +40,7 @@ export type DashboardProps = {
   folders: DashboardFolder[];
   recentIds: string[];
   pinnedIds?: string[]; // the space's Pinned list, oldest pin first; none when left out
+  sidebarCollapsed?: string; // the sidebar sections this browser folded, as the server read their cookie
   view: DashboardView;
   canEdit: boolean;
   now: Date;
@@ -94,7 +95,7 @@ function CardGrid({ projects, folderName, now, canEdit, pinned, folders, actions
 // its menu), the search, the sort and New project. Recent lists the projects you opened last, in that order (so it has
 // no sort); All projects lists a tile for each folder, then every project; a folder view lists that folder's projects.
 // A card dropped on a folder, in the sidebar or on its tile, moves there, and a refused move says why in the bar.
-export function Dashboard({ projects, folders, recentIds, pinnedIds = NO_PINS, view, canEdit, now, actions, spaceSlug, notices }: DashboardProps): ReactNode {
+export function Dashboard({ projects, folders, recentIds, pinnedIds = NO_PINS, sidebarCollapsed, view, canEdit, now, actions, spaceSlug, notices }: DashboardProps): ReactNode {
   useRefreshOnReturn();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -231,6 +232,7 @@ export function Dashboard({ projects, folders, recentIds, pinnedIds = NO_PINS, v
         <Sidebar
           folders={folders}
           pinned={pinnedProjects(projects, pinnedIds)}
+          collapsed={sidebarCollapsed}
           view={view}
           canEdit={canEdit}
           spaceSlug={spaceSlug}

@@ -1,48 +1,58 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { useId, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useId, useSyncExternalStore, type ReactNode } from "react";
+import { readCookie } from "@/components/editor/browser-prefs";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
-import { SECTIONS_KEY, readCollapsed, withToggled, writeCollapsed, type SectionId } from "@/lib/dashboard/sidebar-sections";
+import { SECTIONS_COOKIE, formatCollapsed, parseCollapsed, withToggled, type SectionId } from "@/lib/dashboard/sidebar-sections";
 
-// A section of the dashboard's sidebar that its heading hides and shows, remembered in this browser.
+// A section of the dashboard's sidebar that its heading hides and shows, remembered in this browser's cookie.
 
-// Sent on this page when a section is toggled, so every section reads the new list; other tabs get "storage".
+const YEAR_SECONDS = 31_536_000;
+
+// The cookie as the server read it for this page, so the first paint and hydration draw the folded sections folded.
+const ServerCollapsedContext = createContext<string | undefined>(undefined);
+
+export function CollapsedSectionsProvider({ value, children }: { value: string | undefined; children: ReactNode }): ReactNode {
+  return <ServerCollapsedContext value={value}>{children}</ServerCollapsedContext>;
+}
+
+// Sent on this page when a section is toggled, so every section reads the new list.
 const TOGGLED = "easyedit:sidebar-sections";
-// The list when the browser's storage refuses reads or writes, for this page only.
-let fallback = "";
+
+// The list this page shows when the browser refused or ignored a write: it holds while the cookie still reads as it
+// did then, and gives way once the cookie changes.
+let unsaved: { cookieWas: string | null; value: string } | null = null;
 
 function subscribe(onChange: () => void): () => void {
-  window.addEventListener("storage", onChange);
   window.addEventListener(TOGGLED, onChange);
-  return () => {
-    window.removeEventListener("storage", onChange);
-    window.removeEventListener(TOGGLED, onChange);
-  };
+  return () => window.removeEventListener(TOGGLED, onChange);
 }
 
-function saved(): string {
+function current(): string {
+  const cookie = readCookie(SECTIONS_COOKIE);
+  if (unsaved && unsaved.cookieWas === cookie) return unsaved.value;
+  return cookie ?? "";
+}
+
+function save(value: string): void {
   try {
-    return window.localStorage.getItem(SECTIONS_KEY) ?? fallback;
+    document.cookie = `${SECTIONS_COOKIE}=${value}; path=/s; max-age=${YEAR_SECONDS}; samesite=lax`;
   } catch {
-    return fallback;
+    // Cookies are blocked here.
   }
+  const after = readCookie(SECTIONS_COOKIE);
+  unsaved = after === value ? null : { cookieWas: after, value };
 }
-
-// The server and the page's first render draw every section open; a saved choice applies right after.
-const nothingSaved = () => "";
-
-const listIn = (raw: string) => readCollapsed({ getItem: () => (raw === "" ? null : raw) });
 
 export function useCollapsed(id: SectionId): [collapsed: boolean, toggle: () => void] {
-  const raw = useSyncExternalStore(subscribe, saved, nothingSaved);
+  const server = useContext(ServerCollapsedContext) ?? "";
+  const value = useSyncExternalStore(subscribe, current, () => server);
   function toggle() {
-    const next = withToggled(listIn(saved()), id);
-    fallback = JSON.stringify(next);
-    writeCollapsed({ setItem: (key, value) => window.localStorage.setItem(key, value) }, next);
+    save(formatCollapsed(withToggled(parseCollapsed(current()), id)));
     window.dispatchEvent(new Event(TOGGLED));
   }
-  return [listIn(raw).has(id), toggle];
+  return [parseCollapsed(value).has(id), toggle];
 }
 
 // A heading of the sidebar: small capitals beside the list on a wide window, and kept for screen readers only on a

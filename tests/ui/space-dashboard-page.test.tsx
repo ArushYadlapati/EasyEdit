@@ -51,6 +51,8 @@ vi.mock("@/app/(dashboard)/dashboard/actions", () => ({
   renameFolderAction: vi.fn(),
   deleteFolderAction: vi.fn(),
 }));
+const jar = vi.hoisted(() => ({ values: {} as Record<string, string> }));
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: (name: string) => (name in jar.values ? { name, value: jar.values[name] } : undefined) }) }));
 vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => signedIn.user!),
   meetsRole: (await import("@/lib/access-rules")).meetsRole,
@@ -138,6 +140,14 @@ describe("the dashboard page", () => {
     expect(viewer.canEdit).toBe(false);
     expect(viewer.recentIds).toEqual([projectId]);
     expect((await dashboardFor(ada)).recentIds).toEqual([]);
+  });
+
+  it("the sidebar gets this browser's folded sections, so the first paint has them", async () => {
+    jar.values = {};
+    expect((await dashboardFor(ada)).sidebarCollapsed).toBeUndefined();
+    jar.values = { easyedit_sidebar: "folders.pinned" };
+    expect((await dashboardFor(ada)).sidebarCollapsed).toBe("folders.pinned");
+    jar.values = {};
   });
 
   it("everyone in the space gets its pins", async () => {

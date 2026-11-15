@@ -1,8 +1,10 @@
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
+import { SECTIONS_COOKIE } from "@/lib/dashboard/sidebar-sections";
 import { ALL_VIEW, RECENT_VIEW, recentProjects, resolveView } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
@@ -69,6 +71,8 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   ]);
   const names = await getUserNames(db, projects.map((project) => actorUserId(project.updatedBy)));
   const { folder, view: named, storage: storageNote } = await searchParams;
+  // The sidebar sections this browser folded, so the first paint already has them folded.
+  const sidebarCollapsed = (await cookies()).get(SECTIONS_COOKIE)?.value;
   // Someone who has opened nothing here yet (a teammate's first visit) lands on All projects, not an empty Recent.
   const landing = recentProjects(projects, recentIds, "").length > 0 ? RECENT_VIEW : ALL_VIEW;
   const view = resolveView({ folder, view: named }, folders, landing);
@@ -98,6 +102,7 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
       folders={folders}
       recentIds={recentIds}
       pinnedIds={pinnedIds}
+      sidebarCollapsed={sidebarCollapsed}
       view={view}
       canEdit={canEdit}
       now={new Date()}

@@ -1,32 +1,24 @@
-// Which of the dashboard sidebar's sections are collapsed, kept in this browser. One list for every space: a section
-// hidden in one is hidden in all.
+// Which of the dashboard sidebar's sections are collapsed, kept in this browser as a cookie so the server draws them
+// folded on the first paint (as the editor keeps its panel sizes). One list for every space: a section hidden in one is
+// hidden in all.
 
 export const SECTION_IDS = ["spaces", "projects", "pinned", "folders", "space"] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 
-export const SECTIONS_KEY = "easyedit.sidebar-collapsed";
+// Under /s, so API requests do not carry it. Its value is the ids joined by dots, which a cookie carries as they are.
+export const SECTIONS_COOKIE = "easyedit_sidebar";
 
-const isSection = (value: unknown): value is SectionId => (SECTION_IDS as readonly unknown[]).includes(value);
+const isSection = (value: string): value is SectionId => (SECTION_IDS as readonly string[]).includes(value);
 
-// The saved sections; nothing saved, a value that is not a list of sections, or blocked storage means all are open.
-export function readCollapsed(storage: Pick<Storage, "getItem">): ReadonlySet<SectionId> {
-  try {
-    const saved: unknown = JSON.parse(storage.getItem(SECTIONS_KEY) ?? "[]");
-    return new Set(Array.isArray(saved) ? saved.filter(isSection) : []);
-  } catch {
-    return new Set();
-  }
+// The cookie's sections; nothing saved, or text that names no section, means all are open.
+export function parseCollapsed(value: string | null | undefined): ReadonlySet<SectionId> {
+  return new Set((value ?? "").split(".").filter(isSection));
+}
+
+export function formatCollapsed(ids: readonly SectionId[]): string {
+  return ids.join(".");
 }
 
 export function withToggled(collapsed: ReadonlySet<SectionId>, id: SectionId): SectionId[] {
   return collapsed.has(id) ? [...collapsed].filter((other) => other !== id) : [...collapsed, id];
-}
-
-// A refused write (blocked or full storage) only means the choice is not remembered.
-export function writeCollapsed(storage: Pick<Storage, "setItem">, ids: readonly SectionId[]): void {
-  try {
-    storage.setItem(SECTIONS_KEY, JSON.stringify(ids));
-  } catch {
-    // nothing to do
-  }
 }

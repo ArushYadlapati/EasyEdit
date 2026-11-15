@@ -7,7 +7,7 @@ import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-dr
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { ALL_VIEW, RECENT_VIEW, folderOf, viewQuery, type DashboardFolder, type DashboardView } from "@/lib/dashboard/view";
-import { SidebarSection } from "@/components/dashboard/sidebar-section";
+import { CollapsedSectionsProvider, SidebarSection } from "@/components/dashboard/sidebar-section";
 import { SpaceSwitcher, useCreateTeam, useMySpaces } from "@/components/dashboard/space-switcher";
 import { editorPath, slugFor, spacePath } from "@/lib/spaces/paths";
 import { settingsTabPath } from "@/lib/spaces/settings-tabs";
@@ -16,6 +16,7 @@ import { storageSettingsPath } from "@/lib/storage/messages";
 export type SidebarProps = {
   folders: readonly DashboardFolder[];
   pinned?: readonly { id: string; name: string }[]; // the space's Pinned list, oldest pin first
+  collapsed?: string; // the folded sections' cookie as the server read it (SECTIONS_COOKIE)
   view: DashboardView;
   canEdit: boolean;
   spaceSlug: string;
@@ -61,7 +62,7 @@ function SidebarLink({ href, current, folderId, takesDrops, onDropProject, child
 // editors, New folder sits beside the Folders heading, or at the end of the row on a narrow window; and a project
 // dragged onto a folder goes into it, or onto All projects out of its folder. This space sits at the foot of the column:
 // a team's Members for everyone in it, and the space's Storage settings for its admins.
-export function Sidebar({ folders, pinned = [], view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
+export function Sidebar({ folders, pinned = [], collapsed, view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
   const spaces = useMySpaces();
   const createTeam = useCreateTeam();
   const current = spaces.find((space) => slugFor(space) === spaceSlug);
@@ -69,84 +70,86 @@ export function Sidebar({ folders, pinned = [], view, canEdit, spaceSlug, onNewF
   const showMembers = current?.kind === "team";
   const showStorage = current?.role === "admin";
   return (
-    <div
-      className={cx(
-        // relative: the headings are sr-only on a narrow window (absolutely placed), and without a positioned row they
-        // sit past its right edge and make the whole page scroll sideways.
-        "relative flex shrink-0 flex-row items-center gap-1 overflow-x-auto border-b border-ed-line bg-ed-panel px-4 py-2",
-        "md:w-56 md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-b-0 md:px-2 md:py-3",
-      )}
-    >
-      {/* The person's spaces (from the dashboard layout), above what is in this one. Not drawn without any, as in tests. */}
-      {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} createTeam={createTeam} />}
-      <nav aria-label="Projects" className="flex shrink-0 flex-row items-center gap-1 md:flex-col md:items-stretch">
-        <SidebarSection id="projects" label="Projects">
-          <SidebarLink href={spacePath(spaceSlug, viewQuery(RECENT_VIEW))} current={view.kind === "recent"} folderId={null} takesDrops={false} onDropProject={onDropProject}>
-            Recent
-          </SidebarLink>
-          <SidebarLink
-            href={spacePath(spaceSlug, viewQuery(ALL_VIEW))}
-            current={view.kind === "all"}
-            folderId={null}
-            takesDrops={canEdit}
-            onDropProject={onDropProject}
-          >
-            All projects
-          </SidebarLink>
-        </SidebarSection>
-        {pinned.length > 0 && (
-          <SidebarSection id="pinned" label="Pinned" className="md:mt-4">
-            {pinned.map((project) => (
-              <SidebarLink key={project.id} href={editorPath(spaceSlug, project.id)} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
-                <span className="min-w-0 truncate">{project.name}</span>
-              </SidebarLink>
-            ))}
-          </SidebarSection>
+    <CollapsedSectionsProvider value={collapsed}>
+      <div
+        className={cx(
+          // relative: the headings are sr-only on a narrow window (absolutely placed), and without a positioned row they
+          // sit past its right edge and make the whole page scroll sideways.
+          "relative flex shrink-0 flex-row items-center gap-1 overflow-x-auto border-b border-ed-line bg-ed-panel px-4 py-2",
+          "md:w-56 md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-b-0 md:px-2 md:py-3",
         )}
-        <SidebarSection
-          id="folders"
-          label="Folders"
-          className="md:mt-4"
-          action={
-            canEdit && (
-              <IconButton label="New folder" className="order-last md:order-none" onClick={onNewFolder}>
-                <Plus />
-              </IconButton>
-            )
-          }
-        >
-          {folders.map((folder) => (
+      >
+        {/* The person's spaces (from the dashboard layout), above what is in this one. Not drawn without any, as in tests. */}
+        {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} createTeam={createTeam} />}
+        <nav aria-label="Projects" className="flex shrink-0 flex-row items-center gap-1 md:flex-col md:items-stretch">
+          <SidebarSection id="projects" label="Projects">
+            <SidebarLink href={spacePath(spaceSlug, viewQuery(RECENT_VIEW))} current={view.kind === "recent"} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+              Recent
+            </SidebarLink>
             <SidebarLink
-              key={folder.id}
-              href={spacePath(spaceSlug, viewQuery({ kind: "folder", folderId: folder.id }))}
-              current={shownFolder === folder.id}
-              folderId={folder.id}
+              href={spacePath(spaceSlug, viewQuery(ALL_VIEW))}
+              current={view.kind === "all"}
+              folderId={null}
               takesDrops={canEdit}
               onDropProject={onDropProject}
             >
-              <span className="min-w-0 truncate">{folder.name}</span>{" "}
-              <span className="text-ed-muted tabular-nums">{folder.projectCount}</span>
+              All projects
             </SidebarLink>
-          ))}
-        </SidebarSection>
-      </nav>
-      {/* The space's own settings, at the foot of the column: a team's Members for everyone in it, Storage for admins. */}
-      {(showMembers || showStorage) && (
-        <nav aria-label="This space" className="flex shrink-0 flex-row items-center gap-1 md:mt-auto md:flex-col md:items-stretch md:pt-4">
-          <SidebarSection id="space" label="This space">
-            {showMembers && (
-              <SidebarLink href={settingsTabPath(spaceSlug, "members")} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
-                Members
+          </SidebarSection>
+          {pinned.length > 0 && (
+            <SidebarSection id="pinned" label="Pinned" className="md:mt-4">
+              {pinned.map((project) => (
+                <SidebarLink key={project.id} href={editorPath(spaceSlug, project.id)} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+                  <span className="min-w-0 truncate">{project.name}</span>
+                </SidebarLink>
+              ))}
+            </SidebarSection>
+          )}
+          <SidebarSection
+            id="folders"
+            label="Folders"
+            className="md:mt-4"
+            action={
+              canEdit && (
+                <IconButton label="New folder" className="order-last md:order-none" onClick={onNewFolder}>
+                  <Plus />
+                </IconButton>
+              )
+            }
+          >
+            {folders.map((folder) => (
+              <SidebarLink
+                key={folder.id}
+                href={spacePath(spaceSlug, viewQuery({ kind: "folder", folderId: folder.id }))}
+                current={shownFolder === folder.id}
+                folderId={folder.id}
+                takesDrops={canEdit}
+                onDropProject={onDropProject}
+              >
+                <span className="min-w-0 truncate">{folder.name}</span>{" "}
+                <span className="text-ed-muted tabular-nums">{folder.projectCount}</span>
               </SidebarLink>
-            )}
-            {showStorage && (
-              <SidebarLink href={storageSettingsPath(spaceSlug)} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
-                Storage
-              </SidebarLink>
-            )}
+            ))}
           </SidebarSection>
         </nav>
-      )}
-    </div>
+        {/* The space's own settings, at the foot of the column: a team's Members for everyone in it, Storage for admins. */}
+        {(showMembers || showStorage) && (
+          <nav aria-label="This space" className="flex shrink-0 flex-row items-center gap-1 md:mt-auto md:flex-col md:items-stretch md:pt-4">
+            <SidebarSection id="space" label="This space">
+              {showMembers && (
+                <SidebarLink href={settingsTabPath(spaceSlug, "members")} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+                  Members
+                </SidebarLink>
+              )}
+              {showStorage && (
+                <SidebarLink href={storageSettingsPath(spaceSlug)} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+                  Storage
+                </SidebarLink>
+              )}
+            </SidebarSection>
+          </nav>
+        )}
+      </div>
+    </CollapsedSectionsProvider>
   );
 }
