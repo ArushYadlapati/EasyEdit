@@ -7,14 +7,15 @@ import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { findMySpace } from "@/lib/spaces/service";
+import { settingsTabsFor } from "@/lib/spaces/settings-tabs";
 
-// A space's settings, for its admins: the space's name, the way back to its projects, and a row of tabs (Storage;
-// more come later). Anyone else, a member who isn't an admin or someone not in the space, gets a plain 404, as each
-// page checks again for itself.
+// A space's settings, for its members: the space's name, the way back to its projects, and a row of the tabs they may
+// open (Members in a team, for everyone; Storage, for its admins). Someone not in the space gets a plain 404. Each page
+// checks again for itself, as a layout is not run again on a client navigation.
 export default async function SpaceSettingsLayout({ params, children }: LayoutProps<"/s/[space]/settings">): Promise<ReactNode> {
   const user = await requireUser();
   const space = await findMySpace(getDb(), user.id, (await params).space);
-  if (!space || space.role !== "admin") notFound();
+  if (!space) notFound();
   const slug = slugFor(space);
 
   return (
@@ -27,7 +28,7 @@ export default async function SpaceSettingsLayout({ params, children }: LayoutPr
           Back to projects
         </Link>
         <h1 className="min-w-0 truncate text-base font-semibold">{space.kind === "personal" ? "Personal" : space.name}</h1>
-        <SettingsTabs slug={slug} />
+        <SettingsTabs slug={slug} tabs={settingsTabsFor(space)} />
         {children}
       </div>
     </main>

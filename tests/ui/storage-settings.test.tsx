@@ -301,17 +301,16 @@ describe("the storage settings page", () => {
     expect(link("Go to the team's projects").getAttribute("href")).toBe("/s/robots");
   });
 
-  it("a member who isn't an admin, and someone not in the space, get not found, from the page and the layout", async () => {
+  it("a member who isn't an admin, and someone not in the space, get not found; the layout lets only members in", async () => {
     await expect(storagePage(bea, "robots")).rejects.toBeInstanceOf(NotFound);
     await expect(storagePage(bea, "seattle-solvers")).rejects.toBeInstanceOf(NotFound);
     await expect(storagePage(out, "robots")).rejects.toBeInstanceOf(NotFound);
     await expect(storagePage(ada, personalSpaceId("u2"))).rejects.toBeInstanceOf(NotFound);
     await expect(storagePage(ada, "no-such-team")).rejects.toBeInstanceOf(NotFound);
-    await expect(layout(bea, "robots")).rejects.toBeInstanceOf(NotFound);
     await expect(layout(out, "robots")).rejects.toBeInstanceOf(NotFound);
   });
 
-  it("the layout: the space's name, a way back, and a row of tabs with Storage", async () => {
+  it("the layout: the space's name, a way back, and a row of tabs with Members and Storage", async () => {
     at.path = "/s/robots/settings/storage";
     await layout(ada, "robots");
     expect(screen.getByRole("heading", { level: 1, name: "Robots" })).toBeTruthy();
@@ -329,7 +328,8 @@ describe("the storage settings page", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Personal" })).toBeTruthy();
   });
 
-  it("/s/<space>/settings opens Storage", async () => {
-    await expect(SettingsIndex({ params: Promise.resolve({ space: "robots" }) } as never)).rejects.toMatchObject({ to: "/s/robots/settings/storage" });
+  it("/s/<space>/settings opens a personal space's Storage", async () => {
+    signedIn.user = ada;
+    await expect(SettingsIndex({ params: Promise.resolve({ space: "personal" }) } as never)).rejects.toMatchObject({ to: "/s/personal/settings/storage" });
   });
 });

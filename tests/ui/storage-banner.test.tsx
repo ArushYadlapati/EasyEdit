@@ -197,9 +197,9 @@ describe("the sidebar's link to storage", () => {
     expect(screen.getByRole("link", { name: "Storage" }).getAttribute("href")).toBe("/s/personal/settings/storage");
   });
 
-  it("editors and viewers don't", () => {
+  it("editors and viewers don't (they get the team's Members only)", () => {
     const editor = sidebarIn([space(SEED_TEAM_ID, "seattle-solvers", "editor")], "seattle-solvers");
-    expect(screen.queryByRole("navigation", { name: "This space" })).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "This space" })).getAllByRole("link").map((l) => l.textContent)).toEqual(["Members"]);
     expect(screen.queryByRole("link", { name: "Storage" })).toBeNull();
     editor.unmount();
     sidebarIn([space("team_robots", "robots", "viewer")], "robots");

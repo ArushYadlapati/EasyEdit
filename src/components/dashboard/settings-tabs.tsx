@@ -4,14 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
-import { SETTINGS_TABS, settingsTabPath } from "@/lib/spaces/settings-tabs";
+import { settingsTabPath, type SettingsTab } from "@/lib/spaces/settings-tabs";
 
-// The row of settings tabs, links that mark the page shown. It scrolls sideways on its own on a narrow window.
-export function SettingsTabs({ slug }: { slug: string }): ReactNode {
+// The row of settings tabs the viewer may open (settingsTabsFor), links that mark the page shown. It scrolls sideways
+// on its own on a narrow window.
+export function SettingsTabs({ slug, tabs }: { slug: string; tabs: readonly SettingsTab[] }): ReactNode {
   const pathname = usePathname() ?? "";
   return (
     <nav aria-label="Settings" className="flex gap-1 overflow-x-auto border-b border-ed-line">
-      {SETTINGS_TABS.map((tab) => {
+      {tabs.map((tab) => {
         const href = settingsTabPath(slug, tab.id);
         const current = pathname === href || pathname.startsWith(`${href}/`);
         return (
