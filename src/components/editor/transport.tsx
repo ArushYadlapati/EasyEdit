@@ -1,9 +1,13 @@
 "use client";
 
 import { Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
+import { InlineEdit } from "@/components/ui/inline-edit";
 import { Menu, type MenuItem } from "@/components/ui/menu";
+import { formatTimecode } from "@/lib/editor/geometry";
+import { parseTime } from "@/lib/editor/parse-time";
 import { platformView, platformViewsFor } from "@/lib/editor/platform-views";
 import { viewDoc } from "@/lib/editor/store";
 import { docDuration, formatLabel } from "@/lib/timeline";
@@ -68,13 +72,64 @@ export function Transport() {
   );
 }
 
-// Its own component, so only the readout re-renders while the playhead moves.
+// Its own component, so only the readout re-renders while the playhead moves. Double-click the time (or press Enter on
+// it) to type one and jump there: "0:02:10", "1:30" or "12" all work, and a time past the end stops at the end.
 function TimeReadout({ duration, fps }: { duration: number; fps: number }) {
+  const store = useEditorStore();
   const playhead = useEditor((s) => s.playhead);
+  const [editing, setEditing] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false); // a key ended the edit, so focus goes back to the time
+
+  useEffect(() => {
+    if (editing || !refocus.current) return;
+    refocus.current = false;
+    button.current?.focus();
+  }, [editing]);
+
+  function open() {
+    store.getState().pause(); // the field holds still while you type, and so does the frame
+    setEditing(true);
+  }
+
+  function onDone(value: string | null, byKey: boolean) {
+    refocus.current = byKey;
+    const frame = value === null ? null : parseTime(value, fps);
+    if (frame !== null) store.getState().seek(Math.min(frame, duration));
+    setEditing(false);
+  }
+
   return (
-    <p className="shrink-0 pl-1 text-xs leading-4 whitespace-nowrap text-ed-muted">
-      <Timecode frame={playhead} fps={fps} className="text-ed-text" />
-      {" / "}
+    <p className="flex shrink-0 items-center pl-1 text-xs leading-4 whitespace-nowrap text-ed-muted">
+      {editing ? (
+        // The field's own box is full width, so this wrapper gives it its width: room for "1:00:03:15".
+        <span className="-ml-2 w-[13ch] font-mono text-xs">
+          <InlineEdit
+            label="Go to time"
+            defaultValue={formatTimecode(playhead, fps)}
+            maxLength={16}
+            accepts={(v) => parseTime(v, fps) !== null}
+            onDone={onDone}
+            spellCheck={false}
+            autoComplete="off"
+            className="font-mono text-xs tabular-nums"
+          />
+        </span>
+      ) : (
+        <button
+          ref={button}
+          type="button"
+          aria-label={`Current time ${formatTimecode(playhead, fps)}`}
+          title="Double-click to go to a time"
+          onDoubleClick={open}
+          // A keyboard press has no click count; a mouse needs the double-click, so a stray click never opens it.
+          onClick={(e) => e.detail === 0 && open()}
+          className={cx("-ml-1 rounded px-1 text-ed-text hover:bg-ed-hover", FOCUS_RING, FADE)}
+        >
+          <Timecode frame={playhead} fps={fps} />
+        </button>
+      )}
+      <span className="whitespace-pre">{" / "}</span>
       <Timecode frame={duration} fps={fps} />
     </p>
   );

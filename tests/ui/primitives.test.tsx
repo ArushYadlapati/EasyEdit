@@ -343,6 +343,22 @@ it("an inline edit opens focused with its text selected, and Enter, Escape and b
   blurred.unmount();
 });
 
+it("an inline edit with a check stays open on Enter for a value it refuses, and blur drops that value", () => {
+  const onDone = vi.fn();
+  render(<InlineEdit defaultValue="0:01:00" label="Go to time" maxLength={16} accepts={(v) => /^\d/.test(v)} onDone={onDone} />);
+  const input = screen.getByRole("textbox", { name: "Go to time" }) as HTMLInputElement;
+  expect(input.hasAttribute("aria-invalid")).toBe(false);
+  fireEvent.change(input, { target: { value: "soon" } });
+  expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
+  expect(onDone).not.toHaveBeenCalled();
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  // Typing again clears the mark until the next Enter.
+  fireEvent.change(input, { target: { value: "soo" } });
+  expect(input.hasAttribute("aria-invalid")).toBe(false);
+  fireEvent.blur(input);
+  expect(onDone.mock.calls).toEqual([[null, false]]);
+});
+
 it("an inline edit stays open while the window is away", () => {
   const onDone = vi.fn();
   render(<InlineEdit defaultValue="Qual recap" label="Project name" maxLength={100} onDone={onDone} data-edit-control className="w-72" />);
