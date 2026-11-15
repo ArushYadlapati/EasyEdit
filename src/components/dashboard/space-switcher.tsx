@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { CreateTeamDialog } from "@/components/dashboard/create-team-dialog";
+import { SidebarSection } from "@/components/dashboard/sidebar-section";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 import type { TeamFormState } from "@/lib/spaces/team-actions";
@@ -61,41 +62,42 @@ export function SpaceSwitcher({
   const [creating, setCreating] = useState(false);
   return (
     <nav aria-label="My Spaces" className="flex shrink-0 flex-row items-center gap-1 md:mb-3 md:flex-col md:items-stretch md:border-b md:border-ed-line md:pb-3">
-      <h2 className={SIDEBAR_HEADING}>My Spaces</h2>
-      {spaces.map((space) => {
-        const isCurrent = space.id === current;
-        return (
-          <Link
-            key={space.id}
-            href={spacePath(slugFor(space))}
-            aria-current={isCurrent ? "page" : undefined}
-            className={cx(
-              "flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-semibold whitespace-nowrap",
-              isCurrent ? "bg-ed-accent-weak text-ed-accent" : "text-ed-text hover:bg-ed-hover",
-              FOCUS_RING_INSET,
-              FADE,
-            )}
-          >
-            <span className="min-w-0 truncate">{labelOf(space)}</span>
-          </Link>
-        );
-      })}
-      {createTeam && (
-        <>
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className={cx(
-              "flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-semibold whitespace-nowrap text-ed-text hover:bg-ed-hover",
-              FOCUS_RING_INSET,
-              FADE,
-            )}
-          >
-            Create a team
-          </button>
-          <CreateTeamDialog open={creating} action={createTeam} onClose={() => setCreating(false)} />
-        </>
-      )}
+      <SidebarSection id="spaces" label="My Spaces">
+        {spaces.map((space) => {
+          const isCurrent = space.id === current;
+          return (
+            <Link
+              key={space.id}
+              href={spacePath(slugFor(space))}
+              aria-current={isCurrent ? "page" : undefined}
+              className={cx(
+                "flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-semibold whitespace-nowrap",
+                isCurrent ? "bg-ed-accent-weak text-ed-accent" : "text-ed-text hover:bg-ed-hover",
+                FOCUS_RING_INSET,
+                FADE,
+              )}
+            >
+              <span className="min-w-0 truncate">{labelOf(space)}</span>
+            </Link>
+          );
+        })}
+        {createTeam && (
+          <>
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className={cx(
+                "flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-semibold whitespace-nowrap text-ed-text hover:bg-ed-hover",
+                FOCUS_RING_INSET,
+                FADE,
+              )}
+            >
+              Create a team
+            </button>
+            <CreateTeamDialog open={creating} action={createTeam} onClose={() => setCreating(false)} />
+          </>
+        )}
+      </SidebarSection>
     </nav>
   );
 }

@@ -32,7 +32,7 @@ const { Dashboard, signedIn } = vi.hoisted(() => ({
 vi.mock("@/components/dashboard/dashboard", () => ({ Dashboard }));
 vi.mock("@/app/(dashboard)/dashboard/actions", () => ({
   createProjectAction: vi.fn(), renameProjectAction: vi.fn(), deleteProjectAction: vi.fn(), duplicateProjectAction: vi.fn(),
-  moveProjectAction: vi.fn(), createFolderAction: vi.fn(), renameFolderAction: vi.fn(), deleteFolderAction: vi.fn(),
+  moveProjectAction: vi.fn(), pinProjectAction: vi.fn(), unpinProjectAction: vi.fn(), createFolderAction: vi.fn(), renameFolderAction: vi.fn(), deleteFolderAction: vi.fn(),
 }));
 vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => signedIn.user!),

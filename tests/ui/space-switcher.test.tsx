@@ -31,7 +31,9 @@ describe("SpaceSwitcher", () => {
     const nav = screen.getByRole("navigation", { name: "My Spaces" });
     const heading = screen.getByRole("heading", { name: "My Spaces" });
     expect(heading.tagName).toBe("H2");
-    expect(nav.firstElementChild).toBe(heading);
+    // First in the switcher, in the row with its chevron.
+    expect(nav.firstElementChild).toBe(heading.parentElement);
+    expect(heading.parentElement!.firstElementChild).toBe(heading);
     // Beside the list on a wide window; for screen readers only on a narrow one, where the switcher is a row.
     expect(heading.className.split(" ")).toEqual(expect.arrayContaining(["sr-only", "md:not-sr-only", "uppercase"]));
   });
