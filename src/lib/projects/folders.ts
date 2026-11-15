@@ -4,7 +4,7 @@ import type { DB } from "@/db";
 import { folders, projects } from "@/db/schema";
 import { requireRole, type Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
-import { FOLDER_GONE, folderName } from "@/lib/projects/schemas";
+import { folderName } from "@/lib/projects/schemas";
 import { failedOn, isFolderGone } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 
@@ -12,7 +12,7 @@ export type FolderSummary = { id: string; name: string; projectCount: number };
 
 export const FOLDER_NAME_MESSAGE = `Enter a folder name up to ${LIMITS.folderNameChars} characters.`;
 export const FOLDER_NAME_TAKEN = "There's already a folder with that name.";
-export { FOLDER_GONE };
+export const FOLDER_GONE = "That folder no longer exists.";
 
 const NAME_INDEX = "folders_space_name_lower_unique";
 

@@ -49,4 +49,3 @@ export function copyName(name: string): string {
   return withSuffix(name, COPY_SUFFIX, LIMITS.projectNameChars);
 }
 
-export const FOLDER_GONE = "That folder no longer exists.";

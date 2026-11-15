@@ -86,14 +86,20 @@ describe("projects are scoped to the actor's space", () => {
     await expect(createFolder(db, u1Team, "season")).rejects.toMatchObject({ code: "CONFLICT", status: 409, message: "There's already a folder with that name." });
   });
 
-  it("folders of another space are refused", async () => {
+  it("a folder of another space looks exactly like an unknown folder", async () => {
     const { db, u1Team, u1Personal } = await setup();
-    const folder = await createFolder(db, u1Personal, "Mine");
-    await expect(createProject(db, u1Team, { name: "P", format: "short_9x16", folderId: folder.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(await listProjects(db, u1Team)).toEqual([]);
-    const project = await createProject(db, u1Team, { name: "P", format: "short_9x16" });
-    await expect(moveProject(db, u1Team, project.id, folder.id)).rejects.toMatchObject({ code: "NOT_FOUND", message: "That folder no longer exists." });
-    await expect(moveProject(db, u1Personal, project.id, null)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const foreign = await createFolder(db, u1Personal, "Mine");
+    const folderOf = async (id: string) => (await listProjects(db, u1Team)).find((p) => p.id === id)!.folderId;
+    const a = await createProject(db, u1Team, { name: "A", format: "short_9x16", folderId: "unknown" });
+    const b = await createProject(db, u1Team, { name: "B", format: "short_9x16", folderId: foreign.id });
+    expect([await folderOf(a.id), await folderOf(b.id)]).toEqual([null, null]);
+    const outcome = (call: Promise<unknown>) =>
+      call.then(() => "ok", (e: { code: string; status: number; message: string }) => [e.code, e.status, e.message]);
+    const unknown = await outcome(moveProject(db, u1Team, a.id, "unknown"));
+    expect(unknown).toEqual(["NOT_FOUND", 404, "That folder no longer exists."]);
+    expect(await outcome(moveProject(db, u1Team, a.id, foreign.id))).toEqual(unknown);
+    expect(await folderOf(a.id)).toBeNull();
+    await expect(moveProject(db, u1Personal, a.id, null)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("another space's folder cannot be renamed or deleted", async () => {

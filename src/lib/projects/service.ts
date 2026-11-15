@@ -1,12 +1,12 @@
 import { and, asc, desc, eq, gt, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { rowsOf, type DB } from "@/db";
-import { folders, projectOps, projects } from "@/db/schema";
+import { projectOps, projects } from "@/db/schema";
 import { requireRole, type Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
 import { assetIdsToCheck, findMediaProblem, mediaProblemMessage } from "@/lib/media/refs";
 import { loadAssetFacts } from "@/lib/media/service";
-import { copyName, FOLDER_GONE, projectFrame, projectName } from "@/lib/projects/schemas";
+import { copyName, projectFrame, projectName } from "@/lib/projects/schemas";
 import { ServiceError } from "@/lib/service-error";
 import {
   OpError,
@@ -111,12 +111,6 @@ export async function createProject(
 
   const id = newId();
   const folderId = input.folderId ?? null;
-  // A folder of another space is refused as a deleted one is on a write that checks it. An unknown id still leaves
-  // the project in no folder, as it always has.
-  if (folderId !== null) {
-    const found = await db.select({ spaceId: folders.spaceId }).from(folders).where(eq(folders.id, folderId));
-    if (found[0] && found[0].spaceId !== actor.spaceId) throw new ServiceError("NOT_FOUND", 404, FOLDER_GONE);
-  }
   const insert = (folderId: SQL | null) =>
     db.insert(projects).values({
       id,
