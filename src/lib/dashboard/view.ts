@@ -27,18 +27,21 @@ export const ALL_VIEW: DashboardView = { kind: "all" };
 
 type Query = string | string[] | undefined;
 
-// The view named in the address: ?folder=<id> for a folder this space has, else ?view=all for All projects, else
-// Recent. A repeated or unknown value counts as missing.
-export function resolveView(query: { folder?: Query; view?: Query }, folders: readonly { id: string }[]): DashboardView {
+// The view named in the address: ?folder=<id> for a folder this space has, else ?view=all for All projects or
+// ?view=recent for Recent, else the landing view: Recent, or All projects for someone who has opened nothing in the
+// space yet (the page decides). A repeated or unknown value counts as missing.
+export function resolveView(query: { folder?: Query; view?: Query }, folders: readonly { id: string }[], landing: DashboardView = RECENT_VIEW): DashboardView {
   const { folder, view } = query;
   if (typeof folder === "string" && folders.some((f) => f.id === folder)) return { kind: "folder", folderId: folder };
-  return view === "all" ? ALL_VIEW : RECENT_VIEW;
+  if (view === "all") return ALL_VIEW;
+  if (view === "recent") return RECENT_VIEW;
+  return landing;
 }
 
-// The address query of a view, for spacePath: none for Recent, the landing view.
-export function viewQuery(view: DashboardView): Record<string, string> | undefined {
+// The address query of a view, for spacePath. Recent is named too: the bare address can land on All projects.
+export function viewQuery(view: DashboardView): Record<string, string> {
   if (view.kind === "folder") return { folder: view.folderId };
-  return view.kind === "all" ? { view: "all" } : undefined;
+  return { view: view.kind };
 }
 
 // The folder a view is of, or null for Recent and All projects.

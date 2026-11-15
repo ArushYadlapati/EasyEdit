@@ -218,7 +218,8 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
 
   return (
     <ContextMenuProvider>
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      {/* min-w-0: as wide as the window, never as wide as the sidebar's row, which scrolls sideways on its own. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
         <Sidebar
           folders={folders}
           view={view}

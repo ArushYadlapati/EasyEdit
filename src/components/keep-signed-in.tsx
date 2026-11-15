@@ -18,6 +18,12 @@ export function KeepSignedIn() {
       try {
         const res = await fetch("/api/auth/get-session", { credentials: "same-origin", cache: "no-store" });
         if (res.ok) checkedAt = Date.now();
+        // Only the answer's cookie matters: letting go of its body ends the request.
+        try {
+          await res.body?.cancel();
+        } catch {
+          // Already read or locked: nothing to let go of.
+        }
       } catch {
         // Offline or the request was cut off. The next time the tab is shown it is tried again.
       } finally {

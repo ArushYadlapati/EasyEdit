@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
-import { resolveView } from "@/lib/dashboard/view";
+import { ALL_VIEW, RECENT_VIEW, recentProjects, resolveView } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
@@ -43,7 +43,8 @@ const actionsFor = (spaceId: string): DashboardActions => ({
 });
 
 // A space's dashboard, read on the server: its projects and folders, and the projects this person opened last.
-// Searching and sorting happen in the browser. The address picks the view (resolveView): Recent by default, ?view=all
+// Searching and sorting happen in the browser. The address picks the view (resolveView): Recent by default (All projects
+// when nothing here has been opened yet), ?view=recent or ?view=all
 // for All projects, ?folder=<id> for a folder. A space the person is not in is a plain 404.
 export default async function SpacePage({ params, searchParams }: PageProps<"/s/[space]">): Promise<ReactNode> {
   // The page checks for itself: a layout renders alongside its page and is not run again on a client navigation.
@@ -62,7 +63,9 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   ]);
   const names = await getUserNames(db, projects.map((project) => actorUserId(project.updatedBy)));
   const { folder, view: named, storage: storageNote } = await searchParams;
-  const view = resolveView({ folder, view: named }, folders);
+  // Someone who has opened nothing here yet (a teammate's first visit) lands on All projects, not an empty Recent.
+  const landing = recentProjects(projects, recentIds, "").length > 0 ? RECENT_VIEW : ALL_VIEW;
+  const view = resolveView({ folder, view: named }, folders, landing);
   const slug = slugFor(space);
   const isAdmin = actor.role === "admin";
   // The space's storage, from its rows (no call to Google). A connection that broke: a banner for the people who

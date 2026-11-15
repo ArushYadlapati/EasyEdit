@@ -90,7 +90,7 @@ it("Recent follows your opens, skips what is gone, stops at six and narrows to a
   expect(recentProjects([a, b, c], ["c", "a"], "  ")).toEqual([c, a]);
 });
 
-it("the address picks a folder, All projects or Recent; anything unknown is Recent", () => {
+it("the address picks a folder, All projects or Recent; anything unknown is the landing view (Recent unless given)", () => {
   const folders = [{ id: "f1" }];
   expect(resolveView({ folder: "f1" }, folders)).toEqual({ kind: "folder", folderId: "f1" });
   expect(resolveView({ folder: "f1", view: "all" }, folders)).toEqual({ kind: "folder", folderId: "f1" });
@@ -101,10 +101,16 @@ it("the address picks a folder, All projects or Recent; anything unknown is Rece
   expect(resolveView({ view: ["all"] }, folders)).toEqual(RECENT_VIEW);
   expect(resolveView({ view: "recent" }, folders)).toEqual(RECENT_VIEW);
   expect(resolveView({}, folders)).toEqual(RECENT_VIEW);
+  // Someone with nothing opened in the space lands on All projects; asking for Recent by name still shows it.
+  expect(resolveView({}, folders, ALL_VIEW)).toEqual(ALL_VIEW);
+  expect(resolveView({ folder: "nope" }, folders, ALL_VIEW)).toEqual(ALL_VIEW);
+  expect(resolveView({ view: "recent" }, folders, ALL_VIEW)).toEqual(RECENT_VIEW);
+  expect(resolveView({ view: "all" }, folders, RECENT_VIEW)).toEqual(ALL_VIEW);
+  expect(resolveView({ folder: "f1" }, folders, ALL_VIEW)).toEqual({ kind: "folder", folderId: "f1" });
 });
 
 it("a view's address query, and which folder it is of", () => {
-  expect(viewQuery(RECENT_VIEW)).toBeUndefined();
+  expect(viewQuery(RECENT_VIEW)).toEqual({ view: "recent" }); // by name: the bare address may land on All projects
   expect(viewQuery(ALL_VIEW)).toEqual({ view: "all" });
   expect(viewQuery({ kind: "folder", folderId: "f1" })).toEqual({ folder: "f1" });
   expect(folderOf({ kind: "folder", folderId: "f1" })).toBe("f1");

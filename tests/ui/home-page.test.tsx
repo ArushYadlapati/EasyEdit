@@ -45,4 +45,12 @@ describe("privacy page", () => {
     expect(screen.getByText(/privacy@<your-domain>/)).toBeTruthy();
     expect(document.body.textContent).toContain("drive.file");
   });
+
+  it("says media is in the Google Drive the space uses, which for Seattle Solvers is the team's shared drive", () => {
+    render(<PrivacyPage />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("stored in the Google Drive the space uses");
+    expect(text).toContain("For Seattle Solvers, that is the team's shared drive.");
+    expect(text).not.toContain("the Google Drive you connect");
+  });
 });

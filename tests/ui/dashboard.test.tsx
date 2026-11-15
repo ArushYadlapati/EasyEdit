@@ -124,12 +124,24 @@ describe("the dashboard", () => {
     expect(within(nav()).getByRole("link", { name: "All projects" }).className).not.toContain("text-ed-accent");
   });
 
+  it("fits a phone: the dashboard is as wide as the window, not as its sidebar row, and the search wraps to its own row", () => {
+    const { container } = renderDashboard();
+    const classes = (el: Element | null) => (el?.getAttribute("class") ?? "").split(/\s+/);
+    // A flex item is at least as wide as its content unless told otherwise; the sidebar row scrolls on its own instead.
+    expect(classes(container.firstElementChild)).toEqual(expect.arrayContaining(["min-w-0", "flex-1"]));
+    expect(classes(main())).toContain("min-w-0");
+    const searchRow = search().parentElement;
+    expect(classes(searchRow)).toEqual(expect.arrayContaining(["order-last", "w-full", "min-w-0", "sm:w-auto"]));
+    expect(classes(search())).toEqual(expect.arrayContaining(["min-w-0", "flex-1"]));
+    expect(screen.getByRole("button", { name: "New project" })).toBeTruthy();
+  });
+
   it("the sidebar lists Recent and All projects under Projects, then each folder with its count", () => {
     const { unmount } = renderDashboard();
     expect(within(nav()).getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Projects", "Folders"]);
     expect(linkNames(nav()).slice(0, 2)).toEqual(["Recent", "All projects"]);
     const recent = within(nav()).getByRole("link", { name: "Recent" });
-    expect(recent.getAttribute("href")).toBe("/s/seattle-solvers");
+    expect(recent.getAttribute("href")).toBe("/s/seattle-solvers?view=recent");
     expect(recent.hasAttribute("aria-current")).toBe(false);
     const all = within(nav()).getByRole("link", { name: "All projects" });
     expect(all.getAttribute("href")).toBe("/s/seattle-solvers?view=all");

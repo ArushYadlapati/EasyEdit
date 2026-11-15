@@ -114,7 +114,7 @@ describe("the dashboard page", () => {
     expect(props.canEdit).toBe(true);
     expect(props.projects.map((p) => [p.id, p.name, p.changedBy])).toEqual([[projectId, "Qual recap", "Ada Lovelace"]]);
     expect(props.folders).toEqual([]);
-    expect(props.view).toEqual({ kind: "recent" });
+    expect(props.view).toEqual({ kind: "all" }); // nothing opened here yet
     expect(props.now).toBeInstanceOf(Date);
   });
 
@@ -133,7 +133,18 @@ describe("the dashboard page", () => {
     expect((await dashboardFor(ada)).recentIds).toEqual([]);
   });
 
-  it("the address picks Recent, All projects or a folder; an unknown folder is Recent", async () => {
+  it("a first visit, with nothing opened in the space, lands on All projects; with something opened, on Recent", async () => {
+    expect((await dashboardFor(ada)).view).toEqual({ kind: "all" });
+    // Asking for Recent by name still shows it, with its empty text.
+    expect((await dashboardFor(ada, { view: "recent" })).view).toEqual({ kind: "recent" });
+    await recordOpen(testDb, as(ada), projectId);
+    expect((await dashboardFor(ada)).view).toEqual({ kind: "recent" });
+    expect((await dashboardFor(ada, { view: "all" })).view).toEqual({ kind: "all" });
+  });
+
+  it("the address picks Recent, All projects or a folder; an unknown folder is the landing view", async () => {
+    expect((await dashboardFor(ada, { folder: "nope" })).view).toEqual({ kind: "all" });
+    await recordOpen(testDb, as(ada), projectId);
     expect((await dashboardFor(ada, { folder: "nope" })).view).toEqual({ kind: "recent" });
     expect((await dashboardFor(ada, { view: "all" })).view).toEqual({ kind: "all" });
     const folder = await createFolder(testDb, as(ada), "Season 2026");

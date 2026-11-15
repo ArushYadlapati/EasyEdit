@@ -37,6 +37,27 @@ it("asks the sign-in endpoint once when a signed-in page opens", async () => {
   expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: "same-origin", cache: "no-store" });
 });
 
+it("lets go of the answer's body, so the request doesn't stay open", async () => {
+  const cancel = vi.fn(async () => {});
+  const res = new Response("null");
+  Object.defineProperty(res, "body", { value: { cancel } });
+  fetchMock.mockResolvedValueOnce(res);
+  await act(async () => {
+    render(<KeepSignedIn />);
+  });
+  expect(cancel).toHaveBeenCalledTimes(1);
+});
+
+it("a body that can't be cancelled is no failure", async () => {
+  const res = new Response("null");
+  Object.defineProperty(res, "body", { value: { cancel: () => Promise.reject(new Error("locked")) } });
+  fetchMock.mockResolvedValueOnce(res);
+  await act(async () => {
+    render(<KeepSignedIn />);
+  });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
 it("asks again when the tab is shown six hours later, and not before", async () => {
   await act(async () => {
     render(<KeepSignedIn />);

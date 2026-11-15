@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-drop";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
-import { ALL_VIEW, folderOf, viewQuery, type DashboardFolder, type DashboardView } from "@/lib/dashboard/view";
+import { ALL_VIEW, RECENT_VIEW, folderOf, viewQuery, type DashboardFolder, type DashboardView } from "@/lib/dashboard/view";
 import { SIDEBAR_HEADING, SpaceSwitcher, useCreateTeam, useMySpaces } from "@/components/dashboard/space-switcher";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { storageSettingsPath } from "@/lib/storage/messages";
@@ -72,7 +72,7 @@ export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDrop
       {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} createTeam={createTeam} />}
       <nav aria-label="Projects" className="flex shrink-0 flex-row items-center gap-1 md:flex-col md:items-stretch">
         <h2 className={SIDEBAR_HEADING}>Projects</h2>
-        <SidebarLink href={spacePath(spaceSlug)} current={view.kind === "recent"} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+        <SidebarLink href={spacePath(spaceSlug, viewQuery(RECENT_VIEW))} current={view.kind === "recent"} folderId={null} takesDrops={false} onDropProject={onDropProject}>
           Recent
         </SidebarLink>
         <SidebarLink

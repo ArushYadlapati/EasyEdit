@@ -200,7 +200,7 @@ describe("links inside the space", () => {
     const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toContain("/s/seattle-solvers/editor/a");
     expect(hrefs).toContain("/s/seattle-solvers?folder=f1");
-    expect(hrefs).toContain("/s/seattle-solvers");
+    expect(hrefs).toContain("/s/seattle-solvers?view=recent");
     expect(hrefs.filter((h) => h?.startsWith("/dashboard") || h?.startsWith("/editor"))).toEqual([]);
   });
 });
