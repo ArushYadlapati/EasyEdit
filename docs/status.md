@@ -24,6 +24,6 @@ The editor needs a window at least 1024 px wide. Changes made while offline or s
 
 ## What's next
 
-Spaces are live: a personal space for everyone alongside their teams, with a switcher. Next up is storage in each space's own Google Drive and open sign-up, team invites by email, a new sign-up flow, and moving projects between spaces. The [roadmap in the README](../README.md#roadmap) has the stages in order.
+Spaces are live: a personal space for everyone alongside their teams, with a switcher, and you can create a team. Storage in each space's own Google Drive is built and switches on once the server has its storage settings ([Storage per space](setup.md#storage-per-space)); open sign-up is built and stays off until the Google sign-in screen is published. Next up: team members and invites by email, a new sign-up flow, and moving projects between spaces. The [roadmap in the README](../README.md#roadmap) has the stages in order.
 
 After that: thumbnails and waveforms on the timeline, transcripts and footage search for Claude, captions, text animation and effects, a brand kit and templates, full-quality video in exports, the render station, voiceover, and posting.
