@@ -7,6 +7,7 @@ import { sourceFrames } from "@/lib/media/rules";
 import { loadAssetFacts, type AssetFact } from "@/lib/media/service";
 import { getProject } from "@/lib/projects/service";
 import { TRACK_ACCEPTS, type MediaClip, type TimelineDoc } from "@/lib/timeline";
+import { projectContext } from "../actors";
 import { editedText, priorEdit, runEdit, type EditDone } from "../edit";
 import { assetReason, conflictResult, mediaItemOutside, NO_ROOM_FOR_MEDIA, notFoundText, roleMessage, tooManyMediaItems } from "../errors";
 import { fail, ok, type ToolContext, type ToolResult } from "../types";
@@ -18,9 +19,12 @@ const NOTHING_APPLIED = "Nothing was applied.";
 // Clips of library assets, laid end to end in the order given unless a start is given, and placed where the editor
 // would put them: the wished track if it is free, else a free track of the right kind, else a new one. One call is one change.
 export async function addMediaTool(
-  ctx: ToolContext,
+  base: ToolContext,
   input: { project_id: string; expected_version: number; items: MediaItem[] },
 ): Promise<ToolResult> {
+  // The project's space decides the role, and which media the items may name.
+  const ctx = await projectContext(base, input.project_id);
+  if (!ctx) return fail(notFoundText(input.project_id));
   if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
   if (input.items.length > ctx.limits.connectorMediaItems) return fail(tooManyMediaItems(ctx.limits.connectorMediaItems));
 

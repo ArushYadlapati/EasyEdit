@@ -10,7 +10,7 @@ import { ServiceError } from "@/lib/service-error";
 import type { OpErrorCode } from "@/lib/timeline";
 import { oneLine } from "./one-line";
 import { projectPage } from "./project-text";
-import { fail, type ToolContext, type ToolResult } from "./types";
+import { fail, type SpaceToolContext, type ToolResult } from "./types";
 
 // What Claude reads when a tool fails for a reason it cannot see. Nothing about the server goes in it.
 export const UNEXPECTED =
@@ -58,7 +58,7 @@ function opName(ops: unknown[], opIndex: number): string {
 }
 
 // The project as it is now, and the changes logged after `expectedVersion`, so Claude can plan again without another read.
-export async function conflictResult(ctx: ToolContext, projectId: string, expectedVersion: number): Promise<ToolResult> {
+export async function conflictResult(ctx: SpaceToolContext, projectId: string, expectedVersion: number): Promise<ToolResult> {
   const project = await getProject(ctx.db, ctx.actor, projectId);
   if (!project) return fail(notFoundText(projectId));
   const current = project.version;
@@ -82,7 +82,7 @@ export async function conflictResult(ctx: ToolContext, projectId: string, expect
 }
 
 // Up to `limits.connectorConflictEntries` log entries after `since`, and how many more there are, as of version `current`.
-async function unseenChanges(ctx: ToolContext, projectId: string, since: number, current: number): Promise<string[]> {
+async function unseenChanges(ctx: SpaceToolContext, projectId: string, since: number, current: number): Promise<string[]> {
   if (current <= since) return [];
   const page = await getOpsSince(ctx.db, ctx.actor, projectId, since, ctx.limits.connectorConflictEntries);
   // Only changes up to the version shown in the answer: one that lands between the two reads waits for the next attempt.
@@ -100,7 +100,7 @@ async function unseenChanges(ctx: ToolContext, projectId: string, since: number,
 
 // Turns a ServiceError into the answer for a refused write. Anything else is thrown again.
 export async function failureResult(
-  ctx: ToolContext,
+  ctx: SpaceToolContext,
   error: unknown,
   input: { projectId: string; expectedVersion: number; ops: unknown[] },
 ): Promise<ToolResult> {

@@ -6,6 +6,7 @@ import { LIMITS } from "@/lib/limits";
 import { getProject } from "@/lib/projects/service";
 import { isStorableText } from "@/lib/text";
 import type { TimelineDoc } from "@/lib/timeline";
+import { projectContext } from "../actors";
 import { editedText, priorEdit, runEdit, type EditDone } from "../edit";
 import { conflictResult, NO_ROOM_FOR_TEXT, notFoundText, roleMessage, textItemInvalid, tooManyTextItems } from "../errors";
 import { fail, ok, type ToolContext, type ToolResult } from "../types";
@@ -21,9 +22,11 @@ export type TextItem = {
 // Text clips from the editor's presets, placed where the editor would put them: the wished track if it is free,
 // else a free text track, else a new one. One call is one change.
 export async function addTextTool(
-  ctx: ToolContext,
+  base: ToolContext,
   input: { project_id: string; expected_version: number; items: TextItem[] },
 ): Promise<ToolResult> {
+  const ctx = await projectContext(base, input.project_id);
+  if (!ctx) return fail(notFoundText(input.project_id));
   if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
 
   const bad = input.items.findIndex(({ text }) => text.length < 1 || text.length > LIMITS.textClipChars || !isStorableText(text));

@@ -7,6 +7,8 @@ import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { addText, toolContext } from "./context";
 
+const spacesLine = (role: string) => `Spaces: "Personal" (personal, admin), "Seattle Solvers" (seattle-solvers, ${role}). You can change projects in a space where you are an editor or admin, and only read them where you are a viewer. Name a space in create_project's space.`;
+const TEAM = '  Space: "Seattle Solvers"';
 const grace = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 // The test database's clock counts whole milliseconds, so changes meant to sort apart need a gap.
 const nextMillisecond = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -24,10 +26,11 @@ describe("list_projects", () => {
     await applyProjectOps(db, ctx.actor, { projectId: first.id, baseVersion: 0, ops: [addText(0) as OpInput] });
 
     expect(await listProjectsTool(ctx, {})).toEqual({ isError: false, text: [
-      "Signed in as Ada Lovelace (editor). You can read and change projects.",
+      "Signed in as Ada Lovelace.",
+      spacesLine("editor"),
       "2 projects, most recently changed first:",
-      `${first.id}  "Qualifier \\"recap\\""  Vertical 9:16  version 1  changed just now by Claude (for Ada Lovelace)`,
-      `${second.id}  "Season"  Landscape 16:9  version 0  changed just now by Grace Hopper`,
+      `${first.id}  "Qualifier \\"recap\\""  Vertical 9:16  version 1  changed just now by Claude (for Ada Lovelace)${TEAM}`,
+      `${second.id}  "Season"  Landscape 16:9  version 0  changed just now by Grace Hopper${TEAM}`,
       "Open a project in the editor at https://studio.test/editor/<id>.",
     ].join("\n") });
   });
@@ -38,14 +41,14 @@ describe("list_projects", () => {
     await db.insert(user).values({ id: "u2", name: "Grace Hopper", email: "u2@gmail.com", emailVerified: true });
     const { id } = await createProject(db, grace, { name: "Poster", format: "custom", width: 816, height: 1056 });
     expect((await listProjectsTool(ctx, {})).text.split("\n")).toContain(
-      `${id}  "Poster"  Custom 816 × 1056  version 0  changed just now by Grace Hopper`,
+      `${id}  "Poster"  Custom 816 × 1056  version 0  changed just now by Grace Hopper${TEAM}`,
     );
   });
 
   it("tells a viewer they can only read, and says so when there is nothing yet", async () => {
     const db = await makeTestDb();
     expect((await listProjectsTool(await toolContext(db, { role: "viewer" }), {})).text).toBe(
-      "Signed in as Ada Lovelace (viewer). You can read projects but not change them.\nNo projects yet. Create one with create_project.",
+      `Signed in as Ada Lovelace.\n${spacesLine("viewer")}\nNo projects yet. Create one with create_project.`,
     );
   });
 
@@ -57,11 +60,11 @@ describe("list_projects", () => {
       await nextMillisecond();
     }
     const one = (await listProjectsTool(ctx, {})).text.split("\n");
-    expect(one[1]).toBe("3 projects, most recently changed first:");
-    expect(one.slice(2, 4).map((l) => l.split("  ")[1])).toEqual(['"C"', '"B"']);
-    expect(one[4]).toBe("Showing 1–2 of 3. Call list_projects with cursor 2 for more.");
+    expect(one[2]).toBe("3 projects, most recently changed first:");
+    expect(one.slice(3, 5).map((l) => l.split("  ")[1])).toEqual(['"C"', '"B"']);
+    expect(one[5]).toBe("Showing 1–2 of 3. Call list_projects with cursor 2 for more.");
     const two = (await listProjectsTool(ctx, { cursor: 2 })).text.split("\n");
-    expect(two.slice(2, -1).map((l) => l.split("  ")[1])).toEqual(['"A"']);
+    expect(two.slice(3, -1).map((l) => l.split("  ")[1])).toEqual(['"A"']);
     expect(two.join("\n")).not.toContain("Showing");
   });
 });

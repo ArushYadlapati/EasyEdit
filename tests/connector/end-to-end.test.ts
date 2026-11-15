@@ -59,13 +59,13 @@ describe("Claude and the website on one project", () => {
       const keysOf = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {}).sort();
       expect(keysOf("list_assets")).toEqual(["cursor", "kind", "search"]);
       expect(keysOf("add_media")).toEqual(["expected_version", "items", "project_id"]);
-      expect(keysOf("create_project")).toEqual(["format", "height", "name", "width"]);
+      expect(keysOf("create_project")).toEqual(["format", "height", "name", "space", "width"]);
       for (const side of ["width", "height"]) {
         expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.[side], side).toMatchObject({ type: "integer", minimum: 16, maximum: 4096 });
       }
       expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.format).toMatchObject({ enum: FormatId.options });
       expect(tools.find((t) => t.name === "create_project")?.description).toBe(
-        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks.",
+        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks. It goes in your personal space unless you pass space: a space's slug as list_projects shows it, or \"personal\".",
       );
       const getProject = tools.find((t) => t.name === "get_project");
       expect(Object.keys(getProject?.inputSchema.properties ?? {}).sort()).toEqual(["cursor", "project_id", "version"]);
@@ -112,7 +112,7 @@ describe("Claude and the website on one project", () => {
   it("a person and Claude take turns: Claude never overwrites an edit it has not seen", async () => {
     const { client, call, person } = await converse("grace@gmail.com");
     try {
-      const id = idIn((await call("create_project", { name: "Turns", format: "short_9x16" })).text);
+      const id = idIn((await call("create_project", { name: "Turns", format: "short_9x16", space: "seattle-solvers" })).text);
       const clipId = clipIn((await call("add_text", { project_id: id, expected_version: 0, items: [{ text: "TITLE" }] })).text);
       // The person retypes the title in the editor.
       await applyProjectOps(app.db, person, { projectId: id, baseVersion: 1, ops: [{ op: "update_clip", clipId, patch: { text: "BY A PERSON" } }] });
@@ -135,12 +135,12 @@ describe("Claude and the website on one project", () => {
   it("a repeated call through the real client lands once", async () => {
     const { client, call } = await converse("linus@gmail.com");
     try {
-      const id = idIn((await call("create_project", { name: "Twice", format: "short_9x16" })).text);
+      const id = idIn((await call("create_project", { name: "Twice", format: "short_9x16", space: "seattle-solvers" })).text);
       const args = { project_id: id, expected_version: 0, ops: [addText(0)] };
       const first = await call("edit_timeline", args);
       expect(await call("edit_timeline", args)).toEqual(first);
       expect(await logRows(id)).toHaveLength(1);
-      const again = await call("create_project", { name: "Twice", format: "short_9x16" });
+      const again = await call("create_project", { name: "Twice", format: "short_9x16", space: "seattle-solvers" });
       expect(idIn(again.text)).toBe(id);
     } finally {
       await client.close();
@@ -152,7 +152,7 @@ describe("Claude and the website on one project", () => {
     try {
       const assetId = await insertAsset(app.db, { name: "intake", durationMs: 12_500, uploadedBy: c.userId });
       expect((await call("list_assets", { search: "intake" })).text).toContain(`${assetId}  video  "intake"  12.50s (375 frames at 30 fps)`);
-      const id = idIn((await call("create_project", { name: "Media", format: "short_9x16" })).text);
+      const id = idIn((await call("create_project", { name: "Media", format: "short_9x16", space: "seattle-solvers" })).text);
       const added = await call("add_media", { project_id: id, expected_version: 0, items: [{ asset_id: assetId, duration_seconds: 3 }] });
       expect(added.text.split("\n")[0]).toBe("Added 1 clip as version 1.");
       const trimmed = await call("edit_timeline", { project_id: id, expected_version: 1, ops: [{ op: "trim_clip", clipId: clipIn(added.text), edge: "start", to: 30 }] });
@@ -166,7 +166,7 @@ describe("Claude and the website on one project", () => {
   it("a wrong batch is refused whole and the corrected one lands", async () => {
     const { client, call, person } = await converse("margaret@gmail.com");
     try {
-      const id = idIn((await call("create_project", { name: "Fix it", format: "short_9x16" })).text);
+      const id = idIn((await call("create_project", { name: "Fix it", format: "short_9x16", space: "seattle-solvers" })).text);
       // Seconds where frames belong, in the second op of two.
       const wrong = await call("edit_timeline", { project_id: id, expected_version: 0, ops: [addText(0), addText(2.5)] });
       expect(wrong.isError).toBe(true);
@@ -193,12 +193,12 @@ describe("Claude and the website on one project", () => {
 
   it("a viewer's Claude can read and cannot write", async () => {
     const editor = await converse("dorothy@gmail.com");
-    const id = idIn((await editor.call("create_project", { name: "Read only", format: "short_9x16" })).text);
+    const id = idIn((await editor.call("create_project", { name: "Read only", format: "short_9x16", space: "seattle-solvers" })).text);
     await editor.client.close();
     const viewer = await app.connect("joan@gmail.com", "viewer");
     expect((await app.callTool(viewer.accessToken, "get_project", { project_id: id })).isError).toBe(false);
     for (const [name, args] of [
-      ["create_project", { name: "Mine", format: "short_9x16" }],
+      ["create_project", { name: "Mine", format: "short_9x16", space: "seattle-solvers" }],
       ["edit_timeline", { project_id: id, expected_version: 0, ops: [addText(0)] }],
       ["add_text", { project_id: id, expected_version: 0, items: [{ text: "X" }] }],
       ["undo_change", { project_id: id, expected_version: 0, version: 1 }],

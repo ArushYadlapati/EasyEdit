@@ -11,6 +11,12 @@ export const SEED_TEAM_ID = "team_seattle_solvers";
 export const SEED_TEAM_SLUG = "seattle-solvers";
 export const SEED_TEAM_NAME = "Seattle Solvers";
 
+// Whether an AI agent acting for the person can create or change anything: some space gives them editor or admin.
+// Everyone is an admin of their own personal space, so in practice it always can.
+export function canChangeInAnySpace(spaces: MySpace[]): boolean {
+  return spaces.some((space) => space.role !== "viewer");
+}
+
 // The address alias /s/personal: the viewer's own personal space.
 export const PERSONAL_ALIAS = "personal";
 

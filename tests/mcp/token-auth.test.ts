@@ -54,7 +54,7 @@ describe("POST /api/mcp with an access token", () => {
     }
     const r = await app.callTool(m.token, "list_projects");
     expect(r.isError).toBe(false);
-    expect(r.text.split("\n")[0]).toBe("Signed in as Ada (editor). You can read and change projects.");
+    expect(r.text.split("\n")[0]).toBe("Signed in as Ada.");
   });
 
   it("records the change as the token's agent acting for the member", async () => {
@@ -79,7 +79,7 @@ describe("POST /api/mcp with an access token", () => {
   it("takes the role the member has now", async () => {
     const m = await memberWithToken("dorothy@gmail.com");
     await adminActions(app.db).setRole(form({ email: "dorothy@gmail.com", role: "viewer" }));
-    expect((await app.callTool(m.token, "list_projects")).text).toContain("(viewer). You can read projects but not change them.");
+    expect((await app.callTool(m.token, "list_projects")).text).toContain('"Seattle Solvers" (seattle-solvers, viewer)');
   });
 
   it("answers an unknown, revoked or expired token with 401 and an invalid_token challenge", async () => {

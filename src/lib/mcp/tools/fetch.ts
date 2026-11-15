@@ -8,6 +8,8 @@ import { DEFAULT_FPS, escapeQuoted } from "@/lib/timeline";
 import { assetReason, notFoundText } from "../errors";
 import { oneLine } from "../one-line";
 import { projectPage } from "../project-text";
+import { actorInSpace, projectContext } from "../actors";
+import { spaceLabel, spaceNames } from "../space-label";
 import { fail, ok, type ToolContext, type ToolResult } from "../types";
 import { assetItemId, assetUrl, projectItemId, projectUrl } from "./search";
 
@@ -35,40 +37,49 @@ export async function fetchTool(ctx: ToolContext, input: { id: string }): Promis
   if (named?.[1] === "asset") return assetResult(ctx, named[2], await findAsset(ctx, named[2]));
   const project = await fetchProject(ctx, input.id);
   if (project) return project;
-  const asset = await findAsset(ctx, input.id);
-  return asset ? assetResult(ctx, input.id, asset) : fail(unknownItemText(input.id));
+  const found = await findAsset(ctx, input.id);
+  return found ? assetResult(ctx, input.id, found) : fail(unknownItemText(input.id));
 }
 
 // The same text as get_project's first page. A longer project ends with how to read on with get_project.
 async function fetchProject(ctx: ToolContext, id: string): Promise<ToolResult | null> {
-  const project = await getProject(ctx.db, ctx.actor, id);
+  const pc = await projectContext(ctx, id);
+  const project = pc && (await getProject(pc.db, pc.actor, id));
   if (!project) return null;
   return answer({
     id: projectItemId(project.id),
     title: oneLine(project.name),
     text: projectPage(project, { maxChars: ctx.limits.connectorReadChars }).text,
     url: projectUrl(ctx, project.id),
-    metadata: { kind: "project", version: project.version, format: project.format, updatedAt: project.updatedAt.toISOString() },
+    metadata: { kind: "project", space: spaceNames(ctx).get(pc!.actor.spaceId) ?? "", version: project.version, format: project.format, updatedAt: project.updatedAt.toISOString() },
   });
 }
 
-// Media in the library: never another member's unfinished upload, which the library service leaves out.
-async function findAsset(ctx: ToolContext, id: string): Promise<AssetView | null> {
-  const [asset] = await listAssets(ctx.db, ctx.actor, { ids: [id] });
-  return asset ?? null;
+type Found = { asset: AssetView; space: string };
+
+// Media in the library of any of the person's spaces: never another member's unfinished upload, which the library
+// service leaves out. Media of a space the person is not in is not found, like media that never existed.
+async function findAsset(ctx: ToolContext, id: string): Promise<Found | null> {
+  for (const space of ctx.spaces) {
+    const actor = actorInSpace(ctx, space.id)!;
+    const [asset] = await listAssets(ctx.db, actor, { ids: [id] });
+    if (asset) return { asset, space: space.name };
+  }
+  return null;
 }
 
 // Removed media and unfinished uploads are refused in the words add_media uses.
-function assetResult(ctx: ToolContext, id: string, asset: AssetView | null): ToolResult {
-  if (!asset) return fail(assetReason("missing", id));
+function assetResult(ctx: ToolContext, id: string, found: Found | null): ToolResult {
+  if (!found) return fail(assetReason("missing", id));
+  const { asset, space } = found;
   if (asset.removed) return fail(assetReason("removed", id));
   if (asset.status !== "ready") return fail(assetReason("not_ready", id));
-  return assetAnswer(ctx, asset);
+  return assetAnswer(ctx, asset, space);
 }
 
 const KIND_LABEL = { video: "Video", image: "Image", audio: "Audio" } as const;
 
-function assetAnswer(ctx: ToolContext, asset: AssetView): ToolResult {
+function assetAnswer(ctx: ToolContext, asset: AssetView, space: string): ToolResult {
   const facts: string[] = [KIND_LABEL[asset.kind]];
   if (asset.kind !== "image" && asset.durationMs !== null) {
     facts.push(`${(asset.durationMs / 1000).toFixed(2)}s (${sourceFrames(asset.durationMs, DEFAULT_FPS)} frames at ${DEFAULT_FPS} fps)`);
@@ -79,6 +90,7 @@ function assetAnswer(ctx: ToolContext, asset: AssetView): ToolResult {
   const lines = [`Media ${quoted(asset.name)} (id ${asset.id})`, facts.join(" · ")];
   if (asset.event !== null) lines.push(`Event ${quoted(asset.event)}`);
   lines.push(`File ${quoted(asset.fileName)} · ${(asset.sizeBytes / 1_000_000).toFixed(1)} MB`);
+  lines.push(spaceLabel(space));
   lines.push(`Uploaded ${timeAgo(new Date(asset.createdAt), ctx.now())} by ${oneLine(asset.uploadedByName)}`);
   lines.push(`Put it on a timeline with add_media, asset_id "${asset.id}". You cannot see inside footage yet: go by its name, event and length.`);
 
@@ -89,6 +101,7 @@ function assetAnswer(ctx: ToolContext, asset: AssetView): ToolResult {
     url: assetUrl(ctx, asset.id),
     metadata: {
       kind: "asset",
+      space,
       mediaKind: asset.kind,
       durationMs: asset.durationMs,
       width: asset.width,

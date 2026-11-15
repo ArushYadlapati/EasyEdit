@@ -48,7 +48,7 @@ describe("POST /api/mcp", () => {
     }
     const r = await app.callTool(c.accessToken, "list_projects");
     expect(r.isError).toBe(false);
-    expect(r.text.split("\n")[0]).toBe("Signed in as Ada (editor). You can read and change projects.");
+    expect(r.text.split("\n")[0]).toBe("Signed in as Ada.");
   });
 
   it("answers no token, a made-up token and a token without the resource with 401 and where to sign in", async () => {
@@ -110,7 +110,7 @@ describe("POST /api/mcp", () => {
   it("removal and a role change take effect on the next call", async () => {
     const c = await app.connect("dorothy@gmail.com");
     await adminActions(app.db).setRole(form({ email: "dorothy@gmail.com", role: "viewer" }));
-    expect((await app.callTool(c.accessToken, "list_projects")).text).toContain("(viewer). You can read projects but not change them.");
+    expect((await app.callTool(c.accessToken, "list_projects")).text).toContain('"Seattle Solvers" (seattle-solvers, viewer)');
 
     await adminActions(app.db).removeMember(form({ email: "dorothy@gmail.com" }));
     const res = await app.rpc(c.accessToken, "tools/call", LIST);
@@ -147,8 +147,8 @@ describe("POST /api/mcp", () => {
     expect(refused.headers.get("www-authenticate")).toContain('error="invalid_token"');
     const r = await app.callTool(stays.accessToken, "list_projects");
     expect(r.isError).toBe(false);
-    expect(r.text.split("\n")[0]).toBe("Signed in as Annie (editor). You can read and change projects.");
-    expect(r.text).toMatch(/ {2}"Shared client" {2}Vertical 9:16 {2}version 0 {2}changed just now by Annie$/m);
+    expect(r.text.split("\n")[0]).toBe("Signed in as Annie.");
+    expect(r.text).toMatch(/ {2}"Shared client" {2}Vertical 9:16 {2}version 0 {2}changed just now by Annie {2}Space: "Seattle Solvers"$/m);
   });
 
   it("exports only POST, with a time limit", () => {
@@ -174,11 +174,11 @@ describe("POST /api/mcp", () => {
   it("a failed query logs its class and database code, never the call's arguments", async () => {
     const c = await app.connect("grace@gmail.com");
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    const services = await import("@/lib/projects/service");
+    const services = await import("@/lib/spaces/service");
     const secret = "proj-7f3c-private";
     const pgError = (code: string) => Object.assign(new Error(`invalid input near "${secret}"`), { code });
     const broken = vi
-      .spyOn(services, "getProject")
+      .spyOn(services, "spaceOfProject")
       .mockRejectedValueOnce(new DrizzleQueryError('select "id" from "projects" where "id" = $1', [secret], pgError("22021")))
       .mockRejectedValueOnce(pgError("57014"));
     try {

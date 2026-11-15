@@ -3,7 +3,9 @@ import { listAssets } from "@/lib/media/service";
 import type { AssetKind, AssetView } from "@/lib/media/types";
 import { timeAgo } from "@/lib/time-ago";
 import { DEFAULT_FPS, escapeQuoted } from "@/lib/timeline";
+import { actorInSpace } from "../actors";
 import { oneLine } from "../one-line";
+import { spaceLabel } from "../space-label";
 import { ok, type ToolContext, type ToolResult } from "../types";
 
 const CLOSING =
@@ -11,7 +13,7 @@ const CLOSING =
 
 // The team's ready media, newest first, one line each. Pages are cut by count, like list_projects.
 export async function listAssetsTool(ctx: ToolContext, input: { kind?: AssetKind; search?: string; cursor?: number }): Promise<ToolResult> {
-  const library = (await listAssets(ctx.db, ctx.actor)).filter((a) => a.status === "ready" && !a.removed);
+  const library = await libraryOfAllSpaces(ctx);
   if (library.length === 0) return ok("The library is empty. A person uploads media in the editor's Media tab.");
 
   const word = input.search?.toLowerCase();
@@ -41,7 +43,7 @@ function nextCall(input: { kind?: AssetKind; search?: string }, cursor: number):
   return filter.length === 0 ? `cursor ${cursor}` : `${filter.join(", ")} and cursor ${cursor}`;
 }
 
-function assetLine(asset: AssetView, now: Date): string {
+function assetLine(asset: AssetView & { space: string }, now: Date): string {
   const parts = [asset.id, asset.kind, quoted(asset.name)];
   if (asset.kind !== "image" && asset.durationMs !== null) {
     const frames = sourceFrames(asset.durationMs, DEFAULT_FPS);
@@ -51,5 +53,17 @@ function assetLine(asset: AssetView, now: Date): string {
   if (asset.kind === "video") parts.push(asset.hasAudio ? "with sound" : "no sound");
   if (asset.event !== null) parts.push(`event ${quoted(asset.event)}`);
   parts.push(`uploaded ${timeAgo(new Date(asset.createdAt), now)} by ${oneLine(asset.uploadedByName)}`);
+  parts.push(spaceLabel(asset.space));
   return parts.join("  ");
+}
+
+// The ready media of every space, newest first.
+async function libraryOfAllSpaces(ctx: ToolContext): Promise<(AssetView & { space: string })[]> {
+  const perSpace = await Promise.all(
+    ctx.spaces.map(async (space) => {
+      const actor = actorInSpace(ctx, space.id)!;
+      return (await listAssets(ctx.db, actor)).filter((a) => a.status === "ready" && !a.removed).map((a) => ({ ...a, space: space.name }));
+    }),
+  );
+  return perSpace.flat().sort((a, b) => b.createdAt.localeCompare(a.createdAt) || (a.id < b.id ? -1 : 1));
 }

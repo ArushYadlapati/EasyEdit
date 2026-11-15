@@ -6,18 +6,25 @@ import type { Role } from "@/lib/allowlist/service";
 import { LIMITS, type Limits } from "@/lib/limits";
 import type { ToolContext } from "@/lib/mcp/types";
 import { applyProjectOps } from "@/lib/projects/service";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
+import { listMySpaces } from "@/lib/spaces/service";
+import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
 import type { OpInput } from "@/lib/timeline";
 import { joinSpace } from "../helpers/actor";
 
-// A tool context for a member "u1" (or another id) of Seattle Solvers, whose user row exists so names resolve.
-export async function toolContext(db: DB, over: { id?: string; name?: string; role?: Role; limits?: Partial<Limits> } = {}): Promise<ToolContext> {
+// A tool context that also holds the Seattle Solvers actor, for tests that call the services around the tools.
+export type TestToolContext = ToolContext & { actor: Actor };
+
+// A tool context for a member "u1" (or another id) of Seattle Solvers and of their own personal space, whose user row
+// exists so names resolve. `actor` is the agent's actor in Seattle Solvers.
+export async function toolContext(db: DB, over: { id?: string; name?: string; role?: Role; limits?: Partial<Limits> } = {}): Promise<TestToolContext> {
   const id = over.id ?? "u1";
   const role = over.role ?? "editor";
   const me: CurrentUser = { id, email: `${id}@gmail.com`, name: over.name ?? "Ada Lovelace", image: null, allowlistRole: role };
   await db.insert(user).values({ id, name: me.name, email: me.email, emailVerified: true }).onConflictDoNothing();
   await joinSpace(db, me, role);
-  return { db, user: me, actor: claudeActorFor(me, { spaceId: SEED_TEAM_ID, role }), baseUrl: "https://studio.test", limits: { ...LIMITS, ...over.limits }, now: () => new Date() };
+  await joinSpace(db, me, "admin", personalSpaceId(id));
+  const spaces = await listMySpaces(db, id);
+  return { db, user: me, agent: "claude", spaces, actor: claudeActorFor(me, { spaceId: SEED_TEAM_ID, role }), baseUrl: "https://studio.test", limits: { ...LIMITS, ...over.limits }, now: () => new Date() };
 }
 
 export const textClip = (start: number, text = "GO SOLVERS", extra: Record<string, unknown> = {}) => ({

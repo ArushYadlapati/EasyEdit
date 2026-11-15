@@ -5,19 +5,37 @@ import { projectFrame } from "@/lib/projects/schemas";
 import { createProject, getProject, storedHeight, storedWidth } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 import { isStorableText } from "@/lib/text";
+import { PERSONAL_ALIAS } from "@/lib/spaces/types";
 import { escapeQuoted } from "@/lib/timeline";
+import { actorInSpace } from "../actors";
 import { checkProjectBudget } from "../budget";
 import { roleMessage } from "../errors";
+import { oneLine } from "../one-line";
 import { projectPage } from "../project-text";
-import { fail, ok, type ToolContext, type ToolResult } from "../types";
+import { quotedSpace } from "../space-label";
+import { fail, ok, type SpaceToolContext, type ToolContext, type ToolResult } from "../types";
 
 // A repeat of the same create within this window is taken as a retry, and answers with the project it already made.
 const TWIN_WINDOW = sql`interval '60 seconds'`;
 
-type CreateInput = { name: string; format: string; width?: number; height?: number };
+type CreateInput = { name: string; format: string; width?: number; height?: number; space?: string };
+
+// The space a person names: a slug, or "personal" for their own. Left out, it is their personal space.
+function chosenSpace(ctx: ToolContext, slug: string | undefined) {
+  if (slug === undefined || slug === PERSONAL_ALIAS) return ctx.spaces.find((s) => s.kind === "personal");
+  return ctx.spaces.find((s) => s.slug === slug);
+}
+
+export function noSuchSpace(ctx: ToolContext, slug: string): string {
+  return `No space "${escapeQuoted(oneLine(slug))}". Your spaces: ${ctx.spaces.map((s) => quotedSpace(s.name)).join(", ")}.`;
+}
 
 // Claude's projects land in no folder: no folder is passed, and no tool mentions folders.
-export async function createProjectTool(ctx: ToolContext, input: CreateInput): Promise<ToolResult> {
+export async function createProjectTool(base: ToolContext, input: CreateInput): Promise<ToolResult> {
+  const space = chosenSpace(base, input.space);
+  const actor = space && actorInSpace(base, space.id);
+  if (!actor) return fail(noSuchSpace(base, input.space ?? PERSONAL_ALIAS));
+  const ctx: SpaceToolContext = { ...base, actor };
   if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
 
   const twinId = await findTwin(ctx, input);
@@ -42,7 +60,7 @@ export async function createProjectTool(ctx: ToolContext, input: CreateInput): P
 // A live project this actor created in the last minute with the same trimmed name, format and size.
 // A name the database cannot store, or a format and size the service refuses, has no twin; skipping the lookup lets
 // the service refuse it with its sentence.
-async function findTwin(ctx: ToolContext, input: CreateInput): Promise<string | null> {
+async function findTwin(ctx: SpaceToolContext, input: CreateInput): Promise<string | null> {
   const name = input.name.trim();
   if (!isStorableText(name)) return null;
   const frame = projectFrame(input);
@@ -52,6 +70,7 @@ async function findTwin(ctx: ToolContext, input: CreateInput): Promise<string | 
     .from(projects)
     .where(
       and(
+        eq(projects.spaceId, ctx.actor.spaceId),
         eq(projects.createdBy, ctx.actor.userId),
         eq(projects.name, name),
         sql`${projects.format} = ${frame.format}`,

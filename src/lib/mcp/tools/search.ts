@@ -2,8 +2,10 @@ import { z } from "zod";
 import { listAssets } from "@/lib/media/service";
 import type { AssetView } from "@/lib/media/types";
 import { listFolders } from "@/lib/projects/folders";
-import { listProjects } from "@/lib/projects/service";
+import { listProjects, type ProjectSummary } from "@/lib/projects/service";
+import { actorInSpace } from "../actors";
 import { oneLine } from "../one-line";
+import { spaceLabel } from "../space-label";
 import { ok, type ToolContext, type ToolResult } from "../types";
 
 // search and fetch are the two read-only tools ChatGPT's deep research and company knowledge look for, in the shapes
@@ -48,13 +50,18 @@ function hit(result: SearchResult, query: string, terms: string[], name: string,
 export async function searchTool(ctx: ToolContext, input: { query: string }): Promise<ToolResult> {
   const query = input.query.trim().replace(/\s+/g, " ").toLowerCase();
   const terms = termsOf(query);
-  const projects = await listProjects(ctx.db, ctx.actor);
-  const projectResult = (p: { id: string; name: string }): SearchResult => ({ id: projectItemId(p.id), title: oneLine(p.name), url: projectUrl(ctx, p.id) });
+  const spaces = await everySpace(ctx);
+  const projects = spaces.flatMap((s) => s.projects.map((p) => ({ ...p, space: s.name }))).sort(newestChangeFirst);
+  const projectResult = (p: { id: string; name: string; space: string }): SearchResult => ({
+    id: projectItemId(p.id),
+    title: titled(p.name, p.space),
+    url: projectUrl(ctx, p.id),
+  });
   if (terms.length === 0) return answer(projects.slice(0, SEARCH_RESULTS_MAX).map(projectResult));
 
-  const folders = new Map((await listFolders(ctx.db, ctx.actor)).map((folder) => [folder.id, folder.name]));
-  const library = (await listAssets(ctx.db, ctx.actor)).filter((a) => a.status === "ready" && !a.removed);
-  const assetResult = (a: AssetView): SearchResult => ({ id: assetItemId(a.id), title: oneLine(a.name), url: assetUrl(ctx, a.id) });
+  const folders = new Map(spaces.flatMap((s) => s.folders.map((folder) => [folder.id, folder.name] as const)));
+  const library = spaces.flatMap((s) => s.assets.map((a) => ({ ...a, space: s.name }))).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || (a.id < b.id ? -1 : 1));
+  const assetResult = (a: AssetView & { space: string }): SearchResult => ({ id: assetItemId(a.id), title: titled(a.name, a.space), url: assetUrl(ctx, a.id) });
   const hits = [
     ...projects.map((p) => hit(projectResult(p), query, terms, p.name, [p.name, p.folderId === null ? "" : (folders.get(p.folderId) ?? "")])),
     ...library.map((a) => hit(assetResult(a), query, terms, a.name, [a.name, a.event ?? ""])),
@@ -66,4 +73,20 @@ export async function searchTool(ctx: ToolContext, input: { query: string }): Pr
 
 function answer(results: SearchResult[]): ToolResult {
   return ok(JSON.stringify({ results } satisfies z.infer<typeof SearchOutput>));
+}
+
+// A result's title says which space it is in.
+const titled = (name: string, space: string) => `${oneLine(name)} (${spaceLabel(space)})`;
+
+const newestChangeFirst = (a: ProjectSummary, b: ProjectSummary) => b.updatedAt.getTime() - a.updatedAt.getTime() || (a.id < b.id ? -1 : 1);
+
+// What a search looks through in each of the person's spaces.
+async function everySpace(ctx: ToolContext) {
+  return Promise.all(
+    ctx.spaces.map(async (space) => {
+      const actor = actorInSpace(ctx, space.id)!;
+      const [projects, folders, assets] = await Promise.all([listProjects(ctx.db, actor), listFolders(ctx.db, actor), listAssets(ctx.db, actor)]);
+      return { name: space.name, projects, folders, assets: assets.filter((a) => a.status === "ready" && !a.removed) };
+    }),
+  );
 }

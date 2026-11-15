@@ -1,4 +1,5 @@
 import { getProject } from "@/lib/projects/service";
+import { projectContext } from "../actors";
 import { CURSOR_NEEDS_VERSION, notFoundText, projectChangedWhileReading } from "../errors";
 import { projectPage } from "../project-text";
 import { fail, ok, type ToolContext, type ToolResult } from "../types";
@@ -9,7 +10,8 @@ export async function getProjectTool(
   ctx: ToolContext,
   input: { project_id: string; cursor?: number; version?: number },
 ): Promise<ToolResult> {
-  const project = await getProject(ctx.db, ctx.actor, input.project_id);
+  const pc = await projectContext(ctx, input.project_id);
+  const project = pc && (await getProject(pc.db, pc.actor, input.project_id));
   if (!project) return fail(notFoundText(input.project_id));
   const cursor = input.cursor ?? 0;
   if (cursor > 0) {

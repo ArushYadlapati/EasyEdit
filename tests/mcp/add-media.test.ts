@@ -156,9 +156,9 @@ describe("add_media", () => {
 describe("media through edit_timeline", () => {
   const clip = mediaClip;
 
-  it("a made-up asset id is refused before anything is read", async () => {
+  it("a made-up asset id is refused before the project's version is read, in the project's own space", async () => {
     const { ctx, id } = await setup();
-    const result = await editTimelineTool(ctx, { project_id: "no-such-project", expected_version: 0, ops: [{ op: "add_clip", trackId: "v1", clip: clip("made-up-id") }] });
+    const result = await editTimelineTool(ctx, { project_id: id, expected_version: 7, ops: [{ op: "add_clip", trackId: "v1", clip: clip("made-up-id") }] });
     expect(result.text).toBe('Edit refused: ops[0] (add_clip) names media that can\'t be used.\nNo asset with id "made-up-id". Call list_assets to see the ids.\nNothing was applied.');
     expect((await getProject(ctx.db, ctx.actor, id))!.version).toBe(0);
   });

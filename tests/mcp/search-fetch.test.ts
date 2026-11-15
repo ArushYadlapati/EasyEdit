@@ -44,7 +44,7 @@ describe("search", () => {
 
     const result = await searchTool(ctx, { query: "QUALIF" });
     expect(result.isError).toBe(false);
-    expect(JSON.parse(result.text)).toEqual({ results: [{ id: `project:${recap.id}`, title: "Qualifier recap", url: `https://studio.test/editor/${recap.id}` }] });
+    expect(JSON.parse(result.text)).toEqual({ results: [{ id: `project:${recap.id}`, title: 'Qualifier recap (Space: "Seattle Solvers")', url: `https://studio.test/editor/${recap.id}` }] });
     expect(await search(ctx, "intake")).toEqual([]);
   });
 
@@ -63,7 +63,7 @@ describe("search", () => {
 
     const results = await search(ctx, "worlds");
     expect(idsOf(results)).toEqual([`project:${named.id}`, `asset:${pit}`, `project:${inFolder.id}`, `asset:${byEvent}`]);
-    expect(results[1]).toEqual({ id: `asset:${pit}`, title: "Worlds pit", url: `https://studio.test/dashboard#asset-${pit}` });
+    expect(results[1]).toEqual({ id: `asset:${pit}`, title: 'Worlds pit (Space: "Seattle Solvers")', url: `https://studio.test/dashboard#asset-${pit}` });
   });
 
   it("ranks items holding more of the words first, and ignores one-letter words and punctuation", async () => {
@@ -94,7 +94,7 @@ describe("search", () => {
     expect(idsOf(await search(ctx, ""))).toEqual(recent);
     expect(idsOf(await search(ctx, "  \n "))).toEqual(recent);
     expect(idsOf(await search(ctx, "?!"))).toEqual(recent);
-    expect((await search(ctx, ""))[0].title).toBe("Project 24");
+    expect((await search(ctx, ""))[0].title).toBe('Project 24 (Space: "Seattle Solvers")');
   });
 
   it("gives at most 20 results for a broad query", async () => {
@@ -108,7 +108,7 @@ describe("search", () => {
     const db = await makeTestDb();
     const ctx = await toolContext(db);
     const id = await insertAsset(db, { name: "drone\nshot" });
-    expect(await search(ctx, "drone")).toEqual([{ id: `asset:${id}`, title: "drone shot", url: `https://studio.test/dashboard#asset-${id}` }]);
+    expect(await search(ctx, "drone")).toEqual([{ id: `asset:${id}`, title: 'drone shot (Space: "Seattle Solvers")', url: `https://studio.test/dashboard#asset-${id}` }]);
   });
 });
 
@@ -127,7 +127,7 @@ describe("fetch", () => {
       title: "Qualifier recap",
       text: (await getProjectTool(ctx, { project_id: id })).text,
       url: `https://studio.test/editor/${id}`,
-      metadata: { kind: "project", version: 1, format: "short_9x16", updatedAt: project.updatedAt.toISOString() },
+      metadata: { kind: "project", space: "Seattle Solvers", version: 1, format: "short_9x16", updatedAt: project.updatedAt.toISOString() },
     });
     expect(fetched.text).toContain('x1  text  0.50–1.50s  frames 15–45  "QUALIFIER RECAP"');
     // A bare id, as list_projects prints it, reads the same.
@@ -158,11 +158,12 @@ describe("fetch", () => {
         "Video · 12.50s (375 frames at 30 fps) · 1080x1920 · with sound",
         'Event "Qualifier 2026-11-08"',
         'File "IMG_4821.MOV" · 20.0 MB',
+        'Space: "Seattle Solvers"',
         "Uploaded 2 days ago by Ada Lovelace",
         `Put it on a timeline with add_media, asset_id "${video}". You cannot see inside footage yet: go by its name, event and length.`,
       ].join("\n"),
       url: `https://studio.test/dashboard#asset-${video}`,
-      metadata: { kind: "asset", mediaKind: "video", durationMs: 12_500, width: 1080, height: 1920, event: "Qualifier 2026-11-08", uploadedAt: ago(48 * HOUR).toISOString() },
+      metadata: { kind: "asset", space: "Seattle Solvers", mediaKind: "video", durationMs: 12_500, width: 1080, height: 1920, event: "Qualifier 2026-11-08", uploadedAt: ago(48 * HOUR).toISOString() },
     });
 
     const fetched = json(await fetchTool(ctx, { id: image }));
@@ -236,7 +237,7 @@ describe("search and fetch through an MCP client", () => {
       expect(searchText).toHaveLength(1);
       expect(searchText[0].type).toBe("text");
       expect(searched.structuredContent).toEqual(JSON.parse(searchText[0].text));
-      expect(searched.structuredContent).toEqual({ results: [{ id: `project:${id}`, title: "Qualifier recap", url: `https://studio.test/editor/${id}` }] });
+      expect(searched.structuredContent).toEqual({ results: [{ id: `project:${id}`, title: 'Qualifier recap (Space: "Seattle Solvers")', url: `https://studio.test/editor/${id}` }] });
 
       const fetched = await client.callTool({ name: "fetch", arguments: { id: `project:${id}` } });
       expect(fetched.isError).toBeFalsy();

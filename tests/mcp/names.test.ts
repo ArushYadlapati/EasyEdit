@@ -24,11 +24,11 @@ describe("a person's name in a tool result", () => {
     await applyProjectOps(db, eve.actor, { projectId: byClaude.id, baseVersion: 0, ops: [addText(0) as OpInput] });
 
     const signedIn = (await listProjectsTool(eve, {})).text.split("\n");
-    expect(signedIn[0]).toBe(`Signed in as ${SHOWN} (editor). You can read and change projects.`);
+    expect(signedIn[0]).toBe(`Signed in as ${SHOWN}.`);
 
     const listed = (await listProjectsTool(ada, {})).text;
-    expect(listed).toContain(`changed just now by ${SHOWN}\n`);
-    expect(listed).toContain(`changed just now by Claude (for ${SHOWN})\n`);
+    expect(listed).toContain(`changed just now by ${SHOWN}  Space: "Seattle Solvers"\n`);
+    expect(listed).toContain(`changed just now by Claude (for ${SHOWN})  Space: "Seattle Solvers"\n`);
 
     const conflict = (await editTimelineTool(ada, { project_id: byHand.id, expected_version: 0, ops: [addText(60)] })).text.split("\n");
     expect(conflict[2]).toBe(`  version 1 · ${SHOWN} · Added text`);

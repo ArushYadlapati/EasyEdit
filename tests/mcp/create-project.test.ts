@@ -6,10 +6,14 @@ import { createProjectTool } from "@/lib/mcp/tools/create-project";
 import { displayActor } from "@/lib/projects/display-actor";
 import { applyProjectOps, createProject, listProjects } from "@/lib/projects/service";
 import { FRAME_SIZE_MESSAGE, type OpInput } from "@/lib/timeline";
+import { personalSpaceId } from "@/lib/spaces/types";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { addText, toolContext } from "./context";
 
 const rows = async (db: DB) => rowsOf<{ id: string; name: string; created_by: string }>(await db.execute(sql`select id, name, created_by from projects order by created_at`));
+// Where create_project puts a project when no space is named.
+const personal = testActor({ userId: "u1", spaceId: personalSpaceId("u1") });
 const idIn = (text: string) => /\(id ([^)]+)\)/.exec(text)![1];
 
 describe("create_project", () => {
@@ -27,7 +31,7 @@ describe("create_project", () => {
     ]);
     expect(r.text).toContain('Track t1 [text] "Text 1"');
     expect(row.created_by).toBe("claude:u1");
-    const [listed] = await listProjects(db, ctx.actor);
+    const [listed] = await listProjects(db, personal);
     expect(displayActor(listed.updatedBy, new Map([["u1", "Ada Lovelace"]]))).toBe("Claude (for Ada Lovelace)");
   });
 
@@ -40,7 +44,7 @@ describe("create_project", () => {
     expect(await createProjectTool(ctx, { name: "a\u0000b", format: "short_9x16" })).toEqual({ isError: true, text: "Enter a name up to 100 characters." });
     expect(await createProjectTool(ctx, { name: "OK", format: "imax" })).toEqual({ isError: true, text: "Pick a format." });
     const viewer = await toolContext(db, { id: "u3", role: "viewer" });
-    expect(await createProjectTool(viewer, { name: "Mine", format: "short_9x16" })).toEqual({
+    expect(await createProjectTool(viewer, { name: "Mine", format: "short_9x16", space: "seattle-solvers" })).toEqual({
       isError: true, text: "Your role is viewer. You can read projects but not change them. An admin can change your role on the Admin page.",
     });
     expect(await rows(db)).toHaveLength(0);
@@ -85,7 +89,7 @@ describe("create_project", () => {
     const r = await createProjectTool(ctx, { name: "Poster", format: "custom", width: 816, height: 1056 });
     expect(r.isError).toBe(false);
     expect(r.text.split("\n")[3]).toBe("Format custom 816x1056 @30fps · duration 0.00s · version 0");
-    const [listed] = await listProjects(db, ctx.actor);
+    const [listed] = await listProjects(db, personal);
     expect(listed.folderId).toBeNull();
   });
 
@@ -128,7 +132,7 @@ describe("create_project", () => {
     expect(await rows(db)).toHaveLength(1);
     // A project changed to a custom size of the same pixels is not a twin of the named one.
     const [reel] = await rows(db);
-    await applyProjectOps(db, ctx.actor, { projectId: reel.id, baseVersion: 0, ops: [{ op: "set_format", format: "custom", width: 1080, height: 1920 }] });
+    await applyProjectOps(db, personal, { projectId: reel.id, baseVersion: 0, ops: [{ op: "set_format", format: "custom", width: 1080, height: 1920 }] });
     expect((await createProjectTool(ctx, { name: "Reel", format: "short_9x16" })).text).toMatch(/^Created project/);
     expect(await rows(db)).toHaveLength(2);
 

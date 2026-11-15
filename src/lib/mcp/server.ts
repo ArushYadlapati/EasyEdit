@@ -75,7 +75,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "List projects",
       description:
-        "List the team's video projects, most recently changed first, with each project's id, format and version. Also says who you are signed in as and whether you can make changes. Start here when the person has not named a project.",
+        "List the video projects in all of the person's spaces (their personal space and their teams), most recently changed first, with each project's id, space, format and version. Also says who you are signed in as and the spaces you can use. Start here when the person has not named a project.",
       inputSchema: z.object({ cursor: z.number().int().min(0).optional() }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -103,13 +103,14 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "Create a project",
       description:
-        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks.",
+        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks. It goes in your personal space unless you pass space: a space's slug as list_projects shows it, or \"personal\".",
       // The range tells Claude the limits; evenness and the area are answered by the service's sentence.
       inputSchema: z.object({
         name: z.string(),
         format: FormatId,
         width: z.number().int().min(LIMITS.frameSideMin).max(LIMITS.frameSideMax).optional(),
         height: z.number().int().min(LIMITS.frameSideMin).max(LIMITS.frameSideMax).optional(),
+        space: z.string().max(100).optional(),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
@@ -163,7 +164,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "List media",
       description:
-        'List the team\'s uploaded video, images and audio, newest first, with each asset\'s id, kind, length and size. Filter by kind, or by a word in the name or event. Use an id from here in add_media, or as "assetId" in a media clip for edit_timeline. You cannot see inside footage yet: go by names, events and lengths.',
+        'List the uploaded video, images and audio in all of the person\'s spaces, newest first, with each asset\'s id, kind, length and size. Filter by kind, or by a word in the name or event. Use an id from here in add_media, or as "assetId" in a media clip for edit_timeline. You cannot see inside footage yet: go by names, events and lengths.',
       inputSchema: z.object({
         kind: z.enum(["video", "image", "audio"]).optional(),
         search: z.string().max(100).optional(),
@@ -222,7 +223,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     "search",
     {
       title: "Search projects and media",
-      description: `Find the team's video projects (by name or folder name) and uploaded media (by name or event). Returns up to ${SEARCH_RESULTS_MAX} results as JSON {"results":[{"id","title","url"}]}, best match first. An empty query gives the most recently changed projects. Read a result with fetch.`,
+      description: `Find video projects (by name or folder name) and uploaded media (by name or event) in all of the person's spaces. Returns up to ${SEARCH_RESULTS_MAX} results as JSON {"results":[{"id","title","url"}]}, best match first. An empty query gives the most recently changed projects. Read a result with fetch.`,
       inputSchema: z.object({ query: z.string().max(500) }),
       outputSchema: SearchOutput,
       annotations: { readOnlyHint: true, openWorldHint: false },

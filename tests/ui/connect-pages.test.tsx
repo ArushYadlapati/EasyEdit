@@ -4,7 +4,9 @@ import ConsentPage from "@/app/(auth)/consent/page";
 import LoginPage from "@/app/(auth)/login/page";
 import { getCurrentUser, requireUser, type CurrentUser } from "@/lib/access";
 import { readConsentRequest, type ConsentRequest, type ConsentView, type SearchParams } from "@/lib/connector/consent";
-import { roleIn } from "@/lib/spaces/service";
+import { listMySpaces } from "@/lib/spaces/service";
+import type { Role } from "@/lib/allowlist/service";
+import type { MySpace } from "@/lib/spaces/types";
 import { cleanup, render, screen } from "../helpers/dom";
 
 vi.mock("@/lib/access", () => ({ getCurrentUser: vi.fn(), requireUser: vi.fn() }));
@@ -15,7 +17,7 @@ vi.mock("@/lib/connector/consent", async (original) => ({
 vi.mock("@/lib/connector/consent-client", () => ({ decideConsent: vi.fn() }));
 vi.mock("@/lib/env", () => ({ requiredEnv: () => "test-secret" }));
 vi.mock("@/db", () => ({ getDb: () => ({}) }));
-vi.mock("@/lib/spaces/service", () => ({ roleIn: vi.fn() }));
+vi.mock("@/lib/spaces/service", () => ({ listMySpaces: vi.fn() }));
 
 const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
 const signedRequest: SearchParams = { client_id: "c1", sig: "s", exp: "1" };
@@ -64,10 +66,12 @@ async function show(page: Page, searchParams: SearchParams) {
   render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve(searchParams) }));
 }
 
+const space = (kind: "personal" | "team", role: Role): MySpace => ({ id: kind === "personal" ? "personal_u1" : "team_seattle_solvers", slug: "s", name: kind === "personal" ? "Personal" : "Seattle Solvers", kind, role });
+
 beforeEach(() => {
   vi.mocked(getCurrentUser).mockReset();
   vi.mocked(requireUser).mockReset().mockResolvedValue(ada);
-  vi.mocked(roleIn).mockReset().mockResolvedValue("editor");
+  vi.mocked(listMySpaces).mockReset().mockResolvedValue([space("personal", "admin"), space("team", "editor")]);
   vi.mocked(readConsentRequest).mockReset();
 });
 
@@ -137,7 +141,7 @@ describe("the consent page", () => {
     expect(screen.getByRole("heading").textContent).toBe("Connect Claude");
     expect(screen.getByText("Claude is asking to use EasyEdit as you.")).toBeTruthy();
     expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "It will be able to see the team's projects.",
+      "It will be able to see the projects in your spaces.",
       "It will be able to create projects and change them. Each change is listed in the editor as “Claude (for Ada)” and can be undone there.",
     ]);
     expect(screen.getByText("Signed in as ada@gmail.com.")).toBeTruthy();
@@ -153,15 +157,29 @@ describe("the consent page", () => {
     expect(vi.mocked(readConsentRequest)).toHaveBeenCalledWith(expect.anything(), "test-secret", signedRequest);
   });
 
+  it("offers the editor wording from a personal space alone, with no team role at all", async () => {
+    vi.mocked(listMySpaces).mockResolvedValue([space("personal", "admin")]);
+    vi.mocked(readConsentRequest).mockResolvedValue(ok(views.claude));
+    await show(ConsentPage, signedRequest);
+    expect(screen.getAllByRole("listitem")[1].textContent).toMatch(/^It will be able to create projects and change them/);
+  });
+
+  it("offers the editor wording to a team viewer, whose personal space is theirs to change", async () => {
+    vi.mocked(listMySpaces).mockResolvedValue([space("personal", "admin"), space("team", "viewer")]);
+    vi.mocked(readConsentRequest).mockResolvedValue(ok(views.claude));
+    await show(ConsentPage, signedRequest);
+    expect(screen.getAllByRole("listitem")[1].textContent).toMatch(/^It will be able to create projects and change them/);
+  });
+
   it("tells a viewer the app cannot change anything, and does not vouch for a self-named app", async () => {
     vi.mocked(requireUser).mockResolvedValue({ ...ada, allowlistRole: "viewer" });
-    vi.mocked(roleIn).mockResolvedValue("viewer");
+    vi.mocked(listMySpaces).mockResolvedValue([space("team", "viewer")]);
     vi.mocked(readConsentRequest).mockResolvedValue(ok(views.helper));
     await show(ConsentPage, signedRequest);
     expect(screen.getByRole("heading").textContent).toBe("Connect an app");
     expect(screen.getByText("An app that calls itself “Helper” is asking to use EasyEdit as you.")).toBeTruthy();
     expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "It will be able to see the team's projects.",
+      "It will be able to see the projects in your spaces.",
       "Your role is viewer, so it will not be able to change anything.",
     ]);
     expect(screen.getByText("EasyEdit cannot confirm which app this is or who runs it.")).toBeTruthy();

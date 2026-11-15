@@ -31,9 +31,9 @@ async function threeAssets(db: DB) {
     audio,
     image,
     lines: {
-      image: `${image}  image  "field"  4032x3024  uploaded just now by Grace Hopper`,
-      audio: `${audio}  audio  "theme"  95.00s (2850 frames at 30 fps)  uploaded 3 hours ago by Ada Lovelace`,
-      video: `${video}  video  "IMG_4821"  12.50s (375 frames at 30 fps)  1080x1920  with sound  event "Qualifier 2026-11-08"  uploaded 2 days ago by Ada Lovelace`,
+      image: `${image}  image  "field"  4032x3024  uploaded just now by Grace Hopper  Space: "Seattle Solvers"`,
+      audio: `${audio}  audio  "theme"  95.00s (2850 frames at 30 fps)  uploaded 3 hours ago by Ada Lovelace  Space: "Seattle Solvers"`,
+      video: `${video}  video  "IMG_4821"  12.50s (375 frames at 30 fps)  1080x1920  with sound  event "Qualifier 2026-11-08"  uploaded 2 days ago by Ada Lovelace  Space: "Seattle Solvers"`,
     },
   };
 }

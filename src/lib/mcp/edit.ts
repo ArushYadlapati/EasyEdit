@@ -5,17 +5,17 @@ import { checkWriteBudget } from "./budget";
 import { failureResult, notFoundText } from "./errors";
 import { newIdLines, projectPage } from "./project-text";
 import { editRequestId } from "./request-id";
-import { fail, type ToolContext, type ToolResult } from "./types";
+import { fail, type SpaceToolContext, type ToolContext, type ToolResult } from "./types";
 
 export type EditDone = { ok: true; applied: AppliedOps; project: ProjectRecord } | { ok: false; result: ToolResult };
 
 type EditKey = { projectId: string; expectedVersion: number; key: unknown };
 
-const requestIdOf = (ctx: ToolContext, { projectId, expectedVersion, key }: EditKey) =>
+const requestIdOf = (ctx: SpaceToolContext, { projectId, expectedVersion, key }: EditKey) =>
   editRequestId({ actorId: ctx.actor.userId, projectId, expectedVersion, key });
 
 // The answer a repeated call already got, or null. For tools that must look at the project before they can build ops.
-export async function priorEdit(ctx: ToolContext, input: EditKey): Promise<EditDone | null> {
+export async function priorEdit(ctx: SpaceToolContext, input: EditKey): Promise<EditDone | null> {
   const applied = await getAppliedRequest(ctx.db, ctx.actor, input.projectId, requestIdOf(ctx, input));
   if (!applied) return null;
   const project = await getProject(ctx.db, ctx.actor, input.projectId);
@@ -28,7 +28,7 @@ export async function priorEdit(ctx: ToolContext, input: EditKey): Promise<EditD
 // The request id makes a repeat of the same call on the same version answer with the change it already made,
 // before the budget is counted: a repeat is not a new change.
 export async function runEdit(
-  ctx: ToolContext,
+  ctx: SpaceToolContext,
   input: { projectId: string; expectedVersion: number; ops: OpInput[]; key: unknown },
 ): Promise<EditDone> {
   const { projectId, expectedVersion, ops } = input;

@@ -1,8 +1,9 @@
 import { formatFields, type OpInput } from "@/lib/timeline";
+import { projectContext } from "../actors";
 import { editedText, runEdit } from "../edit";
-import { assetNotUsable, opNotAvailable } from "../errors";
+import { assetNotUsable, notFoundText, opNotAvailable } from "../errors";
 import { checkAllowedOps, checkAssetOps } from "../op-rules";
-import { ok, type ToolContext, type ToolResult } from "../types";
+import { fail, ok, type ToolContext, type ToolResult } from "../types";
 
 // A custom size equal to a named size is that named size, as everywhere else.
 function namedSize(op: unknown): unknown {
@@ -19,12 +20,15 @@ export async function editTimelineTool(
 ): Promise<ToolResult> {
   const notAllowed = checkAllowedOps(input.ops);
   if (notAllowed) return opNotAvailable(notAllowed);
+  // The project's space first: its media is the only media its clips may name.
+  const pc = await projectContext(ctx, input.project_id);
+  if (!pc) return fail(notFoundText(input.project_id));
   // Before the project is read: an asset id that is wrong says how to find the right one.
-  const badAsset = await checkAssetOps(ctx.db, ctx.actor.spaceId, input.ops);
+  const badAsset = await checkAssetOps(pc.db, pc.actor.spaceId, input.ops);
   if (badAsset) return assetNotUsable(badAsset);
 
   // The engine checks each op's shape; the service refuses the whole batch if one is wrong.
-  const done = await runEdit(ctx, {
+  const done = await runEdit(pc, {
     projectId: input.project_id,
     expectedVersion: input.expected_version,
     ops: input.ops.map(namedSize) as OpInput[],
@@ -32,5 +36,5 @@ export async function editTimelineTool(
   });
   if (!done.ok) return done.result;
   const n = done.applied.ops.length;
-  return ok(editedText(ctx, `Applied ${n} ${n === 1 ? "op" : "ops"} as version ${done.applied.version}.`, done));
+  return ok(editedText(pc, `Applied ${n} ${n === 1 ? "op" : "ops"} as version ${done.applied.version}.`, done));
 }
