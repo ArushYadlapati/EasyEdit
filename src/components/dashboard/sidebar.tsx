@@ -7,7 +7,7 @@ import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-dr
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { ALL_VIEW, RECENT_VIEW, folderOf, viewQuery, type DashboardFolder, type DashboardView } from "@/lib/dashboard/view";
-import { SIDEBAR_HEADING, SpaceSwitcher, useCreateTeam, useMySpaces } from "@/components/dashboard/space-switcher";
+import { SIDEBAR_HEADING, SpaceSwitcher, useCreateTeam, useMySpaces, usePersonalSoon } from "@/components/dashboard/space-switcher";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { settingsTabPath } from "@/lib/spaces/settings-tabs";
 import { storageSettingsPath } from "@/lib/storage/messages";
@@ -57,24 +57,26 @@ function SidebarLink({ href, current, folderId, takesDrops, onDropProject, child
 // editors, New folder sits beside the Folders heading, or at the end of the row on a narrow window; and a project
 // dragged onto a folder goes into it, or onto All projects out of its folder. This space sits at the foot of the column:
 // a team's Members for everyone in it, and the space's Storage settings for its admins.
+// The sidebar's box: a column at the left on a wide window, one row that scrolls sideways on a narrow one.
+// relative: the headings are sr-only on a narrow window (absolutely placed), and without a positioned row they sit past
+// its right edge and make the whole page scroll sideways.
+export const SIDEBAR_BOX = cx(
+  "relative flex shrink-0 flex-row items-center gap-1 overflow-x-auto border-b border-ed-line bg-ed-panel px-4 py-2",
+  "md:w-56 md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-b-0 md:px-2 md:py-3",
+);
+
 export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
   const spaces = useMySpaces();
   const createTeam = useCreateTeam();
+  const personalSoon = usePersonalSoon();
   const current = spaces.find((space) => slugFor(space) === spaceSlug);
   const shownFolder = folderOf(view);
   const showMembers = current?.kind === "team";
   const showStorage = current?.role === "admin";
   return (
-    <div
-      className={cx(
-        // relative: the headings are sr-only on a narrow window (absolutely placed), and without a positioned row they
-        // sit past its right edge and make the whole page scroll sideways.
-        "relative flex shrink-0 flex-row items-center gap-1 overflow-x-auto border-b border-ed-line bg-ed-panel px-4 py-2",
-        "md:w-56 md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-b-0 md:px-2 md:py-3",
-      )}
-    >
+    <div className={SIDEBAR_BOX}>
       {/* The person's spaces (from the dashboard layout), above what is in this one. Not drawn without any, as in tests. */}
-      {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} createTeam={createTeam} />}
+      {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} createTeam={createTeam} personalSoon={personalSoon} />}
       <nav aria-label="Projects" className="flex shrink-0 flex-row items-center gap-1 md:flex-col md:items-stretch">
         <h2 className={SIDEBAR_HEADING}>Projects</h2>
         <SidebarLink href={spacePath(spaceSlug, viewQuery(RECENT_VIEW))} current={view.kind === "recent"} folderId={null} takesDrops={false} onDropProject={onDropProject}>

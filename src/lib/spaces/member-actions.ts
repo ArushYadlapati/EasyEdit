@@ -5,7 +5,6 @@ import type { Role } from "@/lib/allowlist/service";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn } from "./access";
 import { addMemberByEmail, leaveTeam, removeMember, setMemberRole } from "./members";
-import { PERSONAL_ALIAS } from "./types";
 
 export type ActionResult = { error?: string };
 
@@ -51,11 +50,12 @@ export function makeMemberActions(deps: MemberActionDeps) {
     setRole: (spaceId: string, formData: FormData) =>
       run(spaceId, (db, actor) => setMemberRole(db, actor, { userId: field(formData, "userId"), role: field(formData, "role") as Role })),
     remove: (spaceId: string, formData: FormData) => run(spaceId, (db, actor) => removeMember(db, actor, field(formData, "userId"))),
-    // Gone from the team, the person goes to their own space.
+    // Gone from the team, the person goes on to the dashboard's old address, which picks where they land (lastSpace):
+    // the team they left is no longer theirs, so another team, or their own space where those are offered.
     async leave(spaceId: string): Promise<ActionResult> {
       const result = await run(spaceId, (db, actor) => leaveTeam(db, actor));
       if (result.error !== undefined) return result;
-      return deps.redirect(`/s/${PERSONAL_ALIAS}`);
+      return deps.redirect("/dashboard");
     },
   };
 }

@@ -126,10 +126,21 @@ Each space (your personal one, or a team) can keep its media in its own Google D
 3. **The Drive permission.** On the OAuth consent screen, add the scope `https://www.googleapis.com/auth/drive.file`. EasyEdit asks for nothing wider: it sees only the files it creates.
 4. **Two APIs.** In APIs & Services, Library, enable the "Identity and Access Management (IAM) API" and the "IAM Service Account Credentials API".
 5. **Roles for the media service account.** The service account in `GOOGLE_SERVICE_ACCOUNT_KEY` needs two roles on the project: "Service Account Admin" (`roles/iam.serviceAccountAdmin`) and "Service Account Token Creator" (`roles/iam.serviceAccountTokenCreator`). In IAM & Admin, IAM, grant access to its address with both roles.
-6. **`GOOGLE_CLOUD_PROJECT`.** Set it to the id of the Google Cloud project where EasyEdit creates each team's read-only reader service account. Without it, teams can't get storage; personal spaces still can.
+6. **`GOOGLE_CLOUD_PROJECT`.** Set it to the id of the Google Cloud project where EasyEdit creates each team's read-only reader service account. Without it, teams can't get storage; personal spaces still can, once they are offered ([Personal spaces](#personal-spaces)).
 7. **`OPEN_SIGNUP`.** Set it to `true` to let anyone with a Google account sign up. Leave it unset until the Google sign-in screen is published.
 
 While the Google sign-in screen is in "Testing", only the listed test users can sign in, and Google cuts off every connected Drive after 7 days. To publish it, Google needs a home page and a privacy policy on a domain you own: a `vercel.app` address can't be verified. EasyEdit has both (`/` and `/privacy`). The privacy page is a draft: read it, fill in `privacy@<your-domain>`, and remove the "Draft" line before you publish.
+
+## Personal spaces
+
+Everyone has a personal space as well as their teams, but it is not offered until you set `PERSONAL_SPACES` to `true` (in `.env.local`, and in Vercel followed by a redeploy). Unset, EasyEdit is for teams:
+
+- People land in a team. In My Spaces, Personal comes last and is tagged "Soon", and its page says personal spaces are coming soon.
+- AI agents put new projects in a team, and are told the personal space takes no new projects.
+- A personal space has no settings and can't be given storage.
+- Anything a person already made in their personal space is listed on that page and still opens in the editor.
+
+Switch it on once personal spaces can have storage ([Storage per space](#storage-per-space)): without storage, a personal space holds projects but no videos.
 
 ## 4. Run it
 
