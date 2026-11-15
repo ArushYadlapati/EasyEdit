@@ -363,6 +363,15 @@ it("audio clips show no still", async () => {
   expect(get).toHaveBeenCalledTimes(1); // c1 and c2's still, not the audio clip's
 });
 
+it("a drag across the timeline selects no page text, while a track's rename field still takes a selection", () => {
+  setup();
+  const header = screen.getByRole("button", { name: "Text 1" });
+  const scroller = header.closest(".overflow-auto") as HTMLElement;
+  expect(scroller.className).toContain("select-none");
+  fireEvent.click(header);
+  expect((screen.getByRole("textbox", { name: "Track name" }) as HTMLInputElement).className).toContain("select-text");
+});
+
 it("a clip told to show no still shows none, and a caption row's clips are told so", async () => {
   const { media, get } = stillMedia();
   const store = makeStore();

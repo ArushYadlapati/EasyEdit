@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import { runPipeline, type PipelineIO, type PipelineOutput } from "@/lib/export/pipeline";
 import { videoSettings } from "@/lib/export/presets";
 import type { ExportJob } from "@/lib/export/protocol";
-import { createEmptyDoc } from "@/lib/timeline";
 import { text, video } from "../editor/fixtures";
 import { NO_MEDIA, fakeMediaIO, fakeSoundIO, file, tick, type FakeMediaOptions, type FakeSoundOptions } from "./fakes";
+import { docWithCaptions } from "../helpers/docs";
 
 const FACE = { family: "Geist", source: 'url("https://app.test/a.woff2")', descriptors: {}, required: true };
 const LOCAL = { family: "Geist Fallback", source: "local(Arial)", descriptors: {}, required: false };
 const PROBE = { font: '700 100px "Geist"', text: "Hamburgefonstiv", width: 750 };
 
 function job(frames: number, over: Partial<ExportJob> = {}): ExportJob {
-  const doc = createEmptyDoc("short_9x16");
+  const doc = docWithCaptions("short_9x16");
   if (frames > 0) doc.tracks[1].clips = [text("a", 0, frames)];
   return {
     doc, video: videoSettings({ width: 1080, height: 1920 }, 30)!, acceleration: "no-preference",
@@ -163,7 +163,7 @@ describe("a failure in the middle", () => {
 describe("media", () => {
   // c1 draws file prev-a on frames 0 and 1; c2's media was removed, so it draws its placeholder on frames 2 and 3.
   const withMedia = () => {
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2), video("c2", 2, 2, { assetId: "r" })];
     return job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" }, c2: { label: "Media removed" } }, sounds: {} } });
   };
@@ -181,7 +181,7 @@ describe("media", () => {
   });
 
   it("releases the decoders after the file is finished when a clip runs to the last frame", async () => {
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     const { io, log, control } = setup();
     await runPipeline(job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } }), io, control);
@@ -207,7 +207,7 @@ describe("media", () => {
   });
 
   it("ends the export when one decoder breaks while another never answers", async () => {
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     doc.tracks.splice(1, 0, { id: "o1", kind: "overlay", name: "Overlay 1", muted: false, hidden: false, locked: false, clips: [video("c3", 0, 2, { assetId: "b" })] });
     const media = { files: { "prev-a": file("a.mp4"), "prev-b": file("b.mp4") }, clips: { c1: { fileId: "prev-a" }, c3: { fileId: "prev-b" } }, sounds: {} };
@@ -226,7 +226,7 @@ describe("each step names its own failures", () => {
   it("calls a video file that cannot be checked a decode failure", async () => {
     const media = fakeMediaIO();
     const { io, log, control } = setup({ media: { ...media, canDecode: async () => { throw new Error("no demuxer"); } } });
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     const withVideo = job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } });
     expect(await runPipeline(withVideo, io, control)).toEqual({ type: "failed", code: "decode", detail: "no demuxer" });
@@ -237,7 +237,7 @@ describe("each step names its own failures", () => {
     const media = fakeMediaIO();
     const brittle = { ...media, openVideo: async (blob: Blob, maxSide: number) => ({ ...(await media.openVideo(blob, maxSide)), dispose: () => { throw new Error("dispose failed"); } }) };
     const { io, control } = setup({ media: brittle });
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
     doc.tracks[1].clips = [text("t", 0, 4)];
     const withVideo = job(4, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } });
@@ -256,7 +256,7 @@ describe("each step names its own failures", () => {
 describe("sound", () => {
   // m1: an audio clip of song.mp3 on frames 0–4 at volume 0.5; the fake file holds 0.5 everywhere
   const withSong = () => {
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[3].clips = [video("m1", 0, 4, { type: "audio", assetId: "song", volume: 0.5 })];
     return job(4, { doc, media: { files: { song: file("song.mp3") }, clips: {}, sounds: { m1: "song" } } });
   };
@@ -315,7 +315,7 @@ describe("sound", () => {
   });
 
   it("a video's picture and sound read one file, each on its own", async () => {
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 40)];
     const media = { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: { c1: "prev-a" } };
     const { io, log, soundLog, control } = setup();
@@ -326,7 +326,7 @@ describe("sound", () => {
   });
 
   it("keeps a picture failure's name mid-file and lets the sound go", async () => {
-    const doc = createEmptyDoc("short_9x16");
+    const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 90)]; // its sound is open from block 0 to block 2
     const media = { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: { c1: "prev-a" } };
     const { io, soundLog, control } = setup({}, {}, { breaks: (_name, at) => at >= 35 / 30 });

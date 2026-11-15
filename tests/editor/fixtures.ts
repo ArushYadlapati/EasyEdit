@@ -1,6 +1,7 @@
 import { createEditorStore, type EditorStore } from "@/lib/editor/store";
 import type { ActivityEntry, EditorInit } from "@/lib/editor/types";
-import { DEFAULT_TRANSFORM, createEmptyDoc, type Clip, type Op, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, type Clip, type Op, type TimelineDoc } from "@/lib/timeline";
+import { docWithCaptions } from "../helpers/docs";
 
 export const text = (id: string, start: number, duration: number, extra: Record<string, unknown> = {}) =>
   ({ id, type: "text", start, duration, text: "hi", transform: { ...DEFAULT_TRANSFORM },
@@ -10,7 +11,7 @@ export const video = (id: string, start: number, duration: number, extra: Record
 
 // v1 [c1 0-30, c2 30-60] · t1 [x1 0-60, x2 90-120] · cap · a1
 export function sampleDoc(): TimelineDoc {
-  const d = createEmptyDoc("short_9x16");
+  const d = docWithCaptions("short_9x16");
   d.tracks[0].clips = [video("c1", 0, 30), video("c2", 30, 30)];
   d.tracks[1].clips = [text("x1", 0, 60), text("x2", 90, 30)];
   return d;

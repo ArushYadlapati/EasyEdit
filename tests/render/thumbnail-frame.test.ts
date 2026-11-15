@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { thumbnailFrame } from "@/lib/render/thumbnail-frame";
-import { DEFAULT_TRANSFORM, createEmptyDoc, type TimelineDoc, type Track } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, type TimelineDoc, type Track } from "@/lib/timeline";
 import { sampleDoc, text, video } from "../editor/fixtures";
+import { docWithCaptions } from "../helpers/docs";
 
 // A 30 fps project whose tracks are, in order: v1 (video), t1 (text), cap, a1 (audio).
-const empty = (): TimelineDoc => createEmptyDoc("short_9x16");
+const empty = (): TimelineDoc => docWithCaptions("short_9x16");
 const track = (id: string, kind: Track["kind"], clips: Track["clips"] = []): Track =>
   ({ id, kind, name: id, muted: false, hidden: false, locked: false, clips });
 

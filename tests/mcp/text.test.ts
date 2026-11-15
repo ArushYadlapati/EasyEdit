@@ -3,7 +3,8 @@ import { LIMITS } from "@/lib/limits";
 import { pageLines } from "@/lib/mcp/paging";
 import { newIdLines, projectPage } from "@/lib/mcp/project-text";
 import { editRequestId, stableJson } from "@/lib/mcp/request-id";
-import { DEFAULT_TRANSFORM, createEmptyDoc, type Clip } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, type Clip } from "@/lib/timeline";
+import { docWithCaptions } from "../helpers/docs";
 
 describe("pageLines", () => {
   const lines = ["aaaa", "bbbb", "cccc", "dddd"]; // each costs 5 with its line break
@@ -25,7 +26,7 @@ describe("pageLines", () => {
 });
 
 describe("projectPage", () => {
-  const project = { id: "p1", name: 'Say "hi"', doc: createEmptyDoc("short_9x16"), version: 4 };
+  const project = { id: "p1", name: 'Say "hi"', doc: docWithCaptions("short_9x16"), version: 4 };
   const NAME = 'Project "Say \\"hi\\"" (id p1)';
   const HEAD = "Format short_9x16 1080x1920 @30fps · duration 0.00s · version 4";
 

@@ -2,15 +2,16 @@ import { describe, expect, it } from "vitest";
 import { frameCount } from "@/lib/export/schedule";
 import { SOURCE_MARGIN_SECONDS, soundSchedule, sourceAt, voiceWindow } from "@/lib/export/sound-schedule";
 import { sourceSeconds } from "@/lib/render/source-time";
-import { DEFAULT_TRANSFORM, createEmptyDoc, type Clip, type MediaClip, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, type Clip, type MediaClip, type TimelineDoc } from "@/lib/timeline";
 import { video } from "../editor/fixtures";
+import { docWithCaptions } from "../helpers/docs";
 
 const S = 48_000;
 const song = (id: string, start: number, duration: number, extra: Record<string, unknown> = {}) =>
   video(id, start, duration, { type: "audio", assetId: "song", ...extra });
 // v1 holds the video clips, a1 the audio clips
 function doc(v1: Clip[] = [], a1: Clip[] = []): TimelineDoc {
-  const d = createEmptyDoc("short_9x16");
+  const d = docWithCaptions("short_9x16");
   d.tracks[0].clips = v1;
   d.tracks[3].clips = a1;
   return d;
