@@ -784,9 +784,9 @@ it("snapping and the safe area are remembered in this browser", () => {
   expect(viewAsButton().textContent).toBe("View as: Off"); // hidden at first
   pickViewAs("Safe area");
   expect(document.cookie).toContain("sz:1");
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:1.z:fill.st:30.tx:30");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:1.z:fill.st:30.tx:30.gd:1");
   fireEvent.click(screen.getByRole("button", { name: "Snap" }));
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:0.z:fill.st:30.tx:30");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:0.z:fill.st:30.tx:30.gd:1");
   first.unmount();
 
   // The page read the cookie: the store starts from it. With no newer cookie the page's values stand.
@@ -803,9 +803,9 @@ it("a change in Settings is kept with the snapping and safe area of the moment",
   vi.mocked(createSettingsStore).mockClear();
   render(<EditorShell space={SPACE} initial={initial()} prefs={{ ...DEFAULT_PREFS, safeZones: true }} />);
   act(() => shellSettings().getState().set({ units: "in", stillSeconds: 4.5 }));
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:1.sn:1.z:fill.st:45.tx:30");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:1.sn:1.z:fill.st:45.tx:30.gd:1");
   act(() => shellSettings().getState().set({ lockAspect: false }));
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:1.sn:1.z:fill.st:45.tx:30");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:1.sn:1.z:fill.st:45.tx:30.gd:1");
 });
 
 it("the editor's controls read the lengths the page gave", async () => {
@@ -834,7 +834,7 @@ it("a newer cookie wins over the page's props after mount", () => {
   expect(document.cookie).toContain("easyedit-layout=300_240_");
   // A later toggle saves the cookie's other values with it.
   fireEvent.click(screen.getByRole("button", { name: "Snap" }));
-  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:cm.sz:1.sn:1.z:fill.st:30.tx:30");
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:cm.sz:1.sn:1.z:fill.st:30.tx:30.gd:1");
 });
 
 it("after a newer layout cookie, going back to the page's size is saved", () => {

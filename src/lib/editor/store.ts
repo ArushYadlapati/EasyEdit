@@ -17,6 +17,7 @@ import { canUndoChange } from "./activity";
 import { clampZoom, fitZoom } from "./geometry";
 import { MESSAGES, explainOpError } from "./messages";
 import { shuttle as nextShuttle } from "./playback";
+import { toolNeedsEdit, type Tool } from "./tools";
 import { foldQueue, sameOps } from "./reconcile";
 import type {
   ActivityEntry,
@@ -66,6 +67,10 @@ export type EditorState = {
   // The text clip being typed in place on the preview. Its clip's removal, a lock or hide of its track, or the loss of
   // edit access clears it.
   textEditId: string | null;
+  tool: Tool; // the rail's current tool, this person's own
+  // The guide picked on the preview, this person's own. Picking a clip or a track clears it; so does its removal.
+  guideId: string | null;
+  showGuides: boolean; // this browser's choice, from View as
   exporting: boolean; // an export is running in this tab
   exportHeld: boolean; // a finished export waits in this tab for its Download click
 
@@ -103,6 +108,9 @@ export type EditorState = {
   setViewAs(id: string | null): void; // a platform view turns the safe area off
   setName(name: string): void; // only what the editor shows; renameFromEditor saves it
   setCropArmed(clipId: string | null): void;
+  setTool(tool: Tool): boolean; // false: a tool that changes the project, for someone who can't edit
+  selectGuide(guideId: string | null): void; // clears the clip and track selection; a guide not there selects nothing
+  setShowGuides(on: boolean): void; // hiding them clears the selected guide
   setTextEdit(clipId: string | null): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
   setExporting(on: boolean): void;
   setExportHeld(on: boolean): void;
@@ -127,6 +135,10 @@ export function findClip(doc: TimelineDoc, clipId: string): { clip: Clip; track:
 function typeableText(doc: TimelineDoc, clipId: string): boolean {
   const found = findClip(doc, clipId);
   return !!found && found.clip.type === "text" && !found.track.locked && !found.track.hidden;
+}
+
+function hasGuide(doc: TimelineDoc, guideId: string): boolean {
+  return doc.guides?.some((g) => g.id === guideId) ?? false;
 }
 
 function clipIds(doc: TimelineDoc): Set<string> {
@@ -190,7 +202,7 @@ function isOwnHead(entry: ActivityEntry, head: PendingEdit | undefined, meId: st
 
 export function createEditorStore(
   init: EditorInit,
-  deps: { genId?: () => string; now?: () => number; view?: { snapping: boolean; showSafeZones: boolean } } = {},
+  deps: { genId?: () => string; now?: () => number; view?: { snapping: boolean; showSafeZones: boolean; showGuides?: boolean } } = {},
 ): EditorStore {
   // Edit ids are sent as request ids, which must be 8 to 64 characters of A-Za-z0-9_-.
   const genId = deps.genId ?? (() => nanoid(10));
@@ -205,6 +217,7 @@ export function createEditorStore(
       const patch: Partial<EditorState> = { doc, selection: pruneSelection(doc, state.selection) };
       if (state.cropArmed !== null && !findClip(doc, state.cropArmed)) patch.cropArmed = null;
       if (state.textEditId !== null && !typeableText(doc, state.textEditId)) patch.textEditId = null;
+      if (state.guideId !== null && !hasGuide(doc, state.guideId)) patch.guideId = null;
       const gesture = state.gesture;
       if (gesture) {
         try {
@@ -310,6 +323,9 @@ export function createEditorStore(
       playing: false,
       rate: 1,
       showSafeZones: deps.view?.showSafeZones ?? false,
+      showGuides: deps.view?.showGuides ?? true,
+      tool: "select",
+      guideId: null,
       viewAs: null,
       cropArmed: null,
       textEditId: null,
@@ -410,12 +426,12 @@ export function createEditorStore(
         else if (mode === "add") next = [...current, ...added];
         else next = [...current.filter((id) => !wanted.includes(id)), ...added];
         const keepsArmed = next.length === 1 && next[0] === state.cropArmed;
-        set({ selection: { clipIds: next, trackId: null }, ...(!keepsArmed && { cropArmed: null }) });
+        set({ selection: { clipIds: next, trackId: null }, guideId: null, ...(!keepsArmed && { cropArmed: null }) });
       },
 
       selectTrack(trackId) {
         if (trackId !== null && !get().doc.tracks.some((t) => t.id === trackId)) return;
-        set({ selection: { clipIds: [], trackId }, cropArmed: null });
+        set({ selection: { clipIds: [], trackId }, guideId: null, cropArmed: null });
       },
 
       seek(frame) {
@@ -563,6 +579,8 @@ export function createEditorStore(
           selection: pruneSelection(server.doc, selection),
           cropArmed: null,
           textEditId: null,
+          tool: "select",
+          guideId: null,
           notice: makeNotice("error", MESSAGES.lostAccess),
         });
       },
@@ -614,6 +632,23 @@ export function createEditorStore(
 
       setCropArmed(clipId) {
         if (clipId !== get().cropArmed) set({ cropArmed: clipId });
+      },
+
+      setTool(tool) {
+        const state = get();
+        if (toolNeedsEdit(tool) && !state.canEdit) return false;
+        if (tool !== state.tool) set({ tool, ...(state.tool === "crop" && { cropArmed: null }) });
+        return true;
+      },
+
+      selectGuide(guideId) {
+        const state = get();
+        if (guideId !== null && (!state.showGuides || !hasGuide(state.doc, guideId))) return;
+        set({ guideId, selection: { clipIds: [], trackId: null }, cropArmed: null });
+      },
+
+      setShowGuides(on) {
+        if (on !== get().showGuides) set({ showGuides: on, ...(!on && { guideId: null }) });
       },
 
       setTextEdit(clipId) {
