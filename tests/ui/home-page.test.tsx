@@ -28,7 +28,7 @@ describe("home page", () => {
   it("signed out shows the pitch, a link to /login and a link to /privacy", async () => {
     render(await Home());
     expect(screen.getByText("Edit short videos with your team, and with AI agents.")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Continue with Google" }).getAttribute("href")).toBe("/login");
+    expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/login");
     expect(screen.getByRole("link", { name: "Privacy" }).getAttribute("href")).toBe("/privacy");
   });
 

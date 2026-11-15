@@ -17,7 +17,7 @@ export function HomePage({ closedBeta }: { closedBeta: boolean }) {
           href="/login"
           className="flex h-11 w-full items-center justify-center rounded-full bg-foreground px-5 font-medium text-background"
         >
-          Continue with Google
+          Sign in
         </Link>
         <Link href="/privacy" className="text-sm text-foreground/70 underline underline-offset-4">
           Privacy
