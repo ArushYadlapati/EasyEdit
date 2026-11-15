@@ -312,8 +312,8 @@ it("leaving the board resets the look; moving between its parts does not", () =>
   expect(wrapper.dataset.drop).toBe("over");
   fireEvent(board, dragEvent("dragleave", { relatedTarget: board.querySelector("[data-frame]") }));
   expect(wrapper.dataset.drop).toBe("over");
-  // On to the transport, say: the file is still over the window, and the board lets it go.
-  const transport = screen.getByRole("button", { name: /^Go to start/ });
+  // On to another part of the window, the control row say: the file is still over the window, and the board lets it go.
+  const transport = document.body.appendChild(document.createElement("button"));
   fireEvent(transport, dragEvent("dragenter", { types: ["Files"], relatedTarget: wrapper }));
   fireEvent(wrapper, dragEvent("dragleave", { types: ["Files"], relatedTarget: transport }));
   expect(drop.state.getState().incoming).toBe("files");

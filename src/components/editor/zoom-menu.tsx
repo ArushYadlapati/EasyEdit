@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, use, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
@@ -8,10 +8,7 @@ import { Menu, type MenuItem } from "@/components/ui/menu";
 import { NumberInput } from "@/components/ui/number-input";
 import { ZOOM_PRESETS, zoomLabel, zoomName } from "@/lib/editor/board";
 import { clampPercent, type BoardZoom } from "@/lib/editor/settings";
-import { useSettings, useSettingsStore } from "./context";
-
-// The board's scale in CSS pixels per project pixel, from the Preview, so "Custom…" can start at the size shown.
-export const BoardScaleContext = createContext(1);
+import { useEditorStore, useSettings, useSettingsStore } from "./context";
 
 const PRESETS: readonly number[] = ZOOM_PRESETS;
 
@@ -24,15 +21,16 @@ function zoomItems(zoom: BoardZoom): MenuItem[] {
   ];
 }
 
-// The preview's zoom, in the transport. It is this browser's own view, so viewers use it too.
+// The preview's zoom, in the control row; its text says "Board" so it isn't taken for the timeline's zoom. It is this
+// browser's own view, so viewers use it too. Custom… starts at the scale the preview is drawn at now.
 export function ZoomMenu(): ReactNode {
   const settings = useSettingsStore();
   const zoom = useSettings((s) => s.boardZoom);
-  const k = use(BoardScaleContext);
+  const editor = useEditorStore();
   const [customFrom, setCustomFrom] = useState<number | null>(null); // the Custom zoom dialog's starting value, while open
 
   function onSelect(id: string) {
-    if (id === "custom") setCustomFrom(Math.round(k * 100));
+    if (id === "custom") setCustomFrom(Math.round(editor.getState().boardScale * 100));
     else settings.getState().set({ boardZoom: id === "fill" ? "fill" : clampPercent(Number(id)) });
   }
 
@@ -41,8 +39,8 @@ export function ZoomMenu(): ReactNode {
       <Menu
         label={zoomName(zoom)}
         title="Preview zoom"
-        text={zoomLabel(zoom)}
-        className="w-16 justify-between tabular-nums"
+        text={`Board: ${zoomLabel(zoom)}`}
+        className="shrink-0 justify-between tabular-nums"
         items={() => zoomItems(settings.getState().boardZoom)}
         onSelect={onSelect}
       />

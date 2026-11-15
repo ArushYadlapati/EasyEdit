@@ -787,6 +787,11 @@ it("snapping and the safe area are remembered in this browser", () => {
   expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:1.z:fill.st:30.tx:30.gd:1");
   fireEvent.click(screen.getByRole("button", { name: "Snap" }));
   expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:0.z:fill.st:30.tx:30.gd:1");
+  fireEvent.click(viewAsButton());
+  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Show guides" }));
+  expect(PREFS_TEXT()).toBe("easyedit-prefs=u:px.sz:1.sn:0.z:fill.st:30.tx:30.gd:0");
+  fireEvent.click(viewAsButton());
+  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Show guides" }));
   first.unmount();
 
   // The page read the cookie: the store starts from it. With no newer cookie the page's values stand.

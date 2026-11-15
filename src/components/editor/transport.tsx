@@ -1,7 +1,7 @@
 "use client";
 
 import { Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { InlineEdit } from "@/components/ui/inline-edit";
@@ -10,71 +10,67 @@ import { formatTimecode } from "@/lib/editor/geometry";
 import { parseTime } from "@/lib/editor/parse-time";
 import { platformView, platformViewsFor } from "@/lib/editor/platform-views";
 import { viewDoc } from "@/lib/editor/store";
-import { docDuration, formatLabel } from "@/lib/timeline";
+import { docDuration } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "./context";
 import { Timecode } from "./timecode";
 import { useShortcutLabel } from "./use-shortcuts";
-import { ZoomMenu } from "./zoom-menu";
 
 // "2×", or "−2×" when playing backward.
 const rateLabel = (rate: number) => (rate < 0 ? `−${-rate}×` : `${rate}×`);
 
-// The bar under the preview. Playback is not an edit, so every control here works for a viewer too.
-export function Transport() {
-  const doc = useEditor(viewDoc);
+// The play controls, in the control row above the timeline. Playback is not an edit, so they work for a viewer too.
+export function TransportButtons() {
   const playing = useEditor((s) => s.playing);
-  const rate = useEditor((s) => s.rate);
+  const duration = useEditor((s) => docDuration(viewDoc(s)));
   const seek = useEditor((s) => s.seek);
   const step = useEditor((s) => s.step);
   const play = useEditor((s) => s.play);
   const pause = useEditor((s) => s.pause);
-  const duration = useMemo(() => docDuration(doc), [doc]);
   const keyFor = useShortcutLabel();
   const playKey = keyFor("play-pause");
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-t border-ed-line bg-ed-panel px-3">
-      <div className="flex items-center gap-1">
-        <IconButton label="Go to start" shortcut={keyFor("go-start")} onClick={() => seek(0)}>
-          <SkipBack />
+    <div className="flex shrink-0 items-center gap-1">
+      <IconButton label="Go to start" shortcut={keyFor("go-start")} onClick={() => seek(0)}>
+        <SkipBack />
+      </IconButton>
+      <IconButton label="Back one frame" shortcut={keyFor("frame-back")} onClick={() => step(-1)}>
+        <StepBack />
+      </IconButton>
+      {playing ? (
+        <IconButton label="Pause" shortcut={playKey} className="[&>svg]:text-ed-accent" onClick={() => pause()}>
+          <Pause />
         </IconButton>
-        <IconButton label="Back one frame" shortcut={keyFor("frame-back")} onClick={() => step(-1)}>
-          <StepBack />
+      ) : (
+        <IconButton label="Play" shortcut={playKey} className="[&>svg]:text-ed-accent" disabled={duration === 0} onClick={() => play()}>
+          <Play />
         </IconButton>
-        {playing ? (
-          <IconButton label="Pause" shortcut={playKey} className="[&>svg]:text-ed-accent" onClick={() => pause()}>
-            <Pause />
-          </IconButton>
-        ) : (
-          <IconButton label="Play" shortcut={playKey} className="[&>svg]:text-ed-accent" disabled={duration === 0} onClick={() => play()}>
-            <Play />
-          </IconButton>
-        )}
-        <IconButton label="Forward one frame" shortcut={keyFor("frame-forward")} onClick={() => step(1)}>
-          <StepForward />
-        </IconButton>
-        <IconButton label="Go to end" shortcut={keyFor("go-end")} onClick={() => seek(duration)}>
-          <SkipForward />
-        </IconButton>
-      </div>
-      <TimeReadout duration={duration} fps={doc.fps} />
-      {playing && rate !== 1 && (
-        <span className="shrink-0 rounded-[4px] border border-ed-line px-1.5 font-mono text-[11px] leading-4 font-medium text-ed-muted tabular-nums">
-          {rateLabel(rate)}
-        </span>
       )}
-      <div className="ml-auto flex min-w-0 items-center gap-2">
-        <ZoomMenu />
-        <ViewAsMenu />
-        <span className="truncate text-xs text-ed-muted">{formatLabel(doc)}</span>
-      </div>
+      <IconButton label="Forward one frame" shortcut={keyFor("frame-forward")} onClick={() => step(1)}>
+        <StepForward />
+      </IconButton>
+      <IconButton label="Go to end" shortcut={keyFor("go-end")} onClick={() => seek(duration)}>
+        <SkipForward />
+      </IconButton>
     </div>
+  );
+}
+
+// How fast playback runs, while it is not 1×.
+export function RateBadge() {
+  const playing = useEditor((s) => s.playing);
+  const rate = useEditor((s) => s.rate);
+  if (!playing || rate === 1) return null;
+  return (
+    <span className="shrink-0 rounded-[4px] border border-ed-line px-1.5 font-mono text-[11px] leading-4 font-medium text-ed-muted tabular-nums">
+      {rateLabel(rate)}
+    </span>
   );
 }
 
 // Its own component, so only the readout re-renders while the playhead moves. Double-click the time (or press Enter on
 // it) to type one and jump there: "0:02:10", "1:30" or "12" all work, and a time past the end stops at the end.
-function TimeReadout({ duration, fps }: { duration: number; fps: number }) {
+export function TimeReadout({ duration, fps }: { duration: number; fps: number }) {
   const store = useEditorStore();
   const playhead = useEditor((s) => s.playhead);
   const [editing, setEditing] = useState(false);
@@ -137,6 +133,7 @@ function TimeReadout({ duration, fps }: { duration: number; fps: number }) {
 
 const OFF = "off";
 const SAFE = "safe";
+const GUIDES = "guides";
 const VIEW_AS_KEY = "easyedit.viewAs"; // this browser's last platform view
 
 function readViewAs(): string | null {
@@ -158,7 +155,7 @@ function writeViewAs(id: string | null) {
 
 // "View as": Off, the safe area, or how one platform shows a frame of this shape. A platform choice is this
 // browser's own and comes back next time when the project's shape offers it; it only changes what is seen.
-function ViewAsMenu() {
+export function ViewAsMenu() {
   const store = useEditorStore();
   const width = useEditor((s) => viewDoc(s).width);
   const height = useEditor((s) => viewDoc(s).height);
@@ -179,12 +176,16 @@ function ViewAsMenu() {
       { id: OFF, label: "Off", radio: true, checked: current === OFF },
       { id: SAFE, label: "Safe area", radio: true, checked: current === SAFE },
       ...platformViewsFor(size).map((v, i) => ({ id: v.id, label: v.label, radio: true, checked: current === v.id, separatorBefore: i === 0 })),
+      // The project's guides: a switch of this browser's own, apart from the views above.
+      { id: GUIDES, label: "Show guides", checked: store.getState().showGuides, separatorBefore: true },
     ];
   }
 
   function onSelect(id: string) {
     const state = store.getState();
-    if (id === SAFE) {
+    if (id === GUIDES) {
+      state.setShowGuides(!state.showGuides);
+    } else if (id === SAFE) {
       if (!state.showSafeZones) state.toggleSafeZones();
       writeViewAs(null);
     } else if (id === OFF) {

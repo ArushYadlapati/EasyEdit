@@ -20,11 +20,9 @@ import { decodeImage } from "./media/frame-decode";
 import { useMedia, type MediaServices } from "./media/media-context";
 import { createMediaPool, upcomingWants, type PoolDeps } from "./media/media-pool";
 import { pageFontResolver } from "./page-fonts";
-import { Transport } from "./transport";
 import { useBoardDrop } from "./use-board-drop";
 import { usePlayback } from "./use-playback";
 import { PlatformOverlay } from "./platform-overlay";
-import { BoardScaleContext } from "./zoom-menu";
 
 // What the board last showed, so a zoom change, or a pane resize at a fixed zoom, can keep the same middle.
 type Shown = { zoom: BoardZoom; layout: BoardLayout; pane: Size; scroll: { left: number; top: number } };
@@ -108,6 +106,8 @@ export function Preview() {
   // The frame moved on screen: a new pane size or zoom (after the scroll that keeps the middle), or a scroll of the
   // board, told at most once per animation frame.
   useLayoutEffect(() => surface.changed(), [surface, layout]);
+  // The zoom menu lives in the control row, away from here: it reads the scale shown from the store.
+  useLayoutEffect(() => store.getState().setBoardScale(layout.k), [store, layout.k]);
   useEffect(() => {
     const el = paneRef.current;
     if (!el) return;
@@ -302,9 +302,6 @@ export function Preview() {
           </div>
         )}
       </div>
-      <BoardScaleContext value={layout.k}>
-        <Transport />
-      </BoardScaleContext>
     </div>
   );
 }

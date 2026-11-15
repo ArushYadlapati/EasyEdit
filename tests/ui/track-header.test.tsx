@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider, useEditor } from "@/components/editor/context";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
-import { Toolbar } from "@/components/editor/timeline/toolbar";
+import { ControlRow } from "@/components/editor/control-row";
 import { TrackHeader } from "@/components/editor/timeline/track-header";
 import { displayRows } from "@/lib/editor/geometry";
 import { LIMITS } from "@/lib/limits";
@@ -326,7 +326,7 @@ describe("toolbar", () => {
     const store = makeStore({ doc: full });
     render(
       <EditorProvider store={store}>
-        <Toolbar duration={120} fps={30} />
+        <ControlRow duration={120} fps={30} />
       </EditorProvider>,
     );
     const add = screen.getByRole("button", { name: "Add track" }) as HTMLButtonElement;

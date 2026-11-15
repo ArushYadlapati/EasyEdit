@@ -24,7 +24,7 @@ import { useLibrary, useMediaDrop, useMediaDropState } from "../media/media-cont
 import { PeerSelections } from "./peer-selections";
 import { LANE_GUTTER, PlayheadLine } from "./playhead";
 import { Ruler } from "./ruler";
-import { Toolbar } from "./toolbar";
+import { ControlRow } from "../control-row";
 import { CLIP_HEIGHT, CLIP_TOP } from "./clip-view";
 import { TrackRow, useLaneMenu } from "./track-row";
 import { UploadPlaceholders } from "./upload-placeholders";
@@ -206,7 +206,7 @@ export function Timeline() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Toolbar duration={duration} fps={fps} />
+      <ControlRow duration={duration} fps={fps} />
       <div data-drop={over ? "over" : armed ? "armed" : "idle"} className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}

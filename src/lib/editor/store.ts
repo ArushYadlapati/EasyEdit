@@ -71,6 +71,7 @@ export type EditorState = {
   // The guide picked on the preview, this person's own. Picking a clip or a track clears it; so does its removal.
   guideId: string | null;
   showGuides: boolean; // this browser's choice, from View as
+  boardScale: number; // CSS pixels per project pixel on the preview as drawn now, so the zoom menu's Custom… starts there
   exporting: boolean; // an export is running in this tab
   exportHeld: boolean; // a finished export waits in this tab for its Download click
 
@@ -111,6 +112,7 @@ export type EditorState = {
   setTool(tool: Tool): boolean; // false: a tool that changes the project, for someone who can't edit
   selectGuide(guideId: string | null): void; // clears the clip and track selection; a guide not there selects nothing
   setShowGuides(on: boolean): void; // hiding them clears the selected guide
+  setBoardScale(k: number): void;
   setTextEdit(clipId: string | null): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
   setExporting(on: boolean): void;
   setExportHeld(on: boolean): void;
@@ -326,6 +328,7 @@ export function createEditorStore(
       showGuides: deps.view?.showGuides ?? true,
       tool: "select",
       guideId: null,
+      boardScale: 1,
       viewAs: null,
       cropArmed: null,
       textEditId: null,
@@ -645,6 +648,10 @@ export function createEditorStore(
         const state = get();
         if (guideId !== null && (!state.showGuides || !hasGuide(state.doc, guideId))) return;
         set({ guideId, selection: { clipIds: [], trackId: null }, cropArmed: null });
+      },
+
+      setBoardScale(k) {
+        if (Number.isFinite(k) && k > 0 && k !== get().boardScale) set({ boardScale: k });
       },
 
       setShowGuides(on) {

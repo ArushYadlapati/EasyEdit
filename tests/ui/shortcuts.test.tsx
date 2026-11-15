@@ -241,9 +241,10 @@ it("buttons that have a key show it in their tooltip", () => {
   expect(shortcutFor("delete", mac)).toBe(mac ? "⌫" : "Del");
   expect(hint("Ripple delete")).toBe(`Ripple delete (${shortcutFor("ripple-delete", mac)})`);
   expect(hint("Snap")).toBe("Snap (N)");
-  expect(hint("Zoom in")).toBe("Zoom in (=)");
-  expect(hint("Zoom out")).toBe("Zoom out (-)");
-  expect(hint("Fit")).toBe(`Fit (${shortcutFor("zoom-fit", mac)})`);
+  expect(hint("Zoom timeline in")).toBe("Zoom timeline in (=)");
+  expect(hint("Zoom timeline out")).toBe("Zoom timeline out (-)");
+  expect(hint("Fit timeline")).toBe(`Fit timeline (${shortcutFor("zoom-fit", mac)})`);
+  expect(hint("Selection")).toBe("Selection (V)");
   expect(hint("Play")).toBe("Play (Space)");
   expect([hint("Go to start"), hint("Back one frame"), hint("Forward one frame"), hint("Go to end")]).toEqual([
     "Go to start (Home)", "Back one frame (←)", "Forward one frame (→)", "Go to end (End)",
@@ -384,7 +385,7 @@ it("with all shortcuts off the browser gets every key", () => {
   expect(st().selection.clipIds).toEqual(["x1"]);
   expect(matchMedia).not.toHaveBeenCalled();
   // Hints drop their keys too.
-  const hinted = ["Undo", "Redo", "Keyboard shortcuts", "Split", "Delete", "Ripple delete", "Snap", "Zoom in", "Zoom out", "Fit"];
+  const hinted = ["Undo", "Redo", "Keyboard shortcuts", "Split", "Delete", "Ripple delete", "Snap", "Zoom timeline in", "Zoom timeline out", "Fit timeline", "Selection", "Razor"];
   const transport = ["Go to start", "Back one frame", "Play", "Forward one frame", "Go to end"];
   for (const name of [...hinted, ...transport]) expect(titleOf(name)).toBe(name);
 });

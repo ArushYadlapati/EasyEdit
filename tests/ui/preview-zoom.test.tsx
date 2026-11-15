@@ -4,6 +4,7 @@ import { StrictMode, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { Preview } from "@/components/editor/preview";
+import { ZoomMenu } from "@/components/editor/zoom-menu";
 import { DEFAULT_PREFS, createSettingsStore, type BoardZoom } from "@/lib/editor/settings";
 import type { EditorInit } from "@/lib/editor/types";
 import { drawFrame } from "@/lib/render/compositor";
@@ -72,6 +73,7 @@ function show(opts: { boardZoom?: BoardZoom; over?: Partial<EditorInit>; strict?
   const tree: ReactNode = (
     <EditorProvider store={store} settings={settings}>
       <Preview />
+      <ZoomMenu />
     </EditorProvider>
   );
   render(opts.strict ? <StrictMode>{tree}</StrictMode> : tree);
@@ -99,13 +101,10 @@ describe("board zoom", () => {
   it("the zoom button reads Fill and names itself", () => {
     show();
     const button = screen.getByRole("button", { name: "Preview zoom: Fill to size" });
-    expect(button.textContent).toBe("Fill");
+    expect(button.textContent).toBe("Board: Fill");
     expect(button.getAttribute("title")).toBe("Preview zoom");
-    expect(classes(button)).toEqual(expect.arrayContaining(["w-16", "tabular-nums"]));
-    // In the transport's right group, just before View as.
-    const safeZones = screen.getByRole("button", { name: "View as: Off" });
-    expect(button.closest(".ml-auto")).toBe(safeZones.closest(".ml-auto"));
-    expect(button.compareDocumentPosition(safeZones) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(classes(button)).toEqual(expect.arrayContaining(["shrink-0", "tabular-nums"]));
+    // Where it sits, just before View as, is the control row's test.
     const chevron = button.querySelector("svg")!;
     expect(chevron.getAttribute("aria-hidden")).toBe("true");
     expect(chevron.getAttribute("width")).toBe("12");
@@ -150,7 +149,7 @@ describe("board zoom", () => {
     expect(classes(board())).toContain("overscroll-contain");
     expect(board().scrollLeft).toBe(270);
     expect(board().scrollTop).toBe(480);
-    expect(trigger().textContent).toBe("100%");
+    expect(trigger().textContent).toBe("Board: 100%");
     expect(trigger().getAttribute("aria-label")).toBe("Preview zoom: 100%");
     expect(settings.getState().boardZoom).toBe(100);
     fireEvent.click(trigger());
@@ -190,7 +189,7 @@ describe("board zoom", () => {
     fireEvent.change(field, { target: { value: "133" } });
     fireEvent.click(dialog.getByRole("button", { name: "Apply" }));
     expect(document.querySelector("dialog[open]")).toBeNull();
-    expect(trigger().textContent).toBe("133%");
+    expect(trigger().textContent).toBe("Board: 133%");
     expect(settings.getState().boardZoom).toBe(133);
     expect(frame().style.width).toBe(`${1080 * 1.33}px`);
     fireEvent.click(trigger());
@@ -203,7 +202,7 @@ describe("board zoom", () => {
     fireEvent.change(again, { target: { value: "1000" } });
     fireEvent.keyDown(again, { key: "Enter" });
     expect(document.querySelector("dialog[open]")).toBeNull();
-    expect(trigger().textContent).toBe("400%");
+    expect(trigger().textContent).toBe("Board: 400%");
     expect(settings.getState().boardZoom).toBe(400);
   });
 
@@ -234,7 +233,7 @@ describe("board zoom", () => {
     fireEvent.change(field, { target: { value: "5" } });
     fireEvent.keyDown(field, { key: "Enter" });
     expect(settings.getState().boardZoom).toBe(10);
-    expect(trigger().textContent).toBe("10%");
+    expect(trigger().textContent).toBe("Board: 10%");
   });
 
   it("Fill refits when the pane changes; a fixed size stays", () => {
@@ -273,7 +272,7 @@ describe("board zoom", () => {
 
   it("a fresh render starts at the saved zoom", () => {
     show({ boardZoom: 150 });
-    expect(trigger().textContent).toBe("150%");
+    expect(trigger().textContent).toBe("Board: 150%");
     expect(screen.getByRole("button", { name: "Preview zoom: 150%" })).toBeTruthy();
     expect(frame().style.width).toBe("1620px");
   });

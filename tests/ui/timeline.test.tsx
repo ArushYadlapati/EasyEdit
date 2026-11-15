@@ -85,7 +85,7 @@ it("Fit always returns to the start, and zooming out to the minimum keeps the le
   expect(st().fitRequest).toBe(1); // the first measurement fits
   const fitted = st().zoom;
   scrollTo(500);
-  fireEvent.click(screen.getByRole("button", { name: "Fit" }));
+  fireEvent.click(screen.getByRole("button", { name: "Fit timeline" }));
   expect(st().zoom).toBe(fitted);
   expect(scroller.scrollLeft).toBe(0);
   unmount();
@@ -98,7 +98,7 @@ it("Fit always returns to the start, and zooming out to the minimum keeps the le
   long.scrollTo(100_000); // the playhead at 0 is out of view, so the left edge is kept
   const leftFrame = () => (long.scroller.scrollLeft - LANE_GUTTER) / long.st().zoom;
   const before = leftFrame();
-  const zoomOut = screen.getByRole("button", { name: "Zoom out" }) as HTMLButtonElement;
+  const zoomOut = screen.getByRole("button", { name: "Zoom timeline out" }) as HTMLButtonElement;
   for (let i = 0; i < 100 && !zoomOut.disabled; i++) fireEvent.click(zoomOut);
   expect(zoomOut.disabled).toBe(true);
   expect(long.st().zoom).toBe(0.02);
