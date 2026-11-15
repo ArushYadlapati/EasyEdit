@@ -10,6 +10,7 @@ import { cssFontFamily } from "@/lib/editor/fonts";
 import { TEXT_PRESETS, presetFont, type TextPreset } from "@/lib/editor/text-presets";
 import type { AssetView } from "@/lib/media/types";
 import { useBrand } from "./brand/brand-context";
+import { BrandTab } from "./brand/brand-tab";
 import { useEditor, useEditorStore, useSettingsStore } from "./context";
 import { useMediaDrop } from "./media/media-context";
 import { MediaTab, type PanelProps } from "./media/media-tab";
@@ -19,6 +20,7 @@ import { useIsMac } from "./use-shortcuts";
 const TABS = [
   { id: "text", label: "Text" },
   { id: "media", label: "Media" },
+  { id: "brand", label: "Brand kit" },
 ];
 
 // Each preset adds itself at the playhead on a click, or from its right-click menu, in its brand kit font, which its
@@ -102,7 +104,13 @@ export function LeftPanel() {
       <div className="flex h-11 shrink-0 items-center border-b border-ed-line px-3">
         <Tabs label="Add" value={current.id} tabs={TABS} onChange={setTab} idPrefix={idPrefix} />
       </div>
-      {current.id === "text" ? <TextTab panel={panel} /> : <MediaTab panel={panel} onAdd={addAsset} />}
+      {current.id === "text" ? (
+        <TextTab panel={panel} />
+      ) : current.id === "brand" ? (
+        <BrandTab panel={panel} />
+      ) : (
+        <MediaTab panel={panel} onAdd={addAsset} />
+      )}
     </div>
   );
 }

@@ -72,6 +72,22 @@ export function addMedia(
   return result.ok;
 }
 
+// Sets every selected text clip to the color, as one change. With no text clip selected it says how to use it.
+export function recolorSelection(store: EditorStore, color: string): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const texts = state.selection.clipIds.flatMap((id) => {
+    const clip = findClip(state.doc, id)?.clip;
+    return clip?.type === "text" ? [clip] : [];
+  });
+  if (texts.length === 0) {
+    state.notify("info", MESSAGES.selectTextToRecolor);
+    return;
+  }
+  const ops: OpInput[] = texts.filter((c) => c.style.color.toLowerCase() !== color).map((c) => ({ op: "update_clip", clipId: c.id, patch: { style: { color } } }));
+  if (ops.length > 0) state.edit(ops, "style change");
+}
+
 // The runners below edit the project. For a viewer they do nothing and say nothing.
 
 // Cuts the selected clips under the playhead, or every clip under it on unlocked tracks.
