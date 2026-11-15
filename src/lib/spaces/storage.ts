@@ -1,3 +1,4 @@
+import "server-only";
 import { type DriveClient } from "@/lib/drive/client";
 import { getDrive } from "@/lib/drive";
 import { SEED_TEAM_ID } from "./types";
