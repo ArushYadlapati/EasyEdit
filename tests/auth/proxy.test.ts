@@ -7,7 +7,7 @@ const matches = (url: string) => unstable_doesMiddlewareMatch({ config, url });
 
 describe("proxy", () => {
   it("runs on app pages and app API routes", () => {
-    for (const url of ["/", "/dashboard", "/admin", "/editor/abc", "/api/projects", "/api/projects/abc/ops", "/api/projects/abc/thumbnail", "/loginx", "/consent"]) {
+    for (const url of ["/dashboard", "/admin", "/editor/abc", "/api/projects", "/api/projects/abc/ops", "/api/projects/abc/thumbnail", "/loginx", "/consent", "/privacyx"]) {
       expect(matches(url), url).toBe(true);
     }
   });
@@ -49,4 +49,9 @@ describe("proxy", () => {
     expect(getRedirectUrl(res)).toBeNull();
     expect(res.headers.get("x-middleware-next")).toBe("1");
   });
+
+  it("skips the home page and the privacy page, which the pages themselves guard", () => {
+    for (const url of ["/", "/privacy"]) expect(matches(url), url).toBe(false);
+  });
+
 });

@@ -117,6 +117,20 @@ Good to know:
 - Do not rename or move the files in the drive by hand. Rename and remove them in the app instead.
 - Uploads work only from the address in `BETTER_AUTH_URL`. A preview deployment or another address cannot upload.
 
+## Storage per space
+
+Each space (your personal one, or a team) can keep its media in its own Google Drive. This is optional: until you set it up, Seattle Solvers keeps working with the media storage above, and other spaces say storage isn't set up on this server.
+
+1. **`STORAGE_TOKEN_KEY`.** It encrypts the Google tokens EasyEdit stores. Make one with `openssl rand -base64 32` and put it in `.env.local` (and in Vercel). Without it nobody can connect a Google Drive.
+2. **A redirect URI.** In Google Cloud, open the OAuth client you use for sign-in and add `<your site>/api/storage/callback` as an authorized redirect URI, for example `http://localhost:3000/api/storage/callback`. Save.
+3. **The Drive permission.** On the OAuth consent screen, add the scope `https://www.googleapis.com/auth/drive.file`. EasyEdit asks for nothing wider: it sees only the files it creates.
+4. **Two APIs.** In APIs & Services, Library, enable the "Identity and Access Management (IAM) API" and the "IAM Service Account Credentials API".
+5. **Roles for the media service account.** The service account in `GOOGLE_SERVICE_ACCOUNT_KEY` needs two roles on the project: "Service Account Admin" (`roles/iam.serviceAccountAdmin`) and "Service Account Token Creator" (`roles/iam.serviceAccountTokenCreator`). In IAM & Admin, IAM, grant access to its address with both roles.
+6. **`GOOGLE_CLOUD_PROJECT`.** Set it to the id of the Google Cloud project where EasyEdit creates each team's read-only reader service account. Without it, teams can't get storage; personal spaces still can.
+7. **`OPEN_SIGNUP`.** Set it to `true` to let anyone with a Google account sign up. Leave it unset until the Google sign-in screen is published.
+
+While the Google sign-in screen is in "Testing", only the listed test users can sign in, and Google cuts off every connected Drive after 7 days. To publish it, Google needs a home page and a privacy policy on a domain you own: a `vercel.app` address can't be verified. EasyEdit has both (`/` and `/privacy`). The privacy page is a draft: read it, fill in `privacy@<your-domain>`, and remove the "Draft" line before you publish.
+
 ## 4. Run it
 
 Create the database tables, add the first admin, and start the app:

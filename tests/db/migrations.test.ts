@@ -547,4 +547,11 @@ describe("resyncing spaces after the earlier version was live", () => {
     const readme = readFileSync("docs/deploy.md", "utf8");
     for (const statement of RESYNC_SPACES) expect(readme).toContain(statement);
   });
+
+  it("the deploy guide has the storage per space paragraph", () => {
+    const guide = readFileSync("docs/deploy.md", "utf8");
+    expect(guide).toContain("**Before deploying the version with storage per space:** run the migration `0013_space_storage` against `dev` first");
+    expect(guide).toContain("it can't start new uploads");
+    expect(guide).toContain("Leave `OPEN_SIGNUP` unset");
+  });
 });
