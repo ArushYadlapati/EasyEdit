@@ -142,20 +142,20 @@ describe("the settings layout and tabs", () => {
     at.path = "/s/robots/settings/members";
     const member = await layout(bea, "robots");
     const tabs = () => within(screen.getByRole("navigation", { name: "Settings" })).getAllByRole("link");
-    expect(tabs().map((t) => t.textContent)).toEqual(["Members"]);
+    expect(tabs().map((t) => t.textContent)).toEqual(["Members", "Brand kit"]);
     expect(tabs()[0]!.getAttribute("href")).toBe("/s/robots/settings/members");
     expect(tabs()[0]!.getAttribute("aria-current")).toBe("page");
     member.unmount();
 
     await layout(ada, "robots");
-    expect(tabs().map((t) => t.textContent)).toEqual(["Members", "Storage"]);
+    expect(tabs().map((t) => t.textContent)).toEqual(["Members", "Storage", "Brand kit"]);
   });
 
   it("a personal space shows only Storage", async () => {
     at.path = "/s/personal/settings/storage";
     await layout(ada, "personal");
     const tabs = within(screen.getByRole("navigation", { name: "Settings" })).getAllByRole("link");
-    expect(tabs.map((t) => t.textContent)).toEqual(["Storage"]);
+    expect(tabs.map((t) => t.textContent)).toEqual(["Storage", "Brand kit"]);
   });
 
   it("/s/<space>/settings opens the first tab the viewer may see", async () => {
