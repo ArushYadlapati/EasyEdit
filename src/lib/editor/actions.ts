@@ -27,18 +27,29 @@ import { presetClip, type TextPreset } from "./text-presets";
 
 // Puts a text preset at the playhead, on the selected text track when it has room, and selects it. The length in
 // seconds is the caller's (Settings), else the default; the fonts are the space's brand kit's, else the default kit's.
-export function addText(store: EditorStore, preset: TextPreset, seconds?: number, fonts?: BrandFonts): void {
+export function addText(
+  store: EditorStore,
+  preset: TextPreset,
+  seconds?: number,
+  fonts?: BrandFonts,
+  at?: { x: number; y: number },
+): string | null {
   const state = store.getState();
-  if (!state.canEdit) return;
+  if (!state.canEdit) return null;
   const selected = state.doc.tracks.find((t) => t.id === state.selection.trackId);
   const trackId = selected?.kind === "text" ? selected.id : null;
-  const placement = placeClips(state.doc, [{ clip: presetClip(preset, state.playhead, state.doc.fps, seconds, fonts), trackId }], () => nanoid(10));
+  const clip = presetClip(preset, state.playhead, state.doc.fps, seconds, fonts);
+  // at: where the Text tool was clicked, as shares of the frame, kept inside it.
+  if (at) clip.transform = { ...clip.transform, x: Math.min(1, Math.max(0, at.x)), y: Math.min(1, Math.max(0, at.y)) };
+  const placement = placeClips(state.doc, [{ clip, trackId }], () => nanoid(10));
   if (!placement.ok) {
     state.notify("error", MESSAGES.noRoom);
-    return;
+    return null;
   }
   const result = state.edit(placement.ops, "add text");
-  if (result.ok) state.select(placement.clipIds);
+  if (!result.ok) return null;
+  state.select(placement.clipIds);
+  return placement.clipIds[0] ?? null;
 }
 
 // Puts a clip of a library asset at the frame given, else the playhead, and selects it unless select is false. The

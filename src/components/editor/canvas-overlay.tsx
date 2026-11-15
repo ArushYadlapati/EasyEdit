@@ -24,14 +24,16 @@ import {
   type PreviewSurface,
   type View,
 } from "@/lib/editor/canvas-geometry";
-import { editTextInPlace } from "@/lib/editor/actions";
+import { addText, editTextInPlace } from "@/lib/editor/actions";
 import { guideAt } from "@/lib/editor/guides";
+import { TEXT_PRESETS } from "@/lib/editor/text-presets";
 import { previewMenu, rightClickEntries } from "@/lib/editor/menus";
 import { clipMarks, type Peer } from "@/lib/editor/presence";
 import { viewDoc, type EditorState } from "@/lib/editor/store";
 import type { TimelineDoc } from "@/lib/timeline";
+import { useBrand } from "./brand/brand-context";
 import { CanvasTextEditor } from "./canvas-text-editor";
-import { useClipboard, useEditor, useEditorStore } from "./context";
+import { useClipboard, useEditor, useEditorStore, useSettingsStore } from "./context";
 import { useToMenuItems } from "./menu-items";
 import { CLICK_SLOP_PX } from "./timeline/use-clip-drag";
 import { PEER_MORE, peerLook } from "./peer-look";
@@ -104,6 +106,9 @@ const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], placed: []
 // A clamped handle being dragged is drawn at the pointer (client pixels, null until it moves), clamped the same way.
 type Follow = { pointerId: number; grip: Handle; client: Point | null };
 
+// The Text tool's body text, in the space's brand kit fonts.
+const TEXT_TOOL_PRESET = TEXT_PRESETS.find((p) => p.id === "body") ?? TEXT_PRESETS[0];
+
 // A press waiting for its release: on a selected clip the release leaves only that clip ("only"); with Shift, Cmd
 // or (away from a Mac) Ctrl it toggles the clip. A pointer that passes the click slop does neither.
 type Press = { pointerId: number; clipId: string; x: number; y: number; then: "toggle" | "only" | null };
@@ -121,8 +126,8 @@ const px = (v: number) => Math.round(v * 100) / 100;
 // right-click, except on a resize handle, where Ctrl crops and the browser's right-click is kept from opening a menu.
 // A double-click on text opens its box for typing in place (or says its track is locked); while the box is open its
 // clip has no outline or handles, and what lands in the box is the box's.
-// The handles but rotate show as crop marks while Ctrl is down with the pointer over the board, while a drag crops, and
-// while the clip menu's Crop has armed the clip; while handles show, a lone Alt (which resizes about the middle) never
+// The handles but rotate show as crop marks while Ctrl is down with the pointer over the board, while a drag crops,
+// while the Crop tool is on, and while the clip menu's Crop has armed the clip; while handles show, a lone Alt (which resizes about the middle) never
 // reaches the browser, so it does not open a Windows browser's menu.
 // Teammates' selections are outlined in their colours, outside the clip and under your own outline, with a name pill
 // each; only clips drawn now get them, and none while playing. They never change what a press takes.
@@ -155,6 +160,12 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const peerLabels = useStore(drawn, (s) => s.peerLabels);
   const handlesShown = handles.length > 0;
   const textEditId = useEditor((s) => s.textEditId);
+  const settings = useSettingsStore();
+  const { fonts } = useBrand().kit;
+  // The tool shows in the cursor: text for Text, a crosshair for Guide. Someone who can't edit keeps Selection.
+  const tool = useEditor((s) => (s.canEdit ? s.tool : "select"));
+  // A Text tool press waiting for its release, which adds or opens text there if the pointer stayed put.
+  const textPress = useRef<{ pointerId: number; x: number; y: number } | null>(null);
 
   useLayoutEffect(() => {
     const refresh = () => {
@@ -168,7 +179,8 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         const f = follow.current;
         const followed = f?.client ? { grip: f.grip, at: { x: f.client.x - box.left, y: f.client.y - box.top } } : null;
         const cropping = drag.cropping.getState().clipId;
-        const marks = (clipId: string) => (ctrlDown.current && pointerOver.current) || cropping === clipId || state.cropArmed === clipId;
+        const marks = (clipId: string) =>
+          (ctrlDown.current && pointerOver.current) || cropping === clipId || state.cropArmed === clipId || (state.canEdit && state.tool === "crop");
         const cut = items.find((i) => i.clipId === cropping);
         // The text being typed in place shows its own box instead.
         const framed = items.filter((i) => i.clipId !== state.textEditId);
@@ -204,6 +216,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         s.cropArmed !== prev.cropArmed ||
         s.textEditId !== prev.textEditId ||
         s.guideId !== prev.guideId ||
+        s.tool !== prev.tool ||
         s.showGuides !== prev.showGuides ||
         viewDoc(s).guides !== viewDoc(prev).guides
       ) {
@@ -305,6 +318,10 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       guideDrag.press(e, null);
       return;
     }
+    if (state.canEdit && state.tool === "text") {
+      textPress.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+      return;
+    }
     const doc = viewDoc(state);
     const onGuide =
       state.canEdit && state.showGuides && state.tool !== "text"
@@ -346,9 +363,35 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     if (Math.hypot(e.clientX - p.x, e.clientY - p.y) >= CLICK_SLOP_PX) p.then = null;
   }
 
+  // The Text tool's click: on a text clip it opens that text; anywhere else it adds body text centred there, at the
+  // playhead, and opens it. Either way the tool goes back to Selection.
+  function textToolClick(clientX: number, clientY: number) {
+    const view = surface.view();
+    const state = store.getState();
+    if (!view || !state.canEdit) return;
+    const hit = hitAt(state, view, clientX, clientY, false);
+    const found = hit ? viewDoc(state).tracks.flatMap((t) => t.clips).find((c) => c.id === hit.clipId) : undefined;
+    if (hit && found?.type === "text") {
+      editTextInPlace(store, hit.clipId);
+    } else {
+      const doc = viewDoc(state);
+      const point = fromScreen(view, clientX, clientY);
+      const at = { x: point.x / doc.width, y: point.y / doc.height };
+      const id = addText(store, TEXT_TOOL_PRESET, settings.getState().textSeconds, fonts, at);
+      if (id) editTextInPlace(store, id);
+    }
+    store.getState().setTool("select");
+  }
+
   function onPointerUp(e: PointerEvent<HTMLDivElement>) {
     ctrlCrop.current = false;
     stopFollowing(e.pointerId);
+    const typed = textPress.current;
+    textPress.current = null;
+    if (typed && typed.pointerId === e.pointerId && Math.hypot(e.clientX - typed.x, e.clientY - typed.y) < CLICK_SLOP_PX) {
+      textToolClick(e.clientX, e.clientY);
+      return;
+    }
     const p = press.current;
     press.current = null;
     if (!p || p.pointerId !== e.pointerId || p.then === null) return;
@@ -406,7 +449,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     <div
       ref={ref}
       data-canvas-overlay
-      className="absolute inset-0 touch-none select-none"
+      className={cx("absolute inset-0 touch-none select-none", tool === "text" && "cursor-text", tool === "guide" && "cursor-crosshair")}
       onPointerDown={onPointerDown}
       onPointerEnter={() => setOver(true)}
       onPointerLeave={() => setOver(false)}
@@ -414,6 +457,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       onPointerUp={onPointerUp}
       onPointerCancel={(e) => {
         press.current = null;
+        textPress.current = null;
         ctrlCrop.current = false;
         stopFollowing(e.pointerId);
       }}

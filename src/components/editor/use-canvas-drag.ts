@@ -45,7 +45,7 @@ export type CanvasDragController = {
   // The lines a moved clip is snapped onto (the frame's edges and centre lines, another clip's side or middle), in
   // project pixels, while it is snapped there.
   guides: StoreApi<Guides>;
-  // The clip a handle drag crops now: with Ctrl, or armed by the clip menu's Crop.
+  // The clip a handle drag crops now: with Ctrl, with the Crop tool, or armed by the clip menu's Crop.
   cropping: StoreApi<Cropping>;
   dispose(): void;
 };
@@ -94,7 +94,8 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
 
   // A handle drag crops while Ctrl is down or while the clip menu's Crop has armed its clip.
   function crops(s: Session): boolean {
-    return s.drag?.type === "resize" && (s.ctrl || store.getState().cropArmed === s.clipId);
+    const state = store.getState();
+    return s.drag?.type === "resize" && (s.ctrl || state.cropArmed === s.clipId || state.tool === "crop");
   }
 
   // The drag begins from the clip as it is drawn now. Null when it cannot: the clip is gone, off the playhead, or on
