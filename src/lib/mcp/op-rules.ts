@@ -37,11 +37,11 @@ function namedAsset(op: unknown): { assetId: string; clipType?: AssetKind } | nu
 
 // The first op that names an asset the library cannot give it, or null. Makes no query when no op names an asset.
 // The projects service checks the same rules again, and it alone checks lengths.
-export async function checkAssetOps(db: DB, ops: unknown[]): Promise<OpHit | null> {
+export async function checkAssetOps(db: DB, spaceId: string, ops: unknown[]): Promise<OpHit | null> {
   const named = ops.map(namedAsset);
   const ids = named.flatMap((n) => (n ? [n.assetId] : []));
   if (ids.length === 0) return null;
-  const facts = await loadAssetFacts(db, ids);
+  const facts = await loadAssetFacts(db, spaceId, ids);
   for (const [opIndex, n] of named.entries()) {
     if (!n) continue;
     const fact = facts.get(n.assetId);

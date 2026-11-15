@@ -9,7 +9,6 @@ import { DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { getUserNames } from "@/lib/projects/user-names";
 import { ServiceError } from "@/lib/service-error";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { graphemes, isStorableText } from "@/lib/text";
 import { FILE_REFUSALS, MEDIA_MESSAGES, NAMED_PROJECTS } from "./messages";
 import { checkFile, cleanName, driveName, probeFits } from "./rules";
@@ -23,13 +22,16 @@ type AssetRow = typeof assets.$inferSelect;
 
 const refusedFile = (reason: keyof typeof FILE_REFUSALS) => new ServiceError("INVALID", 400, FILE_REFUSALS[reason]);
 const gone = () => new ServiceError("NOT_FOUND", 404, MEDIA_MESSAGES.gone);
+// What an asset that is missing, removed or in another space is answered with.
+export const assetGone = gone;
 const tooManyUnfinished = () => new ServiceError("LIMIT_EXCEEDED", 400, MEDIA_MESSAGES.tooManyUnfinished);
 const notFinished = () => new ServiceError("CONFLICT", 409, MEDIA_MESSAGES.notFinished);
 
 const unfinished = eq(assets.status, "uploading");
-const unfinishedOf = (actor: Actor) => and(eq(assets.uploadedBy, actor.userId), unfinished);
-// What a member is shown: every finished asset, and of the unfinished uploads only their own.
-const shownTo = (actor: Actor) => or(eq(assets.status, "ready"), unfinishedOf(actor));
+const inSpace = (actor: Actor) => eq(assets.spaceId, actor.spaceId);
+const unfinishedOf = (actor: Actor) => and(inSpace(actor), eq(assets.uploadedBy, actor.userId), unfinished);
+// What a member is shown: every finished asset of the space, and of the unfinished uploads only their own.
+const shownTo = (actor: Actor) => and(inSpace(actor), or(eq(assets.status, "ready"), unfinishedOf(actor)));
 // What a member can change: what they are shown, while it is in the library.
 const inLibraryFor = (actor: Actor) => and(isNull(assets.removedAt), shownTo(actor));
 const newestFirst = [desc(assets.createdAt), asc(assets.id)];
@@ -184,7 +186,7 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
   const isVideo = kind === "video";
   const row: NewAsset = {
     id,
-    spaceId: SEED_TEAM_ID,
+    spaceId: actor.spaceId,
     kind,
     name: cleanName(input.fileName),
     fileName: input.fileName,
@@ -218,7 +220,7 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
     [inserted] = await db
       .insert(assets)
       .select(
-        sql`select ${valuesOf(row)} where (select count(*) from assets where uploaded_by = ${actor.userId}::text and status = 'uploading') < ${LIMITS.mediaPendingPerMember}::integer`,
+        sql`select ${valuesOf(row)} where (select count(*) from assets where space_id = ${actor.spaceId}::text and uploaded_by = ${actor.userId}::text and status = 'uploading') < ${LIMITS.mediaPendingPerMember}::integer`,
       )
       .onConflictDoNothing({ target: [assets.uploadedBy, assets.fileName, assets.sizeBytes, assets.lastModifiedMs], where: sql`status = 'uploading'` })
       .returning();
@@ -236,7 +238,7 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
 // An asset, for the member who uploaded it or for an admin.
 async function ownAsset(db: DB, actor: Actor, assetId: string): Promise<AssetRow> {
   requireRole(actor, "editor");
-  const [row] = await db.select().from(assets).where(eq(assets.id, assetId));
+  const [row] = await db.select().from(assets).where(and(eq(assets.id, assetId), inSpace(actor)));
   if (!row || row.removedAt !== null) throw gone();
   if (row.uploadedBy !== actor.userId) requireRole(actor, "admin");
   return row;
@@ -264,11 +266,11 @@ export async function completeUpload(deps: MediaDeps, actor: Actor, assetId: str
   const [ready] = await db
     .update(assets)
     .set({ status: "ready", readyAt: sql`now()`, uploadUrl: null, driveFileId: file.id })
-    .where(and(eq(assets.id, assetId), unfinished))
+    .where(and(eq(assets.id, assetId), inSpace(actor), unfinished))
     .returning();
   if (ready) return viewOf(db, ready);
   // Another request finished it first.
-  const [now] = await db.select().from(assets).where(eq(assets.id, assetId));
+  const [now] = await db.select().from(assets).where(and(eq(assets.id, assetId), inSpace(actor)));
   if (!now) throw gone();
   return viewOf(db, now);
 }
@@ -290,7 +292,7 @@ export async function listAssets(db: DB, actor: Actor, filter: { ids?: string[] 
   const ready = await db
     .select()
     .from(assets)
-    .where(and(eq(assets.status, "ready"), isNull(assets.removedAt)))
+    .where(and(inSpace(actor), eq(assets.status, "ready"), isNull(assets.removedAt)))
     .orderBy(...newestFirst)
     .limit(LIMITS.mediaListMax);
   const mine = await db.select().from(assets).where(unfinishedOf(actor)).orderBy(...newestFirst);
@@ -328,9 +330,10 @@ export async function updateAsset(db: DB, actor: Actor, assetId: string, patch: 
   return viewOf(db, row);
 }
 
-// A project that is not deleted and has a clip of this asset on any of its tracks.
-const usedBy = (assetId: string) =>
+// A project of the asset's space that is not deleted and has a clip of this asset on any of its tracks.
+const usedBy = (assetId: string, spaceId: string) =>
   and(
+    eq(projects.spaceId, spaceId),
     isNull(projects.deletedAt),
     sql`jsonb_path_exists(${projects.doc}, '$.tracks[*].clips[*] ? (@.assetId == $id)', jsonb_build_object('id', ${assetId}::text))`,
   );
@@ -369,7 +372,7 @@ export async function removeAsset(deps: MediaDeps, actor: Actor, assetId: string
   const mayCancel = meetsRole(actor.role, "admin") ? unfinished : unfinishedOf(actor);
   const canceled = await db
     .delete(assets)
-    .where(and(eq(assets.id, assetId), mayCancel))
+    .where(and(eq(assets.id, assetId), inSpace(actor), mayCancel))
     .returning({ uploadUrl: assets.uploadUrl });
   if (canceled.length > 0) return cancelQuietly(deps, canceled[0].uploadUrl);
 
@@ -377,21 +380,21 @@ export async function removeAsset(deps: MediaDeps, actor: Actor, assetId: string
   const marked = rowsOf<Record<string, string | null>>(
     await db.execute(sql`
       update assets set removed_at = now(), removed_by = ${actor.userId}::text
-      where id = ${assetId}::text and status = 'ready' and removed_at is null
-        and not exists (select 1 from ${projects} where ${usedBy(assetId)})
+      where id = ${assetId}::text and space_id = ${actor.spaceId}::text and status = 'ready' and removed_at is null
+        and not exists (select 1 from ${projects} where ${usedBy(assetId, actor.spaceId)})
       returning drive_file_id, preview_file_id, poster_file_id
     `),
   );
   if (marked.length > 0) return trashQuietly(deps, Object.values(marked[0]));
 
   // Nothing was marked. Why not?
-  const [row] = await db.select().from(assets).where(eq(assets.id, assetId));
+  const [row] = await db.select().from(assets).where(and(eq(assets.id, assetId), inSpace(actor)));
   if (!row || row.removedAt !== null) throw gone();
   if (row.status !== "ready") requireRole(actor, "admin"); // another member's unfinished upload
   const users = await db
     .select({ name: projects.name, total: sql<number>`count(*) over ()`.mapWith(Number) })
     .from(projects)
-    .where(usedBy(assetId))
+    .where(usedBy(assetId, actor.spaceId))
     .orderBy(sql`lower(${projects.name})`, asc(projects.name), asc(projects.id))
     .limit(NAMED_PROJECTS);
   // The last project let go of it between the two looks.
@@ -461,7 +464,7 @@ export async function openAssetFile(deps: MediaDeps, actor: Actor, assetId: stri
   const recorded = await db
     .update(assets)
     .set(file.waitFor(fileId))
-    .where(and(eq(assets.id, row.id), isNull(assets.removedAt)))
+    .where(and(eq(assets.id, row.id), inSpace(actor), isNull(assets.removedAt)))
     .returning({ id: assets.id });
   if (recorded.length === 0) throw gone(); // removed while Drive was being asked
   return { uploadUrl };
@@ -486,7 +489,7 @@ export async function completeAssetFile(deps: MediaDeps, actor: Actor, assetId: 
   const [moved] = await db
     .update(assets)
     .set(file.moveOver)
-    .where(and(eq(assets.id, row.id), eq(assets[file.pendingColumn], fileId), isNull(assets.removedAt)))
+    .where(and(eq(assets.id, row.id), inSpace(actor), eq(assets[file.pendingColumn], fileId), isNull(assets.removedAt)))
     .returning();
   if (!moved) {
     await libraryAsset(db, actor, row.id); // gone, when it was removed while Drive was being asked
@@ -510,13 +513,13 @@ export async function failPreview(db: DB, actor: Actor, assetId: string): Promis
 // What a project check needs to know about an asset. No role check: callers have checked the actor already.
 export type AssetFact = { id: string; kind: AssetKind; ready: boolean; removed: boolean; durationMs: number | null };
 
-// A fact for every id that has a row, removed assets and unfinished uploads included.
-export async function loadAssetFacts(db: DB, ids: string[]): Promise<Map<string, AssetFact>> {
+// A fact for every id that has a row in the space, removed assets and unfinished uploads included.
+export async function loadAssetFacts(db: DB, spaceId: string, ids: string[]): Promise<Map<string, AssetFact>> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return new Map();
   const rows = await db
     .select({ id: assets.id, kind: assets.kind, status: assets.status, removedAt: assets.removedAt, durationMs: assets.durationMs })
     .from(assets)
-    .where(inArray(assets.id, unique));
+    .where(and(eq(assets.spaceId, spaceId), inArray(assets.id, unique)));
   return new Map(rows.map((row) => [row.id, { id: row.id, kind: row.kind, ready: row.status === "ready", removed: row.removedAt !== null, durationMs: row.durationMs }]));
 }

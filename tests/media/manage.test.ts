@@ -7,6 +7,7 @@ import { LIMITS } from "@/lib/limits";
 import { completeAssetFile, failPreview, listAssets, loadAssetFacts, openAssetFile, openUpload, removeAsset, updateAsset, type AssetFileRole } from "@/lib/media/service";
 import { applyProjectOps, createProject, deleteProject, getProject } from "@/lib/projects/service";
 import type { OpInput } from "@/lib/timeline";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { piece } from "../helpers/fake-drive";
 import { AUDIO, CLIP_TRANSFORM, IMAGE, VIDEO, mediaClip, mediaContext, readyAsset, sendAll, type MediaContext } from "./context";
 
@@ -742,7 +743,7 @@ describe("the facts a project check needs", () => {
     const image = await readyAsset(ctx, ctx.ada, IMAGE);
     await removeAsset(ctx.deps, ctx.ada, image.id);
     const { asset: unfinished } = await openUpload(ctx.deps, ctx.grace, LATER);
-    const facts = await loadAssetFacts(ctx.db, [video.id, image.id, unfinished.id, "nope", video.id]);
+    const facts = await loadAssetFacts(ctx.db, SEED_TEAM_ID, [video.id, image.id, unfinished.id, "nope", video.id]);
     expect(facts).toEqual(
       new Map([
         [video.id, { id: video.id, kind: "video", ready: true, removed: false, durationMs: 12_500 }],
@@ -751,7 +752,7 @@ describe("the facts a project check needs", () => {
       ]),
     );
     expect(facts.has("nope")).toBe(false);
-    expect(await loadAssetFacts(ctx.db, [image.id])).toEqual(new Map([[image.id, facts.get(image.id)]])); // only the ones asked for
+    expect(await loadAssetFacts(ctx.db, SEED_TEAM_ID, [image.id])).toEqual(new Map([[image.id, facts.get(image.id)]])); // only the ones asked for
   });
 
   it("makes no query for an empty list, and one for any other", async () => {
@@ -766,9 +767,9 @@ describe("the facts a project check needs", () => {
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    expect(await loadAssetFacts(counting, [])).toEqual(new Map());
+    expect(await loadAssetFacts(counting, SEED_TEAM_ID, [])).toEqual(new Map());
     expect(queries).toBe(0);
-    expect((await loadAssetFacts(counting, [video.id, audio.id, "nope"])).size).toBe(2);
+    expect((await loadAssetFacts(counting, SEED_TEAM_ID, [video.id, audio.id, "nope"])).size).toBe(2);
     expect(queries).toBe(1);
   });
 });

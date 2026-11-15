@@ -62,7 +62,7 @@ export async function mediaContext(): Promise<MediaContext> {
 // and path, with `actor` signed in. A request that has no route throws.
 export function handlersFetch(ctx: MediaContext, actor: Actor): typeof fetch {
   const member: CurrentUser = { id: actor.userId, email: actor.email, name: actor.email, image: null, allowlistRole: actor.role };
-  const deps: MediaHandlerDeps = { db: () => ctx.db, auth: async () => member, drive: () => ctx.deps.drive, origin: () => APP_ORIGIN };
+  const deps: MediaHandlerDeps = { db: () => ctx.db, auth: async () => member, drive: (spaceId) => (spaceId === SEED_TEAM_ID ? ctx.deps.drive : null), origin: () => APP_ORIGIN };
   const media = makeMediaHandlers(deps);
   const readToken = makeReadTokenHandler(deps);
   const forAll = new Map<string, (req: Request) => Promise<Response>>([

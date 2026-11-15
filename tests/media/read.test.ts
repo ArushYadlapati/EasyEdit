@@ -8,6 +8,7 @@ import { createMediaFiles, createMemoryStore, type FileStore } from "@/lib/media
 import { PLACEHOLDER_LABELS, playbackFileFor, posterFileFor } from "@/lib/media/playback";
 import { TOKEN_MARGIN_MS, createReadTokens, driveFileUrl, readDriveFile, type ReadTokens } from "@/lib/media/read-tokens";
 import type { AssetView } from "@/lib/media/types";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { makeFakeDrive } from "../helpers/fake-drive";
 import { sources } from "../helpers/sources";
 import { handlersFetch, mediaContext, readyAsset } from "./context";
@@ -33,7 +34,7 @@ function tokensHarness(options: { failFirst?: boolean } = {}) {
   return { tokens: createReadTokens({ api, now: () => at }), calls: () => calls, advance: (ms: number) => void (at += ms) };
 }
 
-// readHarness(): mediaContext(), one ready VIDEO asset, and createReadTokens over createMediaApi(handlersFetch(ctx, ctx.vera)):
+// readHarness(): mediaContext(), one ready VIDEO asset, and createReadTokens over createMediaApi(SEED_TEAM_ID, handlersFetch(ctx, ctx.vera)):
 //   the real read-token handler of Task 7, signed in as vera (a viewer); handlersFetch is in tests/media/context.ts
 //   since Task 9. tokenRequests() counts the requests to /api/drive/read-token. The browser's clock is its own:
 //   createReadTokens gets `now: () => t0`, where t0 is ctx.fake.now() read once when the harness is made, so
@@ -45,10 +46,10 @@ async function readHarness() {
   const server = handlersFetch(ctx, ctx.vera);
   let requests = 0;
   const counted = ((input: RequestInfo | URL, init?: RequestInit) => {
-    if (String(input) === "/api/drive/read-token") requests += 1;
+    if (String(input).startsWith("/api/drive/read-token")) requests += 1;
     return server(input, init);
   }) as typeof fetch;
-  const tokens = createReadTokens({ api: createMediaApi(counted), now: () => t0 });
+  const tokens = createReadTokens({ api: createMediaApi(SEED_TEAM_ID, counted), now: () => t0 });
   return { ctx, asset, tokens, tokenRequests: () => requests };
 }
 

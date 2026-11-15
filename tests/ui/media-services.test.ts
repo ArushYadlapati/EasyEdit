@@ -41,7 +41,7 @@ const ITEM = { key: "k1", fileName: "field.mp4", stage: "uploading" } as UploadI
 
 it("the queue tells the library and the local files what it learns, and takes the library's event", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({ code: "X", message: "No network in this test." }, { status: 400 })));
-  const services = createMediaServices();
+  const services = createMediaServices("s1");
   const deps = queueDeps();
   deps.onChange([ITEM]);
   expect(services.library.getState().uploads).toEqual([ITEM]);
@@ -58,7 +58,7 @@ it("the queue tells the library and the local files what it learns, and takes th
 
 it("waits between tries with a sleep that resolves", async () => {
   vi.useFakeTimers();
-  createMediaServices();
+  createMediaServices("s1");
   let slept = false;
   void queueDeps().sleep(1000).then(() => (slept = true));
   await vi.advanceTimersByTimeAsync(999);
@@ -68,7 +68,7 @@ it("waits between tries with a sleep that resolves", async () => {
 });
 
 it("dispose stops the uploads first, then ends the worker", () => {
-  const services = createMediaServices();
+  const services = createMediaServices("s1");
   services.dispose();
   expect(order).toEqual(["queue.stop", "ingest.dispose"]);
 });
@@ -83,7 +83,7 @@ it("starts the ingest worker from its module file", () => {
       }
     },
   );
-  createMediaServices();
+  createMediaServices("s1");
   const startWorker = vi.mocked(createIngest).mock.lastCall![0];
   startWorker();
   expect(started).toHaveLength(1);

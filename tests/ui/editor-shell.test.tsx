@@ -57,6 +57,7 @@ vi.mock("@/components/editor/export/browser-deps", async (importOriginal) => {
   return { ...real, browserExportDeps: vi.fn(real.browserExportDeps) };
 });
 
+const SPACE = { id: "s1", storageReady: true };
 const EDITOR_URL = "http://localhost:3000/editor/p1";
 const PREFS_TEXT = () => document.cookie.split("; ").find((c) => c.startsWith("easyedit-prefs="));
 // happy-dom keeps a cookie set with max-age=0, empty; a date in the past removes it.
@@ -128,7 +129,7 @@ it("asks before the page unloads only while edits are unsent", async () => {
   const server = stubServer();
   const added = vi.spyOn(window, "addEventListener");
   const removed = vi.spyOn(window, "removeEventListener");
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   expect(unloadListeners(added)).toBe(0);
 
   server.hold = true;
@@ -149,7 +150,7 @@ it("asks before the page unloads only while edits are unsent", async () => {
 
 it("leaving the editor with edits still queued sends them all, then stops", async () => {
   const server = stubServer();
-  const { unmount } = render(<EditorShell initial={initial()} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={initial()} />);
   server.hold = true;
   await addTitle();
   await addTitle("Add subtitle");
@@ -167,7 +168,7 @@ it("under strict mode one sync runs", async () => {
   const server = stubServer();
   render(
     <StrictMode>
-      <EditorShell initial={initial()} />
+      <EditorShell space={SPACE} initial={initial()} />
     </StrictMode>,
   );
   await addTitle();
@@ -182,7 +183,7 @@ const pageEvent = (type: "pagehide" | "pageshow", persisted: boolean) => Object.
 
 it("pagehide tells the server once that this tab is gone; a page brought back from the cache checks at once", async () => {
   const server = stubServer();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await after(2000);
   expect(server.versionChecks()).toBe(1);
   act(() => void window.dispatchEvent(pageEvent("pagehide", true)));
@@ -248,7 +249,7 @@ const uploading: UploadItem = {
 it("loads the library when the editor opens, on focus and on the timer", async () => {
   stubServer();
   const media = pretendMedia();
-  const { unmount } = render(<EditorShell initial={initial()} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   expect(reasons(media.refresh)).toEqual(["open"]);
   await act(() => void window.dispatchEvent(new Event("focus")));
@@ -273,7 +274,7 @@ it("loads the library when the editor opens, on focus and on the timer", async (
 it("the Media tab uses the editor's own services", async () => {
   stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   await act(() => void fireEvent.click(screen.getByRole("tab", { name: "Media" })));
   await flush();
@@ -283,7 +284,7 @@ it("the Media tab uses the editor's own services", async () => {
 it("takes up stopped uploads when the connection returns and on focus", async () => {
   stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   expect(media.queue.resume).not.toHaveBeenCalled();
   await act(() => void window.dispatchEvent(new Event("online")));
@@ -295,7 +296,7 @@ it("takes up stopped uploads when the connection returns and on focus", async ()
 it("asks the library for the assets the project names", async () => {
   stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   expect(media.ensure.mock.calls).toEqual([[["a"]]]);
   await addTitle();
@@ -311,7 +312,7 @@ it("asks the library for the assets the project names", async () => {
 it("asks before the page unloads while an upload is running", async () => {
   stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   media.setActive(1);
   await act(() => void media.library.getState().setUploads([uploading]));
@@ -331,7 +332,7 @@ it("asks before the page unloads while an export is running", async () => {
   const made = fakeExportDeps();
   vi.mocked(browserExportDeps).mockReturnValue(made.deps);
   vi.mocked(createMediaServices).mockReturnValueOnce(pretendMediaServices([assetView()]));
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   const asks = () => {
     const unload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(unload);
@@ -357,7 +358,7 @@ it("asks before the page unloads while a finished file waits for Download, and n
   const made = fakeExportDeps({ savesToFile: false, pickTarget: async (name) => ({ target: memory, fileName: name, held: () => saved }) });
   vi.mocked(browserExportDeps).mockReturnValue(made.deps);
   vi.mocked(createMediaServices).mockReturnValueOnce(pretendMediaServices([assetView()]));
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   const asks = () => {
     const unload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(unload);
@@ -381,7 +382,7 @@ it("asks before the page unloads while a finished file waits for Download, and n
 it("leaving the editor stops uploads and removes nothing", async () => {
   stubServer();
   const media = pretendMedia();
-  const { unmount } = render(<EditorShell initial={initial()} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   expect(media.services.dispose).not.toHaveBeenCalled();
   unmount();
@@ -406,7 +407,7 @@ const climbClips = () => screen.queryAllByRole("button", { name: /^Video clip "c
 it("a file dropped on the timeline is uploaded and placed; one dropped on the inspector goes only to the library", async () => {
   const server = stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   // The timeline's own drop: at its scroller, the drop area's first child.
   const scroller = timelineDrop().firstElementChild!;
@@ -465,7 +466,7 @@ const FILES = { types: ["Files"] };
 it("a file dragged over the preview opens the Media tab, shows its drop text and lights the timeline", async () => {
   stubServer();
   pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   expect(selectedTab()).toBe("Text");
   expect(timelineDrop().dataset.drop).toBe("idle");
@@ -491,7 +492,7 @@ it("without uploads set up the tab still switches and the timeline stays dark", 
   stubServer();
   const media = pretendMedia();
   vi.mocked(media.api.list).mockImplementation(async () => ({ ok: true as const, assets: [], setUp: false }));
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   expect(media.library.getState().setUp).toBe(false);
   await act(() => void fireEvent(screen.getByRole("main", { name: "Preview" }), dragEvent("dragenter", FILES)));
@@ -504,7 +505,7 @@ it("without uploads set up the tab still switches and the timeline stays dark", 
 it("a file dropped on the inspector goes to the library only", async () => {
   const server = stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   const details = screen.getByRole("complementary", { name: "Details" });
   const over = dragEvent("dragover", FILES);
@@ -521,7 +522,7 @@ it("a file dropped on the inspector goes to the library only", async () => {
 it("a file dropped on the top row goes to the library only", async () => {
   const server = stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   const banner = screen.getByRole("banner");
   const over = dragEvent("dragover", FILES);
@@ -537,7 +538,7 @@ it("a file dropped on the top row goes to the library only", async () => {
 it("a viewer gets none of it", async () => {
   stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={{ ...initial(), canEdit: false }} />);
+  render(<EditorShell space={SPACE} initial={{ ...initial(), canEdit: false }} />);
   await flush();
   const preview = screen.getByRole("main", { name: "Preview" });
   await act(() => void fireEvent(preview, dragEvent("dragenter", FILES)));
@@ -554,7 +555,7 @@ it("a viewer gets none of it", async () => {
 it("with a dialog open or without uploads set up, a file dropped on the inspector is refused", async () => {
   stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   const details = screen.getByRole("complementary", { name: "Details" });
   const dialog = document.createElement("dialog");
@@ -583,7 +584,7 @@ it("under StrictMode, a file over the window still opens the Media tab", async (
   pretendMedia();
   render(
     <StrictMode>
-      <EditorShell initial={initial()} />
+      <EditorShell space={SPACE} initial={initial()} />
     </StrictMode>,
   );
   await flush();
@@ -598,7 +599,7 @@ it("under StrictMode, a file dropped on the timeline still lands once its upload
   const media = pretendMedia();
   render(
     <StrictMode>
-      <EditorShell initial={initial()} />
+      <EditorShell space={SPACE} initial={initial()} />
     </StrictMode>,
   );
   await flush();
@@ -620,7 +621,7 @@ const shellDrop = () => {
 it("losing edit access mid-drag turns the drop look off", async () => {
   stubServer();
   pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   await act(() => void fireEvent(screen.getByRole("main", { name: "Preview" }), dragEvent("dragenter", FILES)));
   expect(timelineDrop().dataset.drop).toBe("armed");
@@ -634,7 +635,7 @@ it("losing edit access mid-drag turns the drop look off", async () => {
 it("a deleted project takes no drag", async () => {
   stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   const { drop, store } = shellDrop();
   act(() => store.getState().setStatus("deleted"));
@@ -654,7 +655,7 @@ const placeholderTexts = () =>
 it("a file dropped on the transport goes only to the library", async () => {
   const server = stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   const transport = screen.getByRole("button", { name: /^Go to start/ });
   const over = dragEvent("dragover", FILES);
@@ -676,7 +677,7 @@ it("a file dropped on the transport goes only to the library", async () => {
 it("the timeline shows a placeholder for a board drop", async () => {
   const server = stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   const { store } = shellDrop();
   act(() => store.getState().seek(60));
@@ -701,7 +702,7 @@ it("leaving the editor stops watching drags", async () => {
   stubServer();
   pretendMedia();
   const removed = vi.spyOn(window, "removeEventListener");
-  const { unmount } = render(<EditorShell initial={initial()} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   unmount();
   const watched = removed.mock.calls.filter(([type, , options]) => type === "dragenter" && options === true);
@@ -712,7 +713,7 @@ it("a refresh or ensure that fails leaves no rejection unhandled", async () => {
   stubServer();
   handled.length = 0;
   const media = pretendMedia({ refreshFails: true });
-  const { unmount } = render(<EditorShell initial={initial()} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   await act(() => void window.dispatchEvent(new Event("focus")));
   await after(30_000);
@@ -727,21 +728,21 @@ it("a refresh or ensure that fails leaves no rejection unhandled", async () => {
 
 it("the real services ask the media routes once on open, and nothing after the editor is left", async () => {
   const server = stubServer();
-  const { unmount } = render(<EditorShell initial={initial()} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   const media = () => server.requests.filter((r) => r.includes("/api/media"));
-  expect(media()).toEqual(["GET /api/media", "GET /api/media?ids=a"]);
+  expect(media()).toEqual(["GET /api/media?space=s1", "GET /api/media?space=s1&ids=a"]);
   unmount();
   window.dispatchEvent(new Event("focus"));
   window.dispatchEvent(new Event("online"));
   await after(120_000);
-  expect(media()).toEqual(["GET /api/media", "GET /api/media?ids=a"]);
+  expect(media()).toEqual(["GET /api/media?space=s1", "GET /api/media?space=s1&ids=a"]);
 });
 
 it("starts from the panel sizes the page read, and keeps a new size in the browser's cookie", () => {
   stubServer();
   happyDOM().setURL("http://localhost:3000/editor/p1");
-  render(<EditorShell initial={initial()} layout={{ left: 300, right: 240, timeline: 400 }} />);
+  render(<EditorShell space={SPACE} initial={initial()} layout={{ left: 300, right: 240, timeline: 400 }} />);
   const left = screen.getByRole("separator", { name: "Left panel width" });
   expect(left.parentElement!.style.getPropertyValue("--ed-left-w")).toBe("300px");
   fireEvent.keyDown(left, { key: "ArrowLeft" });
@@ -760,7 +761,7 @@ const shellSettings = () => vi.mocked(createSettingsStore).mock.results[0].value
 it("snapping and the safe area are remembered in this browser", () => {
   stubServer();
   happyDOM().setURL(EDITOR_URL);
-  const first = render(<EditorShell initial={initial()} />);
+  const first = render(<EditorShell space={SPACE} initial={initial()} />);
   expect(PREFS_TEXT()).toBeUndefined(); // nothing is written until something changes
   expect(viewAsButton().textContent).toBe("View as: Off"); // hidden at first
   pickViewAs("Safe area");
@@ -772,7 +773,7 @@ it("snapping and the safe area are remembered in this browser", () => {
 
   // The page read the cookie: the store starts from it. With no newer cookie the page's values stand.
   expireCookies();
-  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, snapping: false, safeZones: true }} />);
+  render(<EditorShell space={SPACE} initial={initial()} prefs={{ ...DEFAULT_PREFS, snapping: false, safeZones: true }} />);
   expect(pressed("Snap")).toBe("false");
   expect(viewAsButton().textContent).toBe("View as: Safe area");
   expect(PREFS_TEXT()).toBeUndefined();
@@ -782,7 +783,7 @@ it("a change in Settings is kept with the snapping and safe area of the moment",
   stubServer();
   happyDOM().setURL(EDITOR_URL);
   vi.mocked(createSettingsStore).mockClear();
-  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, safeZones: true }} />);
+  render(<EditorShell space={SPACE} initial={initial()} prefs={{ ...DEFAULT_PREFS, safeZones: true }} />);
   act(() => shellSettings().getState().set({ units: "in", stillSeconds: 4.5 }));
   expect(PREFS_TEXT()).toBe("easyedit-prefs=u:in.sz:1.sn:1.z:fill.st:45.tx:30");
   act(() => shellSettings().getState().set({ lockAspect: false }));
@@ -791,7 +792,7 @@ it("a change in Settings is kept with the snapping and safe area of the moment",
 
 it("the editor's controls read the lengths the page gave", async () => {
   stubServer();
-  render(<EditorShell initial={initial()} prefs={{ ...DEFAULT_PREFS, textSeconds: 5 }} />);
+  render(<EditorShell space={SPACE} initial={initial()} prefs={{ ...DEFAULT_PREFS, textSeconds: 5 }} />);
   await addTitle();
   const fps = sampleDoc().fps;
   expect(screen.getByRole("button", { name: `Text clip "Your title", ${formatTimecode(0, fps)} to ${formatTimecode(5 * fps, fps)}` })).toBeTruthy();
@@ -804,7 +805,7 @@ it("a newer cookie wins over the page's props after mount", () => {
   document.cookie = "easyedit-layout=300_240_; path=/editor";
   vi.mocked(createSettingsStore).mockClear();
   const written = vi.spyOn(document, "cookie", "set");
-  render(<EditorShell initial={initial()} prefs={DEFAULT_PREFS} layout={DEFAULT_LAYOUT} />);
+  render(<EditorShell space={SPACE} initial={initial()} prefs={DEFAULT_PREFS} layout={DEFAULT_LAYOUT} />);
   expect(shellSettings().getState().units).toBe("cm");
   expect(pressed("Snap")).toBe("false");
   expect(leftWidth()).toBe("300px");
@@ -822,7 +823,7 @@ it("after a newer layout cookie, going back to the page's size is saved", () => 
   stubServer();
   happyDOM().setURL(EDITOR_URL);
   document.cookie = "easyedit-layout=300_240_; path=/editor";
-  render(<EditorShell initial={initial()} layout={{ left: 284, right: 240, timeline: null }} />);
+  render(<EditorShell space={SPACE} initial={initial()} layout={{ left: 284, right: 240, timeline: null }} />);
   expect(leftWidth()).toBe("300px");
   fireEvent.keyDown(screen.getByRole("separator", { name: "Left panel width" }), { key: "ArrowLeft" });
   expect(leftWidth()).toBe("284px");
@@ -835,7 +836,7 @@ it("the keymap kept in this browser is loaded after mount, and a change is kept"
   const raw = JSON.stringify({ off: ["split"], v: 1 });
   localStorage.setItem(KEYMAP_KEY, raw);
   vi.mocked(createSettingsStore).mockClear();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   expect(shellSettings().getState().keymap).toEqual(setOff(DEFAULT_KEYMAP, "split", true));
   expect(localStorage.getItem(KEYMAP_KEY)).toBe(raw);
   act(() => shellSettings().getState().setKeymap(DEFAULT_KEYMAP));
@@ -851,7 +852,7 @@ it("under strict mode the keymap and a newer cookie are taken once, and nothing 
   vi.mocked(createSettingsStore).mockClear();
   render(
     <StrictMode>
-      <EditorShell initial={initial()} />
+      <EditorShell space={SPACE} initial={initial()} />
     </StrictMode>,
   );
   expect(viewAsButton().textContent).toBe("View as: Safe area");
@@ -866,14 +867,14 @@ it("a keymap saved in this browser shows once the page has loaded", () => {
   const km = setKeys(DEFAULT_KEYMAP, "split", "Mod+Shift+S");
   localStorage.setItem(KEYMAP_KEY, formatKeymap(km));
   // The server's HTML, and so hydration, has the default hints.
-  expect(renderToString(<EditorShell initial={initial()} />)).toContain('title="Split (S)"');
-  render(<EditorShell initial={initial()} />);
+  expect(renderToString(<EditorShell space={SPACE} initial={initial()} />)).toContain('title="Split (S)"');
+  render(<EditorShell space={SPACE} initial={initial()} />);
   expect(screen.getByRole("button", { name: "Split" }).getAttribute("title")).toBe("Split (Ctrl+Shift+S)");
 });
 
 it("the browser's menu is off in the editor and on in text fields and links", async () => {
   stubServer();
-  const { unmount } = render(<EditorShell initial={initial()} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={initial()} />);
   await flush();
   const preview = screen.getByRole("main", { name: "Preview" });
   expect(fireEvent.contextMenu(preview)).toBe(false);
@@ -929,11 +930,11 @@ const puts = (server: { requests: string[] }) => server.requests.filter((r) => r
 
 it("the editor starts one thumbnail trigger with the stored picture's version", () => {
   stubServer();
-  const { unmount } = render(<EditorShell initial={{ ...initial(), thumbnailVersion: 3 }} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={{ ...initial(), thumbnailVersion: 3 }} />);
   expect(startThumbnailTrigger).toHaveBeenCalledTimes(1);
   expect(startThumbnailTrigger).toHaveBeenCalledWith(expect.objectContaining({ storedVersion: 3 }));
   unmount();
-  render(<EditorShell initial={initial()} />);
+  render(<EditorShell space={SPACE} initial={initial()} />);
   expect(vi.mocked(startThumbnailTrigger).mock.calls.at(-1)![0].storedVersion).toBeNull();
 });
 
@@ -941,7 +942,7 @@ it("a saved change is drawn and sent once, 4 seconds later", async () => {
   const fake = fakeDeps();
   vi.mocked(browserThumbnailDeps).mockReturnValue(fake);
   const server = stubServer();
-  render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  render(<EditorShell space={SPACE} initial={{ ...initial(), thumbnailVersion: 5 }} />);
   await addTitle();
   await after(3_999);
   expect(puts(server)).toEqual([]);
@@ -954,7 +955,7 @@ it("a saved change is drawn and sent once, 4 seconds later", async () => {
 it("with no 2D canvas, a saved change sends nothing and reads no file", async () => {
   const server = stubServer();
   const media = pretendMedia();
-  render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  render(<EditorShell space={SPACE} initial={{ ...initial(), thumbnailVersion: 5 }} />);
   const deps = vi.mocked(browserThumbnailDeps).mock.results.at(-1)!.value as ThumbnailDeps;
   const read = vi.spyOn(deps, "readFile");
   const made = vi.spyOn(deps, "makeCanvas");
@@ -971,7 +972,7 @@ it("leaving before the picture is drawn sends none", async () => {
   const fake = fakeDeps();
   vi.mocked(browserThumbnailDeps).mockReturnValue(fake);
   const server = stubServer();
-  const { unmount } = render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={{ ...initial(), thumbnailVersion: 5 }} />);
   await addTitle();
   await after(3_999);
   unmount();
@@ -984,7 +985,7 @@ it("edits still being sent when the editor is left draw no picture", async () =>
   const fake = fakeDeps();
   vi.mocked(browserThumbnailDeps).mockReturnValue(fake);
   const server = stubServer();
-  const { unmount } = render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={{ ...initial(), thumbnailVersion: 5 }} />);
   server.hold = true;
   await addTitle();
   await addTitle("Add subtitle");
@@ -1003,7 +1004,7 @@ it("leaving stops the picture before the media services close", () => {
   const realStart = vi.mocked(startThumbnailTrigger).getMockImplementation()!;
   let stop: Mock<() => void> | undefined;
   vi.mocked(startThumbnailTrigger).mockImplementationOnce((deps) => (stop = vi.fn(realStart(deps))));
-  const { unmount } = render(<EditorShell initial={initial()} />);
+  const { unmount } = render(<EditorShell space={SPACE} initial={initial()} />);
   unmount();
   expect(stop).toHaveBeenCalledTimes(1);
   expect(stop!.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(media.services.dispose).mock.invocationCallOrder[0]);
@@ -1015,7 +1016,7 @@ it("under strict mode one trigger draws once", async () => {
   const server = stubServer();
   render(
     <StrictMode>
-      <EditorShell initial={initial()} />
+      <EditorShell space={SPACE} initial={initial()} />
     </StrictMode>,
   );
   await after(4_000);
@@ -1028,7 +1029,7 @@ it("a picture waits for an upload, then follows once it is ready", async () => {
   const fake = fakeDeps({ library: () => media.library.getState() });
   vi.mocked(browserThumbnailDeps).mockReturnValue(fake);
   const server = stubServer();
-  render(<EditorShell initial={{ ...initial(), thumbnailVersion: 5 }} />);
+  render(<EditorShell space={SPACE} initial={{ ...initial(), thumbnailVersion: 5 }} />);
   await flush(); // the library's first load lands
   await act(() => media.library.getState().put(assetView({ status: "uploading" })));
   await addTitle();

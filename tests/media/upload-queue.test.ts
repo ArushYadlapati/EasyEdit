@@ -6,6 +6,7 @@ import { listAssets } from "@/lib/media/service";
 import type { AssetProbe, AssetView, UploadItem, UploadStage } from "@/lib/media/types";
 import { createUploadQueue, type QueueDeps, type UploadQueue } from "@/lib/media/upload-queue";
 import { PieceError, createDriveTransport, type UploadTransport } from "@/lib/media/uploader";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { AUDIO, IMAGE, VIDEO, handlersFetch, mediaContext, type MediaContext } from "./context";
 
 const MiB = 1024 * 1024;
@@ -81,7 +82,7 @@ async function harness(options: Options = {}) {
   const halted = gate();
   let pieces = 0;
 
-  const real = createMediaApi(handlersFetch(ctx, ctx.ada));
+  const real = createMediaApi(SEED_TEAM_ID, handlersFetch(ctx, ctx.ada));
   const answering = { ...real, ...options.api?.(real) };
   const api = Object.fromEntries(
     Object.entries(answering).map(([name, call]) => [

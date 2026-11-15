@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useStore } from "zustand";
 import type { MediaDrop, MediaDropState } from "@/lib/editor/media-drop";
 import { createMediaApi, type MediaApi } from "@/lib/media/api";
@@ -21,8 +21,8 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // The real ones for one open editor: the API client, the worker, the token source and the browser's file storage.
 // Nothing is asked of the server, the worker or the storage until it is first used.
-export function createMediaServices(): MediaServices {
-  const api = createMediaApi();
+export function createMediaServices(spaceId: string): MediaServices {
+  const api = createMediaApi(spaceId);
   const library = createLibraryStore({ api });
   const files = createMediaFiles({
     tokens: createReadTokens({ api }),
@@ -81,16 +81,40 @@ function idleServices(): MediaServices {
 }
 
 const MediaContext = createContext<MediaServices | null>(null);
+// The space the library belongs to, and whether it has storage to upload to.
+type MediaSpace = { spaceId: string | null; storageReady: boolean };
+const MediaSpaceContext = createContext<MediaSpace>({ spaceId: null, storageReady: false });
 const MediaDropContext = createContext<MediaDrop | null>(null);
 const IDLE = idleServices();
 
 // drop: the editor's file and library drags. Without one, every drag feature does nothing.
-export function MediaProvider({ services, drop = null, children }: { services: MediaServices; drop?: MediaDrop | null; children: ReactNode }): ReactNode {
+// spaceId, storageReady: the library's space and whether it has storage. Without them (tests of other parts of the
+// editor) no space is named and storage counts as ready.
+export function MediaProvider({
+  services,
+  spaceId = null,
+  storageReady = true,
+  drop = null,
+  children,
+}: {
+  services: MediaServices;
+  spaceId?: string | null;
+  storageReady?: boolean;
+  drop?: MediaDrop | null;
+  children: ReactNode;
+}): ReactNode {
+  const space = useMemo(() => ({ spaceId, storageReady }), [spaceId, storageReady]);
   return (
     <MediaContext value={services}>
-      <MediaDropContext value={drop}>{children}</MediaDropContext>
+      <MediaSpaceContext value={space}>
+        <MediaDropContext value={drop}>{children}</MediaDropContext>
+      </MediaSpaceContext>
     </MediaContext>
   );
+}
+
+export function useMediaSpace(): MediaSpace {
+  return useContext(MediaSpaceContext);
 }
 
 export function useMedia(): MediaServices {

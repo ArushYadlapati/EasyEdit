@@ -7,10 +7,10 @@ import type { DriveClient } from "@/lib/drive/client";
 import { DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { ServiceError } from "@/lib/service-error";
-import { actorIn } from "@/lib/spaces/access";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
+import { actorIn, assetActor, spaceQuery } from "@/lib/spaces/access";
 import { MEDIA_MESSAGES } from "./messages";
 import {
+  assetGone,
   completeAssetFile,
   completeUpload,
   failPreview,
@@ -28,14 +28,15 @@ import type { OpenUploadInput } from "./types";
 export type MediaHandlerDeps = {
   db: () => DB;
   auth: (req: Request) => Promise<CurrentUser | Response>; // authentication only; the role comes from the space
-  drive: () => DriveClient | null; // null: media is not set up
+  drive: (spaceId: string) => DriveClient | null; // null: the space has no storage
   origin: () => string;
 };
 
 export type AssetRouteContext = { params: Promise<{ id: string }> };
 
-export const NOT_SET_UP_BODY = { code: "MEDIA_NOT_SET_UP", message: "Uploads are not set up yet." } as const;
+export const NOT_SET_UP_BODY = { code: "STORAGE_NOT_SET_UP", message: "Uploads are not set up yet." } as const;
 export const STORAGE_DOWN_BODY = { code: "STORAGE_UNAVAILABLE", message: MEDIA_MESSAGES.storageDown } as const;
+// What a collection route answers for a space that is unknown, not named, or not the caller's.
 const SPACE_NOT_FOUND_BODY = { code: "NOT_FOUND", message: "Space not found" } as const;
 
 // Only the shape of each body, with unknown keys refused. The service checks the values.
@@ -98,21 +99,41 @@ function idsOf(req: Request): string[] | undefined {
   return checked(idsParam, param.split(",").filter((id) => id !== ""));
 }
 
-const notSetUp = () => Response.json(NOT_SET_UP_BODY, { status: 503 });
+const notSetUp = () => Response.json(NOT_SET_UP_BODY, { status: 409 });
 
 // The one line a failed Drive call leaves: which call, the status and Google's short code, which is all a DriveError holds.
 const logDriveError = (error: DriveError) => console.error("Drive call failed", error.call, error.status, error.reason);
 
+// Who is acting, and in which space. A collection route names its space in `?space=`; an item route is in the space
+// its asset belongs to. Someone who is not a member of it gets the answer a space or an asset that does not exist gets.
+type Resolve<Rest extends unknown[]> = (deps: MediaHandlerDeps, user: CurrentUser, req: Request, ...rest: Rest) => Promise<Actor | Response>;
+
+const inQueriedSpace: Resolve<[]> = async (deps, user, req) => {
+  const spaceId = spaceQuery(req);
+  const actor = spaceId ? await actorIn(deps.db(), user, spaceId) : null;
+  return actor ?? Response.json(SPACE_NOT_FOUND_BODY, { status: 404 });
+};
+
+const inAssetSpace: Resolve<[AssetRouteContext]> = async (deps, user, _req, ctx) => {
+  const { id } = await ctx.params;
+  const actor = await assetActor(deps.db(), user, id);
+  if (!actor) throw assetGone(); // the same answer as an id that is not in the library
+  return actor;
+};
+
 // What every route does around its own work. `apiRoute` refuses a write from another site and answers what the
-// service refuses. Then the member and their role in the space are looked up, before anything else is read; someone
-// who is not a member of it is answered 404. And a failed Drive call is answered 502 with that one line logged.
-function mediaRoute<Rest extends unknown[]>(deps: MediaHandlerDeps, handler: (actor: Actor, req: Request, ...rest: Rest) => Promise<Response>) {
+// service refuses. Then the member and their role in the space are looked up, before anything else is read. And a
+// failed Drive call is answered 502 with that one line logged.
+function mediaRoute<Rest extends unknown[]>(
+  deps: MediaHandlerDeps,
+  resolve: Resolve<Rest>,
+  handler: (actor: Actor, req: Request, ...rest: Rest) => Promise<Response>,
+) {
   return apiRoute(async (req: Request, ...rest: Rest): Promise<Response> => {
     const user = await deps.auth(req);
     if (user instanceof Response) return user;
-    // stage-1: space comes from Task 6
-    const actor = await actorIn(deps.db(), user, SEED_TEAM_ID);
-    if (!actor) return Response.json(SPACE_NOT_FOUND_BODY, { status: 404 });
+    const actor = await resolve(deps, user, req, ...rest);
+    if (actor instanceof Response) return actor;
     try {
       return await handler(actor, req, ...rest);
     } catch (error) {
@@ -126,16 +147,16 @@ function mediaRoute<Rest extends unknown[]>(deps: MediaHandlerDeps, handler: (ac
 export function makeMediaHandlers(deps: MediaHandlerDeps) {
   // What the service needs to reach Drive. Null when media is not set up. A Drive failure the member is not shown
   // (a file that could not be moved to the trash) leaves the same one line.
-  const media = (): MediaDeps | null => {
-    const drive = deps.drive();
+  const media = (actor: Actor): MediaDeps | null => {
+    const drive = deps.drive(actor.spaceId);
     return drive ? { db: deps.db(), drive, origin: deps.origin(), onDriveError: logDriveError } : null;
   };
 
   // Whether uploads are set up, as the list tells it. Settings that cannot be read (a key that is not base64) count
   // as not set up there, so the library still lists. The one line says only that; nothing of the key is logged.
-  const isSetUp = (): boolean => {
+  const isSetUp = (spaceId: string): boolean => {
     try {
-      return deps.drive() !== null;
+      return deps.drive(spaceId) !== null;
     } catch {
       console.error("Drive settings could not be read");
       return false;
@@ -143,65 +164,65 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
   };
 
   return {
-    list: mediaRoute(deps, async (actor, req) => {
+    list: mediaRoute(deps, inQueriedSpace, async (actor, req) => {
       const ids = idsOf(req);
       const assets = await listAssets(deps.db(), actor, { ids });
-      return Response.json({ assets, setUp: isSetUp() });
+      return Response.json({ assets, setUp: isSetUp(actor.spaceId) });
     }),
 
-    open: mediaRoute(deps, async (actor, req) => {
-      const service = media();
+    open: mediaRoute(deps, inQueriedSpace, async (actor, req) => {
+      const service = media(actor);
       if (!service) return notSetUp();
       const { asset, uploadUrl, offset } = await openUpload(service, actor, await bodyOf(req, openBody));
       return Response.json({ asset, uploadUrl, offset }, { status: 201 });
     }),
 
-    update: mediaRoute(deps, async (actor, req, ctx: AssetRouteContext) => {
+    update: mediaRoute(deps, inAssetSpace, async (actor, req, ctx: AssetRouteContext) => {
       const { id } = await ctx.params;
       const patch = await bodyOf(req, updateBody);
       return Response.json({ asset: await updateAsset(deps.db(), actor, id, patch) });
     }),
 
-    remove: mediaRoute(deps, async (actor, _req, ctx: AssetRouteContext) => {
-      const service = media();
+    remove: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {
+      const service = media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       await removeAsset(service, actor, id);
       return new Response(null, { status: 204 });
     }),
 
-    offset: mediaRoute(deps, async (actor, _req, ctx: AssetRouteContext) => {
-      const service = media();
+    offset: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {
+      const service = media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       const { uploadUrl, offset, done } = await uploadOffset(service, actor, id);
       return Response.json({ uploadUrl, offset, done });
     }),
 
-    complete: mediaRoute(deps, async (actor, _req, ctx: AssetRouteContext) => {
-      const service = media();
+    complete: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {
+      const service = media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       return Response.json({ asset: await completeUpload(service, actor, id) });
     }),
 
-    openFile: mediaRoute(deps, async (actor, req, ctx: AssetRouteContext) => {
-      const service = media();
+    openFile: mediaRoute(deps, inAssetSpace, async (actor, req, ctx: AssetRouteContext) => {
+      const service = media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       const { uploadUrl } = await openAssetFile(service, actor, id, await bodyOf(req, openFileBody));
       return Response.json({ uploadUrl }, { status: 201 });
     }),
 
-    completeFile: mediaRoute(deps, async (actor, req, ctx: AssetRouteContext) => {
-      const service = media();
+    completeFile: mediaRoute(deps, inAssetSpace, async (actor, req, ctx: AssetRouteContext) => {
+      const service = media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       const { role } = await bodyOf(req, completeFileBody);
       return Response.json({ asset: await completeAssetFile(service, actor, id, role) });
     }),
 
-    previewFailed: mediaRoute(deps, async (actor, _req, ctx: AssetRouteContext) => {
+    previewFailed: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {
       const { id } = await ctx.params;
       return Response.json({ asset: await failPreview(deps.db(), actor, id) });
     }),
@@ -210,8 +231,8 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
 
 // The token a browser reads media files with: read-only, for any signed-in member, and never kept by a cache.
 export function makeReadTokenHandler(deps: MediaHandlerDeps): (req: Request) => Promise<Response> {
-  return mediaRoute(deps, async () => {
-    const drive = deps.drive();
+  return mediaRoute(deps, inQueriedSpace, async (actor) => {
+    const drive = deps.drive(actor.spaceId);
     if (!drive) return notSetUp();
     const { accessToken, expiresAt } = await drive.readToken(LIMITS.mediaReadTokenMinSeconds);
     return Response.json({ accessToken, expiresAt }, { headers: { "Cache-Control": "no-store" } });

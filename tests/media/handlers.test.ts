@@ -7,6 +7,7 @@ import { SCOPE_READ } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { NOT_SET_UP_BODY, STORAGE_DOWN_BODY, makeMediaHandlers, makeReadTokenHandler, type MediaHandlerDeps } from "@/lib/media/handlers";
 import { openUpload } from "@/lib/media/service";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { testActor } from "../helpers/actor";
 import { sources } from "../helpers/sources";
 import { AUDIO, IMAGE, VIDEO, mediaContext, readyAsset, sendAll, type MediaContext } from "./context";
@@ -25,7 +26,11 @@ function handlersFor(ctx: MediaContext, actor: Actor, over: Partial<MediaHandler
   return { ...makeMediaHandlers(deps), readToken: makeReadTokenHandler(deps) };
 }
 
+// The collection routes name their space; these tests are all in Seattle Solvers.
+const inTeam = (path: string) => (/^\/api\/(media|drive\/read-token)(\?|$)/.test(path) ? `${path}${path.includes("?") ? "&" : "?"}space=${SEED_TEAM_ID}` : path);
+
 function request(method: string, path = "/api/media", body?: unknown, origin = APP): Request {
+  path = inTeam(path);
   const text = body === undefined || typeof body === "string" ? body : JSON.stringify(body);
   return new Request(`${APP}${path}`, { method, headers: { "content-type": "application/json", origin }, body: text });
 }
@@ -239,11 +244,11 @@ describe("the media API", () => {
       await api.remove(request("DELETE", path), at(asset.id)),
       await api.readToken(tokenRequest()),
     ];
-    expect(NOT_SET_UP_BODY).toEqual({ code: "MEDIA_NOT_SET_UP", message: "Uploads are not set up yet." });
-    for (const refusal of refusals) expect(await answer(refusal)).toEqual(refusedAs(503, NOT_SET_UP_BODY));
+    expect(NOT_SET_UP_BODY).toEqual({ code: "STORAGE_NOT_SET_UP", message: "Uploads are not set up yet." });
+    for (const refusal of refusals) expect(await answer(refusal)).toEqual(refusedAs(409, NOT_SET_UP_BODY));
     // Whatever was sent: the body is not read.
-    expect(await answer(await api.open(post("/api/media", {})))).toEqual(refusedAs(503, NOT_SET_UP_BODY));
-    expect(await answer(await api.completeFile(post(`${path}/files/complete`, "{"), at(asset.id)))).toEqual(refusedAs(503, NOT_SET_UP_BODY));
+    expect(await answer(await api.open(post("/api/media", {})))).toEqual(refusedAs(409, NOT_SET_UP_BODY));
+    expect(await answer(await api.completeFile(post(`${path}/files/complete`, "{"), at(asset.id)))).toEqual(refusedAs(409, NOT_SET_UP_BODY));
 
     // What needs no Drive still works.
     const renamed = await answer(await api.update(request("PATCH", path, { name: "Kickoff" }), at(asset.id)));
@@ -657,14 +662,14 @@ describe("the route files", () => {
 
     // Every file hands over the same four things, and none of them was called to load it.
     const { getDb } = await import("@/db");
-    const { getDrive } = await import("@/lib/drive");
+    const { driveFor } = await import("@/lib/spaces/storage");
     const { appBaseUrl } = await import("@/lib/connector/config");
     expect(makeMediaHandlers).toHaveBeenCalledTimes(7);
     expect(makeReadTokenHandler).toHaveBeenCalledTimes(1);
     for (const [deps] of [...makeMediaHandlers.mock.calls, ...makeReadTokenHandler.mock.calls]) {
       expect(Object.keys(deps).sort()).toEqual(["auth", "db", "drive", "origin"]);
       expect(deps.db).toBe(getDb);
-      expect(deps.drive).toBe(getDrive);
+      expect(deps.drive).toBe(driveFor);
       expect(deps.origin).toBe(appBaseUrl);
       const asked = request("GET");
       requireUserApi.mockClear();

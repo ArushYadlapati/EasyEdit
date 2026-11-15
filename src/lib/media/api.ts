@@ -68,7 +68,7 @@ function failureFor(status: number, body: unknown): MediaFailure {
   const sentence = typeof message === "string" ? message : "";
   if (status === 401) return { ok: false, kind: "signed-out", message: sentence };
   if (status === 403) return { ok: false, kind: "forbidden", message: sentence };
-  if (status === 503 && code === "MEDIA_NOT_SET_UP") return { ok: false, kind: "not-set-up", message: sentence };
+  if (status === 409 && code === "STORAGE_NOT_SET_UP") return { ok: false, kind: "not-set-up", message: sentence };
   if (status === 502) return { ok: false, kind: "storage", message: sentence };
   // The server, or something between it and the page, failed: the same request may work a moment later.
   if (status >= 500) return NETWORK;
@@ -78,10 +78,12 @@ function failureFor(status: number, body: unknown): MediaFailure {
 type Call = { method: "GET" | "POST" | "PATCH" | "DELETE"; path: string; body?: unknown };
 
 const MEDIA = "/api/media";
+// The collection calls name the space; an asset's own calls need none, its id says where it is.
+const inSpace = (spaceId: string) => `space=${encodeURIComponent(spaceId)}`;
 const assetPath = (assetId: string, rest = "") => `${MEDIA}/${encodeURIComponent(assetId)}${rest}`;
 
 // The website's media routes, as the browser calls them. No call throws: whatever goes wrong is a MediaFailure.
-export function createMediaApi(fetchFn?: typeof fetch): MediaApi {
+export function createMediaApi(spaceId: string, fetchFn?: typeof fetch): MediaApi {
   const doFetch: typeof fetch = fetchFn ?? ((input, init) => fetch(input, init));
 
   // Sends one request to the page's own origin and reads the answer. A request that could not be written, sent
@@ -115,8 +117,8 @@ export function createMediaApi(fetchFn?: typeof fetch): MediaApi {
   const post = <T>(path: () => string, pick: Take<T>, body?: unknown) => request(() => ({ method: "POST", path: path(), body }), pick);
 
   return {
-    list: (ids) => request(() => ({ method: "GET", path: ids ? `${MEDIA}?ids=${ids.map(encodeURIComponent).join(",")}` : MEDIA }), fieldsOf(listed)),
-    open: (input) => post(() => MEDIA, fieldsOf(opened), input),
+    list: (ids) => request(() => ({ method: "GET", path: `${MEDIA}?${inSpace(spaceId)}${ids ? `&ids=${ids.map(encodeURIComponent).join(",")}` : ""}` }), fieldsOf(listed)),
+    open: (input) => post(() => `${MEDIA}?${inSpace(spaceId)}`, fieldsOf(opened), input),
     offset: (assetId) => post(() => assetPath(assetId, "/offset"), fieldsOf(held)),
     complete: (assetId) => post(() => assetPath(assetId, "/complete"), fieldsOf(oneAsset)),
     openFile: (assetId, role, sizeBytes) => post(() => assetPath(assetId, "/files"), fieldsOf(fileOpened), { role, sizeBytes }),
@@ -124,6 +126,6 @@ export function createMediaApi(fetchFn?: typeof fetch): MediaApi {
     previewFailed: (assetId) => post(() => assetPath(assetId, "/preview-failed"), fieldsOf(oneAsset)),
     update: (assetId, patch) => request(() => ({ method: "PATCH", path: assetPath(assetId), body: patch }), fieldsOf(oneAsset)),
     remove: (assetId) => request(() => ({ method: "DELETE", path: assetPath(assetId) }), nothing),
-    readToken: () => post(() => "/api/drive/read-token", fieldsOf(token)),
+    readToken: () => post(() => `/api/drive/read-token?${inSpace(spaceId)}`, fieldsOf(token)),
   };
 }

@@ -40,7 +40,8 @@ const quietly = (work: Promise<unknown>) => void work.catch(() => {});
 // preferences for one open project, and ties them to the page: tab visibility, focus, coming back online, the user's
 // clicks and keys, and leaving with unsent changes or running uploads. The panel sizes and the preferences come from the
 // browser's cookies, which the page read; the keymap is read from local storage once the editor is on screen.
-export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; layout?: Layout; prefs?: Prefs }) {
+// space: the space the project is in, and whether it has storage for uploads.
+export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; space: { id: string; storageReady: boolean }; layout?: Layout; prefs?: Prefs }) {
   const [{ store, api, sync, clipboard, media, drop, settings, savePrefs, presenceStore }] = useState(() => {
     const store = createEditorStore(initial, { view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones } });
     const api = createProjectApi(initial.projectId);
@@ -53,7 +54,7 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
       writePrefsCookie(formatPrefs({ ...chosen, snapping, safeZones: showSafeZones }));
     };
     const settings = createSettingsStore({ prefs }, { prefs: savePrefs, keymap: (k) => writeKeymap(localStore, k) });
-    const media = createMediaServices();
+    const media = createMediaServices(space.id);
     const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
     return { store, api, sync, clipboard: createClipboard(localStore), media, drop, settings, savePrefs, presenceStore };
   });
@@ -224,7 +225,7 @@ export function EditorShell({ initial, layout, prefs = DEFAULT_PREFS }: { initia
 
   return (
     <EditorProvider store={store} api={api} clipboard={clipboard} settings={settings}>
-      <MediaProvider services={media} drop={drop}>
+      <MediaProvider services={media} spaceId={space.id} storageReady={space.storageReady} drop={drop}>
         <PresenceProvider store={presenceStore}>
           <EditorScreen initialLayout={layout} />
         </PresenceProvider>

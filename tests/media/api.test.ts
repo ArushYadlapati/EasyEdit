@@ -3,6 +3,7 @@ import { CROSS_ORIGIN_BODY, FORBIDDEN_BODY, INTERNAL_BODY, UNAUTHENTICATED_BODY 
 import { createMediaApi, type MediaApi, type MediaResult } from "@/lib/media/api";
 import { NOT_SET_UP_BODY, STORAGE_DOWN_BODY } from "@/lib/media/handlers";
 import type { AssetView } from "@/lib/media/types";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { piece } from "../helpers/fake-drive";
 import { VIDEO, handlersFetch, insertAsset, mediaContext, sendAll } from "./context";
 
@@ -24,9 +25,9 @@ type Call = {
 
 // Every call the client has.
 const CALLS: Call[] = [
-  { name: "list", run: (api) => api.list(), request: { method: "GET", url: "/api/media" }, status: 200, answer: { assets: [ASSET], setUp: true } },
-  { name: "list by id", run: (api) => api.list(["a1", "a2"]), request: { method: "GET", url: "/api/media?ids=a1,a2" }, status: 200, answer: { assets: [ASSET], setUp: false } },
-  { name: "open", run: (api) => api.open(VIDEO), request: { method: "POST", url: "/api/media", body: VIDEO }, status: 201, answer: { asset: ASSET, uploadUrl: SESSION, offset: 0 } },
+  { name: "list", run: (api) => api.list(), request: { method: "GET", url: "/api/media?space=team_seattle_solvers" }, status: 200, answer: { assets: [ASSET], setUp: true } },
+  { name: "list by id", run: (api) => api.list(["a1", "a2"]), request: { method: "GET", url: "/api/media?space=team_seattle_solvers&ids=a1,a2" }, status: 200, answer: { assets: [ASSET], setUp: false } },
+  { name: "open", run: (api) => api.open(VIDEO), request: { method: "POST", url: "/api/media?space=team_seattle_solvers", body: VIDEO }, status: 201, answer: { asset: ASSET, uploadUrl: SESSION, offset: 0 } },
   { name: "offset", run: (api) => api.offset("a1"), request: { method: "POST", url: "/api/media/a1/offset" }, status: 200, answer: { uploadUrl: SESSION, offset: 8_388_608, done: false } },
   { name: "complete", run: (api) => api.complete("a1"), request: { method: "POST", url: "/api/media/a1/complete" }, status: 200, answer: { asset: ASSET } },
   { name: "openFile", run: (api) => api.openFile("a1", "poster", 50_000), request: { method: "POST", url: "/api/media/a1/files", body: { role: "poster", sizeBytes: 50_000 } }, status: 201, answer: { uploadUrl: SESSION } },
@@ -34,7 +35,7 @@ const CALLS: Call[] = [
   { name: "previewFailed", run: (api) => api.previewFailed("a1"), request: { method: "POST", url: "/api/media/a1/preview-failed" }, status: 200, answer: { asset: ASSET } },
   { name: "update", run: (api) => api.update("a1", { name: "Kickoff", event: null }), request: { method: "PATCH", url: "/api/media/a1", body: { name: "Kickoff", event: null } }, status: 200, answer: { asset: ASSET } },
   { name: "remove", run: (api) => api.remove("a1"), request: { method: "DELETE", url: "/api/media/a1" }, status: 204, answer: null },
-  { name: "readToken", run: (api) => api.readToken(), request: { method: "POST", url: "/api/drive/read-token" }, status: 200, answer: { accessToken: "ya29.token", expiresAt: 1_762_900_000_000 } },
+  { name: "readToken", run: (api) => api.readToken(), request: { method: "POST", url: "/api/drive/read-token?space=team_seattle_solvers" }, status: 200, answer: { accessToken: "ya29.token", expiresAt: 1_762_900_000_000 } },
 ];
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -42,7 +43,7 @@ const page = (status: number) => new Response("<html>Not ours</html>", { status,
 const answered = (call: Call, body: unknown = call.answer) => (body === null ? new Response(null, { status: call.status }) : json(call.status, body));
 
 // The client over a server that gives every request the same answer (built anew each time: a Response can be read once).
-const apiAnswering = (respond: () => Response) => createMediaApi((async () => respond()) as typeof fetch);
+const apiAnswering = (respond: () => Response) => createMediaApi(SEED_TEAM_ID, (async () => respond()) as typeof fetch);
 
 // What every call makes of one answer.
 async function everyCall(respond: () => Response): Promise<unknown[]> {
@@ -70,12 +71,12 @@ describe("the browser's media API client", () => {
     // An answer that breaks off while it is read.
     const cutOff = (async () => new Response(new ReadableStream({ start: (stream) => stream.error(new TypeError("terminated")) }), { status: 200 })) as typeof fetch;
     for (const fetchFn of [rejecting, throwing, cutOff]) {
-      for (const call of CALLS) expect(await call.run(createMediaApi(fetchFn)), call.name).toEqual(network);
+      for (const call of CALLS) expect(await call.run(createMediaApi(SEED_TEAM_ID, fetchFn)), call.name).toEqual(network);
     }
     // An id that cannot be written in an address is not sent, and is not thrown either.
     const fetchFn = vi.fn<typeof fetch>(async () => json(200, {}));
-    expect(await createMediaApi(fetchFn).offset("\uD800")).toEqual(network);
-    expect(await createMediaApi(fetchFn).list(["\uD800"])).toEqual(network);
+    expect(await createMediaApi(SEED_TEAM_ID, fetchFn).offset("\uD800")).toEqual(network);
+    expect(await createMediaApi(SEED_TEAM_ID, fetchFn).list(["\uD800"])).toEqual(network);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -89,9 +90,9 @@ describe("the browser's media API client", () => {
     expect(await everyCall(() => json(403, CROSS_ORIGIN_BODY))).toEqual(all({ ok: false, kind: "forbidden", message: "This request came from another site." }));
   });
 
-  it("503 with MEDIA_NOT_SET_UP is not set up", async () => {
-    expect(NOT_SET_UP_BODY.code).toBe("MEDIA_NOT_SET_UP");
-    expect(await everyCall(() => json(503, NOT_SET_UP_BODY))).toEqual(all({ ok: false, kind: "not-set-up", message: "Uploads are not set up yet." }));
+  it("409 with STORAGE_NOT_SET_UP is not set up", async () => {
+    expect(NOT_SET_UP_BODY.code).toBe("STORAGE_NOT_SET_UP");
+    expect(await everyCall(() => json(409, NOT_SET_UP_BODY))).toEqual(all({ ok: false, kind: "not-set-up", message: "Uploads are not set up yet." }));
     // Any other 503 is a server that failed, not one that is not set up.
     expect(await everyCall(() => json(503, { code: "BUSY", message: "Try later." }))).toEqual(all({ ok: false, kind: "network", message: "" }));
     expect(await everyCall(() => page(503))).toEqual(all({ ok: false, kind: "network", message: "" }));
@@ -111,7 +112,7 @@ describe("the browser's media API client", () => {
     [501, { code: "NOT_IMPLEMENTED", message: "Not here." }],
     [503, { code: "BUSY", message: "Try later." }],
     [504, null],
-    [504, NOT_SET_UP_BODY], // the code means "not set up" under 503 only
+    [504, NOT_SET_UP_BODY], // the code means "not set up" under 409 only
     [599, { message: "Timed out." }],
   ])("a server error can be tried again: it is a network failure, with no sentence (%i %j)", async (status, body) => {
     expect(await everyCall(() => (body === null ? page(status) : json(status, body)))).toEqual(all({ ok: false, kind: "network", message: "" }));
@@ -197,7 +198,7 @@ describe("the browser's media API client", () => {
   it("requests are same-origin and say they carry JSON", async () => {
     for (const call of CALLS) {
       const fetchFn = vi.fn<typeof fetch>(async () => answered(call));
-      expect(await call.run(createMediaApi(fetchFn)), call.name).toMatchObject({ ok: true });
+      expect(await call.run(createMediaApi(SEED_TEAM_ID, fetchFn)), call.name).toMatchObject({ ok: true });
       expect(fetchFn, call.name).toHaveBeenCalledTimes(1);
       const [url, init] = fetchFn.mock.calls[0];
       expect(url, call.name).toBe(call.request.url); // a path: the page's own origin
@@ -214,9 +215,9 @@ describe("the browser's media API client", () => {
     const pages = vi.fn<typeof fetch>(async () => json(200, { assets: [ASSET], setUp: true }));
     vi.stubGlobal("fetch", pages);
     try {
-      expect(await createMediaApi().list()).toEqual({ ok: true, assets: [ASSET], setUp: true });
+      expect(await createMediaApi(SEED_TEAM_ID).list()).toEqual({ ok: true, assets: [ASSET], setUp: true });
       expect(pages).toHaveBeenCalledTimes(1);
-      expect(pages.mock.calls[0][0]).toBe("/api/media");
+      expect(pages.mock.calls[0][0]).toBe("/api/media?space=team_seattle_solvers");
     } finally {
       vi.unstubAllGlobals();
     }
@@ -224,7 +225,7 @@ describe("the browser's media API client", () => {
 
   it("writes ids into an address so that they stay ids", async () => {
     const urls: string[] = [];
-    const api = createMediaApi((async (url: RequestInfo | URL) => {
+    const api = createMediaApi(SEED_TEAM_ID, (async (url: RequestInfo | URL) => {
       urls.push(String(url));
       return json(200, { assets: [], setUp: true });
     }) as typeof fetch);
@@ -234,12 +235,12 @@ describe("the browser's media API client", () => {
     await api.remove("a/b?c");
     await api.offset("../x y");
     await api.update("a1", {});
-    expect(urls).toEqual(["/api/media?ids=", "/api/media?ids=a1", "/api/media?ids=a%26b%3Dc,d%23e", "/api/media/a%2Fb%3Fc", "/api/media/..%2Fx%20y/offset", "/api/media/a1"]);
+    expect(urls).toEqual(["/api/media?space=team_seattle_solvers&ids=", "/api/media?space=team_seattle_solvers&ids=a1", "/api/media?space=team_seattle_solvers&ids=a%26b%3Dc,d%23e", "/api/media/a%2Fb%3Fc", "/api/media/..%2Fx%20y/offset", "/api/media/a1"]);
   });
 
   it("open sends the facts and returns the session", async () => {
     const ctx = await mediaContext();
-    const api = createMediaApi(handlersFetch(ctx, ctx.ada));
+    const api = createMediaApi(SEED_TEAM_ID, handlersFetch(ctx, ctx.ada));
     const opened = got(await api.open({ ...VIDEO, event: "Regionals" }));
     expect(opened).toEqual({ ok: true, asset: expect.any(Object), uploadUrl: expect.stringContaining("upload_id="), offset: 0 });
     expect(opened.asset).toMatchObject({
@@ -255,7 +256,7 @@ describe("the browser's media API client", () => {
 
   it("every call reaches its own route of the real server", async () => {
     const ctx = await mediaContext();
-    const api = createMediaApi(handlersFetch(ctx, ctx.ada));
+    const api = createMediaApi(SEED_TEAM_ID, handlersFetch(ctx, ctx.ada));
     expect(await api.list()).toEqual({ ok: true, assets: [], setUp: true });
 
     const opened = got(await api.open(VIDEO));
@@ -299,12 +300,12 @@ describe("the browser's media API client", () => {
 
   it("says what the real server refuses, in the server's words", async () => {
     const ctx = await mediaContext();
-    const viewer = createMediaApi(handlersFetch(ctx, ctx.vera));
+    const viewer = createMediaApi(SEED_TEAM_ID, handlersFetch(ctx, ctx.vera));
     expect(await viewer.open(VIDEO)).toEqual({ ok: false, kind: "forbidden", message: "Your role doesn't allow this." });
     expect(await viewer.list()).toEqual({ ok: true, assets: [], setUp: true });
     expect(await viewer.readToken()).toMatchObject({ ok: true });
 
-    const api = createMediaApi(handlersFetch(ctx, ctx.ada));
+    const api = createMediaApi(SEED_TEAM_ID, handlersFetch(ctx, ctx.ada));
     expect(await api.open({ ...VIDEO, fileName: "photo.heic" })).toEqual({ ok: false, kind: "refused", message: "HEIC photos aren't supported yet. Save the photo as JPEG first." });
     expect(await api.complete("nobody")).toEqual({ ok: false, kind: "refused", message: "That file is no longer in the library." });
     expect(await api.openFile("nobody", "poster", 50_000)).toEqual({ ok: false, kind: "refused", message: "That file is no longer in the library." });
@@ -326,8 +327,8 @@ describe("handlersFetch", () => {
     await expect(fetchFn("/api/media/a1/files/else", { method: "POST" })).rejects.toThrow("No route");
     await expect(fetchFn("/api/drive/read-token")).rejects.toThrow("No route for GET /api/drive/read-token");
     await expect(fetchFn("https://elsewhere.example/api/media")).rejects.toThrow("No route");
-    expect((await fetchFn("/api/media")).status).toBe(200);
-    expect((await fetchFn("https://app.test/api/media?ids=")).status).toBe(200);
+    expect((await fetchFn("/api/media?space=team_seattle_solvers")).status).toBe(200);
+    expect((await fetchFn("https://app.test/api/media?space=team_seattle_solvers&ids=")).status).toBe(200);
   });
 
   it("sends each request as the app's own page would, and the id as it was written", async () => {
@@ -335,12 +336,12 @@ describe("handlersFetch", () => {
     const fetchFn = handlersFetch(ctx, ctx.ada);
     // The request names the app as the site it comes from. So one that claims to be for another host is refused as cross-site.
     const init = { method: "POST", body: JSON.stringify(VIDEO) };
-    const elsewhere = await fetchFn("/api/media", { ...init, headers: { "content-type": "application/json", "x-forwarded-host": "elsewhere.example" } });
+    const elsewhere = await fetchFn("/api/media?space=team_seattle_solvers", { ...init, headers: { "content-type": "application/json", "x-forwarded-host": "elsewhere.example" } });
     expect([elsewhere.status, await elsewhere.json()]).toEqual([403, CROSS_ORIGIN_BODY]);
-    expect((await fetchFn("/api/media", { ...init, headers: { "content-type": "application/json" } })).status).toBe(201);
+    expect((await fetchFn("/api/media?space=team_seattle_solvers", { ...init, headers: { "content-type": "application/json" } })).status).toBe(201);
 
     // An id that had to be escaped in the address reaches the route whole.
     const id = await insertAsset(ctx.db, { id: "a b/c?d", uploadedBy: ctx.ada.userId });
-    expect(await createMediaApi(fetchFn).update(id, { name: "Kickoff" })).toMatchObject({ ok: true, asset: { id: "a b/c?d", name: "Kickoff" } });
+    expect(await createMediaApi(SEED_TEAM_ID, fetchFn).update(id, { name: "Kickoff" })).toMatchObject({ ok: true, asset: { id: "a b/c?d", name: "Kickoff" } });
   });
 });

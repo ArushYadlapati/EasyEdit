@@ -20,7 +20,7 @@ export async function editTimelineTool(
   const notAllowed = checkAllowedOps(input.ops);
   if (notAllowed) return opNotAvailable(notAllowed);
   // Before the project is read: an asset id that is wrong says how to find the right one.
-  const badAsset = await checkAssetOps(ctx.db, input.ops);
+  const badAsset = await checkAssetOps(ctx.db, ctx.actor.spaceId, input.ops);
   if (badAsset) return assetNotUsable(badAsset);
 
   // The engine checks each op's shape; the service refuses the whole batch if one is wrong.

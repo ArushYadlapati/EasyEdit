@@ -34,7 +34,7 @@ export async function addMediaTool(
   if (!project) return fail(notFoundText(input.project_id));
   if (project.version !== input.expected_version) return conflictResult(ctx, input.project_id, input.expected_version);
 
-  const facts = await loadAssetFacts(ctx.db, input.items.map((item) => item.asset_id));
+  const facts = await loadAssetFacts(ctx.db, ctx.actor.spaceId, input.items.map((item) => item.asset_id));
   for (const [i, item] of input.items.entries()) {
     // No clip type is passed: the clip takes the asset's kind.
     const trouble = assetTrouble(facts.get(item.asset_id));

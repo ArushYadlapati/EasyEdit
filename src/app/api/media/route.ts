@@ -1,10 +1,10 @@
 import { getDb } from "@/db";
 import { requireUserApi } from "@/lib/access";
 import { appBaseUrl } from "@/lib/connector/config";
-import { getDrive } from "@/lib/drive";
+import { driveFor } from "@/lib/spaces/storage";
 import { makeMediaHandlers } from "@/lib/media/handlers";
 
-const handlers = makeMediaHandlers({ db: getDb, auth: (req) => requireUserApi(req, "viewer"), drive: getDrive, origin: appBaseUrl });
+const handlers = makeMediaHandlers({ db: getDb, auth: (req) => requireUserApi(req, "viewer"), drive: driveFor, origin: appBaseUrl });
 
 export const GET = handlers.list;
 export const POST = handlers.open;

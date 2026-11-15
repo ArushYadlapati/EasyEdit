@@ -307,7 +307,7 @@ export async function applyProjectOps(
     // it is in the doc this write would produce. A change that touches no media makes no query.
     const assetIds = assetIdsToCheck(doc, ops);
     if (assetIds.length > 0) {
-      const problem = findMediaProblem(doc, ops, await loadAssetFacts(db, assetIds));
+      const problem = findMediaProblem(doc, ops, await loadAssetFacts(db, actor.spaceId, assetIds));
       if (problem) {
         const code = problem.code === "past_end" ? "TRIM_OUT_OF_RANGE" : "INVALID";
         throw new ServiceError(code, 400, mediaProblemMessage(problem, ops), { opIndex: problem.opIndex });
