@@ -9,7 +9,8 @@ import { SCOPE_CLOUD, SCOPE_READ, SCOPE_WRITE } from "@/lib/drive/token";
 // Beside the shared drive, it holds people's own Drives and the app's IAM project. A token belongs to someone: the
 // app's service account (a signed request), a person (a refresh token from `connect`), or a team's reader (made by
 // IAM Credentials for the app's service account). The app's service account sees the shared drive, as before. A
-// file anyone else made has an `owner`, and is seen by its owner and by whoever one of its folders is shared with.
+// file anyone else made has an `owner`, and is seen by its owner and by whoever one of its folders is shared with,
+// except a person's drive.file token, which sees only the files it made.
 
 const TOKEN_HOST = "oauth2.googleapis.com";
 const API_HOST = "www.googleapis.com";
@@ -153,16 +154,20 @@ export function makeFakeDrive(): FakeDrive {
     return role;
   }
   // The app's service account sees the whole shared drive; a file in someone's Drive is seen by its owner and whoever it is shared with.
+  // A person's token is for drive.file: it reaches only what the app made with that person's connection, never a file
+  // merely shared with their address. A reader (a service account) reaches what is shared with it.
   function canSee(who: Holder, id: string): boolean {
     const file = files.get(id);
     if (!file) return false;
     if (inSharedDrive(file) && isMainAccount(who.email)) return true;
+    if (who.scope === SCOPE_FILE) return file.owner === who.email;
     return file.owner === who.email || roleOn(id, who.email) !== null;
   }
   function canChange(who: Holder, id: string): boolean {
     const file = files.get(id);
     if (!file || who.scope === SCOPE_READ) return false;
     if (inSharedDrive(file) && isMainAccount(who.email)) return true;
+    if (who.scope === SCOPE_FILE) return file.owner === who.email;
     return file.owner === who.email || roleOn(id, who.email) === "writer";
   }
   // Whose token it is, while it still works: not expired, and its holder not deleted or cut off.
