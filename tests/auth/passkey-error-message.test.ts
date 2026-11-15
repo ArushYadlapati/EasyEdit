@@ -53,3 +53,13 @@ describe("passkeySignInErrorMessage", () => {
     expect(passkeySignInErrorMessage({ code: "AUTH_CANCELLED", message: "Auth cancelled" })).toBe(DID_NOT_FINISH);
   });
 });
+
+describe("passkeySignInErrorMessage with open sign-up", () => {
+  it("says Google hasn't verified the email in place of the allowlist", () => {
+    expect(passkeySignInErrorMessage({ code: "NOT_ALLOWLISTED", message: "NOT_ALLOWLISTED" }, true)).toBe(
+      "Google hasn't verified that email address, so EasyEdit can't use it to sign in.",
+    );
+    expect(passkeySignInErrorMessage({ code: "NOT_ALLOWLISTED", message: "NOT_ALLOWLISTED" }, false)).toBe(NOT_ALLOWLISTED);
+    expect(passkeySignInErrorMessage({ code: "PASSKEY_NOT_FOUND", message: "Passkey not found" }, true)).toBe(NOT_SET_UP);
+  });
+});

@@ -14,6 +14,10 @@ import { getUserNames } from "@/lib/projects/user-names";
 import { actorIn } from "@/lib/spaces/access";
 import { findMySpace, rememberSpace } from "@/lib/spaces/service";
 import { slugFor } from "@/lib/spaces/paths";
+import { storageState } from "@/lib/spaces/storage";
+import { storageBlock } from "@/lib/storage/availability";
+import { dashboardNote, storageCard, storageSettingsPath } from "@/lib/storage/messages";
+import { StorageBanner, StorageNote, StorageSetupCard } from "@/components/storage/storage-banner";
 import {
   createFolderAction,
   createProjectAction,
@@ -56,8 +60,25 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
     listRecentProjectIds(db, actor, LIMITS.dashboardRecent),
   ]);
   const names = await getUserNames(db, projects.map((project) => actorUserId(project.updatedBy)));
-  const { folder, view: named } = await searchParams;
+  const { folder, view: named, storage: storageNote } = await searchParams;
   const view = resolveView({ folder, view: named }, folders);
+  const slug = slugFor(space);
+  const isAdmin = actor.role === "admin";
+  // The space's storage, from its rows (no call to Google). A connection that broke: a banner for the people who
+  // upload. No storage at all: the setup card for its admins, where this server can set storage up.
+  const storage = await storageState(db, space.id);
+  const settingsHref = storageSettingsPath(slug);
+  const note = dashboardNote(storageNote);
+  const broken = !storage.ready && storage.reason === "broken" && canEdit;
+  const block = !storage.ready && storage.reason === "none" && isAdmin ? storageBlock(space.kind) : undefined;
+  const notices =
+    note || broken || block === null ? (
+      <>
+        {note && <StorageNote note={note} />}
+        {broken && <StorageBanner settingsHref={settingsHref} isAdmin={isAdmin} />}
+        {block === null && <StorageSetupCard card={storageCard({ problem: "none", kind: space.kind, isAdmin, block })} settingsHref={settingsHref} />}
+      </>
+    ) : null;
 
   return (
     <Dashboard
@@ -68,7 +89,8 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
       canEdit={canEdit}
       now={new Date()}
       actions={actionsFor(space.id)}
-      spaceSlug={slugFor(space)}
+      spaceSlug={slug}
+      notices={notices}
     />
   );
 }

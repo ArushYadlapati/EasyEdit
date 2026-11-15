@@ -13,7 +13,8 @@ const ERROR = "rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const params = await searchParams;
   const { error } = params;
-  const errorMessage = loginErrorMessage(Array.isArray(error) ? error[0] : error);
+  const open = openSignUp();
+  const errorMessage = loginErrorMessage(Array.isArray(error) ? error[0] : error, open);
   // Sent here by the sign-in server while connecting an AI agent: signing in carries on with that request.
   const forClaude = isConnectorRequest(params);
   // Decided by the allowlist, not by cookie presence, so a removed user's stale cookie cannot loop.
@@ -39,9 +40,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             {errorMessage}
           </p>
         )}
-        {openSignUp() && <p>Sign in or create an account with Google.</p>}
+        {open && <p className="text-sm text-foreground/70">Sign in or create an account with Google.</p>}
         <SignInButton />
-        <PasskeySignInButton />
+        <PasskeySignInButton openSignUp={open} />
       </div>
     </main>
   );

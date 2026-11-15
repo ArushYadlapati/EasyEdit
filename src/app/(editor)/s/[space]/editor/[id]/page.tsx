@@ -13,6 +13,7 @@ import { actorIn } from "@/lib/spaces/access";
 import { editorPath, slugFor } from "@/lib/spaces/paths";
 import { findMySpace, listMySpaces, spaceOfProject } from "@/lib/spaces/service";
 import { storageState } from "@/lib/spaces/storage";
+import { storageBlock } from "@/lib/storage/availability";
 
 // The editor is always dark. This asks the Dark Reader browser extension to leave the page alone: on a screen that
 // is already dark it darkens the few light elements, and the playhead all but disappears. The color scheme tells the
@@ -48,6 +49,9 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
   const storage = await storageState(db, space.id);
   const storageReady = storage.ready || storage.reason === "not_configured";
   const storageProblem = storage.ready ? null : storage.reason === "broken" ? "broken" : storage.reason === "none" ? "none" : null;
+  // For the Media tab's setup card: who may set storage up (the space's admins), and whether this server can.
+  const isAdmin = actor.role === "admin";
+  const block = storageProblem === "none" ? storageBlock(space.kind) : null;
 
   return (
     <>
@@ -64,7 +68,7 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
           canEdit: meetsRole(actor.role, "editor"),
           thumbnailVersion: project.thumbnailVersion,
         }}
-        space={{ id: space.id, slug: slugFor(space), storageReady, storageProblem }}
+        space={{ id: space.id, slug: slugFor(space), storageReady, storageProblem, kind: space.kind, isAdmin, storageBlock: block }}
         layout={layout}
         prefs={prefs}
       />

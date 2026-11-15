@@ -8,12 +8,15 @@ import { cx } from "@/components/ui/cx";
 import { Dialog } from "@/components/ui/dialog";
 import { InlineEdit } from "@/components/ui/inline-edit";
 import { authClient } from "@/lib/auth-client";
+import { UNVERIFIED_EMAIL } from "@/lib/login-error-message";
 
 export type PasskeysDialogProps = {
   open: boolean;
   onClose(): void;
   // The error code a Google sign-in from Sign in again came back with, when it failed.
   signInError?: string | null;
+  // Whether anyone may make an account: then a refused Google sign-in means Google hasn't verified the email.
+  openSignUp?: boolean;
 };
 
 type Passkey = { id: string; name: string; createdAt: Date };
@@ -57,9 +60,10 @@ const MESSAGES = {
 const cancelled = (error: Failure) => CANCELLED.has(error.code ?? "");
 
 // Why a Google sign-in from Sign in again came back without signing in, or null when it didn't fail.
-function googleSignInMessage(code: string | null | undefined): string | null {
+function googleSignInMessage(code: string | null | undefined, openSignUp: boolean): string | null {
   if (!code) return null;
-  return code.toUpperCase() === "NOT_ALLOWLISTED" ? MESSAGES.googleNotAllowed : MESSAGES.googleDidNotFinish;
+  if (code.toUpperCase() !== "NOT_ALLOWLISTED") return MESSAGES.googleDidNotFinish;
+  return openSignUp ? UNVERIFIED_EMAIL : MESSAGES.googleNotAllowed;
 }
 
 // The auth client answers a refusal with an error; a request that got no answer at all throws, and reads the same here.
@@ -104,7 +108,7 @@ export function PasskeysDialog(props: PasskeysDialogProps): ReactNode {
 // Adding a passkey needs a sign-in from the last day; when the server says it is older, the dialog offers to sign in
 // again: with Google, which comes back to /dashboard?passkeys=1 whether it worked or not (the account menu reopens this
 // dialog from that, with the error if there was one), or with one of the member's passkeys, which stays here.
-function Passkeys({ open, onClose, signInError }: PasskeysDialogProps): ReactNode {
+function Passkeys({ open, onClose, signInError, openSignUp = false }: PasskeysDialogProps): ReactNode {
   const router = useRouter();
   const [passkeys, setPasskeys] = useState<Passkey[] | null>(null); // null until loaded
   const [loadFailed, setLoadFailed] = useState(false);
@@ -112,7 +116,7 @@ function Passkeys({ open, onClose, signInError }: PasskeysDialogProps): ReactNod
   const busy = useRef(false); // set at once, before the buttons turn off, so a second press in the same moment stops here
   const [notice, setNotice] = useState<Notice | null>(null);
   // Why to sign in again, shown with the ways to do it.
-  const [reauth, setReauth] = useState<string | null>(() => googleSignInMessage(signInError));
+  const [reauth, setReauth] = useState<string | null>(() => googleSignInMessage(signInError, openSignUp));
   const [renaming, setRenaming] = useState<string | null>(null);
   const refocus = useRef<string | null>(null); // the passkey whose Rename button takes focus back once its rename ends
   const list = useRef<HTMLUListElement>(null);

@@ -85,7 +85,7 @@ async function editorAt(person: CurrentUser, slug: string, id: string) {
   Shell.mockClear();
   const { unmount } = render(await EditorPage({ params: Promise.resolve({ space: slug, id }) } as never));
   unmount();
-  return Shell.mock.calls[0][0] as { initial: { projectId: string }; space: { id: string; slug: string; storageReady: boolean; storageProblem: "none" | "broken" | null } };
+  return Shell.mock.calls[0][0] as { initial: { projectId: string }; space: { id: string; slug: string; storageReady: boolean; storageProblem: "none" | "broken" | null; kind: string; isAdmin: boolean; storageBlock: string | null } };
 }
 
 describe("the space dashboard", () => {
@@ -158,6 +158,21 @@ describe("the space editor", () => {
       expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: false, storageProblem: "broken" });
       await testDb.update(driveConnection).set({ brokenAt: null, brokenReason: null }).where(eq(driveConnection.id, "dc_1"));
       expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: true, storageProblem: null });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("tells the Media tab the space's kind, whether the person runs it, and what stops setting storage up here", async () => {
+    vi.stubEnv("STORAGE_TOKEN_KEY", "");
+    try {
+      expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ kind: "personal", isAdmin: true, storageBlock: "server" });
+      expect((await editorAt(ada, "seattle-solvers", teamProject)).space).toMatchObject({ kind: "team", isAdmin: false, storageBlock: null }); // it has storage
+      vi.stubEnv("GOOGLE_CLIENT_ID", "client-1");
+      vi.stubEnv("GOOGLE_CLIENT_SECRET", "shh");
+      vi.stubEnv("STORAGE_TOKEN_KEY", Buffer.alloc(32, 7).toString("base64"));
+      vi.stubEnv("BETTER_AUTH_URL", "https://app.test");
+      expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageBlock: null });
     } finally {
       vi.unstubAllEnvs();
     }

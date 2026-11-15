@@ -20,7 +20,8 @@ function backFromSigningIn(): string | null {
 // The header's account button: the person's picture and name, opening a menu with Settings, Passkeys, AI agents and
 // Sign out. Settings (the editor's General and Shortcuts) is offered on the space pages only: the preferences cookie it
 // edits belongs to /s, so the Admin and AI agents pages cannot read it.
-export function AccountMenu({ name, image }: { name: string; image: string | null }): ReactNode {
+// openSignUp: whether anyone may make an account, as the server reads it, for what a refused Google sign-in says.
+export function AccountMenu({ name, image, openSignUp = false }: { name: string; image: string | null; openSignUp?: boolean }): ReactNode {
   const router = useRouter();
   const inSpace = (usePathname() ?? "").startsWith("/s/");
   const [failed, setFailed] = useState(false);
@@ -87,6 +88,7 @@ export function AccountMenu({ name, image }: { name: string; image: string | nul
       <PasskeysDialog
         open={passkeysOpen}
         signInError={signInError}
+        openSignUp={openSignUp}
         onClose={() => {
           setPasskeysOpen(false);
           setSignInError(null);

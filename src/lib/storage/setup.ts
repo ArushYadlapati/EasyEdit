@@ -45,7 +45,8 @@ function mainSaOf(deps: SetUpDeps): AccessSource | null {
 // Any upload the space holds, finished or not, that hasn't been removed.
 const uploadsIn = (spaceId: string) => sql`exists (select 1 from ${assets} where ${assets.spaceId} = ${spaceId} and ${assets.removedAt} is null)`;
 
-async function holdsUploads(db: DB, spaceId: string): Promise<boolean> {
+// Whether the space holds any upload that hasn't been removed: then its storage can't move to another account yet.
+export async function holdsUploads(db: DB, spaceId: string): Promise<boolean> {
   return rowsOf<{ held: boolean }>(await db.execute(sql`select ${uploadsIn(spaceId)} as held`))[0]?.held === true;
 }
 

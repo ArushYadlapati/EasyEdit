@@ -10,6 +10,7 @@ import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { canCreateTeam } from "@/lib/spaces/create-team-access";
 import { listMySpaces } from "@/lib/spaces/service";
+import { openSignUp } from "@/lib/signup";
 
 // The dashboard is always dark, in the editor's colors. This asks the Dark Reader browser extension to leave it alone,
 // and the color scheme tells the browser's own dark mode the same (and darkens the page behind it, see globals.css).
@@ -36,7 +37,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">
             {user.allowlistRole === "admin" && <AdminLink />}
-            <AccountMenu name={user.name || user.email} image={user.image ?? null} />
+            <AccountMenu name={user.name || user.email} image={user.image ?? null} openSignUp={openSignUp()} />
           </div>
         </header>
         <KeepSignedIn />

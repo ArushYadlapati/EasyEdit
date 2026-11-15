@@ -15,7 +15,8 @@ function isRedirect(data: unknown): boolean {
   return typeof data === "object" && data !== null && "redirect" in data && data.redirect === true;
 }
 
-export function PasskeySignInButton() {
+// openSignUp: whether anyone may make an account, as the login page read it on the server.
+export function PasskeySignInButton({ openSignUp = false }: { openSignUp?: boolean } = {}) {
   // The server and hydration render without the button; the browser then shows it only if it has WebAuthn.
   const supported = useSyncExternalStore(
     noSubscription,
@@ -42,9 +43,9 @@ export function PasskeySignInButton() {
         window.location.assign("/dashboard");
         return;
       }
-      message = passkeySignInErrorMessage(error);
+      message = passkeySignInErrorMessage(error, openSignUp);
     } catch {
-      message = passkeySignInErrorMessage({});
+      message = passkeySignInErrorMessage({}, openSignUp);
     }
     setError(message);
     setPending(false);

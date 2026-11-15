@@ -19,6 +19,8 @@ import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser
 import { EditorProvider } from "./context";
 import { watchDrags } from "./drag-watch";
 import { EditorScreen } from "./editor-screen";
+import type { SpaceKind } from "@/lib/spaces/types";
+import type { StorageBlock } from "@/lib/storage/messages";
 import { MediaProvider, createMediaServices, gateStorage, type StorageProblem } from "./media/media-context";
 import { PresenceProvider } from "./presence-context";
 import { browserThumbnailDeps } from "./thumbnail-deps";
@@ -37,7 +39,16 @@ const localStore = {
 const quietly = (work: Promise<unknown>) => void work.catch(() => {});
 
 // The space a project is in, as the editor page hands it over.
-export type EditorSpace = { id: string; slug: string; storageReady: boolean; storageProblem?: StorageProblem };
+// kind, isAdmin, storageBlock: for the Media tab's setup card (see StorageSetup); left out, it offers no setup.
+export type EditorSpace = {
+  id: string;
+  slug: string;
+  storageReady: boolean;
+  storageProblem?: StorageProblem;
+  kind?: SpaceKind;
+  isAdmin?: boolean;
+  storageBlock?: StorageBlock;
+};
 
 // Owns the store, the API client, the sync, the media services, the project's dashboard picture and this browser's
 // preferences for one open project, and ties them to the page: tab visibility, focus, coming back online, the user's
@@ -230,7 +241,14 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
 
   return (
     <EditorProvider store={store} api={api} clipboard={clipboard} settings={settings}>
-      <MediaProvider services={media} spaceId={space.id} storageReady={space.storageReady} storageProblem={space.storageProblem} drop={drop}>
+      <MediaProvider
+        services={media}
+        spaceId={space.id}
+        storageReady={space.storageReady}
+        storageProblem={space.storageProblem}
+        storageSetup={space.kind ? { kind: space.kind, slug: space.slug, isAdmin: space.isAdmin === true, block: space.storageBlock ?? null } : null}
+        drop={drop}
+      >
         <PresenceProvider store={presenceStore}>
           <EditorScreen spaceSlug={space.slug} initialLayout={layout} />
         </PresenceProvider>

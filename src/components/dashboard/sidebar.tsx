@@ -9,6 +9,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { ALL_VIEW, folderOf, viewQuery, type DashboardFolder, type DashboardView } from "@/lib/dashboard/view";
 import { SIDEBAR_HEADING, SpaceSwitcher, useCreateTeam, useMySpaces } from "@/components/dashboard/space-switcher";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
+import { storageSettingsPath } from "@/lib/storage/messages";
 
 export type SidebarProps = {
   folders: readonly DashboardFolder[];
@@ -53,7 +54,8 @@ function SidebarLink({ href, current, folderId, takesDrops, onDropProject, child
 // with its project count) inside it; the view shown is marked. A column at the left on a wide window, and one row above
 // the grid that scrolls sideways on its own on a narrow one, where the headings are kept for screen readers only. For
 // editors, New folder sits beside the Folders heading, or at the end of the row on a narrow window; and a project
-// dragged onto a folder goes into it, or onto All projects out of its folder.
+// dragged onto a folder goes into it, or onto All projects out of its folder. A space's admins get This space at the
+// foot of the column, with its Storage settings.
 export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
   const spaces = useMySpaces();
   const createTeam = useCreateTeam();
@@ -105,6 +107,15 @@ export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDrop
           </SidebarLink>
         ))}
       </nav>
+      {/* What only the space's admins change, at the foot of the column. */}
+      {current?.role === "admin" && (
+        <nav aria-label="This space" className="flex shrink-0 flex-row items-center gap-1 md:mt-auto md:flex-col md:items-stretch md:pt-4">
+          <h2 className={SIDEBAR_HEADING}>This space</h2>
+          <SidebarLink href={storageSettingsPath(spaceSlug)} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+            Storage
+          </SidebarLink>
+        </nav>
+      )}
     </div>
   );
 }

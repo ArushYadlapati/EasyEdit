@@ -17,12 +17,20 @@ const VARIANTS = {
 
 const SIZES = { sm: "h-6 px-2", md: "h-7 px-3" };
 
+const BASE =
+  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-xs font-medium whitespace-nowrap select-none [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:stroke-[1.75]";
+
+// Button's look, for a link: its hover isn't kept for enabled controls, which a link never is.
+export function linkButtonClass(variant: "default" | "primary" = "default", className?: string): string {
+  return cx(BASE, VARIANTS[variant].replaceAll("enabled:hover:", "hover:"), SIZES.md, FOCUS_RING, FADE, className);
+}
+
 export function Button({ variant = "default", size = "md", type = "button", className, ...rest }: ButtonProps) {
   return (
     <button
       type={type}
       className={cx(
-        "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-xs font-medium whitespace-nowrap select-none [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:stroke-[1.75]",
+        BASE,
         VARIANTS[variant],
         SIZES[size],
         FOCUS_RING,

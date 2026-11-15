@@ -3,7 +3,7 @@
 import { Upload } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type DragEvent, type FormEvent, type HTMLAttributes } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Button } from "@/components/ui/button";
+import { Button, linkButtonClass } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
@@ -14,8 +14,10 @@ import { LIMITS } from "@/lib/limits";
 import type { MediaFailure, MediaResult } from "@/lib/media/api";
 import { visibleAssets } from "@/lib/media/library-store";
 import { MEDIA_MESSAGES } from "@/lib/media/messages";
+import { STORAGE_MESSAGES, storageCard, storageSettingsPath } from "@/lib/storage/messages";
 import type { AssetKind, AssetView, UploadItem } from "@/lib/media/types";
 import { useEditor, useEditorStore } from "../context";
+import { LeaveLink } from "../leave-link";
 import { AssetTile, type AssetAction, type WatchView } from "./asset-tile";
 import { useLibrary, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
 import { UploadRow } from "./upload-row";
@@ -92,7 +94,7 @@ type MediaTabProps = {
 // dropped files.
 export function MediaTab({ panel, onAdd }: MediaTabProps) {
   const { library, queue } = useMedia();
-  const { storageReady, storageProblem } = useMediaSpace();
+  const { storageReady, storageProblem, storageSetup } = useMediaSpace();
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const { loaded, setUp, problem, query, kind, uploadEvent } = useLibrary(
@@ -168,12 +170,24 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
 
   // A space with no storage says so, in place of everything else: no upload, no drop target. This wins over setUp
   // being false, which is for a Drive that should work but is not set up.
+  // Its admins get the way to set storage up, or to reconnect it (storageCard).
   if (!storageReady) {
+    const card = storageCard({
+      problem: storageProblem === "broken" ? "broken" : "none",
+      kind: storageSetup?.kind ?? "team",
+      isAdmin: storageSetup?.isAdmin === true,
+      block: storageSetup?.block ?? null,
+    });
     return (
       <div {...panel} className="min-h-0 flex-1">
-        <div className="flex flex-col gap-2 p-3">
-          <h3 className="text-sm font-semibold">{storageProblem === "broken" ? MEDIA_MESSAGES.brokenTitle : MEDIA_MESSAGES.storageNextTitle}</h3>
-          <p className="text-[13px] leading-5 text-ed-muted">{storageProblem === "broken" ? MEDIA_MESSAGES.broken : MEDIA_MESSAGES.storageNext}</p>
+        <div className="flex flex-col items-start gap-2 p-3">
+          <h3 className="text-sm font-semibold">{card.title}</h3>
+          <p className="text-[13px] leading-5 text-ed-muted">{card.text}</p>
+          {card.action && storageSetup && (
+            <LeaveLink href={storageSettingsPath(storageSetup.slug)} className={linkButtonClass("primary", "mt-1")}>
+              {card.action === "choose" ? STORAGE_MESSAGES.chooseAccount : STORAGE_MESSAGES.reconnect}
+            </LeaveLink>
+          )}
         </div>
       </div>
     );

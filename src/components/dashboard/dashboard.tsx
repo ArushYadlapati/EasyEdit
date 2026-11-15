@@ -43,6 +43,7 @@ export type DashboardProps = {
   now: Date;
   actions: DashboardActions;
   spaceSlug: string; // the space shown, for the links inside it
+  notices?: ReactNode; // what the page puts at the top of the main area: storage to set up or reconnect, a connect's outcome
 };
 
 const FOLDER_ITEMS: MenuItem[] = [
@@ -87,7 +88,7 @@ function CardGrid({ projects, folderName, now, canEdit, folders, actions, spaceS
 // its menu), the search, the sort and New project. Recent lists the projects you opened last, in that order (so it has
 // no sort); All projects lists a tile for each folder, then every project; a folder view lists that folder's projects.
 // A card dropped on a folder, in the sidebar or on its tile, moves there, and a refused move says why in the bar.
-export function Dashboard({ projects, folders, recentIds, view, canEdit, now, actions, spaceSlug }: DashboardProps): ReactNode {
+export function Dashboard({ projects, folders, recentIds, view, canEdit, now, actions, spaceSlug, notices }: DashboardProps): ReactNode {
   useRefreshOnReturn();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -269,6 +270,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
             )}
           </div>
           <div className="flex flex-col gap-8 px-4 py-6">
+            {notices && <div className="flex flex-col gap-3">{notices}</div>}
             {showFolderTiles && (
               <section aria-labelledby={foldersId}>
                 <h2 id={foldersId} className={HEADING}>

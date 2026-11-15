@@ -60,6 +60,33 @@ describe("the login page", () => {
   });
 });
 
+describe("the login page with sign-up open", () => {
+  type Page = (props: { params: Promise<object>; searchParams: Promise<Record<string, string>> }) => Promise<React.ReactNode>;
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("says Google creates an account too, in the page's muted text", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    const line = screen.getByText("Sign in or create an account with Google.");
+    expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(["text-sm", "text-foreground/70"]));
+  });
+
+  it("an unverified Google email is told so, not about the allowlist", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({ error: "NOT_ALLOWLISTED" }) }));
+    expect(screen.getByRole("alert").textContent).toBe("Google hasn't verified that email address, so EasyEdit can't use it to sign in.");
+  });
+
+  it("the passkey button is told the same", async () => {
+    passkey.mockResolvedValueOnce({ data: null, error: { code: "NOT_ALLOWLISTED", message: "NOT_ALLOWLISTED", status: 403, statusText: "FORBIDDEN" } });
+    render(<PasskeySignInButton openSignUp />);
+    fireEvent.click(button());
+    expect((await screen.findByRole("alert")).textContent).toBe("Google hasn't verified that email address, so EasyEdit can't use it to sign in.");
+  });
+});
+
 describe("the passkey sign-in button", () => {
   it("reads Sign in with a passkey and is outlined, not filled like the Google button", () => {
     render(<PasskeySignInButton />);

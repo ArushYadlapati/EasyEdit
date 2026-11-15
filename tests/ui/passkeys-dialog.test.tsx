@@ -240,6 +240,12 @@ describe("adding a passkey", () => {
     expect(button("Use a passkey").disabled).toBe(false);
   });
 
+  it("with sign-up open, a refused Google sign-in says Google hasn't verified the email", async () => {
+    render(<PasskeysDialog open signInError="NOT_ALLOWLISTED" openSignUp onClose={onClose} />);
+    await waitFor(() => expect(listed()).toHaveLength(2));
+    expect(within(dialog()).getByRole("alert").textContent).toBe("Google hasn't verified that email address, so EasyEdit can't use it to sign in.");
+  });
+
   it("with no passkey yet, Google is the only way to sign in again", async () => {
     client.listUserPasskeys.mockResolvedValueOnce({ data: [], error: null });
     await openDialog();
