@@ -13,7 +13,7 @@ import { makeConnectHandlers } from "@/lib/storage/connect-handlers";
 import { connectionAccess, listConnections, saveConnection } from "@/lib/storage/connections";
 import { ConnectionBrokenError, DRIVE_FILE_SCOPE } from "@/lib/storage/google-oauth";
 import { open, seal } from "@/lib/storage/secret-box";
-import type { SetUpStorage } from "@/lib/storage/setup-types";
+import type { SetUpStorage } from "@/lib/storage/setup";
 import { joinSpace, testUser } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { makeFakeDrive } from "../helpers/fake-drive";

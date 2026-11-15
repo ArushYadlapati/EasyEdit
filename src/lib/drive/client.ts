@@ -21,7 +21,7 @@ export type DriveClient = {
   cancelSession(sessionUrl: string): Promise<void>; // a session that is already gone is not an error
   getFile(id: string): Promise<DriveFile | null>; // null when Drive has no such file
   trashFile(id: string): Promise<void>; // a file that is already gone is not an error
-  readToken(minSecondsLeft: number): Promise<GoogleToken>; // the read source's token, the only one that may leave the server (read-only, except a personal space's own connection)
+  readToken(minSecondsLeft?: number): Promise<GoogleToken>; // the read source's token, the only one that may leave the server (read-only, except a personal space's own connection)
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -175,6 +175,21 @@ export function createDriveClient(deps: { rootFolderId: string; write: AccessSou
 
     readToken: (minSecondsLeft) => read.token(minSecondsLeft),
   };
+}
+
+// Makes a folder at the top of the Drive of whoever `write` is (a person's My Drive): no parent is named. Its id.
+// Each call makes a new one; with drive.file the app sees only what it made, so there is nothing else to look for.
+export async function makeTopFolder(deps: { write: AccessSource; name: string; fetch?: typeof fetch }): Promise<string> {
+  const { accessToken } = await deps.write.token();
+  const made = await reach(deps.fetch ?? fetch, "folder", `${API}/drive/v3/files?supportsAllDrives=true&fields=id`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": JSON_TYPE },
+    body: JSON.stringify({ name: deps.name, mimeType: FOLDER_MIME }),
+  });
+  if (!made.ok) throw await refused("folder", made);
+  const { id } = await objectIn(made);
+  if (!isId(id)) throw new DriveError("folder", made.status, "unknown");
+  return id;
 }
 
 // The shared folder's client (Seattle Solvers): the service account from the settings, which changes files with the

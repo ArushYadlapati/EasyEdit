@@ -13,7 +13,7 @@ import type { StorageConfig } from "./config";
 import { saveConnection } from "./connections";
 import { authorizeUrl, ConnectionBrokenError, DRIVE_FILE_SCOPE, exchangeCode, OAuthError, pkcePair } from "./google-oauth";
 import { open, seal } from "./secret-box";
-import type { SetUpStorage } from "./setup-types";
+import type { SetUpStorage } from "./setup";
 
 export type ConnectHandlerDeps = {
   db: () => DB;

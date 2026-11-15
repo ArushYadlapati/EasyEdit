@@ -22,6 +22,7 @@ vi.mock("@/lib/spaces/service", () => ({
   listMySpaces: vi.fn(async () => []),
   spaceOfProject: vi.fn(async () => null),
 }));
+vi.mock("@/lib/spaces/storage", () => ({ storageState: vi.fn(async () => ({ ready: true })) }));
 vi.mock("@/lib/projects/service", () => ({
   getProject: vi.fn(async () => ({
     id: "p1",

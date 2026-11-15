@@ -1,27 +1,109 @@
 import "server-only";
-import { type DriveClient } from "@/lib/drive/client";
-import { getDrive } from "@/lib/drive";
-import { SEED_TEAM_ID } from "./types";
+import { eq } from "drizzle-orm";
+import type { DB } from "@/db";
+import { driveConnection, organization, spaceStorage } from "@/db/schema";
+import { getDrive, mainServiceAccount } from "@/lib/drive";
+import { createDriveClient, type DriveClient } from "@/lib/drive/client";
+import { readerSource } from "@/lib/drive/reader";
+import type { AccessSource } from "@/lib/drive/token";
+import { type StorageConfig, storageConfig } from "@/lib/storage/config";
+import { connectionAccess } from "@/lib/storage/connections";
 
-// Whether a space is meant to have storage, set up or not; no Drive call. Only the Seattle Solvers team has a Drive
-// folder in this stage. A Drive that should work but is not set up is hasStorage's answer, not this one.
-export function spaceHasStorage(spaceId: string): boolean {
-  return spaceId === SEED_TEAM_ID;
-}
+// Where a space keeps its media comes from its space_storage row: Seattle Solvers' shared folder (the main service
+// account's), or a folder in the Drive of a person who connected their Google account. A team's members are handed
+// the team reader's read-only token; a personal space's owner, their own connection's.
 
-// The Drive client for a space's media.
-export function driveFor(spaceId: string): DriveClient | null {
-  return spaceHasStorage(spaceId) ? getDrive() : null;
-}
+export type StorageState = { ready: true } | { ready: false; reason: "none" | "broken" | "not_configured" };
 
-// Whether a space has storage to upload to. Settings that cannot be read (a key that is not base64) count as not
-// set up, with one line saying only that; nothing of the key is logged. The one rule for every caller that asks.
-// lookup: how the space's Drive is found; the handlers pass their own.
-export function hasStorage(spaceId: string, lookup: (spaceId: string) => DriveClient | null = driveFor): boolean {
+// What the server reads its settings with; tests point them at a pretend Google.
+export type StorageDeps = {
+  config?: () => StorageConfig | null; // the OAuth client and token key, for a person's connection
+  mainSa?: () => AccessSource | null; // the app's service account for the Cloud scope, which speaks for team readers
+  sharedFolder?: () => DriveClient | null; // Seattle Solvers' shared folder
+  fetch?: typeof fetch;
+};
+
+type Unready = Extract<StorageState, { ready: false }>["reason"];
+type Found =
+  | { kind: "unready"; reason: Unready }
+  | { kind: "shared_folder"; shared: DriveClient }
+  | { kind: "personal"; cfg: StorageConfig; connectionId: string; rootFolderId: string }
+  | { kind: "team"; cfg: StorageConfig; connectionId: string; rootFolderId: string; caller: AccessSource; readerEmail: string };
+
+const unready = (reason: Unready): Found => ({ kind: "unready", reason });
+
+// A setting that can't be read (a key that isn't base64) counts as not set up, with one line saying only that;
+// nothing of the key is logged.
+function readSetting<T>(read: () => T | null): T | null {
   try {
-    return lookup(spaceId) !== null;
+    return read();
   } catch {
     console.error("Drive settings could not be read");
-    return false;
+    return null;
   }
+}
+
+// The space's storage as its rows and the server's settings tell it. No call to Google.
+async function find(db: DB, spaceId: string, deps: StorageDeps): Promise<Found> {
+  const [row] = await db
+    .select({
+      kind: spaceStorage.kind,
+      connectionId: spaceStorage.connectionId,
+      rootFolderId: spaceStorage.rootFolderId,
+      readerEmail: spaceStorage.readerEmail,
+      spaceKind: organization.kind,
+      brokenAt: driveConnection.brokenAt,
+    })
+    .from(spaceStorage)
+    .innerJoin(organization, eq(organization.id, spaceStorage.spaceId))
+    .leftJoin(driveConnection, eq(driveConnection.id, spaceStorage.connectionId))
+    .where(eq(spaceStorage.spaceId, spaceId));
+  if (!row) return unready("none");
+
+  if (row.kind === "shared_folder") {
+    // The folder is the one in the settings (the row's own folder id is not used).
+    const shared = readSetting(deps.sharedFolder ?? getDrive);
+    return shared ? { kind: "shared_folder", shared } : unready("not_configured");
+  }
+
+  const { connectionId, rootFolderId } = row;
+  if (!connectionId || !rootFolderId) return unready("not_configured"); // the table's check rules this out
+  const cfg = (deps.config ?? storageConfig)();
+  if (!cfg) return unready("not_configured"); // without the OAuth client a connection's token can't be had, whatever its state
+  if (row.brokenAt !== null) return unready("broken");
+  if (row.spaceKind === "personal") return { kind: "personal", cfg, connectionId, rootFolderId };
+
+  const caller = readSetting(deps.mainSa ?? mainServiceAccount);
+  if (!caller || !row.readerEmail) return unready("not_configured");
+  return { kind: "team", cfg, connectionId, rootFolderId, caller, readerEmail: row.readerEmail };
+}
+
+// Whether the space has storage to upload to, and if not, why. No call to Google.
+export async function storageState(db: DB, spaceId: string, deps: StorageDeps = {}): Promise<StorageState> {
+  const found = await find(db, spaceId, deps);
+  return found.kind === "unready" ? { ready: false, reason: found.reason } : { ready: true };
+}
+
+// The Drive client for a space's media, or null when its storage isn't ready. A person's Drive is written with their
+// connection; what it hands to browsers is the space's reader (readerFor).
+export async function storageFor(db: DB, spaceId: string, deps: StorageDeps = {}): Promise<DriveClient | null> {
+  const found = await find(db, spaceId, deps);
+  if (found.kind === "unready") return null;
+  if (found.kind === "shared_folder") return found.shared;
+  const write = await connectionAccess(db, found.cfg, found.connectionId, deps.fetch);
+  const read = found.kind === "personal" ? write : readerSource({ caller: found.caller, email: found.readerEmail, fetch: deps.fetch });
+  return createDriveClient({ rootFolderId: found.rootFolderId, write, read, fetch: deps.fetch });
+}
+
+// What /api/drive/read-token hands out for this space, or null when its storage isn't ready: Seattle Solvers' main
+// service account's read-only token, a personal space's own connection, a team's reader (read-only Drive only).
+export async function readerFor(db: DB, spaceId: string, deps: StorageDeps = {}): Promise<AccessSource | null> {
+  const found = await find(db, spaceId, deps);
+  if (found.kind === "unready") return null;
+  if (found.kind === "shared_folder") {
+    const { shared } = found;
+    return { token: (minSecondsLeft) => shared.readToken(minSecondsLeft) };
+  }
+  if (found.kind === "personal") return connectionAccess(db, found.cfg, found.connectionId, deps.fetch);
+  return readerSource({ caller: found.caller, email: found.readerEmail, fetch: deps.fetch });
 }

@@ -8,7 +8,6 @@ import { DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn, assetActor, spaceQuery } from "@/lib/spaces/access";
-import { hasStorage } from "@/lib/spaces/storage";
 import { MEDIA_MESSAGES } from "./messages";
 import {
   assetGone,
@@ -29,7 +28,7 @@ import type { OpenUploadInput } from "./types";
 export type MediaHandlerDeps = {
   db: () => DB;
   auth: (req: Request) => Promise<CurrentUser | Response>; // authentication only; the role comes from the space
-  drive: (spaceId: string) => DriveClient | null; // null: the space has no storage
+  drive: (db: DB, spaceId: string) => Promise<DriveClient | null>; // null: the space has no storage ready
   origin: () => string;
 };
 
@@ -148,23 +147,32 @@ function mediaRoute<Rest extends unknown[]>(
 export function makeMediaHandlers(deps: MediaHandlerDeps) {
   // What the service needs to reach Drive. Null when media is not set up. A Drive failure the member is not shown
   // (a file that could not be moved to the trash) leaves the same one line.
-  const media = (actor: Actor): MediaDeps | null => {
-    const drive = deps.drive(actor.spaceId);
-    return drive ? { db: deps.db(), drive, origin: deps.origin(), onDriveError: logDriveError } : null;
+  const media = async (actor: Actor): Promise<MediaDeps | null> => {
+    const db = deps.db();
+    const drive = await deps.drive(db, actor.spaceId);
+    return drive ? { db, drive, origin: deps.origin(), onDriveError: logDriveError } : null;
   };
 
-  // Whether uploads are set up, as the list tells it: a key that cannot be read counts as not set up, so the library still lists.
-  const isSetUp = (spaceId: string): boolean => hasStorage(spaceId, deps.drive);
+  // Whether uploads are set up, as the list tells it: settings that cannot be read count as not set up, with one line
+  // saying only that, so the library still lists.
+  const isSetUp = async (spaceId: string): Promise<boolean> => {
+    try {
+      return (await deps.drive(deps.db(), spaceId)) !== null;
+    } catch {
+      console.error("Drive settings could not be read");
+      return false;
+    }
+  };
 
   return {
     list: mediaRoute(deps, inQueriedSpace, async (actor, req) => {
       const ids = idsOf(req);
       const assets = await listAssets(deps.db(), actor, { ids });
-      return Response.json({ assets, setUp: isSetUp(actor.spaceId) });
+      return Response.json({ assets, setUp: await isSetUp(actor.spaceId) });
     }),
 
     open: mediaRoute(deps, inQueriedSpace, async (actor, req) => {
-      const service = media(actor);
+      const service = await media(actor);
       if (!service) return notSetUp();
       const { asset, uploadUrl, offset } = await openUpload(service, actor, await bodyOf(req, openBody));
       return Response.json({ asset, uploadUrl, offset }, { status: 201 });
@@ -177,7 +185,7 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
     }),
 
     remove: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {
-      const service = media(actor);
+      const service = await media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       await removeAsset(service, actor, id);
@@ -185,7 +193,7 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
     }),
 
     offset: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {
-      const service = media(actor);
+      const service = await media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       const { uploadUrl, offset, done } = await uploadOffset(service, actor, id);
@@ -193,14 +201,14 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
     }),
 
     complete: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {
-      const service = media(actor);
+      const service = await media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       return Response.json({ asset: await completeUpload(service, actor, id) });
     }),
 
     openFile: mediaRoute(deps, inAssetSpace, async (actor, req, ctx: AssetRouteContext) => {
-      const service = media(actor);
+      const service = await media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       const { uploadUrl } = await openAssetFile(service, actor, id, await bodyOf(req, openFileBody));
@@ -208,7 +216,7 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
     }),
 
     completeFile: mediaRoute(deps, inAssetSpace, async (actor, req, ctx: AssetRouteContext) => {
-      const service = media(actor);
+      const service = await media(actor);
       if (!service) return notSetUp();
       const { id } = await ctx.params;
       const { role } = await bodyOf(req, completeFileBody);
@@ -225,7 +233,7 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
 // The token a browser reads media files with: read-only, for any signed-in member, and never kept by a cache.
 export function makeReadTokenHandler(deps: MediaHandlerDeps): (req: Request) => Promise<Response> {
   return mediaRoute(deps, inQueriedSpace, async (actor) => {
-    const drive = deps.drive(actor.spaceId);
+    const drive = await deps.drive(deps.db(), actor.spaceId);
     if (!drive) return notSetUp();
     const { accessToken, expiresAt } = await drive.readToken(LIMITS.mediaReadTokenMinSeconds);
     return Response.json({ accessToken, expiresAt }, { headers: { "Cache-Control": "no-store" } });

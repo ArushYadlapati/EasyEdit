@@ -22,7 +22,7 @@ const memberOf = (actor: Actor): CurrentUser => ({ id: actor.userId, email: acto
 
 // The handlers of every route, as one member calls them.
 function handlersFor(ctx: MediaContext, actor: Actor, over: Partial<MediaHandlerDeps> = {}) {
-  const deps: MediaHandlerDeps = { db: () => ctx.db, auth: async () => memberOf(actor), drive: () => ctx.deps.drive, origin: () => APP, ...over };
+  const deps: MediaHandlerDeps = { db: () => ctx.db, auth: async () => memberOf(actor), drive: async () => ctx.deps.drive, origin: () => APP, ...over };
   return { ...makeMediaHandlers(deps), readToken: makeReadTokenHandler(deps) };
 }
 
@@ -231,7 +231,7 @@ describe("the media API", () => {
   it("says uploads are not set up when there is no Drive", async () => {
     const ctx = await mediaContext();
     const asset = await readyAsset(ctx);
-    const api = handlersFor(ctx, ctx.ada, { drive: () => null });
+    const api = handlersFor(ctx, ctx.ada, { drive: async () => null });
     const path = `/api/media/${asset.id}`;
 
     expect(await answer(await api.list(request("GET")))).toEqual({ status: 200, body: { assets: [asset], setUp: false } });
@@ -269,7 +269,7 @@ describe("the media API", () => {
       return config ? sharedFolderClient(config) : null;
     };
     expect(drive).toThrow("GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key");
-    const api = handlersFor(ctx, ctx.ada, { drive });
+    const api = handlersFor(ctx, ctx.ada, { drive: async () => drive() });
     expect(await answer(await api.list(request("GET")))).toEqual({ status: 200, body: { assets: [asset], setUp: false } });
     expect(await answer(await api.list(request("GET", `/api/media?ids=${asset.id}`)))).toEqual({ status: 200, body: { assets: [asset], setUp: false } });
     expect(log.mock.calls).toEqual([["Drive settings could not be read"], ["Drive settings could not be read"]]);
@@ -324,7 +324,7 @@ describe("the media API", () => {
       return ctx.fake.fetch(input, init);
     }) as typeof fetch;
     const drive = sharedFolderClient(ctx.fake.config, { fetch: fetchFn, now: ctx.fake.now });
-    const api = handlersFor(ctx, ctx.ada, { drive: () => drive });
+    const api = handlersFor(ctx, ctx.ada, { drive: async () => drive });
     const before = await answer(await api.list(request("GET")));
     const failing: [RegExp, string, () => Promise<Response>][] = [
       [/POST \/token/, "token", () => api.open(post("/api/media", VIDEO))],
@@ -662,14 +662,14 @@ describe("the route files", () => {
 
     // Every file hands over the same four things, and none of them was called to load it.
     const { getDb } = await import("@/db");
-    const { driveFor } = await import("@/lib/spaces/storage");
+    const { storageFor } = await import("@/lib/spaces/storage");
     const { appBaseUrl } = await import("@/lib/connector/config");
     expect(makeMediaHandlers).toHaveBeenCalledTimes(7);
     expect(makeReadTokenHandler).toHaveBeenCalledTimes(1);
     for (const [deps] of [...makeMediaHandlers.mock.calls, ...makeReadTokenHandler.mock.calls]) {
       expect(Object.keys(deps).sort()).toEqual(["auth", "db", "drive", "origin"]);
       expect(deps.db).toBe(getDb);
-      expect(deps.drive).toBe(driveFor);
+      expect(deps.drive).toBe(storageFor);
       expect(deps.origin).toBe(appBaseUrl);
       const asked = request("GET");
       requireUserApi.mockClear();

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { type AccessSource, DriveError, isServiceAccountEmail, reach, refusalReason, retrying } from "./token";
+import { type AccessSource, DriveError, SCOPE_READ, impersonatedSource, isServiceAccountEmail, reach, refusalReason, retrying } from "./token";
 
 // Each team's reader is a service account of its own, with no key: the app's service account makes it, shares the
 // team's folder with it, and asks IAM Credentials for its read-only tokens. A token handed to a team member can then
@@ -59,4 +59,20 @@ export async function shareFolderWith(drive: { write: AccessSource; fetch?: type
   };
   const notYet = (error: unknown) => error instanceof DriveError && error.call === "share" && (error.status === 404 || (error.status === 400 && error.reason === "invalidSharingRequest"));
   await retrying(share, notYet, drive.sleep);
+}
+
+// The team reader's tokens, which are what a team member's browser is given: read-only Drive and nothing else. The
+// scope is fixed; one asked for here that is anything else is refused before IAM is asked, so a slip elsewhere can't
+// turn a reader into a writer. `caller` holds the app's service account token for the Cloud scope.
+export function readerSource(deps: {
+  caller: AccessSource;
+  email: string;
+  scope?: string;
+  fetch?: typeof fetch;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}): AccessSource {
+  const { scope = SCOPE_READ, email, ...rest } = deps;
+  if (scope !== SCOPE_READ) throw new DriveError("impersonate", 0, "bad_scope");
+  return impersonatedSource({ ...rest, targetEmail: email, scope: SCOPE_READ });
 }

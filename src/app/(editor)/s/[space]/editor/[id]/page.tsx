@@ -12,7 +12,7 @@ import { getProject } from "@/lib/projects/service";
 import { actorIn } from "@/lib/spaces/access";
 import { editorPath, slugFor } from "@/lib/spaces/paths";
 import { findMySpace, listMySpaces, spaceOfProject } from "@/lib/spaces/service";
-import { spaceHasStorage } from "@/lib/spaces/storage";
+import { storageState } from "@/lib/spaces/storage";
 
 // The editor is always dark. This asks the Dark Reader browser extension to leave the page alone: on a screen that
 // is already dark it darkens the few light elements, and the playhead all but disappears. The color scheme tells the
@@ -41,6 +41,7 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
   const jar = await cookies();
   const layout = parseLayout(jar.get(LAYOUT_COOKIE)?.value);
   const prefs = parsePrefs(jar.get(PREFS_COOKIE)?.value);
+  const storage = await storageState(db, space.id);
 
   return (
     <>
@@ -57,8 +58,9 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
           canEdit: meetsRole(actor.role, "editor"),
           thumbnailVersion: project.thumbnailVersion,
         }}
-        // Whether the space is meant to have storage. A Drive that is not set up reaches the Media tab through its list.
-        space={{ id: space.id, slug: slugFor(space), storageReady: spaceHasStorage(space.id) }}
+        // Whether the space has storage, ready or not (from its rows, no Drive call). Storage that is set up but can't
+        // be used right now reaches the Media tab through its list.
+        space={{ id: space.id, slug: slugFor(space), storageReady: storage.ready || storage.reason !== "none" }}
         layout={layout}
         prefs={prefs}
       />
