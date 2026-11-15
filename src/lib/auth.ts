@@ -3,8 +3,12 @@ import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { mcp } from "@better-auth/mcp";
 import { getAuthenticatorName, passkey } from "@better-auth/passkey";
-import { betterAuth } from "better-auth";
+import { betterAuth, type BetterAuthPlugin } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { jwt } from "better-auth/plugins";
+import { createAccessControl } from "better-auth/plugins/access";
+import { organization } from "better-auth/plugins/organization";
+import { adminAc, defaultStatements } from "better-auth/plugins/organization/access";
 import { getDb } from "@/db";
 import { makeSessionCreateBefore, makeUserCreateBefore } from "@/lib/auth-hooks";
 import { isAllowedClientDocument, isAllowedRedirect } from "@/lib/connector/agents";
@@ -17,6 +21,30 @@ const DAY_SECONDS = 24 * 60 * 60;
 const SESSION_SECONDS = 30 * DAY_SECONDS;
 // A session is renewed at most once a day.
 const SESSION_RENEW_AFTER_SECONDS = DAY_SECONDS;
+
+// A space's roles, stored in member.role. These replace the plugin's owner/admin/member. Editors and viewers get no
+// plugin permissions: what they may do with projects and media is the app's own check.
+const ac = createAccessControl(defaultStatements);
+const admin = ac.newRole(adminAc.statements);
+const editor = ac.newRole({});
+const viewer = ac.newRole({});
+
+// Every organization endpoint answers 404: spaces are made and joined by the app itself. The app's own hooks.before is
+// the connector's, so this is a plugin's path-matched hook, which Better Auth runs alongside it.
+const organizationClosed = {
+  id: "organization-closed",
+  hooks: {
+    before: [
+      {
+        // Stage 3 opens the ones it needs.
+        matcher: (ctx) => ctx.path?.startsWith("/organization/") === true,
+        handler: createAuthMiddleware(async () => {
+          throw new APIError("NOT_FOUND");
+        }),
+      },
+    ],
+  },
+} satisfies BetterAuthPlugin;
 
 function createAuth() {
   const db = getDb();
@@ -64,6 +92,22 @@ function createAuth() {
         fetchClientMetadataResource,
         metadataProfile: "mcp-2026-07-28",
         isMetadataDocumentUrlAllowed: (url) => isAllowedClientDocument(url),
+      }),
+      organizationClosed,
+      // Spaces: a personal space per person and teams. Organizations are made by the app, never through the API.
+      organization({
+        creatorRole: "admin",
+        ac,
+        roles: { admin, editor, viewer },
+        allowUserToCreateOrganization: false,
+        disableOrganizationDeletion: true,
+        schema: {
+          organization: {
+            additionalFields: {
+              kind: { type: ["personal", "team"], required: true, defaultValue: "team", input: false },
+            },
+          },
+        },
       }),
       passkey({
         rpID: new URL(requiredEnv("BETTER_AUTH_URL")).hostname,

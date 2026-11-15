@@ -7,6 +7,7 @@ import { LIMITS } from "@/lib/limits";
 import { folderName } from "@/lib/projects/schemas";
 import { failedOn, isFolderGone } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 
 export type FolderSummary = { id: string; name: string; projectCount: number };
 
@@ -14,7 +15,7 @@ export const FOLDER_NAME_MESSAGE = `Enter a folder name up to ${LIMITS.folderNam
 export const FOLDER_NAME_TAKEN = "There's already a folder with that name.";
 export const FOLDER_GONE = "That folder no longer exists.";
 
-const NAME_INDEX = "folders_name_lower_unique";
+const NAME_INDEX = "folders_space_name_lower_unique";
 
 const folderGone = () => new ServiceError("NOT_FOUND", 404, FOLDER_GONE);
 
@@ -50,7 +51,7 @@ export async function listFolders(db: DB, actor: Actor): Promise<FolderSummary[]
 export async function createFolder(db: DB, actor: Actor, name: string): Promise<{ id: string; name: string }> {
   requireRole(actor, "editor");
   const folder = { id: nanoid(12), name: parseName(name) };
-  await savingName(db.insert(folders).values({ ...folder, createdBy: actor.userId }));
+  await savingName(db.insert(folders).values({ ...folder, spaceId: SEED_TEAM_ID, createdBy: actor.userId }));
   return folder;
 }
 

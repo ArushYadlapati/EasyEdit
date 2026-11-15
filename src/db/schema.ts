@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import type { AgentKind } from "@/lib/connector/agents";
 import type { FormatId, Op, TimelineDoc } from "@/lib/timeline";
-import { user } from "./auth-schema";
+import { organization, user } from "./auth-schema";
 
 export * from "./auth-schema";
 
@@ -20,17 +20,24 @@ export const allowlist = pgTable(
   ],
 );
 
-// Team-wide, one level deep. Names are unique regardless of case.
+// The space every project, folder and upload belongs to.
+const spaceId = () =>
+  text("space_id")
+    .notNull()
+    .references(() => organization.id);
+
+// One level deep, in one space. Names are unique within a space regardless of case.
 export const folders = pgTable(
   "folders",
   {
     id: text("id").primaryKey(),
+    spaceId: spaceId(),
     name: text("name").notNull(),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  () => [uniqueIndex("folders_name_lower_unique").on(sql`lower("name")`)],
+  (t) => [uniqueIndex("folders_space_name_lower_unique").on(t.spaceId, sql`lower("name")`), index("folders_space_id_idx").on(t.spaceId)],
 );
 
 // drizzle 0.45 has no bytea(). PGlite reads a Uint8Array and neon-http a Buffer; hex text ("\x…") is decoded too,
@@ -48,28 +55,33 @@ function fromHex(text: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-export const projects = pgTable("projects", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  format: text("format").$type<FormatId>().notNull(),
-  doc: jsonb("doc").$type<TimelineDoc>().notNull(),
-  version: integer("version").notNull().default(0),
-  createdBy: text("created_by").notNull(),
-  updatedBy: text("updated_by").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  // Set when the project is deleted; a deleted project is hidden from every read and write.
-  deletedAt: timestamp("deleted_at"),
-  // Deleting a folder leaves its projects in no folder.
-  folderId: text("folder_id").references(() => folders.id, { onDelete: "set null" }),
-  // Kept in step with the doc; empty on rows old code wrote, so readers fall back to the doc.
-  width: integer("width"),
-  height: integer("height"),
-  // The dashboard card's JPEG; only readThumbnail selects it.
-  thumbnail: bytea("thumbnail"),
-  // The project version the picture was drawn from.
-  thumbnailVersion: integer("thumbnail_version"),
-});
+export const projects = pgTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    spaceId: spaceId(),
+    name: text("name").notNull(),
+    format: text("format").$type<FormatId>().notNull(),
+    doc: jsonb("doc").$type<TimelineDoc>().notNull(),
+    version: integer("version").notNull().default(0),
+    createdBy: text("created_by").notNull(),
+    updatedBy: text("updated_by").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    // Set when the project is deleted; a deleted project is hidden from every read and write.
+    deletedAt: timestamp("deleted_at"),
+    // Deleting a folder leaves its projects in no folder.
+    folderId: text("folder_id").references(() => folders.id, { onDelete: "set null" }),
+    // Kept in step with the doc; empty on rows old code wrote, so readers fall back to the doc.
+    width: integer("width"),
+    height: integer("height"),
+    // The dashboard card's JPEG; only readThumbnail selects it.
+    thumbnail: bytea("thumbnail"),
+    // The project version the picture was drawn from.
+    thumbnailVersion: integer("thumbnail_version"),
+  },
+  (t) => [index("projects_space_id_idx").on(t.spaceId)],
+);
 
 // When each person last opened each project, for their Recent list.
 export const projectOpens = pgTable(
@@ -136,6 +148,7 @@ export const assets = pgTable(
   "assets",
   {
     id: text("id").primaryKey(),
+    spaceId: spaceId(),
     kind: text("kind", { enum: ["video", "image", "audio"] }).notNull(),
     name: text("name").notNull(),
     fileName: text("file_name").notNull(),
@@ -170,8 +183,20 @@ export const assets = pgTable(
     // One unfinished upload per member and file: choosing the same file again finds it.
     uniqueIndex("assets_unfinished_upload_unique").on(t.uploadedBy, t.fileName, t.sizeBytes, t.lastModifiedMs).where(sql`${t.status} = 'uploading'`),
     index("assets_created_at_idx").on(t.createdAt),
+    index("assets_space_id_idx").on(t.spaceId),
   ],
 );
+
+// The space each person opened last, so /dashboard takes them back to it.
+export const spaceVisits = pgTable("space_visits", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  spaceId: text("space_id")
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  visitedAt: timestamp("visited_at").notNull().defaultNow(),
+});
 
 // A member's personal access token for an AI agent that cannot sign in through a browser and sends a header instead.
 // Only the sha256 of the token is kept; the token itself is shown once, when it is made. The agent kinds are listed

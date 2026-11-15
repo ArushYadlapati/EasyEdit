@@ -8,6 +8,7 @@ import { assetIdsToCheck, findMediaProblem, mediaProblemMessage } from "@/lib/me
 import { loadAssetFacts } from "@/lib/media/service";
 import { copyName, projectFrame, projectName } from "@/lib/projects/schemas";
 import { ServiceError } from "@/lib/service-error";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import {
   OpError,
   applyOps,
@@ -111,6 +112,7 @@ export async function createProject(
   const insert = (folderId: SQL | null) =>
     db.insert(projects).values({
       id,
+      spaceId: SEED_TEAM_ID,
       name: name.data,
       format: frame.format,
       width: frame.width,

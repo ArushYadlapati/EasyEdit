@@ -9,6 +9,7 @@ import { DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { getUserNames } from "@/lib/projects/user-names";
 import { ServiceError } from "@/lib/service-error";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { graphemes, isStorableText } from "@/lib/text";
 import { FILE_REFUSALS, MEDIA_MESSAGES, NAMED_PROJECTS } from "./messages";
 import { checkFile, cleanName, driveName, probeFits } from "./rules";
@@ -183,6 +184,7 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
   const isVideo = kind === "video";
   const row: NewAsset = {
     id,
+    spaceId: SEED_TEAM_ID,
     kind,
     name: cleanName(input.fileName),
     fileName: input.fileName,

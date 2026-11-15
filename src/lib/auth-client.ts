@@ -1,7 +1,8 @@
 import { oauthProviderClient } from "@better-auth/oauth-provider/client";
 import { passkeyClient } from "@better-auth/passkey/client";
+import { organizationClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 // The plugin sends the signed request in the page address along with sign-in and consent, so the sign-in server
 // can carry on with Claude's request afterwards.
-export const authClient = createAuthClient({ plugins: [oauthProviderClient(), passkeyClient()] });
+export const authClient = createAuthClient({ plugins: [oauthProviderClient(), passkeyClient(), organizationClient()] });

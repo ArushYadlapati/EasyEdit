@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/access-rules";
 import { makeOpsHandlers, makeProjectHandlers } from "@/lib/projects/handlers";
 import { applyProjectOps, createProject } from "@/lib/projects/service";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { DEFAULT_TRANSFORM, FRAME_SIZE_MESSAGE, type OpInput } from "@/lib/timeline";
 import { folders, user } from "@/db/schema";
 import { makeTestDb } from "../helpers/db";
@@ -218,7 +219,7 @@ describe("project routes", () => {
 
   it("create takes a custom size in pixels, and no folder", async () => {
     const { db, projects } = await setup("editor");
-    await db.insert(folders).values({ id: "f1", name: "Season 2026", createdBy: "u1" });
+    await db.insert(folders).values({ id: "f1", spaceId: SEED_TEAM_ID, name: "Season 2026", createdBy: "u1" });
     const res = await projects.create(
       post("http://x/api/projects", { name: "Poster", format: "custom", width: 816, height: 1056, folderId: "f1" }),
     );

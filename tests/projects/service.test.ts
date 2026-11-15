@@ -16,6 +16,7 @@ import {
   listProjects,
   type OpsPage,
 } from "@/lib/projects/service";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { DEFAULT_TRANSFORM, FRAME_SIZE_MESSAGE, createEmptyDoc, type OpInput, type TextClip } from "@/lib/timeline";
 import { makeTestDb } from "../helpers/db";
 
@@ -180,7 +181,7 @@ describe("projects service", () => {
 
   it("a new project goes into the folder given, and into none when that folder is gone", async () => {
     const db = await makeTestDb();
-    await db.insert(folders).values({ id: "f1", name: "Season 2026", createdBy: "u1" });
+    await db.insert(folders).values({ id: "f1", spaceId: SEED_TEAM_ID, name: "Season 2026", createdBy: "u1" });
     const inFolder = await createProject(db, as("u1"), { name: "A", format: "short_9x16", folderId: "f1" });
     const gone = await createProject(db, as("u1"), { name: "B", format: "short_9x16", folderId: "gone" });
     const list = await listProjects(db, as("u1"));
@@ -229,7 +230,7 @@ describe("projects service", () => {
 
   it("a folder deleted between a write's read and its foreign key leaves the new project and the copy in no folder", async () => {
     const db = await makeTestDb();
-    await db.insert(folders).values({ id: "f1", name: "Season 2026", createdBy: "u1" });
+    await db.insert(folders).values({ id: "f1", spaceId: SEED_TEAM_ID, name: "Season 2026", createdBy: "u1" });
     const source = await createProject(db, as("u1"), { name: "Poster", format: "short_9x16", folderId: "f1" });
     // Runs after the insert has read the folder id and before the foreign key is checked, as another writer's
     // delete would land.
@@ -241,7 +242,7 @@ describe("projects service", () => {
     const created = await createProject(db, as("u1"), { name: "New", format: "short_9x16", folderId: "f1" });
     expect(await storedRow(db, created.id)).toMatchObject({ folder_id: null });
 
-    await db.insert(folders).values({ id: "f2", name: "Season 2027", createdBy: "u1" });
+    await db.insert(folders).values({ id: "f2", spaceId: SEED_TEAM_ID, name: "Season 2027", createdBy: "u1" });
     await db.execute(sql`alter table projects disable trigger mid_write`);
     await db.execute(sql`update projects set folder_id = 'f2' where id = ${source.id}`);
     await db.execute(sql`alter table projects enable trigger mid_write`);
@@ -267,7 +268,7 @@ describe("projects service", () => {
 
   it("duplicate keeps the folder and the size", async () => {
     const db = await makeTestDb();
-    await db.insert(folders).values({ id: "f1", name: "Season 2026", createdBy: "u1" });
+    await db.insert(folders).values({ id: "f1", spaceId: SEED_TEAM_ID, name: "Season 2026", createdBy: "u1" });
     const { id } = await createProject(db, as("u1"), { name: "Poster", format: "custom", width: 816, height: 1056, folderId: "f1" });
     await clearStoredSize(db, id);
     const copy = await duplicateProject(db, as("u1"), id);

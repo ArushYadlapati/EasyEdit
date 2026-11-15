@@ -8,6 +8,7 @@ import { LIMITS } from "@/lib/limits";
 import { makeMediaHandlers, makeReadTokenHandler, type AssetRouteContext, type MediaHandlerDeps } from "@/lib/media/handlers";
 import { completeUpload, openUpload, type MediaDeps } from "@/lib/media/service";
 import type { AssetView, OpenUploadInput } from "@/lib/media/types";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { makeTestDb } from "../helpers/db";
 import { makeFakeDrive, piece, type FakeDrive } from "../helpers/fake-drive";
 
@@ -120,7 +121,7 @@ export const mediaClip = (assetId: string, over: Record<string, unknown> = {}) =
 export async function insertAsset(db: DB, over: Partial<typeof assets.$inferInsert> = {}): Promise<string> {
   const id = over.id ?? nanoid(12);
   await db.insert(assets).values({
-    kind: "video", name: "IMG_4821", fileName: "IMG_4821.MOV", mimeType: "video/quicktime", sizeBytes: 20_000_000, lastModifiedMs: 1_762_800_000_000,
+    spaceId: SEED_TEAM_ID, kind: "video", name: "IMG_4821", fileName: "IMG_4821.MOV", mimeType: "video/quicktime", sizeBytes: 20_000_000, lastModifiedMs: 1_762_800_000_000,
     status: "ready", driveFileId: `drive-${id}`, durationMs: 12_500, width: 1080, height: 1920, fps: 30, hasAudio: true, videoCodec: "hevc",
     previewStatus: "pending", uploadedBy: "u1", readyAt: new Date(), ...over, id,
   });

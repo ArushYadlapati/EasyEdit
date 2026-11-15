@@ -1,9 +1,16 @@
-import { readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
-import { rowsOf } from "@/db";
+import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { rowsOf, type DB } from "@/db";
 import { AFTER_COMING_FORWARD, BEFORE_GOING_BACK, CUSTOM_AFTER_COMING_FORWARD, REFILL_PROJECT_SIZES } from "@/db/refill-project-sizes";
+import * as schema from "@/db/schema";
 import { projects } from "@/db/schema";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { makeTestDb } from "../helpers/db";
 
 describe("migrations", () => {
@@ -13,7 +20,10 @@ describe("migrations", () => {
       sql`select table_name from information_schema.tables where table_schema='public' order by 1`,
     );
     expect(rowsOf<{ table_name: string }>(r).map((x) => x.table_name)).toEqual(
-      expect.arrayContaining(["account", "allowlist", "assets", "folders", "project_ops", "project_opens", "project_presence", "projects", "session", "user", "verification"]),
+      expect.arrayContaining([
+        "account", "allowlist", "assets", "folders", "invitation", "member", "organization", "project_ops", "project_opens",
+        "project_presence", "projects", "session", "space_visits", "user", "verification",
+      ]),
     );
   });
 
@@ -330,5 +340,85 @@ describe("migrations", () => {
     expect(readFileSync("README.md", "utf8")).toContain(
       "    **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard, editor, project API and Claude's tools fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.",
     );
+  });
+});
+
+// A database migrated up to and including the given migration, from a copy of drizzle/ whose journal stops there.
+async function migratedTo(lastIdx: number): Promise<PgliteDatabase<typeof schema>> {
+  const folder = mkdtempSync(join(tmpdir(), "easyedit-migrations-"));
+  try {
+    cpSync("drizzle", folder, { recursive: true });
+    const journalPath = join(folder, "meta/_journal.json");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8")) as { entries: { idx: number }[] };
+    journal.entries = journal.entries.filter((e) => e.idx <= lastIdx);
+    writeFileSync(journalPath, JSON.stringify(journal));
+    const client = new PGlite();
+    onTestFinished(() => client.close());
+    const db = drizzle(client, { schema });
+    await migrate(db, { migrationsFolder: folder });
+    return db;
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
+
+// At 0011: u1 and u2 are on the allowlist, u3 has an account but no allowlist row, and never@x.com was added but never
+// signed in. One folder, one project in it, one upload. Then 0012 runs.
+async function spacesMigrated(): Promise<DB> {
+  const db = await migratedTo(11);
+  await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Ann', 'ann@x.com'), ('u2', 'Bob', 'bob@x.com'), ('u3', 'Cat', 'cat@x.com')`);
+  await db.execute(sql`insert into allowlist (email, role) values ('ann@x.com', 'admin'), ('bob@x.com', 'editor'), ('never@x.com', 'viewer')`);
+  await db.execute(sql`insert into folders (id, name, created_by) values ('f1', 'Season 2026', 'u1')`);
+  await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by, folder_id) values ('p1', 'P', 'short_9x16', '{}', 'u1', 'u1', 'f1')`);
+  await db.execute(sql`insert into assets (id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, uploaded_by)
+    values ('a1', 'video', 'Clip', 'clip.mp4', 'video/mp4', 1, 1, 'u1')`);
+  await migrate(db, { migrationsFolder: "drizzle" });
+  return db;
+}
+
+describe("migration 0012: spaces", () => {
+  it("0012 moves everything into Seattle Solvers and gives each user a personal space", async () => {
+    const db = await spacesMigrated();
+    const spaceIdsOf = async (table: "projects" | "folders" | "assets") =>
+      rowsOf<{ space_id: string }>(await db.execute(sql`select space_id from ${sql.identifier(table)}`)).map((r) => r.space_id);
+    const members = async (spaceId: string) =>
+      rowsOf(await db.execute(sql`select user_id as "userId", role from member where organization_id = ${spaceId} order by user_id`));
+    const kinds = async () =>
+      Object.fromEntries(rowsOf<{ id: string; kind: string }>(await db.execute(sql`select id, kind from organization order by id`)).map((r) => [r.id, r.kind]));
+
+    expect(await spaceIdsOf("projects")).toEqual(["team_seattle_solvers"]);
+    expect(await spaceIdsOf("folders")).toEqual(["team_seattle_solvers"]);
+    expect(await spaceIdsOf("assets")).toEqual(["team_seattle_solvers"]);
+    expect(await members("team_seattle_solvers")).toEqual([{ userId: "u1", role: "admin" }, { userId: "u2", role: "editor" }]);
+    expect(await members("personal_u3")).toEqual([{ userId: "u3", role: "admin" }]);
+    expect(await kinds()).toEqual({ team_seattle_solvers: "team", personal_u1: "personal", personal_u2: "personal", personal_u3: "personal" });
+    expect(rowsOf(await db.execute(sql`select id, name, slug from organization where id in ('team_seattle_solvers', 'personal_u1') order by id`))).toEqual([
+      { id: "personal_u1", name: "Personal", slug: "personal_u1" },
+      { id: "team_seattle_solvers", name: "Seattle Solvers", slug: "seattle-solvers" },
+    ]);
+    expect(rowsOf(await db.execute(sql`select id from member where user_id = 'u1' order by id`))).toEqual([{ id: "mp_u1" }, { id: "mt_u1" }]);
+    expect(rowsOf(await db.execute(sql`select count(*)::int as n from invitation`))).toEqual([{ n: 0 }]);
+  });
+
+  it("an insert without space_id goes to Seattle Solvers", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into folders (id, name, created_by) values ('f1', 'Season 2026', 'u')`);
+    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u', 'u')`);
+    await db.execute(sql`insert into assets (id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, uploaded_by)
+      values ('a1', 'video', 'Clip', 'clip.mp4', 'video/mp4', 1, 1, 'u')`);
+    for (const table of ["projects", "folders", "assets"]) {
+      expect(rowsOf(await db.execute(sql`select space_id from ${sql.identifier(table)}`))).toEqual([{ space_id: SEED_TEAM_ID }]);
+    }
+    await expect(db.execute(sql`insert into projects (id, space_id, name, format, doc, created_by, updated_by) values ('p2', 'nowhere', 'P', 'short_9x16', '{}', 'u', 'u')`)).rejects.toThrow();
+  });
+
+  it("folder names are unique per space, not across spaces", async () => {
+    const db = await spacesMigrated();
+    const add = (id: string, spaceId: string, name: string) =>
+      db.execute(sql`insert into folders (id, space_id, name, created_by) values (${id}, ${spaceId}, ${name}, 'u1')`);
+    await add("f2", "personal_u1", "season 2026"); // the team already has "Season 2026"
+    await expect(add("f3", "team_seattle_solvers", "SEASON 2026")).rejects.toMatchObject({ cause: { code: "23505", constraint: "folders_space_name_lower_unique" } });
+    const indexes = rowsOf<{ indexname: string }>(await db.execute(sql`select indexname from pg_indexes where tablename = 'folders'`)).map((r) => r.indexname);
+    expect(indexes).not.toContain("folders_name_lower_unique");
   });
 });

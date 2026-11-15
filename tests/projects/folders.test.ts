@@ -50,7 +50,7 @@ describe("folders", () => {
   it("a duplicate name the driver wraps, naming the index only in its message, is still refused as taken", async () => {
     const db = await makeTestDb();
     const duplicate = new Error("query failed", {
-      cause: Object.assign(new Error('duplicate key value violates unique constraint "folders_name_lower_unique"'), {
+      cause: Object.assign(new Error('duplicate key value violates unique constraint "folders_space_name_lower_unique"'), {
         code: "23505",
       }),
     });
