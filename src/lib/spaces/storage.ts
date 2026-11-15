@@ -28,7 +28,8 @@ export type StorageDeps = {
 type Unready = Extract<StorageState, { ready: false }>["reason"];
 type Found =
   | { kind: "unready"; reason: Unready }
-  | { kind: "broken"; reason: ConnectionBrokenError["reason"] }
+  // A team's reader still reads what is in its folder when the connection that writes it is broken (reader).
+  | { kind: "broken"; reason: ConnectionBrokenError["reason"]; reader?: { caller: AccessSource; readerEmail: string } }
   | { kind: "shared_folder"; shared: DriveClient }
   | { kind: "personal"; cfg: StorageConfig; connectionId: string; rootFolderId: string }
   | { kind: "team"; cfg: StorageConfig; connectionId: string; rootFolderId: string; caller: AccessSource; readerEmail: string };
@@ -74,10 +75,16 @@ async function find(db: DB, spaceId: string, deps: StorageDeps): Promise<Found> 
   if (!connectionId || !rootFolderId) return unready("not_configured"); // the table's check rules this out
   const cfg = (deps.config ?? storageConfig)();
   if (!cfg) return unready("not_configured"); // without the OAuth client a connection's token can't be had, whatever its state
-  if (row.brokenAt !== null) return { kind: "broken", reason: brokenReason(row.brokenReason) };
-  if (row.spaceKind === "personal") return { kind: "personal", cfg, connectionId, rootFolderId };
+  if (row.spaceKind === "personal") {
+    if (row.brokenAt !== null) return { kind: "broken", reason: brokenReason(row.brokenReason) };
+    return { kind: "personal", cfg, connectionId, rootFolderId };
+  }
 
   const caller = readSetting(deps.mainSa ?? mainServiceAccount);
+  if (row.brokenAt !== null) {
+    const reader = caller && row.readerEmail ? { caller, readerEmail: row.readerEmail } : undefined;
+    return { kind: "broken", reason: brokenReason(row.brokenReason), reader };
+  }
   if (!caller || !row.readerEmail) return unready("not_configured");
   return { kind: "team", cfg, connectionId, rootFolderId, caller, readerEmail: row.readerEmail };
 }
@@ -91,8 +98,7 @@ export async function storageState(db: DB, spaceId: string, deps: StorageDeps = 
 
 // Storage that can be used, or null when there is none ready; a connection marked broken throws its
 // ConnectionBrokenError, so the routes can tell the person it needs reconnecting. No call to Google.
-async function usable(db: DB, spaceId: string, deps: StorageDeps): Promise<Exclude<Found, { kind: "unready" | "broken" }> | null> {
-  const found = await find(db, spaceId, deps);
+function usable(found: Found): Exclude<Found, { kind: "unready" | "broken" }> | null {
   if (found.kind === "unready") return null;
   if (found.kind === "broken") throw new ConnectionBrokenError(found.reason);
   return found;
@@ -106,7 +112,7 @@ const teamReader = (caller: AccessSource, email: string, fetchFn: typeof fetch |
 // connection marked broken. A person's Drive is written with their connection; what it hands to browsers is the
 // space's reader (readerFor).
 export async function storageFor(db: DB, spaceId: string, deps: StorageDeps = {}): Promise<DriveClient | null> {
-  const found = await usable(db, spaceId, deps);
+  const found = usable(await find(db, spaceId, deps));
   if (!found) return null;
   if (found.kind === "shared_folder") return found.shared;
   const write = await connectionAccess(db, found.cfg, found.connectionId, deps.fetch);
@@ -116,9 +122,12 @@ export async function storageFor(db: DB, spaceId: string, deps: StorageDeps = {}
 
 // What /api/drive/read-token hands out for this space, or null when its storage isn't ready: Seattle Solvers' main
 // service account's read-only token, a personal space's own connection, a team's reader (read-only Drive only).
-// Throws ConnectionBrokenError for a connection marked broken, as storageFor does.
+// A team's reader keeps reading when the team's connection is broken (uploads stop, playback goes on); a personal
+// space has only its connection, so there a broken one throws ConnectionBrokenError, as storageFor does.
 export async function readerFor(db: DB, spaceId: string, deps: StorageDeps = {}): Promise<AccessSource | null> {
-  const found = await usable(db, spaceId, deps);
+  const all = await find(db, spaceId, deps);
+  if (all.kind === "broken" && all.reader) return teamReader(all.reader.caller, all.reader.readerEmail, deps.fetch);
+  const found = usable(all);
   if (!found) return null;
   if (found.kind === "shared_folder") {
     const { shared } = found;

@@ -15,12 +15,12 @@ import { LIMITS } from "@/lib/limits";
 import type { MediaFailure, MediaResult } from "@/lib/media/api";
 import { visibleAssets } from "@/lib/media/library-store";
 import { MEDIA_MESSAGES } from "@/lib/media/messages";
-import { STORAGE_MESSAGES, storageCard, storageSettingsPath } from "@/lib/storage/messages";
+import { STORAGE_MESSAGES, type StorageCard, storageCard, storageSettingsPath } from "@/lib/storage/messages";
 import type { AssetKind, AssetView, UploadItem } from "@/lib/media/types";
 import { useEditor, useEditorStore } from "../context";
 import { LeaveLink } from "../leave-link";
 import { AssetTile, type AssetAction, type WatchView } from "./asset-tile";
-import { useLibrary, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
+import { type StorageSetup, useLibrary, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
 import { UploadRow } from "./upload-row";
 
 const ACCEPT = ".mp4,.m4v,.mov,.webm,.jpg,.jpeg,.png,.webp,.mp3,.m4a,.wav,.aac";
@@ -104,7 +104,11 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   const uploads = useLibrary(useShallow((s) => s.uploads.filter(shownUpload)));
   const assets = useLibrary(useShallow(visibleAssets));
   const hasAny = useLibrary((s) => Object.values(s.assets).some((asset) => asset.status === "ready" && !asset.removed));
-  const canUpload = canEdit && setUp;
+  // A team whose Google connection broke still lists and plays what its reader can read; only uploads stop. A personal
+  // space's broken connection is the only way to read its Drive, so there the card stands alone.
+  const readsWhileBroken = !storageReady && storageProblem === "broken" && storageSetup?.kind === "team";
+  const listed = storageReady || readsWhileBroken;
+  const canUpload = canEdit && setUp && storageReady;
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   // Over this tab, or a file from the computer anywhere over the window.
@@ -118,13 +122,13 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   // The library is fetched when the tab opens, and again after each refused edit while it is open: an asset that a
   // teammate removed is then gone from the list, so a second click cannot repeat the refusal.
   useEffect(() => {
-    if (!storageReady) return; // no storage, no library to fetch
+    if (!listed) return; // no storage to read, no library to fetch
     const refresh = () => void library.getState().refresh("tab").catch(() => {});
     refresh();
     return store.subscribe((state, before) => {
       if (state.notice && state.notice.tone === "error" && state.notice.id !== before.notice?.id) refresh();
     });
-  }, [library, store, storageReady]);
+  }, [library, store, listed]);
 
   const onAction = useCallback((action: AssetAction, asset: AssetView) => setEditing({ action, asset }), []);
 
@@ -171,28 +175,22 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
 
   // A space with no storage says so, in place of everything else: no upload, no drop target. This wins over setUp
   // being false, which is for a Drive that should work but is not set up.
-  // Its admins get the way to set storage up, or to reconnect it (storageCard).
-  if (!storageReady) {
-    const card = storageCard({
-      problem: storageProblem === "broken" ? "broken" : "none",
-      kind: storageSetup?.kind ?? "team",
-      isAdmin: storageSetup?.isAdmin === true,
-      block: storageSetup?.block ?? null,
-      isOwner: storageSetup?.ownsConnection === true,
-      ownerEmail: storageSetup?.ownerEmail ?? null,
-    });
+  // Its admins get the way to set storage up, or to reconnect it (storageCard). A team's broken connection shows the
+  // card above the library instead, with no upload.
+  const card = storageReady
+    ? null
+    : storageCard({
+        problem: storageProblem === "broken" ? "broken" : "none",
+        kind: storageSetup?.kind ?? "team",
+        isAdmin: storageSetup?.isAdmin === true,
+        block: storageSetup?.block ?? null,
+        isOwner: storageSetup?.ownsConnection === true,
+        ownerEmail: storageSetup?.ownerEmail ?? null,
+      });
+  if (card && !listed) {
     return (
       <div {...panel} className="min-h-0 flex-1">
-        <div className="flex flex-col items-start gap-2 p-3">
-          <h3 className="text-sm font-semibold">{card.title}</h3>
-          <p className="text-[13px] leading-5 text-ed-muted">{card.text}</p>
-          {card.note && <p className="text-[13px] leading-5 text-ed-muted">{card.note}</p>}
-          {card.action && storageSetup && (
-            <LeaveLink href={storageSettingsPath(storageSetup.slug)} className={linkButtonClass("primary", "mt-1")}>
-              {card.action === "choose" ? STORAGE_MESSAGES.chooseAccount : STORAGE_MESSAGES.reconnect}
-            </LeaveLink>
-          )}
-        </div>
+        <StorageNotice card={card} setup={storageSetup} className="p-3" />
       </div>
     );
   }
@@ -206,44 +204,48 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
       onDrop={onDrop}
     >
       <div ref={scroller} className="flex h-full flex-col gap-3 overflow-y-auto p-3">
-        <div className="flex flex-col gap-2">
-          <Button variant="primary" data-edit-control disabled={!canUpload} className="w-full" onClick={() => picker.current?.click()}>
-            <Upload />
-            Upload
-          </Button>
-          {canUpload && <p className="text-[13px] leading-5 text-ed-muted">You can also drag files here, onto the timeline or onto the preview.</p>}
-          <input
-            ref={picker}
-            type="file"
-            multiple
-            accept={ACCEPT}
-            hidden
-            tabIndex={-1}
-            disabled={!canUpload}
-            onChange={(event) => {
-              const files = [...(event.currentTarget.files ?? [])];
-              event.currentTarget.value = ""; // so that the same file can be chosen again
-              if (canUpload && files.length > 0) queue.add(files);
-            }}
-          />
-          {/* Field's look, with the label's text naming the field outright: in Edge the wrapping label alone left the
-              placeholder as its name. */}
-          <label className="flex min-w-0 flex-col gap-1">
-            <span id={eventLabelId} className="text-xs font-medium text-ed-muted">
-              Event for new uploads
-            </span>
-            <TextInput
-              aria-labelledby={eventLabelId}
-              data-edit-control
+        {card ? (
+          <StorageNotice card={card} setup={storageSetup} />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <Button variant="primary" data-edit-control disabled={!canUpload} className="w-full" onClick={() => picker.current?.click()}>
+              <Upload />
+              Upload
+            </Button>
+            {canUpload && <p className="text-[13px] leading-5 text-ed-muted">You can also drag files here, onto the timeline or onto the preview.</p>}
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              accept={ACCEPT}
+              hidden
+              tabIndex={-1}
               disabled={!canUpload}
-              placeholder="Qualifier 2026-11-08"
-              maxLength={LIMITS.mediaEventChars}
-              value={uploadEvent}
-              onChange={(event) => library.getState().setUploadEvent(event.target.value)}
+              onChange={(event) => {
+                const files = [...(event.currentTarget.files ?? [])];
+                event.currentTarget.value = ""; // so that the same file can be chosen again
+                if (canUpload && files.length > 0) queue.add(files);
+              }}
             />
-          </label>
-          {!setUp && <p className="text-[13px] leading-5 text-ed-muted">{MEDIA_MESSAGES.notSetUp}</p>}
-        </div>
+            {/* Field's look, with the label's text naming the field outright: in Edge the wrapping label alone left the
+                placeholder as its name. */}
+            <label className="flex min-w-0 flex-col gap-1">
+              <span id={eventLabelId} className="text-xs font-medium text-ed-muted">
+                Event for new uploads
+              </span>
+              <TextInput
+                aria-labelledby={eventLabelId}
+                data-edit-control
+                disabled={!canUpload}
+                placeholder="Qualifier 2026-11-08"
+                maxLength={LIMITS.mediaEventChars}
+                value={uploadEvent}
+                onChange={(event) => library.getState().setUploadEvent(event.target.value)}
+              />
+            </label>
+            {!setUp && <p className="text-[13px] leading-5 text-ed-muted">{MEDIA_MESSAGES.notSetUp}</p>}
+          </div>
+        )}
 
         {uploads.length > 0 && (
           <ul aria-label="Uploads" className="flex flex-col gap-1">
@@ -300,6 +302,22 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
       )}
 
       <AssetDialog editing={editing} onRemoved={onRemoved} onClose={() => setEditing(null)} />
+    </div>
+  );
+}
+
+// What the Media tab says of a space's storage problem, and the way to fix it for those who can (storageCard).
+function StorageNotice({ card, setup, className }: { card: StorageCard; setup: StorageSetup | null; className?: string }) {
+  return (
+    <div className={cx("flex flex-col items-start gap-2", className)}>
+      <h3 className="text-sm font-semibold">{card.title}</h3>
+      <p className="text-[13px] leading-5 text-ed-muted">{card.text}</p>
+      {card.note && <p className="text-[13px] leading-5 text-ed-muted">{card.note}</p>}
+      {card.action && setup && (
+        <LeaveLink href={storageSettingsPath(setup.slug)} className={linkButtonClass("primary", "mt-1")}>
+          {card.action === "choose" ? STORAGE_MESSAGES.chooseAccount : STORAGE_MESSAGES.reconnect}
+        </LeaveLink>
+      )}
     </div>
   );
 }

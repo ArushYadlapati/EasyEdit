@@ -192,14 +192,30 @@ describe("media follows each space's storage", () => {
     expect(tokenCalls(ctx) - before).toBe(1);
   });
 
-  it("a team whose connection broke refuses uploads and read tokens alike", async () => {
+  it("a team whose connection broke refuses uploads, but its members still list and play what the reader can read", async () => {
     const ctx = await mediaContext();
-    const team = await teamWithStorage(ctx, "Robotics Club");
+    const team = await teamWithStorage(ctx, "Robotics Club", ctx.ada, [ctx.grace], "club.drive@gmail.com");
+    const asset = await upload(ctx, ctx.grace, team.spaceId);
     await ctx.db.update(driveConnection).set({ brokenAt: new Date(), brokenReason: "expired" }).where(eq(driveConnection.id, team.connection.id));
+    forgetAllSources();
     const calls = ctx.fake.calls.length;
     expect(await call(ctx, ctx.grace, "POST", `/api/media?space=${team.spaceId}`, IMAGE)).toEqual({ status: 409, body: BROKEN });
-    expect(await tokenFor(ctx, ctx.grace, team.spaceId)).toEqual({ status: 409, body: BROKEN });
-    expect(ctx.fake.calls.length).toBe(calls);
+    expect(await call(ctx, ctx.ada, "DELETE", `/api/media/${asset.id}`)).toEqual({ status: 409, body: BROKEN });
+    expect(ctx.fake.calls.length).toBe(calls); // refused without asking Google
+    expect(await call(ctx, ctx.grace, "GET", `/api/media?space=${team.spaceId}`)).toMatchObject({ status: 200, body: { assets: [{ id: asset.id }], setUp: false } });
+
+    // Every member, the admin who connected it included, still gets the team reader's read-only token, never the connection's.
+    for (const member of [ctx.grace, ctx.ada]) {
+      const answer = await tokenFor(ctx, member, team.spaceId);
+      expect(answer.status).toBe(200);
+      expect(holderOf(ctx, answer)).toEqual({ email: team.readerEmail, scope: SCOPE_READ });
+      const read = await ctx.fake.fetch(`https://www.googleapis.com/drive/v3/files/${asset.originalFileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${String(answer.body?.accessToken)}` } });
+      expect(read.status).toBe(200);
+    }
+    expect(await tokenFor(ctx, ctx.vera, team.spaceId)).toMatchObject({ status: 404 });
+    // No refresh of the broken connection was tried.
+    const [row] = await ctx.db.select().from(driveConnection).where(eq(driveConnection.id, team.connection.id));
+    expect(row.brokenReason).toBe("expired");
   });
 
   it("a team with no main service account to read with is not set up", async () => {

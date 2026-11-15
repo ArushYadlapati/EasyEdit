@@ -152,15 +152,30 @@ describe("readerFor", () => {
     expect(await holderOf(w, (await readerFor(w.db, team, depsOf(w)))!)).toEqual({ email: reader, scope: SCOPE_READ });
   });
 
-  it("is null for a space without storage or a team with no main service account, and throws for a broken connection", async () => {
+  it("is null for a space without storage or a team with no main service account", async () => {
     const w = await storageWorld();
     const other = await w.team("Other Team");
     expect(await readerFor(w.db, other, depsOf(w))).toBeNull();
     const team = await w.team("Robotics Club");
-    const { connection } = await withStorage(w, team);
+    await withStorage(w, team);
     expect(await readerFor(w.db, team, depsOf(w, { mainSa: () => null }))).toBeNull();
+  });
+
+  it("a team whose connection broke still reads with its reader, while writes refuse; a personal space's broken connection throws", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    const { connection } = await withStorage(w, team);
     await w.db.update(driveConnection).set({ brokenAt: new Date(), brokenReason: "expired" }).where(eq(driveConnection.id, connection.id));
-    await expect(readerFor(w.db, team, depsOf(w))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "expired" });
+    const reader = `${readerAccountId(team)}@${w.fake.projectId}.iam.gserviceaccount.com`;
+    expect(await holderOf(w, (await readerFor(w.db, team, depsOf(w)))!)).toEqual({ email: reader, scope: SCOPE_READ });
+    await expect(storageFor(w.db, team, depsOf(w))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "expired" });
+    expect(await storageState(w.db, team, depsOf(w))).toEqual({ ready: false, reason: "broken" });
+    // With no main service account to read with, there is nothing left that can read.
+    await expect(readerFor(w.db, team, depsOf(w, { mainSa: () => null }))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "expired" });
+
+    const own = await withStorage(w, w.personal);
+    await w.db.update(driveConnection).set({ brokenAt: new Date(), brokenReason: "revoked" }).where(eq(driveConnection.id, own.connection.id));
+    await expect(readerFor(w.db, w.personal, depsOf(w))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "revoked" });
   });
 
   it("a team reader's source asks only for read-only Drive, and refuses any other scope", async () => {

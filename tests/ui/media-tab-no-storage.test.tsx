@@ -7,18 +7,25 @@ import { ContextMenuProvider } from "@/components/ui/context-menu";
 import type { MediaApi } from "@/lib/media/api";
 import { createLibraryStore } from "@/lib/media/library-store";
 import { MEDIA_MESSAGES } from "@/lib/media/messages";
+import type { AssetView } from "@/lib/media/types";
 import { makeStore } from "../editor/fixtures";
 import { act, fireEvent, render, renderHook, screen } from "../helpers/dom";
 
 const PERSONAL: StorageSetup = { kind: "personal", slug: "personal", isAdmin: true, block: null, ownsConnection: true, ownerEmail: null };
 const TEAM_ADMIN: StorageSetup = { kind: "team", slug: "robots", isAdmin: true, block: null, ownsConnection: true, ownerEmail: "u1@gmail.com" };
+// A finished video with no pictures to read, so the row asks Drive for nothing.
+const READY: AssetView = {
+  id: "v1", kind: "video", name: "Clip one", fileName: "clip.mp4", sizeBytes: 1000, status: "ready", removed: false, durationMs: 5000, width: 1920,
+  height: 1080, fps: 30, hasAudio: true, originalFileId: "orig-v1", previewStatus: "none", previewFileId: null, posterFileId: null, event: null,
+  uploadedBy: "u1", uploadedByName: "Ada Lovelace", createdAt: "2026-11-01T10:00:00.000Z",
+};
 const TEAM_MEMBER: StorageSetup = { kind: "team", slug: "robots", isAdmin: false, block: null, ownsConnection: false, ownerEmail: "u1@gmail.com" };
 
-function setup(options: { storageReady?: boolean; storageProblem?: "none" | "broken" | null; setUp?: boolean; storageSetup?: StorageSetup }) {
+function setup(options: { storageReady?: boolean; storageProblem?: "none" | "broken" | null; setUp?: boolean; storageSetup?: StorageSetup; assets?: AssetView[] }) {
   const refused = vi.fn(async (): Promise<never> => {
     throw new Error("not called");
   });
-  const list = vi.fn(async () => ({ ok: true as const, assets: [], setUp: options.setUp ?? true }));
+  const list = vi.fn(async () => ({ ok: true as const, assets: options.assets ?? [], setUp: options.setUp ?? true }));
   const api = { list, update: refused, remove: refused, open: refused, offset: refused, complete: refused, openFile: refused, completeFile: refused, previewFailed: refused, readToken: refused } as unknown as MediaApi;
   const queue = { add: vi.fn(() => []), cancel: vi.fn(), retry: vi.fn(), resume: vi.fn(), dismiss: vi.fn(), stop: vi.fn(), items: () => [], active: () => 0 };
   const services: MediaServices = { library: createLibraryStore({ api }), queue, files: { get: vi.fn(() => new Promise<never>(() => {})), put: vi.fn(async () => {}) }, dispose: vi.fn() };
@@ -84,19 +91,41 @@ describe("the Media tab of a space with no storage", () => {
   });
 
   it("says the Drive needs reconnecting when its connection broke, with Reconnect for admins and no upload", async () => {
-    const admin = setup({ storageReady: false, storageProblem: "broken", storageSetup: TEAM_ADMIN });
+    const admin = setup({ storageReady: false, storageProblem: "broken", storageSetup: TEAM_ADMIN, setUp: false });
     await openMedia();
     expect(screen.getByRole("heading", { name: "Google Drive needs reconnecting" })).toBeTruthy();
     expect(screen.getByText("EasyEdit can't reach this space's Google Drive any more. An admin can reconnect it in storage settings.")).toBeTruthy();
     expect(link("Reconnect").getAttribute("href")).toBe("/s/robots/settings/storage");
     expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
-    expect(admin.list).not.toHaveBeenCalled();
+    expect(admin.view.container.querySelector('input[type="file"]')).toBeNull();
     admin.view.unmount();
 
     setup({ storageReady: false, storageProblem: "broken", storageSetup: TEAM_MEMBER });
     await openMedia();
     expect(screen.getByRole("heading", { name: "Google Drive needs reconnecting" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Reconnect" })).toBeNull();
+  });
+
+  it("a team's library still lists below the broken card, so what is there still plays; uploads stay off", async () => {
+    const { list, view } = setup({ storageReady: false, storageProblem: "broken", storageSetup: TEAM_MEMBER, setUp: false, assets: [READY] });
+    await openMedia();
+    expect(list).toHaveBeenCalled();
+    const heading = screen.getByRole("heading", { name: "Google Drive needs reconnecting" });
+    const library = screen.getByRole("list", { name: "Media" });
+    expect(heading.compareDocumentPosition(library) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy(); // the card is above the list
+    expect(screen.getByText("Clip one")).toBeTruthy();
+    expect(screen.getByRole("searchbox", { name: "Search media" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
+    expect(view.container.querySelector('input[type="file"]')).toBeNull();
+    expect(screen.queryByText(MEDIA_MESSAGES.notSetUp)).toBeNull(); // the card already says why
+  });
+
+  it("a personal space's broken Drive has nothing left to read with: the card alone, no list", async () => {
+    const { list } = setup({ storageReady: false, storageProblem: "broken", storageSetup: PERSONAL, assets: [READY] });
+    await openMedia();
+    expect(screen.getByRole("heading", { name: "Google Drive needs reconnecting" })).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Media" })).toBeNull();
+    expect(list).not.toHaveBeenCalled();
   });
 
   it("an admin who didn't connect the broken account is told who can reconnect it", async () => {
