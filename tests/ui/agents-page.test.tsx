@@ -380,6 +380,14 @@ describe("the AI agents page", () => {
     expect(screen.getByText("You're a viewer, so your agents can read projects but not change them.")).toBeTruthy();
   });
 
+  it("calls a team viewer read-only while personal spaces are not offered, whatever their own space allows", async () => {
+    vi.stubEnv("PERSONAL_SPACES", "");
+    server.user = viewer;
+    server.spaces = [space("personal", "admin"), space("team", "viewer")];
+    render(await AgentsPage());
+    expect(screen.getByText("You're a viewer, so your agents can read projects but not change them.")).toBeTruthy();
+  });
+
   it("does not call a team viewer read-only when their personal space lets agents change things", async () => {
     server.user = viewer;
     server.spaces = [space("personal", "admin"), space("team", "viewer")];

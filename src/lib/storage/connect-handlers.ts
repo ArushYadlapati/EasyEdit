@@ -7,6 +7,7 @@ import { apiRoute } from "@/lib/api-route";
 import { DriveError } from "@/lib/drive/token";
 import { ServiceError } from "@/lib/service-error";
 import { slugFor } from "@/lib/spaces/paths";
+import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { listMySpaces } from "@/lib/spaces/service";
 import type { MySpace, SpaceKind } from "@/lib/spaces/types";
 import { storageBlock } from "./availability";
@@ -138,6 +139,8 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     const params = new URL(req.url).searchParams;
     const space = await adminSpace(user.id, params.get("space") || null);
     if (!space) return goTo(cfg, REFUSED_PAGE);
+    // No storage for a personal space while personal spaces are not offered: on to its coming-soon page.
+    if (space.kind === "personal" && !personalSpacesOpen()) return goTo(cfg, `/s/${slugFor(space)}`);
     // A typed or kept link too: nobody is sent to Google for a connect this server can't finish.
     if (!cfg || block(space.kind) !== null) return goTo(cfg, storagePage(space, "not-configured"));
 
