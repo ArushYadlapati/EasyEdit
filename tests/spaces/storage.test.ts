@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { hasStorage } from "@/lib/spaces/storage";
+import { hasStorage, spaceHasStorage } from "@/lib/spaces/storage";
 import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
 
 afterEach(() => {
@@ -28,5 +28,16 @@ describe("hasStorage", () => {
   it("uses the lookup it is given", () => {
     expect(hasStorage("s", () => null)).toBe(false);
     expect(hasStorage("s", () => ({}) as never)).toBe(true);
+  });
+});
+
+describe("spaceHasStorage", () => {
+  it("is true for Seattle Solvers even when its Drive settings cannot be read, without reading them", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", '{"type":"service_account"}');
+    vi.stubEnv("DRIVE_FOLDER_ID", "folder1");
+    expect(spaceHasStorage(SEED_TEAM_ID)).toBe(true);
+    expect(spaceHasStorage(personalSpaceId("u1"))).toBe(false);
+    expect(log).not.toHaveBeenCalled();
   });
 });

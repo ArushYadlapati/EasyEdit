@@ -92,7 +92,7 @@ const MediaContext = createContext<MediaServices | null>(null);
 // The space the library belongs to, and whether it has storage to upload to.
 type MediaSpace = { spaceId: string | null; storageReady: boolean };
 // The default agrees with MediaProvider's: with no provider no space is named and storage counts as ready. "Not ready"
-// hides uploading, so it must only ever come from a provider that was told so (the editor page, from hasStorage).
+// hides uploading, so it must only ever come from a provider that was told so (the editor page, from spaceHasStorage).
 const MediaSpaceContext = createContext<MediaSpace>({ spaceId: null, storageReady: true });
 const MediaDropContext = createContext<MediaDrop | null>(null);
 const IDLE = idleServices();

@@ -123,6 +123,21 @@ describe("the space editor", () => {
     expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ id: personalSpaceId("u1"), slug: "personal" });
   });
 
+  it("says Seattle Solvers has storage even when its Drive is not set up, and a personal space has none", async () => {
+    // A key that is not base64: the Media tab shows the not-set-up message from its list, not "Storage comes next".
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", '{"type":"service_account"}');
+    vi.stubEnv("DRIVE_FOLDER_ID", "folder1");
+    try {
+      expect((await editorAt(ada, "seattle-solvers", teamProject)).space.storageReady).toBe(true);
+      expect((await editorAt(ada, "personal", personalProject)).space.storageReady).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+      delete (globalThis as { __easyEditDrive?: unknown }).__easyEditDrive;
+    }
+  });
+
   it("a project in another space of yours redirects to that space", async () => {
     await expect(editorAt(ada, "personal", teamProject)).rejects.toMatchObject({ to: `/s/seattle-solvers/editor/${teamProject}` });
     await expect(editorAt(ada, "seattle-solvers", personalProject)).rejects.toMatchObject({ to: `/s/personal/editor/${personalProject}` });
