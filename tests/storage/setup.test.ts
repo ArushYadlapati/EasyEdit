@@ -172,6 +172,39 @@ describe("setting up storage", () => {
     expect(await storageOf(w.db, w.personal)).toEqual(personalBefore);
   });
 
+  it("never replaces Seattle Solvers' shared drive, even with no uploads in it, and asks Google nothing", async () => {
+    const w = await storageWorld();
+    const ada = await w.connect();
+    const before = await storageOf(w.db, SEED_TEAM_ID);
+    expect(before).toMatchObject({ kind: "shared_folder" });
+    const calls = w.fake.calls.length;
+    const error = await setUpFor(w)(w.db, { spaceId: SEED_TEAM_ID, connectionId: ada.id, byUserId: "u1" }).catch((e: unknown) => e);
+    expect(refusal(error)).toEqual({ code: "STORAGE_IN_USE", status: 409 });
+    expect((error as Error).message).toBe("This space already keeps files in Google Drive, so it can't move to another account yet.");
+    expect(await storageOf(w.db, SEED_TEAM_ID)).toEqual(before);
+    expect(w.fake.calls.length).toBe(calls);
+  });
+
+  it("a space whose storage became a shared folder while setting up keeps it", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    const first = await w.connect();
+    await setUpFor(w)(w.db, { spaceId: team, connectionId: first.id, byUserId: "u1" });
+    const second = await w.connect();
+    let flipped = false;
+    const flipping = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!flipped) {
+        flipped = true;
+        await w.db.update(spaceStorage).set({ kind: "shared_folder", connectionId: null, rootFolderId: null, folderName: null, readerEmail: null }).where(eq(spaceStorage.spaceId, team));
+      }
+      return w.fake.fetch(input, init);
+    }) as typeof fetch;
+    const setUp = makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: flipping });
+    const error = await setUp(w.db, { spaceId: team, connectionId: second.id, byUserId: "u1" }).catch((e: unknown) => e);
+    expect(refusal(error)).toEqual({ code: "STORAGE_IN_USE", status: 409 });
+    expect(await storageOf(w.db, team)).toMatchObject({ kind: "shared_folder", connectionId: null });
+  });
+
   it("refuses, as a missing space, someone who isn't the space's admin or a connection that isn't theirs", async () => {
     const w = await storageWorld();
     const team = await w.team("Robotics Club");

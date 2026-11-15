@@ -1,5 +1,5 @@
 import "server-only";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { rowsOf, type DB } from "@/db";
 import { assets, driveConnection, organization, spaceStorage } from "@/db/schema";
 import { mainServiceAccount } from "@/lib/drive";
@@ -51,8 +51,9 @@ export async function holdsUploads(db: DB, spaceId: string): Promise<boolean> {
 }
 
 // Setting up again with the same connection (a reconnect after it broke) keeps the storage as it is. A space whose
-// storage holds uploads keeps it: moving media between accounts comes later. Everything that can be refused is
-// refused before any call to Google, so a refusal leaves nothing behind.
+// storage holds uploads keeps it: moving media between accounts comes later. A shared folder (Seattle Solvers' shared
+// drive) is never replaced, uploads or not. Everything that can be refused is refused before any call to Google, so a
+// refusal leaves nothing behind.
 export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
   return async (db, { spaceId, connectionId, byUserId }) => {
     const [space] = await db.select({ name: organization.name, kind: organization.kind }).from(organization).where(eq(organization.id, spaceId));
@@ -62,7 +63,7 @@ export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
 
     const [current] = await db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, spaceId));
     if (current?.kind === "google_account" && current.connectionId === connectionId) return;
-    if (current && (await holdsUploads(db, spaceId))) throw inUse();
+    if (current?.kind === "shared_folder" || (current && (await holdsUploads(db, spaceId)))) throw inUse();
 
     const team = space.kind === "team";
     const caller = team ? mainSaOf(deps) : null;
@@ -83,11 +84,16 @@ export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
     }
 
     const values = { kind: "google_account" as const, connectionId, rootFolderId, folderName, readerEmail, createdBy: byUserId };
-    // The check for uploads again, in the same statement: one that began since the first look keeps the old storage.
+    // Both checks again, in the same statement: an upload that began since the first look, or a shared folder, keeps
+    // the old storage.
     const saved = await db
       .insert(spaceStorage)
       .values({ spaceId, ...values })
-      .onConflictDoUpdate({ target: spaceStorage.spaceId, set: { ...values, createdAt: sql`now()` }, setWhere: sql`not ${uploadsIn(spaceId)}` })
+      .onConflictDoUpdate({
+        target: spaceStorage.spaceId,
+        set: { ...values, createdAt: sql`now()` },
+        setWhere: and(ne(spaceStorage.kind, "shared_folder"), sql`not ${uploadsIn(spaceId)}`),
+      })
       .returning({ spaceId: spaceStorage.spaceId });
     if (saved.length === 0) throw inUse();
   };
