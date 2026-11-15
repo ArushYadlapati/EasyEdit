@@ -611,7 +611,7 @@ function handlesOf(
   return placed.map((h) => ({ ...h, left: px(h.left), top: px(h.top) }));
 }
 
-// The frame's centre lines a moved clip is snapped to, across the frame, in the overlay's pixels.
+// The lines a moved clip is snapped to, across the frame, in the overlay's pixels.
 function guidesOf(
   snapped: { x: number | null; y: number | null },
   frame: { width: number; height: number },
