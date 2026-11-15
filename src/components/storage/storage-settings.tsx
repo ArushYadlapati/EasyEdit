@@ -1,18 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, type ReactNode } from "react";
 import { useAction } from "@/app/(app)/action-ui";
 import { StorageNote } from "@/components/storage/storage-banner";
 import { Button, linkButtonClass } from "@/components/ui/button";
-import {
-  SETUP_CARD,
-  STORAGE_MESSAGES,
-  connectHref,
-  settingsNote,
-  storageSettingsPath,
-  usageLine,
-} from "@/lib/storage/messages";
+import { SETUP_CARD, STORAGE_MESSAGES, connectHref, settingsNote, storageSettingsPath, usageLine } from "@/lib/storage/messages";
+import { spacePath } from "@/lib/spaces/paths";
 import type { StorageSettingsView } from "@/lib/storage/settings-view";
 import type { StorageFormState } from "@/lib/storage/storage-actions";
 
@@ -47,12 +42,15 @@ export function StorageSettings({ view, note, first, choose }: StorageSettingsPr
   const headingId = useId();
   const { space, storage, connections, blocked } = view;
   const shown = settingsNote(note);
+  const firstRun = first && space.kind === "team"; // a team just made, with no storage yet
   const blockedText = blocked === "server" ? STORAGE_MESSAGES.serverNotSetUp : blocked === "team" ? STORAGE_MESSAGES.teamNotSetUp : null;
 
   function pick(connectionId: string) {
     const formData = new FormData();
     formData.set("connectionId", connectionId);
-    chosen.submit(formData, { onSuccess: () => router.replace(`${storageSettingsPath(space.slug)}?storage=connected`) });
+    chosen.submit(formData, {
+      onSuccess: () => router.replace(`${storageSettingsPath(space.slug)}?storage=connected`),
+    });
   }
 
   function current(): ReactNode {
@@ -76,10 +74,15 @@ export function StorageSettings({ view, note, first, choose }: StorageSettingsPr
           )}
           {canReconnect ? (
             <div className="flex flex-col gap-2">
+              {/* Only the person who connected the account can reconnect it: another admin's sign-in would make a
+                  connection of their own, which the space can't switch to. */}
+              {!storage.ownedByViewer && <p className={MUTED}>{STORAGE_MESSAGES.onlyOwner(storage.ownerEmail)}</p>}
               <div className={ROW}>
-                <ConnectLink href={connectHref(space.id, storage.email)} primary={storage.broken}>
-                  {STORAGE_MESSAGES.reconnect}
-                </ConnectLink>
+                {storage.ownedByViewer && (
+                  <ConnectLink href={connectHref(space.id, storage.email)} primary={storage.broken}>
+                    {STORAGE_MESSAGES.reconnect}
+                  </ConnectLink>
+                )}
                 {moveRefused === null ? (
                   <ConnectLink href={connectHref(space.id)}>{STORAGE_MESSAGES.useDifferent}</ConnectLink>
                 ) : (
@@ -95,52 +98,79 @@ export function StorageSettings({ view, note, first, choose }: StorageSettingsPr
       );
     }
 
-    // No storage yet.
-    const intro = space.kind === "personal" ? SETUP_CARD.personalText : first ? null : STORAGE_MESSAGES.noneTeam;
+    // No storage yet, and this server can't set it up: only that, and for a team just made, the way on.
+    if (blockedText !== null) {
+      if (firstRun) {
+        return (
+          <>
+            <p className={TEXT}>{STORAGE_MESSAGES.readyWithoutStorage}</p>
+            <div className={ROW}>
+              <Link href={spacePath(space.slug)} className={linkButtonClass("primary")}>
+                {STORAGE_MESSAGES.toProjects}
+              </Link>
+            </div>
+          </>
+        );
+      }
+      return (
+        <div className="flex flex-col gap-1">
+          <p className={TEXT}>{STORAGE_MESSAGES.noneYet}</p>
+          <p className={MUTED}>{blockedText}</p>
+        </div>
+      );
+    }
+
+    // No storage yet: the choices.
+    const intro = space.kind === "personal" ? SETUP_CARD.personalText : firstRun ? null : STORAGE_MESSAGES.noneTeam;
     return (
       <>
+        {firstRun && <p className="text-sm font-semibold text-ed-text">{STORAGE_MESSAGES.firstRun}</p>}
         {intro !== null && <p className={TEXT}>{intro}</p>}
-        {blockedText !== null ? (
-          <p className={MUTED}>{blockedText}</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {connections.length === 0 ? (
+        <div className="flex flex-col gap-2">
+          {connections.length === 0 ? (
+            <div className={ROW}>
+              <ConnectLink href={connectHref(space.id)} primary>
+                {STORAGE_MESSAGES.connect}
+              </ConnectLink>
+            </div>
+          ) : (
+            <>
+              <ul aria-label="Your Google accounts" className="flex flex-col items-start gap-2">
+                {connections.map((connection) => (
+                  <li key={connection.id} className={FITS}>
+                    {/* Google ended this one: choosing it goes back through Google's screen, for that account. */}
+                    {connection.broken ? (
+                      <ConnectLink href={connectHref(space.id, connection.email)} primary>
+                        {STORAGE_MESSAGES.accountChoice(connection.email)}
+                      </ConnectLink>
+                    ) : (
+                      <Button variant="primary" className={FITS} disabled={chosen.pending} onClick={() => pick(connection.id)}>
+                        <span className={LABEL}>{STORAGE_MESSAGES.accountChoice(connection.email)}</span>
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
               <div className={ROW}>
-                <ConnectLink href={connectHref(space.id)} primary>
-                  {STORAGE_MESSAGES.connect}
-                </ConnectLink>
+                <ConnectLink href={connectHref(space.id)}>{STORAGE_MESSAGES.useDifferent}</ConnectLink>
               </div>
-            ) : (
-              <>
-                <ul aria-label="Your Google accounts" className="flex flex-col items-start gap-2">
-                  {connections.map((connection) => (
-                    <li key={connection.id} className={FITS}>
-                      {/* Google ended this one: choosing it goes back through Google's screen, for that account. */}
-                      {connection.broken ? (
-                        <ConnectLink href={connectHref(space.id, connection.email)} primary>
-                          {STORAGE_MESSAGES.accountChoice(connection.email)}
-                        </ConnectLink>
-                      ) : (
-                        <Button variant="primary" className={FITS} disabled={chosen.pending} onClick={() => pick(connection.id)}>
-                          <span className={LABEL}>{STORAGE_MESSAGES.accountChoice(connection.email)}</span>
-                        </Button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                <div className={ROW}>
-                  <ConnectLink href={connectHref(space.id)}>{STORAGE_MESSAGES.useDifferent}</ConnectLink>
-                </div>
-              </>
-            )}
-            <p className={MUTED}>{STORAGE_MESSAGES.ownFolder}</p>
-            {chosen.error !== null && (
-              <p role="alert" className="text-[13px] leading-5 text-ed-danger">
-                {chosen.error}
-              </p>
-            )}
-          </div>
-        )}
+            </>
+          )}
+          <p className={MUTED}>{STORAGE_MESSAGES.ownFolder}</p>
+          {chosen.error !== null && (
+            <p role="alert" className="text-[13px] leading-5 text-ed-danger">
+              {chosen.error}
+            </p>
+          )}
+          {/* Nobody is held on this page after making a team. */}
+          {firstRun && (
+            <div className={ROW}>
+              <Link href={spacePath(space.slug)} className={linkButtonClass("default")}>
+                {STORAGE_MESSAGES.later}
+              </Link>
+            </div>
+          )}
+        </div>
       </>
     );
   }
@@ -151,9 +181,6 @@ export function StorageSettings({ view, note, first, choose }: StorageSettingsPr
         Storage
       </h2>
       {shown && <StorageNote note={shown} />}
-      {first && storage.kind === "none" && space.kind === "team" && (
-        <p className="text-sm font-semibold text-ed-text">{STORAGE_MESSAGES.firstRun}</p>
-      )}
       {current()}
     </section>
   );

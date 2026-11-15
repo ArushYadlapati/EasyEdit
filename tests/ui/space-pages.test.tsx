@@ -85,7 +85,7 @@ async function editorAt(person: CurrentUser, slug: string, id: string) {
   Shell.mockClear();
   const { unmount } = render(await EditorPage({ params: Promise.resolve({ space: slug, id }) } as never));
   unmount();
-  return Shell.mock.calls[0][0] as { initial: { projectId: string }; space: { id: string; slug: string; storageReady: boolean; storageProblem: "none" | "broken" | null; kind: string; isAdmin: boolean; storageBlock: string | null } };
+  return Shell.mock.calls[0][0] as { initial: { projectId: string }; space: { id: string; slug: string; storageReady: boolean; storageProblem: "none" | "broken" | null; kind: string; isAdmin: boolean; storageBlock: string | null; ownsConnection: boolean; ownerEmail: string | null } };
 }
 
 describe("the space dashboard", () => {
@@ -156,6 +156,7 @@ describe("the space editor", () => {
       await testDb.insert(driveConnection).values({ id: "dc_1", userId: "u1", googleSub: "g1", email: "ada.drive@gmail.com", refreshTokenEnc: "sealed", scopes: "drive.file", brokenAt: new Date(), brokenReason: "revoked" });
       await testDb.insert(spaceStorage).values({ spaceId: personalSpaceId("u1"), kind: "google_account", connectionId: "dc_1", rootFolderId: "root1", folderName: "EasyEdit – Personal", createdBy: "u1" });
       expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: false, storageProblem: "broken" });
+      expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ ownsConnection: true, ownerEmail: "ada@gmail.com" });
       await testDb.update(driveConnection).set({ brokenAt: null, brokenReason: null }).where(eq(driveConnection.id, "dc_1"));
       expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: true, storageProblem: null });
     } finally {

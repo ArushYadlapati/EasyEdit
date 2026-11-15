@@ -190,7 +190,9 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     } catch (failure) {
       if (!(failure instanceof ServiceError || failure instanceof DriveError || failure instanceof ConnectionBrokenError)) throw failure;
       console.error("Setting up storage failed:", failure.message);
-      return go(storagePage(space, "failed"));
+      // A space whose videos are already in another account keeps its storage, and is told so in its own words.
+      const inUse = failure instanceof ServiceError && failure.code === "STORAGE_IN_USE";
+      return go(storagePage(space, inUse ? "in-use" : "failed"));
     }
     return go((started.return && returnPath(started.return)) || storagePage(space, "connected"));
   }

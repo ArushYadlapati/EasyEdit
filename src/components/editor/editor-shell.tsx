@@ -48,6 +48,8 @@ export type EditorSpace = {
   kind?: SpaceKind;
   isAdmin?: boolean;
   storageBlock?: StorageBlock;
+  ownsConnection?: boolean; // whether the person connected the space's Google account (only they can reconnect it)
+  ownerEmail?: string | null; // who did
 };
 
 // Owns the store, the API client, the sync, the media services, the project's dashboard picture and this browser's
@@ -246,7 +248,18 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
         spaceId={space.id}
         storageReady={space.storageReady}
         storageProblem={space.storageProblem}
-        storageSetup={space.kind ? { kind: space.kind, slug: space.slug, isAdmin: space.isAdmin === true, block: space.storageBlock ?? null } : null}
+        storageSetup={
+          space.kind
+            ? {
+                kind: space.kind,
+                slug: space.slug,
+                isAdmin: space.isAdmin === true,
+                block: space.storageBlock ?? null,
+                ownsConnection: space.ownsConnection === true,
+                ownerEmail: space.ownerEmail ?? null,
+              }
+            : null
+        }
         drop={drop}
       >
         <PresenceProvider store={presenceStore}>

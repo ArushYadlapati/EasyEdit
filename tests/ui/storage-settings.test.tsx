@@ -52,6 +52,8 @@ const inAccount = (over: Partial<Extract<StorageSettingsView["storage"], { kind:
   broken: false,
   hasUploads: false,
   usage: { usedBytes: Math.round(12.4 * GiB), limitBytes: 15 * GiB },
+  ownedByViewer: true,
+  ownerEmail: "ada@gmail.com",
   ...over,
 });
 
@@ -187,6 +189,52 @@ describe("the storage settings", () => {
     expect(screen.getByText("Team storage isn't set up on this server yet.")).toBeTruthy();
   });
 
+  it("blocked on this server, a space with none says only that: no instructions, nothing to press", () => {
+    const personal = show({ blocked: "server", connections: [{ id: "dc_1", email: "ada@gmail.com", broken: false }] });
+    expect(screen.getByText("No storage yet.")).toBeTruthy();
+    expect(screen.getByText("Storage isn't set up on this server yet.")).toBeTruthy();
+    expect(screen.queryByText("Pick a Google account for your own videos.")).toBeNull();
+    expect(screen.queryByText(/folder of its own/)).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    personal.unmount();
+    show({ space: TEAM, blocked: "team" });
+    expect(screen.getByText("No storage yet.")).toBeTruthy();
+    expect(screen.getByText("Team storage isn't set up on this server yet.")).toBeTruthy();
+    expect(screen.queryByText("This team has no storage yet.")).toBeNull();
+  });
+
+  it.each(["server", "team"] as const)("a team just made, blocked (%s): it's ready, and the way on is its projects", (blocked) => {
+    show({ space: TEAM, blocked }, { first: true });
+    expect(screen.getByText("Your team is ready. You can add videos once storage is set up on this server.")).toBeTruthy();
+    expect(screen.queryByText("Choose where this team's videos are stored.")).toBeNull();
+    const onward = link("Go to the team's projects");
+    expect(onward.getAttribute("href")).toBe("/s/robots");
+    expect(isPrimary(onward)).toBe(true);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("a team just made, not blocked: the note, the choices, and Set this up later", () => {
+    show({ space: TEAM }, { first: true });
+    expect(screen.getByText("Choose where this team's videos are stored.")).toBeTruthy();
+    expect(link("Connect Google Drive")).toBeTruthy();
+    const later = link("Set this up later");
+    expect(later.getAttribute("href")).toBe("/s/robots");
+    expect(isPrimary(later)).toBe(false);
+  });
+
+  it("an admin who didn't connect the account is told who can reconnect it, not given a Reconnect that can't work", () => {
+    const other = show({ space: TEAM, storage: inAccount({ broken: true, ownedByViewer: false, ownerEmail: "bea@gmail.com" }) });
+    expect(screen.queryByRole("link", { name: "Reconnect" })).toBeNull();
+    expect(screen.getByText("Only bea@gmail.com can reconnect it.")).toBeTruthy();
+    expect(connectQuery("Use a different Google account")).toEqual({ space: "team_robots" }); // left as it is
+    other.unmount();
+    show({ space: TEAM, storage: inAccount({ ownedByViewer: false, ownerEmail: null }) });
+    expect(screen.queryByRole("link", { name: "Reconnect" })).toBeNull();
+    expect(screen.getByText("Only the person who connected it can reconnect it.")).toBeTruthy();
+  });
+
   it.each([
     ["connected", "Google Drive connected."],
     ["needs-drive", "EasyEdit needs permission to its own files in your Drive. Try again and leave that box ticked."],
@@ -194,6 +242,7 @@ describe("the storage settings", () => {
     ["failed", "That didn't work. Nothing was changed. Try again."],
     ["expired", "That took too long, so nothing was changed. Try again."],
     ["not-configured", "Storage isn't set up on this server yet."],
+    ["in-use", "This space already has videos in another Google account, so its storage can't be changed yet."],
   ])("back from Google with ?storage=%s, it says so", (note, text) => {
     show({ storage: inAccount() }, { note });
     expect(screen.getByText(text)).toBeTruthy();
@@ -244,9 +293,12 @@ describe("the storage settings page", () => {
   });
 
   it("reads the note and the first-run flag from the address", async () => {
+    // On this server teams can't have storage, so a team just made is told it's ready and sent on to its projects.
     await storagePage(ada, "robots", { storage: "cancelled", first: "1" });
     expect(screen.getByText("Nothing was changed.")).toBeTruthy();
-    expect(screen.getByText("Choose where this team's videos are stored.")).toBeTruthy();
+    expect(screen.getByText("Your team is ready. You can add videos once storage is set up on this server.")).toBeTruthy();
+    expect(screen.queryByText("Choose where this team's videos are stored.")).toBeNull();
+    expect(link("Go to the team's projects").getAttribute("href")).toBe("/s/robots");
   });
 
   it("a member who isn't an admin, and someone not in the space, get not found, from the page and the layout", async () => {

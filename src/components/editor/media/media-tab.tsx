@@ -177,12 +177,15 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
       kind: storageSetup?.kind ?? "team",
       isAdmin: storageSetup?.isAdmin === true,
       block: storageSetup?.block ?? null,
+      isOwner: storageSetup?.ownsConnection === true,
+      ownerEmail: storageSetup?.ownerEmail ?? null,
     });
     return (
       <div {...panel} className="min-h-0 flex-1">
         <div className="flex flex-col items-start gap-2 p-3">
           <h3 className="text-sm font-semibold">{card.title}</h3>
           <p className="text-[13px] leading-5 text-ed-muted">{card.text}</p>
+          {card.note && <p className="text-[13px] leading-5 text-ed-muted">{card.note}</p>}
           {card.action && storageSetup && (
             <LeaveLink href={storageSettingsPath(storageSetup.slug)} className={linkButtonClass("primary", "mt-1")}>
               {card.action === "choose" ? STORAGE_MESSAGES.chooseAccount : STORAGE_MESSAGES.reconnect}

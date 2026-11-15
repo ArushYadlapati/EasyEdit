@@ -345,6 +345,18 @@ describe("the callback", () => {
     expect(await rows(ctx.db)).toHaveLength(1);
   });
 
+  it("a space whose videos are already in another account goes back with in-use, not failed", async () => {
+    const ctx = await setup();
+    ctx.setUp.mockRejectedValueOnce(new ServiceError("STORAGE_IN_USE", 409, "in use"));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { state, cookie } = await start(ctx);
+    const res = await back(ctx, `code=c&state=${state}`, cookie);
+    quiet.mockRestore();
+    await expectPage(res, `${STORAGE_PAGE}?storage=in-use`);
+    expectCleared(res);
+    expect(await rows(ctx.db)).toHaveLength(1);
+  });
+
   it("an unexpected failure lands on a fixed page too, and still clears the cookie", async () => {
     const ctx = await setup();
     ctx.setUp.mockRejectedValueOnce(new Error("a bug"));

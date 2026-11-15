@@ -16,6 +16,7 @@ import { findMySpace, rememberSpace } from "@/lib/spaces/service";
 import { slugFor } from "@/lib/spaces/paths";
 import { storageState } from "@/lib/spaces/storage";
 import { storageBlock } from "@/lib/storage/availability";
+import { connectionOwner } from "@/lib/storage/settings-view";
 import { dashboardNote, storageCard, storageSettingsPath } from "@/lib/storage/messages";
 import { StorageBanner, StorageNote, StorageSetupCard } from "@/components/storage/storage-banner";
 import {
@@ -70,12 +71,14 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   const settingsHref = storageSettingsPath(slug);
   const note = dashboardNote(storageNote);
   const broken = !storage.ready && storage.reason === "broken" && canEdit;
+  // Only the person who connected the account can reconnect it; another admin is told who.
+  const owner = broken && isAdmin ? await connectionOwner(db, space.id) : null;
   const block = !storage.ready && storage.reason === "none" && isAdmin ? storageBlock(space.kind) : undefined;
   const notices =
     note || broken || block === null ? (
       <>
         {note && <StorageNote note={note} />}
-        {broken && <StorageBanner settingsHref={settingsHref} isAdmin={isAdmin} />}
+        {broken && <StorageBanner settingsHref={settingsHref} isAdmin={isAdmin} isOwner={owner?.userId === user.id} ownerEmail={owner?.email ?? null} />}
         {block === null && <StorageSetupCard card={storageCard({ problem: "none", kind: space.kind, isAdmin, block })} settingsHref={settingsHref} />}
       </>
     ) : null;

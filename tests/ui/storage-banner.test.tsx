@@ -45,13 +45,24 @@ const BANNER = "Google Drive needs reconnecting. Uploads are paused until an adm
 
 describe("the reconnect banner", () => {
   it("tells admins and editors uploads are paused; only admins get Reconnect", () => {
-    const admin = render(<StorageBanner settingsHref="/s/robots/settings/storage" isAdmin />);
+    const admin = render(<StorageBanner settingsHref="/s/robots/settings/storage" isAdmin isOwner ownerEmail="ada@gmail.com" />);
     expect(screen.getByText(BANNER)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Reconnect" }).getAttribute("href")).toBe("/s/robots/settings/storage");
     admin.unmount();
-    render(<StorageBanner settingsHref="/s/robots/settings/storage" isAdmin={false} />);
+    const editor = render(<StorageBanner settingsHref="/s/robots/settings/storage" isAdmin={false} isOwner={false} ownerEmail="ada@gmail.com" />);
     expect(screen.getByText(BANNER)).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByText(/can reconnect it/)).toBeNull();
+    editor.unmount();
+  });
+
+  it("an admin who didn't connect it is told who can, in place of Reconnect", () => {
+    const other = render(<StorageBanner settingsHref="/s/robots/settings/storage" isAdmin isOwner={false} ownerEmail="bea@gmail.com" />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("Only bea@gmail.com can reconnect it.")).toBeTruthy();
+    other.unmount();
+    render(<StorageBanner settingsHref="/s/robots/settings/storage" isAdmin isOwner={false} ownerEmail={null} />);
+    expect(screen.getByText("Only the person who connected it can reconnect it.")).toBeTruthy();
   });
 });
 
@@ -135,6 +146,16 @@ describe("the top of a space's dashboard", () => {
     expect(within(editor).getByText(BANNER)).toBeTruthy();
     expect(within(editor).queryByRole("link")).toBeNull();
     expect((await noticesFor(vic, "robots")).textContent).toBe("");
+  });
+
+  it("a broken connection made by someone else: its other admins are told who can reconnect it", async () => {
+    withStorageSettings();
+    await testDb.insert(driveConnection).values({ id: "dc_2", userId: "u2", googleSub: "g2", email: "bea.drive@gmail.com", refreshTokenEnc: "sealed", scopes: "drive.file", brokenAt: new Date(), brokenReason: "revoked" });
+    await testDb.insert(spaceStorage).values({ spaceId: "team_robots", kind: "google_account", connectionId: "dc_2", rootFolderId: "root2", folderName: "EasyEdit – Robots", createdBy: "u2" });
+    const admin = await noticesFor(ada, "robots");
+    expect(within(admin).getByText(BANNER)).toBeTruthy();
+    expect(within(admin).queryByRole("link", { name: "Reconnect" })).toBeNull();
+    expect(within(admin).getByText("Only bea@gmail.com can reconnect it.")).toBeTruthy();
   });
 
   it("a personal space's broken connection: the banner with Reconnect", async () => {

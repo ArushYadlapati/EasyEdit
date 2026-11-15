@@ -16,6 +16,13 @@ export const STORAGE_MESSAGES = {
   brokenHere: "Google Drive needs reconnecting. Uploads are paused until you reconnect it.",
   moveLater: "Moving a space's videos to another account comes with team invites.",
   noneTeam: "This team has no storage yet.",
+  noneYet: "No storage yet.",
+  // A team just made, on a server where it can't have storage yet: the way on is its projects.
+  readyWithoutStorage: "Your team is ready. You can add videos once storage is set up on this server.",
+  toProjects: "Go to the team's projects",
+  later: "Set this up later",
+  // Only the person whose Google account it is can reconnect it: anyone else's sign-in would make a new connection.
+  onlyOwner: (email: string | null) => (email ? `Only ${email} can reconnect it.` : "Only the person who connected it can reconnect it."),
   firstRun: "Choose where this team's videos are stored.",
   ownFolder: "EasyEdit keeps the videos in a folder of its own there, and can't see your other files.",
   serverNotSetUp: "Storage isn't set up on this server yet.",
@@ -51,6 +58,7 @@ const SETTINGS_NOTES: Record<string, Note> = {
   failed: { text: STORAGE_MESSAGES.failed, problem: true },
   expired: { text: "That took too long, so nothing was changed. Try again.", problem: true },
   "not-configured": { text: STORAGE_MESSAGES.serverNotSetUp, problem: true },
+  "in-use": { text: "This space already has videos in another Google account, so its storage can't be changed yet.", problem: true },
 };
 
 // The same for a space's dashboard, where a connect that can't name its space lands (by way of /dashboard).
@@ -66,19 +74,32 @@ const noteIn = (notes: Record<string, Note>, value: string | string[] | null | u
 export const settingsNote = (value: string | string[] | null | undefined) => noteIn(SETTINGS_NOTES, value);
 export const dashboardNote = (value: string | string[] | null | undefined) => noteIn(DASHBOARD_NOTES, value);
 
-export type StorageCard = { title: string; text: string; action: "choose" | "reconnect" | null };
+// note: a line in place of the action, for an admin who can't take it (someone else's connection).
+export type StorageCard = { title: string; text: string; action: "choose" | "reconnect" | null; note: string | null };
 
 // What a space without storage to upload to shows: in the Media tab, and at the top of its dashboard. A space whose
 // connection broke says so, and its admins get Reconnect. One with none: its admins (a personal space's owner is one)
-// get Choose account, unless this server can't set storage up, which everyone is told plainly.
-export function storageCard(input: { problem: "none" | "broken"; kind: SpaceKind; isAdmin: boolean; block: StorageBlock }): StorageCard {
-  if (input.problem === "broken") return { title: MEDIA_MESSAGES.brokenTitle, text: MEDIA_MESSAGES.broken, action: input.isAdmin ? "reconnect" : null };
-  if (input.block !== null) {
-    return { title: SETUP_CARD.noneTitle, text: input.block === "team" ? STORAGE_MESSAGES.teamNotSetUp : STORAGE_MESSAGES.serverNotSetUp, action: null };
+// get Choose account, unless this server can't set storage up, which everyone is told plainly. Reconnect is only for
+// the admin whose connection it is (isOwner); another admin is told who can (ownerEmail, their account's address).
+export function storageCard(input: {
+  problem: "none" | "broken";
+  kind: SpaceKind;
+  isAdmin: boolean;
+  block: StorageBlock;
+  isOwner?: boolean;
+  ownerEmail?: string | null;
+}): StorageCard {
+  const card = (title: string, text: string, action: StorageCard["action"] = null, note: string | null = null): StorageCard => ({ title, text, action, note });
+  if (input.problem === "broken") {
+    if (!input.isAdmin) return card(MEDIA_MESSAGES.brokenTitle, MEDIA_MESSAGES.broken);
+    return input.isOwner === false
+      ? card(MEDIA_MESSAGES.brokenTitle, MEDIA_MESSAGES.broken, null, STORAGE_MESSAGES.onlyOwner(input.ownerEmail ?? null))
+      : card(MEDIA_MESSAGES.brokenTitle, MEDIA_MESSAGES.broken, "reconnect");
   }
-  if (input.kind === "personal") return { title: SETUP_CARD.personalTitle, text: SETUP_CARD.personalText, action: "choose" };
-  if (input.isAdmin) return { title: SETUP_CARD.teamTitle, text: SETUP_CARD.teamText, action: "choose" };
-  return { title: SETUP_CARD.noneTitle, text: SETUP_CARD.memberText, action: null };
+  if (input.block !== null) return card(SETUP_CARD.noneTitle, input.block === "team" ? STORAGE_MESSAGES.teamNotSetUp : STORAGE_MESSAGES.serverNotSetUp);
+  if (input.kind === "personal") return card(SETUP_CARD.personalTitle, SETUP_CARD.personalText, "choose");
+  if (input.isAdmin) return card(SETUP_CARD.teamTitle, SETUP_CARD.teamText, "choose");
+  return card(SETUP_CARD.noneTitle, SETUP_CARD.memberText);
 }
 
 const UNITS = ["B", "KB", "MB", "GB", "TB"];

@@ -1,7 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db";
-import { driveConnection, spaceStorage } from "@/db/schema";
+import { driveConnection, spaceStorage, user } from "@/db/schema";
 import type { AccessSource } from "@/lib/drive/token";
 import { slugFor } from "@/lib/spaces/paths";
 import type { MySpace, Space } from "@/lib/spaces/types";
@@ -20,7 +20,16 @@ export type StorageSettingsView = {
   storage:
     | { kind: "none" }
     | { kind: "shared_folder" }
-    | { kind: "google_account"; email: string; folderName: string | null; broken: boolean; hasUploads: boolean; usage: DriveUsage | null };
+    | {
+        kind: "google_account";
+        email: string; // the Google account's
+        folderName: string | null;
+        broken: boolean;
+        hasUploads: boolean;
+        usage: DriveUsage | null;
+        ownedByViewer: boolean; // only the person who connected it can reconnect it
+        ownerEmail: string | null; // that person's EasyEdit address
+      };
   connections: { id: string; email: string; broken: boolean }[]; // the viewer's
   blocked: StorageBlock;
 };
@@ -50,14 +59,27 @@ async function usageOf(db: DB, cfg: StorageConfig | null, connectionId: string, 
   }
 }
 
+// Who connected the Google account a space keeps its media in: their user id and EasyEdit address. null for a space
+// with none, or in Seattle Solvers' shared drive.
+export async function connectionOwner(db: DB, spaceId: string): Promise<{ userId: string; email: string | null } | null> {
+  const [row] = await db
+    .select({ userId: driveConnection.userId, email: user.email })
+    .from(spaceStorage)
+    .innerJoin(driveConnection, eq(driveConnection.id, spaceStorage.connectionId))
+    .leftJoin(user, eq(user.id, driveConnection.userId))
+    .where(eq(spaceStorage.spaceId, spaceId));
+  return row ? { userId: row.userId, email: row.email } : null;
+}
+
 // The caller has checked that the viewer is the space's admin.
 export async function storageSettings(db: DB, space: MySpace, viewerId: string, deps: SettingsViewDeps = {}): Promise<StorageSettingsView> {
   const config = deps.config ?? storageConfig;
   const cfg = config();
   const [row] = await db
-    .select({ kind: spaceStorage.kind, connectionId: spaceStorage.connectionId, folderName: spaceStorage.folderName, email: driveConnection.email, brokenAt: driveConnection.brokenAt })
+    .select({ kind: spaceStorage.kind, connectionId: spaceStorage.connectionId, folderName: spaceStorage.folderName, email: driveConnection.email, brokenAt: driveConnection.brokenAt, ownerId: driveConnection.userId, ownerEmail: user.email })
     .from(spaceStorage)
     .leftJoin(driveConnection, eq(driveConnection.id, spaceStorage.connectionId))
+    .leftJoin(user, eq(user.id, driveConnection.userId))
     .where(eq(spaceStorage.spaceId, space.id));
 
   let storage: StorageSettingsView["storage"] = { kind: "none" };
@@ -65,7 +87,7 @@ export async function storageSettings(db: DB, space: MySpace, viewerId: string, 
   else if (row?.kind === "google_account" && row.connectionId && row.email !== null) {
     const broken = row.brokenAt !== null;
     const [hasUploads, usage] = await Promise.all([holdsUploads(db, space.id), broken ? null : usageOf(db, cfg, row.connectionId, deps)]);
-    storage = { kind: "google_account", email: row.email, folderName: row.folderName, broken, hasUploads, usage };
+    storage = { kind: "google_account", email: row.email, folderName: row.folderName, broken, hasUploads, usage, ownedByViewer: row.ownerId === viewerId, ownerEmail: row.ownerEmail };
   }
 
   const connections = (await listConnections(db, viewerId)).map(({ id, email, broken }) => ({ id, email, broken }));

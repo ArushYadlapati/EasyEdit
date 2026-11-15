@@ -10,9 +10,9 @@ import { MEDIA_MESSAGES } from "@/lib/media/messages";
 import { makeStore } from "../editor/fixtures";
 import { act, fireEvent, render, renderHook, screen } from "../helpers/dom";
 
-const PERSONAL: StorageSetup = { kind: "personal", slug: "personal", isAdmin: true, block: null };
-const TEAM_ADMIN: StorageSetup = { kind: "team", slug: "robots", isAdmin: true, block: null };
-const TEAM_MEMBER: StorageSetup = { kind: "team", slug: "robots", isAdmin: false, block: null };
+const PERSONAL: StorageSetup = { kind: "personal", slug: "personal", isAdmin: true, block: null, ownsConnection: true, ownerEmail: null };
+const TEAM_ADMIN: StorageSetup = { kind: "team", slug: "robots", isAdmin: true, block: null, ownsConnection: true, ownerEmail: "u1@gmail.com" };
+const TEAM_MEMBER: StorageSetup = { kind: "team", slug: "robots", isAdmin: false, block: null, ownsConnection: false, ownerEmail: "u1@gmail.com" };
 
 function setup(options: { storageReady?: boolean; storageProblem?: "none" | "broken" | null; setUp?: boolean; storageSetup?: StorageSetup }) {
   const refused = vi.fn(async (): Promise<never> => {
@@ -97,6 +97,17 @@ describe("the Media tab of a space with no storage", () => {
     await openMedia();
     expect(screen.getByRole("heading", { name: "Google Drive needs reconnecting" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Reconnect" })).toBeNull();
+  });
+
+  it("an admin who didn't connect the broken account is told who can reconnect it", async () => {
+    const other = setup({ storageReady: false, storageProblem: "broken", storageSetup: { ...TEAM_ADMIN, ownsConnection: false, ownerEmail: "bea@gmail.com" } });
+    await openMedia();
+    expect(screen.queryByRole("link", { name: "Reconnect" })).toBeNull();
+    expect(screen.getByText("Only bea@gmail.com can reconnect it.")).toBeTruthy();
+    other.view.unmount();
+    setup({ storageReady: false, storageProblem: "broken", storageSetup: { ...TEAM_ADMIN, ownsConnection: false, ownerEmail: null } });
+    await openMedia();
+    expect(screen.getByText("Only the person who connected it can reconnect it.")).toBeTruthy();
   });
 
   it("wins over a Drive that is not set up", async () => {

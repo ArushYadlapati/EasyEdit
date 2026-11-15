@@ -133,6 +133,8 @@ describe("what the storage settings page shows", () => {
       broken: false,
       hasUploads: false,
       usage: { usedBytes: 2 * GiB, limitBytes: 15 * GiB },
+      ownedByViewer: true,
+      ownerEmail: "u1@gmail.com",
     });
     await addAsset(w.db, w.personal);
     expect((await storageSettings(w.db, personalOf(w), "u1", deps(w))).storage).toMatchObject({ hasUploads: true });
@@ -159,6 +161,17 @@ describe("what the storage settings page shows", () => {
     expect(view.storage).toMatchObject({ kind: "google_account", email: "ada@gmail.com", broken: true, usage: null });
     expect(view.connections).toEqual([{ id: ada.id, email: "ada@gmail.com", broken: true }]);
     expect(w.fake.calls.length).toBe(before);
+  });
+
+  it("another admin of the space sees whose connection it is, and that it isn't theirs", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    await joinSpace(w.db, { id: "u2", email: "bea@gmail.com" }, "admin", team);
+    const ada = await w.connect({ email: "ada.drive@gmail.com" });
+    await setUp(w)(w.db, { spaceId: team, connectionId: ada.id, byUserId: "u1" });
+    const forBea = await storageSettings(w.db, teamOf(team, "Robotics Club"), "u2", deps(w));
+    expect(forBea.storage).toMatchObject({ kind: "google_account", email: "ada.drive@gmail.com", ownedByViewer: false, ownerEmail: "u1@gmail.com" });
+    expect((await storageSettings(w.db, teamOf(team, "Robotics Club"), "u1", deps(w))).storage).toMatchObject({ ownedByViewer: true });
   });
 
   it("says what stops a new connection here: no settings on this server, or teams can't have storage here", async () => {
