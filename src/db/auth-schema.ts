@@ -312,6 +312,8 @@ export const member = pgTable(
   (table) => [
     index("member_organizationId_idx").on(table.organizationId),
     index("member_userId_idx").on(table.userId),
+    // Hand-kept, not from the plugin: restore it after any CLI regeneration of this file.
+    uniqueIndex("member_organizationId_userId_idx").on(table.organizationId, table.userId),
   ],
 );
 

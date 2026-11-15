@@ -1413,6 +1413,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "member_organizationId_userId_idx": {
+          "name": "member_organizationId_userId_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {

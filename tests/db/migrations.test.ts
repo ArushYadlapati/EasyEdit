@@ -8,6 +8,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { rowsOf, type DB } from "@/db";
 import { AFTER_COMING_FORWARD, BEFORE_GOING_BACK, CUSTOM_AFTER_COMING_FORWARD, REFILL_PROJECT_SIZES } from "@/db/refill-project-sizes";
+import { RESYNC_SPACES } from "@/db/resync-spaces";
 import * as schema from "@/db/schema";
 import { projects } from "@/db/schema";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
@@ -420,5 +421,64 @@ describe("migration 0012: spaces", () => {
     await expect(add("f3", "team_seattle_solvers", "SEASON 2026")).rejects.toMatchObject({ cause: { code: "23505", constraint: "folders_space_name_lower_unique" } });
     const indexes = rowsOf<{ indexname: string }>(await db.execute(sql`select indexname from pg_indexes where tablename = 'folders'`)).map((r) => r.indexname);
     expect(indexes).not.toContain("folders_name_lower_unique");
+  });
+
+  it("a person is a member of a space at most once", async () => {
+    const db = await spacesMigrated();
+    await expect(db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m2', 'team_seattle_solvers', 'u1', 'editor', now())`))
+      .rejects.toMatchObject({ cause: { code: "23505", constraint: "member_organizationId_userId_idx" } });
+    await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m3', 'personal_u1', 'u2', 'viewer', now())`);
+  });
+});
+
+describe("resyncing spaces after the earlier version was live", () => {
+  // What the earlier version leaves behind: Bob demoted on the allowlist only, Ann taken off the allowlist only, and Dee
+  // added and signed in, with no member rows and no personal space.
+  async function drifted(): Promise<DB> {
+    const db = await spacesMigrated();
+    await db.execute(sql`update allowlist set role = 'viewer' where email = 'bob@x.com'`);
+    await db.execute(sql`delete from allowlist where email = 'ann@x.com'`);
+    await db.execute(sql`insert into allowlist (email, role) values ('dee@x.com', 'editor')`);
+    await db.execute(sql`insert into "user" (id, name, email) values ('u4', 'Dee', ' Dee@X.com ')`);
+    return db;
+  }
+  const resync = async (db: DB) => {
+    const affected: number[] = [];
+    for (const statement of RESYNC_SPACES) affected.push((await db.execute(sql.raw(statement)) as unknown as { affectedRows: number }).affectedRows);
+    return affected;
+  };
+  const state = async (db: DB) => ({
+    members: rowsOf(await db.execute(sql`select id, organization_id as "spaceId", user_id as "userId", role from member order by id`)),
+    spaces: rowsOf(await db.execute(sql`select id, name, slug, kind from organization order by id`)),
+  });
+
+  it("brings members and personal spaces back in step with the allowlist, and can run twice", async () => {
+    const db = await drifted();
+    const fixed = {
+      members: [
+        { id: "mp_u1", spaceId: "personal_u1", userId: "u1", role: "admin" },
+        { id: "mp_u2", spaceId: "personal_u2", userId: "u2", role: "admin" },
+        { id: "mp_u3", spaceId: "personal_u3", userId: "u3", role: "admin" },
+        { id: "mp_u4", spaceId: "personal_u4", userId: "u4", role: "admin" },
+        { id: "mt_u2", spaceId: "team_seattle_solvers", userId: "u2", role: "viewer" },
+        { id: "mt_u4", spaceId: "team_seattle_solvers", userId: "u4", role: "editor" },
+      ],
+      spaces: [
+        { id: "personal_u1", name: "Personal", slug: "personal_u1", kind: "personal" },
+        { id: "personal_u2", name: "Personal", slug: "personal_u2", kind: "personal" },
+        { id: "personal_u3", name: "Personal", slug: "personal_u3", kind: "personal" },
+        { id: "personal_u4", name: "Personal", slug: "personal_u4", kind: "personal" },
+        { id: "team_seattle_solvers", name: "Seattle Solvers", slug: "seattle-solvers", kind: "team" },
+      ],
+    };
+    expect(await resync(db)).toEqual([1, 1, 2, 1]);
+    expect(await state(db)).toEqual(fixed);
+    expect(await resync(db)).toEqual([0, 0, 0, 0]);
+    expect(await state(db)).toEqual(fixed);
+  });
+
+  it("the README quotes each statement", () => {
+    const readme = readFileSync("README.md", "utf8");
+    for (const statement of RESYNC_SPACES) expect(readme).toContain(statement);
   });
 });

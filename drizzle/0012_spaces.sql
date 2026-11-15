@@ -43,6 +43,7 @@ ALTER TABLE "space_visits" ADD CONSTRAINT "space_visits_user_id_user_id_fk" FORE
 ALTER TABLE "space_visits" ADD CONSTRAINT "space_visits_space_id_organization_id_fk" FOREIGN KEY ("space_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "member_organizationId_idx" ON "member" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "member_userId_idx" ON "member" USING btree ("user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "member_organizationId_userId_idx" ON "member" USING btree ("organization_id","user_id");--> statement-breakpoint
 CREATE INDEX "invitation_organizationId_idx" ON "invitation" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "invitation_email_idx" ON "invitation" USING btree ("email");--> statement-breakpoint
 ALTER TABLE "projects" ADD COLUMN "space_id" text;--> statement-breakpoint
