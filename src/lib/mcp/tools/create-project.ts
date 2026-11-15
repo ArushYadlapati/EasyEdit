@@ -18,7 +18,7 @@ type CreateInput = { name: string; format: string; width?: number; height?: numb
 
 // Claude's projects land in no folder: no folder is passed, and no tool mentions folders.
 export async function createProjectTool(ctx: ToolContext, input: CreateInput): Promise<ToolResult> {
-  if (!meetsRole(ctx.user.role, "editor")) return fail(roleMessage(ctx.user.role));
+  if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
 
   const twinId = await findTwin(ctx, input);
   const twin = twinId ? await getProject(ctx.db, ctx.actor, twinId) : null;

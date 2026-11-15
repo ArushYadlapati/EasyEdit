@@ -4,9 +4,10 @@ import { rowsOf, type DB } from "@/db";
 import type { Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
 import { createProject, getOpsSince, type OpsPage } from "@/lib/projects/service";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const viewer: Actor = { userId: "u1", email: "u1@gmail.com", role: "viewer" };
+const viewer: Actor = testActor({ role: "viewer" });
 const editor: Actor = { ...viewer, role: "editor" };
 
 // Writes log rows straight into the database, each about `kb` kilobytes, and sets the project's version to match.

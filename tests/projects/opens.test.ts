@@ -5,10 +5,11 @@ import { projectOpens, user } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
 import { listRecentProjectIds, recordOpen } from "@/lib/projects/opens";
 import { createProject, deleteProject, renameProject } from "@/lib/projects/service";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const u1: Actor = { userId: "u1", email: "u1@gmail.com", role: "editor" };
-const u2: Actor = { userId: "u2", email: "u2@gmail.com", role: "editor" };
+const u1: Actor = testActor({ role: "editor" });
+const u2: Actor = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 
 // PGlite's clock has millisecond resolution; wait so consecutive opens get distinct timestamps.
 const nextMillisecond = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -81,7 +82,7 @@ describe("recent opens", () => {
   it("a viewer's opens count", async () => {
     const db = await setup();
     const a = await newProject(db, "A");
-    const viewer: Actor = { userId: "u2", email: "u2@gmail.com", role: "viewer" };
+    const viewer: Actor = testActor({ userId: "u2", email: "u2@gmail.com", role: "viewer" });
     await recordOpen(db, viewer, a);
     expect(await listRecentProjectIds(db, viewer)).toEqual([a]);
   });

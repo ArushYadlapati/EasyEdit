@@ -13,7 +13,7 @@ export async function undoChangeTool(
   input: { project_id: string; expected_version: number; version: number },
 ): Promise<ToolResult> {
   const { project_id: projectId, expected_version: expectedVersion, version } = input;
-  if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.user.role));
+  if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
 
   const page = await getOpsSince(ctx.db, ctx.actor, projectId, version - 1, 1);
   if (!page) return fail(notFoundText(projectId));

@@ -9,6 +9,7 @@ import { makeMediaHandlers, makeReadTokenHandler, type AssetRouteContext, type M
 import { completeUpload, openUpload, type MediaDeps } from "@/lib/media/service";
 import type { AssetView, OpenUploadInput } from "@/lib/media/types";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
+import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { makeFakeDrive, piece, type FakeDrive } from "../helpers/fake-drive";
 
@@ -41,16 +42,17 @@ const APP_ORIGIN = "https://app.test"; // where the app is served in tests
 
 export type MediaContext = { db: DB; fake: FakeDrive; deps: MediaDeps; ada: Actor; grace: Actor; vera: Actor; root: Actor };
 
-const ada: Actor = { userId: "user-ada", email: "ada@gmail.com", role: "editor" };
-const grace: Actor = { userId: "user-grace", email: "grace@gmail.com", role: "editor" };
-const vera: Actor = { userId: "user-vera", email: "vera@gmail.com", role: "viewer" };
-const root: Actor = { userId: "user-root", email: "root@gmail.com", role: "admin" };
+const ada: Actor = testActor({ userId: "user-ada", email: "ada@gmail.com", role: "editor" });
+const grace: Actor = testActor({ userId: "user-grace", email: "grace@gmail.com", role: "editor" });
+const vera: Actor = testActor({ userId: "user-vera", email: "vera@gmail.com", role: "viewer" });
+const root: Actor = testActor({ userId: "user-root", email: "root@gmail.com", role: "admin" });
 
-// A migrated database with four members in it, and the Drive client talking to a pretend Drive.
+// A migrated database with four members of Seattle Solvers in it, and the Drive client talking to a pretend Drive.
 export async function mediaContext(): Promise<MediaContext> {
   const db = await makeTestDb();
   const member = (actor: Actor, name: string) => ({ id: actor.userId, name, email: actor.email, emailVerified: true });
   await db.insert(user).values([member(ada, "Ada Lovelace"), member(grace, "Grace Hopper"), member(vera, "Vera Rubin"), member(root, "Root Admin")]);
+  for (const actor of [ada, grace, vera, root]) await joinSpace(db, { id: actor.userId, email: actor.email }, actor.role);
   const fake = makeFakeDrive();
   const drive = createDriveClient({ config: fake.config, fetch: fake.fetch, now: fake.now });
   return { db, fake, deps: { db, drive, origin: APP_ORIGIN }, ada, grace, vera, root };
@@ -59,7 +61,7 @@ export async function mediaContext(): Promise<MediaContext> {
 // A fetch for the browser's API client: each request goes to the route handler Next would call for its method
 // and path, with `actor` signed in. A request that has no route throws.
 export function handlersFetch(ctx: MediaContext, actor: Actor): typeof fetch {
-  const member: CurrentUser = { id: actor.userId, email: actor.email, name: actor.email, image: null, role: actor.role };
+  const member: CurrentUser = { id: actor.userId, email: actor.email, name: actor.email, image: null, allowlistRole: actor.role };
   const deps: MediaHandlerDeps = { db: () => ctx.db, auth: async () => member, drive: () => ctx.deps.drive, origin: () => APP_ORIGIN };
   const media = makeMediaHandlers(deps);
   const readToken = makeReadTokenHandler(deps);

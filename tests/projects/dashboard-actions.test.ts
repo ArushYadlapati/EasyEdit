@@ -1,21 +1,23 @@
+import { sql } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/access-rules";
-import { actorFrom } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
 import { makeDashboardActions } from "@/lib/projects/dashboard-actions";
 import { createFolder, deleteFolder, listFolders } from "@/lib/projects/folders";
 import { createProject, deleteProject, getProject, listProjects } from "@/lib/projects/service";
+import { joinSpace, testActor, testUser } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
 const form = (fields: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(fields)) f.set(k, v); return f; };
 
 async function setup(role: Role = "editor") {
   const db = await makeTestDb();
-  const user: CurrentUser = { id: "u1", email: "u1@gmail.com", name: "U1", image: null, role };
+  const user: CurrentUser = testUser({ allowlistRole: role });
+  await joinSpace(db, user, role);
   const revalidate = vi.fn();
   const redirect = vi.fn((path: string): never => { throw new Error(`REDIRECT ${path}`); });
   const actions = makeDashboardActions({ db: () => db, requireUser: async () => user, revalidate, redirect });
-  const owner = actorFrom({ ...user, role: "editor" });
+  const owner = testActor({ role: "editor" });
   return { db, owner, revalidate, actions };
 }
 
@@ -54,6 +56,16 @@ describe("dashboard actions", () => {
     }
     expect(await actions.create({}, form({ name: "New", format: "short_9x16" }))).toEqual({ error: "Your role doesn't allow this." });
     expect((await listProjects(db, owner)).map((p) => p.name)).toEqual(["Qual"]);
+    expect(revalidate).not.toHaveBeenCalled();
+  });
+
+  it("someone who is not a member of the space changes nothing", async () => {
+    const { db, owner, revalidate, actions } = await setup();
+    const { id } = await createProject(db, owner, { name: "Qual", format: "short_9x16" });
+    await db.execute(sql`delete from member where id = 'mt_u1'`);
+    expect(await actions.rename(form({ id, name: "X" }))).toEqual({ error: "You're not a member of this space." });
+    expect(await actions.createFolder(form({ name: "Season" }))).toEqual({ error: "You're not a member of this space." });
+    expect((await getProject(db, owner, id))!.name).toBe("Qual");
     expect(revalidate).not.toHaveBeenCalled();
   });
 

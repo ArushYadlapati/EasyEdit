@@ -13,6 +13,7 @@ import {
 } from "@/lib/projects/service";
 import { isJpeg, readThumbnail, saveThumbnail } from "@/lib/projects/thumbnails";
 import { DEFAULT_TRANSFORM, type OpInput } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
@@ -36,7 +37,7 @@ function noise(n: number, seed: number): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-const as = (role: Role, userId = `u-${role}`): Actor => ({ userId, email: `${userId}@gmail.com`, role });
+const as = (role: Role, userId = `u-${role}`): Actor => testActor({ userId, email: `${userId}@gmail.com`, role });
 const editor = as("editor");
 const viewer = as("viewer");
 

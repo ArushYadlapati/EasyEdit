@@ -7,10 +7,11 @@ import { getProjectTool } from "@/lib/mcp/tools/get-project";
 import { undoChangeTool } from "@/lib/mcp/tools/undo-change";
 import { applyProjectOps, createProject, getProject } from "@/lib/projects/service";
 import type { OpInput, TextClip } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { addText, toolContext } from "./context";
 
-const grace = { userId: "u2", email: "u2@gmail.com", role: "editor" as const };
+const grace = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 
 async function setup(over: Parameters<typeof toolContext>[1] = {}) {
   const db = await makeTestDb();

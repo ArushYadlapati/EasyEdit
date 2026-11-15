@@ -6,11 +6,12 @@ import type { Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
 import { checkIn, createPresenceBreaker, leavePresence, type Share } from "@/lib/projects/presence";
 import { createProject, deleteProject } from "@/lib/projects/service";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const ada: Actor = { userId: "ada", email: "ada@gmail.com", role: "editor" };
-const grace: Actor = { userId: "grace", email: "grace@gmail.com", role: "editor" };
-const vic: Actor = { userId: "vic", email: "vic@gmail.com", role: "viewer" };
+const ada: Actor = testActor({ userId: "ada", email: "ada@gmail.com", role: "editor" });
+const grace: Actor = testActor({ userId: "grace", email: "grace@gmail.com", role: "editor" });
+const vic: Actor = testActor({ userId: "vic", email: "vic@gmail.com", role: "viewer" });
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -279,7 +280,7 @@ describe("teammates' selections", () => {
     const count = LIMITS.presencePeers + 3;
     const ids = Array.from({ length: count }, (_, i) => `p${String(i).padStart(2, "0")}`);
     await db.insert(user).values(ids.map((id) => ({ id, name: `Person ${id}`, email: `${id}@gmail.com` })));
-    for (const userId of ids) await check({ userId, email: `${userId}@gmail.com`, role: "editor" }, share(`${userId}-tab-1`));
+    for (const userId of ids) await check(testActor({ userId, email: `${userId}@gmail.com`, role: "editor" }), share(`${userId}-tab-1`));
     // The first three by id changed their selection longest ago, so they are the ones left out.
     await db.execute(sql`update project_presence set changed_at = now() - interval '5 minutes' where user_id in ('p00', 'p01', 'p02')`);
     const peers = (await check(ada, share("ada-tab-1")))?.peers ?? [];

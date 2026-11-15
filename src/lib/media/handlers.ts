@@ -1,12 +1,14 @@
 import { z } from "zod";
 import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
-import { actorFrom, type Actor } from "@/lib/actor";
+import type { Actor } from "@/lib/actor";
 import { apiRoute } from "@/lib/api-route";
 import type { DriveClient } from "@/lib/drive/client";
 import { DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { ServiceError } from "@/lib/service-error";
+import { actorIn } from "@/lib/spaces/access";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { MEDIA_MESSAGES } from "./messages";
 import {
   completeAssetFile,
@@ -25,7 +27,7 @@ import type { OpenUploadInput } from "./types";
 
 export type MediaHandlerDeps = {
   db: () => DB;
-  auth: (req: Request) => Promise<CurrentUser | Response>; // authentication only; the service checks the role
+  auth: (req: Request) => Promise<CurrentUser | Response>; // authentication only; the role comes from the space
   drive: () => DriveClient | null; // null: media is not set up
   origin: () => string;
 };
@@ -34,6 +36,7 @@ export type AssetRouteContext = { params: Promise<{ id: string }> };
 
 export const NOT_SET_UP_BODY = { code: "MEDIA_NOT_SET_UP", message: "Uploads are not set up yet." } as const;
 export const STORAGE_DOWN_BODY = { code: "STORAGE_UNAVAILABLE", message: MEDIA_MESSAGES.storageDown } as const;
+const SPACE_NOT_FOUND_BODY = { code: "NOT_FOUND", message: "Space not found" } as const;
 
 // Only the shape of each body, with unknown keys refused. The service checks the values.
 const probeBody = z.strictObject({
@@ -101,14 +104,17 @@ const notSetUp = () => Response.json(NOT_SET_UP_BODY, { status: 503 });
 const logDriveError = (error: DriveError) => console.error("Drive call failed", error.call, error.status, error.reason);
 
 // What every route does around its own work. `apiRoute` refuses a write from another site and answers what the
-// service refuses. Then the member is looked up, before anything else is read. And a failed Drive call is answered
-// 502 with that one line logged.
+// service refuses. Then the member and their role in the space are looked up, before anything else is read; someone
+// who is not a member of it is answered 404. And a failed Drive call is answered 502 with that one line logged.
 function mediaRoute<Rest extends unknown[]>(deps: MediaHandlerDeps, handler: (actor: Actor, req: Request, ...rest: Rest) => Promise<Response>) {
   return apiRoute(async (req: Request, ...rest: Rest): Promise<Response> => {
     const user = await deps.auth(req);
     if (user instanceof Response) return user;
+    // stage-1: space comes from Task 6
+    const actor = await actorIn(deps.db(), user, SEED_TEAM_ID);
+    if (!actor) return Response.json(SPACE_NOT_FOUND_BODY, { status: 404 });
     try {
-      return await handler(actorFrom(user), req, ...rest);
+      return await handler(actor, req, ...rest);
     } catch (error) {
       if (!(error instanceof DriveError)) throw error;
       logDriveError(error);

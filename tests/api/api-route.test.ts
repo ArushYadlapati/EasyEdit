@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { apiRoute } from "@/lib/api-route";
 import { makeProjectHandlers } from "@/lib/projects/handlers";
 
-const user = { id: "u1", email: "u1@gmail.com", name: "U1", image: null, role: "editor" as const };
+const user = { id: "u1", email: "u1@gmail.com", name: "U1", image: null, allowlistRole: "editor" as const };
 const noContent = async () => new Response(null, { status: 204 });
 
 describe("apiRoute", () => {

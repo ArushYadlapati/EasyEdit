@@ -18,9 +18,10 @@ import {
 } from "@/lib/projects/service";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { DEFAULT_TRANSFORM, FRAME_SIZE_MESSAGE, createEmptyDoc, type OpInput, type TextClip } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const as = (userId: string): Actor => ({ userId, email: `${userId}@gmail.com`, role: "editor" });
+const as = (userId: string): Actor => testActor({ userId, email: `${userId}@gmail.com`, role: "editor" });
 
 function textClip(overrides: Partial<Record<keyof TextClip, unknown>> = {}) {
   return {

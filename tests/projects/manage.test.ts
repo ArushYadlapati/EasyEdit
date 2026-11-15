@@ -8,10 +8,11 @@ import {
   applyProjectOps, createProject, deleteProject, duplicateProject, getOpsSince, getProject,
   getProjectVersion, listProjects, renameProject,
 } from "@/lib/projects/service";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const editor: Actor = { userId: "u1", email: "u1@gmail.com", role: "editor" };
-const viewer: Actor = { userId: "u2", email: "u2@gmail.com", role: "viewer" };
+const editor: Actor = testActor({ role: "editor" });
+const viewer: Actor = testActor({ userId: "u2", email: "u2@gmail.com", role: "viewer" });
 const rename1 = { op: "update_track", trackId: "v1", patch: { name: "Main" } } as const;
 const logged = async (db: DB, id: string) =>
   rowsOf<{ version: number }>(await db.execute(sql`select version from project_ops where project_id = ${id} order by version`)).map((r) => r.version);
@@ -77,7 +78,7 @@ describe("delete", () => {
     const id = await oneEdit(db);
     const before = (await getProject(db, editor, id))!.updatedAt;
     await new Promise((resolve) => setTimeout(resolve, 5));
-    await deleteProject(db, { userId: "u9", email: "u9@gmail.com", role: "editor" }, id);
+    await deleteProject(db, testActor({ userId: "u9", email: "u9@gmail.com", role: "editor" }), id);
     const after = rowsOf<{ updated_by: string; later: boolean; same: boolean }>(await db.execute(sql`
       select updated_by, updated_at > ${before.toISOString()}::timestamptz at time zone 'UTC' as later, updated_at = deleted_at as same
       from projects where id = ${id}`))[0];

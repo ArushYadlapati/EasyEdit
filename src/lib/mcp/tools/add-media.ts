@@ -21,7 +21,7 @@ export async function addMediaTool(
   ctx: ToolContext,
   input: { project_id: string; expected_version: number; items: MediaItem[] },
 ): Promise<ToolResult> {
-  if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.user.role));
+  if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
   if (input.items.length > ctx.limits.connectorMediaItems) return fail(tooManyMediaItems(ctx.limits.connectorMediaItems));
 
   // The key is the call, not the ops: the ops carry freshly made ids, and a repeat must hash the same.

@@ -1,18 +1,23 @@
 import type { DB } from "@/db";
 import { user } from "@/db/schema";
+import type { CurrentUser } from "@/lib/access-rules";
 import { claudeActorFor, type Actor } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
 import { LIMITS, type Limits } from "@/lib/limits";
 import type { ToolContext } from "@/lib/mcp/types";
 import { applyProjectOps } from "@/lib/projects/service";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import type { OpInput } from "@/lib/timeline";
+import { joinSpace } from "../helpers/actor";
 
-// A tool context for a member "u1" (or another id), whose user row exists so names resolve.
+// A tool context for a member "u1" (or another id) of Seattle Solvers, whose user row exists so names resolve.
 export async function toolContext(db: DB, over: { id?: string; name?: string; role?: Role; limits?: Partial<Limits> } = {}): Promise<ToolContext> {
   const id = over.id ?? "u1";
-  const me = { id, email: `${id}@gmail.com`, name: over.name ?? "Ada Lovelace", image: null, role: over.role ?? ("editor" as Role) };
+  const role = over.role ?? "editor";
+  const me: CurrentUser = { id, email: `${id}@gmail.com`, name: over.name ?? "Ada Lovelace", image: null, allowlistRole: role };
   await db.insert(user).values({ id, name: me.name, email: me.email, emailVerified: true }).onConflictDoNothing();
-  return { db, user: me, actor: claudeActorFor(me), baseUrl: "https://studio.test", limits: { ...LIMITS, ...over.limits }, now: () => new Date() };
+  await joinSpace(db, me, role);
+  return { db, user: me, actor: claudeActorFor(me, { spaceId: SEED_TEAM_ID, role }), baseUrl: "https://studio.test", limits: { ...LIMITS, ...over.limits }, now: () => new Date() };
 }
 
 export const textClip = (start: number, text = "GO SOLVERS", extra: Record<string, unknown> = {}) => ({

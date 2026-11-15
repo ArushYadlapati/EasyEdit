@@ -11,11 +11,12 @@ import type { ToolContext, ToolResult } from "@/lib/mcp/types";
 import { createFolder } from "@/lib/projects/folders";
 import { applyProjectOps, createProject, deleteProject, getProject, listProjects } from "@/lib/projects/service";
 import type { OpInput } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { insertAsset } from "../media/context";
 import { addText, fillWithText, toolContext } from "./context";
 
-const grace = { userId: "u2", email: "u2@gmail.com", role: "editor" as const };
+const grace = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 // The test database's clock counts whole milliseconds, so changes meant to sort apart need a gap.
 const nextMillisecond = () => new Promise((resolve) => setTimeout(resolve, 5));
 

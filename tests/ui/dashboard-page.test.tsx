@@ -16,11 +16,11 @@ import type { DashboardProps } from "@/components/dashboard/dashboard";
 import type { DB } from "@/db";
 import { user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
-import { actorFrom } from "@/lib/actor";
 import { createFolder } from "@/lib/projects/folders";
 import { recordOpen } from "@/lib/projects/opens";
 import { createProject } from "@/lib/projects/service";
 import { saveThumbnail } from "@/lib/projects/thumbnails";
+import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { render, screen } from "../helpers/dom";
 
@@ -51,9 +51,11 @@ let testDb: DB;
 vi.mock("@/db", async (orig) => ({ ...(await orig<typeof import("@/db")>()), getDb: () => testDb }));
 vi.mock("@/components/keep-signed-in", () => ({ KeepSignedIn }));
 
-const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada Lovelace", image: null, role: "editor" };
-const vic: CurrentUser = { id: "u2", email: "vic@gmail.com", name: "Vic", image: null, role: "viewer" };
-const admin: CurrentUser = { id: "u3", email: "root@gmail.com", name: "Root", image: null, role: "admin" };
+// Each one's role in Seattle Solvers is their allowlist role.
+const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada Lovelace", image: null, allowlistRole: "editor" };
+const vic: CurrentUser = { id: "u2", email: "vic@gmail.com", name: "Vic", image: null, allowlistRole: "viewer" };
+const admin: CurrentUser = { id: "u3", email: "root@gmail.com", name: "Root", image: null, allowlistRole: "admin" };
+const as = (person: CurrentUser) => testActor({ userId: person.id, email: person.email, role: person.allowlistRole });
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
 
@@ -70,7 +72,8 @@ beforeEach(async () => {
     { id: "u1", name: "Ada Lovelace", email: "ada@gmail.com" },
     { id: "u2", name: "Vic", email: "vic@gmail.com" },
   ]);
-  projectId = (await createProject(testDb, actorFrom(ada), { name: "Qual recap", format: "short_9x16" })).id;
+  for (const person of [ada, vic]) await joinSpace(testDb, person, person.allowlistRole);
+  projectId = (await createProject(testDb, as(ada), { name: "Qual recap", format: "short_9x16" })).id;
 });
 
 // The page as this person sees it at this address; the props it handed the dashboard.
@@ -106,14 +109,14 @@ describe("the dashboard page", () => {
   });
 
   it("the dashboard gets each project's picture version, never its bytes", async () => {
-    await saveThumbnail(testDb, actorFrom(ada), projectId, 0, JPEG);
+    await saveThumbnail(testDb, as(ada), projectId, 0, JPEG);
     const props = await dashboardFor(ada);
     expect(props.projects[0].thumbnailVersion).toBe(0);
     expect(Object.keys(props.projects[0])).not.toContain("thumbnail");
   });
 
   it("a viewer's page has no edit controls and their own Recent", async () => {
-    await recordOpen(testDb, actorFrom(vic), projectId);
+    await recordOpen(testDb, as(vic), projectId);
     const viewer = await dashboardFor(vic);
     expect(viewer.canEdit).toBe(false);
     expect(viewer.recentIds).toEqual([projectId]);
@@ -122,7 +125,7 @@ describe("the dashboard page", () => {
 
   it("the address picks the folder, and an unknown one is the main view", async () => {
     expect((await dashboardFor(ada, { folder: "nope" })).view).toBeNull();
-    const folder = await createFolder(testDb, actorFrom(ada), "Season 2026");
+    const folder = await createFolder(testDb, as(ada), "Season 2026");
     const props = await dashboardFor(ada, { folder: folder.id });
     expect(props.view).toBe(folder.id);
     expect(props.folders).toEqual([{ id: folder.id, name: "Season 2026", projectCount: 0 }]);

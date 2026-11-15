@@ -648,7 +648,7 @@ describe("adding a member", () => {
 });
 
 describe("the admin page", () => {
-  const root: CurrentUser = { id: "u1", email: ME, name: "Root", image: null, role: "admin" };
+  const root: CurrentUser = { id: "u1", email: ME, name: "Root", image: null, allowlistRole: "admin" };
 
   async function seed(rows: { email: string; role: "admin" | "editor" | "viewer"; invitedBy: string | null; createdAt: Date }[]) {
     testDb = await makeTestDb();

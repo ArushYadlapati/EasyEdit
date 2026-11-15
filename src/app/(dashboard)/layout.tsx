@@ -26,7 +26,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
           EasyEdit
         </Link>
         <div className="ml-auto flex min-w-0 items-center gap-2">
-          {user.role === "admin" && (
+          {user.allowlistRole === "admin" && (
             <Link
               href="/admin"
               className={cx("rounded-md px-2 py-1 text-xs font-medium text-ed-muted hover:bg-ed-hover hover:text-ed-text", FOCUS_RING, FADE)}

@@ -15,7 +15,7 @@ beforeAll(async () => {
 });
 afterAll(() => app.stop());
 
-const admin: CurrentUser = { id: "a1", email: "admin@seattlesolvers.com", name: "Admin", image: null, role: "admin" };
+const admin: CurrentUser = { id: "a1", email: "admin@seattlesolvers.com", name: "Admin", image: null, allowlistRole: "admin" };
 const form = (email: string) => {
   const f = new FormData();
   f.set("email", email);

@@ -10,10 +10,11 @@ import {
   renameFolder,
 } from "@/lib/projects/folders";
 import { createProject, deleteProject, listProjects } from "@/lib/projects/service";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const editor: Actor = { userId: "u1", email: "u1@gmail.com", role: "editor" };
-const viewer: Actor = { userId: "u9", email: "u9@gmail.com", role: "viewer" };
+const editor: Actor = testActor({ role: "editor" });
+const viewer: Actor = testActor({ userId: "u9", email: "u9@gmail.com", role: "viewer" });
 
 const INVALID_NAME = { code: "INVALID", message: "Enter a folder name up to 60 characters." };
 const NAME_TAKEN = { code: "CONFLICT", status: 409, message: "There's already a folder with that name." };

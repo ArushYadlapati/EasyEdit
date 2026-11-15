@@ -6,6 +6,8 @@ import { removeEntry, setRole } from "@/lib/allowlist/service";
 import { createAgentToken, revokeAgentToken, TOKEN_PREFIX } from "@/lib/connector/tokens";
 import { agentActorId, claudeActorId } from "@/lib/projects/display-actor";
 import { createProject } from "@/lib/projects/service";
+import { syncSeedTeamMembership } from "@/lib/spaces/service";
+import { testActor } from "../helpers/actor";
 import { BASE_URL, MCP_URL, startConnectorApp, type ConnectorApp } from "../helpers/connector";
 
 let testDb: DB;
@@ -45,7 +47,7 @@ describe("POST /api/mcp with an access token", () => {
 
   it("records the change as the token's agent acting for the member", async () => {
     const m = await memberWithToken("grace@gmail.com");
-    const project = await createProject(app.db, { userId: m.userId, email: "grace@gmail.com", role: "editor" }, { name: "Recap", format: "short_9x16" });
+    const project = await createProject(app.db, testActor({ userId: m.userId, email: "grace@gmail.com", role: "editor" }), { name: "Recap", format: "short_9x16" });
     const r = await app.callTool(m.token, "add_text", { project_id: project.id, expected_version: 0, items: [{ text: "GO SOLVERS" }] });
     expect(r.isError, r.text).toBe(false);
 
@@ -65,6 +67,7 @@ describe("POST /api/mcp with an access token", () => {
   it("takes the role the member has now", async () => {
     const m = await memberWithToken("dorothy@gmail.com");
     await setRole(app.db, "dorothy@gmail.com", "viewer");
+    await syncSeedTeamMembership(app.db, { id: m.userId, email: "dorothy@gmail.com" }); // as the admin page does
     expect((await app.callTool(m.token, "list_projects")).text).toContain("(viewer). You can read projects but not change them.");
   });
 

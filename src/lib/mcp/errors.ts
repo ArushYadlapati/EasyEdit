@@ -105,7 +105,7 @@ export async function failureResult(
   input: { projectId: string; expectedVersion: number; ops: unknown[] },
 ): Promise<ToolResult> {
   if (!(error instanceof ServiceError)) throw error;
-  if (error.code === "FORBIDDEN") return fail(roleMessage(ctx.user.role));
+  if (error.code === "FORBIDDEN") return fail(roleMessage(ctx.actor.role));
   if (error.status === 404) return fail(notFoundText(input.projectId));
   if (error.code === "CONFLICT") return conflictResult(ctx, input.projectId, input.expectedVersion);
   if (error.opIndex !== undefined) {

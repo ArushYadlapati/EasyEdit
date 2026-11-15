@@ -47,7 +47,7 @@ describe("requireUserApi", () => {
     expect(await res.json()).toEqual({ code: "FORBIDDEN", message: "Your role doesn't allow this." });
   });
 
-  it("an editor asking for editor returns the user with role editor", async () => {
+  it("an editor asking for editor returns the user with allowlist role editor", async () => {
     getSession.mockResolvedValue({ user: { id: "u2", email: "Editor@gmail.com", name: "E" } });
     const { requireUserApi } = await import("@/lib/access");
     expect(await requireUserApi(req(), "editor")).toEqual({
@@ -55,7 +55,7 @@ describe("requireUserApi", () => {
       email: "editor@gmail.com",
       name: "E",
       image: null,
-      role: "editor",
+      allowlistRole: "editor",
     });
   });
 });

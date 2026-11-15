@@ -6,11 +6,11 @@ import { makeTestDb } from "../helpers/db";
 const kid = { id: "u1", email: "kid@gmail.com", name: "Kid", image: "https://example.com/kid.png" };
 
 describe("access rules", () => {
-  it("an allowlisted editor resolves with role editor", async () => {
+  it("an allowlisted editor resolves with allowlist role editor", async () => {
     const db = await makeTestDb();
     await seedAdmin(db);
     await addEntry(db, { email: "kid@gmail.com", role: "editor", invitedBy: SEED_ADMIN_EMAIL });
-    await expect(resolveCurrentUser(db, kid)).resolves.toEqual({ ...kid, role: "editor" });
+    await expect(resolveCurrentUser(db, kid)).resolves.toEqual({ ...kid, allowlistRole: "editor" });
   });
 
   it("a session user without an image resolves with image null", async () => {
@@ -18,7 +18,7 @@ describe("access rules", () => {
     await seedAdmin(db);
     await expect(
       resolveCurrentUser(db, { id: "a1", email: "Admin@SeattleSolvers.com", name: "Admin" }),
-    ).resolves.toEqual({ id: "a1", email: "admin@seattlesolvers.com", name: "Admin", image: null, role: "admin" });
+    ).resolves.toEqual({ id: "a1", email: "admin@seattlesolvers.com", name: "Admin", image: null, allowlistRole: "admin" });
   });
 
   it("a user removed from the allowlist resolves to null", async () => {

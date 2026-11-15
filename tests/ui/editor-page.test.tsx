@@ -6,13 +6,17 @@ import type { CurrentUser } from "@/lib/access-rules";
 import { createEmptyDoc } from "@/lib/timeline";
 import { act, render } from "../helpers/dom";
 
-const viewer = vi.hoisted((): CurrentUser => ({ id: "u1", email: "u1@gmail.com", name: "U1", image: null, role: "viewer" }));
+const viewer = vi.hoisted((): CurrentUser => ({ id: "u1", email: "u1@gmail.com", name: "U1", image: null, allowlistRole: "viewer" }));
 
 vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => viewer),
   meetsRole: (await import("@/lib/access-rules")).meetsRole,
 }));
 vi.mock("@/db", () => ({ getDb: () => ({}) }));
+// A viewer in the project's space.
+vi.mock("@/lib/spaces/access", () => ({
+  actorIn: vi.fn(async (_db: unknown, user: CurrentUser, spaceId: string) => ({ userId: user.id, email: user.email, role: "viewer", spaceId })),
+}));
 vi.mock("@/lib/projects/service", () => ({
   getProject: vi.fn(async () => ({
     id: "p1",

@@ -4,6 +4,7 @@ import ConsentPage from "@/app/(auth)/consent/page";
 import LoginPage from "@/app/(auth)/login/page";
 import { getCurrentUser, requireUser, type CurrentUser } from "@/lib/access";
 import { readConsentRequest, type ConsentRequest, type ConsentView, type SearchParams } from "@/lib/connector/consent";
+import { roleIn } from "@/lib/spaces/service";
 import { cleanup, render, screen } from "../helpers/dom";
 
 vi.mock("@/lib/access", () => ({ getCurrentUser: vi.fn(), requireUser: vi.fn() }));
@@ -14,8 +15,9 @@ vi.mock("@/lib/connector/consent", async (original) => ({
 vi.mock("@/lib/connector/consent-client", () => ({ decideConsent: vi.fn() }));
 vi.mock("@/lib/env", () => ({ requiredEnv: () => "test-secret" }));
 vi.mock("@/db", () => ({ getDb: () => ({}) }));
+vi.mock("@/lib/spaces/service", () => ({ roleIn: vi.fn() }));
 
-const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, role: "editor" };
+const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
 const signedRequest: SearchParams = { client_id: "c1", sig: "s", exp: "1" };
 
 // What readConsentRequest makes of each kind of request, as the page receives it.
@@ -65,6 +67,7 @@ async function show(page: Page, searchParams: SearchParams) {
 beforeEach(() => {
   vi.mocked(getCurrentUser).mockReset();
   vi.mocked(requireUser).mockReset().mockResolvedValue(ada);
+  vi.mocked(roleIn).mockReset().mockResolvedValue("editor");
   vi.mocked(readConsentRequest).mockReset();
 });
 
@@ -151,7 +154,8 @@ describe("the consent page", () => {
   });
 
   it("tells a viewer the app cannot change anything, and does not vouch for a self-named app", async () => {
-    vi.mocked(requireUser).mockResolvedValue({ ...ada, role: "viewer" });
+    vi.mocked(requireUser).mockResolvedValue({ ...ada, allowlistRole: "viewer" });
+    vi.mocked(roleIn).mockResolvedValue("viewer");
     vi.mocked(readConsentRequest).mockResolvedValue(ok(views.helper));
     await show(ConsentPage, signedRequest);
     expect(screen.getByRole("heading").textContent).toBe("Connect an app");

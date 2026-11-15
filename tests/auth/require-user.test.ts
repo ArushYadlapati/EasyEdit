@@ -34,6 +34,6 @@ describe("requireUser", () => {
     const { requireUser } = await import("@/lib/access");
     await expect(requireUser("editor")).rejects.toThrow("FORBIDDEN");
     expect(forbidden).toHaveBeenCalledTimes(1);
-    await expect(requireUser("viewer")).resolves.toMatchObject({ email: "viewer@gmail.com", role: "viewer" });
+    await expect(requireUser("viewer")).resolves.toMatchObject({ email: "viewer@gmail.com", allowlistRole: "viewer" });
   });
 });

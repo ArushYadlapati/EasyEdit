@@ -6,10 +6,11 @@ import { KeepSignedIn } from "@/components/keep-signed-in";
 import { RecordOpen } from "@/components/record-open";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
-import { actorFrom } from "@/lib/actor";
 import { LAYOUT_COOKIE, parseLayout } from "@/lib/editor/layout";
 import { PREFS_COOKIE, parsePrefs } from "@/lib/editor/settings";
 import { getProject } from "@/lib/projects/service";
+import { actorIn } from "@/lib/spaces/access";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 
 // The editor is always dark. This asks the Dark Reader browser extension to leave the page alone: on a screen that
 // is already dark it darkens the few light elements, and the playhead all but disappears. The color scheme tells the
@@ -21,7 +22,11 @@ export const viewport: Viewport = { colorScheme: "dark" };
 export default async function EditorPage({ params }: PageProps<"/editor/[id]">) {
   const user = await requireUser();
   const { id } = await params;
-  const project = await getProject(getDb(), actorFrom(user), id);
+  const db = getDb();
+  // stage-1: space comes from Task 8
+  const actor = await actorIn(db, user, SEED_TEAM_ID);
+  if (!actor) notFound();
+  const project = await getProject(db, actor, id);
   if (!project) notFound();
   // The panel sizes and preferences this browser kept, so the first paint already has them.
   const jar = await cookies();
@@ -40,7 +45,7 @@ export default async function EditorPage({ params }: PageProps<"/editor/[id]">) 
           doc: project.doc,
           version: project.version,
           me: { id: user.id, name: user.name },
-          canEdit: meetsRole(user.role, "editor"),
+          canEdit: meetsRole(actor.role, "editor"),
           thumbnailVersion: project.thumbnailVersion,
         }}
         layout={layout}

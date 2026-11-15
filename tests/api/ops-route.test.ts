@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/access-rules";
 import { makeOpsHandlers, makeProjectHandlers } from "@/lib/projects/handlers";
@@ -5,14 +6,16 @@ import { applyProjectOps, createProject } from "@/lib/projects/service";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { DEFAULT_TRANSFORM, FRAME_SIZE_MESSAGE, type OpInput } from "@/lib/timeline";
 import { folders, user } from "@/db/schema";
+import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-function userWith(role: CurrentUser["role"]): CurrentUser {
-  return { id: "u1", email: "u1@gmail.com", name: "U1", image: null, role };
+function userWith(role: CurrentUser["allowlistRole"]): CurrentUser {
+  return { id: "u1", email: "u1@gmail.com", name: "U1", image: null, allowlistRole: role };
 }
 
-async function setup(role: CurrentUser["role"]) {
+async function setup(role: CurrentUser["allowlistRole"]) {
   const db = await makeTestDb();
+  await joinSpace(db, { id: "u1" }, role);
   const auth = vi.fn<(req: Request) => Promise<CurrentUser>>(async () => userWith(role));
   const deps = { db: () => db, auth };
   return { db, auth, ops: makeOpsHandlers(deps), projects: makeProjectHandlers(deps) };
@@ -42,7 +45,7 @@ const addClip = { op: "add_clip", trackId: "t1", clip: textClip } as OpInput;
 describe("ops routes", () => {
   it("viewer cannot POST ops (403)", async () => {
     const { db, ops, auth } = await setup("viewer");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const res = await ops.postOps(post(`http://x/api/projects/${id}/ops`, { baseVersion: 0, ops: [addClip] }), ctx(id));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ code: "FORBIDDEN", message: "Your role doesn't allow this." });
@@ -53,7 +56,7 @@ describe("ops routes", () => {
 
   it("POST ops returns 200 with new version; GET since=0 returns the entry", async () => {
     const { db, ops } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const res = await ops.postOps(post(`http://x/api/projects/${id}/ops`, { baseVersion: 0, ops: [addClip] }), ctx(id));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -70,7 +73,7 @@ describe("ops routes", () => {
 
   it("POST ops with bad body returns 400 INVALID", async () => {
     const { db, ops } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     for (const body of [{ baseVersion: 0, ops: "x" }, { baseVersion: -1, ops: [addClip] }, { baseVersion: 0, ops: [] }, "not json"]) {
       const res = await ops.postOps(post(`http://x/api/projects/${id}/ops`, body), ctx(id));
       expect(res.status).toBe(400);
@@ -80,7 +83,7 @@ describe("ops routes", () => {
 
   it("GET ops rejects a bad since with 400 INVALID", async () => {
     const { db, ops } = await setup("viewer");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     for (const since of ["-1", "1.5", "abc", "", "2147483648", "99999999999"]) {
       const res = await ops.getSince(new Request(`http://x/api/projects/${id}/ops?since=${since}`), ctx(id));
       expect(res.status).toBe(400);
@@ -92,7 +95,7 @@ describe("ops routes", () => {
 
   it("POST ops with text Postgres cannot store answers 400 INVALID, not 500", async () => {
     const { db, ops } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     for (const body of [
       `{"baseVersion":0,"ops":[{"op":"add_clip","trackId":"t1","clip":${JSON.stringify({ ...textClip, text: "x" }).replace('"x"', '"a\\u0000b"')}}]}`,
       `{"baseVersion":0,"ops":[{"op":"add_track","track":{"kind":"overlay","name":"a\\ud800"}}]}`,
@@ -105,7 +108,7 @@ describe("ops routes", () => {
 
   it("POST ops surfaces the service status: 409 for a base version ahead, 404 for unknown project", async () => {
     const { db, ops } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const ahead = await ops.postOps(post(`http://x/api/projects/${id}/ops`, { baseVersion: 5, ops: [addClip] }), ctx(id));
     expect(ahead.status).toBe(409);
     expect(await ahead.json()).toMatchObject({ code: "CONFLICT", currentVersion: 0 });
@@ -116,11 +119,11 @@ describe("ops routes", () => {
 
   it("POST ops returns the inverse; GET since returns inverse and createdAt; strict is checked", async () => {
     const { db, ops } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const res = await ops.postOps(post(`http://x/api/projects/${id}/ops`, { baseVersion: 0, ops: [addClip] }), ctx(id));
     expect(await res.json()).toEqual({ version: 1, ops: [addClip], inverse: [{ op: "remove_clip", clipId: "c1" }] });
     const since = await (await ops.getSince(new Request(`http://x/api/projects/${id}/ops?since=0`), ctx(id))).json();
-    expect(since.entries[0]).toEqual({ version: 1, ops: [addClip], inverse: [{ op: "remove_clip", clipId: "c1" }], actor: "u1", actorName: "Someone",
+    expect(since.entries[0]).toEqual({ version: 1, ops: [addClip], inverse: [{ op: "remove_clip", clipId: "c1" }], actor: "u1", actorName: "U1",
       requestId: null, createdAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) });
     const stale = await ops.postOps(post(`http://x/api/projects/${id}/ops`, { baseVersion: 0, strict: true, ops: [{ op: "remove_clip", clipId: "c1" }] }), ctx(id));
     expect(stale.status).toBe(409);
@@ -131,8 +134,8 @@ describe("ops routes", () => {
 
   it("GET ops names who made each change", async () => {
     const { db, ops } = await setup("viewer");
-    await db.insert(user).values([{ id: "u1", name: "Ada Lovelace", email: "ada@gmail.com", emailVerified: true }]);
-    const editor = { userId: "u1", email: "u1@gmail.com", role: "editor" as const };
+    await db.update(user).set({ name: "Ada Lovelace" }).where(eq(user.id, "u1"));
+    const editor = testActor({ role: "editor" });
     const { id } = await createProject(db, editor, { name: "P", format: "short_9x16" });
     const retext = (text: string) => [{ op: "update_clip" as const, clipId: "c1", patch: { text } }];
     await applyProjectOps(db, editor, { projectId: id, baseVersion: 0, ops: [addClip] });
@@ -144,7 +147,7 @@ describe("ops routes", () => {
 
   it("POST ops takes a requestId: a repeat answers the same body, a malformed one is 400 INVALID", async () => {
     const { db, ops } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const send = (requestId: unknown) => ops.postOps(post(`http://x/api/projects/${id}/ops`, { baseVersion: 0, ops: [addClip], requestId }), ctx(id));
     const first = await send("retry-0001");
     expect(first.status).toBe(200);
@@ -163,7 +166,7 @@ describe("ops routes", () => {
 
   it("a stored inverse sent back after a later conflicting edit answers 400 STALE with the op index", async () => {
     const { db, ops } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const send = (baseVersion: number, body: unknown[]) => ops.postOps(post(`http://x/api/projects/${id}/ops`, { baseVersion, ops: body }), ctx(id));
     await send(0, [addClip]);
     await send(1, [{ op: "move_clip", clipId: "c1", start: 100 }]);
@@ -176,7 +179,7 @@ describe("ops routes", () => {
 
   it("POST ops with 501 ops answers 400 LIMIT_EXCEEDED; 500 are accepted", async () => {
     const { db, ops } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const renames = (n: number) => Array.from({ length: n }, (_, i) => ({ op: "update_track", trackId: "v1", patch: { name: `V${i}` } }));
     const tooMany = await ops.postOps(post(`http://x/api/projects/${id}/ops`, { baseVersion: 0, ops: renames(501) }), ctx(id));
     expect(tooMany.status).toBe(400);
@@ -261,7 +264,7 @@ describe("project routes", () => {
 
   it("POST ops reports the index of the op that failed", async () => {
     const { db, ops } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const res = await ops.postOps(
       post(`http://x/api/projects/${id}/ops`, { baseVersion: 0, ops: [addClip, { op: "move_clip", clipId: "ghost", start: 10 }] }),
       ctx(id),
@@ -272,7 +275,7 @@ describe("project routes", () => {
 
   it("a viewer can read a project", async () => {
     const { db, projects } = await setup("viewer");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const res = await projects.get(new Request(`http://x/api/projects/${id}`), ctx(id));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ id, name: "P", version: 0 });
@@ -280,8 +283,8 @@ describe("project routes", () => {
 
   it("GET version answers { version }, 404 when unknown; GET ops validates limit and reports hasMore", async () => {
     const { db, ops, projects } = await setup("viewer");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
-    await applyProjectOps(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { projectId: id, baseVersion: 0, ops: [addClip] });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
+    await applyProjectOps(db, testActor({ role: "editor" }), { projectId: id, baseVersion: 0, ops: [addClip] });
     expect(await (await projects.version(new Request(`http://x/api/projects/${id}/version`), ctx(id))).json()).toEqual({ version: 1 });
     expect((await projects.version(new Request("http://x/api/projects/nope/version"), ctx("nope"))).status).toBe(404);
     for (const limit of ["0", "501", "x", "1.5"]) {
@@ -294,7 +297,7 @@ describe("project routes", () => {
 
   it("PATCH renames, POST duplicate copies, DELETE removes; a foreign Origin is refused", async () => {
     const { db, projects } = await setup("editor");
-    const { id } = await createProject(db, { userId: "u1", email: "u1@gmail.com", role: "editor" }, { name: "P", format: "short_9x16" });
+    const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     const send = (method: string, url: string, body?: unknown, origin?: string) =>
       new Request(url, { method, headers: { "content-type": "application/json", ...(origin ? { origin } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
 

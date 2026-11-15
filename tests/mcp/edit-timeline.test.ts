@@ -8,10 +8,11 @@ import { EXAMPLE_CROP } from "@/lib/mcp/guide";
 import { editTimelineTool } from "@/lib/mcp/tools/edit-timeline";
 import { applyProjectOps, createProject, deleteProject, getProject } from "@/lib/projects/service";
 import { FRAME_SIZE_MESSAGE, type OpInput } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { addText, fillWithText, textClip, toolContext } from "./context";
 
-const grace = { userId: "u2", email: "u2@gmail.com", role: "editor" as const };
+const grace = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 
 // Lets a test change the project just before or just after the next getProject read. Otherwise the service is the real one.
 const nextRead = vi.hoisted(() => ({ before: null as null | (() => Promise<unknown>), after: null as null | (() => Promise<unknown>) }));

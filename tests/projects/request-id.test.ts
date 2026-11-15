@@ -4,9 +4,10 @@ import { rowsOf, type DB } from "@/db";
 import type { Actor } from "@/lib/actor";
 import { applyProjectOps, createProject, getOpsSince, getProject } from "@/lib/projects/service";
 import { DEFAULT_TRANSFORM, type OpInput } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const as = (userId: string): Actor => ({ userId, email: `${userId}@gmail.com`, role: "editor" });
+const as = (userId: string): Actor => testActor({ userId, email: `${userId}@gmail.com`, role: "editor" });
 
 // No clip id, so applying it twice would add two clips.
 const addText = (start = 0): OpInput => ({

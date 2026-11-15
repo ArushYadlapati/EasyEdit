@@ -1,8 +1,8 @@
+import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
-import { actorFrom } from "@/lib/actor";
 import { resolveView } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
@@ -11,6 +11,8 @@ import { listFolders } from "@/lib/projects/folders";
 import { listRecentProjectIds } from "@/lib/projects/opens";
 import { listProjects } from "@/lib/projects/service";
 import { getUserNames } from "@/lib/projects/user-names";
+import { actorIn } from "@/lib/spaces/access";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import {
   createFolderAction,
   createProjectAction,
@@ -39,8 +41,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   // The page checks for itself: a layout renders alongside its page and is not run again on a client navigation.
   const user = await requireUser();
   const db = getDb();
-  const actor = actorFrom(user);
-  const canEdit = meetsRole(user.role, "editor");
+  // stage-1: space comes from Task 8
+  const actor = await actorIn(db, user, SEED_TEAM_ID);
+  if (!actor) notFound();
+  const canEdit = meetsRole(actor.role, "editor");
   const [projects, folders, recentIds] = await Promise.all([
     listProjects(db, actor),
     listFolders(db, actor),

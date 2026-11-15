@@ -24,7 +24,7 @@ export async function addTextTool(
   ctx: ToolContext,
   input: { project_id: string; expected_version: number; items: TextItem[] },
 ): Promise<ToolResult> {
-  if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.user.role));
+  if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
 
   const bad = input.items.findIndex(({ text }) => text.length < 1 || text.length > LIMITS.textClipChars || !isStorableText(text));
   if (bad >= 0) return fail(textItemInvalid(bad));

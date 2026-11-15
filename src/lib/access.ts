@@ -23,13 +23,13 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => cur
 export async function requireUser(min: Role = "viewer"): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (!meetsRole(user.role, min)) forbidden();
+  if (!meetsRole(user.allowlistRole, min)) forbidden();
   return user;
 }
 
 export async function requireUserApi(req: Request, min: Role): Promise<CurrentUser | Response> {
   const user = await currentUserFor(req.headers);
   if (!user) return Response.json(UNAUTHENTICATED_BODY, { status: 401 });
-  if (!meetsRole(user.role, min)) return Response.json(FORBIDDEN_BODY, { status: 403 });
+  if (!meetsRole(user.allowlistRole, min)) return Response.json(FORBIDDEN_BODY, { status: 403 });
   return user;
 }

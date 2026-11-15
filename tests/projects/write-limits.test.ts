@@ -3,10 +3,11 @@ import type { DB } from "@/db";
 import type { Actor } from "@/lib/actor";
 import { applyProjectOps, createProject, getProject } from "@/lib/projects/service";
 import { DEFAULT_TRANSFORM, type Clip, type OpInput } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { insertAsset } from "../media/context";
 
-const editor: Actor = { userId: "u1", email: "u1@gmail.com", role: "editor" };
+const editor: Actor = testActor({ role: "editor" });
 
 const video = (id: string, start: number, duration: number, extra: Record<string, unknown> = {}) =>
   ({ id, type: "video", assetId: "a", start, duration, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM }, ...extra }) as Clip;

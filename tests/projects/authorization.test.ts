@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { requireRole, type Actor } from "@/lib/actor";
 import { applyProjectOps, createProject, getOpsSince, getProject, listProjects } from "@/lib/projects/service";
 import { DEFAULT_TRANSFORM, type OpInput } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const as = (role: Actor["role"], userId = "u1"): Actor => ({ userId, email: `${userId}@gmail.com`, role });
+const as = (role: Actor["role"], userId = "u1"): Actor => testActor({ userId, email: `${userId}@gmail.com`, role });
 const renames = (n: number): OpInput[] =>
   Array.from({ length: n }, (_, i) => ({ op: "update_track", trackId: "v1", patch: { name: `V${i}` } }));
 

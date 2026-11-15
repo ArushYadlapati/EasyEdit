@@ -14,15 +14,19 @@ import { createEditorStore, findClip } from "@/lib/editor/store";
 import { createSync } from "@/lib/editor/sync";
 import { makeOpsHandlers, makeProjectHandlers } from "@/lib/projects/handlers";
 import { applyProjectOps, createProject, deleteProject, getProject } from "@/lib/projects/service";
+import { roleIn } from "@/lib/spaces/service";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import type { OpInput } from "@/lib/timeline";
+import { joinSpace, testActor } from "../helpers/actor";
 import { text } from "./fixtures";
 import { makeTestDb } from "../helpers/db";
 
 const ORIGIN = "http://localhost:3000";
 
-const ADA: CurrentUser = { id: "u1", email: "u1@gmail.com", name: "Ada", image: null, role: "editor" };
-const GRACE: CurrentUser = { id: "u2", email: "u2@gmail.com", name: "Grace", image: null, role: "editor" };
-const actor = (u: CurrentUser) => ({ userId: u.id, email: u.email, role: u.role });
+// Both are editors in Seattle Solvers; a test that wants a viewer changes the member row.
+const ADA: CurrentUser = { id: "u1", email: "u1@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
+const GRACE: CurrentUser = { id: "u2", email: "u2@gmail.com", name: "Grace", image: null, allowlistRole: "editor" };
+const actor = (u: CurrentUser) => testActor({ userId: u.id, email: u.email, role: "editor" });
 
 type Wire = {
   user: CurrentUser | (() => Response); // who the server's sign-in check finds, or the answer it gives instead (built anew each time: a Response can be read once)
@@ -79,6 +83,7 @@ async function project() {
     { id: "u1", name: "Ada", email: "u1@gmail.com", emailVerified: true },
     { id: "u2", name: "Grace", email: "u2@gmail.com", emailVerified: true },
   ]);
+  for (const who of [ADA, GRACE]) await joinSpace(db, who, "editor");
   const { id } = await createProject(db, actor(ADA), { name: "P", format: "short_9x16" });
   await applyProjectOps(db, actor(ADA), {
     projectId: id,
@@ -103,7 +108,7 @@ async function openEditor(db: DB, id: string, who: CurrentUser, wire: Partial<Wi
     doc: loaded.doc,
     version: loaded.version + versionOffset,
     me: { id: who.id, name: who.name },
-    canEdit: who.role !== "viewer",
+    canEdit: (await roleIn(db, who.id, SEED_TEAM_ID)) !== "viewer",
   });
   const presence = createPresenceStore(who.id);
   const sync = createSync({
@@ -218,7 +223,8 @@ describe("the editor against the real server", () => {
 
   it("a viewer reads everything and never writes; an editor whose role drops mid-session gets a 403 and loses editing", async () => {
     const { db, id } = await project();
-    const viewer = await openEditor(db, id, { ...GRACE, role: "viewer" });
+    await joinSpace(db, GRACE, "viewer");
+    const viewer = await openEditor(db, id, GRACE);
     expect(await viewer.api.getVersion()).toEqual({ ok: true, version: 1 });
     expect(await viewer.api.getOpsSince(0)).toMatchObject({ ok: true, version: 1, hasMore: false });
     expect(await viewer.api.getProject()).toMatchObject({ ok: true, version: 1, name: "P" });
@@ -226,7 +232,7 @@ describe("the editor against the real server", () => {
     expect(viewer.posts()).toBe(0);
 
     const ada = await openEditor(db, id, ADA);
-    ada.wire.user = { ...ADA, role: "viewer" };
+    await joinSpace(db, ADA, "viewer");
     ada.st().edit(moveX2(200), "move");
     await until(() => !ada.st().canEdit);
     expect(ada.st().queue).toEqual([]);

@@ -8,6 +8,8 @@ import { removeEntry, setRole } from "@/lib/allowlist/service";
 import { revokeAccess } from "@/lib/connector/grants";
 import { UNEXPECTED } from "@/lib/mcp/errors";
 import { createProject } from "@/lib/projects/service";
+import { syncSeedTeamMembership } from "@/lib/spaces/service";
+import { testActor } from "../helpers/actor";
 import { BASE_URL, claimsOf, startConnectorApp, type ConnectorApp } from "../helpers/connector";
 
 let testDb: DB;
@@ -96,6 +98,7 @@ describe("POST /api/mcp", () => {
   it("removal and a role change take effect on the next call", async () => {
     const c = await app.connect("dorothy@gmail.com");
     await setRole(app.db, "dorothy@gmail.com", "viewer");
+    await syncSeedTeamMembership(app.db, { id: c.userId, email: "dorothy@gmail.com" }); // as the admin page does
     expect((await app.callTool(c.accessToken, "list_projects")).text).toContain("(viewer). You can read projects but not change them.");
 
     await removeEntry(app.db, "dorothy@gmail.com");
@@ -124,7 +127,7 @@ describe("POST /api/mcp", () => {
       await app.db.execute(sql`select user_id, client_id from oauth_consent where user_id in (${ended.userId}, ${stays.userId})`),
     );
     expect(grants.map((g) => g.client_id)).toEqual([ended.clientId, ended.clientId]);
-    await createProject(app.db, { userId: stays.userId, email: "annie@gmail.com", role: "editor" }, { name: "Shared client", format: "short_9x16" });
+    await createProject(app.db, testActor({ userId: stays.userId, email: "annie@gmail.com", role: "editor" }), { name: "Shared client", format: "short_9x16" });
 
     await revokeAccess(app.db, { userId: ended.userId }, { sessions: false });
 

@@ -16,8 +16,8 @@ vi.mock("@/db", async (original) => ({ ...(await original<typeof import("@/db")>
 vi.mock("@/lib/access", () => ({ requireUser: vi.fn(async () => signedIn.user!) }));
 vi.mock("next/cache", () => ({ revalidatePath }));
 
-const ada: CurrentUser = { id: "u-ada", email: "ada@gmail.com", name: "Ada", image: null, role: "viewer" };
-const vic: CurrentUser = { id: "u-vic", email: "vic@gmail.com", name: "Vic", image: null, role: "editor" };
+const ada: CurrentUser = { id: "u-ada", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "viewer" };
+const vic: CurrentUser = { id: "u-vic", email: "vic@gmail.com", name: "Vic", image: null, allowlistRole: "editor" };
 
 beforeAll(async () => {
   await (await makeSuiteDb()).close();

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { claudeActorFor } from "@/lib/actor";
 import { editTimelineTool } from "@/lib/mcp/tools/edit-timeline";
 import { listProjectsTool } from "@/lib/mcp/tools/list-projects";
 import { applyProjectOps, createProject } from "@/lib/projects/service";
 import type { OpInput } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { addText, toolContext } from "./context";
 
@@ -16,12 +16,12 @@ describe("a person's name in a tool result", () => {
     const db = await makeTestDb();
     const eve = await toolContext(db, { id: "u-eve", name: TYPED });
     const ada = await toolContext(db, { id: "u-ada", name: "Ada Lovelace" });
-    const eveActor = { userId: "u-eve", email: "u-eve@gmail.com", role: "editor" as const };
+    const eveActor = testActor({ userId: "u-eve", email: "u-eve@gmail.com", role: "editor" });
 
     const byHand = await createProject(db, eveActor, { name: "By hand", format: "short_9x16" });
     await applyProjectOps(db, eveActor, { projectId: byHand.id, baseVersion: 0, ops: [addText(0) as OpInput] });
     const byClaude = await createProject(db, eveActor, { name: "By Claude", format: "short_9x16" });
-    await applyProjectOps(db, claudeActorFor(eve.user), { projectId: byClaude.id, baseVersion: 0, ops: [addText(0) as OpInput] });
+    await applyProjectOps(db, eve.actor, { projectId: byClaude.id, baseVersion: 0, ops: [addText(0) as OpInput] });
 
     const signedIn = (await listProjectsTool(eve, {})).text.split("\n");
     expect(signedIn[0]).toBe(`Signed in as ${SHOWN} (editor). You can read and change projects.`);

@@ -9,7 +9,7 @@ const admin: CurrentUser = {
   email: "admin@seattlesolvers.com",
   name: "Admin",
   image: null,
-  role: "admin",
+  allowlistRole: "admin",
 };
 
 function form(fields: Record<string, string>): FormData {

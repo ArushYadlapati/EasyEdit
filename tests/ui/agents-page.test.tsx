@@ -5,6 +5,7 @@ import { AgentsView, type AgentsViewProps } from "@/app/(dashboard)/agents/agent
 import type { AgentActions, AgentConnection, AgentTokenSummary, CreateTokenResult } from "@/app/(dashboard)/agents/types";
 import { AccountMenu } from "@/components/dashboard/account-menu";
 import type { CurrentUser } from "@/lib/access-rules";
+import type { Role } from "@/lib/allowlist/service";
 import { AGENT_KINDS, AGENTS, fillTemplate } from "@/lib/connector/agents";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
@@ -15,6 +16,7 @@ vi.mock("@/lib/auth-client", () => ({ authClient: { signOut: vi.fn() } }));
 // The page's server side, for the page test: who is signed in and what they have connected.
 const server = vi.hoisted(() => ({
   user: null as CurrentUser | null,
+  teamRole: "editor" as Role | null, // their role in Seattle Solvers
   connections: [] as AgentConnection[],
   tokens: [] as AgentTokenSummary[],
 }));
@@ -25,6 +27,7 @@ vi.mock("@/lib/access", async () => ({
 vi.mock("@/db", () => ({ getDb: () => ({}) }));
 vi.mock("@/lib/connector/connections", () => ({ listAgentConnections: vi.fn(async () => server.connections) }));
 vi.mock("@/lib/connector/tokens", () => ({ MAX_TOKEN_NAME: 60, listAgentTokens: vi.fn(async () => server.tokens) }));
+vi.mock("@/lib/spaces/service", () => ({ roleIn: vi.fn(async () => server.teamRole) }));
 vi.mock("@/app/(dashboard)/agents/actions", () => ({
   disconnectAgentAction: vi.fn(),
   createTokenAction: vi.fn(),
@@ -340,8 +343,8 @@ describe("access tokens", () => {
 });
 
 describe("the AI agents page", () => {
-  const editor: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, role: "editor" };
-  const viewer: CurrentUser = { ...editor, id: "u2", role: "viewer" };
+  const editor: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
+  const viewer: CurrentUser = { ...editor, id: "u2", allowlistRole: "viewer" };
 
   beforeEach(() => {
     vi.stubEnv("BETTER_AUTH_URL", "https://easyedit.test/");
@@ -355,6 +358,7 @@ describe("the AI agents page", () => {
   it("is titled AI agents and shows the member's own server address and connections", async () => {
     expect(metadata.title).toBe("AI agents");
     server.user = editor;
+    server.teamRole = "editor";
     render(await AgentsPage());
     expect(screen.getByRole("heading", { level: 1, name: "AI agents" })).toBeTruthy();
     expect(screen.getByText(/each one acts as you and its changes are labeled with its name/)).toBeTruthy();
@@ -368,6 +372,7 @@ describe("the AI agents page", () => {
 
   it("tells a viewer their agents are read-only", async () => {
     server.user = viewer;
+    server.teamRole = "viewer";
     render(await AgentsPage());
     expect(screen.getByText("You're a viewer, so your agents can read projects but not change them.")).toBeTruthy();
   });

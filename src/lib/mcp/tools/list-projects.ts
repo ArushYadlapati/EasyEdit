@@ -8,9 +8,9 @@ import { oneLine } from "../one-line";
 import { ok, type ToolContext, type ToolResult } from "../types";
 
 export async function listProjectsTool(ctx: ToolContext, input: { cursor?: number }): Promise<ToolResult> {
-  const { user } = ctx;
-  const can = meetsRole(user.role, "editor") ? "You can read and change projects." : "You can read projects but not change them.";
-  const lines = [`Signed in as ${oneLine(user.name)} (${user.role}). ${can}`];
+  const { user, actor } = ctx;
+  const can = meetsRole(actor.role, "editor") ? "You can read and change projects." : "You can read projects but not change them.";
+  const lines = [`Signed in as ${oneLine(user.name)} (${actor.role}). ${can}`];
 
   const projects = await listProjects(ctx.db, ctx.actor);
   if (projects.length === 0) {

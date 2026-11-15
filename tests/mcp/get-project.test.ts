@@ -3,10 +3,11 @@ import { LIMITS } from "@/lib/limits";
 import { getProjectTool } from "@/lib/mcp/tools/get-project";
 import { applyProjectOps, createProject, deleteProject } from "@/lib/projects/service";
 import type { OpInput } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { addText, fillWithText, toolContext } from "./context";
 
-const grace = { userId: "u2", email: "u2@gmail.com", role: "editor" as const };
+const grace = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 
 describe("get_project", () => {
   it("prints the project with its version, frames, ids and styles", async () => {

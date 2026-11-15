@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { user } from "@/db/schema";
-import { claudeActorFor } from "@/lib/actor";
 import { listProjectsTool } from "@/lib/mcp/tools/list-projects";
 import { applyProjectOps, createProject, deleteProject } from "@/lib/projects/service";
 import type { OpInput } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { addText, toolContext } from "./context";
 
-const grace = { userId: "u2", email: "u2@gmail.com", role: "editor" as const };
+const grace = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 // The test database's clock counts whole milliseconds, so changes meant to sort apart need a gap.
 const nextMillisecond = () => new Promise((resolve) => setTimeout(resolve, 5));
 
@@ -21,7 +21,7 @@ describe("list_projects", () => {
     const gone = await createProject(db, grace, { name: "Deleted", format: "square_1x1" });
     await deleteProject(db, grace, gone.id);
     await nextMillisecond();
-    await applyProjectOps(db, claudeActorFor(ctx.user), { projectId: first.id, baseVersion: 0, ops: [addText(0) as OpInput] });
+    await applyProjectOps(db, ctx.actor, { projectId: first.id, baseVersion: 0, ops: [addText(0) as OpInput] });
 
     expect(await listProjectsTool(ctx, {})).toEqual({ isError: false, text: [
       "Signed in as Ada Lovelace (editor). You can read and change projects.",

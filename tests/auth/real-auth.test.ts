@@ -94,7 +94,7 @@ describe("the real auth instance from src/lib/auth.ts", () => {
     const { user, cookie } = await signIn(ctx, "Kid@Gmail.com", "g-2");
     expect(user.email).toBe("kid@gmail.com");
     expect((await auth.api.getSession({ headers: new Headers({ cookie }) }))?.user.email).toBe("kid@gmail.com");
-    expect(await requireUserApi(apiRequest(cookie), "editor")).toMatchObject({ id: user.id, role: "editor" });
+    expect(await requireUserApi(apiRequest(cookie), "editor")).toMatchObject({ id: user.id, allowlistRole: "editor" });
 
     await setRole(testDb, "kid@gmail.com", "viewer");
     expect(((await requireUserApi(apiRequest(cookie), "editor")) as Response).status).toBe(403);

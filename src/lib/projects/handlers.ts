@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
-import { actorFrom, requireRole } from "@/lib/actor";
+import { requireRole, type Actor } from "@/lib/actor";
 import { apiRoute } from "@/lib/api-route";
 import { LIMITS } from "@/lib/limits";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
@@ -21,9 +21,11 @@ import {
 import { readThumbnail, saveThumbnail, THUMBNAIL_TOO_LARGE } from "@/lib/projects/thumbnails";
 import { getUserNames } from "@/lib/projects/user-names";
 import type { ErrorBody } from "@/lib/service-error";
+import { actorIn } from "@/lib/spaces/access";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import type { OpInput } from "@/lib/timeline";
 
-// Authentication only: the service checks the role.
+// Authentication only: the role comes from the space, and the service checks it.
 export type HandlerDeps = {
   db: () => DB;
   auth: (req: Request) => Promise<CurrentUser | Response>;
@@ -60,6 +62,16 @@ function errorResponse(status: number, body: ErrorBody): Response {
 const invalid = (message: string) => errorResponse(400, { code: "INVALID", message });
 
 const notFound = (id: string) => errorResponse(404, { code: "NOT_FOUND", message: `Project "${id}" not found` });
+
+const SPACE_NOT_FOUND = { code: "NOT_FOUND", message: "Space not found" } as const;
+
+// The signed-in member acting in their space, or the response that refuses them. Not a member of it: 404.
+async function actorOf(deps: HandlerDeps, req: Request): Promise<Actor | Response> {
+  const user = await deps.auth(req);
+  if (user instanceof Response) return user;
+  // stage-1: space comes from Task 5
+  return (await actorIn(deps.db(), user, SEED_TEAM_ID)) ?? errorResponse(404, SPACE_NOT_FOUND);
+}
 
 function describeIssue(error: z.ZodError): string {
   const issue = error.issues[0];
@@ -145,27 +157,27 @@ async function readShare(req: Request): Promise<Share | null> {
 export function makeProjectHandlers(deps: HandlerDeps) {
   return {
     list: apiRoute(async (req: Request): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
-      return Response.json({ projects: await listProjects(deps.db(), actorFrom(user)) });
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
+      return Response.json({ projects: await listProjects(deps.db(), actor) });
     }),
 
     create: apiRoute(async (req: Request): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const json = await readJson(req);
       if (!json.ok) return invalid("Body must be valid JSON");
       const parsed = createBody.safeParse(json.value);
       if (!parsed.success) return invalid(describeIssue(parsed.error));
-      const { id } = await createProject(deps.db(), actorFrom(user), parsed.data);
+      const { id } = await createProject(deps.db(), actor, parsed.data);
       return Response.json({ id }, { status: 201 });
     }),
 
     get: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
-      const project = await getProject(deps.db(), actorFrom(user), id);
+      const project = await getProject(deps.db(), actor, id);
       if (!project) return notFound(id);
       return Response.json({
         id: project.id,
@@ -177,77 +189,77 @@ export function makeProjectHandlers(deps: HandlerDeps) {
     }),
 
     version: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
-      const version = await getProjectVersion(deps.db(), actorFrom(user), id);
+      const version = await getProjectVersion(deps.db(), actor, id);
       if (version === null) return notFound(id);
       return Response.json({ version });
     }),
 
     rename: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
       const json = await readJson(req);
       if (!json.ok) return invalid("Body must be valid JSON");
       const parsed = renameBody.safeParse(json.value);
       if (!parsed.success) return invalid(describeIssue(parsed.error));
-      return Response.json(await renameProject(deps.db(), actorFrom(user), id, parsed.data.name));
+      return Response.json(await renameProject(deps.db(), actor, id, parsed.data.name));
     }),
 
     remove: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
-      await deleteProject(deps.db(), actorFrom(user), id);
+      await deleteProject(deps.db(), actor, id);
       return new Response(null, { status: 204 });
     }),
 
     duplicate: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
-      const copy = await duplicateProject(deps.db(), actorFrom(user), id);
+      const copy = await duplicateProject(deps.db(), actor, id);
       return Response.json({ id: copy.id }, { status: 201 });
     }),
 
     // An unknown or deleted project records nothing and still answers 204: there is nothing to tell the editor.
     opened: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
-      await recordOpen(deps.db(), actorFrom(user), id);
+      await recordOpen(deps.db(), actor, id);
       return new Response(null, { status: 204 });
     }),
 
     // The editor's check for changes, carrying this tab's selection. The version is answered exactly as GET /version
     // answers it, and nothing about the selection can make the check fail.
     presence: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
-      const answer = await checkIn(deps.db(), actorFrom(user), id, await readShare(req));
+      const answer = await checkIn(deps.db(), actor, id, await readShare(req));
       if (!answer) return notFound(id);
       return Response.json(answer);
     }),
 
     // A tab going away. An unknown tab or project still answers 204: there is nothing to tell a closing page.
     leave: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
       const tab = new URL(req.url).searchParams.get("tab");
-      if (tab !== null && TAB_ID.test(tab)) await leavePresence(deps.db(), actorFrom(user), id, tab);
+      if (tab !== null && TAB_ID.test(tab)) await leavePresence(deps.db(), actor, id, tab);
       return new Response(null, { status: 204 });
     }),
 
     // A year-long cache only under the stored picture's own version, so another `v` never pins the wrong picture.
     getThumbnail: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
-      const stored = await readThumbnail(deps.db(), actorFrom(user), id);
+      const stored = await readThumbnail(deps.db(), actor, id);
       if (!stored) return notFound(id);
       const v = sinceParam.safeParse(new URL(req.url).searchParams.get("v"));
       return new Response(stored.jpeg, {
@@ -262,10 +274,9 @@ export function makeProjectHandlers(deps: HandlerDeps) {
     // The one handler that checks the role itself: a viewer's body, like a bad version or a declared length over the
     // limit, is refused before it is read. The service checks the role, the size and the type again.
     putThumbnail: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
-      const actor = actorFrom(user);
       requireRole(actor, "editor");
       const v = sinceParam.safeParse(new URL(req.url).searchParams.get("v"));
       if (!v.success) return invalid("v must be a non-negative integer");
@@ -283,15 +294,15 @@ export function makeProjectHandlers(deps: HandlerDeps) {
 export function makeOpsHandlers(deps: HandlerDeps) {
   return {
     getSince: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
       const since = sinceParam.safeParse(new URL(req.url).searchParams.get("since"));
       if (!since.success) return invalid("since must be a non-negative integer");
       const rawLimit = new URL(req.url).searchParams.get("limit");
       const limit = rawLimit === null ? undefined : limitParam.safeParse(rawLimit);
       if (limit && !limit.success) return invalid(`limit must be an integer from 1 to ${LIMITS.opsPageMax}`);
-      const result = await getOpsSince(deps.db(), actorFrom(user), id, since.data, limit?.data);
+      const result = await getOpsSince(deps.db(), actor, id, since.data, limit?.data);
       if (!result) return notFound(id);
       const names = result.entries.length
         ? await getUserNames(deps.db(), result.entries.map((e) => actorUserId(e.actor)))
@@ -301,14 +312,14 @@ export function makeOpsHandlers(deps: HandlerDeps) {
     }),
 
     postOps: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
-      const user = await deps.auth(req);
-      if (user instanceof Response) return user;
+      const actor = await actorOf(deps, req);
+      if (actor instanceof Response) return actor;
       const { id } = await ctx.params;
       const json = await readJson(req);
       if (!json.ok) return invalid("Body must be valid JSON");
       const parsed = opsBody.safeParse(json.value);
       if (!parsed.success) return invalid(describeIssue(parsed.error));
-      const { version, ops, inverse } = await applyProjectOps(deps.db(), actorFrom(user), {
+      const { version, ops, inverse } = await applyProjectOps(deps.db(), actor, {
         projectId: id,
         baseVersion: parsed.data.baseVersion,
         ops: parsed.data.ops as OpInput[],

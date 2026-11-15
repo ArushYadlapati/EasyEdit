@@ -3,21 +3,23 @@ import { user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { makeProjectHandlers } from "@/lib/projects/handlers";
 import { createProject, deleteProject } from "@/lib/projects/service";
+import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const EDITOR = { userId: "u1", email: "u1@gmail.com", role: "editor" } as const;
+const EDITOR = testActor({ role: "editor" });
 
 const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
 
 const YEAR = "private, max-age=31536000, immutable";
 
-function userWith(role: CurrentUser["role"]): CurrentUser {
-  return { id: "u1", email: "u1@gmail.com", name: "U1", image: null, role };
+function userWith(role: CurrentUser["allowlistRole"]): CurrentUser {
+  return { id: "u1", email: "u1@gmail.com", name: "U1", image: null, allowlistRole: role };
 }
 
-async function setup(role: CurrentUser["role"]) {
+async function setup(role: CurrentUser["allowlistRole"]) {
   const db = await makeTestDb();
   await db.insert(user).values({ id: "u1", name: "U1", email: "u1@gmail.com" });
+  await joinSpace(db, { id: "u1" }, role);
   const auth = vi.fn<(req: Request) => Promise<CurrentUser | Response>>(async () => userWith(role));
   const { id } = await createProject(db, EDITOR, { name: "P", format: "short_9x16" });
   return { db, auth, id, projects: makeProjectHandlers({ db: () => db, auth }) };
@@ -69,10 +71,10 @@ describe("the thumbnail route", () => {
   });
 
   it("a viewer reads pictures but cannot store one", async () => {
-    const { projects, auth, id } = await setup("editor");
+    const { db, projects, id } = await setup("editor");
     expect(await (await projects.putThumbnail(put(id, 0, JPEG_BYTES), ctx(id))).json()).toEqual({ saved: true });
 
-    auth.mockResolvedValue(userWith("viewer"));
+    await joinSpace(db, { id: "u1" }, "viewer");
     const req = put(id, 0, oversized());
     const refused = await projects.putThumbnail(req, ctx(id));
     expect(refused.status).toBe(403);

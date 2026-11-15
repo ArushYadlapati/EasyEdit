@@ -5,20 +5,24 @@ import type { AgentKind } from "@/lib/connector/agents";
 import { agentActorId } from "@/lib/projects/display-actor";
 import { ServiceError } from "@/lib/service-error";
 
-// Who is calling the service. Every caller, HTTP or not, passes one so the service can check the role itself.
-export type Actor = { userId: string; email: string; role: Role };
+// Who is calling the service, and in which space. `role` is the caller's role in `spaceId`. Every caller, HTTP or not,
+// passes one so the service can check the role itself.
+export type Actor = { userId: string; email: string; role: Role; spaceId: string };
 
-export function actorFrom(user: CurrentUser): Actor {
-  return { userId: user.id, email: user.email, role: user.role };
+// A space the user is a member of, with their role there.
+export type ActorSpace = { spaceId: string; role: Role };
+
+export function actorFrom(user: CurrentUser, space: ActorSpace): Actor {
+  return { userId: user.id, email: user.email, role: space.role, spaceId: space.spaceId };
 }
 
-// An AI agent acting for a member: the member's email and role, with the actor id the op log records.
-export function agentActorFor(user: CurrentUser, kind: AgentKind): Actor {
-  return { userId: agentActorId(kind, user.id), email: user.email, role: user.role };
+// An AI agent acting for a member: the member's email and role in the space, with the actor id the op log records.
+export function agentActorFor(user: CurrentUser, kind: AgentKind, space: ActorSpace): Actor {
+  return { userId: agentActorId(kind, user.id), email: user.email, role: space.role, spaceId: space.spaceId };
 }
 
-export function claudeActorFor(user: CurrentUser): Actor {
-  return agentActorFor(user, "claude");
+export function claudeActorFor(user: CurrentUser, space: ActorSpace): Actor {
+  return agentActorFor(user, "claude", space);
 }
 
 export function requireRole(actor: Actor, min: Role): void {

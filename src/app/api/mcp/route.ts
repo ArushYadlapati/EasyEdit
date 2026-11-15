@@ -36,8 +36,12 @@ export function POST(request: Request): Promise<Response> {
 }
 
 // The same server for both kinds of token, acting for the member through the named agent.
-function serve(request: Request, member: CurrentUser, agent: AgentKind): Promise<Response> {
-  const handler = createMcpHandler((server) => registerTools(server, toolContextFor(member, agent)), {
+async function serve(request: Request, member: CurrentUser, agent: AgentKind): Promise<Response> {
+  const ctx = await toolContextFor(member, agent);
+  // stage-1: space comes from Task 7
+  // Until then Seattle Solvers' members are the allowlist's, so a member missing from it is refused as one not on it.
+  if (ctx === null) return refusalResponse("not-allowlisted");
+  const handler = createMcpHandler((server) => registerTools(server, ctx), {
     serverInfo: { name: "easyedit", version: "1.0.0" },
     instructions: SERVER_INSTRUCTIONS,
   });

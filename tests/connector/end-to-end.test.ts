@@ -6,6 +6,7 @@ import { removeEntry } from "@/lib/allowlist/service";
 import { makeOpsHandlers } from "@/lib/projects/handlers";
 import { applyProjectOps, getProject } from "@/lib/projects/service";
 import { FormatId } from "@/lib/timeline";
+import { testActor } from "../helpers/actor";
 import { BASE_URL, MCP_URL, startConnectorApp, type ConnectorApp } from "../helpers/connector";
 import { insertAsset } from "../media/context";
 import { addText } from "../mcp/context";
@@ -31,7 +32,7 @@ async function converse(email: string) {
     const text = (result.content as { type: string; text?: string }[]).map((part) => part.text ?? "").join("\n");
     return { text, isError: result.isError === true };
   };
-  const person = { userId: c.userId, email, role: "editor" as const };
+  const person = testActor({ userId: c.userId, email, role: "editor" });
   return { c, client, call, person };
 }
 
@@ -88,7 +89,7 @@ describe("Claude and the website on one project", () => {
       expect((await call("list_projects")).text).toContain(`${id}  "Qualifier recap"  Vertical 9:16  version 2  changed just now by Claude (for Kid)`);
 
       // What the editor's Activity list reads, through the website's own route.
-      const site = makeOpsHandlers({ db: () => app.db, auth: async () => ({ id: c.userId, email: "kid@gmail.com", name: "Kid", image: null, role: "editor" as const }) });
+      const site = makeOpsHandlers({ db: () => app.db, auth: async () => ({ id: c.userId, email: "kid@gmail.com", name: "Kid", image: null, allowlistRole: "editor" as const }) });
       const ctx = { params: Promise.resolve({ id }) };
       const page = await (await site.getSince(new Request(`${BASE_URL}/api/projects/${id}/ops?since=0`), ctx)).json();
       expect(page.entries.map((e: { actor: string; actorName: string }) => [e.actor, e.actorName])).toEqual([

@@ -7,6 +7,7 @@ import { SCOPE_READ } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { NOT_SET_UP_BODY, STORAGE_DOWN_BODY, makeMediaHandlers, makeReadTokenHandler, type MediaHandlerDeps } from "@/lib/media/handlers";
 import { openUpload } from "@/lib/media/service";
+import { testActor } from "../helpers/actor";
 import { sources } from "../helpers/sources";
 import { AUDIO, IMAGE, VIDEO, mediaContext, readyAsset, sendAll, type MediaContext } from "./context";
 
@@ -16,7 +17,7 @@ const POSTER_BYTES = 50_000;
 const FORBIDDEN = { code: "FORBIDDEN", message: "Your role doesn't allow this." };
 const GONE = { code: "NOT_FOUND", message: "That file is no longer in the library." };
 
-const memberOf = (actor: Actor): CurrentUser => ({ id: actor.userId, email: actor.email, name: actor.email, image: null, role: actor.role });
+const memberOf = (actor: Actor): CurrentUser => ({ id: actor.userId, email: actor.email, name: actor.email, image: null, allowlistRole: actor.role });
 
 // The handlers of every route, as one member calls them.
 function handlersFor(ctx: MediaContext, actor: Actor, over: Partial<MediaHandlerDeps> = {}) {
@@ -112,9 +113,11 @@ describe("the media API", () => {
     expect((await api.list(request("GET", `/api/media?ids=,${ids(200)},`))).status).toBe(200); // an empty place names no file
     const refused = await answer(await api.list(request("GET", `/api/media?ids=${ids(201)}`)));
     expect(refused).toEqual(refusedAs(400, { code: "INVALID", message: "Ask for up to 200 files at a time." }));
-    // The handler counts what was sent, before anything is asked of the database.
-    const unasked = handlersFor(ctx, ctx.ada, { db: () => { throw new Error("the database was asked"); } });
-    expect((await unasked.list(request("GET", `/api/media?ids=${"a,".repeat(201)}`))).status).toBe(400);
+    // The handler counts what was sent before it reads the library: only the member's role in the space is looked up.
+    const reads = vi.fn(() => ctx.db);
+    const counted = handlersFor(ctx, ctx.ada, { db: reads });
+    expect((await counted.list(request("GET", `/api/media?ids=${"a,".repeat(201)}`))).status).toBe(400);
+    expect(reads).toHaveBeenCalledTimes(1);
   });
 
   it("renames, removes and marks a preview as failed", async () => {
@@ -641,7 +644,7 @@ describe("the route files", () => {
     const readToken = vi.fn();
     const makeMediaHandlers = vi.fn<(deps: MediaHandlerDeps) => unknown>(() => handlers);
     const makeReadTokenHandler = vi.fn<(deps: MediaHandlerDeps) => unknown>(() => readToken);
-    const requireUserApi = vi.fn(async () => memberOf({ userId: "u1", email: "u1@gmail.com", role: "viewer" }));
+    const requireUserApi = vi.fn(async () => memberOf(testActor({ role: "viewer" })));
     vi.doMock("@/lib/media/handlers", () => ({ makeMediaHandlers, makeReadTokenHandler }));
     vi.doMock("@/lib/access", () => ({ requireUserApi }));
 

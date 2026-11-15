@@ -4,10 +4,12 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { getDb } from "@/db";
-import { meetsRole, requireUser } from "@/lib/access";
+import { requireUser } from "@/lib/access";
 import { mcpResourceUrl } from "@/lib/connector/config";
 import { listAgentConnections } from "@/lib/connector/connections";
 import { listAgentTokens, MAX_TOKEN_NAME } from "@/lib/connector/tokens";
+import { roleIn } from "@/lib/spaces/service";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { createTokenAction, disconnectAgentAction, revokeTokenAction } from "./actions";
 import { AgentsView } from "./agents-view";
 import type { AgentActions } from "./types";
@@ -25,7 +27,12 @@ export default async function AgentsPage(): Promise<ReactNode> {
   // The page checks for itself: a layout is not run again on a client navigation.
   const me = await requireUser();
   const db = getDb();
-  const [connections, tokens] = await Promise.all([listAgentConnections(db, me.id), listAgentTokens(db, me.id)]);
+  // stage-1: space comes from Task 7
+  const [connections, tokens, teamRole] = await Promise.all([
+    listAgentConnections(db, me.id),
+    listAgentTokens(db, me.id),
+    roleIn(db, me.id, SEED_TEAM_ID),
+  ]);
 
   return (
     <main className="min-w-0 flex-1 overflow-y-auto">
@@ -47,7 +54,7 @@ export default async function AgentsPage(): Promise<ReactNode> {
             Connect Claude, ChatGPT or any AI agent that speaks MCP. You can connect as many as you like; each one acts as
             you and its changes are labeled with its name.
           </p>
-          {!meetsRole(me.role, "editor") && (
+          {teamRole === "viewer" && (
             <p className="text-[13px] leading-5 text-ed-muted">
               You&apos;re a viewer, so your agents can read projects but not change them.
             </p>

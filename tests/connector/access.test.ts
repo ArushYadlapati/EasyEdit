@@ -27,10 +27,10 @@ describe("who is calling", () => {
   it("a connected member resolves with the role they have now, and the agent their app is", async () => {
     const c = await app.connect("ada@gmail.com");
     expect(await who(c)).toEqual({
-      ok: true, user: { id: c.userId, email: "ada@gmail.com", name: "Ada", image: null, role: "editor" }, agent: "claude",
+      ok: true, user: { id: c.userId, email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" }, agent: "claude",
     });
     await setRole(app.db, "ada@gmail.com", "viewer");
-    expect(await who(c)).toMatchObject({ ok: true, user: { role: "viewer" } });
+    expect(await who(c)).toMatchObject({ ok: true, user: { allowlistRole: "viewer" } });
     expect(await connectedEmails(app.db)).toContain("ada@gmail.com");
   });
 

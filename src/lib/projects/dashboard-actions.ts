@@ -1,17 +1,22 @@
 import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
-import { actorFrom, type Actor } from "@/lib/actor";
+import type { Actor } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
 import { PROJECT_GONE } from "@/lib/dashboard/view";
 import { createFolder, deleteFolder, FOLDER_GONE, moveProject, renameFolder } from "@/lib/projects/folders";
 import { createProject, deleteProject, duplicateProject, renameProject } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
+import { actorIn } from "@/lib/spaces/access";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 
 export type FormState = { error?: string };
 
+// Not a member of the space (any more).
+const SPACE_GONE = "You're not a member of this space.";
+
 export type DashboardActionDeps = {
   db: () => DB;
-  requireUser: (min?: Role) => Promise<CurrentUser>; // called with no argument; the service checks the role
+  requireUser: (min?: Role) => Promise<CurrentUser>; // called with no argument; the role comes from the space
   revalidate: (path: string) => void;
   redirect: (path: string) => never;
 };
@@ -31,9 +36,12 @@ const side = (formData: FormData, key: string) => {
 const folder = (formData: FormData) => field(formData, "folderId") || null;
 
 export function makeDashboardActions(deps: DashboardActionDeps) {
-  // Runs one service call as the signed-in user. A ServiceError becomes a message for the page; anything else rethrows.
+  // Runs one service call as the signed-in user, in the space. A ServiceError becomes a message for the page; anything
+  // else rethrows.
   async function run<T>(call: (db: DB, actor: Actor) => Promise<T>): Promise<{ value: T } | { error: string }> {
-    const actor = actorFrom(await deps.requireUser());
+    // stage-1: space comes from Task 5
+    const actor = await actorIn(deps.db(), await deps.requireUser(), SEED_TEAM_ID);
+    if (!actor) return { error: SPACE_GONE };
     try {
       return { value: await call(deps.db(), actor) };
     } catch (error) {

@@ -7,21 +7,23 @@ import type { Actor } from "@/lib/actor";
 import { makeProjectHandlers } from "@/lib/projects/handlers";
 import { checkIn, createPresenceBreaker } from "@/lib/projects/presence";
 import { createProject, deleteProject } from "@/lib/projects/service";
+import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-const owner: Actor = { userId: "u1", email: "u1@gmail.com", role: "editor" };
-const grace: Actor = { userId: "u2", email: "u2@gmail.com", role: "editor" };
+const owner: Actor = testActor({ role: "editor" });
+const grace: Actor = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 
-function userWith(role: CurrentUser["role"]): CurrentUser {
-  return { id: "u1", email: "u1@gmail.com", name: "U1", image: null, role };
+function userWith(role: CurrentUser["allowlistRole"]): CurrentUser {
+  return { id: "u1", email: "u1@gmail.com", name: "U1", image: null, allowlistRole: role };
 }
 
-async function setup(role: CurrentUser["role"]) {
+async function setup(role: CurrentUser["allowlistRole"]) {
   const db = await makeTestDb();
   await db.insert(user).values([
     { id: "u1", name: "U1", email: "u1@gmail.com" },
     { id: "u2", name: "Grace", email: "u2@gmail.com" },
   ]);
+  await joinSpace(db, { id: "u1" }, role);
   const auth = vi.fn<(req: Request) => Promise<CurrentUser | Response>>(async () => userWith(role));
   const { id } = await createProject(db, owner, { name: "P", format: "short_9x16" });
   return { db, id, auth, projects: makeProjectHandlers({ db: () => db, auth }) };
