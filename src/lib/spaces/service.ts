@@ -119,6 +119,8 @@ export async function spaceOfFolder(db: DB, folderId: string): Promise<string | 
 }
 
 const SLUG_INDEX = "organization_slug_unique";
+const SLUG_ATTEMPTS = 50;
+const SLUG_EXHAUSTED = "Couldn't make a web address for that name. Try a different name.";
 const TEAM_NAME_INVALID = `Give the team a name of up to ${LIMITS.teamNameChars} characters.`;
 
 // A new team with the creator as its admin. The address comes from the name, made unique (case-insensitively) with -2,
@@ -128,16 +130,20 @@ export async function createTeam(db: DB, input: { name: string; byUserId: string
   const name = input.name.trim();
   if (name.length < 1 || name.length > LIMITS.teamNameChars) throw new ServiceError("INVALID", 400, TEAM_NAME_INVALID);
   const now = input.now ?? new Date();
+  const stamp = now.toISOString();
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  // The creator is recorded in the organization's metadata, so only teams this person made count, and leaving a team or
+  // being removed from it does not give the count back.
+  const metadata = JSON.stringify({ createdBy: input.byUserId });
   const made = await db.execute(sql`
-    select count(*)::int as n from member m join organization o on o.id = m.organization_id
-    where m.user_id = ${input.byUserId} and m.id like 'm\\_%' and o.kind = 'team' and o.created_at > ${since.toISOString()}
+    select count(*)::int as n from organization
+    where kind = 'team' and metadata = ${metadata} and created_at > ${since.toISOString()}
   `);
   if ((rowsOf<{ n: number }>(made)[0]?.n ?? 0) >= LIMITS.teamsPerDay) {
     throw new ServiceError("LIMIT_EXCEEDED", 400, `You've made ${LIMITS.teamsPerDay} teams today. Try again tomorrow.`);
   }
   const base = slugFromName(name);
-  for (let n = 1; ; n++) {
+  for (let n = 1; n <= SLUG_ATTEMPTS; n++) {
     const slug = withSuffix(base, n);
     if (isReservedSlug(slug)) continue;
     const taken = await db.execute(sql`select 1 from organization where lower(slug) = ${slug}`);
@@ -146,11 +152,11 @@ export async function createTeam(db: DB, input: { name: string; byUserId: string
     try {
       await db.execute(sql`
         with org as (
-          insert into organization (id, name, slug, created_at, kind)
-          values (${id}, ${name}, ${slug}, ${now.toISOString()}, 'team')
+          insert into organization (id, name, slug, created_at, kind, metadata)
+          values (${id}, ${name}, ${slug}, ${stamp}, 'team', ${metadata})
         )
         insert into member (id, organization_id, user_id, role, created_at)
-        values (${"m_" + nanoid(12)}, ${id}, ${input.byUserId}, 'admin', ${now.toISOString()})
+        values (${"m_" + nanoid(12)}, ${id}, ${input.byUserId}, 'admin', ${stamp})
       `);
     } catch (error) {
       if (failedOn(error, "23505", SLUG_INDEX)) continue;
@@ -158,4 +164,5 @@ export async function createTeam(db: DB, input: { name: string; byUserId: string
     }
     return { id, slug, name, kind: "team", role: "admin" };
   }
+  throw new ServiceError("CONFLICT", 409, SLUG_EXHAUSTED);
 }

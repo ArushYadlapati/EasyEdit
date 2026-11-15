@@ -108,6 +108,43 @@ describe("createTeam", () => {
     });
   });
 
+  it("still blocks someone who made ten and then left one", async () => {
+    const db = await setup();
+    const teams = [];
+    for (let i = 0; i < LIMITS.teamsPerDay; i++) teams.push(await createTeam(db, { name: `Mine ${i}`, byUserId: "u1" }));
+    await db.delete(member).where(eq(member.organizationId, teams[0]!.id));
+    await expect(createTeam(db, { name: "Again", byUserId: "u1" })).rejects.toMatchObject({ code: "LIMIT_EXCEEDED" });
+  });
+
+  it("lets someone added to ten recent teams still make one", async () => {
+    const db = await setup();
+    await db.insert(user).values({ id: "u2", name: "U2", email: "u2@gmail.com" });
+    for (let i = 0; i < LIMITS.teamsPerDay; i++) {
+      const team = await createTeam(db, { name: `Theirs ${i}`, byUserId: "u2" });
+      await db.insert(member).values({ id: `m_added${i}`, organizationId: team.id, userId: "u1", role: "editor", createdAt: new Date() });
+    }
+    await expect(createTeam(db, { name: "Mine", byUserId: "u1" })).resolves.toMatchObject({ role: "admin" });
+  });
+
+  it("writes the same time to the team and its creator's row", async () => {
+    const db = await setup();
+    const team = await createTeam(db, { name: "Stamped", byUserId: "u1", now: new Date("2026-11-14T12:00:00.123Z") });
+    const [o] = await db.select().from(organization).where(eq(organization.id, team.id));
+    const [m] = await db.select().from(member).where(eq(member.organizationId, team.id));
+    expect(o!.createdAt.getTime()).toBe(m!.createdAt.getTime());
+  });
+
+  it("gives up after 50 slug attempts with a plain message", async () => {
+    const db = await setup();
+    for (let n = 1; n <= 60; n++) {
+      const slug = n === 1 ? "robots" : `robots-${n}`;
+      await db.insert(organization).values({ id: `team_c${n}`, name: "C", slug, createdAt: new Date(), kind: "team" });
+    }
+    await expect(createTeam(db, { name: "Robots", byUserId: "u1" })).rejects.toMatchObject({
+      message: "Couldn't make a web address for that name. Try a different name.",
+    });
+  });
+
   it("counts only the teams this person made, not ones they were added to", async () => {
     const db = await setup();
     await db.insert(user).values({ id: "u2", name: "U2", email: "u2@gmail.com" });
