@@ -28,7 +28,10 @@ export type ConnectHandlerDeps = {
 // so it can't be read or made up. Only /api/storage gets it.
 export const OAUTH_COOKIE = "ee_storage_oauth";
 const COOKIE_PATH = "/api/storage";
-const LIFE_SECONDS = 600;
+const LIFE_SECONDS = 600; // how long a started connect is good for (`exp`)
+// The cookie outlives `exp`, so a connect that took too long can still be told apart from one never started here, and
+// can go back to its space.
+const COOKIE_SECONDS = 3600;
 
 const startedShape = z.object({
   state: z.string().min(1),
@@ -40,12 +43,10 @@ const startedShape = z.object({
 });
 type Started = z.infer<typeof startedShape>;
 
-const NOT_CONFIGURED_BODY = { code: "STORAGE_NOT_CONFIGURED", message: "Google Drive storage isn't set up on this server." } as const;
-const SPACE_NOT_FOUND_BODY = { code: "NOT_FOUND", message: "Space not found" } as const;
-const REFUSED_BODY = {
-  code: "STORAGE_CONNECT_REFUSED",
-  message: "This Google Drive connection wasn't started here, or it took too long. Start again from storage settings.",
-} as const;
+// Both routes are reached by the browser navigating, so every answer is a redirect to a page, never JSON. Whatever
+// can't be trusted to name a space lands on this one fixed page.
+const REFUSED_PAGE = "/dashboard?storage=refused";
+const FAILED_PAGE = "/dashboard?storage=failed";
 
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 
@@ -100,26 +101,39 @@ async function mySpace(db: DB, userId: string, spaceId: string): Promise<MySpace
 
 const storagePage = (space: MySpace, note: string) => `/s/${slugFor(space)}/settings/storage?storage=${note}`;
 
-// Only an admin of a space connects storage for it (a personal space's owner is its admin). Anyone else gets the
-// answer an unknown space gets.
+// A redirect to a path of this app: on the configured address when there is one (never the request's Host), else as a
+// path the browser resolves against the address it used.
+function goTo(cfg: StorageConfig | null, path: string): Response {
+  const location = cfg ? new URL(path, new URL(cfg.redirectUri).origin).toString() : path;
+  return new Response(null, { status: 302, headers: { location, "cache-control": "no-store" } });
+}
+
+// Anything that is not already a redirect (a signed-out or role answer from `auth`, apiRoute's 500) becomes one to a
+// fixed page.
+function asPage(cfg: StorageConfig | null, res: Response): Response {
+  if (res.status >= 300 && res.status < 400 && res.headers.has("location")) return res;
+  return goTo(cfg, res.status >= 500 ? FAILED_PAGE : REFUSED_PAGE);
+}
+
+// Only an admin of a space connects storage for it (a personal space's owner is its admin). Anyone else, a
+// non-member of the space or a space that doesn't exist, lands on the same fixed refused page.
 export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Request): Promise<Response>; callback(req: Request): Promise<Response> } {
   const now = deps.now ?? (() => new Date());
   const fetchFn = deps.fetch ?? fetch;
-  const notFound = () => Response.json(SPACE_NOT_FOUND_BODY, { status: 404 });
   const adminSpace = async (userId: string, spaceId: string | null) => {
     const space = spaceId ? await mySpace(deps.db(), userId, spaceId) : null;
     return space?.role === "admin" ? space : null;
   };
 
   // GET /api/storage/connect?space=<id>[&hint=<email>][&return=/s/…]
-  const connect = apiRoute(async (req: Request): Promise<Response> => {
+  const startConnect = apiRoute(async (req: Request): Promise<Response> => {
     const user = await deps.auth(req);
     if (user instanceof Response) return user;
     const cfg = deps.config();
-    if (!cfg) return Response.json(NOT_CONFIGURED_BODY, { status: 409 });
     const params = new URL(req.url).searchParams;
     const space = await adminSpace(user.id, params.get("space") || null);
-    if (!space) return notFound();
+    if (!space) return goTo(cfg, REFUSED_PAGE);
+    if (!cfg) return goTo(cfg, storagePage(space, "not-configured"));
 
     const state = randomBytes(32).toString("base64url");
     const { verifier, challenge } = pkcePair();
@@ -129,22 +143,25 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     const location = authorizeUrl(cfg, { state, codeChallenge: challenge, ...(hint && EMAIL.test(hint) ? { loginHint: hint } : {}) });
     return new Response(null, {
       status: 302,
-      headers: { location, "set-cookie": cookieLine(req, seal(JSON.stringify(started), cfg.tokenKey), LIFE_SECONDS), "cache-control": "no-store" },
+      headers: { location, "set-cookie": cookieLine(req, seal(JSON.stringify(started), cfg.tokenKey), COOKIE_SECONDS), "cache-control": "no-store" },
     });
   });
+  const connect = async (req: Request): Promise<Response> => asPage(deps.config(), await startConnect(req));
 
-  // Everything after the cookie has been checked: what Google answered, the code exchanged, the connection saved.
+  // Everything after the person is known: the cookie checked, what Google answered, the code exchanged, the connection
+  // saved. Nothing is stored until the code is exchanged and drive.file was granted.
   async function finish(req: Request, cfg: StorageConfig, user: CurrentUser): Promise<Response> {
     const params = new URL(req.url).searchParams;
     const started = unseal(cookieFrom(req), cfg.tokenKey);
     const state = params.get("state");
-    const refused = () => Response.json(REFUSED_BODY, { status: 400 });
-    if (!started || !state || !sameState(state, started.state)) return refused();
-    if (started.exp <= now().getTime() || started.userId !== user.id) return refused();
+    const refused = () => goTo(cfg, REFUSED_PAGE);
+    if (!started || !state || !sameState(state, started.state) || started.userId !== user.id) return refused();
     const space = await adminSpace(user.id, started.spaceId);
-    if (!space) return notFound();
+    if (!space) return refused();
+    // Took too long on Google's screen: the cookie is ours, theirs and for a space they still run, so back to it.
+    if (started.exp <= now().getTime()) return goTo(cfg, storagePage(space, "expired"));
 
-    const go = (path: string) => new Response(null, { status: 302, headers: { location: new URL(path, new URL(cfg.redirectUri).origin).toString(), "cache-control": "no-store" } });
+    const go = (path: string) => goTo(cfg, path);
     const error = params.get("error");
     if (error) return go(storagePage(space, error === "access_denied" ? "cancelled" : "failed"));
     const code = params.get("code");
@@ -183,14 +200,14 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     const user = await deps.auth(req);
     if (user instanceof Response) return user;
     const cfg = deps.config();
-    return cfg ? finish(req, cfg, user) : Response.json(NOT_CONFIGURED_BODY, { status: 409 });
+    return cfg ? finish(req, cfg, user) : goTo(cfg, REFUSED_PAGE);
   });
-  // Every answer clears the cookie, a failure too: it is used once.
+  // Every answer is a page and clears the cookie, a failure too: it is used once.
   const callback = async (req: Request): Promise<Response> => {
-    const res = await answer(req);
+    const res = asPage(deps.config(), await answer(req));
     const headers = new Headers(res.headers);
     headers.append("set-cookie", cookieLine(req, "", 0));
-    return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+    return new Response(null, { status: res.status, headers });
   };
 
   return { connect, callback };

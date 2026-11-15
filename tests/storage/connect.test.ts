@@ -27,7 +27,7 @@ const cfg: StorageConfig = {
   projectId: "easyedit-test",
 };
 const COOKIE = "ee_storage_oauth";
-const NOT_FOUND = { code: "NOT_FOUND", message: "Space not found" };
+const REFUSED = `${BASE}/dashboard?storage=refused`;
 const STORAGE_PAGE = `${BASE}/s/seattle-solvers/settings/storage`;
 
 // Google's token address, answering a code. What it grants and who signs in can be changed per test.
@@ -87,6 +87,14 @@ const back = (ctx: Ctx, query: string, cookie?: string) =>
 
 const rows = (db: DB) => db.select().from(driveConnection);
 
+// A page, never JSON: a redirect with nothing in its body.
+async function expectPage(res: Response, location: string) {
+  expect(res.status).toBe(302);
+  expect(res.headers.get("location")).toBe(location);
+  expect(res.headers.get("content-type") ?? "").not.toMatch(/json/);
+  expect(await res.text()).toBe("");
+}
+
 function expectCleared(res: Response) {
   const cleared = cookiesOf(res).find((line) => line.startsWith(`${COOKIE}=`));
   expect(cleared).toBeDefined();
@@ -109,7 +117,7 @@ describe("connect", () => {
     expect(setCookie).toMatch(/HttpOnly/);
     expect(setCookie).toMatch(/SameSite=Lax/);
     expect(setCookie).toMatch(/Path=\/api\/storage(;|$)/);
-    expect(setCookie).toMatch(/Max-Age=600/);
+    expect(setCookie).toMatch(/Max-Age=3600/); // outlives exp, so a late return can still find its space
     expect(setCookie).toMatch(/Secure/);
     const value = valueOf(setCookie);
     expect(value).not.toContain(state); // sealed: it can't be read
@@ -124,35 +132,36 @@ describe("connect", () => {
     expect(setCookie).not.toMatch(/Secure/);
   });
 
-  it("answers a space the person isn't admin of exactly like an unknown one", async () => {
+  it("sends a space the person isn't admin of to the same fixed page as an unknown one", async () => {
     const ctx = await setup();
     await joinSpace(ctx.db, { id: "u1" }, "editor");
-    const answers = await Promise.all(
-      [`space=${SEED_TEAM_ID}`, "space=team_nope", "space=" + personalSpaceId("u2"), ""].map((q) => ctx.handlers.connect(new Request(`${BASE}/api/storage/connect?${q}`))),
-    );
-    for (const res of answers) {
-      expect(res.status).toBe(404);
-      expect(await res.json()).toEqual(NOT_FOUND);
+    for (const q of [`space=${SEED_TEAM_ID}`, "space=team_nope", "space=" + personalSpaceId("u2"), ""]) {
+      const res = await ctx.handlers.connect(new Request(`${BASE}/api/storage/connect?${q}`));
+      await expectPage(res, REFUSED);
       expect(cookiesOf(res)).toEqual([]);
     }
   });
 
-  it("answers 409 when storage isn't configured", async () => {
+  it("when storage isn't configured: an admin goes to the space's storage page, anyone else to the fixed page", async () => {
     const ctx = await setup({ config: null });
-    const res = await ctx.handlers.connect(new Request(`${BASE}/api/storage/connect?space=${SEED_TEAM_ID}`));
-    expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ code: "STORAGE_NOT_CONFIGURED" });
+    const connect = (q: string) => ctx.handlers.connect(new Request(`${BASE}/api/storage/connect?${q}`));
+    await expectPage(await connect(`space=${SEED_TEAM_ID}`), "/s/seattle-solvers/settings/storage?storage=not-configured");
+    await expectPage(await connect(`space=${personalSpaceId("u1")}`), "/s/personal/settings/storage?storage=not-configured");
+    await expectPage(await connect("space=team_nope"), "/dashboard?storage=refused");
+    await expectPage(await connect(`space=${personalSpaceId("u2")}`), "/dashboard?storage=refused");
+    await joinSpace(ctx.db, { id: "u1" }, "editor");
+    await expectPage(await connect(`space=${SEED_TEAM_ID}`), "/dashboard?storage=refused");
     const cb = await back(ctx, "code=c&state=s");
-    expect(cb.status).toBe(409);
-    expect(await cb.json()).toMatchObject({ code: "STORAGE_NOT_CONFIGURED" });
+    await expectPage(cb, "/dashboard?storage=refused");
+    expectCleared(cb);
   });
 
-  it("passes on a signed-out answer", async () => {
+  it("a signed-out or refused person lands on the fixed page, not the auth answer's JSON", async () => {
     const db = await makeTestDb();
     const handlers = makeConnectHandlers({ db: () => db, auth: async () => Response.json({ code: "UNAUTHENTICATED" }, { status: 401 }), config: () => cfg, setUp: async () => {} });
-    expect((await handlers.connect(new Request(`${BASE}/api/storage/connect?space=${SEED_TEAM_ID}`))).status).toBe(401);
+    await expectPage(await handlers.connect(new Request(`${BASE}/api/storage/connect?space=${SEED_TEAM_ID}`)), REFUSED);
     const cb = await handlers.callback(new Request(`${BASE}/api/storage/callback?code=c&state=s`));
-    expect(cb.status).toBe(401);
+    await expectPage(cb, REFUSED);
     expectCleared(cb);
   });
 
@@ -168,8 +177,7 @@ describe("connect", () => {
 
 describe("the callback refuses anything it didn't start", () => {
   async function expectRefused(ctx: Ctx, res: Response) {
-    expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ code: "STORAGE_CONNECT_REFUSED" });
+    await expectPage(res, REFUSED);
     expectCleared(res);
     expect(await rows(ctx.db)).toEqual([]);
     expect(ctx.setUp).not.toHaveBeenCalled();
@@ -199,10 +207,26 @@ describe("the callback refuses anything it didn't start", () => {
     await expectRefused(ctx, await back(ctx, "code=c", cookie));
   });
 
-  it("expired", async () => {
+  it("expired, for the same person still admin: back to the space's storage page, nothing stored", async () => {
     const ctx = await setup();
     const { state, cookie } = await start(ctx);
     ctx.clock.now = new Date(ctx.clock.now.getTime() + 600_001);
+    const res = await back(ctx, `code=c&state=${state}`, cookie);
+    await expectPage(res, `${STORAGE_PAGE}?storage=expired`);
+    expectCleared(res);
+    expect(ctx.google.exchanges).toEqual([]);
+    expect(await rows(ctx.db)).toEqual([]);
+    expect(ctx.setUp).not.toHaveBeenCalled();
+  });
+
+  it("expired, for another person or one no longer admin: the fixed page", async () => {
+    const ctx = await setup();
+    const { state, cookie } = await start(ctx);
+    ctx.clock.now = new Date(ctx.clock.now.getTime() + 600_001);
+    ctx.signedIn.user = testUser({ id: "u2" });
+    await expectRefused(ctx, await back(ctx, `code=c&state=${state}`, cookie));
+    ctx.signedIn.user = testUser({ id: "u1" });
+    await joinSpace(ctx.db, { id: "u1" }, "editor");
     await expectRefused(ctx, await back(ctx, `code=c&state=${state}`, cookie));
   });
 
@@ -217,13 +241,7 @@ describe("the callback refuses anything it didn't start", () => {
     const ctx = await setup();
     const { state, cookie } = await start(ctx);
     await joinSpace(ctx.db, { id: "u1" }, "editor");
-    const res = await back(ctx, `code=c&state=${state}`, cookie);
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual(NOT_FOUND);
-    expectCleared(res);
-    expect(await rows(ctx.db)).toEqual([]);
-    expect(ctx.setUp).not.toHaveBeenCalled();
-    expect(ctx.google.exchanges).toEqual([]);
+    await expectRefused(ctx, await back(ctx, `code=c&state=${state}`, cookie));
   });
 
   it("missing drive.file scope: nothing stored, back to storage with needs-drive", async () => {
@@ -231,8 +249,7 @@ describe("the callback refuses anything it didn't start", () => {
     ctx.google.grant.scope = "openid https://www.googleapis.com/auth/userinfo.email";
     const { state, cookie } = await start(ctx);
     const res = await back(ctx, `code=c&state=${state}`, cookie);
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe(`${STORAGE_PAGE}?storage=needs-drive`);
+    await expectPage(res, `${STORAGE_PAGE}?storage=needs-drive`);
     expectCleared(res);
     expect(ctx.google.exchanges).toHaveLength(1);
     expect(await rows(ctx.db)).toEqual([]);
@@ -243,8 +260,7 @@ describe("the callback refuses anything it didn't start", () => {
     const ctx = await setup();
     const { state, cookie } = await start(ctx);
     const res = await back(ctx, `error=access_denied&state=${state}`, cookie);
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe(`${STORAGE_PAGE}?storage=cancelled`);
+    await expectPage(res, `${STORAGE_PAGE}?storage=cancelled`);
     expectCleared(res);
     expect(ctx.google.exchanges).toEqual([]);
     expect(await rows(ctx.db)).toEqual([]);
@@ -256,7 +272,7 @@ describe("the callback refuses anything it didn't start", () => {
     const { state, cookie } = await start(ctx);
     ctx.google.grant.refreshToken = ""; // no refresh token in the answer
     const res = await back(ctx, `code=c&state=${state}`, cookie);
-    expect(res.headers.get("location")).toBe(`${STORAGE_PAGE}?storage=failed`);
+    await expectPage(res, `${STORAGE_PAGE}?storage=failed`);
     expectCleared(res);
     expect(await rows(ctx.db)).toEqual([]);
     expect(ctx.setUp).not.toHaveBeenCalled();
@@ -268,8 +284,7 @@ describe("the callback", () => {
     const ctx = await setup();
     const { state, cookie, google } = await start(ctx);
     const res = await back(ctx, `code=the-code&state=${state}`, cookie);
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe(`${STORAGE_PAGE}?storage=connected`);
+    await expectPage(res, `${STORAGE_PAGE}?storage=connected`);
     expectCleared(res);
 
     const [exchange] = ctx.google.exchanges;
@@ -324,9 +339,20 @@ describe("the callback", () => {
     ctx.setUp.mockRejectedValueOnce(new ServiceError("CONFLICT", 409, "in use"));
     const { state, cookie } = await start(ctx);
     const res = await back(ctx, `code=c&state=${state}`, cookie);
-    expect(res.headers.get("location")).toBe(`${STORAGE_PAGE}?storage=failed`);
+    await expectPage(res, `${STORAGE_PAGE}?storage=failed`);
     expectCleared(res);
     expect(await rows(ctx.db)).toHaveLength(1);
+  });
+
+  it("an unexpected failure lands on a fixed page too, and still clears the cookie", async () => {
+    const ctx = await setup();
+    ctx.setUp.mockRejectedValueOnce(new Error("a bug"));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { state, cookie } = await start(ctx);
+    const res = await back(ctx, `code=c&state=${state}`, cookie);
+    quiet.mockRestore();
+    await expectPage(res, `${BASE}/dashboard?storage=failed`);
+    expectCleared(res);
   });
 });
 
