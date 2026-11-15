@@ -64,7 +64,9 @@ export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDrop
   return (
     <div
       className={cx(
-        "flex shrink-0 flex-row items-center gap-1 overflow-x-auto border-b border-ed-line bg-ed-panel px-4 py-2",
+        // relative: the headings are sr-only on a narrow window (absolutely placed), and without a positioned row they
+        // sit past its right edge and make the whole page scroll sideways.
+        "relative flex shrink-0 flex-row items-center gap-1 overflow-x-auto border-b border-ed-line bg-ed-panel px-4 py-2",
         "md:w-56 md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-b-0 md:px-2 md:py-3",
       )}
     >
