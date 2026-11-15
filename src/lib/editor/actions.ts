@@ -13,6 +13,7 @@ import {
   removeTrackOps,
   renameTrackOps,
   reorderTrackOps,
+  razorOps,
   splitOps,
   toggleTrackOps,
   type TrackSwitch,
@@ -133,6 +134,14 @@ export function splitAtPlayhead(store: EditorStore): void {
   const ops = splitOps(state.doc, state.playhead, state.selection.clipIds);
   if (ops.length === 0) state.notify("info", MESSAGES.nothingToSplit);
   else state.edit(ops, "split");
+}
+
+// The Razor's click: cuts the clip at that frame. A frame on its edge, or a locked track, cuts nothing and says nothing.
+export function splitClipAt(store: EditorStore, clipId: string, at: number): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const ops = razorOps(state.doc, clipId, at);
+  if (ops.length > 0) state.edit(ops, "split");
 }
 
 // The selected clips, or with no clip selected the selected guide (a guide has no time, so ripple changes nothing).

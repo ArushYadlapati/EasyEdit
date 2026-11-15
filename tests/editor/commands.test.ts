@@ -6,7 +6,7 @@ import {
 import { CLIPBOARD_KEY, copyClips, createClipboard, pasteItems } from "@/lib/editor/clipboard";
 import {
   addTrackOps, copyTrackName, deleteOps, duplicateTrackOps, edgeFrames, moveOps, moveTrackOps, nearestEdge, removeTrackOps, renameTrackOps,
-  reorderTrackOps, splitOps, toggleTrackOps,
+  razorFrame, razorOps, reorderTrackOps, splitOps, toggleTrackOps,
 } from "@/lib/editor/commands";
 import { displayRows } from "@/lib/editor/geometry";
 import { MESSAGES } from "@/lib/editor/messages";
@@ -778,5 +778,33 @@ describe("typing text in place", () => {
     store.getState().setGesture([{ op: "move_clip", clipId: "x2", start: 95 }]);
     editTextInPlace(store, "x1");
     expect(store.getState()).toMatchObject({ textEditId: null, notice: null, selection: { clipIds: [] } });
+  });
+});
+
+describe("the razor", () => {
+  // t1's x1 runs 0-60 in sampleDoc; one with 10-40 is made here.
+  const docWith = (start: number, duration: number, locked = false) => {
+    const d = sampleDoc();
+    d.tracks[1].clips = [text("x9", start, duration)];
+    d.tracks[1].locked = locked;
+    return d;
+  };
+
+  it("cuts a clip at a frame inside it", () => {
+    expect(razorOps(docWith(10, 30), "x9", 25)).toEqual([{ op: "split_clip", clipId: "x9", at: 25 }]);
+  });
+
+  it("does nothing at the clip's first or last frame, or on a locked track", () => {
+    expect(razorOps(docWith(10, 30), "x9", 10)).toEqual([]);
+    expect(razorOps(docWith(10, 30), "x9", 40)).toEqual([]);
+    expect(razorOps(docWith(10, 30, true), "x9", 25)).toEqual([]);
+    expect(razorOps(docWith(10, 30), "nope", 25)).toEqual([]);
+  });
+
+  it("finds the frame under the pointer, pulled onto a nearby target", () => {
+    // zoom 2 px per frame: 30 px into the lane is frame 15.
+    expect(razorFrame(30, 2, [], 6)).toBe(15);
+    expect(razorFrame(30, 2, [17], 6)).toBe(17); // 4 px away
+    expect(razorFrame(30, 2, [19], 6)).toBe(15); // 8 px away
   });
 });

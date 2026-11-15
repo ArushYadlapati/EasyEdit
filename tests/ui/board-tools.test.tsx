@@ -114,10 +114,7 @@ const X = (f: number) => 216 + 540 * f;
 const Y = (f: number) => 56 + 960 * f;
 const overlay = () => document.querySelector<HTMLElement>("[data-canvas-overlay]")!;
 const press = (x: number, y: number) => fireEvent.pointerDown(overlay(), { clientX: x, clientY: y, button: 0, pointerId: 1 });
-const move = (x: number, y: number) => fireEvent.pointerMove(overlay(), { clientX: x, clientY: y, pointerId: 1 });
 const release = (x: number, y: number) => fireEvent.pointerUp(overlay(), { clientX: x, clientY: y, pointerId: 1 });
-const drawnGuides = () => [...overlay().querySelectorAll("[data-project-guide]")].map((l) => l.getAttribute("data-project-guide"));
-const labels = (s: EditorState) => s.queue.map((e) => e.label);
 
 const textClips = (s: EditorState) => s.doc.tracks.flatMap((t) => t.clips).filter((c) => c.type === "text");
 

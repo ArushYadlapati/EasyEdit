@@ -1,11 +1,14 @@
 "use client";
 
 import { ImageOff } from "lucide-react";
-import { memo, useRef, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { memo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
+import { splitClipAt } from "@/lib/editor/actions";
 import { MIN_STILL_PX, sampleBackdrop } from "@/lib/editor/clip-look";
+import { razorFrame } from "@/lib/editor/commands";
 import { cssFontFamily } from "@/lib/editor/fonts";
 import { ROW_HEIGHT, formatTimecode, frameToPx } from "@/lib/editor/geometry";
+import { SNAP_PX, clipEdges } from "@/lib/editor/snap";
 import { posterFileFor } from "@/lib/media/playback";
 import type { Clip, TextStyle } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
@@ -66,11 +69,26 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
   const isMac = useIsMac();
   const openClipMenu = useClipMenu();
   const showLook = still && width >= MIN_STILL_PX;
+  // With the Razor, a press cuts the clip where it lands and the pointer shows where that is; nothing selects or drags.
+  const razor = useEditor((s) => s.canEdit && s.tool === "razor") && !locked;
+  const [razorAt, setRazorAt] = useState<number | null>(null); // the frame the Razor would cut at, while over the clip
+
+  function razorFrameAt(e: PointerEvent<HTMLDivElement>): number {
+    const lane = e.currentTarget.closest<HTMLElement>("[data-lane]");
+    const lanePx = e.clientX - (lane?.getBoundingClientRect().left ?? 0);
+    const state = store.getState();
+    const targets = state.snapping ? [state.playhead, ...clipEdges(state.doc, [clip.id])] : [];
+    return razorFrame(lanePx, zoom, targets, SNAP_PX);
+  }
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     if (isMac && e.ctrlKey) return;
     press.current = null;
     if (e.button !== 0) return;
+    if (razor) {
+      splitClipAt(store, clip.id, razorFrameAt(e));
+      return;
+    }
     const { selection, select } = store.getState();
     const toggle = e.shiftKey || e.metaKey || e.ctrlKey;
     const keep = !toggle && selection.clipIds.includes(clip.id);
@@ -110,6 +128,8 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
       data-clip-id={clip.id}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
+      onPointerMove={razor ? (e) => setRazorAt(razorFrameAt(e)) : undefined}
+      onPointerLeave={razor ? () => setRazorAt(null) : undefined}
       onPointerCancel={() => (press.current = null)}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
@@ -119,11 +139,20 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
         selected ? "border-ed-accent bg-linear-to-r from-ed-accent-weak to-ed-accent-weak" : "border-ed-line-strong",
         hidden && "opacity-50",
         locked && "cursor-not-allowed",
+        razor && "cursor-crosshair",
         FOCUS_RING_INSET,
         FADE,
       )}
       style={{ left: frameToPx(clip.start, zoom), top: CLIP_TOP, width, height: CLIP_HEIGHT }}
     >
+      {razor && razorAt !== null && razorAt > clip.start && razorAt < clip.start + clip.duration && (
+        <span
+          aria-hidden
+          data-razor-line
+          className="pointer-events-none absolute inset-y-0 w-px bg-ed-text"
+          style={{ left: frameToPx(razorAt - clip.start, zoom) }}
+        />
+      )}
       {showLook && pictured && <ClipStill fileId={stillFileId} removed={removed} />}
       {showLook && clip.type === "text" && <TextSample style={clip.style} />}
       {width >= MIN_LABEL_PX && <span className="min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>}

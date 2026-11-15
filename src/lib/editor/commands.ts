@@ -40,6 +40,30 @@ export function splitOps(doc: TimelineDoc, playhead: number, selection: string[]
   return ops;
 }
 
+// The Razor's cut: the clip at one frame strictly inside it, on a track that is not locked. Its first or last frame
+// cuts nothing.
+export function razorOps(doc: TimelineDoc, clipId: string, at: number): OpInput[] {
+  for (const track of doc.tracks) {
+    const clip = track.clips.find((c) => c.id === clipId);
+    if (!clip) continue;
+    if (track.locked || at <= clip.start || at >= clip.start + clip.duration) return [];
+    return [{ op: "split_clip", clipId, at }];
+  }
+  return [];
+}
+
+// The frame the Razor would cut at, lanePx from the start of the lane at zoom px per frame: the nearest whole frame,
+// pulled onto the nearest of targets (the playhead, clip edges) within snapPx.
+export function razorFrame(lanePx: number, zoom: number, targets: number[], snapPx: number): number {
+  const exact = lanePx / zoom;
+  let best: { frame: number; px: number } | null = null;
+  for (const target of targets) {
+    const px = Math.abs(target - exact) * zoom;
+    if (px <= snapPx && (!best || px < best.px)) best = { frame: target, px };
+  }
+  return best?.frame ?? Math.max(0, Math.round(exact));
+}
+
 export function deleteOps(clipIds: string[], ripple: boolean): OpInput[] {
   return clipIds.map((clipId) => (ripple ? { op: "remove_clip", clipId, ripple: true } : { op: "remove_clip", clipId }));
 }
