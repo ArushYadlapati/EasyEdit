@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
+import { rowsOf, type DB } from "@/db";
+import { user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { makeAdminActions } from "@/lib/allowlist/admin-actions";
 import { addEntry, listEntries, seedAdmin } from "@/lib/allowlist/service";
@@ -106,5 +109,29 @@ describe("admin actions", () => {
     expect(await actions.addMember(form({ email: "new@gmail.com" }))).toEqual({ error: "Unknown role." });
     expect(await listEntries(db)).toEqual(before);
     expect(revalidate).not.toHaveBeenCalled();
+  });
+
+  async function teamRole(db: DB, userId: string): Promise<string | null> {
+    const rows = rowsOf<{ role: string }>(await db.execute(sql`select role from member where id = ${"mt_" + userId}`));
+    return rows[0]?.role ?? null;
+  }
+
+  it("admin addMember for an existing user adds them to Seattle Solvers; setRole changes it; removeMember removes it", async () => {
+    const { db, actions } = await setup();
+    await db.insert(user).values({ id: "u2", name: "Kid", email: "kid@gmail.com" });
+    expect(await teamRole(db, "u2")).toBeNull();
+    expect(await actions.addMember(form({ email: "Kid@Gmail.com", role: "viewer" }))).toEqual({});
+    expect(await teamRole(db, "u2")).toBe("viewer");
+    expect(await actions.setRole(form({ email: "kid@gmail.com", role: "editor" }))).toEqual({});
+    expect(await teamRole(db, "u2")).toBe("editor");
+    expect(await actions.removeMember(form({ email: "kid@gmail.com" }))).toEqual({});
+    expect(await teamRole(db, "u2")).toBeNull();
+  });
+
+  it("admin addMember for an email with no account adds no member row until they sign in", async () => {
+    const { db, actions } = await setup();
+    expect(await actions.addMember(form({ email: "newbie@gmail.com", role: "editor" }))).toEqual({});
+    const rows = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from member where id like 'mt_%'`));
+    expect(rows[0].n).toBe(0);
   });
 });

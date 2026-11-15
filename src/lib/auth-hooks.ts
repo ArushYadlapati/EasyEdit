@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db";
 import { user } from "@/db/schema";
 import { getRole, normalizeEmail } from "@/lib/allowlist/service";
+import { ensurePersonalSpace, syncSeedTeamMembership } from "@/lib/spaces/service";
 
 // `code` makes Better Auth's OAuth callback redirect to the errorCallbackURL instead of answering with JSON.
 function notAllowlisted(): APIError {
@@ -23,5 +24,15 @@ export function makeSessionCreateBefore(db: DB) {
     const rows = await db.select({ email: user.email }).from(user).where(eq(user.id, session.userId));
     const email = rows[0]?.email;
     if (email === undefined || (await getRole(db, email)) === null) throw notAllowlisted();
+    // Repairs a missing personal space or an out-of-date team role.
+    await ensurePersonalSpace(db, { id: session.userId });
+    await syncSeedTeamMembership(db, { id: session.userId, email });
+  };
+}
+
+export function makeUserCreateAfter(db: DB) {
+  return async (created: { id: string; email: string }): Promise<void> => {
+    await ensurePersonalSpace(db, created);
+    await syncSeedTeamMembership(db, created);
   };
 }

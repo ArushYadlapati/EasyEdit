@@ -10,7 +10,7 @@ import { createAccessControl } from "better-auth/plugins/access";
 import { organization } from "better-auth/plugins/organization";
 import { adminAc, defaultStatements } from "better-auth/plugins/organization/access";
 import { getDb } from "@/db";
-import { makeSessionCreateBefore, makeUserCreateBefore } from "@/lib/auth-hooks";
+import { makeSessionCreateBefore, makeUserCreateAfter, makeUserCreateBefore } from "@/lib/auth-hooks";
 import { isAllowedClientDocument, isAllowedRedirect } from "@/lib/connector/agents";
 import { connectorBeforeHook } from "@/lib/connector/auth-rules";
 import { DYNAMIC_REGISTRATION, mcpResourceUrl } from "@/lib/connector/config";
@@ -68,7 +68,7 @@ function createAuth() {
       updateAge: SESSION_RENEW_AFTER_SECONDS,
     },
     databaseHooks: {
-      user: { create: { before: makeUserCreateBefore(db) } },
+      user: { create: { before: makeUserCreateBefore(db), after: makeUserCreateAfter(db) } },
       session: { create: { before: makeSessionCreateBefore(db) } },
     },
     plugins: [

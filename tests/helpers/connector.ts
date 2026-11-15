@@ -6,7 +6,6 @@ import { eq } from "drizzle-orm";
 import { vi } from "vitest";
 import { user } from "@/db/schema";
 import { addEntry, getRole, seedAdmin, SEED_ADMIN_EMAIL, type Role } from "@/lib/allowlist/service";
-import { syncSeedTeamMembership } from "@/lib/spaces/service";
 import { clientDocuments } from "./client-documents";
 import { makeSuiteDb } from "./db";
 
@@ -87,8 +86,7 @@ export async function startConnectorApp() {
     const existing = (await db.select().from(user).where(eq(user.email, email)))[0];
     const account = existing
       ?? (await ctx.internalAdapter.createOAuthUser({ email, name, emailVerified: true }, { providerId: "google", accountId: `g-${email}` })).user;
-    // What sign-in does for an allowlisted person: their Seattle Solvers role follows the allowlist.
-    await syncSeedTeamMembership(db, { id: account.id, email });
+    // createSession runs the session hook, which makes their personal space and Seattle Solvers role (as sign-in does).
     const session = await ctx.internalAdapter.createSession(account.id);
     const signed = `${session.token}.${await makeSignature(session.token, SECRET)}`;
     return { userId: account.id, cookie: `${ctx.authCookies.sessionToken.name}=${encodeURIComponent(signed)}` };

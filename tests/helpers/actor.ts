@@ -4,7 +4,8 @@ import { user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import type { Actor } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
+import { ensurePersonalSpace } from "@/lib/spaces/service";
+import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
 
 // An actor for a service call. Defaults: "u1", an admin of Seattle Solvers.
 export function testActor(over: Partial<Actor> = {}): Actor {
@@ -22,17 +23,12 @@ export function testUser(over: Partial<CurrentUser> = {}): CurrentUser {
 export async function joinSpace(db: DB, person: { id: string; email?: string; name?: string }, role: Role, spaceId: string = SEED_TEAM_ID): Promise<void> {
   const email = person.email ?? `${person.id}@gmail.com`;
   await db.insert(user).values({ id: person.id, name: person.name ?? person.id.toUpperCase(), email, emailVerified: true }).onConflictDoNothing();
+  // A personal space is the person's own: made the way sign-in makes it, so there is only ever one member row (its role is always admin).
+  if (spaceId === personalSpaceId(person.id)) return ensurePersonalSpace(db, person);
   const memberId = spaceId === SEED_TEAM_ID ? `mt_${person.id}` : `m_${person.id}_${spaceId}`;
   await db.execute(sql`
     insert into member (id, organization_id, user_id, role, created_at)
     values (${memberId}, ${spaceId}, ${person.id}, ${role}, now())
     on conflict (id) do update set role = excluded.role
   `);
-}
-
-// A member of Seattle Solvers with this role, signed in: their member row is written, and the user is returned.
-export async function signedInMember(db: DB, role: Role, over: Partial<CurrentUser> = {}): Promise<CurrentUser> {
-  const me = testUser({ allowlistRole: role, ...over });
-  await joinSpace(db, me, role);
-  return me;
 }

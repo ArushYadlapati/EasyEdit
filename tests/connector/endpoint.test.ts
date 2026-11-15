@@ -4,13 +4,25 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { rowsOf, type DB } from "@/db";
 import * as route from "@/app/api/mcp/route";
 import { requireUserApi } from "@/lib/access";
-import { removeEntry, setRole } from "@/lib/allowlist/service";
+import type { CurrentUser } from "@/lib/access-rules";
+import { makeAdminActions } from "@/lib/allowlist/admin-actions";
 import { revokeAccess } from "@/lib/connector/grants";
 import { UNEXPECTED } from "@/lib/mcp/errors";
 import { createProject } from "@/lib/projects/service";
-import { syncSeedTeamMembership } from "@/lib/spaces/service";
 import { testActor } from "../helpers/actor";
 import { BASE_URL, claimsOf, startConnectorApp, type ConnectorApp } from "../helpers/connector";
+
+// The admin page's own actions, acting as an admin: the allowlist write and the team membership change together.
+function adminActions(db: DB) {
+  const admin: CurrentUser = { id: "admin", email: "admin@seattlesolvers.com", name: "Admin", image: null, allowlistRole: "admin" };
+  return makeAdminActions({ db: () => db, requireUser: async () => admin, revalidate: () => {} });
+}
+
+function form(fields: Record<string, string>): FormData {
+  const f = new FormData();
+  for (const [k, v] of Object.entries(fields)) f.set(k, v);
+  return f;
+}
 
 let testDb: DB;
 vi.mock("@/db", async (original) => ({ ...(await original<typeof import("@/db")>()), getDb: () => testDb }));
@@ -97,11 +109,10 @@ describe("POST /api/mcp", () => {
 
   it("removal and a role change take effect on the next call", async () => {
     const c = await app.connect("dorothy@gmail.com");
-    await setRole(app.db, "dorothy@gmail.com", "viewer");
-    await syncSeedTeamMembership(app.db, { id: c.userId, email: "dorothy@gmail.com" }); // as the admin page does
+    await adminActions(app.db).setRole(form({ email: "dorothy@gmail.com", role: "viewer" }));
     expect((await app.callTool(c.accessToken, "list_projects")).text).toContain("(viewer). You can read projects but not change them.");
 
-    await removeEntry(app.db, "dorothy@gmail.com");
+    await adminActions(app.db).removeMember(form({ email: "dorothy@gmail.com" }));
     const res = await app.rpc(c.accessToken, "tools/call", LIST);
     expect(res.status).toBe(403);
     expect(res.headers.get("www-authenticate")).toBeNull();

@@ -1,7 +1,10 @@
+import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
+import { rowsOf } from "@/db";
 import { user } from "@/db/schema";
 import { addEntry, removeEntry, SEED_ADMIN_EMAIL, seedAdmin } from "@/lib/allowlist/service";
-import { makeSessionCreateBefore, makeUserCreateBefore } from "@/lib/auth-hooks";
+import { makeSessionCreateBefore, makeUserCreateAfter, makeUserCreateBefore } from "@/lib/auth-hooks";
+import { listMySpaces } from "@/lib/spaces/service";
 import { makeTestDb } from "../helpers/db";
 
 // Better Auth's APIError (better-call) keeps the payload on `.body`, so the message is matched at `body.message`.
@@ -69,5 +72,36 @@ describe("auth database hooks", () => {
     await expect(makeSessionCreateBefore(db)({ userId: "missing" })).rejects.toMatchObject({
       body: { message: "NOT_ALLOWLISTED" },
     });
+  });
+
+  it("a new allowlisted user gets a personal space and joins Seattle Solvers with their allowlist role", async () => {
+    const db = await makeTestDb();
+    await seedAdmin(db);
+    await addEntry(db, { email: "kid@gmail.com", role: "editor", invitedBy: SEED_ADMIN_EMAIL });
+    await db.insert(user).values({ id: "u1", name: "Kid", email: "kid@gmail.com" });
+    await makeUserCreateAfter(db)({ id: "u1", email: "kid@gmail.com" });
+    const spaces = await listMySpaces(db, "u1");
+    expect(spaces.map((s) => [s.id, s.kind, s.role])).toEqual([
+      ["personal_u1", "personal", "admin"],
+      ["team_seattle_solvers", "team", "editor"],
+    ]);
+  });
+
+  it("signing in again repairs a missing personal space and an out-of-date team role", async () => {
+    const db = await makeTestDb();
+    await seedAdmin(db);
+    await addEntry(db, { email: "kid@gmail.com", role: "editor", invitedBy: SEED_ADMIN_EMAIL });
+    await db.insert(user).values({ id: "u1", name: "Kid", email: "kid@gmail.com" });
+    await makeUserCreateAfter(db)({ id: "u1", email: "kid@gmail.com" });
+    await db.execute(sql`delete from member where user_id = 'u1' and organization_id = 'personal_u1'`);
+    await db.execute(sql`update member set role = 'viewer' where id = 'mt_u1'`);
+    await makeSessionCreateBefore(db)({ userId: "u1" });
+    const spaces = await listMySpaces(db, "u1");
+    expect(spaces.map((s) => [s.id, s.role])).toEqual([
+      ["personal_u1", "admin"],
+      ["team_seattle_solvers", "editor"],
+    ]);
+    const members = rowsOf<{ id: string }>(await db.execute(sql`select id from member where user_id = 'u1' order by id`));
+    expect(members.map((m) => m.id)).toEqual(["mp_u1", "mt_u1"]);
   });
 });
