@@ -41,10 +41,13 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
   const jar = await cookies();
   const layout = parseLayout(jar.get(LAYOUT_COOKIE)?.value);
   const prefs = parsePrefs(jar.get(PREFS_COOKIE)?.value);
-  // Whether the space has storage to upload to, from its rows (no Drive call), and if not, what to tell the person:
-  // "broken" when its Google connection needs reconnecting, "none" when it has none (or this server can't use it).
+  // Whether the space has storage, from its rows (no Drive call), and if not, what to tell the person: "broken" when
+  // its Google connection needs reconnecting, "none" when it has none. Storage this server's settings can't use yet
+  // (not_configured) counts as there: the Media tab still lists the library and says uploads are not set up, from
+  // its list.
   const storage = await storageState(db, space.id);
-  const storageProblem = storage.ready ? null : storage.reason === "broken" ? "broken" : "none";
+  const storageReady = storage.ready || storage.reason === "not_configured";
+  const storageProblem = storage.ready ? null : storage.reason === "broken" ? "broken" : storage.reason === "none" ? "none" : null;
 
   return (
     <>
@@ -61,7 +64,7 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
           canEdit: meetsRole(actor.role, "editor"),
           thumbnailVersion: project.thumbnailVersion,
         }}
-        space={{ id: space.id, slug: slugFor(space), storageReady: storage.ready, storageProblem }}
+        space={{ id: space.id, slug: slugFor(space), storageReady, storageProblem }}
         layout={layout}
         prefs={prefs}
       />

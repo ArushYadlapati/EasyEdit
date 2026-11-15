@@ -66,8 +66,10 @@ describe("the Media tab of a space with no storage", () => {
   });
 
   it("keeps the upload and the not-set-up message for a space with storage", async () => {
-    setup({ storageReady: true, setUp: false });
+    // What the editor page hands over for Seattle Solvers when its Drive settings are missing or unreadable.
+    const { list } = setup({ storageReady: true, storageProblem: null, setUp: false });
     await openMedia();
+    expect(list).toHaveBeenCalled(); // the library is still listed
     expect(screen.queryByText("Storage comes next")).toBeNull();
     expect(screen.getByRole("button", { name: "Upload" })).toBeTruthy();
     expect(screen.getByText(MEDIA_MESSAGES.notSetUp)).toBeTruthy();

@@ -123,14 +123,18 @@ describe("the space editor", () => {
     expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ id: personalSpaceId("u1"), slug: "personal" });
   });
 
-  it("says storage is ready only when it can be used, and what is wrong when it can't", async () => {
-    // A key that is not base64: Seattle Solvers' storage can't be used on this server, which counts as none.
+  it("says Seattle Solvers has storage even when its Drive is not set up, and a personal space has none", async () => {
+    // A key that is not base64: the Media tab shows the not-set-up message from its list, not "Storage comes next".
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", '{"type":"service_account"}');
     vi.stubEnv("DRIVE_FOLDER_ID", "folder1");
     try {
-      expect((await editorAt(ada, "seattle-solvers", teamProject)).space).toMatchObject({ storageReady: false, storageProblem: "none" });
+      expect((await editorAt(ada, "seattle-solvers", teamProject)).space).toMatchObject({ storageReady: true, storageProblem: null });
       expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: false, storageProblem: "none" });
+      // And with no key at all.
+      vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", "");
+      delete (globalThis as { __easyEditDrive?: unknown }).__easyEditDrive;
+      expect((await editorAt(ada, "seattle-solvers", teamProject)).space).toMatchObject({ storageReady: true, storageProblem: null });
       // With its settings there, it is ready and nothing is wrong.
       const key = { type: "service_account", client_email: "media@easyedit-test.iam.gserviceaccount.com", private_key: "k" };
       vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", Buffer.from(JSON.stringify(key)).toString("base64"));
