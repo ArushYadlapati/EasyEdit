@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/access-rules";
 import type { Actor } from "@/lib/actor";
-import { createDriveClient } from "@/lib/drive/client";
+import { sharedFolderClient } from "@/lib/drive/client";
 import { driveConfig } from "@/lib/drive/config";
 import { SCOPE_READ } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
@@ -266,7 +266,7 @@ describe("the media API", () => {
     const rawKey = JSON.stringify({ type: "service_account", client_email: ctx.fake.config.clientEmail, private_key: ctx.fake.config.privateKey });
     const drive = () => {
       const config = driveConfig({ GOOGLE_SERVICE_ACCOUNT_KEY: rawKey, DRIVE_FOLDER_ID: "folder1" });
-      return config ? createDriveClient({ config }) : null;
+      return config ? sharedFolderClient(config) : null;
     };
     expect(drive).toThrow("GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key");
     const api = handlersFor(ctx, ctx.ada, { drive });
@@ -323,7 +323,7 @@ describe("the media API", () => {
       if (down?.test(`${init?.method ?? "GET"} ${url.pathname}${url.search}`)) throw new TypeError("fetch failed");
       return ctx.fake.fetch(input, init);
     }) as typeof fetch;
-    const drive = createDriveClient({ config: ctx.fake.config, fetch: fetchFn, now: ctx.fake.now });
+    const drive = sharedFolderClient(ctx.fake.config, { fetch: fetchFn, now: ctx.fake.now });
     const api = handlersFor(ctx, ctx.ada, { drive: () => drive });
     const before = await answer(await api.list(request("GET")));
     const failing: [RegExp, string, () => Promise<Response>][] = [

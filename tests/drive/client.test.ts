@@ -2,14 +2,14 @@ import { generateKeyPairSync } from "node:crypto";
 import { createServer } from "node:http";
 import { inspect } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDriveClient } from "@/lib/drive/client";
+import { createDriveClient, sharedFolderClient } from "@/lib/drive/client";
 import { DriveError, SCOPE_READ, SCOPE_WRITE, createTokenSource } from "@/lib/drive/token";
 import { type FakeDrive, makeFakeDrive, piece } from "../helpers/fake-drive";
 
 const MiB = 1024 * 1024;
 const B = "https://www.googleapis.com";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
-const client = (fake = makeFakeDrive()) => ({ fake, drive: createDriveClient({ config: fake.config, fetch: fake.fetch, now: fake.now }) });
+const client = (fake = makeFakeDrive()) => ({ fake, drive: sharedFolderClient(fake.config, { fetch: fake.fetch, now: fake.now }) });
 
 type Sent = { method: string; url: string; headers: Record<string, string>; body: unknown };
 
@@ -23,7 +23,7 @@ function watched(answer: (line: string) => Response | undefined = () => undefine
     if (url.host === "www.googleapis.com") sent.push({ method, url: url.href, headers: Object.fromEntries(new Headers(init?.headers)), body: typeof init?.body === "string" ? JSON.parse(init.body) : init?.body });
     return answer(`${method} ${url.pathname}${url.search}`) ?? fake.fetch(input, init);
   }) as typeof fetch;
-  return { fake, sent, drive: createDriveClient({ config: fake.config, fetch: fetchFn, now: fake.now }) };
+  return { fake, sent, drive: sharedFolderClient(fake.config, { fetch: fetchFn, now: fake.now }) };
 }
 
 // The header a call to the fake carries when it is made by hand, with a token of the given scope.
@@ -38,13 +38,32 @@ const reasonOf = async (response: Response) => ((await response.json()) as { err
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the Drive client", () => {
+  it("makes every call with the write source and hands out only the read source's token", async () => {
+    const fake = makeFakeDrive();
+    const asked: string[] = [];
+    const source = (name: string, scope: string) => {
+      const tokens = createTokenSource({ clientEmail: fake.config.clientEmail, privateKey: fake.config.privateKey, fetch: fake.fetch, now: fake.now });
+      return { token: (min?: number) => (asked.push(`${name}:${min ?? "default"}`), tokens.tokenFor(scope, min)) };
+    };
+    const drive = createDriveClient({ rootFolderId: "folder1", write: source("write", SCOPE_WRITE), read: source("read", SCOPE_READ), fetch: fake.fetch });
+    expect(drive.rootFolderId).toBe("folder1");
+    await drive.folderId("Originals");
+    await drive.newFileId();
+    expect(new Set(fake.calls.filter((c) => c.path !== "/token").map((c) => c.scope))).toEqual(new Set([SCOPE_WRITE]));
+    expect(asked.every((line) => line === "write:default")).toBe(true);
+    asked.length = 0;
+    const token = await drive.readToken(600);
+    expect(asked).toEqual(["read:600"]);
+    expect(fake.whoHas(token.accessToken)?.scope).toBe(SCOPE_READ);
+  });
+
   it("finds a folder by name, makes it once when missing, and remembers it", async () => {
     const { fake, drive } = client();
     const id = await drive.folderId("Originals");
     expect(await drive.folderId("Originals")).toBe(id);
     expect(fake.calls.filter((c) => c.method === "POST" && c.path === "/drive/v3/files")).toHaveLength(1);
     expect(fake.files.get(id)).toMatchObject({ name: "Originals", parents: ["folder1"] });
-    expect(await createDriveClient({ config: fake.config, fetch: fake.fetch }).folderId("Originals")).toBe(id); // a new instance finds it
+    expect(await sharedFolderClient(fake.config, { fetch: fake.fetch }).folderId("Originals")).toBe(id); // a new instance finds it
     expect(await drive.folderId("Previews")).not.toBe(id);
   });
 
@@ -177,7 +196,7 @@ describe("the Drive client", () => {
 
   it("settles two server instances that ask at once on one folder", async () => {
     const fake = makeFakeDrive();
-    const instance = () => createDriveClient({ config: fake.config, fetch: fake.fetch, now: fake.now });
+    const instance = () => sharedFolderClient(fake.config, { fetch: fake.fetch, now: fake.now });
     const [a, b] = [instance(), instance()];
     const [idA, idB] = await Promise.all([a.folderId("Originals"), b.folderId("Originals")]);
     expect(idA).toBe(idB);
@@ -486,7 +505,7 @@ describe("the Drive client", () => {
     const fake = makeFakeDrive();
     vi.stubGlobal("fetch", fake.fetch);
     const before = Date.now();
-    const drive = createDriveClient({ config: fake.config });
+    const drive = sharedFolderClient(fake.config);
     expect(await drive.newFileId()).toMatch(/^[\w-]{20,}$/);
     await drive.uploadOffset(`${B}/upload/drive/v3/files?uploadType=resumable&upload_id=none`, MiB);
     expect(fake.calls.map((c) => c.path)).toEqual(["/token", "/drive/v3/files/generateIds", "/upload/drive/v3/files"]);
@@ -557,7 +576,7 @@ describe("the pretend Drive", () => {
     await expect(fake.fetch("https://example.com/drive/v3/files")).rejects.toThrow("The pretend Drive does not answer example.com.");
     await expect(fake.fetch("https://googleapis.com/drive/v3/files")).rejects.toThrow();
     expect(fake.calls).toEqual([]);
-    expect((await fake.fetch(`${B}/drive/v3/about`, { headers: await bearer(fake, SCOPE_WRITE) })).status).toBe(404);
+    expect((await fake.fetch(`${B}/drive/v3/changes`, { headers: await bearer(fake, SCOPE_WRITE) })).status).toBe(404);
   });
 
   it("has the media folder, with a real key to sign for it", () => {

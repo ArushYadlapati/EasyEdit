@@ -1,14 +1,27 @@
-import { createVerify, generateKeyPairSync, randomBytes } from "node:crypto";
+import { createHash, createVerify, generateKeyPairSync, randomBytes } from "node:crypto";
 import type { DriveConfig } from "@/lib/drive/config";
-import { SCOPE_READ, SCOPE_WRITE } from "@/lib/drive/token";
+import { SCOPE_CLOUD, SCOPE_READ, SCOPE_WRITE } from "@/lib/drive/token";
 
 // A pretend Google Drive, in memory. It writes down what the real checks showed (drive-facts.md), so a test
 // that passes here says something about the real one. It holds no bytes, only how many arrived: a file read
 // back is that many zero bytes.
+//
+// Beside the shared drive, it holds people's own Drives and the app's IAM project. A token belongs to someone: the
+// app's service account (a signed request), a person (a refresh token from `connect`), or a team's reader (made by
+// IAM Credentials for the app's service account). The app's service account sees the shared drive, as before. A
+// file anyone else made has an `owner`, and is seen by its owner and by whoever one of its folders is shared with.
 
 const TOKEN_HOST = "oauth2.googleapis.com";
 const API_HOST = "www.googleapis.com";
+const IAM_HOST = "iam.googleapis.com";
+const CREDENTIALS_HOST = "iamcredentials.googleapis.com";
+const HOSTS = [TOKEN_HOST, API_HOST, IAM_HOST, CREDENTIALS_HOST];
 const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:jwt-bearer";
+const SCOPE_FILE = "https://www.googleapis.com/auth/drive.file"; // the only scope a person's connection has
+const DRIVE_SCOPES = [SCOPE_WRITE, SCOPE_READ, SCOPE_FILE];
+const PROJECT_ID = "easyedit-test"; // the app's Google Cloud project, where readers are made
+const DEFAULT_LIMIT_BYTES = 15 * 1024 ** 3; // a free Google account
+const ACCOUNT_ID = /^[a-z]([-a-z0-9]*[a-z0-9])$/;
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const ROOT_FOLDER_ID = "folder1"; // the folder that holds the media
 const DRIVE_ID = "drive9"; // the shared drive that folder is in; the service account is not a member of it
@@ -23,15 +36,29 @@ const { privateKey, publicKey } = generateKeyPairSync("rsa", {
   publicKeyEncoding: { type: "spki", format: "pem" },
 });
 
-type FakeFile = { name: string; parents: string[]; sizeBytes: number; mimeType: string; trashed: boolean };
-type FakeSession = { fileId: string; sizeBytes: number; received: number; origin: string | null; name: string; parentId: string; mimeType: string };
+// owner: who made it, when it is in someone's own Drive. None: it is in the shared drive.
+type FakeFile = { name: string; parents: string[]; sizeBytes: number; mimeType: string; trashed: boolean; owner?: string };
+type FakeSession = { fileId: string; sizeBytes: number; received: number; origin: string | null; name: string; parentId: string; mimeType: string; owner?: string };
+type Role = "reader" | "writer";
+type Holder = { email: string; scope: string };
 
 export type FakeDrive = {
-  fetch: typeof fetch; // answers oauth2.googleapis.com and www.googleapis.com; anything else throws
+  fetch: typeof fetch; // answers oauth2, www, iam and iamcredentials .googleapis.com; anything else throws
   config: DriveConfig; // a real RSA key made for the test; rootFolderId "folder1" (the folder that holds the media; every file and folder the fake holds reports driveId "drive9", a different value, as the real Drive does)
   files: Map<string, FakeFile>;
   sessions: Map<string, FakeSession>;
-  calls: { method: string; path: string; scope: string | null; origin: string | null }[]; // path: without the query. scope: of the token the call carried
+  calls: { method: string; path: string; scope: string | null; origin: string | null }[]; // path: without the host or the query. scope: of the token the call carried
+  projectId: string; // "easyedit-test", the project in config.clientEmail
+  // A person who connected their Drive: their refresh token (made up unless given) gets tokens for drive.file as `email`.
+  connect(input?: { email?: string; refreshToken?: string }): { refreshToken: string; email: string };
+  revoke(refreshToken: string): void; // the person removed the app's access: the refresh token answers invalid_grant, its tokens stop working
+  accounts: Map<string, { accountId: string; displayName: string }>; // the service accounts IAM made, by address
+  addServiceAccount(accountId: string): string; // as if IAM had made it; its address
+  shares: Map<string, Map<string, Role>>; // file id → address → role
+  permissionRequests: { fileId: string; query: Record<string, string>; body: unknown }[]; // every permissions.create that reached the fake
+  impersonations: { caller: string; callerToken: string; target: string; scope: string[]; lifetime: string }[]; // every token IAM Credentials gave
+  whoHas(accessToken: string): Holder | null; // whose token it is and for what, while it still works
+  setQuota(email: string, quota: { limitBytes: number | null; usedBytes?: number }): void; // what about.get says; else 15 GiB, and the sizes of their files
   failNext(match: RegExp, status: number, reason?: string): void; // the next call whose "METHOD path?query" matches is answered so; calls queue up
   dropNextPieceAfter(bytes: number): void; // the next piece keeps this many bytes, then the connection fails
   expireSessions(): void; // every open session now answers 404
@@ -85,7 +112,14 @@ export function makeFakeDrive(): FakeDrive {
   let clock = Date.now();
   let dropAfter: number | null = null;
   const failures: { match: RegExp; status: number; reason?: string }[] = [];
-  const tokens = new Map<string, { scope: string; issuedAt: number }>();
+  const tokens = new Map<string, Holder & { expiresAt: number; refreshToken?: string }>();
+  const connections = new Map<string, { email: string; revoked: boolean }>();
+  const accounts: FakeDrive["accounts"] = new Map();
+  const shares: FakeDrive["shares"] = new Map();
+  const permissionRequests: FakeDrive["permissionRequests"] = [];
+  const impersonations: FakeDrive["impersonations"] = [];
+  const quotas = new Map<string, { limitBytes: number | null; usedBytes?: number }>();
+  let people = 0;
   const expired = new Set<string>();
   const canceled = new Set<string>();
 
@@ -97,26 +131,78 @@ export function makeFakeDrive(): FakeDrive {
   // A file as Drive reports it, cut down to the fields asked for. A size is a string, and a folder has none.
   function report(id: string, fields: string[]): Record<string, unknown> {
     const file = files.get(id)!;
-    const all: Record<string, unknown> = { kind: "drive#file", id, name: file.name, mimeType: file.mimeType, parents: file.parents, driveId: DRIVE_ID, trashed: file.trashed };
+    const all: Record<string, unknown> = { kind: "drive#file", id, name: file.name, mimeType: file.mimeType, parents: file.parents, ...(inSharedDrive(file) ? { driveId: DRIVE_ID } : {}), trashed: file.trashed };
     if (file.mimeType !== FOLDER_MIME) all.size = String(file.sizeBytes);
     return Object.fromEntries(fields.filter((field) => field in all).map((field) => [field, all[field]]));
   }
 
   const isOpenFolder = (id: unknown): id is string => typeof id === "string" && files.get(id)?.mimeType === FOLDER_MIME && !files.get(id)!.trashed;
+  const inSharedDrive = (file: FakeFile) => file.owner === undefined;
+  const isPerson = (email: string) => [...connections.values()].some((person) => person.email === email);
+  const isMainAccount = (email: string) => email === config.clientEmail;
 
-  // The token endpoint: checks the signed request against the key, and remembers which scope each token is for.
+  // The strongest role `email` has on the file through it or any folder it is in.
+  function roleOn(id: string, email: string, seen = new Set<string>()): Role | null {
+    if (seen.has(id)) return null;
+    seen.add(id);
+    let role: Role | null = shares.get(id)?.get(email) ?? null;
+    for (const parent of files.get(id)?.parents ?? []) {
+      if (role === "writer") break;
+      role = roleOn(parent, email, seen) ?? role;
+    }
+    return role;
+  }
+  // The app's service account sees the whole shared drive; a file in someone's Drive is seen by its owner and whoever it is shared with.
+  function canSee(who: Holder, id: string): boolean {
+    const file = files.get(id);
+    if (!file) return false;
+    if (inSharedDrive(file) && isMainAccount(who.email)) return true;
+    return file.owner === who.email || roleOn(id, who.email) !== null;
+  }
+  function canChange(who: Holder, id: string): boolean {
+    const file = files.get(id);
+    if (!file || who.scope === SCOPE_READ) return false;
+    if (inSharedDrive(file) && isMainAccount(who.email)) return true;
+    return file.owner === who.email || roleOn(id, who.email) === "writer";
+  }
+  // Whose token it is, while it still works: not expired, and its holder not deleted or cut off.
+  function holder(accessToken: string): (Holder & { expiresAt: number }) | null {
+    const token = tokens.get(accessToken);
+    if (!token || clock >= token.expiresAt) return null;
+    if (token.refreshToken !== undefined && connections.get(token.refreshToken)?.revoked !== false) return null;
+    if (!isMainAccount(token.email) && !isPerson(token.email) && !accounts.has(token.email)) return null;
+    return token;
+  }
+  function give(holderOf: Holder, lifeMs: number, refreshToken?: string): { accessToken: string; expiresAt: number } {
+    const accessToken = `ya29.fake-${randomBytes(18).toString("base64url")}`;
+    const expiresAt = clock + lifeMs;
+    tokens.set(accessToken, { ...holderOf, expiresAt, ...(refreshToken === undefined ? {} : { refreshToken }) });
+    return { accessToken, expiresAt };
+  }
+
+  // The token endpoint: checks the signed request against the key, or the refresh token against the people who
+  // connected, and remembers whose each token is and for which scope.
   async function issueToken(body: BodyInit | null): Promise<Response> {
     const form = new URLSearchParams(await new Response(body).text());
+    if (form.get("grant_type") === "refresh_token") return refresh(form);
     if (form.get("grant_type") !== GRANT_TYPE) return Response.json({ error: "unsupported_grant_type" }, { status: 400 });
     const [head, claims, signature] = (form.get("assertion") ?? "").split(".");
     const signed = head && claims && signature ? createVerify("RSA-SHA256").update(`${head}.${claims}`).verify(publicKey, signature, "base64url") : false;
     if (!signed) return Response.json({ error: "invalid_grant" }, { status: 400 });
     const { iss, scope } = JSON.parse(Buffer.from(claims, "base64url").toString()) as Record<string, unknown>;
     if (iss !== config.clientEmail) return Response.json({ error: "invalid_grant" }, { status: 400 });
-    if (scope !== SCOPE_WRITE && scope !== SCOPE_READ) return Response.json({ error: "invalid_scope" }, { status: 400 });
-    const accessToken = `ya29.fake-${randomBytes(18).toString("base64url")}`;
-    tokens.set(accessToken, { scope, issuedAt: clock });
+    if (scope !== SCOPE_WRITE && scope !== SCOPE_READ && scope !== SCOPE_CLOUD) return Response.json({ error: "invalid_scope" }, { status: 400 });
+    const { accessToken } = give({ email: config.clientEmail, scope }, TOKEN_LIFE_MS);
     return Response.json({ access_token: accessToken, expires_in: TOKEN_LIFE_MS / 1000, token_type: "Bearer" });
+  }
+
+  function refresh(form: URLSearchParams): Response {
+    if (!form.get("client_id") || !form.get("client_secret")) return Response.json({ error: "invalid_client" }, { status: 401 });
+    const refreshToken = form.get("refresh_token") ?? "";
+    const person = connections.get(refreshToken);
+    if (!person || person.revoked) return Response.json({ error: "invalid_grant", error_description: "Token has been expired or revoked." }, { status: 400 });
+    const { accessToken } = give({ email: person.email, scope: SCOPE_FILE }, TOKEN_LIFE_MS, refreshToken);
+    return Response.json({ access_token: accessToken, expires_in: TOKEN_LIFE_MS / 1000, scope: SCOPE_FILE, token_type: "Bearer" });
   }
 
   function generateIds(params: URLSearchParams): Response {
@@ -124,38 +210,53 @@ export function makeFakeDrive(): FakeDrive {
     return Response.json({ kind: "drive#generatedIds", space: "drive", ids: Array.from({ length: count }, newId) });
   }
 
-  function list(params: URLSearchParams): Response {
+  function list(who: Holder, params: URLSearchParams): Response {
     // The folder is shared, the drive is not: asking by drive is refused (fact 2).
     if (params.get("corpora") === "drive" || params.has("driveId")) return refusal(403, "teamDriveMembershipRequired");
     const tests = readQuery(params.get("q") ?? "");
     const fields = /^files\(([\w,]+)\)$/.exec(params.get("fields") ?? `files(${DEFAULT_FIELDS.join(",")})`)?.[1].split(",");
     const orderBy = params.get("orderBy");
     if (!tests || !fields || (orderBy !== null && orderBy !== "createdTime" && orderBy !== "createdTime desc")) return refusal(400, "invalid");
-    // Without both flags, files in a shared drive are not listed at all (fact 5).
+    // Without both flags, files in a shared drive are not listed at all (fact 5). A person's own files are.
     const seesSharedDrives = params.get("supportsAllDrives") === "true" && params.get("includeItemsFromAllDrives") === "true";
-    const found = seesSharedDrives ? [...files].filter(([, file]) => tests.every((test) => test(file))).map(([id]) => id) : [];
+    const found = [...files]
+      .filter(([id, file]) => (seesSharedDrives || !inSharedDrive(file)) && canSee(who, id) && tests.every((test) => test(file)))
+      .map(([id]) => id);
     // The map keeps files in the order they were made. Drive promises no order unless asked for one; the fake
     // then gives the newest first, so that a caller who forgot to ask is found out.
     if (orderBy !== "createdTime") found.reverse();
     return Response.json({ files: found.map((id) => report(id, fields)) });
   }
 
-  async function createFile(params: URLSearchParams, headers: Headers, body: BodyInit | null): Promise<Response> {
+  // Whether `who` may put a file in `parent`: a 404 or 403 when not, null when it may.
+  function placeRefused(who: Holder, parent: unknown, params: URLSearchParams): Response | null {
+    if (!isOpenFolder(parent) || !canSee(who, parent)) return refusal(404, "notFound");
+    if (inSharedDrive(files.get(parent)!) && params.get("supportsAllDrives") !== "true") return refusal(404, "notFound");
+    return canChange(who, parent) ? null : refusal(403, "insufficientFilePermissions");
+  }
+  // Who a new file in `parent` belongs to: nobody in the shared drive, else whoever made it.
+  const ownerIn = (who: Holder, parent: string | undefined) => (parent !== undefined && inSharedDrive(files.get(parent)!) ? {} : { owner: who.email });
+
+  async function createFile(who: Holder, params: URLSearchParams, headers: Headers, body: BodyInit | null): Promise<Response> {
     const meta = await jsonOf(headers, body);
     if (!meta || typeof meta.name !== "string") return refusal(400, "badRequest");
     const parent = Array.isArray(meta.parents) ? meta.parents[0] : undefined;
-    if (params.get("supportsAllDrives") !== "true" || !isOpenFolder(parent)) return refusal(404, "notFound");
+    // A person may make a file at the top of their own Drive, with no parent.
+    const refused = parent === undefined && isPerson(who.email) ? null : placeRefused(who, parent, params);
+    if (refused) return refused;
     const id = newId();
-    files.set(id, { name: meta.name, parents: [parent], sizeBytes: 0, mimeType: typeof meta.mimeType === "string" ? meta.mimeType : "application/octet-stream", trashed: false });
+    const parents = typeof parent === "string" ? [parent] : [];
+    files.set(id, { name: meta.name, parents, sizeBytes: 0, mimeType: typeof meta.mimeType === "string" ? meta.mimeType : "application/octet-stream", trashed: false, ...ownerIn(who, parents[0]) });
     return Response.json(report(id, params.get("fields")?.split(",") ?? DEFAULT_FIELDS));
   }
 
-  async function oneFile(method: string, id: string, params: URLSearchParams, headers: Headers, body: BodyInit | null): Promise<Response> {
+  async function oneFile(who: Holder, method: string, id: string, params: URLSearchParams, headers: Headers, body: BodyInit | null): Promise<Response> {
     const file = files.get(id);
     // A file in a shared drive is not there for a caller that does not say it knows about shared drives.
     // And this member may not delete for good: that is answered 404 too (fact 6).
-    if (!file || params.get("supportsAllDrives") !== "true" || method === "DELETE") return refusal(404, "notFound");
+    if (!file || !canSee(who, id) || (inSharedDrive(file) && params.get("supportsAllDrives") !== "true") || method === "DELETE") return refusal(404, "notFound");
     if (method === "PATCH") {
+      if (!canChange(who, id)) return refusal(403, "insufficientFilePermissions");
       const change = await jsonOf(headers, body);
       if (!change) return refusal(400, "badRequest");
       if (typeof change.name === "string") file.name = change.name;
@@ -169,12 +270,46 @@ export function makeFakeDrive(): FakeDrive {
     return Response.json(report(id, params.get("fields")?.split(",") ?? DEFAULT_FIELDS));
   }
 
-  async function openSession(params: URLSearchParams, headers: Headers, body: BodyInit | null): Promise<Response> {
+  // permissions.create. Sharing with a service account address that IAM does not know is refused as Drive refuses
+  // sharing with an address that has no Google account, when no email is sent.
+  async function share(who: Holder, id: string, params: URLSearchParams, headers: Headers, body: BodyInit | null): Promise<Response> {
+    const file = files.get(id);
+    if (!file || !canSee(who, id) || (inSharedDrive(file) && params.get("supportsAllDrives") !== "true")) return refusal(404, "notFound");
+    if (!canChange(who, id)) return refusal(403, "insufficientFilePermissions");
+    const wanted = await jsonOf(headers, body);
+    permissionRequests.push({ fileId: id, query: Object.fromEntries(params), body: wanted });
+    const { role, type, emailAddress } = wanted ?? {};
+    if ((role !== "reader" && role !== "writer") || type !== "user" || typeof emailAddress !== "string") return refusal(400, "invalid");
+    const known = isMainAccount(emailAddress) || accounts.has(emailAddress) || !emailAddress.endsWith(".iam.gserviceaccount.com");
+    if (!known) return refusal(400, "invalidSharingRequest");
+    const onFile = shares.get(id) ?? new Map<string, Role>();
+    onFile.set(emailAddress, role);
+    shares.set(id, onFile);
+    return Response.json({ kind: "drive#permission", id: `perm-${createHash("sha256").update(emailAddress).digest("hex").slice(0, 12)}`, type, role });
+  }
+
+  // about.get, for the storage quota of the token's holder. `fields` must be given, as the real one says.
+  function about(who: Holder, params: URLSearchParams): Response {
+    const fields = params.get("fields");
+    if (!fields) return refusal(400, "required");
+    if (!fields.split(",").includes("storageQuota")) return Response.json({});
+    const owned = [...files.values()].filter((file) => file.owner === who.email && file.mimeType !== FOLDER_MIME);
+    const set = quotas.get(who.email);
+    const limitBytes = set ? set.limitBytes : DEFAULT_LIMIT_BYTES;
+    const used = set?.usedBytes ?? owned.filter((file) => !file.trashed).reduce((sum, file) => sum + file.sizeBytes, 0);
+    const trash = set?.usedBytes !== undefined ? 0 : owned.filter((file) => file.trashed).reduce((sum, file) => sum + file.sizeBytes, 0);
+    return Response.json({
+      storageQuota: { ...(limitBytes === null ? {} : { limit: String(limitBytes) }), usage: String(used + trash), usageInDrive: String(used + trash), usageInDriveTrash: String(trash) },
+    });
+  }
+
+  async function openSession(who: Holder, params: URLSearchParams, headers: Headers, body: BodyInit | null): Promise<Response> {
     const meta = await jsonOf(headers, body);
     const length = headers.get("x-upload-content-length") ?? "";
     if (params.get("uploadType") !== "resumable" || !meta || typeof meta.name !== "string" || !/^\d+$/.test(length)) return refusal(400, "badRequest");
     const parentId = Array.isArray(meta.parents) ? meta.parents[0] : undefined;
-    if (params.get("supportsAllDrives") !== "true" || !isOpenFolder(parentId)) return refusal(404, "notFound");
+    const refused = placeRefused(who, parentId, params);
+    if (refused || !isOpenFolder(parentId)) return refused ?? refusal(404, "notFound");
     const origin = headers.get("origin");
     const address = sessionAddress(randomBytes(18).toString("base64url"));
     sessions.set(address, {
@@ -185,6 +320,7 @@ export function makeFakeDrive(): FakeDrive {
       name: meta.name,
       parentId,
       mimeType: typeof meta.mimeType === "string" ? meta.mimeType : (headers.get("x-upload-content-type") ?? "application/octet-stream"),
+      ...ownerIn(who, parentId),
     });
     return new Response(null, { status: 200, headers: { Location: address, ...(origin ? { "Access-Control-Allow-Origin": origin } : {}) } });
   }
@@ -214,7 +350,10 @@ export function makeFakeDrive(): FakeDrive {
         : new Response(null, { status: 308, headers: session.received > 0 ? { ...cors, Range: `bytes=0-${session.received - 1}` } : cors });
     const receive = (bytes: number) => {
       session.received += bytes;
-      if (finished()) files.set(session.fileId, { name: session.name, parents: [session.parentId], sizeBytes: session.sizeBytes, mimeType: session.mimeType, trashed: false });
+      if (finished()) {
+        const owner = session.owner === undefined ? {} : { owner: session.owner };
+        files.set(session.fileId, { name: session.name, parents: [session.parentId], sizeBytes: session.sizeBytes, mimeType: session.mimeType, trashed: false, ...owner });
+      }
     };
 
     const range = headers.get("content-range") ?? "";
@@ -236,16 +375,68 @@ export function makeFakeDrive(): FakeDrive {
     return whereItIs();
   }
 
+  // A refusal in the shape IAM gives one: a status name and no list of reasons.
+  const iamRefusal = (code: number, status: string) => Response.json({ error: { code, message: "The pretend IAM refused this call.", status } }, { status: code });
+  // Only the app's service account, with a token for the Cloud scope, may use IAM.
+  function iamRefused(who: Holder | null): Response | null {
+    if (!who) return iamRefusal(401, "UNAUTHENTICATED");
+    return isMainAccount(who.email) && who.scope === SCOPE_CLOUD ? null : iamRefusal(403, "PERMISSION_DENIED");
+  }
+
+  // IAM: serviceAccounts.create and serviceAccounts.delete in the app's project.
+  async function iam(who: Holder | null, method: string, path: string, headers: Headers, body: BodyInit | null): Promise<Response> {
+    const refused = iamRefused(who);
+    if (refused) return refused;
+    const at = /^\/v1\/projects\/([^/]+)\/serviceAccounts(?:\/([^/]+))?$/.exec(path);
+    if (!at) return iamRefusal(404, "NOT_FOUND");
+    if (decodeURIComponent(at[1]) !== PROJECT_ID) return iamRefusal(403, "PERMISSION_DENIED");
+    const email = at[2] === undefined ? null : decodeURIComponent(at[2]);
+    if (email === null && method === "POST") {
+      const asked = await jsonOf(headers, body);
+      const accountId = asked?.accountId;
+      const displayName = isRecord(asked?.serviceAccount) && typeof asked.serviceAccount.displayName === "string" ? asked.serviceAccount.displayName : "";
+      if (typeof accountId !== "string" || accountId.length < 6 || accountId.length > 30 || !ACCOUNT_ID.test(accountId)) return iamRefusal(400, "INVALID_ARGUMENT");
+      const made = `${accountId}@${PROJECT_ID}.iam.gserviceaccount.com`;
+      if (accounts.has(made)) return iamRefusal(409, "ALREADY_EXISTS");
+      accounts.set(made, { accountId, displayName });
+      return Response.json({ name: `projects/${PROJECT_ID}/serviceAccounts/${made}`, projectId: PROJECT_ID, uniqueId: String(100_000 + accounts.size), email: made, displayName });
+    }
+    if (email !== null && method === "DELETE") {
+      if (!accounts.delete(email)) return iamRefusal(404, "NOT_FOUND");
+      return Response.json({});
+    }
+    return iamRefusal(404, "NOT_FOUND");
+  }
+
+  // IAM Credentials: generateAccessToken for one of the project's service accounts, asked for by the app's.
+  async function generateAccessToken(who: Holder | null, callerToken: string, path: string, headers: Headers, body: BodyInit | null): Promise<Response> {
+    const refused = iamRefused(who);
+    if (refused) return refused;
+    const target = /^\/v1\/projects\/-\/serviceAccounts\/([^/:]+):generateAccessToken$/.exec(path)?.[1];
+    if (target === undefined) return iamRefusal(404, "NOT_FOUND");
+    const email = decodeURIComponent(target);
+    if (!accounts.has(email)) return iamRefusal(404, "NOT_FOUND");
+    const asked = await jsonOf(headers, body);
+    const scope = Array.isArray(asked?.scope) ? asked.scope : [];
+    const lifetime = typeof asked?.lifetime === "string" ? asked.lifetime : "3600s";
+    const seconds = /^(\d+)s$/.exec(lifetime)?.[1];
+    if (scope.length !== 1 || !DRIVE_SCOPES.includes(scope[0]) || seconds === undefined || Number(seconds) < 1 || Number(seconds) > 3600) return iamRefusal(400, "INVALID_ARGUMENT");
+    impersonations.push({ caller: who!.email, callerToken, target: email, scope, lifetime });
+    const { accessToken, expiresAt } = give({ email, scope: scope[0] }, Number(seconds) * 1000);
+    return Response.json({ accessToken, expireTime: new Date(expiresAt).toISOString() });
+  }
+
   const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const asked = input instanceof Request ? input : null;
     const url = new URL(asked ? asked.url : String(input));
-    if (url.host !== TOKEN_HOST && url.host !== API_HOST) throw new Error(`The pretend Drive does not answer ${url.host}.`);
+    if (!HOSTS.includes(url.host)) throw new Error(`The pretend Drive does not answer ${url.host}.`);
     const method = (init?.method ?? asked?.method ?? "GET").toUpperCase();
     const headers = new Headers(init?.headers ?? asked?.headers);
     const body: BodyInit | null = init?.body ?? (asked?.body ? await asked.arrayBuffer() : null);
     const params = url.searchParams;
 
-    const token = tokens.get(/^Bearer (.+)$/.exec(headers.get("authorization") ?? "")?.[1] ?? "");
+    const bearer = /^Bearer (.+)$/.exec(headers.get("authorization") ?? "")?.[1] ?? "";
+    const token = tokens.get(bearer);
     calls.push({ method, path: url.pathname, scope: token?.scope ?? null, origin: headers.get("origin") });
 
     const planned = failures.findIndex((failure) => failure.match.test(`${method} ${url.pathname}${url.search}`));
@@ -255,20 +446,28 @@ export function makeFakeDrive(): FakeDrive {
     }
 
     if (url.host === TOKEN_HOST) return method === "POST" && url.pathname === "/token" ? issueToken(body) : refusal(404, "notFound");
+    if (url.host === IAM_HOST) return iam(holder(bearer), method, url.pathname, headers, body);
+    if (url.host === CREDENTIALS_HOST) return method === "POST" ? generateAccessToken(holder(bearer), bearer, url.pathname, headers, body) : iamRefusal(404, "NOT_FOUND");
 
     const uploadId = url.pathname === "/upload/drive/v3/files" ? params.get("upload_id") : null;
     if (uploadId !== null) return toSession(method, sessionAddress(uploadId), headers, body);
 
-    // Everything else needs a token the fake gave out, not older than an hour; one that can only read may only GET.
-    if (!token || clock - token.issuedAt >= TOKEN_LIFE_MS) return refusal(401, "authError");
-    if (token.scope !== SCOPE_WRITE && method !== "GET") return refusal(403, "insufficientPermissions");
+    // Everything else needs a token the fake gave out that still works (an hour, unless IAM gave a shorter one), for
+    // Drive; one that can only read may only GET.
+    const who = holder(bearer);
+    if (!who) return refusal(401, "authError");
+    if (!DRIVE_SCOPES.includes(who.scope)) return refusal(403, "insufficientPermissions");
+    if (who.scope === SCOPE_READ && method !== "GET") return refusal(403, "insufficientPermissions");
 
-    if (url.pathname === "/upload/drive/v3/files" && method === "POST") return openSession(params, headers, body);
+    if (url.pathname === "/upload/drive/v3/files" && method === "POST") return openSession(who, params, headers, body);
     if (url.pathname === "/drive/v3/files/generateIds" && method === "GET") return generateIds(params);
-    if (url.pathname === "/drive/v3/files" && method === "GET") return list(params);
-    if (url.pathname === "/drive/v3/files" && method === "POST") return createFile(params, headers, body);
+    if (url.pathname === "/drive/v3/files" && method === "GET") return list(who, params);
+    if (url.pathname === "/drive/v3/files" && method === "POST") return createFile(who, params, headers, body);
+    if (url.pathname === "/drive/v3/about" && method === "GET") return about(who, params);
+    const permissionsOf = /^\/drive\/v3\/files\/([^/]+)\/permissions$/.exec(url.pathname)?.[1];
+    if (permissionsOf !== undefined && method === "POST") return share(who, decodeURIComponent(permissionsOf), params, headers, body);
     const fileId = /^\/drive\/v3\/files\/([^/]+)$/.exec(url.pathname)?.[1];
-    if (fileId !== undefined) return oneFile(method, decodeURIComponent(fileId), params, headers, body);
+    if (fileId !== undefined) return oneFile(who, method, decodeURIComponent(fileId), params, headers, body);
     return refusal(404, "notFound");
   }) as typeof fetch;
 
@@ -285,6 +484,32 @@ export function makeFakeDrive(): FakeDrive {
     },
     advance: (ms) => void (clock += ms),
     now: () => clock,
+    projectId: PROJECT_ID,
+    connect(input = {}) {
+      people += 1;
+      const email = input.email ?? `person${people}@gmail.com`;
+      const refreshToken = input.refreshToken ?? `1//fake-${randomBytes(18).toString("base64url")}`;
+      connections.set(refreshToken, { email, revoked: false });
+      return { refreshToken, email };
+    },
+    revoke(refreshToken) {
+      const person = connections.get(refreshToken);
+      if (person) person.revoked = true;
+    },
+    accounts,
+    addServiceAccount(accountId) {
+      const email = `${accountId}@${PROJECT_ID}.iam.gserviceaccount.com`;
+      accounts.set(email, { accountId, displayName: accountId });
+      return email;
+    },
+    shares,
+    permissionRequests,
+    impersonations,
+    whoHas(accessToken) {
+      const found = holder(accessToken);
+      return found ? { email: found.email, scope: found.scope } : null;
+    },
+    setQuota: (email, quota) => void quotas.set(email, quota),
   };
 }
 

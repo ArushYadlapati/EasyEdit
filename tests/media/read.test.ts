@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDriveClient } from "@/lib/drive/client";
+import { sharedFolderClient } from "@/lib/drive/client";
 import { SCOPE_READ, SCOPE_WRITE, createTokenSource } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { createMediaApi, type MediaApi, type MediaFailure } from "@/lib/media/api";
@@ -519,7 +519,7 @@ const gate = () => {
 function filesHarness(held: Record<string, number> = {}) {
   const fake = makeFakeDrive();
   for (const [id, bytes] of Object.entries(held)) fake.files.set(id, { name: id, parents: ["folder1"], sizeBytes: bytes, mimeType: "video/mp4", trashed: false });
-  const drive = createDriveClient({ config: fake.config, fetch: fake.fetch, now: fake.now });
+  const drive = sharedFolderClient(fake.config, { fetch: fake.fetch, now: fake.now });
   let tokenRequests = 0;
   const api: Pick<MediaApi, "readToken"> = {
     async readToken() {

@@ -1,5 +1,5 @@
 import type { DriveConfig } from "./config";
-import { DriveError, type GoogleToken, SCOPE_READ, SCOPE_WRITE, createTokenSource, reach, refusalReason } from "./token";
+import { type AccessSource, DriveError, type GoogleToken, SCOPE_READ, SCOPE_WRITE, reach, refusalReason, serviceAccountSource } from "./token";
 
 const API = "https://www.googleapis.com";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -21,7 +21,7 @@ export type DriveClient = {
   cancelSession(sessionUrl: string): Promise<void>; // a session that is already gone is not an error
   getFile(id: string): Promise<DriveFile | null>; // null when Drive has no such file
   trashFile(id: string): Promise<void>; // a file that is already gone is not an error
-  readToken(minSecondsLeft: number): Promise<GoogleToken>; // read-only; the only token that may leave the server
+  readToken(minSecondsLeft: number): Promise<GoogleToken>; // the read source's token, the only one that may leave the server (read-only, except a personal space's own connection)
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -37,17 +37,18 @@ async function objectIn(response: Response): Promise<Record<string, unknown>> {
 // rest of the answer are not kept.
 const refused = async (call: string, response: Response) => new DriveError(call, response.status, await refusalReason(response));
 
-// The media folder is a folder inside a shared drive that the service account is not a member of. So every
-// request says `supportsAllDrives=true`, and none asks by drive (`corpora=drive`, `driveId`): that is refused.
-export function createDriveClient(deps: { config: DriveConfig; fetch?: typeof fetch; now?: () => number }): DriveClient {
+// A client for the media under one folder. `write` makes every call; `read` gives the token handed to browsers.
+// The folder may be inside a shared drive the caller is not a member of (Seattle Solvers), or in a person's own
+// Drive. So every request says `supportsAllDrives=true` (harmless in a person's Drive), and none asks by drive
+// (`corpora=drive`, `driveId`): that is refused.
+export function createDriveClient(deps: { rootFolderId: string; write: AccessSource; read: AccessSource; fetch?: typeof fetch }): DriveClient {
   const fetchFn = deps.fetch ?? fetch;
-  const { clientEmail, privateKey, rootFolderId } = deps.config;
-  const tokens = createTokenSource({ clientEmail, privateKey, fetch: deps.fetch, now: deps.now });
+  const { rootFolderId, write, read } = deps;
   const folders = new Map<DriveFolder, Promise<string>>();
 
-  // One request to the Drive API, with the token that can change files. `call` names it in the error when Drive gives no answer.
+  // One request to the Drive API, with the write source's token. `call` names it in the error when Drive gives no answer.
   async function send(call: string, path: string, init: { method?: string; headers?: Record<string, string>; json?: object } = {}): Promise<Response> {
-    const { accessToken } = await tokens.tokenFor(SCOPE_WRITE);
+    const { accessToken } = await write.token();
     return reach(fetchFn, call, `${API}${path}`, {
       method: init.method ?? "GET",
       headers: { Authorization: `Bearer ${accessToken}`, ...init.headers, ...(init.json ? { "Content-Type": JSON_TYPE } : {}) },
@@ -172,6 +173,13 @@ export function createDriveClient(deps: { config: DriveConfig; fetch?: typeof fe
       if (!answer.ok && answer.status !== 404) throw await refused("trash", answer);
     },
 
-    readToken: (minSecondsLeft) => tokens.tokenFor(SCOPE_READ, minSecondsLeft),
+    readToken: (minSecondsLeft) => read.token(minSecondsLeft),
   };
+}
+
+// The shared folder's client (Seattle Solvers): the service account from the settings, which changes files with the
+// full Drive scope and hands out a read-only one.
+export function sharedFolderClient(config: DriveConfig, deps: { fetch?: typeof fetch; now?: () => number } = {}): DriveClient {
+  const source = (scope: string) => serviceAccountSource({ clientEmail: config.clientEmail, privateKey: config.privateKey, scope, fetch: deps.fetch, now: deps.now });
+  return createDriveClient({ rootFolderId: config.rootFolderId, write: source(SCOPE_WRITE), read: source(SCOPE_READ), fetch: deps.fetch });
 }

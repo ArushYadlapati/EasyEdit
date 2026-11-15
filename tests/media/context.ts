@@ -3,7 +3,7 @@ import type { DB } from "@/db";
 import { assets, user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import type { Actor } from "@/lib/actor";
-import { createDriveClient } from "@/lib/drive/client";
+import { sharedFolderClient } from "@/lib/drive/client";
 import { LIMITS } from "@/lib/limits";
 import { makeMediaHandlers, makeReadTokenHandler, type AssetRouteContext, type MediaHandlerDeps } from "@/lib/media/handlers";
 import { completeUpload, openUpload, type MediaDeps } from "@/lib/media/service";
@@ -54,7 +54,7 @@ export async function mediaContext(): Promise<MediaContext> {
   await db.insert(user).values([member(ada, "Ada Lovelace"), member(grace, "Grace Hopper"), member(vera, "Vera Rubin"), member(root, "Root Admin")]);
   for (const actor of [ada, grace, vera, root]) await joinSpace(db, { id: actor.userId, email: actor.email }, actor.role);
   const fake = makeFakeDrive();
-  const drive = createDriveClient({ config: fake.config, fetch: fake.fetch, now: fake.now });
+  const drive = sharedFolderClient(fake.config, { fetch: fake.fetch, now: fake.now });
   return { db, fake, deps: { db, drive, origin: APP_ORIGIN }, ada, grace, vera, root };
 }
 
