@@ -222,7 +222,7 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
       .select(
         sql`select ${valuesOf(row)} where (select count(*) from assets where space_id = ${actor.spaceId}::text and uploaded_by = ${actor.userId}::text and status = 'uploading') < ${LIMITS.mediaPendingPerMember}::integer`,
       )
-      .onConflictDoNothing({ target: [assets.uploadedBy, assets.fileName, assets.sizeBytes, assets.lastModifiedMs], where: sql`status = 'uploading'` })
+      .onConflictDoNothing({ target: [assets.spaceId, assets.uploadedBy, assets.fileName, assets.sizeBytes, assets.lastModifiedMs], where: sql`status = 'uploading'` })
       .returning();
   } catch (error) {
     throw notRecorded(error);

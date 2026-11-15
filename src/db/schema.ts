@@ -181,9 +181,53 @@ export const assets = pgTable(
     check("assets_status_check", sql`${t.status} in ('uploading', 'ready')`),
     check("assets_preview_status_check", sql`${t.previewStatus} in ('none', 'pending', 'ready', 'failed')`),
     // One unfinished upload per member and file: choosing the same file again finds it.
-    uniqueIndex("assets_unfinished_upload_unique").on(t.uploadedBy, t.fileName, t.sizeBytes, t.lastModifiedMs).where(sql`${t.status} = 'uploading'`),
+    uniqueIndex("assets_unfinished_upload_unique").on(t.spaceId, t.uploadedBy, t.fileName, t.sizeBytes, t.lastModifiedMs).where(sql`${t.status} = 'uploading'`),
     index("assets_created_at_idx").on(t.createdAt),
     index("assets_space_id_idx").on(t.spaceId),
+  ],
+);
+
+// A person's connected Google account. The refresh token is kept encrypted and never leaves the server.
+export const driveConnection = pgTable(
+  "drive_connection",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    googleSub: text("google_sub").notNull(), // Google's account id
+    email: text("email").notNull(), // shown in settings
+    refreshTokenEnc: text("refresh_token_enc").notNull(),
+    scopes: text("scopes").notNull(), // space-separated, as Google granted
+    brokenAt: timestamp("broken_at"),
+    brokenReason: text("broken_reason"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("drive_connection_user_sub_unique").on(t.userId, t.googleSub)],
+);
+
+// Where a space keeps its media. Every space has one row once it is set up.
+export const spaceStorage = pgTable(
+  "space_storage",
+  {
+    spaceId: text("space_id")
+      .primaryKey()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["shared_folder", "google_account"] }).notNull(),
+    connectionId: text("connection_id").references(() => driveConnection.id, { onDelete: "restrict" }), // null for shared_folder
+    rootFolderId: text("root_folder_id"), // null for shared_folder: use DRIVE_FOLDER_ID
+    folderName: text("folder_name"),
+    readerEmail: text("reader_email"), // the team's reader service account; null for personal and shared_folder
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("space_storage_kind_check", sql`${t.kind} in ('shared_folder', 'google_account')`),
+    check(
+      "space_storage_shape_check",
+      sql`(${t.kind} = 'shared_folder' and ${t.connectionId} is null) or (${t.kind} = 'google_account' and ${t.connectionId} is not null and ${t.rootFolderId} is not null)`,
+    ),
   ],
 );
 

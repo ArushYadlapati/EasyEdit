@@ -674,8 +674,8 @@ describe("listing assets", () => {
   it("sends at most 2,000 ready assets, the newest ones, and still the member's unfinished uploads", async () => {
     const ctx = await mediaContext();
     await ctx.db.execute(sql`
-      insert into assets (id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, status, drive_file_id, uploaded_by, created_at, ready_at)
-      select 'bulk-' || lpad(n::text, 4, '0'), 'image', 'Field', 'field.jpg', 'image/jpeg', 3000000, 1762800060000, 'ready', 'file-' || n, ${ctx.grace.userId},
+      insert into assets (id, space_id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, status, drive_file_id, uploaded_by, created_at, ready_at)
+      select 'bulk-' || lpad(n::text, 4, '0'), ${ctx.ada.spaceId}, 'image', 'Field', 'field.jpg', 'image/jpeg', 3000000, 1762800060000, 'ready', 'file-' || n, ${ctx.grace.userId},
              timestamp '2026-11-01 00:00:00' + n * interval '1 second', now()
       from generate_series(1, 2001) as n
     `);

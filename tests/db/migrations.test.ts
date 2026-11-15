@@ -44,7 +44,7 @@ describe("migrations", () => {
     const db = await makeTestDb();
     const column = await db.execute(sql`select data_type, is_nullable from information_schema.columns where table_name = 'project_ops' and column_name = 'request_id'`);
     expect(rowsOf(column)).toEqual([{ data_type: "text", is_nullable: "YES" }]);
-    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u', 'u'), ('p2', 'P', 'short_9x16', '{}', 'u', 'u')`);
+    await db.execute(sql`insert into projects (id, space_id, name, format, doc, created_by, updated_by) values ('p1', 'team_seattle_solvers', 'P', 'short_9x16', '{}', 'u', 'u'), ('p2', 'team_seattle_solvers', 'P', 'short_9x16', '{}', 'u', 'u')`);
     const log = (project: string, version: number, requestId: string | null) =>
       db.execute(sql`insert into project_ops (project_id, version, ops, actor, request_id) values (${project}, ${version}, '[]', 'u', ${requestId})`);
     await log("p1", 1, null);
@@ -84,8 +84,8 @@ describe("migrations", () => {
     expect(indexes).toEqual(expect.arrayContaining(["assets_unfinished_upload_unique", "assets_created_at_idx"]));
 
     const add = (id: string, over: { kind?: string; status?: string; previewStatus?: string; uploadedBy?: string; sizeBytes?: number } = {}) =>
-      db.execute(sql`insert into assets (id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, status, preview_status, uploaded_by)
-        values (${id}, ${over.kind ?? "video"}, 'Clip', 'clip.mp4', 'video/mp4', ${over.sizeBytes ?? 2_147_483_648}, 1762800000000, ${over.status ?? "uploading"}, ${over.previewStatus ?? "none"}, ${over.uploadedBy ?? "u1"})`);
+      db.execute(sql`insert into assets (id, space_id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, status, preview_status, uploaded_by)
+        values (${id}, 'team_seattle_solvers', ${over.kind ?? "video"}, 'Clip', 'clip.mp4', 'video/mp4', ${over.sizeBytes ?? 2_147_483_648}, 1762800000000, ${over.status ?? "uploading"}, ${over.previewStatus ?? "none"}, ${over.uploadedBy ?? "u1"})`);
     await add("a1");
     await expect(add("a2")).rejects.toThrow(); // the same member, the same file, both unfinished
     await add("a3", { uploadedBy: "u2" });
@@ -96,7 +96,7 @@ describe("migrations", () => {
     await expect(add("a8", { status: "done", uploadedBy: "u3" })).rejects.toThrow();
     await expect(add("a9", { previewStatus: "soon", uploadedBy: "u3" })).rejects.toThrow();
     const [row] = rowsOf<{ status: string; preview_status: string; has_audio: boolean }>(
-      await db.execute(sql`insert into assets (id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, uploaded_by) values ('b1', 'image', 'Field', 'field.jpg', 'image/jpeg', 1, 1, 'u9') returning status, preview_status, has_audio`),
+      await db.execute(sql`insert into assets (id, space_id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, uploaded_by) values ('b1', 'team_seattle_solvers', 'image', 'Field', 'field.jpg', 'image/jpeg', 1, 1, 'u9') returning status, preview_status, has_audio`),
     );
     expect(row).toEqual({ status: "uploading", preview_status: "none", has_audio: false });
   });
@@ -113,16 +113,16 @@ describe("migrations", () => {
 
   it("folder names are unique regardless of case", async () => {
     const db = await makeTestDb();
-    await db.execute(sql`insert into folders (id, name, created_by) values ('f1', 'Season 2026', 'u')`);
-    await expect(db.execute(sql`insert into folders (id, name, created_by) values ('f2', 'season 2026', 'u')`)).rejects.toThrow();
-    await db.execute(sql`insert into folders (id, name, created_by) values ('f3', 'Sponsors', 'u')`);
+    await db.execute(sql`insert into folders (id, space_id, name, created_by) values ('f1', 'team_seattle_solvers', 'Season 2026', 'u')`);
+    await expect(db.execute(sql`insert into folders (id, space_id, name, created_by) values ('f2', 'team_seattle_solvers', 'season 2026', 'u')`)).rejects.toThrow();
+    await db.execute(sql`insert into folders (id, space_id, name, created_by) values ('f3', 'team_seattle_solvers', 'Sponsors', 'u')`);
     expect(rowsOf(await db.execute(sql`select id from folders order by id`))).toEqual([{ id: "f1" }, { id: "f3" }]);
   });
 
   it("deleting a folder keeps its projects, in no folder", async () => {
     const db = await makeTestDb();
-    await db.execute(sql`insert into folders (id, name, created_by) values ('f1', 'Season 2026', 'u')`);
-    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by, folder_id) values ('p1', 'P', 'short_9x16', '{}', 'u', 'u', 'f1')`);
+    await db.execute(sql`insert into folders (id, space_id, name, created_by) values ('f1', 'team_seattle_solvers', 'Season 2026', 'u')`);
+    await db.execute(sql`insert into projects (id, space_id, name, format, doc, created_by, updated_by, folder_id) values ('p1', 'team_seattle_solvers', 'P', 'short_9x16', '{}', 'u', 'u', 'f1')`);
     await db.execute(sql`delete from folders where id = 'f1'`);
     expect(rowsOf(await db.execute(sql`select id, folder_id from projects`))).toEqual([{ id: "p1", folder_id: null }]);
   });
@@ -130,7 +130,7 @@ describe("migrations", () => {
   it("project_opens is one row per person and project, and goes with either", async () => {
     const db = await makeTestDb();
     await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Sam', 'sam@example.com')`);
-    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u1', 'u1'), ('p2', 'P', 'short_9x16', '{}', 'u1', 'u1')`);
+    await db.execute(sql`insert into projects (id, space_id, name, format, doc, created_by, updated_by) values ('p1', 'team_seattle_solvers', 'P', 'short_9x16', '{}', 'u1', 'u1'), ('p2', 'team_seattle_solvers', 'P', 'short_9x16', '{}', 'u1', 'u1')`);
     const open = (projectId: string) => db.execute(sql`insert into project_opens (user_id, project_id) values ('u1', ${projectId})`);
     await open("p1");
     await open("p2");
@@ -145,7 +145,7 @@ describe("migrations", () => {
   it("one row per project, person and tab; rows go when the project or the user is hard-deleted", async () => {
     const db = await makeTestDb();
     await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Sam', 'sam@example.com'), ('u2', 'Kit', 'kit@example.com')`);
-    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u1', 'u1'), ('p2', 'P', 'short_9x16', '{}', 'u1', 'u1')`);
+    await db.execute(sql`insert into projects (id, space_id, name, format, doc, created_by, updated_by) values ('p1', 'team_seattle_solvers', 'P', 'short_9x16', '{}', 'u1', 'u1'), ('p2', 'team_seattle_solvers', 'P', 'short_9x16', '{}', 'u1', 'u1')`);
     const share = (projectId: string, userId: string, tabId: string) =>
       db.execute(sql`insert into project_presence (project_id, user_id, tab_id, clip_ids) values (${projectId}, ${userId}, ${tabId}, '[]')`);
     await share("p1", "u1", "tab-1");
@@ -182,17 +182,17 @@ describe("migrations", () => {
     const last = file.split("--> statement-breakpoint").at(-1)!.trim();
     expect(last.startsWith('UPDATE "projects" SET "width"')).toBe(true);
     const db = await makeTestDb();
-    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'custom', '{"width":816,"height":1056}', 'u', 'u')`);
+    await db.execute(sql`insert into projects (id, space_id, name, format, doc, created_by, updated_by) values ('p1', 'team_seattle_solvers', 'P', 'custom', '{"width":816,"height":1056}', 'u', 'u')`);
     await db.execute(sql.raw(last));
     expect(rowsOf(await db.execute(sql`select width, height from projects`))).toEqual([{ width: 816, height: 1056 }]);
   });
 
   it("the after-deploy refill fixes empty and stale sizes, can run twice, and is in the deploy guide", async () => {
     const db = await makeTestDb();
-    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by, width, height) values
-      ('a', 'A', 'short_9x16', '{"width":1080,"height":1920}', 'u', 'u', null, null),
-      ('b', 'B', 'custom', '{"width":816,"height":1056}', 'u', 'u', 1, 1),
-      ('c', 'C', 'long_16x9', '{"width":1920,"height":1080}', 'u', 'u', 1920, 1080)`);
+    await db.execute(sql`insert into projects (id, space_id, name, format, doc, created_by, updated_by, width, height) values
+      ('a', 'team_seattle_solvers', 'A', 'short_9x16', '{"width":1080,"height":1920}', 'u', 'u', null, null),
+      ('b', 'team_seattle_solvers', 'B', 'custom', '{"width":816,"height":1056}', 'u', 'u', 1, 1),
+      ('c', 'team_seattle_solvers', 'C', 'long_16x9', '{"width":1920,"height":1080}', 'u', 'u', 1920, 1080)`);
     const sizes = async () => rowsOf(await db.execute(sql`select id, width, height from projects order by id`));
     const fixed = [
       { id: "a", width: 1080, height: 1920 },
@@ -214,11 +214,11 @@ describe("migrations", () => {
     const p2doc = { format: "custom", width: 384, height: 576, tracks: [] };
     const p3doc = { format: "long_16x9", width: 1920, height: 1080, tracks: [] };
     const p4doc = { format: "short_9x16", width: 1080, height: 1920, tracks: [] };
-    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values
-      ('p1', 'P1', 'custom', ${JSON.stringify(p1doc)}, 'u', 'u'),
-      ('p2', 'P2', 'long_16x9', ${JSON.stringify(p2doc)}, 'u', 'u'),
-      ('p3', 'P3', 'long_16x9', ${JSON.stringify(p3doc)}, 'u', 'u'),
-      ('p4', 'P4', 'short_9x16', ${JSON.stringify(p4doc)}, 'u', 'u')`);
+    await db.execute(sql`insert into projects (id, space_id, name, format, doc, created_by, updated_by) values
+      ('p1', 'team_seattle_solvers', 'P1', 'custom', ${JSON.stringify(p1doc)}, 'u', 'u'),
+      ('p2', 'team_seattle_solvers', 'P2', 'long_16x9', ${JSON.stringify(p2doc)}, 'u', 'u'),
+      ('p3', 'team_seattle_solvers', 'P3', 'long_16x9', ${JSON.stringify(p3doc)}, 'u', 'u'),
+      ('p4', 'team_seattle_solvers', 'P4', 'short_9x16', ${JSON.stringify(p4doc)}, 'u', 'u')`);
     const rows = async () =>
       rowsOf<{ id: string; format: string; doc: unknown }>(await db.execute(sql`select id, format, doc from projects order by id`)).map((r) => [r.id, r.format, r.doc]);
     const affected = (result: unknown) => (result as { affectedRows: number }).affectedRows;
@@ -271,7 +271,7 @@ describe("migrations", () => {
 
   it("a thumbnail reads back as the same bytes, from bytes or from hex text", async () => {
     const db = await makeTestDb();
-    await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u', 'u')`);
+    await db.execute(sql`insert into projects (id, space_id, name, format, doc, created_by, updated_by) values ('p1', 'team_seattle_solvers', 'P', 'short_9x16', '{}', 'u', 'u')`);
     await db.update(projects).set({ thumbnail: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), thumbnailVersion: 0 });
     const [row] = await db.select({ thumbnail: projects.thumbnail, thumbnailVersion: projects.thumbnailVersion }).from(projects);
     expect([...row.thumbnail!]).toEqual([255, 216, 255, 224]);
@@ -401,8 +401,8 @@ describe("migration 0012: spaces", () => {
     expect(rowsOf(await db.execute(sql`select count(*)::int as n from invitation`))).toEqual([{ n: 0 }]);
   });
 
-  it("an insert without space_id goes to Seattle Solvers", async () => {
-    const db = await makeTestDb();
+  it("until 0013, an insert without space_id goes to Seattle Solvers", async () => {
+    const db = await migratedTo(12);
     await db.execute(sql`insert into folders (id, name, created_by) values ('f1', 'Season 2026', 'u')`);
     await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u', 'u')`);
     await db.execute(sql`insert into assets (id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, uploaded_by)
@@ -428,6 +428,72 @@ describe("migration 0012: spaces", () => {
     await expect(db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m2', 'team_seattle_solvers', 'u1', 'editor', now())`))
       .rejects.toMatchObject({ cause: { code: "23505", constraint: "member_organizationId_userId_idx" } });
     await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m3', 'personal_u1', 'u2', 'viewer', now())`);
+  });
+});
+
+describe("migration 0013: space storage", () => {
+  const asset = (id: string, spaceId: string) =>
+    sql`insert into assets (id, space_id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, uploaded_by)
+      values (${id}, ${spaceId}, 'video', 'Clip', 'clip.mp4', 'video/mp4', 1, 1, 'u1')`;
+
+  it("the deploy-window defaults are gone", async () => {
+    const db = await makeTestDb();
+    await expect(db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by) values ('p1', 'P', 'short_9x16', '{}', 'u', 'u')`))
+      .rejects.toMatchObject({ cause: { code: "23502" } });
+    await expect(db.execute(sql`insert into folders (id, name, created_by) values ('f1', 'F', 'u')`)).rejects.toMatchObject({ cause: { code: "23502" } });
+    await expect(db.execute(sql`insert into assets (id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, uploaded_by)
+      values ('a1', 'video', 'Clip', 'clip.mp4', 'video/mp4', 1, 1, 'u')`)).rejects.toMatchObject({ cause: { code: "23502" } });
+  });
+
+  it("Seattle Solvers has a shared-folder storage row", async () => {
+    const db = await makeTestDb();
+    expect(rowsOf(await db.execute(sql`select space_id as "spaceId", kind, connection_id as "connectionId", root_folder_id as "rootFolderId", folder_name as "folderName", reader_email as "readerEmail", created_by as "createdBy" from space_storage`)))
+      .toEqual([{ spaceId: SEED_TEAM_ID, kind: "shared_folder", connectionId: null, rootFolderId: null, folderName: null, readerEmail: null, createdBy: "system" }]);
+  });
+
+  it("a Google account space needs a connection and a root folder", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into organization (id, name, slug, created_at, kind) values ('t2', 'T2', 'team-two', now(), 'team')`);
+    await expect(db.execute(sql`insert into space_storage (space_id, kind, created_by) values ('t2', 'google_account', 'u1')`))
+      .rejects.toMatchObject({ cause: { code: "23514", constraint: "space_storage_shape_check" } });
+    await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Ann', 'ann@x.com')`);
+    await db.execute(sql`insert into drive_connection (id, user_id, google_sub, email, refresh_token_enc, scopes) values ('c1', 'u1', 'g1', 'ann@x.com', 'enc', 'drive.file')`);
+    await expect(db.execute(sql`insert into space_storage (space_id, kind, connection_id, created_by) values ('t2', 'google_account', 'c1', 'u1')`))
+      .rejects.toMatchObject({ cause: { code: "23514", constraint: "space_storage_shape_check" } });
+    await expect(db.execute(sql`insert into space_storage (space_id, kind, connection_id, root_folder_id, created_by) values ('t2', 'shared_folder', 'c1', 'r1', 'u1')`))
+      .rejects.toMatchObject({ cause: { code: "23514", constraint: "space_storage_shape_check" } });
+    await expect(db.execute(sql`insert into space_storage (space_id, kind, created_by) values ('t2', 'dropbox', 'u1')`))
+      .rejects.toMatchObject({ cause: { code: "23514", constraint: "space_storage_kind_check" } });
+    await db.execute(sql`insert into space_storage (space_id, kind, connection_id, root_folder_id, created_by) values ('t2', 'google_account', 'c1', 'r1', 'u1')`);
+    // a connection that a space uses cannot be deleted out from under it
+    await expect(db.execute(sql`delete from drive_connection where id = 'c1'`)).rejects.toMatchObject({ cause: { code: "23001" } });
+  });
+
+  it("a member's role is admin, editor or viewer; a space's kind is personal or team", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Ann', 'ann@x.com')`);
+    await expect(db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m1', ${SEED_TEAM_ID}, 'u1', 'member', now())`))
+      .rejects.toMatchObject({ cause: { code: "23514", constraint: "member_role_check" } });
+    await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m1', ${SEED_TEAM_ID}, 'u1', 'viewer', now())`);
+    await expect(db.execute(sql`insert into organization (id, name, slug, created_at, kind) values ('o2', 'O', 'oo2', now(), 'club')`))
+      .rejects.toMatchObject({ cause: { code: "23514", constraint: "organization_kind_check" } });
+  });
+
+  it("the same file can be pending in two spaces, but not twice in one", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into organization (id, name, slug, created_at, kind) values ('t2', 'T2', 'team-two', now(), 'team')`);
+    await db.execute(asset("a1", SEED_TEAM_ID));
+    await db.execute(asset("a2", "t2"));
+    await expect(db.execute(asset("a3", "t2"))).rejects.toMatchObject({ cause: { code: "23505", constraint: "assets_unfinished_upload_unique" } });
+  });
+
+  it("existing data survives 0012 -> 0013", async () => {
+    const db = await migratedTo(12);
+    await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Ann', 'ann@x.com')`);
+    await db.execute(sql`insert into folders (id, name, created_by) values ('f1', 'F', 'u1')`);
+    await migrate(db, { migrationsFolder: "drizzle" });
+    expect(rowsOf(await db.execute(sql`select space_id from folders`))).toEqual([{ space_id: SEED_TEAM_ID }]);
+    expect(rowsOf(await db.execute(sql`select count(*)::int as n from space_storage`))).toEqual([{ n: 1 }]);
   });
 });
 
