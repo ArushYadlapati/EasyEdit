@@ -4,22 +4,23 @@ import { PREFS_COOKIE } from "@/lib/editor/settings";
 
 const YEAR_SECONDS = 31_536_000;
 
-// Only editor pages get these cookies, so API requests do not carry them. A browser that refuses cookies keeps the
+// Every space page under /s gets these cookies, the editor (/s/<slug>/editor/<id>) included, so API requests do not
+// carry them. A browser that refuses cookies keeps the
 // values for this page only.
 function writeEditorCookie(name: string, value: string): void {
   try {
-    document.cookie = `${name}=${value}; path=/editor; max-age=${YEAR_SECONDS}; samesite=lax`;
+    document.cookie = `${name}=${value}; path=/s; max-age=${YEAR_SECONDS}; samesite=lax`;
   } catch {
     // Cookies are blocked here.
   }
 }
 
-// Keeps the panel sizes in this browser for every editor page, where the server reads them before it paints.
+// Keeps the panel sizes in this browser for every editor page under /s, where the server reads them before it paints.
 export function writeLayoutCookie(layout: Layout): void {
   writeEditorCookie(LAYOUT_COOKIE, formatLayout(layout));
 }
 
-// Keeps the preferences' text (formatPrefs) in this browser for every editor page, as the panel sizes are.
+// Keeps the preferences' text (formatPrefs) in this browser for every editor page under /s, as the panel sizes are.
 export function writePrefsCookie(text: string): void {
   writeEditorCookie(PREFS_COOKIE, text);
 }

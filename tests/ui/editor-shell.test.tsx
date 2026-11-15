@@ -58,12 +58,12 @@ vi.mock("@/components/editor/export/browser-deps", async (importOriginal) => {
 });
 
 const SPACE = { id: "s1", slug: "seattle-solvers", storageReady: true };
-const EDITOR_URL = "http://localhost:3000/editor/p1";
+const EDITOR_URL = "http://localhost:3000/s/seattle-solvers/editor/p1";
 const PREFS_TEXT = () => document.cookie.split("; ").find((c) => c.startsWith("easyedit-prefs="));
 // happy-dom keeps a cookie set with max-age=0, empty; a date in the past removes it.
 const expireCookies = () => {
   happyDOM().setURL(EDITOR_URL);
-  for (const name of ["easyedit-prefs", "easyedit-layout"]) document.cookie = `${name}=; path=/editor; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  for (const name of ["easyedit-prefs", "easyedit-layout"]) document.cookie = `${name}=; path=/s; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
 };
 
 const initial = (): EditorInit => ({ projectId: "p1", name: "Qual recap", doc: sampleDoc(), version: 5, me: { id: "u1", name: "Ada" }, canEdit: true });
@@ -741,7 +741,7 @@ it("the real services ask the media routes once on open, and nothing after the e
 
 it("starts from the panel sizes the page read, and keeps a new size in the browser's cookie", () => {
   stubServer();
-  happyDOM().setURL("http://localhost:3000/editor/p1");
+  happyDOM().setURL("http://localhost:3000/s/seattle-solvers/editor/p1");
   render(<EditorShell space={SPACE} initial={initial()} layout={{ left: 300, right: 240, timeline: 400 }} />);
   const left = screen.getByRole("separator", { name: "Left panel width" });
   expect(left.parentElement!.style.getPropertyValue("--ed-left-w")).toBe("300px");
@@ -801,8 +801,8 @@ it("the editor's controls read the lengths the page gave", async () => {
 it("a newer cookie wins over the page's props after mount", () => {
   stubServer();
   happyDOM().setURL(EDITOR_URL);
-  document.cookie = "easyedit-prefs=u:cm.sz:1.sn:0.z:fill.st:30.tx:30; path=/editor";
-  document.cookie = "easyedit-layout=300_240_; path=/editor";
+  document.cookie = "easyedit-prefs=u:cm.sz:1.sn:0.z:fill.st:30.tx:30; path=/s";
+  document.cookie = "easyedit-layout=300_240_; path=/s";
   vi.mocked(createSettingsStore).mockClear();
   const written = vi.spyOn(document, "cookie", "set");
   render(<EditorShell space={SPACE} initial={initial()} prefs={DEFAULT_PREFS} layout={DEFAULT_LAYOUT} />);
@@ -822,7 +822,7 @@ it("a newer cookie wins over the page's props after mount", () => {
 it("after a newer layout cookie, going back to the page's size is saved", () => {
   stubServer();
   happyDOM().setURL(EDITOR_URL);
-  document.cookie = "easyedit-layout=300_240_; path=/editor";
+  document.cookie = "easyedit-layout=300_240_; path=/s";
   render(<EditorShell space={SPACE} initial={initial()} layout={{ left: 284, right: 240, timeline: null }} />);
   expect(leftWidth()).toBe("300px");
   fireEvent.keyDown(screen.getByRole("separator", { name: "Left panel width" }), { key: "ArrowLeft" });
@@ -846,7 +846,7 @@ it("the keymap kept in this browser is loaded after mount, and a change is kept"
 it("under strict mode the keymap and a newer cookie are taken once, and nothing is saved", () => {
   stubServer();
   happyDOM().setURL(EDITOR_URL);
-  document.cookie = "easyedit-prefs=u:in.sz:1.sn:1.z:50.st:30.tx:30; path=/editor";
+  document.cookie = "easyedit-prefs=u:in.sz:1.sn:1.z:50.st:30.tx:30; path=/s";
   localStorage.setItem(KEYMAP_KEY, JSON.stringify({ off: ["split"], v: 1 }));
   const setItem = vi.spyOn(Storage.prototype, "setItem");
   vi.mocked(createSettingsStore).mockClear();

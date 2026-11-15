@@ -14,12 +14,12 @@ const throwing = {
 };
 
 afterEach(() => {
-  happyDOM().setURL("http://localhost:3000/editor/p1");
-  document.cookie = "easyedit-prefs=; path=/editor; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  happyDOM().setURL("http://localhost:3000/s/seattle-solvers/editor/p1");
+  document.cookie = "easyedit-prefs=; path=/s; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 });
 
 it("writePrefsCookie keeps the preferences for editor pages", () => {
-  happyDOM().setURL("http://localhost:3000/editor/p1");
+  happyDOM().setURL("http://localhost:3000/s/seattle-solvers/editor/p1");
   writePrefsCookie("u:cm.sz:1");
   expect(document.cookie).toContain("easyedit-prefs=u:cm.sz:1");
   expect(readCookie("easyedit-prefs")).toBe("u:cm.sz:1");
@@ -28,6 +28,21 @@ it("writePrefsCookie keeps the preferences for editor pages", () => {
   happyDOM().setURL("http://localhost:3000/dashboard");
   expect(document.cookie).not.toContain("easyedit-prefs");
   expect(readCookie("easyedit-prefs")).toBeNull();
+});
+
+it("the cookie is written at path /s, so it reaches /s/<slug>/editor/<id> and not the API or the old addresses", () => {
+  const set = vi.spyOn(document, "cookie", "set");
+  writePrefsCookie("u:cm.sz:1");
+  expect(set.mock.calls[0][0]).toMatch(/; path=\/s;/);
+  set.mockRestore();
+  for (const url of ["http://localhost:3000/s/personal/editor/p1", "http://localhost:3000/s/seattle-solvers"]) {
+    happyDOM().setURL(url);
+    expect(readCookie("easyedit-prefs")).toBe("u:cm.sz:1");
+  }
+  for (const url of ["http://localhost:3000/api/projects/p1/ops", "http://localhost:3000/editor/p1", "http://localhost:3000/dashboard"]) {
+    happyDOM().setURL(url);
+    expect(readCookie("easyedit-prefs")).toBeNull();
+  }
 });
 
 it("a browser that refuses cookies changes nothing on the page", () => {

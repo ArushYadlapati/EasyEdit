@@ -183,7 +183,7 @@ it("a narrow window still gets its message", () => {
 });
 
 it("writeLayoutCookie keeps the sizes for editor pages", () => {
-  happyDOM().setURL("http://localhost:3000/editor/p1");
+  happyDOM().setURL("http://localhost:3000/s/seattle-solvers/editor/p1");
   writeLayoutCookie({ left: 260, right: 300, timeline: null });
   expect(document.cookie).toContain("easyedit-layout=260_300_");
   // Other pages, and the API under them, do not get it.
