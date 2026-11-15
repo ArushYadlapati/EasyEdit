@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BrandProvider } from "@/components/editor/brand/brand-context";
 import { EditorProvider } from "@/components/editor/context";
+import { FONT_LIST } from "@/lib/brand/fonts";
+import { DEFAULT_BRAND_KIT } from "@/lib/brand/types";
 import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
 import { MESSAGES, explainOpError } from "@/lib/editor/messages";
@@ -801,5 +804,51 @@ describe("crop numbers and Reset crop", () => {
     render(<EditorProvider store={store}><Inspector /></EditorProvider>);
     expect(screen.queryByLabelText("Crop left")).toBeNull();
     expect(screen.queryByRole("button", { name: "Reset crop" })).toBeNull();
+  });
+});
+
+describe("the Font menu", () => {
+  function setup(clip = text("x1", 0, 60), canEdit = true) {
+    const doc = sampleDoc();
+    doc.tracks[1].clips = [clip];
+    const store = makeStore({ doc, canEdit });
+    store.getState().select(["x1"]);
+    const initial = { ...DEFAULT_BRAND_KIT, fonts: { title: "Orbitron", subtitle: "Geist", body: "Inter" } };
+    render(
+      <EditorProvider store={store}>
+        <BrandProvider spaceId="team1" canEdit={canEdit} initial={initial} api={{ fetch: vi.fn(), save: vi.fn() }}><Inspector /></BrandProvider>
+      </EditorProvider>,
+    );
+    return store;
+  }
+  const fontMenu = () => screen.getByLabelText("Font") as HTMLSelectElement;
+
+  it("lists the kit fonts first, then every font", () => {
+    setup();
+    const groups = [...fontMenu().querySelectorAll("optgroup")];
+    expect(groups.map((g) => g.label)).toEqual(["Brand kit", "All fonts"]);
+    expect([...groups[0].querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Title · Orbitron", "Subtitle · Geist", "Body · Inter"]);
+    expect(groups[1].querySelectorAll("option").length).toBe(FONT_LIST.length);
+    expect(fontMenu().value).toBe("Geist");
+  });
+
+  it("choosing a font sends one edit and snaps the weight", () => {
+    const store = setup();
+    fireEvent.change(fontMenu(), { target: { value: "Bebas Neue" } });
+    expect(store.getState().queue).toMatchObject([
+      { label: "style change", ops: [{ op: "update_clip", clipId: "x1", patch: { style: { fontFamily: "Bebas Neue", fontWeight: 400 } } }] },
+    ]);
+    expect([...(screen.getByLabelText("Weight") as HTMLSelectElement).options].map((o) => o.textContent)).toEqual(["Regular"]);
+  });
+
+  it("an unlisted font shows as the selected entry", () => {
+    setup(text("x1", 0, 60, { style: { fontFamily: "Comic Sans MS", fontSize: 64, fontWeight: 700, color: "#ffffff", align: "center" } }));
+    expect(fontMenu().value).toBe("Comic Sans MS");
+    expect((screen.getByLabelText("Weight") as HTMLSelectElement).options).toHaveLength(5);
+  });
+
+  it("a viewer's Font menu is disabled", () => {
+    setup(text("x1", 0, 60), false);
+    expect(fontMenu().disabled).toBe(true);
   });
 });

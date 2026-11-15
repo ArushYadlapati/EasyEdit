@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CROP_MIN_SHOWN, type Sizer } from "@/lib/editor/clip-box";
 import {
-  clipFieldOps, clipFieldValue, cropScrubRange, fieldContext, FIELD_LABEL, scrubBounds, type ClipField, type FieldContext,
+  clipFieldOps, clipFieldValue, cropScrubRange, fieldContext, FIELD_LABEL, scrubBounds, weightOptions, type ClipField, type FieldContext,
 } from "@/lib/editor/inspector-fields";
 import { findClip } from "@/lib/editor/store";
 import { applyOps, prepareOps, type Clip, type OpInput } from "@/lib/timeline";
@@ -291,5 +291,36 @@ describe("crop numbers", () => {
     expect(cropScrubRange(clip("c1"), "cropLeft")).toEqual({ min: 0, max: 95 });
     expect(cropScrubRange(cropped({ right: 0.97 }), "cropLeft")).toEqual({ min: 0, max: 0 });
     expect(CROP_MIN_SHOWN).toBe(0.05);
+  });
+});
+
+describe("the font field", () => {
+  const styled = (fontFamily: string, fontWeight: number) => text("x1", 0, 60, { style: { fontFamily, fontSize: 64, fontWeight, color: "#ffffff", align: "center" } });
+  const update = (style: Record<string, unknown>) => [{ op: "update_clip", clipId: "x1", patch: { style } }];
+
+  it("shows the clip's font", () => {
+    expect(clipFieldValue(styled("Orbitron", 700), "fontFamily", ctx)).toBe("Orbitron");
+    expect(FIELD_LABEL.fontFamily).toBe("style change");
+  });
+
+  it("changing to Bebas Neue snaps a bold clip to 400", () => {
+    expect(clipFieldOps(styled("Geist", 700), "fontFamily", "Bebas Neue", ctx)).toEqual(update({ fontFamily: "Bebas Neue", fontWeight: 400 }));
+  });
+
+  it("changing to Inter keeps 700", () => {
+    expect(clipFieldOps(styled("Geist", 700), "fontFamily", "Inter", ctx)).toEqual(update({ fontFamily: "Inter" }));
+    expect(clipFieldOps(styled("Inter", 700), "fontFamily", "Inter", ctx)).toEqual([]);
+  });
+
+  it("an unlisted font is refused, but re-choosing the clip's own unlisted font changes nothing", () => {
+    expect(clipFieldOps(styled("Geist", 700), "fontFamily", "Comic Sans MS", ctx)).toBeNull();
+    expect(clipFieldOps(styled("Comic Sans MS", 700), "fontFamily", "Comic Sans MS", ctx)).toEqual([]);
+  });
+
+  it("offers only the weights the font has", () => {
+    expect(weightOptions("Bebas Neue", 400)).toEqual([{ value: 400, label: "Regular" }]);
+    expect(weightOptions("Lato", 400).map((w) => w.label)).toEqual(["Light", "Regular", "Bold", "Black"]);
+    expect(weightOptions("Comic Sans MS", 700).map((w) => w.value)).toEqual([400, 500, 600, 700, 900]);
+    expect(weightOptions("Bebas Neue", 700).map((w) => w.value)).toEqual([400, 700]); // the clip's own weight stays shown
   });
 });

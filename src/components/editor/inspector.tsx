@@ -18,7 +18,7 @@ import {
   FIELD_LABEL,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
-  WEIGHTS,
+  weightOptions,
   clipFieldValue,
   cropScrubRange,
   fieldContext,
@@ -36,6 +36,8 @@ import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { docDuration, isCropped, type Clip, type Track } from "@/lib/timeline";
+import { FONT_LIST, isListedFont } from "@/lib/brand/fonts";
+import { useBrand } from "./brand/brand-context";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatFields } from "./format-select";
 import { useLibrary, useMedia } from "./media/media-context";
@@ -277,12 +279,43 @@ function ColorField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   );
 }
 
+const ROLE_LABELS = [["title", "Title"], ["subtitle", "Subtitle"], ["body", "Body"]] as const;
+
+// The clip's font: the space's brand kit fonts first, by the kind of text each is for, then every font there is. A font
+// not in the list (an agent may write any name) shows as its own entry, so the menu never claims another font.
+function FontField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
+  const store = useEditorStore();
+  const { fonts } = useBrand().kit;
+  if (clip.type !== "text") return null;
+  const family = clip.style.fontFamily;
+  return (
+    <Field label="Font">
+      <Select data-edit-control disabled={!canEdit} value={family} onChange={(event) => editField(store, clip.id, "fontFamily", event.target.value)}>
+        {!isListedFont(family) && <option value={family}>{family}</option>}
+        <optgroup label="Brand kit">
+          {ROLE_LABELS.map(([role, label]) => (
+            // The same font may be in both groups; a select shows the first option with the value it is given.
+            <option key={role} value={fonts[role]}>{`${label} · ${fonts[role]}`}</option>
+          ))}
+        </optgroup>
+        <optgroup label="All fonts">
+          {FONT_LIST.map((f) => (
+            <option key={f.family} value={f.family}>
+              {f.family}
+            </option>
+          ))}
+        </optgroup>
+      </Select>
+    </Field>
+  );
+}
+
 function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   const store = useEditorStore();
   const text = useTextField(store, clip.id, "text", clipFieldValue(clip, "text", fieldContext(viewDoc(store.getState()), clip)));
   if (clip.type !== "text") return null;
   const weight = clip.style.fontWeight;
-  const weights = WEIGHTS.some((w) => w.value === weight) ? WEIGHTS : [...WEIGHTS, { value: weight, label: String(weight) }];
+  const weights = weightOptions(clip.style.fontFamily, weight);
 
   return (
     <Section title="Text">
@@ -298,6 +331,7 @@ function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
           onKeyDown={(event) => text.onKeyDown(event, true)}
         />
       </Field>
+      <FontField clip={clip} canEdit={canEdit} />
       <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clip.id} field="fontSize" label="Size" suffix="px" min={FONT_SIZE_MIN} max={FONT_SIZE_MAX} />
         <Field label="Weight">
