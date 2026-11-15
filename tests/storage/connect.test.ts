@@ -7,12 +7,13 @@ import type { CurrentUser } from "@/lib/access-rules";
 import { shareFolderWith } from "@/lib/drive/reader";
 import { driveFileUrl } from "@/lib/media/read-tokens";
 import { ServiceError } from "@/lib/service-error";
-import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
+import { personalSpaceId, SEED_TEAM_ID, type SpaceKind } from "@/lib/spaces/types";
 import type { StorageConfig } from "@/lib/storage/config";
 import { makeConnectHandlers } from "@/lib/storage/connect-handlers";
 import { connectionAccess, listConnections, saveConnection } from "@/lib/storage/connections";
 import { ConnectionBrokenError, DRIVE_FILE_SCOPE } from "@/lib/storage/google-oauth";
 import { open, seal } from "@/lib/storage/secret-box";
+import type { StorageBlock } from "@/lib/storage/messages";
 import type { SetUpStorage } from "@/lib/storage/setup";
 import { forgetAllSources } from "@/lib/storage/token-cache";
 import { joinSpace, testUser } from "../helpers/actor";
@@ -48,7 +49,7 @@ function fakeGoogle() {
   return { grant, exchanges, fetch: fetchFn };
 }
 
-async function setup(opts: { config?: StorageConfig | null } = {}) {
+async function setup(opts: { config?: StorageConfig | null; block?: (kind: SpaceKind) => StorageBlock } = {}) {
   const db = await makeTestDb();
   await joinSpace(db, { id: "u1" }, "admin");
   await joinSpace(db, { id: "u1" }, "admin", personalSpaceId("u1"));
@@ -64,6 +65,7 @@ async function setup(opts: { config?: StorageConfig | null } = {}) {
     fetch: google.fetch,
     now: () => clock.now,
     setUp,
+    block: opts.block ?? (() => null),
   });
   return { db, google, signedIn, clock, setUp, handlers };
 }
@@ -155,6 +157,26 @@ describe("connect", () => {
     const cb = await back(ctx, "code=c&state=s");
     await expectPage(cb, "/dashboard?storage=refused");
     expectCleared(cb);
+  });
+
+  it("a team this server can't set storage up for goes back to its storage page, never to Google", async () => {
+    const kinds: SpaceKind[] = [];
+    const ctx = await setup({ block: (kind) => (kinds.push(kind), kind === "team" ? "team" : null) });
+    const res = await ctx.handlers.connect(new Request(`${BASE}/api/storage/connect?space=${SEED_TEAM_ID}`));
+    await expectPage(res, `${STORAGE_PAGE}?storage=not-configured`);
+    expect(cookiesOf(res)).toEqual([]);
+    expect(kinds).toEqual(["team"]);
+    // A personal space on the same server still goes to Google.
+    const { google } = await start(ctx, `space=${personalSpaceId("u1")}`);
+    expect(google.origin).toBe("https://accounts.google.com");
+    expect(ctx.google.exchanges).toEqual([]);
+  });
+
+  it("checks the same block the pages use by default", async () => {
+    const db = await makeTestDb();
+    await joinSpace(db, { id: "u1" }, "admin");
+    const handlers = makeConnectHandlers({ db: () => db, auth: async () => testUser({ id: "u1" }), config: () => ({ ...cfg, projectId: null }), setUp: async () => {} });
+    await expectPage(await handlers.connect(new Request(`${BASE}/api/storage/connect?space=${SEED_TEAM_ID}`)), `${STORAGE_PAGE}?storage=not-configured`);
   });
 
   it("a signed-out or refused person lands on the fixed page, not the auth answer's JSON", async () => {
@@ -355,6 +377,17 @@ describe("the callback", () => {
     await expectPage(res, `${STORAGE_PAGE}?storage=in-use`);
     expectCleared(res);
     expect(await rows(ctx.db)).toHaveLength(1);
+  });
+
+  it("a team this server can't set up after all goes back with not-configured, not failed", async () => {
+    const ctx = await setup();
+    ctx.setUp.mockRejectedValueOnce(new ServiceError("TEAM_STORAGE_NOT_CONFIGURED", 409, "not here"));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { state, cookie } = await start(ctx);
+    const res = await back(ctx, `code=c&state=${state}`, cookie);
+    quiet.mockRestore();
+    await expectPage(res, `${STORAGE_PAGE}?storage=not-configured`);
+    expectCleared(res);
   });
 
   it("an unexpected failure lands on a fixed page too, and still clears the cookie", async () => {

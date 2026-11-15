@@ -8,10 +8,12 @@ import { DriveError } from "@/lib/drive/token";
 import { ServiceError } from "@/lib/service-error";
 import { slugFor } from "@/lib/spaces/paths";
 import { listMySpaces } from "@/lib/spaces/service";
-import type { MySpace } from "@/lib/spaces/types";
+import type { MySpace, SpaceKind } from "@/lib/spaces/types";
+import { storageBlock } from "./availability";
 import type { StorageConfig } from "./config";
 import { saveConnection } from "./connections";
 import { authorizeUrl, ConnectionBrokenError, DRIVE_FILE_SCOPE, exchangeCode, OAuthError, pkcePair } from "./google-oauth";
+import type { StorageBlock } from "./messages";
 import { open, seal } from "./secret-box";
 import type { SetUpStorage } from "./setup";
 
@@ -22,6 +24,8 @@ export type ConnectHandlerDeps = {
   fetch?: typeof fetch;
   now?: () => Date;
   setUp: SetUpStorage;
+  // What stops this server setting storage up for a space of this kind; the pages' own check (storageBlock) by default.
+  block?: (kind: SpaceKind) => StorageBlock;
 };
 
 // What the browser keeps between pressing "Connect Google Drive" and Google sending it back: sealed with the token key,
@@ -120,6 +124,7 @@ function asPage(cfg: StorageConfig | null, res: Response): Response {
 export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Request): Promise<Response>; callback(req: Request): Promise<Response> } {
   const now = deps.now ?? (() => new Date());
   const fetchFn = deps.fetch ?? fetch;
+  const block = deps.block ?? ((kind: SpaceKind) => storageBlock(kind, { config: deps.config }));
   const adminSpace = async (userId: string, spaceId: string | null) => {
     const space = spaceId ? await mySpace(deps.db(), userId, spaceId) : null;
     return space?.role === "admin" ? space : null;
@@ -133,7 +138,8 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     const params = new URL(req.url).searchParams;
     const space = await adminSpace(user.id, params.get("space") || null);
     if (!space) return goTo(cfg, REFUSED_PAGE);
-    if (!cfg) return goTo(cfg, storagePage(space, "not-configured"));
+    // A typed or kept link too: nobody is sent to Google for a connect this server can't finish.
+    if (!cfg || block(space.kind) !== null) return goTo(cfg, storagePage(space, "not-configured"));
 
     const state = randomBytes(32).toString("base64url");
     const { verifier, challenge } = pkcePair();
@@ -190,9 +196,10 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     } catch (failure) {
       if (!(failure instanceof ServiceError || failure instanceof DriveError || failure instanceof ConnectionBrokenError)) throw failure;
       console.error("Setting up storage failed:", failure.message);
-      // A space whose videos are already in another account keeps its storage, and is told so in its own words.
-      const inUse = failure instanceof ServiceError && failure.code === "STORAGE_IN_USE";
-      return go(storagePage(space, inUse ? "in-use" : "failed"));
+      // A space whose videos are already in another account keeps its storage, and is told so in its own words; so
+      // is a team this server turns out not to be set up for.
+      const code = failure instanceof ServiceError ? failure.code : null;
+      return go(storagePage(space, code === "STORAGE_IN_USE" ? "in-use" : code === "TEAM_STORAGE_NOT_CONFIGURED" ? "not-configured" : "failed"));
     }
     return go((started.return && returnPath(started.return)) || storagePage(space, "connected"));
   }
