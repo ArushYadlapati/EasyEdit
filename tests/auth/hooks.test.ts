@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { rowsOf } from "@/db";
 import { user } from "@/db/schema";
 import { addEntry, removeEntry, SEED_ADMIN_EMAIL, seedAdmin } from "@/lib/allowlist/service";
@@ -8,6 +8,10 @@ import { listMySpaces } from "@/lib/spaces/service";
 import { makeTestDb } from "../helpers/db";
 
 // Better Auth's APIError (better-call) keeps the payload on `.body`, so the message is matched at `body.message`.
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("auth database hooks", () => {
   it("user.create.before rejects a non-allowlisted email", async () => {
     const db = await makeTestDb();
@@ -21,8 +25,8 @@ describe("auth database hooks", () => {
   it("user.create.before accepts and normalizes an allowlisted email", async () => {
     const db = await makeTestDb();
     await seedAdmin(db);
-    await expect(makeUserCreateBefore(db)({ email: "Admin@SeattleSolvers.com" })).resolves.toEqual({
-      data: { email: "admin@seattlesolvers.com" },
+    await expect(makeUserCreateBefore(db)({ email: "Admin@SeattleSolvers.com", emailVerified: true })).resolves.toEqual({
+      data: { email: "admin@seattlesolvers.com", emailVerified: true },
     });
   });
 
@@ -45,6 +49,19 @@ describe("auth database hooks", () => {
       body: { message: "NOT_ALLOWLISTED" },
     });
   });
+
+  for (const flag of [undefined, "true"]) {
+    it(`user.create.before rejects an email with no verified mark at all (OPEN_SIGNUP ${flag ?? "unset"})`, async () => {
+      if (flag) vi.stubEnv("OPEN_SIGNUP", flag);
+      const db = await makeTestDb();
+      await seedAdmin(db);
+      for (const email of ["admin@seattlesolvers.com", "rando@gmail.com"]) {
+        await expect(makeUserCreateBefore(db)({ email, name: "Someone" })).rejects.toMatchObject({ status: "FORBIDDEN", body: { message: "NOT_ALLOWLISTED" } });
+      }
+      // With sign-up open, a verified email is enough.
+      if (flag) await expect(makeUserCreateBefore(db)({ email: "rando@gmail.com", emailVerified: true })).resolves.toEqual({ data: { email: "rando@gmail.com", emailVerified: true } });
+    });
+  }
 
   it("session.create.before allows an allowlisted user", async () => {
     const db = await makeTestDb();

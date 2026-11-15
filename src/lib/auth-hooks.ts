@@ -14,9 +14,9 @@ function notAllowlisted(): APIError {
 export function makeUserCreateBefore(db: DB) {
   return async <U extends { email: string; emailVerified?: boolean }>(newUser: U): Promise<{ data: U }> => {
     const email = normalizeEmail(newUser.email);
-    // An email the provider has not verified proves nothing about who owns it.
-    // With sign-up open, a verified email is enough; otherwise it must be on the allowlist.
-    if (newUser.emailVerified === false) throw notAllowlisted();
+    // An email the provider has not verified proves nothing about who owns it, and neither does one it says nothing
+    // about (Google always says). With sign-up open, a verified email is enough; otherwise it must be on the allowlist.
+    if (newUser.emailVerified !== true) throw notAllowlisted();
     if (!openSignUp() && (await getRole(db, email)) === null) throw notAllowlisted();
     return { data: { ...newUser, email } };
   };
