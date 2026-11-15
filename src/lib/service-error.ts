@@ -2,7 +2,18 @@ import type { OpErrorCode } from "@/lib/timeline";
 
 export type ErrorBody = { code: string; message: string; opIndex?: number; currentVersion?: number };
 
-export type ServiceErrorCode = OpErrorCode | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "STORAGE_IN_USE" | "TEAM_STORAGE_NOT_CONFIGURED";
+export type ServiceErrorCode =
+  | OpErrorCode
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "STORAGE_IN_USE"
+  | "TEAM_STORAGE_NOT_CONFIGURED"
+  | "MANAGED_ELSEWHERE"
+  | "NO_ACCOUNT"
+  | "ALREADY_MEMBER"
+  | "LAST_ADMIN"
+  | "STORAGE_OWNER";
 
 export class ServiceError extends Error {
   code: ServiceErrorCode;
