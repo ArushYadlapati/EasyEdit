@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { linkButtonClass } from "@/components/ui/button";
+import { linkButtonClass } from "@/components/ui/button-class";
 import { cx } from "@/components/ui/cx";
 import { STORAGE_MESSAGES, type Note, type StorageCard } from "@/lib/storage/messages";
 

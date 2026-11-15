@@ -4,11 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
-
-// The tabs of a space's settings, each a page of its own under /s/<slug>/settings/<id>.
-export const SETTINGS_TABS: readonly { id: string; label: string }[] = [{ id: "storage", label: "Storage" }];
-
-export const settingsTabPath = (slug: string, id: string) => `/s/${slug}/settings/${id}`;
+import { SETTINGS_TABS, settingsTabPath } from "@/lib/spaces/settings-tabs";
 
 // The row of settings tabs, links that mark the page shown. It scrolls sideways on its own on a narrow window.
 export function SettingsTabs({ slug }: { slug: string }): ReactNode {

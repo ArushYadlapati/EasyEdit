@@ -3,7 +3,8 @@
 import { Upload } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type DragEvent, type FormEvent, type HTMLAttributes } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Button, linkButtonClass } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { linkButtonClass } from "@/components/ui/button-class";
 import { cx } from "@/components/ui/cx";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
