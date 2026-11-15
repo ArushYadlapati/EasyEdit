@@ -9,7 +9,7 @@ import { SHORTCUTS, keyLabel, type CommandId, type Shortcut } from "@/lib/editor
 import { useSettings, useSettingsStore } from "./context";
 import { useIsMac } from "./use-shortcuts";
 
-const GROUPS: Shortcut["group"][] = ["Playback", "Editing", "Timeline", "General"];
+const GROUPS: Shortcut["group"][] = ["Tools", "Playback", "Editing", "Timeline", "General"];
 const LABELS = new Map<CommandId, string>(SHORTCUTS.map((s) => [s.command, s.label]));
 
 // What the mouse does on the preview with a key held. These are not shortcuts, so they cannot be changed. On a Mac Alt

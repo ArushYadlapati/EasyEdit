@@ -3,7 +3,8 @@ export type CommandId =
   | "prev-edge" | "next-edge" | "go-start" | "go-end"
   | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste" | "duplicate"
   | "nudge-left" | "nudge-right" | "nudge-left-second" | "nudge-right-second"
-  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "export" | "show-shortcuts";
+  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "export" | "show-shortcuts"
+  | "tool-select" | "tool-razor" | "tool-text" | "tool-guide" | "tool-crop";
 
 // edits: the command changes the project, so it does nothing for a viewer. repeats: holding the key
 // down runs it again with each repeat; other commands run once per press.
@@ -11,7 +12,7 @@ export type Shortcut = {
   command: CommandId;
   keys: string[];
   label: string;
-  group: "Playback" | "Editing" | "Timeline" | "General";
+  group: "Tools" | "Playback" | "Editing" | "Timeline" | "General";
   edits: boolean;
   repeats: boolean;
 };
@@ -37,6 +38,12 @@ const EDITS_REPEATS: Flags = { edits: true, repeats: true };
 // is written as its modifiers (Mod, Alt, Shift, in that order) and the KeyboardEvent key, joined by
 // "+", with Space for the space bar and letters in upper case. Mod is Cmd on a Mac, Ctrl elsewhere.
 export const SHORTCUTS: Shortcut[] = [
+  // The rail's tools. Every one but Selection changes the project, so for a viewer they do nothing.
+  row("Tools", "tool-select", ["V", "A"], "Selection tool"),
+  row("Tools", "tool-razor", ["C"], "Razor: click a clip to cut it", EDITS),
+  row("Tools", "tool-text", ["T"], "Text: click the preview to add text", EDITS),
+  row("Tools", "tool-guide", ["G"], "Guide: drag on the preview to add a guide", EDITS),
+  row("Tools", "tool-crop", ["R"], "Crop tool", EDITS),
   row("Playback", "play-pause", ["Space"], "Play or pause"),
   row("Playback", "play-forward", ["L"], "Play forward; press again to go faster"),
   row("Playback", "pause", ["K"], "Pause"),

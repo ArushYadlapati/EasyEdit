@@ -46,6 +46,14 @@ describe("matching keys", () => {
     ["-", key("-"), MAC, "zoom-out"],
     ["N", key("n"), MAC, "toggle-snapping"],
     ["? typed with Shift", key("?", { shiftKey: true }), MAC, "show-shortcuts"],
+    ["V", key("v"), MAC, "tool-select"],
+    ["A", key("a"), MAC, "tool-select"],
+    ["Cmd+A stays Select all", key("a", { metaKey: true }), MAC, "select-all"],
+    ["C", key("c"), MAC, "tool-razor"],
+    ["Ctrl+C stays Copy", key("c", { ctrlKey: true }), PC, "copy"],
+    ["T", key("t"), MAC, "tool-text"],
+    ["G", key("g"), MAC, "tool-guide"],
+    ["R", key("r"), MAC, "tool-crop"],
     ["a key with no command", key("q"), MAC, null],
   ])("%s", (_name, event, isMac, command) => {
     expect(matchShortcut(event, isMac)).toBe(command);
@@ -56,7 +64,8 @@ describe("matching keys", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
-      "cut", "delete", "duplicate", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "ripple-delete", "split", "undo",
+      "cut", "delete", "duplicate", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "ripple-delete", "split",
+      "tool-crop", "tool-guide", "tool-razor", "tool-text", "undo",
     ]);
   });
 
@@ -86,6 +95,11 @@ describe("matching keys", () => {
 
   it("holds exactly the brief's keys and labels", () => {
     expect(SHORTCUTS.map((s) => [s.command, s.keys.join(" "), s.label])).toEqual([
+      ["tool-select", "V A", "Selection tool"],
+      ["tool-razor", "C", "Razor: click a clip to cut it"],
+      ["tool-text", "T", "Text: click the preview to add text"],
+      ["tool-guide", "G", "Guide: drag on the preview to add a guide"],
+      ["tool-crop", "R", "Crop tool"],
       ["play-pause", "Space", "Play or pause"],
       ["play-forward", "L", "Play forward; press again to go faster"],
       ["pause", "K", "Pause"],
@@ -131,6 +145,7 @@ describe("matching keys", () => {
 
   it("lists the commands in the table's order, with their groups", () => {
     expect(SHORTCUTS.map((s) => `${s.group}:${s.command}`)).toEqual([
+      "Tools:tool-select", "Tools:tool-razor", "Tools:tool-text", "Tools:tool-guide", "Tools:tool-crop",
       "Playback:play-pause", "Playback:play-forward", "Playback:pause", "Playback:play-reverse",
       "Playback:frame-back", "Playback:frame-forward", "Playback:second-back", "Playback:second-forward",
       "Playback:prev-edge", "Playback:next-edge", "Playback:go-start", "Playback:go-end",
@@ -176,10 +191,32 @@ describe("matching keys", () => {
 });
 
 describe("running commands", () => {
-  function setup(canEdit = true) {
-    const store = makeStore({ canEdit });
+  function setup(canEdit = true, doc = sampleDoc()) {
+    const store = makeStore({ canEdit, doc });
     return { st: () => store.getState(), ctx: { store, clipboard: createClipboard(), openShortcuts: vi.fn(), openExport: vi.fn() } };
   }
+
+  it("picks a tool, and a viewer keeps Selection", () => {
+    const { st, ctx } = setup();
+    runCommand("tool-guide", ctx);
+    expect(st().tool).toBe("guide");
+    runCommand("tool-select", ctx);
+    expect(st().tool).toBe("select");
+    const viewer = setup(false);
+    runCommand("tool-text", viewer.ctx);
+    expect(viewer.st().tool).toBe("select");
+  });
+
+  it("Delete removes the selected guide", () => {
+    const { st, ctx } = setup(true, { ...sampleDoc(), guides: [{ id: "gd1", axis: "y", at: 0.4 }] });
+    st().selectGuide("gd1");
+    runCommand("delete", ctx);
+    expect(st().queue.map((e) => e.label)).toEqual(["remove guide"]);
+    expect(st().doc.guides).toBeUndefined();
+    expect(st().guideId).toBeNull();
+    runCommand("ripple-delete", ctx);
+    expect(st().queue).toHaveLength(1);
+  });
 
   it("runs each command against the store", () => {
     const { st, ctx } = setup();

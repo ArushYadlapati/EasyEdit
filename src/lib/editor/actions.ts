@@ -124,9 +124,15 @@ export function splitAtPlayhead(store: EditorStore): void {
   else state.edit(ops, "split");
 }
 
+// The selected clips, or with no clip selected the selected guide (a guide has no time, so ripple changes nothing).
 export function deleteSelection(store: EditorStore, ripple: boolean): void {
   const state = store.getState();
   const ids = state.selection.clipIds;
+  if (state.canEdit && ids.length === 0 && state.guideId !== null) {
+    const result = state.edit([{ op: "remove_guide", guideId: state.guideId }], "remove guide");
+    if (result.ok) state.selectGuide(null);
+    return;
+  }
   if (!state.canEdit || ids.length === 0) return;
   state.edit(deleteOps(ids, ripple), ripple ? "ripple delete" : "delete");
 }

@@ -68,6 +68,16 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return state.undo();
     case "redo":
       return state.redo();
+    case "tool-select":
+      return void state.setTool("select");
+    case "tool-razor":
+      return void state.setTool("razor");
+    case "tool-text":
+      return void state.setTool("text");
+    case "tool-guide":
+      return void state.setTool("guide");
+    case "tool-crop":
+      return void state.setTool("crop");
     case "split":
       return splitAtPlayhead(store);
     case "delete":

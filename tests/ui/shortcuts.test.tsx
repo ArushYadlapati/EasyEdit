@@ -128,8 +128,9 @@ it("? opens Settings at Shortcuts, and Escape closes it without clearing the sel
   const inside = within(dialog);
   expect(inside.getByRole("heading", { name: "Settings" })).toBeTruthy();
   expect(inside.getByRole("tab", { name: "Shortcuts" }).getAttribute("aria-selected")).toBe("true");
-  for (const group of ["Playback", "Editing", "Timeline", "General"]) expect(inside.getByRole("heading", { name: group })).toBeTruthy();
+  for (const group of ["Tools", "Playback", "Editing", "Timeline", "General"]) expect(inside.getByRole("heading", { name: group })).toBeTruthy();
   expect(inside.getByText("Delete and close the gap")).toBeTruthy();
+  expect(inside.getByText("Selection tool")).toBeTruthy();
   expect(dialog.querySelectorAll("kbd").length).toBeGreaterThan(30);
   // While it is open, keys are not shortcuts.
   press(document.body, "Delete");
