@@ -179,7 +179,7 @@ describe("the Crop tool on the preview", () => {
     fireEvent.pointerMove(handle(), { clientX: x - 10, clientY: y - 10, pointerId: 1 });
     frame();
     fireEvent.pointerUp(handle(), { clientX: x - 10, clientY: y - 10, pointerId: 1 });
-    const patch = (st().queue[0].ops[0] as { patch: { transform: Record<string, unknown> } }).patch.transform;
+    const patch = (st().queue[0].ops[0] as unknown as { patch: { transform: Record<string, unknown> } }).patch.transform;
     expect(patch.crop).toBeDefined();
     expect(patch.scale).toBeUndefined();
   });
