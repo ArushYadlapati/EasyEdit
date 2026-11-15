@@ -407,6 +407,26 @@ describe("connections", () => {
     expect(fake.calls.length).toBe(calls);
   });
 
+  it("a refresh that started with the old token and fails after a reconnect doesn't mark the new token broken", async () => {
+    const db = await makeTestDb();
+    await joinSpace(db, { id: "u1" }, "admin");
+    const fake = makeFakeDrive();
+    const old = fake.connect({ email: "ada@gmail.com" });
+    const saved = await saveConnection(db, cfg, { userId: "u1", googleSub: "s1", email: old.email, refreshToken: old.refreshToken, scopes: [DRIVE_FILE_SCOPE] });
+    forgetAllSources();
+    const oldAccess = await connectionAccess(db, cfg, saved.id, fake.fetch); // built from the old sealed token, not asked yet
+
+    const fresh = fake.connect({ email: "ada@gmail.com" });
+    await saveConnection(db, cfg, { userId: "u1", googleSub: "s1", email: fresh.email, refreshToken: fresh.refreshToken, scopes: [DRIVE_FILE_SCOPE] });
+    fake.revoke(old.refreshToken);
+
+    await expect(oldAccess.token()).rejects.toBeInstanceOf(ConnectionBrokenError);
+    const [row] = await db.select().from(driveConnection);
+    expect(row).toMatchObject({ brokenAt: null, brokenReason: null });
+    const { accessToken } = await (await connectionAccess(db, cfg, saved.id, fake.fetch)).token();
+    expect(fake.whoHas(accessToken)?.email).toBe("ada@gmail.com");
+  });
+
   it("a connection's token sees only what the app made with it, not a folder merely shared with that person", async () => {
     const db = await makeTestDb();
     await joinSpace(db, { id: "u1" }, "admin");

@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { DB } from "@/db";
 import { driveConnection } from "@/db/schema";
@@ -72,7 +72,12 @@ export async function connectionAccess(db: DB, cfg: StorageConfig, connectionId:
         } catch (error) {
           if (error instanceof ConnectionBrokenError) {
             forgetSources(prefix);
-            await db.update(driveConnection).set({ brokenAt: sql`now()`, brokenReason: error.reason }).where(eq(driveConnection.id, connectionId));
+            // Only while the row still holds the token this source was built from: a reconnect that saved a new one
+            // in the meantime must not be marked broken by the old token's failure.
+            await db
+              .update(driveConnection)
+              .set({ brokenAt: sql`now()`, brokenReason: error.reason })
+              .where(and(eq(driveConnection.id, connectionId), eq(driveConnection.refreshTokenEnc, sealed)));
           }
           throw error;
         }
