@@ -503,8 +503,8 @@ describe("who may change what", () => {
   it("says when uploads are not set up", async () => {
     const { queue, view } = setup({ setUp: false });
     await openMedia();
-    expect(screen.getByText('Uploads are not set up yet. See "Set up media storage" in the README.')).toBeTruthy();
-    expect(MEDIA_MESSAGES.notSetUp).toBe('Uploads are not set up yet. See "Set up media storage" in the README.');
+    expect(screen.getByText('Uploads are not set up yet. See "Set up media storage" in docs/setup.md.')).toBeTruthy();
+    expect(MEDIA_MESSAGES.notSetUp).toBe('Uploads are not set up yet. See "Set up media storage" in docs/setup.md.');
     expect((screen.getByRole("button", { name: "Upload" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("Event for new uploads") as HTMLInputElement).disabled).toBe(true);
     expect(rowNames()).toEqual(["Add field to the timeline", "Add IMG_4821 to the timeline"]);

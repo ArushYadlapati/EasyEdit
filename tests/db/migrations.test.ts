@@ -187,7 +187,7 @@ describe("migrations", () => {
     expect(rowsOf(await db.execute(sql`select width, height from projects`))).toEqual([{ width: 816, height: 1056 }]);
   });
 
-  it("the after-deploy refill fixes empty and stale sizes, can run twice, and is in the README", async () => {
+  it("the after-deploy refill fixes empty and stale sizes, can run twice, and is in the deploy guide", async () => {
     const db = await makeTestDb();
     await db.execute(sql`insert into projects (id, name, format, doc, created_by, updated_by, width, height) values
       ('a', 'A', 'short_9x16', '{"width":1080,"height":1920}', 'u', 'u', null, null),
@@ -205,7 +205,7 @@ describe("migrations", () => {
     const second = await db.execute(sql.raw(REFILL_PROJECT_SIZES));
     expect((second as unknown as { affectedRows: number }).affectedRows).toBe(0);
     expect(await sizes()).toEqual(fixed);
-    expect(readFileSync("README.md", "utf8")).toContain(REFILL_PROJECT_SIZES);
+    expect(readFileSync("docs/deploy.md", "utf8")).toContain(REFILL_PROJECT_SIZES);
   });
 
   it("going back keeps the earlier version's writes off custom, and coming forward brings custom sizes back", async () => {
@@ -246,7 +246,7 @@ describe("migrations", () => {
     expect(affected(await db.execute(sql.raw(AFTER_COMING_FORWARD)))).toBe(0);
     expect(await rows()).toEqual(back);
 
-    const readme = readFileSync("README.md", "utf8");
+    const readme = readFileSync("docs/deploy.md", "utf8");
     expect(readme).toContain(BEFORE_GOING_BACK);
     expect(readme).toContain(CUSTOM_AFTER_COMING_FORWARD);
     expect(readme).toContain(AFTER_COMING_FORWARD);
@@ -337,8 +337,8 @@ describe("migrations", () => {
     ]);
   });
 
-  it("the README says to migrate before deploying, and that 0007 may run with it", () => {
-    expect(readFileSync("README.md", "utf8")).toContain(
+  it("the deploy guide says to migrate before deploying, and that 0007 may run with it", () => {
+    expect(readFileSync("docs/deploy.md", "utf8")).toContain(
       "    **Before deploying the version with project pictures:** run the migration against the production database first, with the command above, then deploy. Until it has run, that version's dashboard, editor, project API and Claude's tools fail. On its own it only adds two empty columns, which the version that is live now ignores. If the migration for folders and custom sizes has not run yet, the same command runs both together, so follow that paragraph too: run it at a quiet time, and run its statement after the deploy.",
     );
   });
@@ -477,8 +477,8 @@ describe("resyncing spaces after the earlier version was live", () => {
     expect(await state(db)).toEqual(fixed);
   });
 
-  it("the README quotes each statement", () => {
-    const readme = readFileSync("README.md", "utf8");
+  it("the deploy guide quotes each statement", () => {
+    const readme = readFileSync("docs/deploy.md", "utf8");
     for (const statement of RESYNC_SPACES) expect(readme).toContain(statement);
   });
 });

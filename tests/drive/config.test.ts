@@ -4,7 +4,7 @@ import { driveConfig } from "@/lib/drive/config";
 
 const key = { type: "service_account", client_email: "m@p.iam.gserviceaccount.com", private_key: "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n" };
 const encoded = Buffer.from(JSON.stringify(key)).toString("base64");
-const NOT_A_KEY = "GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key. Encode the JSON key file with base64 (see the README).";
+const NOT_A_KEY = "GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key. Encode the JSON key file with base64 (see docs/setup.md).";
 const base64 = (text: string) => Buffer.from(text).toString("base64");
 
 afterEach(() => vi.unstubAllEnvs());
@@ -24,7 +24,7 @@ describe("the media settings", () => {
     for (const bad of ["not base64 json", Buffer.from('{"client_email":"x"}').toString("base64"), JSON.stringify(key)]) {
       let message = "";
       try { driveConfig({ GOOGLE_SERVICE_ACCOUNT_KEY: bad, DRIVE_FOLDER_ID: "folder1" }); } catch (e) { message = (e as Error).message; }
-      expect(message).toBe("GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key. Encode the JSON key file with base64 (see the README).");
+      expect(message).toBe("GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key. Encode the JSON key file with base64 (see docs/setup.md).");
     }
   });
 

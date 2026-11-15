@@ -533,7 +533,7 @@ describe("the server's Drive", () => {
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", "not a key");
     vi.stubEnv("DRIVE_FOLDER_ID", "folder1");
     const getDrive = await load(); // loading does not throw
-    expect(() => getDrive()).toThrow("GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key. Encode the JSON key file with base64 (see the README).");
+    expect(() => getDrive()).toThrow("GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key. Encode the JSON key file with base64 (see docs/setup.md).");
     const fake = makeFakeDrive();
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", settings(fake));
     expect(getDrive()!.rootFolderId).toBe("folder1"); // a failure is not remembered

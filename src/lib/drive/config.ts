@@ -8,7 +8,7 @@ export type DriveConfig = {
 
 type Settings = Record<string, string | undefined>;
 
-const NOT_A_KEY = "GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key. Encode the JSON key file with base64 (see the README).";
+const NOT_A_KEY = "GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key. Encode the JSON key file with base64 (see docs/setup.md).";
 
 const filled = (value: unknown): value is string => typeof value === "string" && value !== "";
 

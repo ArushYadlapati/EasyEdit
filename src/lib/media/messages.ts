@@ -51,7 +51,7 @@ export const MEDIA_MESSAGES = {
   emptyEditor: "No media yet. Upload video, images or audio to use them in projects.",
   emptyViewer: "No media yet.",
   noMatch: "Nothing matches.",
-  notSetUp: 'Uploads are not set up yet. See "Set up media storage" in the README.',
+  notSetUp: 'Uploads are not set up yet. See "Set up media storage" in docs/setup.md.',
   storageNextTitle: "Storage comes next",
   storageNext: "Uploading to your personal space isn't ready yet. Seattle Solvers' media works as before.",
   loadFailed: "Couldn't load the library.",
