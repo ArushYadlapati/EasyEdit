@@ -74,7 +74,7 @@ export function fakeActions(): { [K in keyof DashboardActions]: Mock<DashboardAc
   };
 }
 
-// The dashboard as an editor sees the main view, with fake actions, unless over says otherwise.
+// The dashboard as an editor sees All projects, with fake actions, unless over says otherwise.
 export function renderDashboard(
   over: Partial<DashboardProps> = {},
 ): RenderResult & { actions: ReturnType<typeof fakeActions> } {
@@ -84,7 +84,7 @@ export function renderDashboard(
       projects={PROJECTS}
       folders={FOLDERS}
       recentIds={RECENT_IDS}
-      view={null}
+      view={{ kind: "all" }}
       canEdit
       now={NOW}
       actions={actions}

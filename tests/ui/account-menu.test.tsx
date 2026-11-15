@@ -4,7 +4,9 @@ import { AccountMenu } from "@/components/dashboard/account-menu";
 import { act, fireEvent, render, screen, waitFor, within } from "../helpers/dom";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
-vi.mock("next/navigation", () => ({ useRouter: () => router, unstable_rethrow: () => {} }));
+// The page the menu is on, as Next reports it.
+const at = vi.hoisted(() => ({ path: "/s/personal" }));
+vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => at.path, unstable_rethrow: () => {} }));
 const signOut = vi.hoisted(() => vi.fn(async (): Promise<{ error: unknown }> => ({ error: null })));
 const passkey = vi.hoisted(() => ({
   listUserPasskeys: vi.fn(async () => ({ data: [], error: null })),
@@ -23,7 +25,11 @@ beforeEach(() => {
   router.bfcacheId = "b0";
   signOut.mockClear();
   passkey.listUserPasskeys.mockClear();
-  window.history.replaceState(null, "", "/dashboard");
+  at.path = "/s/personal";
+  window.history.replaceState(null, "", "/s/personal");
+  // Each test starts with no preferences kept.
+  document.cookie = "easyedit-prefs=; path=/s; max-age=0";
+  window.localStorage.clear();
 });
 
 const account = () => screen.getByRole("button", { name: "Account" });
@@ -64,10 +70,20 @@ describe("the account menu", () => {
     expect(router.push).not.toHaveBeenCalled();
   });
 
-  it("lists Passkeys, AI agents, then Sign out", () => {
+  it("in a space it lists Settings, Passkeys, AI agents, then Sign out", () => {
     render(<AccountMenu name="Ada Lovelace" image={null} />);
     fireEvent.click(account());
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Passkeys", "AI agents", "Sign out"]);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Settings", "Passkeys", "AI agents", "Sign out"]);
+  });
+
+  it("off the space pages there is no Settings: the preferences cookie belongs to /s", () => {
+    for (const path of ["/admin", "/agents"]) {
+      at.path = path;
+      const { unmount } = render(<AccountMenu name="Ada Lovelace" image={null} />);
+      fireEvent.click(account());
+      expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Passkeys", "AI agents", "Sign out"]);
+      unmount();
+    }
   });
 
   it("Passkeys opens the Passkeys dialog", async () => {
@@ -122,5 +138,48 @@ describe("the account menu", () => {
     expect(screen.queryByRole("dialog", { name: "Passkeys" })).toBeNull();
     expect(router.replace).not.toHaveBeenCalled();
     expect(passkey.listUserPasskeys).not.toHaveBeenCalled();
+  });
+
+  describe("Settings", () => {
+    const openSettings = async () => {
+      fireEvent.click(account());
+      await act(async () => {
+        fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+      });
+      return screen.getByRole("dialog", { name: "Settings" });
+    };
+    const kept = () => /(?:^|; )easyedit-prefs=([^;]*)/.exec(document.cookie)?.[1] ?? null;
+
+    it("opens the editor's General and Shortcuts, without the project's section", async () => {
+      render(<AccountMenu name="Ada Lovelace" image={null} />);
+      expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+      const dialog = await openSettings();
+      expect(within(dialog).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["General", "Shortcuts"]);
+      expect(within(dialog).getByText(/Saved in this browser only\./)).toBeTruthy();
+      expect(within(dialog).getByRole("switch", { name: "Snapping" })).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole("tab", { name: "Shortcuts" }));
+      expect(within(dialog).getByRole("tab", { name: "Shortcuts" }).getAttribute("aria-selected")).toBe("true");
+      expect(within(dialog).queryByRole("switch", { name: "Snapping" })).toBeNull();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+      expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    });
+
+    it("shows what the editor kept, and keeps each change in the same cookie", async () => {
+      document.cookie = "easyedit-prefs=u:in.sz:0.sn:0.z:150.st:40.tx:30; path=/s";
+      render(<AccountMenu name="Ada Lovelace" image={null} />);
+      const dialog = await openSettings();
+      expect(within(dialog).getByRole("radio", { name: "Inches" }).getAttribute("aria-checked")).toBe("true");
+      const snapping = within(dialog).getByRole("switch", { name: "Snapping" });
+      expect(snapping.getAttribute("aria-checked")).toBe("false");
+
+      fireEvent.click(snapping);
+      expect(snapping.getAttribute("aria-checked")).toBe("true");
+      expect(kept()).toBe("u:in.sz:0.sn:1.z:150.st:40.tx:30");
+      fireEvent.click(within(dialog).getByRole("switch", { name: "Show safe area" }));
+      expect(kept()).toBe("u:in.sz:1.sn:1.z:150.st:40.tx:30");
+      fireEvent.click(within(dialog).getByRole("radio", { name: "Centimeters" }));
+      // The switches chosen here stay when another field is saved.
+      expect(kept()).toBe("u:cm.sz:1.sn:1.z:150.st:40.tx:30");
+    });
   });
 });

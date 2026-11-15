@@ -28,7 +28,9 @@ afterEach(() => {
 const EDITOR_ITEMS = ["Open", "Rename", "Duplicate", "Move to folder…", "Delete"];
 
 const region = (name: string) => screen.getByRole("region", { name });
-const card = (name: string) => within(region("All projects")).getByRole("link", { name }).closest("li")!;
+// The section of project cards: headed Projects under the folder tiles, otherwise named by the title.
+const grid = () => screen.getByRole("region", { name: /^(All projects|Projects|Recent)$/ });
+const card = (name: string) => within(grid()).getByRole("link", { name }).closest("li")!;
 const options = (li: HTMLElement) => within(li).getByRole("button", { name: "Project options" });
 const menuItems = () =>
   within(screen.getByRole("menu", { name: "Project options" }))
@@ -319,7 +321,7 @@ describe("a project deleted elsewhere", () => {
     }
     // The refusal refreshes the page, which no longer has the project.
     rerender(
-      <Dashboard projects={PROJECTS.filter((p) => p.id !== "a")} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={actions} spaceSlug="seattle-solvers" />,
+      <Dashboard projects={PROJECTS.filter((p) => p.id !== "a")} folders={FOLDERS} recentIds={RECENT_IDS} view={{ kind: "all" }} canEdit now={NOW} actions={actions} spaceSlug="seattle-solvers" />,
     );
     await act(async () => answer({ error: "That project no longer exists." }));
     expect(screen.queryByRole("link", { name: "Qual recap" })).toBeNull();
@@ -331,12 +333,12 @@ describe("a project deleted elsewhere", () => {
   });
 
   it("a card in Recent says so in the bar too", async () => {
-    const { actions, rerender } = renderDashboard();
+    const { actions, rerender } = renderDashboard({ view: { kind: "recent" } });
     let answer: (state: FormState) => void = () => {};
     actions.duplicate.mockImplementation(() => new Promise<FormState>((resolve) => (answer = resolve)));
     await pick(within(region("Recent")).getByRole("link", { name: "Finals" }).closest("li")!, "Duplicate");
     rerender(
-      <Dashboard projects={PROJECTS.filter((p) => p.id !== "c")} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={actions} spaceSlug="seattle-solvers" />,
+      <Dashboard projects={PROJECTS.filter((p) => p.id !== "c")} folders={FOLDERS} recentIds={RECENT_IDS} view={{ kind: "recent" }} canEdit now={NOW} actions={actions} spaceSlug="seattle-solvers" />,
     );
     await act(async () => answer({ error: "That project no longer exists." }));
     expect(screen.queryByRole("link", { name: "Finals" })).toBeNull();
@@ -505,7 +507,7 @@ describe("the card's picture", () => {
         projects={[{ ...PICTURED[0], thumbnailVersion: 4 }, PROJECTS[1], PROJECTS[2]]}
         folders={FOLDERS}
         recentIds={RECENT_IDS}
-        view={null}
+        view={{ kind: "all" }}
         canEdit
         now={NOW}
         actions={actions}
@@ -560,7 +562,7 @@ describe("the card's picture", () => {
   });
 
   it("a recent card and a custom-size card show their pictures in their own shape", () => {
-    renderDashboard({
+    const all = renderDashboard({
       projects: [
         dashProject({ id: "a", name: "Qual recap", thumbnailVersion: 3 }),
         { ...PROJECTS[1], thumbnailVersion: 1 },
@@ -570,6 +572,11 @@ describe("the card's picture", () => {
     const poster = card("Poster").querySelector("[data-blank-frame]")!;
     expect(poster.getAttribute("style")).toContain("aspect-ratio: 816 / 1056");
     expect(poster.querySelector("img")?.getAttribute("src")).toBe("/api/projects/b/thumbnail?v=1");
+    all.unmount();
+    renderDashboard({
+      view: { kind: "recent" },
+      projects: [dashProject({ id: "a", name: "Qual recap", thumbnailVersion: 3 }), { ...PROJECTS[1], thumbnailVersion: 1 }, { ...PROJECTS[2], thumbnailVersion: 2 }],
+    });
     const recent = within(region("Recent")).getByRole("link", { name: "Finals" });
     const img = recent.querySelector("[data-blank-frame] > img")!;
     expect(img.getAttribute("src")).toBe("/api/projects/c/thumbnail?v=2");

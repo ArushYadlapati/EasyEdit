@@ -1,18 +1,16 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { NumberInput } from "@/components/ui/number-input";
-import { Segmented } from "@/components/ui/segmented";
 import { Tabs, tabIds } from "@/components/ui/tabs";
-import { Toggle } from "@/components/ui/toggle";
-import { LENGTH_MAX_S, LENGTH_MIN_S, clampSeconds, type Units } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
 import { SAFE_AREA_DEFAULTS, formatLabel, maxSafeAreaHeight, safeAreaOf, type SafeArea } from "@/lib/timeline";
-import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
+import { useEditor, useEditorStore } from "./context";
 import { FormatFields } from "./format-select";
+import { CAPTION, GeneralFields, Heading, IN_THIS_BROWSER, SMALL_HINT } from "./general-fields";
 import { ShortcutsSection } from "./shortcuts-section";
 
 export type SettingsSection = "project" | "general" | "shortcuts";
@@ -23,19 +21,6 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "shortcuts", label: "Shortcuts" },
 ];
 
-const UNIT_OPTIONS: { value: Units; label: string }[] = [
-  { value: "px", label: "Pixels" },
-  { value: "cm", label: "Centimeters" },
-  { value: "in", label: "Inches" },
-];
-
-const IN_THIS_BROWSER = "Saved in this browser only.";
-const SMALL_HINT = "text-[11px] leading-4 text-ed-muted";
-const CAPTION = "text-xs font-medium text-ed-muted";
-
-function Heading({ children }: { children: ReactNode }) {
-  return <h3 className="text-sm leading-5 font-semibold text-ed-text">{children}</h3>;
-}
 
 // The project's own settings, the same for everyone who works on it.
 function ProjectSection() {
@@ -108,44 +93,16 @@ function SafeAreaFields() {
   );
 }
 
-// How this browser shows the editor, and what a new clip starts with.
+// In the editor, the switches are the editor store's.
 function GeneralSection() {
-  const settings = useSettingsStore();
-  const units = useSettings((s) => s.units);
-  const stillSeconds = useSettings((s) => s.stillSeconds);
-  const textSeconds = useSettings((s) => s.textSeconds);
   const showSafeZones = useEditor((s) => s.showSafeZones);
   const toggleSafeZones = useEditor((s) => s.toggleSafeZones);
   const snapping = useEditor((s) => s.snapping);
   const setSnapping = useEditor((s) => s.setSnapping);
-  const length = { suffix: "s", min: LENGTH_MIN_S, max: LENGTH_MAX_S, step: 0.5 };
-
-  return (
-    <>
-      <section className="flex flex-col gap-2">
-        <Heading>Display</Heading>
-        <div className="flex flex-col gap-1">
-          <span className={CAPTION}>Units</span>
-          <Segmented<Units> label="Units" value={units} options={UNIT_OPTIONS} onChange={(next) => settings.getState().set({ units: next })} />
-          <p className={SMALL_HINT}>Centimeters and inches count 96 pixels to the inch.</p>
-        </div>
-        <Toggle label="Show safe area" checked={showSafeZones} onChange={() => toggleSafeZones()} />
-      </section>
-      <section className="flex flex-col gap-2">
-        <Heading>Timeline</Heading>
-        <Toggle label="Snapping" checked={snapping} onChange={setSnapping} />
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Still image length">
-            <NumberInput {...length} value={stillSeconds} onCommit={(n) => settings.getState().set({ stillSeconds: clampSeconds(n) })} />
-          </Field>
-          <Field label="Text clip length">
-            <NumberInput {...length} value={textSeconds} onCommit={(n) => settings.getState().set({ textSeconds: clampSeconds(n) })} />
-          </Field>
-        </div>
-        <p className={SMALL_HINT}>How long a new image or text clip lasts. Clips already on the timeline keep their length.</p>
-      </section>
-    </>
-  );
+  const setShowSafeZones = (on: boolean) => {
+    if (on !== showSafeZones) toggleSafeZones();
+  };
+  return <GeneralFields switches={{ snapping, setSnapping, showSafeZones, setShowSafeZones }} />;
 }
 
 // Settings, in three sections: the project (for everyone), then this browser's own display, timeline and keys. `at`

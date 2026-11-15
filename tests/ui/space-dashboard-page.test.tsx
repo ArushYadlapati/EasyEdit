@@ -21,13 +21,14 @@ import { createFolder } from "@/lib/projects/folders";
 import { recordOpen } from "@/lib/projects/opens";
 import { createProject } from "@/lib/projects/service";
 import { saveThumbnail } from "@/lib/projects/thumbnails";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
+import { SEED_TEAM_ID, personalSpaceId } from "@/lib/spaces/types";
 import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { render, screen } from "../helpers/dom";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
-vi.mock("next/navigation", () => ({ useRouter: () => router, unstable_rethrow: () => {} }));
+const at = vi.hoisted(() => ({ path: "/s/seattle-solvers" }));
+vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => at.path, unstable_rethrow: () => {} }));
 
 const { Dashboard, KeepSignedIn, signedIn } = vi.hoisted(() => ({
   Dashboard: vi.fn<(props: unknown) => null>(() => null),
@@ -113,7 +114,7 @@ describe("the dashboard page", () => {
     expect(props.canEdit).toBe(true);
     expect(props.projects.map((p) => [p.id, p.name, p.changedBy])).toEqual([[projectId, "Qual recap", "Ada Lovelace"]]);
     expect(props.folders).toEqual([]);
-    expect(props.view).toBeNull();
+    expect(props.view).toEqual({ kind: "recent" });
     expect(props.now).toBeInstanceOf(Date);
   });
 
@@ -132,17 +133,21 @@ describe("the dashboard page", () => {
     expect((await dashboardFor(ada)).recentIds).toEqual([]);
   });
 
-  it("the address picks the folder, and an unknown one is the main view", async () => {
-    expect((await dashboardFor(ada, { folder: "nope" })).view).toBeNull();
+  it("the address picks Recent, All projects or a folder; an unknown folder is Recent", async () => {
+    expect((await dashboardFor(ada, { folder: "nope" })).view).toEqual({ kind: "recent" });
+    expect((await dashboardFor(ada, { view: "all" })).view).toEqual({ kind: "all" });
     const folder = await createFolder(testDb, as(ada), "Season 2026");
     const props = await dashboardFor(ada, { folder: folder.id });
-    expect(props.view).toBe(folder.id);
+    expect(props.view).toEqual({ kind: "folder", folderId: folder.id });
     expect(props.folders).toEqual([{ id: folder.id, name: "Season 2026", projectCount: 0 }]);
   });
 
-  it("the header shows Admin only to admins, and opts out of Dark Reader", async () => {
+  it("the header shows Admin only to admins, only in Seattle Solvers, and opts out of Dark Reader", async () => {
+    await joinSpace(testDb, admin, "admin");
+    await joinSpace(testDb, admin, "admin", personalSpaceId(admin.id));
     signedIn.user = admin;
     KeepSignedIn.mockClear();
+    at.path = "/s/seattle-solvers";
     const first = render(await DashboardLayout({ children: <p>x</p> } as never));
     expect(first.container.firstElementChild?.className).toContain("ed-theme");
     expect(KeepSignedIn).toHaveBeenCalled();
@@ -150,6 +155,12 @@ describe("the dashboard page", () => {
     expect(screen.getByText("x")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Account" }).textContent).toContain("Root");
     first.unmount();
+    // Not in their personal space.
+    at.path = "/s/personal";
+    const personal = render(await DashboardLayout({ children: <p>x</p> } as never));
+    expect(screen.queryByRole("link", { name: "Admin" })).toBeNull();
+    personal.unmount();
+    at.path = "/s/seattle-solvers";
     signedIn.user = { ...ada, name: "" };
     render(await DashboardLayout({ children: <p>x</p> } as never));
     expect(screen.queryByRole("link", { name: "Admin" })).toBeNull();

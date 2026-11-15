@@ -26,6 +26,16 @@ describe("SpaceSwitcher", () => {
     expect(document.querySelector("[aria-current]")).toBeNull();
   });
 
+  it("is headed My Spaces, like the sidebar's other headings", () => {
+    render(<SpaceSwitcher spaces={[PERSONAL, TEAM]} current={PERSONAL.id} />);
+    const nav = screen.getByRole("navigation", { name: "My Spaces" });
+    const heading = screen.getByRole("heading", { name: "My Spaces" });
+    expect(heading.tagName).toBe("H2");
+    expect(nav.firstElementChild).toBe(heading);
+    // Beside the list on a wide window; for screen readers only on a narrow one, where the switcher is a row.
+    expect(heading.className.split(" ")).toEqual(expect.arrayContaining(["sr-only", "md:not-sr-only", "uppercase"]));
+  });
+
   it("has no Create a team item", () => {
     render(<SpaceSwitcher spaces={[PERSONAL, TEAM]} current={PERSONAL.id} />);
     expect(screen.queryByText(/create a team/i)).toBeNull();

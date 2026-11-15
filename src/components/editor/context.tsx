@@ -19,6 +19,13 @@ type EditorContextValue = {
 };
 
 const EditorContext = createContext<EditorContextValue | null>(null);
+// This browser's preferences, on their own so that Settings can open where no project is (the dashboard). The editor
+// provides it too.
+const SettingsContext = createContext<SettingsStore | null>(null);
+
+export function SettingsProvider({ settings, children }: { settings: SettingsStore; children: ReactNode }) {
+  return <SettingsContext value={settings}>{children}</SettingsContext>;
+}
 
 const NETWORK: ApiFailure = { ok: false, kind: "network" };
 
@@ -56,7 +63,11 @@ export function EditorProvider({ store, api, clipboard, settings, exportDeps, ch
     }),
     [store, api, clipboard, memoryClipboard, settings, memorySettings, exportDeps],
   );
-  return <EditorContext value={value}>{children}</EditorContext>;
+  return (
+    <EditorContext value={value}>
+      <SettingsProvider settings={value.settings}>{children}</SettingsProvider>
+    </EditorContext>
+  );
 }
 
 function useEditorContext(): EditorContextValue {
@@ -86,11 +97,13 @@ export function useClipboard(): ClipboardStore {
 // Reads this browser's preferences and re-renders when the selected value changes. A click, drop or key handler
 // reads useSettingsStore().getState() at that moment instead.
 export function useSettings<T>(selector: (state: SettingsState) => T): T {
-  return useStore(useEditorContext().settings, selector);
+  return useStore(useSettingsStore(), selector);
 }
 
 export function useSettingsStore(): SettingsStore {
-  return useEditorContext().settings;
+  const settings = useContext(SettingsContext);
+  if (!settings) throw new Error("Settings components must be inside a SettingsProvider or an EditorProvider.");
+  return settings;
 }
 
 // What an export needs from the browser: the provider's when given (tests pass fakes), else this browser's over the

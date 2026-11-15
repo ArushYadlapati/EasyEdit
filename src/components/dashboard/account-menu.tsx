@@ -1,9 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { PasskeysDialog } from "@/components/dashboard/passkeys-dialog";
-import { Menu } from "@/components/ui/menu";
+import { DashboardSettingsDialog } from "@/components/dashboard/settings-dialog";
+import { Menu, type MenuItem } from "@/components/ui/menu";
 import { authClient } from "@/lib/auth-client";
 import { signOutAndLeave } from "@/lib/sign-out";
 
@@ -16,10 +17,14 @@ function backFromSigningIn(): string | null {
   return params.get("passkeys") === "1" ? (params.get("error") ?? "") : null;
 }
 
-// The header's account button: the person's picture and name, opening a menu with Passkeys, AI agents and Sign out.
+// The header's account button: the person's picture and name, opening a menu with Settings, Passkeys, AI agents and
+// Sign out. Settings (the editor's General and Shortcuts) is offered on the space pages only: the preferences cookie it
+// edits belongs to /s, so the Admin and AI agents pages cannot read it.
 export function AccountMenu({ name, image }: { name: string; image: string | null }): ReactNode {
   const router = useRouter();
+  const inSpace = (usePathname() ?? "").startsWith("/s/");
   const [failed, setFailed] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [passkeysOpen, setPasskeysOpen] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
 
@@ -66,16 +71,19 @@ export function AccountMenu({ name, image }: { name: string; image: string | nul
           )
         }
         items={[
+          ...(inSpace ? [{ id: "settings", label: "Settings" } satisfies MenuItem] : []),
           { id: "passkeys", label: "Passkeys" },
           { id: "agents", label: "AI agents" },
           { id: "sign-out", label: "Sign out", separatorBefore: true },
         ]}
         onSelect={(id) => {
+          if (id === "settings") setSettingsOpen(true);
           if (id === "passkeys") setPasskeysOpen(true);
           if (id === "agents") router.push("/agents");
           if (id === "sign-out") void signOut();
         }}
       />
+      {settingsOpen && <DashboardSettingsDialog onClose={() => setSettingsOpen(false)} />}
       <PasskeysDialog
         open={passkeysOpen}
         signInError={signInError}

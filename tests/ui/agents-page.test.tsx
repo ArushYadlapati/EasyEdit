@@ -11,7 +11,8 @@ import { AGENT_KINDS, AGENTS, fillTemplate } from "@/lib/connector/agents";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
-vi.mock("next/navigation", () => ({ useRouter: () => router, unstable_rethrow: () => {} }));
+// The account menu here is the one on the AI agents page, which has no Settings (that is on the space pages).
+vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/agents", unstable_rethrow: () => {} }));
 vi.mock("@/lib/auth-client", () => ({ authClient: { signOut: vi.fn() } }));
 
 // The page's server side, for the page test: who is signed in and what they have connected.

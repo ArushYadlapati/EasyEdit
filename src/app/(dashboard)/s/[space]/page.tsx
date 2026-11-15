@@ -38,8 +38,8 @@ const actionsFor = (spaceId: string): DashboardActions => ({
 });
 
 // A space's dashboard, read on the server: its projects and folders, and the projects this person opened last.
-// Searching and sorting happen in the browser. ?folder=<id> shows that folder; an unknown id is the main view. A space
-// the person is not in is a plain 404.
+// Searching and sorting happen in the browser. The address picks the view (resolveView): Recent by default, ?view=all
+// for All projects, ?folder=<id> for a folder. A space the person is not in is a plain 404.
 export default async function SpacePage({ params, searchParams }: PageProps<"/s/[space]">): Promise<ReactNode> {
   // The page checks for itself: a layout renders alongside its page and is not run again on a client navigation.
   const user = await requireUser();
@@ -56,7 +56,8 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
     listRecentProjectIds(db, actor, LIMITS.dashboardRecent),
   ]);
   const names = await getUserNames(db, projects.map((project) => actorUserId(project.updatedBy)));
-  const view = resolveView((await searchParams).folder, folders);
+  const { folder, view: named } = await searchParams;
+  const view = resolveView({ folder, view: named }, folders);
 
   return (
     <Dashboard

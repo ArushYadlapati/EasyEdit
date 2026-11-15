@@ -18,11 +18,33 @@ export const SORT_OPTIONS: readonly { value: SortKey; label: string }[] = [
 
 type Sortable = Pick<DashboardProject, "id" | "name" | "createdAt" | "updatedAt">;
 
-// The folder named in the address, or null (the main view) when it is missing, repeated or unknown.
-export function resolveView(folder: string | string[] | undefined, folders: readonly { id: string }[]): string | null {
-  if (typeof folder !== "string") return null;
-  return folders.some((f) => f.id === folder) ? folder : null;
+// What the dashboard shows: the projects you opened last (its landing view), all of the space's projects with its
+// folders, or one folder.
+export type DashboardView = { kind: "recent" } | { kind: "all" } | { kind: "folder"; folderId: string };
+
+export const RECENT_VIEW: DashboardView = { kind: "recent" };
+export const ALL_VIEW: DashboardView = { kind: "all" };
+
+type Query = string | string[] | undefined;
+
+// The view named in the address: ?folder=<id> for a folder this space has, else ?view=all for All projects, else
+// Recent. A repeated or unknown value counts as missing.
+export function resolveView(query: { folder?: Query; view?: Query }, folders: readonly { id: string }[]): DashboardView {
+  const { folder, view } = query;
+  if (typeof folder === "string" && folders.some((f) => f.id === folder)) return { kind: "folder", folderId: folder };
+  return view === "all" ? ALL_VIEW : RECENT_VIEW;
 }
+
+// The address query of a view, for spacePath: none for Recent, the landing view.
+export function viewQuery(view: DashboardView): Record<string, string> | undefined {
+  if (view.kind === "folder") return { folder: view.folderId };
+  return view.kind === "all" ? { view: "all" } : undefined;
+}
+
+// The folder a view is of, or null for Recent and All projects.
+export const folderOf = (view: DashboardView): string | null => (view.kind === "folder" ? view.folderId : null);
+
+export const sameView = (a: DashboardView, b: DashboardView): boolean => folderOf(a) === folderOf(b) && a.kind === b.kind;
 
 const searchText = (search: string) => search.trim().toLowerCase();
 
@@ -70,14 +92,14 @@ export function pictureFits(picture: { width: number; height: number }, project:
   return off <= Math.max(project.width, project.height) || off <= 0.05 * picture.height * project.width;
 }
 
-// Your most recently opened projects, in the order you opened them; none while a search is typed.
-export function recentProjects<T extends { id: string }>(projects: readonly T[], recentIds: readonly string[], search: string): T[] {
-  if (searchText(search) !== "") return [];
+// Your most recently opened projects, in the order you opened them, that match the search.
+export function recentProjects<T extends { id: string; name: string }>(projects: readonly T[], recentIds: readonly string[], search: string): T[] {
   const byProjectId = new Map(projects.map((p) => [p.id, p]));
   return recentIds
     .flatMap((id) => {
       const project = byProjectId.get(id);
       return project ? [project] : [];
     })
-    .slice(0, LIMITS.dashboardRecent);
+    .slice(0, LIMITS.dashboardRecent)
+    .filter((project) => matchesSearch(project.name, search));
 }

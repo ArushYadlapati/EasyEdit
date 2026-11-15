@@ -3,8 +3,13 @@ import {
   matchesSearch,
   pictureFits,
   projectsInView,
+  ALL_VIEW,
+  RECENT_VIEW,
+  folderOf,
   recentProjects,
   resolveView,
+  sameView,
+  viewQuery,
   sortProjects,
   SORT_OPTIONS,
   thumbnailUrl,
@@ -73,22 +78,40 @@ it("a view is a folder, a search and a sort", () => {
   expect(names(projectsInView(list, { folderId: "f1", search: "qual", sort: "name" }))).toEqual([]);
 });
 
-it("Recent follows your opens, skips what is gone, stops at six and hides while searching", () => {
-  const [a, b, c] = [{ id: "a" }, { id: "b" }, { id: "c" }];
+it("Recent follows your opens, skips what is gone, stops at six and narrows to a search", () => {
+  const [a, b, c] = [{ id: "a", name: "Alpha" }, { id: "b", name: "Beta" }, { id: "c", name: "Gamma" }];
   expect(recentProjects([a, b, c], ["c", "gone", "a"], "")).toEqual([c, a]);
-  const eight = Array.from({ length: 8 }, (_, i) => ({ id: `p${i}` }));
+  const eight = Array.from({ length: 8 }, (_, i) => ({ id: `p${i}`, name: `P${i}` }));
   expect(recentProjects(eight, ids(eight), "")).toEqual(eight.slice(0, 6));
+  // A search keeps the recent projects that match it.
   expect(recentProjects([a, b, c], ["c", "a"], "x")).toEqual([]);
-  // Spaces alone are no search, as in matchesSearch: the list shows everything, so Recent stays.
+  expect(recentProjects([a, b, c], ["c", "a"], "ALP")).toEqual([a]);
+  // Spaces alone are no search, as in matchesSearch.
   expect(recentProjects([a, b, c], ["c", "a"], "  ")).toEqual([c, a]);
 });
 
-it("an unknown folder in the address is the main view", () => {
+it("the address picks a folder, All projects or Recent; anything unknown is Recent", () => {
   const folders = [{ id: "f1" }];
-  expect(resolveView("f1", folders)).toBe("f1");
-  expect(resolveView("nope", folders)).toBeNull();
-  expect(resolveView(["f1"], folders)).toBeNull();
-  expect(resolveView(undefined, folders)).toBeNull();
+  expect(resolveView({ folder: "f1" }, folders)).toEqual({ kind: "folder", folderId: "f1" });
+  expect(resolveView({ folder: "f1", view: "all" }, folders)).toEqual({ kind: "folder", folderId: "f1" });
+  expect(resolveView({ view: "all" }, folders)).toEqual(ALL_VIEW);
+  expect(resolveView({ folder: "nope", view: "all" }, folders)).toEqual(ALL_VIEW);
+  expect(resolveView({ folder: "nope" }, folders)).toEqual(RECENT_VIEW);
+  expect(resolveView({ folder: ["f1"] }, folders)).toEqual(RECENT_VIEW);
+  expect(resolveView({ view: ["all"] }, folders)).toEqual(RECENT_VIEW);
+  expect(resolveView({ view: "recent" }, folders)).toEqual(RECENT_VIEW);
+  expect(resolveView({}, folders)).toEqual(RECENT_VIEW);
+});
+
+it("a view's address query, and which folder it is of", () => {
+  expect(viewQuery(RECENT_VIEW)).toBeUndefined();
+  expect(viewQuery(ALL_VIEW)).toEqual({ view: "all" });
+  expect(viewQuery({ kind: "folder", folderId: "f1" })).toEqual({ folder: "f1" });
+  expect(folderOf({ kind: "folder", folderId: "f1" })).toBe("f1");
+  expect(folderOf(ALL_VIEW)).toBeNull();
+  expect(sameView(ALL_VIEW, { kind: "all" })).toBe(true);
+  expect(sameView(ALL_VIEW, RECENT_VIEW)).toBe(false);
+  expect(sameView({ kind: "folder", folderId: "f1" }, { kind: "folder", folderId: "f2" })).toBe(false);
 });
 
 it("a thumbnail's address carries its version", () => {

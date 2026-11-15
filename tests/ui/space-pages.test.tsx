@@ -179,7 +179,7 @@ describe("links inside the space", () => {
   it("project cards and folder links point inside the space", async () => {
     const { Dashboard: Real } = await vi.importActual<typeof import("@/components/dashboard/dashboard")>("@/components/dashboard/dashboard");
     const { container } = render(
-      <Real projects={PROJECTS} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={fakeActions()} spaceSlug="seattle-solvers" />,
+      <Real projects={PROJECTS} folders={FOLDERS} recentIds={RECENT_IDS} view={{ kind: "all" }} canEdit now={NOW} actions={fakeActions()} spaceSlug="seattle-solvers" />,
     );
     const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toContain("/s/seattle-solvers/editor/a");

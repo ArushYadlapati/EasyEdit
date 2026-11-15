@@ -1,6 +1,7 @@
 "use client";
 
 import { Ellipsis, Plus } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, type ReactNode } from "react";
 import { useAction } from "@/app/(app)/action-ui";
@@ -12,16 +13,22 @@ import { ProjectCard } from "@/components/dashboard/project-card";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { useRefreshOnReturn } from "@/components/dashboard/use-refresh-on-return";
 import { Button } from "@/components/ui/button";
+import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { Select } from "@/components/ui/select";
 import { TextInput } from "@/components/ui/text-input";
 import {
+  ALL_VIEW,
   SORT_OPTIONS,
+  folderOf,
   projectsInView,
   recentProjects,
+  sameView,
+  viewQuery,
   type DashboardFolder,
   type DashboardProject,
+  type DashboardView,
   type SortKey,
 } from "@/lib/dashboard/view";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
@@ -31,7 +38,7 @@ export type DashboardProps = {
   projects: DashboardProject[];
   folders: DashboardFolder[];
   recentIds: string[];
-  view: string | null; // the folder in view, or null for the main view
+  view: DashboardView;
   canEdit: boolean;
   now: Date;
   actions: DashboardActions;
@@ -76,10 +83,10 @@ function CardGrid({ projects, folderName, now, canEdit, folders, actions, spaceS
   );
 }
 
-// The dashboard: the folders at the side, and a bar that stays at the top with the view's title (and, in a folder,
-// its menu), the search, the sort and New project. The main view lists Recent, then a tile for each folder, then All
-// projects; a folder view lists that folder's projects. A card dropped on a folder, in the sidebar or on its tile,
-// moves there, and a refused move says why in the bar.
+// The dashboard: the sidebar at the side, and a bar that stays at the top with the view's title (and, in a folder,
+// its menu), the search, the sort and New project. Recent lists the projects you opened last, in that order (so it has
+// no sort); All projects lists a tile for each folder, then every project; a folder view lists that folder's projects.
+// A card dropped on a folder, in the sidebar or on its tile, moves there, and a refused move says why in the bar.
 export function Dashboard({ projects, folders, recentIds, view, canEdit, now, actions, spaceSlug }: DashboardProps): ReactNode {
   useRefreshOnReturn();
   const router = useRouter();
@@ -97,21 +104,22 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   const [notice, setNotice] = useState<string | null>(null); // the bar's message: a refused drop, or a project gone
   // The message belongs to the view it was given in.
   const [noticeView, setNoticeView] = useState(view);
-  if (view !== noticeView) {
+  if (!sameView(view, noticeView)) {
     setNoticeView(view);
     setNotice(null);
   }
   const titleId = useId();
-  const recentId = useId();
   const foldersId = useId();
-  const allId = useId();
+  const projectsId = useId();
 
   const folderNames = new Map(folders.map((folder) => [folder.id, folder.name]));
-  const title = (view !== null && folderNames.get(view)) || "Projects";
-  const shown = projectsInView(projects, { folderId: view, search, sort });
-  const recent = recentProjects(projects, recentIds, search); // shown in the main view only
+  const viewFolder = folderOf(view);
+  const folderName = viewFolder === null ? null : (folderNames.get(viewFolder) ?? null);
+  const title = view.kind === "recent" ? "Recent" : view.kind === "all" ? "All projects" : (folderName ?? "All projects");
+  const shown =
+    view.kind === "recent" ? recentProjects(projects, recentIds, search) : projectsInView(projects, { folderId: viewFolder, search, sort });
   const searching = search.trim() !== "";
-  const folderName = view === null ? null : (folderNames.get(view) ?? null);
+  const showFolderTiles = view.kind === "all" && folders.length > 0 && !searching;
 
   // A drag can come from another window or site with any id, so only this page's projects move, and a drop onto the
   // folder a project is already in does nothing.
@@ -125,8 +133,8 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   }
 
   function chooseFolderOption(id: string) {
-    if (view === null || folderName === null) return;
-    setChosenFolder({ id: view, name: folderName });
+    if (viewFolder === null || folderName === null) return;
+    setChosenFolder({ id: viewFolder, name: folderName });
     if (id === "delete") setDeleteError(null);
     setFolderDialog(id === "rename" ? "rename" : "delete");
   }
@@ -139,7 +147,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
       onStart: () => setDeleteError(null),
       onSuccess: () => {
         setFolderDialog(null);
-        router.replace(spacePath(spaceSlug));
+        router.replace(spacePath(spaceSlug, viewQuery(ALL_VIEW)));
       },
       onFailure: setDeleteError,
     });
@@ -154,8 +162,24 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   );
 
   function empty(): ReactNode {
-    if (searching) return <p className={EMPTY}>{`No projects match "${search.trim()}".`}</p>;
-    if (view !== null) {
+    if (searching) {
+      const what = view.kind === "recent" ? "recent projects" : "projects";
+      return <p className={EMPTY}>{`No ${what} match "${search.trim()}".`}</p>;
+    }
+    if (view.kind === "recent" && projects.length > 0) {
+      return (
+        <div className="flex flex-col items-start gap-2">
+          <p className={EMPTY}>Projects you open show up here.</p>
+          <Link
+            href={spacePath(spaceSlug, viewQuery(ALL_VIEW))}
+            className={cx("rounded-sm text-[13px] font-medium text-ed-accent hover:underline", FOCUS_RING, FADE)}
+          >
+            See all projects
+          </Link>
+        </div>
+      );
+    }
+    if (view.kind === "folder") {
       return (
         <p className={EMPTY}>
           {canEdit
@@ -172,7 +196,9 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
     );
   }
 
+  // A card names its project's folder only in All projects.
   const noFolder = () => null;
+  const ownFolder = (project: DashboardProject) => (project.folderId === null ? null : (folderNames.get(project.folderId) ?? null));
   const list = (folderName: (project: DashboardProject) => string | null) =>
     shown.length > 0 ? (
       <CardGrid
@@ -220,18 +246,20 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
                 onChange={(event) => setSearch(event.target.value)}
                 className="min-w-0 flex-1 sm:w-56 sm:flex-none"
               />
-              <Select
-                aria-label="Sort by"
-                value={sort}
-                onChange={(event) => setSort(event.target.value as SortKey)}
-                className="shrink-0"
-              >
-                {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
+              {view.kind !== "recent" && (
+                <Select
+                  aria-label="Sort by"
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value as SortKey)}
+                  className="shrink-0"
+                >
+                  {SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
             </div>
             {canEdit && newProjectButton("shrink-0")}
             {notice && (
@@ -241,47 +269,27 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
             )}
           </div>
           <div className="flex flex-col gap-8 px-4 py-6">
-            {view === null ? (
-              <>
-                {recent.length > 0 && (
-                  <section aria-labelledby={recentId}>
-                    <h2 id={recentId} className={HEADING}>
-                      Recent
-                    </h2>
-                    <CardGrid
-                      projects={recent}
-                      folderName={noFolder}
-                      now={now}
-                      canEdit={canEdit}
-                      folders={folders}
-                      actions={actions}
-                      onGone={setNotice}
-        spaceSlug={spaceSlug}
-                    />
-                  </section>
-                )}
-                {folders.length > 0 && !searching && (
-                  <section aria-labelledby={foldersId}>
-                    <h2 id={foldersId} className={HEADING}>
-                      Folders
-                    </h2>
-                    <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
-                      {folders.map((folder) => (
-                        <FolderTile key={folder.id} folder={folder} spaceSlug={spaceSlug} canEdit={canEdit} onDropProject={dropProject} />
-                      ))}
-                    </ul>
-                  </section>
-                )}
-                <section aria-labelledby={allId}>
-                  <h2 id={allId} className={HEADING}>
-                    All projects
-                  </h2>
-                  {list((project) => (project.folderId === null ? null : (folderNames.get(project.folderId) ?? null)))}
-                </section>
-              </>
-            ) : (
-              <section aria-labelledby={titleId}>{list(noFolder)}</section>
+            {showFolderTiles && (
+              <section aria-labelledby={foldersId}>
+                <h2 id={foldersId} className={HEADING}>
+                  Folders
+                </h2>
+                <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                  {folders.map((folder) => (
+                    <FolderTile key={folder.id} folder={folder} spaceSlug={spaceSlug} canEdit={canEdit} onDropProject={dropProject} />
+                  ))}
+                </ul>
+              </section>
             )}
+            {/* Under the folder tiles the projects get a heading of their own; otherwise the title names them. */}
+            <section aria-labelledby={showFolderTiles ? projectsId : titleId}>
+              {showFolderTiles && (
+                <h2 id={projectsId} className={HEADING}>
+                  Projects
+                </h2>
+              )}
+              {list(view.kind === "all" ? ownFolder : noFolder)}
+            </section>
           </div>
         </main>
       </div>
@@ -291,7 +299,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
             open={newOpen}
             onClose={() => setNewOpen(false)}
             folders={folders}
-            folderId={view}
+            folderId={viewFolder}
             action={actions.create}
           />
           <FolderNameDialog

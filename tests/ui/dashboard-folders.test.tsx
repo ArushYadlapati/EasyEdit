@@ -22,9 +22,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const nav = () => screen.getByRole("navigation", { name: "Folders" });
+const nav = () => screen.getByRole("navigation", { name: "Projects" });
 const navLink = (name: string | RegExp) => within(nav()).getByRole("link", { name });
-const card = (name: string) => within(screen.getByRole("region", { name: "All projects" })).getByRole("link", { name }).closest("li")!;
+// The section of project cards: headed Projects under the folder tiles, otherwise named by the title.
+const grid = () => screen.getByRole("region", { name: /^(All projects|Projects|Recent)$/ });
+const card = (name: string) => within(grid()).getByRole("link", { name }).closest("li")!;
 const dialog = (name: string) => screen.getByRole("dialog", { name });
 const button = (inside: HTMLElement, name: string) => within(inside).getByRole("button", { name }) as HTMLButtonElement;
 const nameField = (inside: HTMLElement) => within(inside).getByRole("textbox", { name: "Name" }) as HTMLInputElement;
@@ -137,6 +139,7 @@ describe("folders in the sidebar", () => {
     renderDashboard();
     const newFolder = within(nav()).getByRole("button", { name: "New folder" });
     const heading = within(nav()).getByRole("heading", { name: "Folders" });
+    expect(newFolder.compareDocumentPosition(within(nav()).getByRole("link", { name: "All projects" })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     expect(newFolder.parentElement).toBe(heading.parentElement);
     expect(classes(newFolder.parentElement)).toEqual(expect.arrayContaining(["contents", "md:flex"]));
     expect(classes(newFolder)).toEqual(expect.arrayContaining(["order-last", "md:order-none"]));
@@ -144,7 +147,7 @@ describe("folders in the sidebar", () => {
   });
 
   it("a folder's menu renames it", async () => {
-    const { actions } = renderDashboard({ view: "f1" });
+    const { actions } = renderDashboard({ view: { kind: "folder", folderId: "f1" } });
     const menuButton = screen.getByRole("button", { name: "Folder options" });
     expect(menuButton.closest("[class*=sticky]")).not.toBeNull();
     expect(screen.getByRole("heading", { level: 1 }).nextElementSibling?.contains(menuButton)).toBe(true);
@@ -170,7 +173,7 @@ describe("folders in the sidebar", () => {
   });
 
   it("deleting a folder asks first and keeps its projects", async () => {
-    const { actions } = renderDashboard({ view: "f1" });
+    const { actions } = renderDashboard({ view: { kind: "folder", folderId: "f1" } });
     await pickFolderOption("Delete folder");
     const asking = dialog("Delete folder");
     expect(within(asking).getByText('Delete the folder "Season 2026"? Its projects stay in All projects.')).toBeTruthy();
@@ -178,11 +181,12 @@ describe("folders in the sidebar", () => {
     await click(button(asking, "Delete folder"));
     expect(actions.deleteFolder).toHaveBeenCalledTimes(1);
     expect(sent(actions.deleteFolder)).toEqual({ id: "f1" });
-    expect(router.replace).toHaveBeenCalledWith("/s/seattle-solvers");
+    // Back to All projects, where its projects now are.
+    expect(router.replace).toHaveBeenCalledWith("/s/seattle-solvers?view=all");
   });
 
   it("a refused folder delete stays in the dialog, and Cancel deletes nothing", async () => {
-    const { actions } = renderDashboard({ view: "f1" });
+    const { actions } = renderDashboard({ view: { kind: "folder", folderId: "f1" } });
     await pickFolderOption("Delete folder");
     await click(button(dialog("Delete folder"), "Cancel"));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -204,7 +208,7 @@ describe("folders in the sidebar", () => {
     ["Rename folder", "Save", "renameFolder"],
     ["Delete folder", "Delete folder", "deleteFolder"],
   ] as const)("%s on a folder deleted elsewhere says so in the dialog", async (option, confirmLabel, actionName) => {
-    const { actions, rerender } = renderDashboard({ view: "f1" });
+    const { actions, rerender } = renderDashboard({ view: { kind: "folder", folderId: "f1" } });
     let answer: (state: FormState) => void = () => {};
     actions[actionName].mockImplementation(() => new Promise<FormState>((resolve) => (answer = resolve)));
     await pickFolderOption(option);
@@ -214,7 +218,7 @@ describe("folders in the sidebar", () => {
         projects={PROJECTS.map((p) => ({ ...p, folderId: p.folderId === "f1" ? null : p.folderId }))}
         folders={FOLDERS.filter((f) => f.id !== "f1")}
         recentIds={RECENT_IDS}
-        view={null}
+        view={{ kind: "all" }}
         canEdit
         now={NOW}
         actions={actions}
@@ -232,7 +236,7 @@ describe("folders in the sidebar", () => {
   });
 
   it("Delete folder is held while it runs", async () => {
-    const { actions } = renderDashboard({ view: "f1" });
+    const { actions } = renderDashboard({ view: { kind: "folder", folderId: "f1" } });
     // The delete never settles while the test looks. It is finished at the end: React holds every later transition
     // until a running async action settles, and that would reach the tests after this one.
     let finish: (state: FormState) => void = () => {};
@@ -252,7 +256,7 @@ describe("folders in the sidebar", () => {
   });
 
   it("a viewer has no New folder and no folder menu", () => {
-    renderDashboard({ canEdit: false, view: "f1" });
+    renderDashboard({ canEdit: false, view: { kind: "folder", folderId: "f1" } });
     expect(screen.queryByRole("button", { name: "New folder" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Folder options" })).toBeNull();
   });
@@ -283,7 +287,7 @@ describe("dragging projects into folders", () => {
     expect(transfer.getData(PROJECT_DRAG_TYPE)).toBe("");
   });
 
-  it("drag a card onto a folder to move it there, or onto Projects to take it out", async () => {
+  it("drag a card onto a folder to move it there, or onto All projects to take it out", async () => {
     const { actions } = renderDashboard();
     const sponsors = navLink(/^Sponsors/);
     const over = await drag(sponsors, "dragover", projectDrag);
@@ -305,7 +309,7 @@ describe("dragging projects into folders", () => {
     expect(sent(actions.move)).toEqual({ id: "a", folderId: "f2" });
     expect(sponsors.hasAttribute("data-drop-over")).toBe(false);
 
-    const projects = navLink("Projects");
+    const projects = navLink("All projects");
     expect((await drag(projects, "dragover", projectDrag)).taken).toBe(true);
     expect(projects.hasAttribute("data-drop-over")).toBe(true);
     await drag(projects, "drop", dropOf("b"));
@@ -315,6 +319,10 @@ describe("dragging projects into folders", () => {
 
     await drag(navLink(/^Season 2026/), "drop", dropOf("b"));
     await drag(projects, "drop", dropOf("a"));
+    expect(actions.move).toHaveBeenCalledTimes(2);
+    // Recent is a list of opens, not a place: it takes no drops.
+    expect((await drag(navLink("Recent"), "dragover", projectDrag)).taken).toBe(false);
+    expect((await drag(navLink("Recent"), "drop", dropOf("b"))).taken).toBe(false);
     expect(actions.move).toHaveBeenCalledTimes(2);
   });
 
@@ -343,7 +351,7 @@ describe("dragging projects into folders", () => {
     actions.move.mockResolvedValue({ error: "That folder no longer exists." });
     await drag(navLink(/^Sponsors/), "drop", dropOf("a"));
     expect(screen.getByRole("alert").textContent).toBe("That folder no longer exists.");
-    rerender(<Dashboard projects={PROJECTS} folders={FOLDERS} recentIds={RECENT_IDS} view="f1" canEdit now={NOW} actions={actions} spaceSlug="seattle-solvers" />);
+    rerender(<Dashboard projects={PROJECTS} folders={FOLDERS} recentIds={RECENT_IDS} view={{ kind: "folder", folderId: "f1" }} canEdit now={NOW} actions={actions} spaceSlug="seattle-solvers" />);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -359,7 +367,7 @@ describe("dragging projects into folders", () => {
     const li = card("Qual recap");
     expect(li.getAttribute("draggable")).not.toBe("true");
     expect((await drag(navLink(/^Sponsors/), "dragover", projectDrag)).taken).toBe(false);
-    expect((await drag(navLink("Projects"), "dragover", projectDrag)).taken).toBe(false);
+    expect((await drag(navLink("All projects"), "dragover", projectDrag)).taken).toBe(false);
     expect((await drag(navLink(/^Sponsors/), "drop", dropOf("a"))).taken).toBe(false);
     const { transfer } = await drag(li, "dragstart");
     expect(transfer.getData(PROJECT_DRAG_TYPE)).toBe("");
@@ -367,20 +375,20 @@ describe("dragging projects into folders", () => {
   });
 });
 
-describe("folders on the home page", () => {
+describe("folders in All projects", () => {
   const main = () => screen.getByRole("main");
   const tiles = () => screen.getByRole("region", { name: "Folders" });
   const tile = (name: RegExp) => within(tiles()).getByRole("link", { name });
   const sectionHeadings = () => within(main()).getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
 
-  it("the main view shows Folders between Recent and All projects", () => {
+  it("All projects shows Folders before its projects", () => {
     renderDashboard();
-    expect(sectionHeadings()).toEqual(["Recent", "Folders", "All projects"]);
+    expect(sectionHeadings()).toEqual(["Folders", "Projects"]);
   });
 
-  it("with nothing recent, Folders comes first", () => {
-    renderDashboard({ recentIds: [] });
-    expect(sectionHeadings()).toEqual(["Folders", "All projects"]);
+  it("Recent has no folder tiles", () => {
+    renderDashboard({ view: { kind: "recent" } });
+    expect(screen.queryByRole("region", { name: "Folders" })).toBeNull();
   });
 
   it("each folder is a tile with its name and count that opens the folder", () => {
@@ -410,7 +418,7 @@ describe("folders on the home page", () => {
     fireEvent.change(search, { target: { value: "" } });
     expect(tiles()).toBeTruthy();
     unmount();
-    const folderView = renderDashboard({ view: "f1" });
+    const folderView = renderDashboard({ view: { kind: "folder", folderId: "f1" } });
     expect(screen.queryByRole("region", { name: "Folders" })).toBeNull();
     folderView.unmount();
     renderDashboard({ folders: [] });
