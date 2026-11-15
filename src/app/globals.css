@@ -23,6 +23,7 @@
   --color-ed-accent-weak: var(--ed-accent-weak);
   --color-ed-danger: var(--ed-danger);
   --color-ed-warn: var(--ed-warn);
+  --color-ed-guide: var(--ed-guide);
   --color-ed-clip-video: var(--ed-clip-video);
   --color-ed-clip-image: var(--ed-clip-image);
   --color-ed-clip-text: var(--ed-clip-text);
@@ -67,6 +68,7 @@ html:has(.editor, .ed-theme) {
   --ed-accent-weak: rgb(110 168 255 / 0.18);
   --ed-danger: #f26d6d;      /* errors, destructive actions, a drop that is not allowed */
   --ed-warn: #e0b341;        /* offline */
+  --ed-guide: #2fd3c5;       /* guides placed on the preview, apart from the accent of selection and snapping */
   /* PLACEHOLDER_FILL in src/lib/render/compositor.ts repeats the next two values, because a worker cannot read CSS variables. */
   --ed-clip-video: #2c3d5c;
   --ed-clip-image: #3b3160;

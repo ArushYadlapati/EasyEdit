@@ -105,7 +105,7 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     const items = surface.items();
     const item = items.find((i) => i.clipId === s.clipId);
     const doc = viewDoc(state);
-    const drag = view && item ? beginCanvasDrag(doc, item, s.grip, fromScreen(view, s.x0, s.y0), s.drawn, items) : null;
+    const drag = view && item ? beginCanvasDrag(doc, item, s.grip, fromScreen(view, s.x0, s.y0), s.drawn, items, state.showGuides ? (doc.guides ?? []) : []) : null;
     if (!drag) {
       if (!findClip(doc, s.clipId)) state.notify("error", MESSAGES.clipGone);
       end(false);

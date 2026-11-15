@@ -142,3 +142,25 @@ describe("a turn", () => {
     expect(transformOf(turn(around(-2), { shift: true }))).toEqual({ rotation: 15 });
   });
 });
+
+describe("guides placed in the project", () => {
+  // x1 from a quarter of the way across, its centre dragged to 4 CSS px short of a vertical guide at 0.3.
+  function towardGuide(guides: { id: string; axis: "x" | "y"; at: number }[], snapping = true) {
+    const doc = patch(sampleDoc(), "x1", { x: 0.25, y: 0.5 });
+    const item = canvasItems(doc, 10, sizer).find((i) => i.clipId === "x1")!;
+    const grab = { x: 0.25 * W, y: 0.5 * H };
+    const drag = beginCanvasDrag(doc, item, "body", grab, undefined, [], guides)!;
+    return resolveCanvasDrag(drag, { pointer: { x: 0.3 * W - css(4), y: grab.y }, shift: false, crop: false, centre: false, snapping, snapPx: SNAP_CSS_PX / K });
+  }
+
+  it("a moved clip's middle snaps onto a guide", () => {
+    const r = towardGuide([{ id: "g", axis: "x", at: 0.3 }]);
+    expect(transformOf(r).x).toBeCloseTo(0.3, 6);
+    expect(r.guides.x).toBeCloseTo(0.3 * W, 6);
+  });
+
+  it("without the guide, or with snapping off, it follows the pointer", () => {
+    expect(transformOf(towardGuide([])).x).toBeCloseTo((0.3 * W - css(4)) / W, 3);
+    expect(transformOf(towardGuide([{ id: "g", axis: "x", at: 0.3 }], false)).x).toBeCloseTo((0.3 * W - css(4)) / W, 3);
+  });
+});

@@ -1,9 +1,10 @@
 import { cropRect } from "@/lib/render/compositor";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
-import type { Crop, OpInput, TimelineDoc } from "@/lib/timeline";
+import type { Crop, Guide, OpInput, TimelineDoc } from "@/lib/timeline";
 import type { Point, Size } from "./board";
 import { HANDLE_SIGNS, corners, rectPoint, toLocal, toWorld, type CanvasItem, type Handle } from "./canvas-geometry";
 import { CROP_MIN_SHOWN } from "./clip-box";
+import { guideLines } from "./guides";
 import { findClip } from "./store";
 
 // Moving, turning, resizing and cropping a clip on the preview by hand. A drag records the clip as it was at the press;
@@ -51,10 +52,12 @@ function boxOf(item: CanvasItem): Box {
   };
 }
 
-// others: the clips drawn now; the dragged one, and any not seen (opacity 0), are left out.
-function linesOf(item: CanvasItem, frame: Size, others: readonly CanvasItem[]): Lines {
-  const x = { sides: [0, frame.width / 2, frame.width], middles: [frame.width / 2] };
-  const y = { sides: [0, frame.height / 2, frame.height], middles: [frame.height / 2] };
+// others: the clips drawn now; the dragged one, and any not seen (opacity 0), are left out. guides: the project's guides
+// shown now, which take a side or a middle, like the frame's centre lines.
+function linesOf(item: CanvasItem, frame: Size, others: readonly CanvasItem[], guides: readonly Guide[]): Lines {
+  const placed = guideLines(guides, frame);
+  const x = { sides: [0, frame.width / 2, frame.width, ...placed.x], middles: [frame.width / 2, ...placed.x] };
+  const y = { sides: [0, frame.height / 2, frame.height, ...placed.y], middles: [frame.height / 2, ...placed.y] };
   for (const other of others) {
     if (other.clipId === item.clipId || other.opacity === 0) continue;
     const b = bounds(other);
@@ -67,7 +70,7 @@ function linesOf(item: CanvasItem, frame: Size, others: readonly CanvasItem[]): 
 }
 
 // Null when the clip is gone or its track is locked. drawn: where a handle clamped into the pane was drawn, if it was.
-// others: the clips drawn now, whose sides and middles a moved clip snaps onto.
+// others: the clips drawn now, whose sides and middles a moved clip snaps onto. guides: the project's guides shown now.
 export function beginCanvasDrag(
   doc: TimelineDoc,
   item: CanvasItem,
@@ -75,13 +78,14 @@ export function beginCanvasDrag(
   grab: Point,
   drawn?: Point,
   others: readonly CanvasItem[] = [],
+  guides: readonly Guide[] = [],
 ): CanvasDrag | null {
   const found = findClip(doc, item.clipId);
   if (!found || found.track.locked) return null;
   const t = found.clip.transform;
   const frame = { width: doc.width, height: doc.height };
   if (grip === "body") {
-    return { type: "move", clipId: item.clipId, grab, from: { x: t.x, y: t.y }, frame, box: boxOf(item), lines: linesOf(item, frame, others) };
+    return { type: "move", clipId: item.clipId, grab, from: { x: t.x, y: t.y }, frame, box: boxOf(item), lines: linesOf(item, frame, others, guides) };
   }
   if (grip === "rotate") return { type: "rotate", clipId: item.clipId, grab, center: item.center, from: t.rotation };
   return {

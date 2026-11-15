@@ -25,9 +25,11 @@ import {
   type View,
 } from "@/lib/editor/canvas-geometry";
 import { editTextInPlace } from "@/lib/editor/actions";
+import { guideAt } from "@/lib/editor/guides";
 import { previewMenu, rightClickEntries } from "@/lib/editor/menus";
 import { clipMarks, type Peer } from "@/lib/editor/presence";
 import { viewDoc, type EditorState } from "@/lib/editor/store";
+import type { TimelineDoc } from "@/lib/timeline";
 import { CanvasTextEditor } from "./canvas-text-editor";
 import { useClipboard, useEditor, useEditorStore } from "./context";
 import { useToMenuItems } from "./menu-items";
@@ -35,6 +37,7 @@ import { CLICK_SLOP_PX } from "./timeline/use-clip-drag";
 import { PEER_MORE, peerLook } from "./peer-look";
 import { usePresenceStore } from "./presence-context";
 import { useCanvasDrag } from "./use-canvas-drag";
+import { useGuideDrag } from "./use-guide-drag";
 import { useClipMenu } from "./use-clip-menu";
 import { useCommandRunner, useIsMac } from "./use-shortcuts";
 
@@ -93,8 +96,10 @@ type PeerLabel = { key: string; userId: string | null; text: string; colour: num
 type PeerMarks = { peerOutlines: PeerOutline[]; peerLabels: PeerLabel[] };
 const NO_PEER_MARKS: PeerMarks = { peerOutlines: [], peerLabels: [] };
 // full: the whole box of a clip being cropped, uncut, while a crop drag runs.
-type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[]; full: string | null } & PeerMarks;
-const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], full: null, ...NO_PEER_MARKS };
+// placed: the project's guides, each across the frame, with the one picked marked and its position as a label.
+type Placed = Guide & { id: string; selected: boolean; label: string };
+type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[]; placed: Placed[]; full: string | null } & PeerMarks;
+const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], placed: [], full: null, ...NO_PEER_MARKS };
 
 // A clamped handle being dragged is drawn at the pointer (client pixels, null until it moves), clamped the same way.
 type Follow = { pointerId: number; grip: Handle; client: Point | null };
@@ -139,10 +144,12 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const pointerOver = useRef(false);
   const refreshRef = useRef<() => void>(() => {});
   const drag = useCanvasDrag(surface, pane);
+  const guideDrag = useGuideDrag(surface);
   const [drawn] = useState(() => createStore<Drawn>(() => NOTHING_DRAWN));
   const outlines = useStore(drawn, (s) => s.outlines);
   const handles = useStore(drawn, (s) => s.handles);
   const guides = useStore(drawn, (s) => s.guides);
+  const placed = useStore(drawn, (s) => s.placed);
   const full = useStore(drawn, (s) => s.full);
   const peerOutlines = useStore(drawn, (s) => s.peerOutlines);
   const peerLabels = useStore(drawn, (s) => s.peerLabels);
@@ -170,6 +177,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
           outlines: outlinesOf(framed, state.selection.clipIds, view, box),
           handles: handlesOf(state, framed, view, box, visible, followed, marks),
           guides: guidesOf(drag.guides.getState(), viewDoc(state), view, box),
+          placed: state.showGuides ? placedOf(viewDoc(state), state.guideId, view, box) : [],
           full: cut ? fullOf(cut, view, box) : null,
           ...(state.playing ? NO_PEER_MARKS : peerMarksOf(framed, presence.getState().peers, view, box, visible)),
         };
@@ -179,6 +187,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       if (!sameOutlines(now.outlines, next.outlines)) patch.outlines = next.outlines;
       if (JSON.stringify(now.handles) !== JSON.stringify(next.handles)) patch.handles = next.handles;
       if (JSON.stringify(now.guides) !== JSON.stringify(next.guides)) patch.guides = next.guides;
+      if (JSON.stringify(now.placed) !== JSON.stringify(next.placed)) patch.placed = next.placed;
       if (now.full !== next.full) patch.full = next.full;
       // Playback refreshes every frame; an unchanged list must not render again.
       if (JSON.stringify(now.peerOutlines) !== JSON.stringify(next.peerOutlines)) patch.peerOutlines = next.peerOutlines;
@@ -193,7 +202,10 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         s.canEdit !== prev.canEdit ||
         s.playing !== prev.playing ||
         s.cropArmed !== prev.cropArmed ||
-        s.textEditId !== prev.textEditId
+        s.textEditId !== prev.textEditId ||
+        s.guideId !== prev.guideId ||
+        s.showGuides !== prev.showGuides ||
+        viewDoc(s).guides !== viewDoc(prev).guides
       ) {
         refresh();
       }
@@ -287,6 +299,22 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     const view = surface.view();
     if (!view) return;
     const state = store.getState();
+    // The Guide tool places a new guide wherever the press is. Otherwise a press on a shown guide picks it and can
+    // move it, ahead of any clip under it: a guide over a video that fills the frame could never be picked otherwise.
+    if (state.canEdit && state.tool === "guide") {
+      guideDrag.press(e, null);
+      return;
+    }
+    const doc = viewDoc(state);
+    const onGuide =
+      state.canEdit && state.showGuides && state.tool !== "text"
+        ? guideAt(doc.guides ?? [], fromScreen(view, e.clientX, e.clientY), doc, HIT_SLOP_PX / view.k)
+        : null;
+    if (onGuide) {
+      state.selectGuide(onGuide.id);
+      guideDrag.press(e, onGuide);
+      return;
+    }
     const hit = hitAt(state, view, e.clientX, e.clientY, false);
     if (!hit) {
       state.select([]);
@@ -444,6 +472,21 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
             className="stroke-ed-accent"
           />
         ))}
+        {placed.map((g) => (
+          <line
+            key={g.id}
+            data-project-guide={g.id}
+            data-selected={g.selected || undefined}
+            x1={g.x1}
+            y1={g.y1}
+            x2={g.x2}
+            y2={g.y2}
+            strokeWidth={g.selected ? 2 : 1}
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+            className="stroke-ed-guide"
+          />
+        ))}
         {guides.map((g) => (
           <line
             key={g.axis}
@@ -459,6 +502,20 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
           />
         ))}
       </svg>
+      {placed
+        .filter((g) => g.selected)
+        .map((g) => (
+          // The picked guide's position, just inside the frame where the line starts.
+          <span
+            key={g.id}
+            aria-hidden
+            data-guide-label
+            style={{ left: g.x1 + 4, top: g.y1 + 4 }}
+            className="pointer-events-none absolute rounded-[3px] bg-ed-guide px-1 text-[11px] leading-4 font-medium text-ed-bg tabular-nums"
+          >
+            {g.label}
+          </span>
+        ))}
       {peerLabels.map((l) => (
         <div
           key={l.key}
@@ -627,6 +684,18 @@ function guidesOf(
   if (snapped.x !== null) out.push(line("x", { x: snapped.x, y: 0 }, { x: snapped.x, y: frame.height }));
   if (snapped.y !== null) out.push(line("y", { x: 0, y: snapped.y }, { x: frame.width, y: snapped.y }));
   return out;
+}
+
+// The project's guides across the frame, in the overlay's pixels.
+function placedOf(doc: TimelineDoc, selectedId: string | null, view: View, overlay: { left: number; top: number }): Placed[] {
+  return (doc.guides ?? []).map((g) => {
+    const from = g.axis === "x" ? { x: g.at * doc.width, y: 0 } : { x: 0, y: g.at * doc.height };
+    const to = g.axis === "x" ? { x: g.at * doc.width, y: doc.height } : { x: doc.width, y: g.at * doc.height };
+    const a = toOverlay(view, overlay, from);
+    const b = toOverlay(view, overlay, to);
+    const selected = g.id === selectedId;
+    return { id: g.id, axis: g.axis, x1: px(a.x), y1: px(a.y), x2: px(b.x), y2: px(b.y), selected, label: `${Number((g.at * 100).toFixed(1))}%` };
+  });
 }
 
 // A clip's whole box, uncut, in the overlay's pixels.
