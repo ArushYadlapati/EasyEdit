@@ -26,8 +26,10 @@ import {
   deleteProjectAction,
   duplicateProjectAction,
   moveProjectAction,
+  pinProjectAction,
   renameFolderAction,
   renameProjectAction,
+  unpinProjectAction,
 } from "@/app/(dashboard)/dashboard/actions";
 
 // The server actions with this space already bound as their first argument.
@@ -37,6 +39,8 @@ const actionsFor = (spaceId: string): DashboardActions => ({
   remove: deleteProjectAction.bind(null, spaceId),
   duplicate: duplicateProjectAction.bind(null, spaceId),
   move: moveProjectAction.bind(null, spaceId),
+  pin: pinProjectAction.bind(null, spaceId),
+  unpin: unpinProjectAction.bind(null, spaceId),
   createFolder: createFolderAction.bind(null, spaceId),
   renameFolder: renameFolderAction.bind(null, spaceId),
   deleteFolder: deleteFolderAction.bind(null, spaceId),

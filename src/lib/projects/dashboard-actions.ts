@@ -4,6 +4,7 @@ import type { Actor } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
 import { PROJECT_GONE } from "@/lib/dashboard/view";
 import { createFolder, deleteFolder, FOLDER_GONE, moveProject, renameFolder } from "@/lib/projects/folders";
+import { pinProject, unpinProject } from "@/lib/projects/pins";
 import { createProject, deleteProject, duplicateProject, renameProject } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn } from "@/lib/spaces/access";
@@ -90,6 +91,10 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
       change(spaceId, (db, actor) => duplicateProject(db, actor, field(formData, "id"))),
     move: (spaceId: string, formData: FormData) =>
       change(spaceId, (db, actor) => moveProject(db, actor, field(formData, "id"), folder(formData))),
+    pin: (spaceId: string, formData: FormData) =>
+      change(spaceId, (db, actor) => pinProject(db, actor, field(formData, "id"))),
+    unpin: (spaceId: string, formData: FormData) =>
+      change(spaceId, (db, actor) => unpinProject(db, actor, field(formData, "id"))),
     createFolder: (spaceId: string, formData: FormData) =>
       change(spaceId, (db, actor) => createFolder(db, actor, field(formData, "name"))),
     renameFolder: (spaceId: string, formData: FormData) =>

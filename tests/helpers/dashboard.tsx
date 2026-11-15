@@ -68,6 +68,8 @@ export function fakeActions(): { [K in keyof DashboardActions]: Mock<DashboardAc
     remove: vi.fn<DashboardActions["remove"]>(async () => ({})),
     duplicate: vi.fn<DashboardActions["duplicate"]>(async () => ({})),
     move: vi.fn<DashboardActions["move"]>(async () => ({})),
+    pin: vi.fn<DashboardActions["pin"]>(async () => ({})),
+    unpin: vi.fn<DashboardActions["unpin"]>(async () => ({})),
     createFolder: vi.fn<DashboardActions["createFolder"]>(async () => ({})),
     renameFolder: vi.fn<DashboardActions["renameFolder"]>(async () => ({})),
     deleteFolder: vi.fn<DashboardActions["deleteFolder"]>(async () => ({})),

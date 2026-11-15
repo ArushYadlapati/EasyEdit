@@ -4,6 +4,7 @@ import type { CurrentUser } from "@/lib/access-rules";
 import type { Role } from "@/lib/allowlist/service";
 import { makeDashboardActions } from "@/lib/projects/dashboard-actions";
 import { createFolder, deleteFolder, listFolders } from "@/lib/projects/folders";
+import { listPinnedIds } from "@/lib/projects/pins";
 import { createProject, deleteProject, getProject, listProjects } from "@/lib/projects/service";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { joinSpace, testActor, testUser } from "../helpers/actor";
@@ -47,6 +48,21 @@ describe("dashboard actions", () => {
     expect(await getProject(db, owner, id)).toBeNull();
     expect(revalidate).toHaveBeenCalledTimes(3);
     expect(revalidate).toHaveBeenCalledWith("/s/[space]");
+  });
+
+  it("pin and unpin change the space's pins and refresh the dashboard; a viewer can't", async () => {
+    const { db, owner, revalidate, actions } = await setup();
+    const { id } = await createProject(db, owner, { name: "Qual", format: "short_9x16" });
+    expect(await actions.pin(SEED_TEAM_ID, form({ id }))).toEqual({});
+    expect(await listPinnedIds(db, owner)).toEqual([id]);
+    expect(await actions.unpin(SEED_TEAM_ID, form({ id }))).toEqual({});
+    expect(await listPinnedIds(db, owner)).toEqual([]);
+    expect(revalidate).toHaveBeenCalledTimes(2);
+    expect(await actions.pin(SEED_TEAM_ID, form({ id: "gone" }))).toEqual({ error: "That project no longer exists." });
+    const viewer = await setup("viewer");
+    const other = await createProject(viewer.db, viewer.owner, { name: "Qual", format: "short_9x16" });
+    expect(await viewer.actions.pin(SEED_TEAM_ID, form({ id: other.id }))).toEqual({ error: "Your role doesn't allow this." });
+    expect(await listPinnedIds(viewer.db, viewer.owner)).toEqual([]);
   });
 
   it("a viewer gets the role message and nothing changes", async () => {
