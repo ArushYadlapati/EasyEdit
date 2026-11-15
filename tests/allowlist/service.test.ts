@@ -124,3 +124,35 @@ describe("allowlist service", () => {
     expect(rowsOf(await db.execute(sql`select 1 from "user" where id='u1'`))).toHaveLength(1);
   });
 });
+
+describe("removeEntry and Seattle Solvers", () => {
+  // With open sign-up on, the member row is the only lock on Seattle Solvers: it must go in the same statement.
+  it("removes the person's Seattle Solvers member row itself, and nobody else's", async () => {
+    const db = await makeTestDb();
+    await seedAdmin(db);
+    await addEntry(db, { email: "kid@gmail.com", role: "editor", invitedBy: SEED_ADMIN_EMAIL });
+    await addEntry(db, { email: "other@gmail.com", role: "editor", invitedBy: SEED_ADMIN_EMAIL });
+    await db.insert(user).values([
+      { id: "u1", name: "Kid", email: " Kid@Gmail.com " },
+      { id: "u2", name: "Other", email: "other@gmail.com" },
+    ]);
+    await db.execute(sql`insert into organization (id, name, slug, created_at, kind) values ('personal_u1', 'Personal', 'personal_u1', now(), 'personal')`);
+    await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values
+      ('mt_u1', 'team_seattle_solvers', 'u1', 'editor', now()),
+      ('mt_u2', 'team_seattle_solvers', 'u2', 'editor', now()),
+      ('mp_u1', 'personal_u1', 'u1', 'admin', now())`);
+    const members = async () => rowsOf<{ id: string }>(await db.execute(sql`select id from member order by id`)).map((r) => r.id);
+
+    await removeEntry(db, "kid@gmail.com");
+    expect(await members()).toEqual(["mp_u1", "mt_u2"]);
+  });
+
+  it("the last admin keeps their member row too", async () => {
+    const db = await makeTestDb();
+    await seedAdmin(db);
+    await db.insert(user).values({ id: "u1", name: "Admin", email: SEED_ADMIN_EMAIL });
+    await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('mt_u1', 'team_seattle_solvers', 'u1', 'admin', now())`);
+    await expect(removeEntry(db, SEED_ADMIN_EMAIL)).rejects.toMatchObject({ code: "LAST_ADMIN" });
+    expect(rowsOf(await db.execute(sql`select id from member`))).toEqual([{ id: "mt_u1" }]);
+  });
+});

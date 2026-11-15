@@ -3,6 +3,7 @@ import { z } from "zod";
 import { rowsOf, type DB } from "@/db";
 import { allowlist } from "@/db/schema";
 import { revokeAccess } from "@/lib/connector/grants";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 
 export type Role = "admin" | "editor" | "viewer";
 
@@ -92,17 +93,27 @@ export async function setRole(db: DB, email: string, role: Role): Promise<void> 
   if ((await getRole(db, target)) !== null) throw lastAdminError();
 }
 
+// The allowlist row and the person's Seattle Solvers member row go in one statement: with open sign-up on, the member
+// row is the only thing that keeps them out of Seattle Solvers, so it can't be left behind by a later failure.
 export async function removeEntry(db: DB, email: string): Promise<void> {
   const target = normalizeEmail(email);
   const result = await db.execute(sql`
-    with ${LOCKED_ADMINS}
-    delete from allowlist
-    where email = ${target}
-      and (
-        role <> 'admin'
-        or (select count(*) from admins) > 1
+    with ${LOCKED_ADMINS},
+      gone as (
+        delete from allowlist
+        where email = ${target}
+          and (
+            role <> 'admin'
+            or (select count(*) from admins) > 1
+          )
+        returning email
+      ),
+      gone_member as (
+        delete from member
+        where organization_id = ${SEED_TEAM_ID}
+          and user_id in (select id from "user" where lower(trim(email)) in (select email from gone))
       )
-    returning email
+    select email from gone
   `);
   if (rowsOf(result).length === 0) {
     if ((await getRole(db, target)) !== null) throw lastAdminError();
@@ -110,7 +121,8 @@ export async function removeEntry(db: DB, email: string): Promise<void> {
     await revokeAccess(db, { email: target }, { sessions: true });
     return;
   }
-  // A second statement: the allowlist check on every request covers the moment between the two.
+  // Sessions and agent grants in a second statement: until it runs, the person is already out of Seattle Solvers, and
+  // with open sign-up off the allowlist check on every request keeps them out of the app too.
   await revokeAccess(db, { email: target }, { sessions: true });
 }
 
