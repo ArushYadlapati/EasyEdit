@@ -72,8 +72,8 @@ export const TrackRow = memo(function TrackRow(props: TrackRowProps) {
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     if (isMac && e.ctrlKey) return;
     if (e.button !== 0 || (e.target !== e.currentTarget && !isEmptySpace(e.target))) return;
-    const { selection, select } = store.getState();
-    if (!e.shiftKey && (selection.clipIds.length > 0 || selection.trackId !== null)) select([]);
+    const { selection, select, guideId } = store.getState();
+    if (!e.shiftKey && (selection.clipIds.length > 0 || selection.trackId !== null || guideId !== null)) select([]);
     drag?.pressRows(e);
   }
 

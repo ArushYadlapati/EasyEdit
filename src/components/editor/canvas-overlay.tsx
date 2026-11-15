@@ -302,6 +302,8 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   }
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
+    // A Text press whose release went elsewhere is forgotten, so it never adds text later.
+    textPress.current = null;
     if (inTextEditor(e.target)) return;
     const grip = gripOf(e.target);
     if (isMac && e.ctrlKey && !resizes(grip)) return; // a right-click
@@ -388,7 +390,8 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     stopFollowing(e.pointerId);
     const typed = textPress.current;
     textPress.current = null;
-    if (typed && typed.pointerId === e.pointerId && Math.hypot(e.clientX - typed.x, e.clientY - typed.y) < CLICK_SLOP_PX) {
+    const stillText = store.getState().tool === "text";
+    if (typed && stillText && typed.pointerId === e.pointerId && Math.hypot(e.clientX - typed.x, e.clientY - typed.y) < CLICK_SLOP_PX) {
       textToolClick(e.clientX, e.clientY);
       return;
     }

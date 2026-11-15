@@ -164,6 +164,18 @@ describe("the Text tool on the preview", () => {
     expect(field.selectionStart).toBe(field.value.length);
   });
 
+  it("a Text press released off the preview adds nothing later, under another tool", () => {
+    const { st } = show({ tool: "text" });
+    const count = textClips(st()).length;
+    press(X(0.25), Y(0.25));
+    // Released somewhere else on the page: the overlay never hears it.
+    act(() => st().setTool("select"));
+    press(X(0.25), Y(0.25));
+    release(X(0.25), Y(0.25));
+    expect(textClips(st())).toHaveLength(count);
+    expect(st().textEditId).toBeNull();
+  });
+
   it("shows a text cursor", () => {
     show({ tool: "text" });
     expect(overlay().className).toMatch(/\bcursor-text\b/);

@@ -25,6 +25,16 @@ describe("the current tool", () => {
     expect(store.getState().setTool("select")).toBe(true);
   });
 
+  it("picking Guide shows the guides, so a placed guide is never hidden", () => {
+    const store = makeStore();
+    store.getState().setShowGuides(false);
+    store.getState().setTool("guide");
+    expect(store.getState().showGuides).toBe(true);
+    // Hiding them again leaves the Guide tool.
+    store.getState().setShowGuides(false);
+    expect(store.getState().tool).toBe("select");
+  });
+
   it("leaving Crop disarms the armed clip", () => {
     const store = makeStore();
     store.getState().setTool("crop");

@@ -67,6 +67,18 @@ describe("the tool rail", () => {
     for (const name of ["Razor", "Text", "Guide", "Crop", "Split", "Delete", "Ripple delete"]) expect(button(name).disabled, name).toBe(true);
   });
 
+  it("keeps a tab stop when the button it was on is disabled", () => {
+    const { store, button } = show();
+    act(() => store.getState().select(["x1"]));
+    button("Selection").focus();
+    fireEvent.keyDown(button("Selection"), { key: "End" });
+    expect(document.activeElement).toBe(button("Ripple delete"));
+    fireEvent.click(button("Ripple delete"));
+    expect(button("Ripple delete").disabled).toBe(true);
+    const stops = ["Selection", "Razor", "Text", "Guide", "Crop", "Split", "Delete", "Ripple delete"].filter((n) => button(n).tabIndex === 0);
+    expect(stops).toEqual(["Selection"]);
+  });
+
   it("is one tab stop; the arrow keys move between its buttons", () => {
     const { button } = show();
     expect(button("Selection").tabIndex).toBe(0);

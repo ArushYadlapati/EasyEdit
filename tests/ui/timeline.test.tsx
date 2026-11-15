@@ -184,6 +184,14 @@ it("pressing a row's gutter before frame 0 clears the selection without seeking"
   expect(st().playhead).toBe(40);
 });
 
+it("pressing an empty row also lets go of a picked guide, so a later Delete removes nothing", () => {
+  const { st, clip } = setup(makeStore({ doc: { ...sampleDoc(), guides: [{ id: "gd1", axis: "x", at: 0.5 }] } }));
+  act(() => st().selectGuide("gd1"));
+  const row = clip("c1").parentElement!.parentElement!;
+  fireEvent.pointerDown(row, { button: 0 });
+  expect(st().guideId).toBeNull();
+});
+
 it("a 3-hour project at the maximum zoom fills exactly the widest allowed scroll area", () => {
   const doc = sampleDoc();
   doc.tracks[0].clips = [video("long", 0, 3 * 60 * 60 * 30)];

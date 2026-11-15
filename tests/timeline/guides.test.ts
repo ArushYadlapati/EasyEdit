@@ -47,6 +47,13 @@ describe("guide ops", () => {
     expect(applyOps(doc, inverse).doc.guides?.map((g) => g.id)).toEqual(["g1", "g2"]);
   });
 
+  it("undoing a removal still works after a teammate removed another guide", () => {
+    const four = withGuides(...["a", "b", "c", "d"].map((id) => ({ id, axis: "x" as const, at: 0.5 })));
+    const mine = applyOps(four, [{ op: "remove_guide", guideId: "d" }]);
+    const theirs = applyOps(mine.doc, [{ op: "remove_guide", guideId: "a" }]).doc;
+    expect(applyOps(theirs, mine.inverse).doc.guides?.map((g) => g.id)).toEqual(["b", "c", "d"]);
+  });
+
   it("a round trip through the inverse gives back the document", () => {
     const before = withGuides({ id: "g1", axis: "x", at: 0.2 }, { id: "g2", axis: "y", at: 0.9 });
     const ops: Op[] = [
@@ -62,7 +69,6 @@ describe("guide ops", () => {
     const one = withGuides({ id: "g1", axis: "x", at: 0.5 });
     expect(codeOf(() => applyOps(one, [{ op: "add_guide", guide: { id: "g1", axis: "y", at: 0.1 } }]))).toBe("DUPLICATE_ID");
     expect(codeOf(() => applyOps(one, [{ op: "move_guide", guideId: "nope", at: 0.1 }]))).toBe("NOT_FOUND");
-    expect(codeOf(() => applyOps(one, [{ op: "add_guide", guide: { id: "g2", axis: "y", at: 0.1 }, index: 2 }]))).toBe("INVALID");
     expect(codeOf(() => applyOps(one, [{ op: "remove_guide", guideId: "nope" }]))).toBe("NOT_FOUND");
     expect(codeOf(() => applyOps(one, [{ op: "move_guide", guideId: "g1", at: 0.1, expect: { at: 0.4 } }]))).toBe("STALE");
     const full = withGuides(...Array.from({ length: LIMITS.guidesPerProject }, (_, i) => ({ id: `g${i}`, axis: "x" as const, at: 0.5 })));

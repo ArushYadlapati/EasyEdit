@@ -32,8 +32,9 @@ export function ToolRail() {
   const [focusAt, setFocusAt] = useState<number | null>(null);
 
   const buttons = () => [...(bar.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
-  // The tab stop: the button last moved to, else the current tool.
-  const stop = focusAt ?? TOOLS.indexOf(tool);
+  // The tab stop: the button last moved to while it can still be used, else the current tool.
+  const disabledAt = (index: number) => (index >= TOOLS.length ? !canEdit || (index > TOOLS.length && !hasSelection) : toolNeedsEdit(TOOLS[index]) && !canEdit);
+  const stop = focusAt !== null && !disabledAt(focusAt) ? focusAt : TOOLS.indexOf(tool);
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     const all = buttons();

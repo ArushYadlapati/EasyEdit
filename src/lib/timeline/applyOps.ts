@@ -569,10 +569,9 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (guides.length + 1 > LIMITS.guidesPerProject) {
           throw new OpError("LIMIT_EXCEEDED", `${name}: a project can have at most ${LIMITS.guidesPerProject} guides`, opIndex);
         }
-        const index = op.index ?? guides.length;
-        if (index < 0 || index > guides.length) {
-          throw new OpError("INVALID", `${name}: index ${index} is outside 0..${guides.length} for guide "${op.guide.id}"`, opIndex);
-        }
+        // Guides' order means nothing on screen, so an index past the end (an undone removal after a teammate removed
+        // another) goes last instead of failing.
+        const index = Math.max(0, Math.min(op.index ?? guides.length, guides.length));
         const guide = { id: op.guide.id, axis: op.guide.axis, at: op.guide.at };
         doc.guides = [...guides.slice(0, index), guide, ...guides.slice(index)];
         groups.push([{ op: "remove_guide", guideId: guide.id, expect: { guide: { ...guide } } }]);

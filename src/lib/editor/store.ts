@@ -113,7 +113,7 @@ export type EditorState = {
   setCropArmed(clipId: string | null): void;
   setTool(tool: Tool): boolean; // false: a tool that changes the project, for someone who can't edit
   selectGuide(guideId: string | null): void; // clears the clip and track selection; a guide not there selects nothing
-  setShowGuides(on: boolean): void; // hiding them clears the selected guide
+  setShowGuides(on: boolean): void; // hiding them clears the selected guide and leaves the Guide tool
   setBoardScale(k: number): void;
   setTextEdit(clipId: string | null, opts?: { selectAll?: boolean }): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
   setExporting(on: boolean): void;
@@ -643,7 +643,8 @@ export function createEditorStore(
       setTool(tool) {
         const state = get();
         if (toolNeedsEdit(tool) && !state.canEdit) return false;
-        if (tool !== state.tool) set({ tool, ...(state.tool === "crop" && { cropArmed: null }) });
+        // The Guide tool shows the guides: a guide placed while they were hidden would be seen by everyone but its author.
+        if (tool !== state.tool) set({ tool, ...(state.tool === "crop" && { cropArmed: null }), ...(tool === "guide" && { showGuides: true }) });
         return true;
       },
 
@@ -658,7 +659,8 @@ export function createEditorStore(
       },
 
       setShowGuides(on) {
-        if (on !== get().showGuides) set({ showGuides: on, ...(!on && { guideId: null }) });
+        const state = get();
+        if (on !== state.showGuides) set({ showGuides: on, ...(!on && { guideId: null, ...(state.tool === "guide" && { tool: "select" as const }) }) });
       },
 
       setTextEdit(clipId, opts) {
