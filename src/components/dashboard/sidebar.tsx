@@ -9,12 +9,13 @@ import { IconButton } from "@/components/ui/icon-button";
 import { ALL_VIEW, RECENT_VIEW, folderOf, viewQuery, type DashboardFolder, type DashboardView } from "@/lib/dashboard/view";
 import { SidebarSection } from "@/components/dashboard/sidebar-section";
 import { SpaceSwitcher, useCreateTeam, useMySpaces } from "@/components/dashboard/space-switcher";
-import { slugFor, spacePath } from "@/lib/spaces/paths";
+import { editorPath, slugFor, spacePath } from "@/lib/spaces/paths";
 import { settingsTabPath } from "@/lib/spaces/settings-tabs";
 import { storageSettingsPath } from "@/lib/storage/messages";
 
 export type SidebarProps = {
   folders: readonly DashboardFolder[];
+  pinned?: readonly { id: string; name: string }[]; // the space's Pinned list, oldest pin first
   view: DashboardView;
   canEdit: boolean;
   spaceSlug: string;
@@ -52,14 +53,15 @@ function SidebarLink({ href, current, folderId, takesDrops, onDropProject, child
   );
 }
 
-// The dashboard's side: My Spaces (which space you are in), then Projects (Recent and All projects) and Folders (each
-// with its project count) inside it; the view shown is marked. Each section's heading hides and shows it
-// (SidebarSection). A column at the left on a wide window, and one row above
-// the grid that scrolls sideways on its own on a narrow one, where the headings are kept for screen readers only. For
+// The dashboard's side: My Spaces (which space you are in), then Projects (Recent and All projects), Pinned (the
+// space's pinned projects, each opening in the editor; not drawn with none) and Folders (each with its project count)
+// inside it; the view shown is marked. Each section's heading hides and shows it (SidebarSection). A column at the
+// left on a wide window, and one row above the grid that scrolls sideways on its own on a narrow one, where the
+// headings are kept for screen readers only. For
 // editors, New folder sits beside the Folders heading, or at the end of the row on a narrow window; and a project
 // dragged onto a folder goes into it, or onto All projects out of its folder. This space sits at the foot of the column:
 // a team's Members for everyone in it, and the space's Storage settings for its admins.
-export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
+export function Sidebar({ folders, pinned = [], view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
   const spaces = useMySpaces();
   const createTeam = useCreateTeam();
   const current = spaces.find((space) => slugFor(space) === spaceSlug);
@@ -92,6 +94,15 @@ export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDrop
             All projects
           </SidebarLink>
         </SidebarSection>
+        {pinned.length > 0 && (
+          <SidebarSection id="pinned" label="Pinned" className="md:mt-4">
+            {pinned.map((project) => (
+              <SidebarLink key={project.id} href={editorPath(spaceSlug, project.id)} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+                <span className="min-w-0 truncate">{project.name}</span>
+              </SidebarLink>
+            ))}
+          </SidebarSection>
+        )}
         <SidebarSection
           id="folders"
           label="Folders"

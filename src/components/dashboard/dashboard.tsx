@@ -22,6 +22,7 @@ import {
   ALL_VIEW,
   SORT_OPTIONS,
   folderOf,
+  pinnedProjects,
   projectsInView,
   recentProjects,
   sameView,
@@ -229,6 +230,7 @@ export function Dashboard({ projects, folders, recentIds, pinnedIds = NO_PINS, v
       <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
         <Sidebar
           folders={folders}
+          pinned={pinnedProjects(projects, pinnedIds)}
           view={view}
           canEdit={canEdit}
           spaceSlug={spaceSlug}
