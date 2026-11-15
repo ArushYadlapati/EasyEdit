@@ -67,7 +67,8 @@ describe("actions re-check the caller", () => {
     expect(await actions.remove(team, form({ userId: "u1" }))).toEqual({ error: FORBIDDEN });
     expect(await roleOf(db, team, "ada")).toBeNull();
     expect(await roleOf(db, team, "u1")).toBe("admin");
-    expect(revalidate).not.toHaveBeenCalled();
+    // Each refusal still refreshes the page, which then shows the editor no controls.
+    expect(revalidate).toHaveBeenCalledTimes(3);
   });
 
   it("a non-member's return the not-found message", async () => {
@@ -110,6 +111,20 @@ describe("actions re-check the caller", () => {
     expect(await actions.leave(team)).toEqual({ error: "A team needs at least one admin. Make someone else an admin first." });
     expect(redirect).not.toHaveBeenCalled();
     expect(await roleOf(db, team, "u1")).toBe("admin");
+  });
+
+  it("a refused action refreshes the page too, so it stops showing what changed elsewhere", async () => {
+    const { db, team } = await setup();
+    await joinSpace(db, { id: "ada" }, "editor", team);
+    // Ada was removed in another tab; this one still shows her row.
+    await db.delete(member).where(and(eq(member.organizationId, team), eq(member.userId, "ada")));
+    const { actions, revalidate } = actionsAs(db, person("u1"));
+    expect(await actions.remove(team, form({ userId: "ada" }))).toEqual({ error: "They're not in this team." });
+    expect(revalidate).toHaveBeenCalledTimes(1);
+    // Someone who isn't in the space has nothing of it to refresh.
+    const outsider = actionsAs(db, person("u3"));
+    expect(await outsider.actions.remove(team, form({ userId: "u2" }))).toEqual({ error: SPACE_NOT_FOUND });
+    expect(outsider.revalidate).not.toHaveBeenCalled();
   });
 
   it("a ServiceError's message comes back verbatim", async () => {

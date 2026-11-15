@@ -34,8 +34,11 @@ export function makeMemberActions(deps: MemberActionDeps) {
     try {
       await call(db, actor);
     } catch (error) {
-      if (error instanceof ServiceError) return { error: error.message };
-      throw error;
+      if (!(error instanceof ServiceError)) throw error;
+      // A refusal often means the page is out of date (someone removed elsewhere, the caller no longer an admin), so
+      // it is refreshed too.
+      deps.revalidate();
+      return { error: error.message };
     }
     deps.revalidate();
     return {};
