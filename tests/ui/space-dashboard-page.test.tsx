@@ -10,8 +10,10 @@ import {
   deleteProjectAction,
   duplicateProjectAction,
   moveProjectAction,
+  pinProjectAction,
   renameFolderAction,
   renameProjectAction,
+  unpinProjectAction,
 } from "@/app/(dashboard)/dashboard/actions";
 import type { DashboardProps } from "@/components/dashboard/dashboard";
 import type { DB } from "@/db";
@@ -19,6 +21,7 @@ import { user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { createFolder } from "@/lib/projects/folders";
 import { recordOpen } from "@/lib/projects/opens";
+import { pinProject } from "@/lib/projects/pins";
 import { createProject } from "@/lib/projects/service";
 import { saveThumbnail } from "@/lib/projects/thumbnails";
 import { SEED_TEAM_ID, personalSpaceId } from "@/lib/spaces/types";
@@ -42,10 +45,14 @@ vi.mock("@/app/(dashboard)/dashboard/actions", () => ({
   deleteProjectAction: vi.fn(),
   duplicateProjectAction: vi.fn(),
   moveProjectAction: vi.fn(),
+  pinProjectAction: vi.fn(),
+  unpinProjectAction: vi.fn(),
   createFolderAction: vi.fn(),
   renameFolderAction: vi.fn(),
   deleteFolderAction: vi.fn(),
 }));
+const jar = vi.hoisted(() => ({ values: {} as Record<string, string> }));
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: (name: string) => (name in jar.values ? { name, value: jar.values[name] } : undefined) }) }));
 vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => signedIn.user!),
   meetsRole: (await import("@/lib/access-rules")).meetsRole,
@@ -100,6 +107,8 @@ describe("the dashboard page", () => {
       ["remove", deleteProjectAction],
       ["duplicate", duplicateProjectAction],
       ["move", moveProjectAction],
+      ["pin", pinProjectAction],
+      ["unpin", unpinProjectAction],
       ["createFolder", createFolderAction],
       ["renameFolder", renameFolderAction],
       ["deleteFolder", deleteFolderAction],
@@ -131,6 +140,21 @@ describe("the dashboard page", () => {
     expect(viewer.canEdit).toBe(false);
     expect(viewer.recentIds).toEqual([projectId]);
     expect((await dashboardFor(ada)).recentIds).toEqual([]);
+  });
+
+  it("the sidebar gets this browser's folded sections, so the first paint has them", async () => {
+    jar.values = {};
+    expect((await dashboardFor(ada)).sidebarCollapsed).toBeUndefined();
+    jar.values = { easyedit_sidebar: "folders.pinned" };
+    expect((await dashboardFor(ada)).sidebarCollapsed).toBe("folders.pinned");
+    jar.values = {};
+  });
+
+  it("everyone in the space gets its pins", async () => {
+    expect((await dashboardFor(vic)).pinnedIds).toEqual([]);
+    await pinProject(testDb, as(ada), projectId);
+    expect((await dashboardFor(vic)).pinnedIds).toEqual([projectId]);
+    expect((await dashboardFor(ada)).pinnedIds).toEqual([projectId]);
   });
 
   it("a first visit, with nothing opened in the space, lands on All projects; with something opened, on Recent", async () => {

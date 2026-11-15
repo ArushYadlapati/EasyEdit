@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { DRIFT_SECONDS, MAX_ELEMENT_RATE, MIN_ELEMENT_RATE, PRELOAD_SECONDS, STILL_SECONDS, mediaWants, needsSeek, upcomingAssetIds } from "@/lib/editor/media-plan";
-import { createEmptyDoc, type Clip, type TimelineDoc } from "@/lib/timeline";
+import { type Clip, type TimelineDoc } from "@/lib/timeline";
+import { docWithCaptions } from "../helpers/docs";
 import { text, video } from "./fixtures";
 
 // A 30 fps project whose tracks are, in order: v1 (video), o1 (overlay), t1, cap, a1 (audio).
 // c1: a video clip of asset a1 on v1, frames 30 to 120, in 60, speed 1, volume 0.5.
 // i1: an image clip of asset a3 on o1, frames 0 to 90. m1: an audio clip of asset a2 on a1, frames 0 to 300, volume 1.
 function makeDoc(): TimelineDoc {
-  const d = createEmptyDoc("short_9x16");
+  const d = docWithCaptions("short_9x16");
   d.tracks.splice(1, 0, { id: "o1", kind: "overlay", name: "Overlay 1", muted: false, hidden: false, locked: false, clips: [] });
   d.tracks[0].clips = [video("c1", 30, 90, { assetId: "a1", in: 60, volume: 0.5 })];
   d.tracks[1].clips = [video("i1", 0, 90, { type: "image", assetId: "a3" })];

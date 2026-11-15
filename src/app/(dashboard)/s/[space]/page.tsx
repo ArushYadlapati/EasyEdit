@@ -1,15 +1,18 @@
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { PersonalSoon } from "@/components/dashboard/personal-soon";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
+import { SECTIONS_COOKIE } from "@/lib/dashboard/sidebar-sections";
 import { ALL_VIEW, RECENT_VIEW, recentProjects, resolveView } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
 import { listFolders } from "@/lib/projects/folders";
 import { listRecentProjectIds } from "@/lib/projects/opens";
+import { listPinnedIds } from "@/lib/projects/pins";
 import { listProjects } from "@/lib/projects/service";
 import { getUserNames } from "@/lib/projects/user-names";
 import { actorIn } from "@/lib/spaces/access";
@@ -28,8 +31,10 @@ import {
   deleteProjectAction,
   duplicateProjectAction,
   moveProjectAction,
+  pinProjectAction,
   renameFolderAction,
   renameProjectAction,
+  unpinProjectAction,
 } from "@/app/(dashboard)/dashboard/actions";
 
 // The server actions with this space already bound as their first argument.
@@ -39,6 +44,8 @@ const actionsFor = (spaceId: string): DashboardActions => ({
   remove: deleteProjectAction.bind(null, spaceId),
   duplicate: duplicateProjectAction.bind(null, spaceId),
   move: moveProjectAction.bind(null, spaceId),
+  pin: pinProjectAction.bind(null, spaceId),
+  unpin: unpinProjectAction.bind(null, spaceId),
   createFolder: createFolderAction.bind(null, spaceId),
   renameFolder: renameFolderAction.bind(null, spaceId),
   deleteFolder: deleteFolderAction.bind(null, spaceId),
@@ -65,13 +72,16 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   }
   await rememberSpace(db, user.id, space.id);
   const canEdit = meetsRole(actor.role, "editor");
-  const [projects, folders, recentIds] = await Promise.all([
+  const [projects, folders, recentIds, pinnedIds] = await Promise.all([
     listProjects(db, actor),
     listFolders(db, actor),
     listRecentProjectIds(db, actor, LIMITS.dashboardRecent),
+    listPinnedIds(db, actor),
   ]);
   const names = await getUserNames(db, projects.map((project) => actorUserId(project.updatedBy)));
   const { folder, view: named, storage: storageNote } = await searchParams;
+  // The sidebar sections this browser folded, so the first paint already has them folded.
+  const sidebarCollapsed = (await cookies()).get(SECTIONS_COOKIE)?.value;
   // Someone who has opened nothing here yet (a teammate's first visit) lands on All projects, not an empty Recent.
   const landing = recentProjects(projects, recentIds, "").length > 0 ? RECENT_VIEW : ALL_VIEW;
   const view = resolveView({ folder, view: named }, folders, landing);
@@ -100,6 +110,8 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
       projects={projects.map((project) => ({ ...project, changedBy: displayActor(project.updatedBy, names) }))}
       folders={folders}
       recentIds={recentIds}
+      pinnedIds={pinnedIds}
+      sidebarCollapsed={sidebarCollapsed}
       view={view}
       canEdit={canEdit}
       now={new Date()}

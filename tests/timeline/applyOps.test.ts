@@ -3,14 +3,14 @@ import {
   DEFAULT_TRANSFORM,
   OpError,
   applyOps,
-  createEmptyDoc,
   prepareOps,
   type Op,
   type OpInput,
   type TimelineDoc,
 } from "@/lib/timeline";
+import { docWithCaptions } from "../helpers/docs";
 
-const doc0 = () => createEmptyDoc("short_9x16");
+const doc0 = () => docWithCaptions("short_9x16");
 const clip = (id: string, start: number, duration: number) =>
   ({
     id,

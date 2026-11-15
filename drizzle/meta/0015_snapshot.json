@@ -1,6 +1,6 @@
 {
-  "id": "e0c8fc8c-b75e-4bfa-81d1-500a77a0e61e",
-  "prevId": "b9e36578-a21a-4973-9487-8b4c6de73ad3",
+  "id": "72dc0b7a-4186-4e4a-a074-34ee40ba9636",
+  "prevId": "baa8a7c5-3e0b-4119-9638-07fcc847c4d2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -927,6 +927,87 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.project_pins": {
+      "name": "project_pins",
+      "schema": "",
+      "columns": {
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pinned_by": {
+          "name": "pinned_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pinned_at": {
+          "name": "pinned_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "project_pins_space_id_idx": {
+          "name": "project_pins_space_id_idx",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "project_pins_project_id_projects_id_fk": {
+          "name": "project_pins_project_id_projects_id_fk",
+          "tableFrom": "project_pins",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_pins_space_id_organization_id_fk": {
+          "name": "project_pins_space_id_organization_id_fk",
+          "tableFrom": "project_pins",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { applyOps, createEmptyDoc, prepareOps, type TimelineDoc } from "@/lib/timeline";
+import { applyOps, prepareOps, type TimelineDoc } from "@/lib/timeline";
+import { docWithCaptions } from "../helpers/docs";
 
 const order = (d: TimelineDoc) => d.tracks.map((t) => t.id);
-const base = () => createEmptyDoc("short_9x16"); // v1, t1, cap, a1
+const base = () => docWithCaptions("short_9x16"); // v1, t1, cap, a1
 
 describe("move_track", () => {
   it("puts the track at the given final index and inverts with a guard", () => {

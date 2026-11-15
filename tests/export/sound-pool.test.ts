@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import { audioBlocks } from "@/lib/export/schedule";
 import { createSoundPool } from "@/lib/export/sound-pool";
 import { soundSchedule } from "@/lib/export/sound-schedule";
-import { createEmptyDoc, type Clip } from "@/lib/timeline";
+import { type Clip } from "@/lib/timeline";
 import { video } from "../editor/fixtures";
 import { fakeSoundIO, file, tick, type FakeSoundOptions } from "./fakes";
+import { docWithCaptions } from "../helpers/docs";
 
 const song = (id: string, start: number, duration: number, extra: Record<string, unknown> = {}) =>
   video(id, start, duration, { type: "audio", assetId: "song", ...extra }) as Clip;
 function schedule(v1: Clip[], a1: Clip[], sounds: Record<string, string>) {
-  const d = createEmptyDoc("short_9x16");
+  const d = docWithCaptions("short_9x16");
   d.tracks[0].clips = v1;
   d.tracks[3].clips = a1;
   return soundSchedule(d, sounds, 30, 48_000);

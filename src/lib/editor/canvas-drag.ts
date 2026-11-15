@@ -2,32 +2,87 @@ import { cropRect } from "@/lib/render/compositor";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
 import type { Crop, OpInput, TimelineDoc } from "@/lib/timeline";
 import type { Point, Size } from "./board";
-import { HANDLE_SIGNS, rectPoint, toLocal, toWorld, type CanvasItem, type Handle } from "./canvas-geometry";
+import { HANDLE_SIGNS, corners, rectPoint, toLocal, toWorld, type CanvasItem, type Handle } from "./canvas-geometry";
 import { CROP_MIN_SHOWN } from "./clip-box";
 import { findClip } from "./store";
 
 // Moving, turning, resizing and cropping a clip on the preview by hand. A drag records the clip as it was at the press;
 // resolveCanvasDrag turns a pointer position (project pixels) and the modifier keys held now into ops, starting again
 // from the press every time, so the keys can change mid-drag. Whether the ops may be applied is
-// left to applyOps. Snapping only pulls a clip toward a centre line or a quarter turn it is closer to than at the
-// press, so a clip that starts on one, or moves away from one, follows the pointer.
+// left to applyOps. Snapping only pulls a clip toward a line or a quarter turn it is closer to than at the press, so a
+// clip that starts on one, or moves away from one, follows the pointer. A moved clip's sides and middle snap onto the
+// frame's edges and centre lines, and onto the sides and middles of the other clips drawn: side to side, middle to
+// middle.
 
 export const SCALE_MIN = 0.01, SCALE_MAX = 10, ROTATE_STEP = 15, ROTATE_SNAP_DEG = 3, SNAP_CSS_PX = 6;
 
 export type Grip = Handle | "rotate" | "body";
 
 export type CanvasDrag =
-  | { type: "move"; clipId: string; grab: Point; from: { x: number; y: number }; frame: Size }
+  | { type: "move"; clipId: string; grab: Point; from: { x: number; y: number }; frame: Size; box: Box; lines: Lines }
   | { type: "rotate"; clipId: string; grab: Point; center: Point; from: number }
   | { type: "resize"; clipId: string; handle: Handle; grab: Point; item: CanvasItem; frame: Size; from: { scale: number; stretch: number; crop: Crop }; drawn: Point | null };
 
+// What of a moved clip snaps, on each axis, as offsets in project pixels from its centre: the sides of the box its kept
+// part fills on screen (turned, that box holds the corners), and its middles (the box's middle and the centre itself).
+export type Box = { x: Parts; y: Parts };
+// Where a moved clip may snap, in project pixels. Like snaps onto like: a side onto the frame's edges and the other
+// clips' sides, a middle onto the other clips' middles; the frame's centre line takes either.
+export type Lines = { x: Parts; y: Parts };
+export type Parts = { sides: number[]; middles: number[] };
+
+// The box a clip's kept part fills on screen, straight.
+function bounds(item: CanvasItem): { left: number; top: number; right: number; bottom: number } {
+  const pts = corners(item);
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
+}
+
+const unique = (ns: number[]) => [...new Set(ns.map((n) => round4(n)))];
+const parts = (sides: number[], middles: number[]): Parts => ({ sides: unique(sides), middles: unique(middles) });
+
+function boxOf(item: CanvasItem): Box {
+  const b = bounds(item);
+  const { x: cx, y: cy } = item.center;
+  return {
+    x: parts([b.left - cx, b.right - cx], [0, (b.left + b.right) / 2 - cx]),
+    y: parts([b.top - cy, b.bottom - cy], [0, (b.top + b.bottom) / 2 - cy]),
+  };
+}
+
+// others: the clips drawn now; the dragged one, and any not seen (opacity 0), are left out.
+function linesOf(item: CanvasItem, frame: Size, others: readonly CanvasItem[]): Lines {
+  const x = { sides: [0, frame.width / 2, frame.width], middles: [frame.width / 2] };
+  const y = { sides: [0, frame.height / 2, frame.height], middles: [frame.height / 2] };
+  for (const other of others) {
+    if (other.clipId === item.clipId || other.opacity === 0) continue;
+    const b = bounds(other);
+    x.sides.push(b.left, b.right);
+    x.middles.push((b.left + b.right) / 2);
+    y.sides.push(b.top, b.bottom);
+    y.middles.push((b.top + b.bottom) / 2);
+  }
+  return { x: parts(x.sides, x.middles), y: parts(y.sides, y.middles) };
+}
+
 // Null when the clip is gone or its track is locked. drawn: where a handle clamped into the pane was drawn, if it was.
-export function beginCanvasDrag(doc: TimelineDoc, item: CanvasItem, grip: Grip, grab: Point, drawn?: Point): CanvasDrag | null {
+// others: the clips drawn now, whose sides and middles a moved clip snaps onto.
+export function beginCanvasDrag(
+  doc: TimelineDoc,
+  item: CanvasItem,
+  grip: Grip,
+  grab: Point,
+  drawn?: Point,
+  others: readonly CanvasItem[] = [],
+): CanvasDrag | null {
   const found = findClip(doc, item.clipId);
   if (!found || found.track.locked) return null;
   const t = found.clip.transform;
   const frame = { width: doc.width, height: doc.height };
-  if (grip === "body") return { type: "move", clipId: item.clipId, grab, from: { x: t.x, y: t.y }, frame };
+  if (grip === "body") {
+    return { type: "move", clipId: item.clipId, grab, from: { x: t.x, y: t.y }, frame, box: boxOf(item), lines: linesOf(item, frame, others) };
+  }
   if (grip === "rotate") return { type: "rotate", clipId: item.clipId, grab, center: item.center, from: t.rotation };
   return {
     type: "resize",
@@ -44,10 +99,10 @@ export function beginCanvasDrag(doc: TimelineDoc, item: CanvasItem, grip: Grip, 
 // pointer in project pixels. shift: a move keeps to one axis, a turn steps by 15°, a handle drag squashes or stretches,
 // and a crop keeps the kept part's shape. crop: a handle drag crops instead of resizing (Ctrl, or the clip menu's
 // Crop). centre: a handle drag resizes about the box's middle, so the opposite side moves too (Alt, or Option on a
-// Mac). snapPx: how near the frame's centre lines a moved centre snaps, in project pixels.
+// Mac). snapPx: how near a line a moved clip's side or middle snaps, in project pixels.
 export type CanvasDragInput = { pointer: Point; shift: boolean; crop: boolean; centre: boolean; snapping: boolean; snapPx: number };
 
-// guides: the frame's centre lines a moved clip's centre snapped onto, in project pixels.
+// guides: the lines a moved clip snapped onto, one across and one down at most, in project pixels.
 export type CanvasDragResult = { ops: OpInput[]; label: "position change" | "size change" | "crop"; guides: { x: number | null; y: number | null } };
 
 const NO_GUIDES = { x: null, y: null };
@@ -81,7 +136,7 @@ function resolveMove(drag: Extract<CanvasDrag, { type: "move" }>, input: CanvasD
   const { width: W, height: H } = drag.frame;
   let dx = input.pointer.x - drag.grab.x;
   let dy = input.pointer.y - drag.grab.y;
-  // Shift keeps the larger movement; the other axis is held where it was, and never snaps onto a centre line.
+  // Shift keeps the larger movement; the other axis is held where it was, and never snaps.
   let held: "x" | "y" | null = null;
   if (input.shift) {
     if (Math.abs(dx) >= Math.abs(dy)) [dy, held] = [0, "y"];
@@ -89,20 +144,35 @@ function resolveMove(drag: Extract<CanvasDrag, { type: "move" }>, input: CanvasD
   }
   let x = drag.from.x + dx / W;
   let y = drag.from.y + dy / H;
-  // A centre snaps onto a centre line within snapPx of it, and only when it is closer to the line than at the press.
-  const snaps = (now: number, from: number, size: number) =>
-    input.snapping && Math.abs(now - 0.5) * size <= input.snapPx && Math.abs(now - 0.5) < Math.abs(from - 0.5);
   const guides: CanvasDragResult["guides"] = { x: null, y: null };
-  if (held !== "x" && snaps(x, drag.from.x, W)) {
-    x = 0.5;
-    guides.x = W / 2;
+  if (input.snapping && held !== "x") {
+    const s = snapAxis(x * W, drag.from.x * W, drag.box.x, drag.lines.x, input.snapPx);
+    if (s) [x, guides.x] = [s.centre / W, s.line];
   }
-  if (held !== "y" && snaps(y, drag.from.y, H)) {
-    y = 0.5;
-    guides.y = H / 2;
+  if (input.snapping && held !== "y") {
+    const s = snapAxis(y * H, drag.from.y * H, drag.box.y, drag.lines.y, input.snapPx);
+    if (s) [y, guides.y] = [s.centre / H, s.line];
   }
   const patch = changedKeys({ x, y }, drag.from);
   return { ops: Object.keys(patch).length ? update(drag.clipId, patch) : [], label: "position change", guides };
+}
+
+// The nearest line one of the box's parts comes within px of, its sides onto side lines and its middles onto middle
+// lines, from a centre now at c (at the press, from), and the centre that puts it there. A part snaps only onto a line
+// it is closer to than at the press. A tie goes to the side, then to the line listed first: the frame's before the
+// other clips'.
+function snapAxis(c: number, from: number, box: Parts, lines: Parts, px: number): { centre: number; line: number } | null {
+  let best: { centre: number; line: number; gap: number } | null = null;
+  for (const kind of ["sides", "middles"] as const) {
+    for (const line of lines[kind]) {
+      for (const o of box[kind]) {
+        const gap = Math.abs(c + o - line);
+        if (gap > px || gap >= Math.abs(from + o - line)) continue;
+        if (!best || gap < best.gap) best = { centre: line - o, line, gap };
+      }
+    }
+  }
+  return best && { centre: best.centre, line: best.line };
 }
 
 // Into (−180, 180], to a tenth of a degree.

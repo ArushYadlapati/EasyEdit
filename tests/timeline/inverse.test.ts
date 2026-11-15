@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_TRANSFORM, Op, applyOps, createEmptyDoc, prepareOps, type Clip, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, Op, applyOps, prepareOps, type Clip, type TimelineDoc } from "@/lib/timeline";
+import { docWithCaptions } from "../helpers/docs";
 
 const video = (id: string, start: number, duration: number, extra: Record<string, unknown> = {}) =>
   ({ id, type: "video", assetId: "a", start, duration, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM }, ...extra }) as Clip;
@@ -14,7 +15,7 @@ function richSafeArea(): TimelineDoc {
 }
 
 function rich(): TimelineDoc {
-  const d = createEmptyDoc("short_9x16");
+  const d = docWithCaptions("short_9x16");
   d.tracks[0].clips = [video("c1", 0, 30, { in: 10, speed: 1.5 }), video("c2", 30, 30), video("c3", 60, 30)];
   d.tracks.splice(1, 0, { id: "o1", kind: "overlay", name: "Overlay 1", muted: false, hidden: false, locked: false, clips: [] });
   const x1 = text("x1", 0, 60);
@@ -231,7 +232,7 @@ describe("ripple insert", () => {
   });
 
   it("ten ripple deletes on a 60-clip track undo with ten ops in one request", () => {
-    const base = createEmptyDoc("short_9x16");
+    const base = docWithCaptions("short_9x16");
     base.tracks[0].clips = Array.from({ length: 60 }, (_, i) => video(`k${i}`, i * 10, 10));
     const ops: Op[] = Array.from({ length: 10 }, (_, i) => ({ op: "remove_clip", clipId: `k${i * 2}`, ripple: true }));
     const { doc, inverse } = applyOps(base, ops);

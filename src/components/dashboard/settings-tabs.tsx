@@ -6,12 +6,13 @@ import type { ReactNode } from "react";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { settingsTabPath, type SettingsTab } from "@/lib/spaces/settings-tabs";
 
-// The row of settings tabs the viewer may open (settingsTabsFor), links that mark the page shown. It scrolls sideways
-// on its own on a narrow window.
+// The row of settings tabs the viewer may open (settingsTabsFor), links that mark the page shown. It never scrolls: a
+// tab's underline sits 1px over the row's border, which a scrolling row would show as a scrollbar. A narrow window
+// wraps the tabs instead.
 export function SettingsTabs({ slug, tabs }: { slug: string; tabs: readonly SettingsTab[] }): ReactNode {
   const pathname = usePathname() ?? "";
   return (
-    <nav aria-label="Settings" className="flex gap-1 overflow-x-auto border-b border-ed-line">
+    <nav aria-label="Settings" className="flex flex-wrap gap-1 border-b border-ed-line">
       {tabs.map((tab) => {
         const href = settingsTabPath(slug, tab.id);
         const current = pathname === href || pathname.startsWith(`${href}/`);

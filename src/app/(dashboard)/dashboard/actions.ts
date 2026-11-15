@@ -28,6 +28,14 @@ export async function moveProjectAction(spaceId: string, formData: FormData): Pr
   return actions.move(spaceId, formData);
 }
 
+export async function pinProjectAction(spaceId: string, formData: FormData): Promise<FormState> {
+  return actions.pin(spaceId, formData);
+}
+
+export async function unpinProjectAction(spaceId: string, formData: FormData): Promise<FormState> {
+  return actions.unpin(spaceId, formData);
+}
+
 export async function createFolderAction(spaceId: string, formData: FormData): Promise<FormState> {
   return actions.createFolder(spaceId, formData);
 }

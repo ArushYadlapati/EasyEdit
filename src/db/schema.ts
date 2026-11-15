@@ -98,6 +98,23 @@ export const projectOpens = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.projectId] })],
 );
 
+// The projects a space keeps pinned in its sidebar. A pin is the space's, not one person's: everyone in it sees the
+// same list, oldest pin first.
+export const projectPins = pgTable(
+  "project_pins",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    pinnedBy: text("pinned_by").notNull(),
+    pinnedAt: timestamp("pinned_at").notNull().defaultNow(),
+  },
+  (t) => [index("project_pins_space_id_idx").on(t.spaceId)],
+);
+
 // What each open editor tab has selected, so teammates in the same project see it. One row per tab, written by the
 // tab's check for changes. A closing tab marks its row as left. A row not written for LIMITS.presenceTtlMs is left out
 // of every read, and rows older than LIMITS.presenceKeepMs are deleted by anyone's check.
