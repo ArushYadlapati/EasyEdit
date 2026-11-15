@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { SettingsTabs } from "@/components/dashboard/settings-tabs";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
+import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace } from "@/lib/spaces/service";
 import { settingsTabsFor } from "@/lib/spaces/settings-tabs";
 
@@ -17,6 +18,8 @@ export default async function SpaceSettingsLayout({ params, children }: LayoutPr
   const space = await findMySpace(getDb(), user.id, (await params).space);
   if (!space) notFound();
   const slug = slugFor(space);
+  // A personal space has no settings while personal spaces are not offered: back to its coming-soon page.
+  if (space.kind === "personal" && !personalSpacesOpen()) redirect(spacePath(slug));
 
   return (
     <main className="min-w-0 flex-1 overflow-y-auto">

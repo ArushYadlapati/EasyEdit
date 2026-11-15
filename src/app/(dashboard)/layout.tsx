@@ -9,6 +9,7 @@ import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { canCreateTeam } from "@/lib/spaces/create-team-access";
+import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { listMySpaces } from "@/lib/spaces/service";
 import { openSignUp } from "@/lib/signup";
 
@@ -25,7 +26,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   const spaces = await listMySpaces(getDb(), user.id);
 
   return (
-    <SpacesProvider spaces={spaces} createTeam={canCreateTeam(spaces) ? createTeamAction : undefined}>
+    <SpacesProvider spaces={spaces} createTeam={canCreateTeam(spaces) ? createTeamAction : undefined} personalSoon={!personalSpacesOpen()}>
       <div className="ed-theme flex h-dvh flex-col bg-ed-bg font-sans text-ed-text">
         <header className="flex h-11 shrink-0 items-center gap-4 border-b border-ed-line bg-ed-panel px-4">
           {/* The wordmark leads back to the projects, from Admin too. The negative margin keeps it where the plain text was. */}
