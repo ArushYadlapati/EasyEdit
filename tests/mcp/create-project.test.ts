@@ -24,7 +24,7 @@ describe("create_project", () => {
     const [row] = await rows(db);
     expect(r.isError).toBe(false);
     expect(r.text.split("\n").slice(0, 4)).toEqual([
-      `Created project "Qualifier recap" (id ${row.id}), version 0.`,
+      `Created project "Qualifier recap" (id ${row.id}) in space "Personal", version 0.`,
       `Open it in the editor: https://studio.test/editor/${row.id}`,
       `Project "Qualifier recap" (id ${row.id})`,
       "Format short_9x16 1080x1920 @30fps · duration 0.00s · version 0",
@@ -73,7 +73,7 @@ describe("create_project", () => {
     const db = await makeTestDb();
     const ctx = await toolContext(db, { limits: { connectorProjectsPerDay: 1 } });
     const first = await createProjectTool(ctx, { name: 'Say "go"', format: "short_9x16" });
-    expect(first.text.split("\n")[0]).toBe(`Created project "Say \\"go\\"" (id ${idIn(first.text)}), version 0.`);
+    expect(first.text.split("\n")[0]).toBe(`Created project "Say \\"go\\"" (id ${idIn(first.text)}) in space "Personal", version 0.`);
     const again = await createProjectTool(ctx, { name: 'Say "go"', format: "short_9x16" });
     expect(again.text.split("\n")[0]).toBe(`This project was created a moment ago, so it is used again: "Say \\"go\\"" (id ${idIn(first.text)}).`);
 

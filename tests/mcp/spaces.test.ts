@@ -104,7 +104,7 @@ describe("agents across spaces", () => {
     for (const space of ["elsewhere", "team_elsewhere", 'no "such"\nspace']) {
       const result = await createProjectTool(ctx, { name: "Nope", format: "short_9x16", space });
       expect(result.isError).toBe(true);
-      expect(result.text).toBe(`No space "${space.replace(/"/g, '\\"').replace("\n", " ")}". Your spaces: "Personal", "Seattle Solvers".`);
+      expect(result.text).toBe(`No space "${space.replace(/"/g, '\\"').replace("\n", " ")}". Your spaces: "Personal" (space: personal), "Seattle Solvers" (space: seattle-solvers).`);
     }
     expect(await listProjects(db, elsewhere)).toHaveLength(1);
   });
@@ -161,14 +161,38 @@ describe("agents across spaces", () => {
     const { id } = await createProject(db, ctx.actor, { name: "Team cut", format: "short_9x16" });
     const result = await addMediaTool(ctx, { project_id: id, expected_version: 0, items: [{ asset_id: personal }] });
     expect(result.isError).toBe(true);
-    expect(result.text).toContain(`No asset with id "${personal}"`);
+    expect(result.text).toContain('That media is in "Personal"; this project is in "Seattle Solvers".');
     const edit = await editTimelineTool(ctx, { project_id: id, expected_version: 0, ops: [{ op: "add_clip", trackId: "v1", clip: { type: "video", assetId: personal, start: 0, duration: 30, inPoint: 0 } }] });
     expect(edit.isError).toBe(true);
-    expect(edit.text).toContain(`No asset with id "${personal}"`);
+    expect(edit.text).toContain('That media is in "Personal"; this project is in "Seattle Solvers".');
 
     // The same asset is fine in a project of its own space.
     const home = await createProject(db, testActor({ userId: "u1", spaceId: personalSpaceId("u1") }), { name: "Home cut", format: "short_9x16" });
     const fine = await addMediaTool(ctx, { project_id: home.id, expected_version: 0, items: [{ asset_id: personal }] });
     expect(fine.isError, fine.text).toBe(false);
+  });
+
+  it("says which space media is in when it is in another space of the person, and keeps 'No asset' for spaces they are not in", async () => {
+    const db = await makeTestDb();
+    const ctx = await toolContext(db);
+    const { asset: foreign } = await otherTeam(db);
+    const team = await insertAsset(db, { name: "Team clip" });
+    const created = await createProjectTool(ctx, { name: "Home cut", format: "short_9x16" });
+    const id = /\(id ([^)]+)\)/.exec(created.text)![1];
+    expect(created.text.split("\n")[0]).toBe(`Created project "Home cut" (id ${id}) in space "Personal", version 0.`);
+
+    const said = 'That media is in "Seattle Solvers"; this project is in "Personal". Media can only be used in projects of its own space.';
+    const media = await addMediaTool(ctx, { project_id: id, expected_version: 0, items: [{ asset_id: team }] });
+    expect(media).toEqual({ isError: true, text: `items[0]: ${said}\nNothing was applied.` });
+    const clip = { type: "video", assetId: team, start: 0, duration: 30, inPoint: 0 };
+    const edit = await editTimelineTool(ctx, { project_id: id, expected_version: 0, ops: [{ op: "add_clip", trackId: "v1", clip }] });
+    expect(edit.text).toBe(`Edit refused: ops[0] (add_clip) names media that can't be used.\n${said}\nNothing was applied.`);
+
+    const hidden = await addMediaTool(ctx, { project_id: id, expected_version: 0, items: [{ asset_id: foreign }] });
+    expect(hidden.text).toBe(`items[0]: No asset with id "${foreign}". Call list_assets to see the ids.\nNothing was applied.`);
+    expect(hidden.text).not.toContain("Elsewhere");
+    const hiddenEdit = await editTimelineTool(ctx, { project_id: id, expected_version: 0, ops: [{ op: "add_clip", trackId: "v1", clip: { ...clip, assetId: foreign } }] });
+    expect(hiddenEdit.text).toContain(`No asset with id "${foreign}". Call list_assets to see the ids.`);
+    expect(hiddenEdit.text).not.toContain("Elsewhere");
   });
 });

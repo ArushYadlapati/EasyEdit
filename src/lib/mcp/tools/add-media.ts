@@ -9,7 +9,7 @@ import { getProject } from "@/lib/projects/service";
 import { TRACK_ACCEPTS, type MediaClip, type TimelineDoc } from "@/lib/timeline";
 import { projectContext } from "../actors";
 import { editedText, priorEdit, runEdit, type EditDone } from "../edit";
-import { assetReason, conflictResult, mediaItemOutside, NO_ROOM_FOR_MEDIA, notFoundText, roleMessage, tooManyMediaItems } from "../errors";
+import { assetInOtherSpace, assetReason, conflictResult, mediaItemOutside, NO_ROOM_FOR_MEDIA, notFoundText, roleMessage, tooManyMediaItems } from "../errors";
 import { fail, ok, type ToolContext, type ToolResult } from "../types";
 
 export type MediaItem = { asset_id: string; start_seconds?: number; in_seconds?: number; duration_seconds?: number; track_id?: string };
@@ -42,7 +42,10 @@ export async function addMediaTool(
   for (const [i, item] of input.items.entries()) {
     // No clip type is passed: the clip takes the asset's kind.
     const trouble = assetTrouble(facts.get(item.asset_id));
-    if (trouble) return fail(`items[${i}]: ${assetReason(trouble, item.asset_id)}\n${NOTHING_APPLIED}`);
+    if (trouble) {
+      const elsewhere = trouble === "missing" ? await assetInOtherSpace(ctx, item.asset_id, ctx.actor.spaceId) : null;
+      return fail(`items[${i}]: ${elsewhere ?? assetReason(trouble, item.asset_id)}\n${NOTHING_APPLIED}`);
+    }
   }
 
   const { doc } = project;

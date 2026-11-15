@@ -1,7 +1,7 @@
 import { formatFields, type OpInput } from "@/lib/timeline";
 import { projectContext } from "../actors";
 import { editedText, runEdit } from "../edit";
-import { assetNotUsable, notFoundText, opNotAvailable } from "../errors";
+import { assetInOtherSpace, assetNotUsable, notFoundText, opNotAvailable } from "../errors";
 import { checkAllowedOps, checkAssetOps } from "../op-rules";
 import { fail, ok, type ToolContext, type ToolResult } from "../types";
 
@@ -25,7 +25,10 @@ export async function editTimelineTool(
   if (!pc) return fail(notFoundText(input.project_id));
   // Before the project is read: an asset id that is wrong says how to find the right one.
   const badAsset = await checkAssetOps(pc.db, pc.actor.spaceId, input.ops);
-  if (badAsset) return assetNotUsable(badAsset);
+  if (badAsset) {
+    const elsewhere = badAsset.trouble === "missing" ? await assetInOtherSpace(ctx, badAsset.assetId!, pc.actor.spaceId) : null;
+    return assetNotUsable(elsewhere ? { ...badAsset, reason: elsewhere } : badAsset);
+  }
 
   // The engine checks each op's shape; the service refuses the whole batch if one is wrong.
   const done = await runEdit(pc, {

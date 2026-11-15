@@ -5,12 +5,14 @@ import type { AssetTrouble } from "@/lib/media/refs";
 import type { AssetKind } from "@/lib/media/types";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
 import { getOpsSince, getProject } from "@/lib/projects/service";
+import { spaceOfAsset } from "@/lib/spaces/service";
 import { getUserNames } from "@/lib/projects/user-names";
 import { ServiceError } from "@/lib/service-error";
 import type { OpErrorCode } from "@/lib/timeline";
 import { oneLine } from "./one-line";
+import { quotedSpace } from "./space-label";
 import { projectPage } from "./project-text";
-import { fail, type SpaceToolContext, type ToolResult } from "./types";
+import { fail, type SpaceToolContext, type ToolContext, type ToolResult } from "./types";
 
 // What Claude reads when a tool fails for a reason it cannot see. Nothing about the server goes in it.
 export const UNEXPECTED =
@@ -150,6 +152,17 @@ export function assetReason(trouble: AssetTrouble, assetId: string, assetKind?: 
     case "wrong_kind":
       return `Asset "${id}" is ${KIND_IS[assetKind!]}. Set the clip's "type" to "${assetKind}" and put it on a track that takes it.`;
   }
+}
+
+// An asset id that is not in the project's space but is in another space the person belongs to: said plainly, since
+// list_assets shows it. Null for an id in a space the person is not in, or no space at all: that stays "No asset".
+export async function assetInOtherSpace(ctx: ToolContext, assetId: string, projectSpaceId: string): Promise<string | null> {
+  const spaceId = await spaceOfAsset(ctx.db, assetId);
+  if (spaceId === null || spaceId === projectSpaceId) return null;
+  const media = ctx.spaces.find((s) => s.id === spaceId);
+  const project = ctx.spaces.find((s) => s.id === projectSpaceId);
+  if (!media || !project) return null;
+  return `That media is in ${quotedSpace(media.name)}; this project is in ${quotedSpace(project.name)}. Media can only be used in projects of its own space.`;
 }
 
 // An op that names media that cannot be used. The ops are refused before the project is read.

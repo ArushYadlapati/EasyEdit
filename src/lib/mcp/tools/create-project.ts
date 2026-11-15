@@ -27,7 +27,7 @@ function chosenSpace(ctx: ToolContext, slug: string | undefined) {
 }
 
 export function noSuchSpace(ctx: ToolContext, slug: string): string {
-  return `No space "${escapeQuoted(oneLine(slug))}". Your spaces: ${ctx.spaces.map((s) => quotedSpace(s.name)).join(", ")}.`;
+  return `No space "${escapeQuoted(oneLine(slug))}". Your spaces: ${ctx.spaces.map((s) => `${quotedSpace(s.name)} (space: ${s.kind === "personal" ? PERSONAL_ALIAS : s.slug})`).join(", ")}.`;
 }
 
 // Claude's projects land in no folder: no folder is passed, and no tool mentions folders.
@@ -54,7 +54,7 @@ export async function createProjectTool(base: ToolContext, input: CreateInput): 
   }
   const project = await getProject(ctx.db, ctx.actor, id);
   if (!project) throw new Error("A project just created could not be read");
-  return answer(ctx, project, `Created project "${escapeQuoted(project.name)}" (id ${project.id}), version 0.`);
+  return answer(ctx, project, `Created project "${escapeQuoted(project.name)}" (id ${project.id}) in space ${quotedSpace(space!.name)}, version 0.`);
 }
 
 // A live project this actor created in the last minute with the same trimmed name, format and size.

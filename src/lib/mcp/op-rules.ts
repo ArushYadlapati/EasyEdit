@@ -1,10 +1,10 @@
 import type { DB } from "@/db";
-import { assetTrouble } from "@/lib/media/refs";
+import { assetTrouble, type AssetTrouble } from "@/lib/media/refs";
 import { loadAssetFacts } from "@/lib/media/service";
 import type { AssetKind } from "@/lib/media/types";
 import { assetReason } from "./errors";
 
-type OpHit = { opIndex: number; opName: string; reason: string };
+type OpHit = { opIndex: number; opName: string; reason: string; assetId?: string; trouble?: AssetTrouble };
 
 // The first op Claude may not send, or null. replace_track is kept for stored undo data.
 export function checkAllowedOps(ops: unknown[]): OpHit | null {
@@ -46,7 +46,7 @@ export async function checkAssetOps(db: DB, spaceId: string, ops: unknown[]): Pr
     if (!n) continue;
     const fact = facts.get(n.assetId);
     const trouble = assetTrouble(fact, n.clipType);
-    if (trouble) return { opIndex, opName: (ops[opIndex] as { op: string }).op, reason: assetReason(trouble, n.assetId, fact?.kind) };
+    if (trouble) return { opIndex, opName: (ops[opIndex] as { op: string }).op, reason: assetReason(trouble, n.assetId, fact?.kind), assetId: n.assetId, trouble };
   }
   return null;
 }
