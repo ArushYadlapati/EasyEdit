@@ -97,3 +97,42 @@ it("a viewer can't add from the kit or change it", () => {
   expect(screen.getByText("Orbitron")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Add logo" })).toBeNull();
 });
+
+it("a kit that failed to load says so, offers to try again, and can't be changed meanwhile", async () => {
+  const store = makeStore();
+  const fetch = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(KIT);
+  render(
+    <EditorProvider store={store}>
+      <MediaProvider services={pretendMediaServices([logo])}>
+        <BrandProvider spaceId="team1" canEdit api={{ fetch, save: vi.fn() }}>
+          <LeftPanel />
+        </BrandProvider>
+      </MediaProvider>
+    </EditorProvider>,
+  );
+  fireEvent.click(screen.getByRole("tab", { name: "Brand kit" }));
+  expect(await screen.findByText("The brand kit couldn't be loaded.")).toBeTruthy();
+  expect(screen.queryByLabelText("New color")).toBeNull();
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Try again" })));
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(screen.getByLabelText("New color")).toBeTruthy();
+});
+
+it("a logo whose image was removed from the library leaves the kit and the next save", async () => {
+  const store = makeStore();
+  const save = vi.fn(async () => ({ ...KIT, logos: [photo] }));
+  render(
+    <EditorProvider store={store}>
+      <MediaProvider services={pretendMediaServices([{ ...logo, removed: true }, photo])}>
+        <BrandProvider spaceId="team1" canEdit initial={KIT} api={{ fetch: vi.fn(), save }}>
+          <LeftPanel />
+        </BrandProvider>
+      </MediaProvider>
+    </EditorProvider>,
+  );
+  fireEvent.click(screen.getByRole("tab", { name: "Brand kit" }));
+  expect(screen.queryByRole("button", { name: "Add Solvers logo" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Add logo" }));
+  await act(async () => fireEvent.click(within(screen.getByRole("dialog", { name: "Add a logo" })).getByRole("button", { name: "Use Field photo" })));
+  expect(save).toHaveBeenCalledWith("team1", { logoAssetIds: ["l2"] });
+});

@@ -2,16 +2,18 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrandKitEditor } from "@/components/brand/brand-kit-editor";
-import { BrandProvider, useBrand, type BrandApi } from "@/components/editor/brand/brand-context";
+import { BrandProvider, useBrand, withLibrary, type BrandApi } from "@/components/editor/brand/brand-context";
 import { LogoPicker } from "@/components/editor/brand/logo-picker";
-import { MediaProvider, createMediaServices, gateStorage, type MediaServices } from "@/components/editor/media/media-context";
+import { MediaProvider, createMediaServices, gateStorage, useLibrary, type MediaServices } from "@/components/editor/media/media-context";
 import { cx } from "@/components/ui/cx";
 import type { BrandKit } from "@/lib/brand/types";
 
 const TEXT = "text-[13px] leading-5";
 
 function Kit({ problem }: { problem: string | null }) {
-  const { kit, canEdit, save } = useBrand();
+  const brand = useBrand();
+  const { canEdit, save } = brand;
+  const kit = withLibrary(brand.kit, useLibrary((s) => s.assets));
   const [picking, setPicking] = useState(false);
   return (
     <>

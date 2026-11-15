@@ -91,6 +91,18 @@ describe("brand kit service", () => {
     expect((await getBrandKit(db, ada)).logos).toEqual([]);
   });
 
+  it("a logo removed after it was saved doesn't block the next change, but a newly added one is still refused", async () => {
+    const { db, image } = await setup();
+    const a = await image({ name: "A" });
+    const b = await image({ name: "B" });
+    await updateBrandKit(db, ada, { logoAssetIds: [a] });
+    await db.update(assets).set({ removedAt: new Date(), removedBy: "ada" }).where(eq(assets.id, a));
+    // A page that still shows A sends it back with B: A is dropped quietly, B is kept.
+    expect((await updateBrandKit(db, ada, { logoAssetIds: [a, b] })).logos.map((l) => l.id)).toEqual([b]);
+    const c = await image({ name: "C", removedAt: new Date(), removedBy: "ada" });
+    await expect(updateBrandKit(db, ada, { logoAssetIds: [b, c] })).rejects.toMatchObject({ code: "INVALID", status: 400 });
+  });
+
   it("kits are per space", async () => {
     const { db } = await setup();
     await joinSpace(db, { id: "ada" }, "admin", personalSpaceId("ada"));

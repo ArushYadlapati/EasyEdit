@@ -48,11 +48,17 @@ function checkColors(colors: string[]): string[] {
   return kept;
 }
 
+// The logos to keep, each once, in the order given. A logo the kit already had whose image has since gone (removed
+// from the library) is dropped quietly: a page that still shows it must not be stuck. A logo not in the kit before
+// must be a usable image.
 async function checkLogos(db: DB, actor: Actor, ids: string[]): Promise<string[]> {
-  const kept = [...new Set(ids)];
-  if (kept.length > BRAND_LIMITS.logos) throw invalid(BRAND_MESSAGES.tooManyLogos);
-  if ((await logosOf(db, actor, kept)).length !== kept.length) throw invalid(BRAND_MESSAGES.badLogo);
-  return kept;
+  const wanted = [...new Set(ids)];
+  if (wanted.length > BRAND_LIMITS.logos) throw invalid(BRAND_MESSAGES.tooManyLogos);
+  const usable = new Set((await logosOf(db, actor, wanted)).map((l) => l.id));
+  const [row] = await db.select({ ids: brandKit.logoAssetIds }).from(brandKit).where(eq(brandKit.spaceId, actor.spaceId));
+  const before = new Set(row?.ids ?? []);
+  if (wanted.some((id) => !usable.has(id) && !before.has(id))) throw invalid(BRAND_MESSAGES.badLogo);
+  return wanted.filter((id) => usable.has(id));
 }
 
 // An editor's change to their space's kit. Each field given replaces the one kept, so two people changing different
