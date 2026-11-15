@@ -8,6 +8,7 @@ import { DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn, assetActor, spaceQuery } from "@/lib/spaces/access";
+import { hasStorage } from "@/lib/spaces/storage";
 import { MEDIA_MESSAGES } from "./messages";
 import {
   assetGone,
@@ -152,16 +153,8 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
     return drive ? { db: deps.db(), drive, origin: deps.origin(), onDriveError: logDriveError } : null;
   };
 
-  // Whether uploads are set up, as the list tells it. Settings that cannot be read (a key that is not base64) count
-  // as not set up there, so the library still lists. The one line says only that; nothing of the key is logged.
-  const isSetUp = (spaceId: string): boolean => {
-    try {
-      return deps.drive(spaceId) !== null;
-    } catch {
-      console.error("Drive settings could not be read");
-      return false;
-    }
-  };
+  // Whether uploads are set up, as the list tells it: a key that cannot be read counts as not set up, so the library still lists.
+  const isSetUp = (spaceId: string): boolean => hasStorage(spaceId, deps.drive);
 
   return {
     list: mediaRoute(deps, inQueriedSpace, async (actor, req) => {

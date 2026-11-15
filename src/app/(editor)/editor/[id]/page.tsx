@@ -10,7 +10,7 @@ import { LAYOUT_COOKIE, parseLayout } from "@/lib/editor/layout";
 import { PREFS_COOKIE, parsePrefs } from "@/lib/editor/settings";
 import { getProject } from "@/lib/projects/service";
 import { actorIn } from "@/lib/spaces/access";
-import { driveFor } from "@/lib/spaces/storage";
+import { hasStorage } from "@/lib/spaces/storage";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 
 // The editor is always dark. This asks the Dark Reader browser extension to leave the page alone: on a screen that
@@ -49,7 +49,7 @@ export default async function EditorPage({ params }: PageProps<"/editor/[id]">) 
           canEdit: meetsRole(actor.role, "editor"),
           thumbnailVersion: project.thumbnailVersion,
         }}
-        space={{ id: actor.spaceId, storageReady: driveFor(actor.spaceId) !== null }}
+        space={{ id: actor.spaceId, storageReady: hasStorage(actor.spaceId) }}
         layout={layout}
         prefs={prefs}
       />
