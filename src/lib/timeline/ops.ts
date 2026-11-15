@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { OpError } from "./errors";
-import { Clip, FormatId, MediaClip, SafeArea, TextClip, TextStyle, Track, TrackKind, TrackName, Transform } from "./types";
+import { Clip, FormatId, Guide, MediaClip, SafeArea, TextClip, TextStyle, Track, TrackKind, TrackName, Transform } from "./types";
 
 const id = z.string().min(1);
 const optionalId = { id: id.optional() };
@@ -45,6 +45,9 @@ const addClipOp = <T extends z.ZodType>(clipSchema: T) =>
   z.object({ op: z.literal("add_clip"), trackId: id, clip: clipSchema, ripple: z.literal(true).optional() });
 const splitClipOp = <T extends z.ZodType>(newClipId: T) =>
   z.object({ op: z.literal("split_clip"), clipId: id, at: z.number().int(), newClipId });
+// index: where in the list the guide goes (an undone removal puts it back where it was); the end when left out.
+const addGuideOp = <T extends z.ZodType>(guideId: T) =>
+  z.object({ op: z.literal("add_guide"), guide: Guide.extend({ id: guideId }), index: z.number().int().optional() });
 
 // Ops with no optional ids: one definition, shared by Op and OpInput.
 const sharedOps = [
@@ -111,12 +114,17 @@ const sharedOps = [
     size: SafeArea.nullable(),
     expect: z.object({ size: SafeArea.nullable() }).strict().optional(),
   }),
+  // A guide's new position; expect: the position it must have now.
+  z.object({ op: z.literal("move_guide"), guideId: id, at: Guide.shape.at, expect: z.object({ at: Guide.shape.at }).strict().optional() }),
+  // expect: the guide as it must be now.
+  z.object({ op: z.literal("remove_guide"), guideId: id, expect: z.object({ guide: Guide }).strict().optional() }),
 ] as const;
 
 export const Op = z.discriminatedUnion("op", [
   addTrackOp(id),
   addClipOp(Clip),
   splitClipOp(id),
+  addGuideOp(id),
   ...sharedOps,
 ]);
 export type Op = z.infer<typeof Op>;
@@ -125,6 +133,7 @@ export const OpInput = z.discriminatedUnion("op", [
   addTrackOp(id.optional()),
   addClipOp(ClipInput),
   splitClipOp(id.optional()),
+  addGuideOp(id.optional()),
   ...sharedOps,
 ]);
 export type OpInput = z.infer<typeof OpInput>;
@@ -158,6 +167,8 @@ export function prepareOps(ops: OpInput[], genId: () => string = () => nanoid(10
       filled = { ...input, clip: { ...input.clip, id: input.clip.id ?? genId() } };
     } else if (input.op === "split_clip") {
       filled = { ...input, newClipId: input.newClipId ?? genId() };
+    } else if (input.op === "add_guide") {
+      filled = { ...input, guide: { ...input.guide, id: input.guide.id ?? genId() } };
     }
     const checked = Op.safeParse(filled);
     if (!checked.success) {

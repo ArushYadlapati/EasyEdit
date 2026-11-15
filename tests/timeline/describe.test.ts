@@ -35,6 +35,16 @@ suite("describe", () => {
     expect(describe(applyOps(sized, [{ op: "set_format", format: "long_16x9" }]).doc)).not.toContain("Safe area");
   });
 
+  it("lists the guides when there are any", () => {
+    const plain = docWithCaptions("short_9x16");
+    expect(describe(plain)).not.toContain("Guides");
+    const guided = applyOps(plain, [
+      { op: "add_guide", guide: { id: "g1", axis: "x", at: 0.5 } },
+      { op: "add_guide", guide: { id: "g2", axis: "y", at: 0.25 } },
+    ]).doc;
+    expect(describe(guided).split("\n")[1]).toBe("Guides: g1 vertical at 50%, g2 horizontal at 25%");
+  });
+
   it("describes a small doc", () => {
     let d = docWithCaptions("short_9x16");
     d = applyOps(d, [

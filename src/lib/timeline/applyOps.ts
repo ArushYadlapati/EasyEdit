@@ -13,7 +13,7 @@ import {
   maxSafeAreaHeight,
 } from "./presets";
 import { MediaClip, TextClip, Transform, TextStyle } from "./types";
-import type { Clip, FormatId, FrameSize, TimelineDoc, Track } from "./types";
+import type { Clip, FormatId, FrameSize, Guide, TimelineDoc, Track } from "./types";
 
 // update_clip re-validates strictly so a typo'd or foreign key is rejected, not dropped.
 const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).strict();
@@ -96,6 +96,13 @@ function findClip(doc: TimelineDoc, clipId: string, opIndex: number, opName: str
     if (clipIndex >= 0) return { track, trackIndex, clipIndex };
   }
   throw new OpError("NOT_FOUND", `${opName}: clip "${clipId}" not found`, opIndex);
+}
+
+// The guide itself, in the document being changed, so a move can set it in place.
+function findGuide(doc: TimelineDoc, guideId: string, opName: string, opIndex: number): Guide {
+  const guide = doc.guides?.find((g) => g.id === guideId);
+  if (!guide) throw new OpError("NOT_FOUND", `${opName}: guide "${guideId}" not found`, opIndex);
+  return guide;
 }
 
 function assertUnlocked(track: Track, opIndex: number, opName: string) {
@@ -551,6 +558,43 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (op.size) rest[op.format] = { width: op.size.width, height: op.size.height };
         if (Object.keys(rest).length) doc.safeAreas = rest;
         else delete doc.safeAreas;
+        break;
+      }
+
+      case "add_guide": {
+        const guides = doc.guides ?? [];
+        if (guides.some((g) => g.id === op.guide.id)) {
+          throw new OpError("DUPLICATE_ID", `${name}: guide id "${op.guide.id}" already exists`, opIndex);
+        }
+        if (guides.length + 1 > LIMITS.guidesPerProject) {
+          throw new OpError("LIMIT_EXCEEDED", `${name}: a project can have at most ${LIMITS.guidesPerProject} guides`, opIndex);
+        }
+        const index = op.index ?? guides.length;
+        if (index < 0 || index > guides.length) {
+          throw new OpError("INVALID", `${name}: index ${index} is outside 0..${guides.length} for guide "${op.guide.id}"`, opIndex);
+        }
+        const guide = { id: op.guide.id, axis: op.guide.axis, at: op.guide.at };
+        doc.guides = [...guides.slice(0, index), guide, ...guides.slice(index)];
+        groups.push([{ op: "remove_guide", guideId: guide.id, expect: { guide: { ...guide } } }]);
+        break;
+      }
+
+      case "move_guide": {
+        const guide = findGuide(doc, op.guideId, name, opIndex);
+        if (op.expect && op.expect.at !== guide.at) throw stale(`guide "${op.guideId}"`);
+        groups.push([{ op: "move_guide", guideId: guide.id, at: guide.at, expect: { at: op.at } }]);
+        guide.at = op.at;
+        break;
+      }
+
+      case "remove_guide": {
+        const guide = findGuide(doc, op.guideId, name, opIndex);
+        if (op.expect && !isEqual(op.expect.guide, guide)) throw stale(`guide "${op.guideId}"`);
+        const index = (doc.guides ?? []).indexOf(guide);
+        const rest = (doc.guides ?? []).filter((g) => g.id !== op.guideId);
+        if (rest.length) doc.guides = rest;
+        else delete doc.guides;
+        groups.push([{ op: "add_guide", guide: { ...guide }, index }]);
         break;
       }
 

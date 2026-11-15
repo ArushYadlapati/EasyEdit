@@ -122,6 +122,9 @@ export function summarizeOps(ops: Op[], kindOf: KindOf = () => undefined): strin
     const { size } = ops[0] as OpOf<"set_safe_area">;
     return size ? `Resized the safe area to ${wholePercent(size.width)} × ${wholePercent(size.height)}` : "Reset the safe area";
   }
+  if (only("add_guide")) return count(n, "Added a guide", (k) => `Added ${k} guides`);
+  if (only("move_guide")) return count(n, "Moved a guide", (k) => `Moved ${k} guides`);
+  if (only("remove_guide")) return count(n, "Removed a guide", (k) => `Removed ${k} guides`);
   return summarizeMixed(ops) ?? fallback;
 }
 
@@ -135,6 +138,7 @@ const MIXED_GROUPS: { match: (op: Op["op"]) => boolean; one: string; many: (n: n
   { match: (k) => k.endsWith("_track"), one: "changed tracks", many: () => "changed tracks" },
   { match: (k) => k === "set_format", one: "changed the format", many: () => "changed the format" },
   { match: (k) => k === "set_safe_area", one: "changed the safe area", many: () => "changed the safe area" },
+  { match: (k) => k.endsWith("_guide"), one: "changed guides", many: () => "changed guides" },
 ];
 
 // 0.88 → "88%"; a typed 0.875 → "87.5%".

@@ -87,6 +87,11 @@ const SafeAreaSide = z.number().min(0.05).max(1);
 export const SafeArea = z.strictObject({ width: SafeAreaSide, height: SafeAreaSide });
 export type SafeArea = z.infer<typeof SafeArea>;
 
+// A line across the frame that clips snap to, kept with the project for everyone in it. axis "x" is a vertical line
+// at that share of the width, "y" a horizontal one at that share of the height. It has no time: it shows throughout.
+export const Guide = z.strictObject({ id: z.string().min(1), axis: z.enum(["x", "y"]), at: z.number().min(0).max(1) });
+export type Guide = z.infer<typeof Guide>;
+
 export const TimelineDoc = z.object({
   schemaVersion: z.literal(1),
   format: FormatId,
@@ -96,5 +101,7 @@ export const TimelineDoc = z.object({
   tracks: z.array(Track),
   // A size per format, set in Settings; a format with none uses its default. Older projects have no field.
   safeAreas: z.partialRecord(FormatId, SafeArea).optional(),
+  // In the order they were added. Older projects, and a project whose last guide was removed, have no field.
+  guides: z.array(Guide).optional(),
 });
 export type TimelineDoc = z.infer<typeof TimelineDoc>;

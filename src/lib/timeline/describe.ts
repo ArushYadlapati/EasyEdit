@@ -100,6 +100,10 @@ export function describe(doc: TimelineDoc, opts?: { version?: number; detail?: b
     const pct = (f: number) => `${Number((f * 100).toFixed(1))}%`;
     lines.push(`Safe area ${pct(safe.width)} wide × ${pct(safe.height)} tall, centred, from ${pct(safe.top)} down (set for this project)`);
   }
+  if (doc.guides?.length) {
+    const where = (g: { id: string; axis: "x" | "y"; at: number }) => `${g.id} ${g.axis === "x" ? "vertical" : "horizontal"} at ${Number((g.at * 100).toFixed(1))}%`;
+    lines.push(`Guides: ${doc.guides.map(where).join(", ")}`);
+  }
   for (const track of doc.tracks) lines.push(...describeTrack(track, doc.fps, opts?.detail === true));
   return lines.join("\n");
 }

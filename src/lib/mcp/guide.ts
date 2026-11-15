@@ -47,6 +47,9 @@ export const OP_REFERENCE = `Ops:
 {"op":"set_format","format":"short_9x16"|"feed_4x5"|"square_1x1"|"long_16x9"|"long_4k"}
 {"op":"set_format","format":"custom","width":W,"height":H}   W and H in pixels: even, 16 to 4096, at most the area of 3840×2160
 {"op":"set_safe_area","format":FORMAT,"size":{"width":W,"height":H}}   shares of the frame; "size":null goes back to the default
+{"op":"add_guide","guide":{"axis":"x"|"y","at":P}}          a line clips snap to in the editor; never in the video. "x" is vertical at P of the width, "y" horizontal at P of the height, P 0 to 1
+{"op":"move_guide","guideId":G,"at":P}
+{"op":"remove_guide","guideId":G}
 
 A text CLIP: {"type":"text","start":F,"duration":F,"text":S,"transform":${JSON.stringify(EXAMPLE_TEXT_CLIP.transform)},"style":${JSON.stringify(EXAMPLE_TEXT_CLIP.style)}}
 A media CLIP: {"type":"video"|"image"|"audio","assetId":A,"start":F,"duration":F,"in":F,"speed":1,"volume":1,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"}}

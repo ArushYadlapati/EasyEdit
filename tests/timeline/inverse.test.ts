@@ -14,6 +14,11 @@ function richSafeArea(): TimelineDoc {
   return { ...rich(), safeAreas: { short_9x16: { width: 0.8, height: 0.6 } } };
 }
 
+// rich() with two guides, so a move or a removal changes something.
+function richGuides(): TimelineDoc {
+  return { ...rich(), guides: [{ id: "g1", axis: "x", at: 0.5 }, { id: "g2", axis: "y", at: 0.25 }] };
+}
+
 function rich(): TimelineDoc {
   const d = docWithCaptions("short_9x16");
   d.tracks[0].clips = [video("c1", 0, 30, { in: 10, speed: 1.5 }), video("c2", 30, 30), video("c3", 60, 30)];
@@ -31,7 +36,7 @@ function richCropped(): TimelineDoc {
 }
 const ids = (d: TimelineDoc, trackId: string) => d.tracks.find((t) => t.id === trackId)!.clips.map((c) => c.id);
 const clipOf = (d: TimelineDoc, id: string) => d.tracks.flatMap((t) => t.clips).find((c) => c.id === id)!;
-const inv = (op: Op) => applyOps(rich(), [op]).inverse;
+const inv = (op: Op, start: () => TimelineDoc = rich) => applyOps(start(), [op]).inverse;
 
 const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["add_track", { op: "add_track", track: { id: "n1", kind: "audio", name: "Music" }, index: 2 }],
@@ -57,6 +62,9 @@ const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["set_format custom", { op: "set_format", format: "custom", width: 816, height: 1056 }],
   ["set_safe_area", { op: "set_safe_area", format: "short_9x16", size: { width: 0.8, height: 0.6 } }],
   ["set_safe_area back to the default", { op: "set_safe_area", format: "short_9x16", size: null }, richSafeArea],
+  ["add_guide", { op: "add_guide", guide: { id: "g9", axis: "x", at: 0.3 } }],
+  ["move_guide", { op: "move_guide", guideId: "g2", at: 0.75 }, richGuides],
+  ["remove_guide", { op: "remove_guide", guideId: "g1" }, richGuides],
 ];
 
 describe("inverse round trip", () => {
@@ -83,9 +91,9 @@ describe("inverse round trip", () => {
   });
 
   it("clip ops never invert to a whole-track snapshot", () => {
-    for (const [name, op] of CASES) {
+    for (const [name, op, start] of CASES) {
       if (op.op === "remove_track" || op.op === "replace_track") continue;
-      expect(inv(op).map((o) => o.op), name).not.toContain("replace_track");
+      expect(inv(op, start).map((o) => o.op), name).not.toContain("replace_track");
     }
   });
 

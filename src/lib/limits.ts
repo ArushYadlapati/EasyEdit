@@ -3,6 +3,7 @@ export const LIMITS = {
   textClipChars: 2000,
   trackNameChars: 100,
   tracksPerProject: 20,
+  guidesPerProject: 50,
   clipsPerTrack: 1000,
   docBytes: 2 * 1024 * 1024,
   opsPerRequest: 500,
