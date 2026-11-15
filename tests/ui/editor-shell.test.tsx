@@ -460,6 +460,24 @@ it("a file dropped on the timeline is uploaded and placed; one dropped on the in
 });
 
 const selectedTab = () => screen.getAllByRole("tab").find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent;
+it("with no storage, a file dropped on the timeline, the window or the preview starts no upload and calls no media API", async () => {
+  stubServer();
+  const media = pretendMedia();
+  render(<EditorShell space={{ ...SPACE, storageReady: false }} initial={initial()} />);
+  await flush();
+  const files = () => [new File(["x"], "climb.mov", { lastModified: 1 })];
+  // The library has not refreshed, so setUp is still true: only the storage gate stands in the way.
+  expect(media.library.getState().setUp).toBe(true);
+  vi.mocked(media.api.list).mockClear(); // the shell's own reading of the library on open is not what is asked about
+  const scroller = document.querySelector<HTMLElement>("[data-drop]")!.firstElementChild!;
+  fireEvent(scroller, dragEvent("drop", { files: files() })); // the timeline
+  fireEvent(screen.getByRole("complementary", { name: "Details" }), dragEvent("drop", { files: files() })); // the window
+  await flush();
+  expect(media.queue.add).not.toHaveBeenCalled();
+  expect(vi.mocked(media.api.list)).not.toHaveBeenCalled();
+  expect(document.querySelector("[data-drop]")!.getAttribute("data-drop")).toBe("idle");
+});
+
 const timelineDrop = () => screen.getByRole("region", { name: "Timeline" }).querySelector<HTMLElement>("[data-drop]")!;
 const FILES = { types: ["Files"] };
 

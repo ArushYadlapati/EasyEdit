@@ -19,7 +19,7 @@ import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser
 import { EditorProvider } from "./context";
 import { watchDrags } from "./drag-watch";
 import { EditorScreen } from "./editor-screen";
-import { MediaProvider, createMediaServices } from "./media/media-context";
+import { MediaProvider, createMediaServices, gateStorage } from "./media/media-context";
 import { PresenceProvider } from "./presence-context";
 import { browserThumbnailDeps } from "./thumbnail-deps";
 
@@ -54,7 +54,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
       writePrefsCookie(formatPrefs({ ...chosen, snapping, safeZones: showSafeZones }));
     };
     const settings = createSettingsStore({ prefs }, { prefs: savePrefs, keymap: (k) => writeKeymap(localStore, k) });
-    const media = createMediaServices(space.id);
+    const media = gateStorage(createMediaServices(space.id), space.storageReady);
     const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
     return { store, api, sync, clipboard: createClipboard(localStore), media, drop, settings, savePrefs, presenceStore };
   });

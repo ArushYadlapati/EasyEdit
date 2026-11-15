@@ -50,6 +50,14 @@ export function createMediaServices(spaceId: string): MediaServices {
   };
 }
 
+// The services of a space with no storage: the queue takes no file. Every way a file gets in (the Media tab, the window,
+// the timeline, the preview) ends at queue.add, so this one place refuses them all, whatever the library's setUp says
+// before its first refresh. Nothing is ever sent to the media API for a file.
+export function gateStorage(services: MediaServices, storageReady: boolean): MediaServices {
+  if (storageReady) return services;
+  return { ...services, queue: { ...services.queue, add: () => [] } };
+}
+
 // Without a provider, as in tests of other parts of the editor: a library that never loads, a queue that takes
 // nothing, and files that cannot be read.
 function idleServices(): MediaServices {

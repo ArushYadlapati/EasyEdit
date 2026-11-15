@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { LeftPanel } from "@/components/editor/left-panel";
-import { MediaProvider, useMediaSpace, type MediaServices } from "@/components/editor/media/media-context";
+import { MediaProvider, gateStorage, useMediaSpace, type MediaServices } from "@/components/editor/media/media-context";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import type { MediaApi } from "@/lib/media/api";
 import { createLibraryStore } from "@/lib/media/library-store";
@@ -72,5 +72,20 @@ describe("the media space context", () => {
       wrapper: ({ children }) => <MediaProvider services={{} as MediaServices}>{children}</MediaProvider>,
     });
     expect(provided.result.current).toEqual(bare.result.current);
+  });
+});
+
+describe("gateStorage", () => {
+  it("leaves the services as they are where there is storage", () => {
+    const services = { queue: { add: vi.fn(() => ["k1"]) } } as unknown as MediaServices;
+    expect(gateStorage(services, true)).toBe(services);
+  });
+
+  it("makes the queue take no file where there is none, so a drop makes no group", () => {
+    const add = vi.fn(() => ["k1"]);
+    const services = { queue: { add } } as unknown as MediaServices;
+    const gated = gateStorage(services, false);
+    expect(gated.queue.add([new File(["x"], "a.mov")])).toEqual([]);
+    expect(add).not.toHaveBeenCalled();
   });
 });

@@ -174,6 +174,7 @@ export function createMediaDrop(deps: { store: EditorStore; library: LibraryStor
     },
     dropFiles(files, at, opts) {
       const keys = deps.queue.add(files);
+      if (keys.length === 0) return; // nothing was taken (no storage): no group waits for files that will never come
       dropped += 1;
       const group: DropGroup = {
         id: `drop-${dropped}`,
