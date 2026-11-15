@@ -8,34 +8,34 @@ import { makeDashboardActions, type FormState } from "@/lib/projects/dashboard-a
 
 const actions = makeDashboardActions({ db: getDb, requireUser, revalidate: revalidatePath, redirect });
 
-export async function createProjectAction(prev: FormState, formData: FormData): Promise<FormState> {
-  return actions.create(prev, formData);
+export async function createProjectAction(spaceId: string, prev: FormState, formData: FormData): Promise<FormState> {
+  return actions.create(spaceId, prev, formData);
 }
 
-export async function renameProjectAction(formData: FormData): Promise<FormState> {
-  return actions.rename(formData);
+export async function renameProjectAction(spaceId: string, formData: FormData): Promise<FormState> {
+  return actions.rename(spaceId, formData);
 }
 
-export async function deleteProjectAction(formData: FormData): Promise<FormState> {
-  return actions.remove(formData);
+export async function deleteProjectAction(spaceId: string, formData: FormData): Promise<FormState> {
+  return actions.remove(spaceId, formData);
 }
 
-export async function duplicateProjectAction(formData: FormData): Promise<FormState> {
-  return actions.duplicate(formData);
+export async function duplicateProjectAction(spaceId: string, formData: FormData): Promise<FormState> {
+  return actions.duplicate(spaceId, formData);
 }
 
-export async function moveProjectAction(formData: FormData): Promise<FormState> {
-  return actions.move(formData);
+export async function moveProjectAction(spaceId: string, formData: FormData): Promise<FormState> {
+  return actions.move(spaceId, formData);
 }
 
-export async function createFolderAction(formData: FormData): Promise<FormState> {
-  return actions.createFolder(formData);
+export async function createFolderAction(spaceId: string, formData: FormData): Promise<FormState> {
+  return actions.createFolder(spaceId, formData);
 }
 
-export async function renameFolderAction(formData: FormData): Promise<FormState> {
-  return actions.renameFolder(formData);
+export async function renameFolderAction(spaceId: string, formData: FormData): Promise<FormState> {
+  return actions.renameFolder(spaceId, formData);
 }
 
-export async function deleteFolderAction(formData: FormData): Promise<FormState> {
-  return actions.deleteFolder(formData);
+export async function deleteFolderAction(spaceId: string, formData: FormData): Promise<FormState> {
+  return actions.deleteFolder(spaceId, formData);
 }

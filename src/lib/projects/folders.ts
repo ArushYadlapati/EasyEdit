@@ -4,16 +4,15 @@ import type { DB } from "@/db";
 import { folders, projects } from "@/db/schema";
 import { requireRole, type Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
-import { folderName } from "@/lib/projects/schemas";
+import { FOLDER_GONE, folderName } from "@/lib/projects/schemas";
 import { failedOn, isFolderGone } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
 
 export type FolderSummary = { id: string; name: string; projectCount: number };
 
 export const FOLDER_NAME_MESSAGE = `Enter a folder name up to ${LIMITS.folderNameChars} characters.`;
 export const FOLDER_NAME_TAKEN = "There's already a folder with that name.";
-export const FOLDER_GONE = "That folder no longer exists.";
+export { FOLDER_GONE };
 
 const NAME_INDEX = "folders_space_name_lower_unique";
 
@@ -44,6 +43,7 @@ export async function listFolders(db: DB, actor: Actor): Promise<FolderSummary[]
     .select({ id: folders.id, name: folders.name, projectCount: count(projects.id) })
     .from(folders)
     .leftJoin(projects, and(eq(projects.folderId, folders.id), isNull(projects.deletedAt)))
+    .where(eq(folders.spaceId, actor.spaceId))
     .groupBy(folders.id)
     .orderBy(sql`lower(${folders.name})`, asc(folders.id));
 }
@@ -51,7 +51,7 @@ export async function listFolders(db: DB, actor: Actor): Promise<FolderSummary[]
 export async function createFolder(db: DB, actor: Actor, name: string): Promise<{ id: string; name: string }> {
   requireRole(actor, "editor");
   const folder = { id: nanoid(12), name: parseName(name) };
-  await savingName(db.insert(folders).values({ ...folder, spaceId: SEED_TEAM_ID, createdBy: actor.userId }));
+  await savingName(db.insert(folders).values({ ...folder, spaceId: actor.spaceId, createdBy: actor.userId }));
   return folder;
 }
 
@@ -62,7 +62,7 @@ export async function renameFolder(db: DB, actor: Actor, id: string, name: strin
     db
       .update(folders)
       .set({ name: parsed, updatedAt: sql`now()` })
-      .where(eq(folders.id, id))
+      .where(and(eq(folders.id, id), eq(folders.spaceId, actor.spaceId)))
       .returning({ name: folders.name }),
   );
   if (!rows[0]) throw folderGone();
@@ -72,7 +72,7 @@ export async function renameFolder(db: DB, actor: Actor, id: string, name: strin
 // The foreign key's on delete set null takes the folder's projects out of it; no project is deleted.
 export async function deleteFolder(db: DB, actor: Actor, id: string): Promise<void> {
   requireRole(actor, "editor");
-  const rows = await db.delete(folders).where(eq(folders.id, id)).returning({ id: folders.id });
+  const rows = await db.delete(folders).where(and(eq(folders.id, id), eq(folders.spaceId, actor.spaceId))).returning({ id: folders.id });
   if (!rows[0]) throw folderGone();
 }
 
@@ -80,13 +80,13 @@ export async function deleteFolder(db: DB, actor: Actor, id: string): Promise<vo
 // last change stay as they were.
 export async function moveProject(db: DB, actor: Actor, projectId: string, folderId: string | null): Promise<void> {
   requireRole(actor, "editor");
-  const live = and(eq(projects.id, projectId), isNull(projects.deletedAt));
+  const live = and(eq(projects.id, projectId), eq(projects.spaceId, actor.spaceId), isNull(projects.deletedAt));
   let rows: { id: string }[];
   try {
     rows = await db
       .update(projects)
       .set({ folderId })
-      .where(and(live, folderId === null ? undefined : sql`exists (select 1 from folders where id = ${folderId})`))
+      .where(and(live, folderId === null ? undefined : sql`exists (select 1 from folders where id = ${folderId} and space_id = ${actor.spaceId})`))
       .returning({ id: projects.id });
   } catch (error) {
     // The folder was deleted after the update checked it.

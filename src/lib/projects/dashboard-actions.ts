@@ -7,7 +7,6 @@ import { createFolder, deleteFolder, FOLDER_GONE, moveProject, renameFolder } fr
 import { createProject, deleteProject, duplicateProject, renameProject } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn } from "@/lib/spaces/access";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
 
 export type FormState = { error?: string };
 
@@ -38,9 +37,11 @@ const folder = (formData: FormData) => field(formData, "folderId") || null;
 export function makeDashboardActions(deps: DashboardActionDeps) {
   // Runs one service call as the signed-in user, in the space. A ServiceError becomes a message for the page; anything
   // else rethrows.
-  async function run<T>(call: (db: DB, actor: Actor) => Promise<T>): Promise<{ value: T } | { error: string }> {
-    // stage-1: space comes from Task 5
-    const actor = await actorIn(deps.db(), await deps.requireUser(), SEED_TEAM_ID);
+  async function run<T>(
+    spaceId: string,
+    call: (db: DB, actor: Actor) => Promise<T>,
+  ): Promise<{ value: T } | { error: string }> {
+    const actor = await actorIn(deps.db(), await deps.requireUser(), spaceId);
     if (!actor) return { error: SPACE_GONE };
     try {
       return { value: await call(deps.db(), actor) };
@@ -53,16 +54,16 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
     }
   }
 
-  async function change(call: (db: DB, actor: Actor) => Promise<unknown>): Promise<FormState> {
-    const result = await run(call);
+  async function change(spaceId: string, call: (db: DB, actor: Actor) => Promise<unknown>): Promise<FormState> {
+    const result = await run(spaceId, call);
     if ("error" in result) return { error: result.error };
     deps.revalidate("/dashboard");
     return {};
   }
 
   return {
-    async create(_prev: FormState, formData: FormData): Promise<FormState> {
-      const result = await run((db, actor) =>
+    async create(spaceId: string, _prev: FormState, formData: FormData): Promise<FormState> {
+      const result = await run(spaceId, (db, actor) =>
         createProject(db, actor, {
           name: field(formData, "name"),
           format: field(formData, "format"),
@@ -74,17 +75,27 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
       if ("error" in result) return { error: result.error };
       return deps.redirect(`/editor/${result.value.id}`);
     },
-    rename: (formData: FormData) =>
-      change((db, actor) => renameProject(db, actor, field(formData, "id"), field(formData, "name"))),
-    remove: (formData: FormData) => change((db, actor) => deleteProject(db, actor, field(formData, "id"))),
-    duplicate: (formData: FormData) => change((db, actor) => duplicateProject(db, actor, field(formData, "id"))),
-    move: (formData: FormData) =>
-      change((db, actor) => moveProject(db, actor, field(formData, "id"), folder(formData))),
-    createFolder: (formData: FormData) => change((db, actor) => createFolder(db, actor, field(formData, "name"))),
-    renameFolder: (formData: FormData) =>
-      change((db, actor) => renameFolder(db, actor, field(formData, "id"), field(formData, "name"))),
-    deleteFolder: (formData: FormData) => change((db, actor) => deleteFolder(db, actor, field(formData, "id"))),
+    rename: (spaceId: string, formData: FormData) =>
+      change(spaceId, (db, actor) => renameProject(db, actor, field(formData, "id"), field(formData, "name"))),
+    remove: (spaceId: string, formData: FormData) =>
+      change(spaceId, (db, actor) => deleteProject(db, actor, field(formData, "id"))),
+    duplicate: (spaceId: string, formData: FormData) =>
+      change(spaceId, (db, actor) => duplicateProject(db, actor, field(formData, "id"))),
+    move: (spaceId: string, formData: FormData) =>
+      change(spaceId, (db, actor) => moveProject(db, actor, field(formData, "id"), folder(formData))),
+    createFolder: (spaceId: string, formData: FormData) =>
+      change(spaceId, (db, actor) => createFolder(db, actor, field(formData, "name"))),
+    renameFolder: (spaceId: string, formData: FormData) =>
+      change(spaceId, (db, actor) => renameFolder(db, actor, field(formData, "id"), field(formData, "name"))),
+    deleteFolder: (spaceId: string, formData: FormData) =>
+      change(spaceId, (db, actor) => deleteFolder(db, actor, field(formData, "id"))),
   };
 }
 
-export type DashboardActions = ReturnType<typeof makeDashboardActions>;
+// Each action as the page binds it to its space: the space id is the first argument of every one.
+export type SpaceDashboardActions = ReturnType<typeof makeDashboardActions>;
+
+type WithoutSpace<F> = F extends (spaceId: string, ...rest: infer R) => infer T ? (...rest: R) => T : never;
+
+// What the dashboard components call: the actions with their space already bound.
+export type DashboardActions = { [K in keyof SpaceDashboardActions]: WithoutSpace<SpaceDashboardActions[K]> };

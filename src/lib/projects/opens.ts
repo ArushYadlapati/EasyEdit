@@ -12,7 +12,7 @@ export async function recordOpen(db: DB, actor: Actor, projectId: string): Promi
     insert into project_opens (user_id, project_id, opened_at)
     select ${actor.userId}::text, id, now()
     from projects
-    where id = ${projectId}::text and deleted_at is null
+    where id = ${projectId}::text and space_id = ${actor.spaceId}::text and deleted_at is null
     on conflict (user_id, project_id) do update set opened_at = excluded.opened_at
   `);
 }
@@ -28,7 +28,7 @@ export async function listRecentProjectIds(
     .select({ id: projectOpens.projectId })
     .from(projectOpens)
     .innerJoin(projects, and(eq(projects.id, projectOpens.projectId), isNull(projects.deletedAt)))
-    .where(eq(projectOpens.userId, actor.userId))
+    .where(and(eq(projectOpens.userId, actor.userId), eq(projects.spaceId, actor.spaceId)))
     .orderBy(desc(projectOpens.openedAt), asc(projectOpens.projectId))
     .limit(limit);
   return rows.map((row) => row.id);

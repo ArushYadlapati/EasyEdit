@@ -24,16 +24,17 @@ import {
   renameProjectAction,
 } from "./actions";
 
-const ACTIONS: DashboardActions = {
-  create: createProjectAction,
-  rename: renameProjectAction,
-  remove: deleteProjectAction,
-  duplicate: duplicateProjectAction,
-  move: moveProjectAction,
-  createFolder: createFolderAction,
-  renameFolder: renameFolderAction,
-  deleteFolder: deleteFolderAction,
-};
+// The server actions with this space already bound as their first argument.
+const actionsFor = (spaceId: string): DashboardActions => ({
+  create: createProjectAction.bind(null, spaceId),
+  rename: renameProjectAction.bind(null, spaceId),
+  remove: deleteProjectAction.bind(null, spaceId),
+  duplicate: duplicateProjectAction.bind(null, spaceId),
+  move: moveProjectAction.bind(null, spaceId),
+  createFolder: createFolderAction.bind(null, spaceId),
+  renameFolder: renameFolderAction.bind(null, spaceId),
+  deleteFolder: deleteFolderAction.bind(null, spaceId),
+});
 
 // The dashboard's data, read on the server: the team's projects and folders, and the projects this person opened
 // last. Searching and sorting happen in the browser. ?folder=<id> shows that folder; an unknown id is the main view.
@@ -61,7 +62,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       view={view}
       canEdit={canEdit}
       now={new Date()}
-      actions={ACTIONS}
+      actions={actionsFor(actor.spaceId)}
     />
   );
 }

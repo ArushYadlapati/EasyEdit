@@ -1,14 +1,13 @@
 import { and, asc, desc, eq, gt, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { rowsOf, type DB } from "@/db";
-import { projectOps, projects } from "@/db/schema";
+import { folders, projectOps, projects } from "@/db/schema";
 import { requireRole, type Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
 import { assetIdsToCheck, findMediaProblem, mediaProblemMessage } from "@/lib/media/refs";
 import { loadAssetFacts } from "@/lib/media/service";
-import { copyName, projectFrame, projectName } from "@/lib/projects/schemas";
+import { copyName, FOLDER_GONE, projectFrame, projectName } from "@/lib/projects/schemas";
 import { ServiceError } from "@/lib/service-error";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import {
   OpError,
   applyOps,
@@ -68,7 +67,9 @@ export const FOLDER_FK = "projects_folder_id_folders_id_fk";
 
 // Deleted projects are hidden from every read and write.
 const notDeleted = isNull(projects.deletedAt);
-const liveProject = (id: string) => and(eq(projects.id, id), notDeleted);
+// A project in another space is as good as missing: every read and write names the actor's space.
+const inSpace = (actor: Actor) => and(eq(projects.spaceId, actor.spaceId), notDeleted);
+const liveProject = (actor: Actor, id: string) => and(eq(projects.id, id), inSpace(actor));
 
 const invalidName = () => new ServiceError("INVALID", 400, `Enter a name up to ${LIMITS.projectNameChars} characters.`);
 
@@ -109,10 +110,17 @@ export async function createProject(
   if ("error" in frame) throw new ServiceError("INVALID", 400, frame.error);
 
   const id = newId();
+  const folderId = input.folderId ?? null;
+  // A folder of another space is refused as a deleted one is on a write that checks it. An unknown id still leaves
+  // the project in no folder, as it always has.
+  if (folderId !== null) {
+    const found = await db.select({ spaceId: folders.spaceId }).from(folders).where(eq(folders.id, folderId));
+    if (found[0] && found[0].spaceId !== actor.spaceId) throw new ServiceError("NOT_FOUND", 404, FOLDER_GONE);
+  }
   const insert = (folderId: SQL | null) =>
     db.insert(projects).values({
       id,
-      spaceId: SEED_TEAM_ID,
+      spaceId: actor.spaceId,
       name: name.data,
       format: frame.format,
       width: frame.width,
@@ -123,10 +131,11 @@ export async function createProject(
       createdBy: actor.userId,
       updatedBy: actor.userId,
     });
-  const folderId = input.folderId ?? null;
   // A folder that is gone leaves the project in no folder.
   try {
-    await insert(folderId === null ? null : sql`(select id from folders where id = ${folderId})`);
+    await insert(
+      folderId === null ? null : sql`(select id from folders where id = ${folderId} and space_id = ${actor.spaceId})`,
+    );
   } catch (error) {
     if (folderId === null || !isFolderGone(error)) throw error;
     await insert(null);
@@ -148,7 +157,7 @@ export async function getProject(db: DB, actor: Actor, id: string): Promise<Proj
       thumbnailVersion: projects.thumbnailVersion,
     })
     .from(projects)
-    .where(liveProject(id));
+    .where(liveProject(actor, id));
   return rows[0] ?? null;
 }
 
@@ -169,12 +178,12 @@ export async function listProjects(db: DB, actor: Actor): Promise<ProjectSummary
       thumbnailVersion: projects.thumbnailVersion,
     })
     .from(projects)
-    .where(notDeleted)
+    .where(inSpace(actor))
     .orderBy(desc(projects.updatedAt), asc(projects.id));
 }
 
-async function readVersion(db: DB, id: string): Promise<number | null> {
-  const rows = await db.select({ version: projects.version }).from(projects).where(liveProject(id));
+async function readVersion(db: DB, actor: Actor, id: string): Promise<number | null> {
+  const rows = await db.select({ version: projects.version }).from(projects).where(liveProject(actor, id));
   return rows[0]?.version ?? null;
 }
 
@@ -195,6 +204,7 @@ async function writeIfUnchanged(
   db: DB,
   input: {
     projectId: string;
+    spaceId: string;
     readVersion: number;
     doc: TimelineDoc;
     ops: Op[];
@@ -209,7 +219,8 @@ async function writeIfUnchanged(
       set doc = ${JSON.stringify(input.doc)}::jsonb, format = ${input.doc.format}::text,
           width = ${input.doc.width}::integer, height = ${input.doc.height}::integer, version = version + 1,
           updated_by = ${input.actor}::text, updated_at = now()
-      where id = ${input.projectId}::text and version = ${input.readVersion}::integer and deleted_at is null
+      where id = ${input.projectId}::text and space_id = ${input.spaceId}::text
+        and version = ${input.readVersion}::integer and deleted_at is null
       returning version
     )
     insert into project_ops (project_id, version, ops, inverse, actor, request_id)
@@ -266,7 +277,7 @@ export async function applyProjectOps(
     const rows = await db
       .select({ doc: projects.doc, version: projects.version })
       .from(projects)
-      .where(liveProject(input.projectId));
+      .where(liveProject(actor, input.projectId));
     const current = rows[0];
     if (!current) throw notFound(input.projectId);
     // A retry of a write that already landed gets the original answer, even after newer edits.
@@ -327,6 +338,7 @@ export async function applyProjectOps(
     try {
       version = await writeIfUnchanged(db, {
         projectId: input.projectId,
+        spaceId: actor.spaceId,
         readVersion: current.version,
         doc,
         ops,
@@ -345,7 +357,7 @@ export async function applyProjectOps(
     if (version !== null) return { version, ops, inverse };
   }
 
-  const currentVersion = await readVersion(db, input.projectId);
+  const currentVersion = await readVersion(db, actor, input.projectId);
   if (currentVersion === null) throw notFound(input.projectId);
   throw conflict(
     `Project changed ${MAX_WRITE_ATTEMPTS} times while applying these ops; reload and try again`,
@@ -361,7 +373,7 @@ export async function renameProject(db: DB, actor: Actor, id: string, name: stri
   const rows = await db
     .update(projects)
     .set({ name: parsed.data, updatedBy: actor.userId, updatedAt: sql`now()` })
-    .where(liveProject(id))
+    .where(liveProject(actor, id))
     .returning({ name: projects.name });
   if (!rows[0]) throw notFound(id);
   return { id, name: rows[0].name };
@@ -374,7 +386,7 @@ export async function deleteProject(db: DB, actor: Actor, id: string): Promise<v
   const rows = await db
     .update(projects)
     .set({ deletedAt: sql`now()`, updatedBy: actor.userId, updatedAt: sql`now()`, thumbnail: null, thumbnailVersion: null })
-    .where(liveProject(id))
+    .where(liveProject(actor, id))
     .returning({ id: projects.id });
   if (!rows[0]) throw notFound(id);
 }
@@ -384,18 +396,18 @@ export async function deleteProject(db: DB, actor: Actor, id: string): Promise<v
 // picture of the current version is copied as the copy's version 0; an older one is left behind.
 export async function duplicateProject(db: DB, actor: Actor, id: string): Promise<{ id: string; version: 0 }> {
   requireRole(actor, "editor");
-  const source = await db.select({ name: projects.name }).from(projects).where(liveProject(id));
+  const source = await db.select({ name: projects.name }).from(projects).where(liveProject(actor, id));
   if (!source[0]) throw notFound(id);
   const copyId = newId();
   const copy = (folderId: SQL) =>
     db.execute(sql`
-      insert into projects (id, name, format, doc, version, created_by, updated_by, folder_id, width, height,
+      insert into projects (id, space_id, name, format, doc, version, created_by, updated_by, folder_id, width, height,
                             thumbnail, thumbnail_version)
-      select ${copyId}::text, ${copyName(source[0].name)}::text, format, doc, 0, ${actor.userId}::text, ${actor.userId}::text,
+      select ${copyId}::text, space_id, ${copyName(source[0].name)}::text, format, doc, 0, ${actor.userId}::text, ${actor.userId}::text,
              ${folderId}, (doc->>'width')::integer, (doc->>'height')::integer,
              case when thumbnail_version = version then thumbnail end, case when thumbnail_version = version then 0 end
       from projects
-      where id = ${id}::text and deleted_at is null
+      where id = ${id}::text and space_id = ${actor.spaceId}::text and deleted_at is null
       returning id
     `);
   let result: Awaited<ReturnType<typeof copy>>;
@@ -414,7 +426,7 @@ export type OpsPage = { version: number; entries: OpLogEntry[]; hasMore: boolean
 
 export async function getProjectVersion(db: DB, actor: Actor, id: string): Promise<number | null> {
   requireRole(actor, "viewer");
-  return readVersion(db, id);
+  return readVersion(db, actor, id);
 }
 
 export async function getOpsSince(
@@ -425,7 +437,7 @@ export async function getOpsSince(
   limit: number = LIMITS.opsPageDefault,
 ): Promise<OpsPage | null> {
   requireRole(actor, "viewer");
-  const version = await readVersion(db, projectId);
+  const version = await readVersion(db, actor, projectId);
   if (version === null) return null;
   if (version === since) return { version, entries: [], hasMore: false };
   // The next limit + 1 entries, bounded by the version read above, so a write that lands in between is left

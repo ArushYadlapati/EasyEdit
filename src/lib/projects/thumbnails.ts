@@ -32,7 +32,7 @@ export async function saveThumbnail(
     update projects
     set thumbnail = case when thumbnail = ${jpeg}::bytea then thumbnail else ${jpeg}::bytea end,
         thumbnail_version = ${version}::integer
-    where id = ${id}::text and deleted_at is null
+    where id = ${id}::text and space_id = ${actor.spaceId}::text and deleted_at is null
       and coalesce(thumbnail_version, -1) < ${version}::integer and ${version}::integer <= version
     returning id
   `);
@@ -50,7 +50,7 @@ export async function readThumbnail(
   const rows = await db
     .select({ jpeg: projects.thumbnail, version: projects.thumbnailVersion })
     .from(projects)
-    .where(and(eq(projects.id, id), isNull(projects.deletedAt), isNotNull(projects.thumbnail)));
+    .where(and(eq(projects.id, id), eq(projects.spaceId, actor.spaceId), isNull(projects.deletedAt), isNotNull(projects.thumbnail)));
   const row = rows[0];
   if (!row?.jpeg || row.version === null) return null;
   return { jpeg: row.jpeg, version: row.version };

@@ -20,6 +20,7 @@ import { createFolder } from "@/lib/projects/folders";
 import { recordOpen } from "@/lib/projects/opens";
 import { createProject } from "@/lib/projects/service";
 import { saveThumbnail } from "@/lib/projects/thumbnails";
+import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { render, screen } from "../helpers/dom";
@@ -91,16 +92,23 @@ async function dashboardFor(person: CurrentUser, searchParams: Record<string, st
 describe("the dashboard page", () => {
   it("the page hands the dashboard every action under its own name", async () => {
     const props = await dashboardFor(ada);
-    expect(props.actions).toStrictEqual({
-      create: createProjectAction,
-      rename: renameProjectAction,
-      remove: deleteProjectAction,
-      duplicate: duplicateProjectAction,
-      move: moveProjectAction,
-      createFolder: createFolderAction,
-      renameFolder: renameFolderAction,
-      deleteFolder: deleteFolderAction,
-    });
+    const pairs = [
+      ["create", createProjectAction],
+      ["rename", renameProjectAction],
+      ["remove", deleteProjectAction],
+      ["duplicate", duplicateProjectAction],
+      ["move", moveProjectAction],
+      ["createFolder", createFolderAction],
+      ["renameFolder", renameFolderAction],
+      ["deleteFolder", deleteFolderAction],
+    ] as const;
+    expect(Object.keys(props.actions).sort()).toEqual(pairs.map(([key]) => key).sort());
+    // Each is the server action with the page's space bound as its first argument.
+    for (const [key, action] of pairs) {
+      vi.mocked(action).mockClear();
+      await (props.actions[key] as (...args: unknown[]) => unknown)("arg");
+      expect(vi.mocked(action)).toHaveBeenCalledWith(SEED_TEAM_ID, "arg");
+    }
     expect(props.canEdit).toBe(true);
     expect(props.projects.map((p) => [p.id, p.name, p.changedBy])).toEqual([[projectId, "Qual recap", "Ada Lovelace"]]);
     expect(props.folders).toEqual([]);

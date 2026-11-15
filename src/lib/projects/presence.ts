@@ -83,7 +83,7 @@ export async function checkIn(
   const breaker = opts.breaker ?? moduleBreaker;
   if (share && !breaker.isOpen()) {
     try {
-      return await shareAndRead(db, actor.userId, projectId, share, opts.times ?? DEFAULT_TIMES);
+      return await shareAndRead(db, actor, projectId, share, opts.times ?? DEFAULT_TIMES);
     } catch (error) {
       if (error instanceof ServiceError) throw error;
       // A deadlock or serialization failure is one unlucky check, not a broken feature: answer this one plainly.
@@ -96,16 +96,18 @@ export async function checkIn(
 
 async function shareAndRead(
   db: DB,
-  me: string,
+  actor: Actor,
   projectId: string,
   share: Share,
   { ttlMs, refreshMs, keepMs }: PresenceTimes,
 ): Promise<{ version: number; peers: PeerRow[] } | null> {
+  const me = actor.userId;
   const { tabId, trackId, changedAgoMs } = share;
   const clips = JSON.stringify(share.clipIds);
   const result = await db.execute(sql`
     with live as (
-      select id, version from projects where id = ${projectId}::text and deleted_at is null
+      select id, version from projects
+      where id = ${projectId}::text and space_id = ${actor.spaceId}::text and deleted_at is null
     ),
     mine as (
       insert into project_presence as p (project_id, user_id, tab_id, clip_ids, track_id, changed_at, seen_at)
@@ -189,7 +191,7 @@ export async function leavePresence(
     await db.execute(sql`
       insert into project_presence (project_id, user_id, tab_id, clip_ids, track_id, changed_at, seen_at, left_at)
       select id, ${actor.userId}::text, ${tabId}::text, '[]'::jsonb, null, now(), now(), now()
-      from projects where id = ${projectId}::text and deleted_at is null
+      from projects where id = ${projectId}::text and space_id = ${actor.spaceId}::text and deleted_at is null
       on conflict (project_id, user_id, tab_id) do update set left_at = now(), seen_at = now()
     `);
   } catch (error) {

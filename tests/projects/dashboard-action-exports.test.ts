@@ -55,11 +55,11 @@ describe("the dashboard's server actions", () => {
       formData.set("id", name);
       if (name === "createProjectAction") {
         const prev = { error: "earlier" };
-        await serverActions.createProjectAction(prev, formData);
-        expect(spies.create).toHaveBeenCalledWith(prev, formData);
+        await serverActions.createProjectAction("space_1", prev, formData);
+        expect(spies.create).toHaveBeenCalledWith("space_1", prev, formData);
       } else {
-        await (serverActions[name] as (formData: FormData) => Promise<unknown>)(formData);
-        expect(spies[key]).toHaveBeenCalledWith(formData);
+        await (serverActions[name] as (spaceId: string, formData: FormData) => Promise<unknown>)("space_1", formData);
+        expect(spies[key]).toHaveBeenCalledWith("space_1", formData);
       }
       for (const [other, spy] of Object.entries(spies)) {
         const received = spy.mock.calls.some((args: unknown[]) => args.includes(formData));

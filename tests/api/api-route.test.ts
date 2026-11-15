@@ -46,7 +46,7 @@ describe("apiRoute", () => {
   it("project handlers answer a failure they did not expect with INTERNAL JSON", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const handlers = makeProjectHandlers({ db: () => { throw new Error("DATABASE_URL is not set"); }, auth: async () => user });
-    const res = await handlers.list(new Request("http://app.test/api/projects"));
+    const res = await handlers.list(new Request("http://app.test/api/projects?space=team_seattle_solvers"));
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ code: "INTERNAL", message: "Something went wrong. Try again." });
     vi.restoreAllMocks();

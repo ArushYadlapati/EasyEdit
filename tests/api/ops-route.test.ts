@@ -199,19 +199,19 @@ describe("ops routes", () => {
 describe("project routes", () => {
   it("a viewer cannot create a project (403); an editor can (201) and it appears in the list", async () => {
     const viewer = await setup("viewer");
-    const denied = await viewer.projects.create(post("http://x/api/projects", { name: "Qual", format: "long_16x9" }));
+    const denied = await viewer.projects.create(post("http://x/api/projects?space=team_seattle_solvers", { name: "Qual", format: "long_16x9" }));
     expect(denied.status).toBe(403);
     expect(await denied.json()).toEqual({ code: "FORBIDDEN", message: "Your role doesn't allow this." });
     expect(viewer.auth).toHaveBeenCalledWith(expect.any(Request));
-    expect(await (await viewer.projects.list(new Request("http://x/api/projects"))).json()).toEqual({ projects: [] });
+    expect(await (await viewer.projects.list(new Request("http://x/api/projects?space=team_seattle_solvers"))).json()).toEqual({ projects: [] });
 
     const { projects } = await setup("editor");
-    const res = await projects.create(post("http://x/api/projects", { name: "  Qual  ", format: "long_16x9" }));
+    const res = await projects.create(post("http://x/api/projects?space=team_seattle_solvers", { name: "  Qual  ", format: "long_16x9" }));
     expect(res.status).toBe(201);
     const { id } = await res.json();
     expect(typeof id).toBe("string");
 
-    const list = await (await projects.list(new Request("http://x/api/projects"))).json();
+    const list = await (await projects.list(new Request("http://x/api/projects?space=team_seattle_solvers"))).json();
     expect(list.projects).toHaveLength(1);
     expect(list.projects[0]).toMatchObject({ id, name: "Qual", format: "long_16x9", version: 0 });
 
@@ -224,36 +224,36 @@ describe("project routes", () => {
     const { db, projects } = await setup("editor");
     await db.insert(folders).values({ id: "f1", spaceId: SEED_TEAM_ID, name: "Season 2026", createdBy: "u1" });
     const res = await projects.create(
-      post("http://x/api/projects", { name: "Poster", format: "custom", width: 816, height: 1056, folderId: "f1" }),
+      post("http://x/api/projects?space=team_seattle_solvers", { name: "Poster", format: "custom", width: 816, height: 1056, folderId: "f1" }),
     );
     expect(res.status).toBe(201);
     const { id } = await res.json();
     const got = await (await projects.get(new Request(`http://x/api/projects/${id}`), ctx(id))).json();
     expect(got.doc).toMatchObject({ format: "custom", width: 816, height: 1056 });
-    const list = await (await projects.list(new Request("http://x/api/projects"))).json();
+    const list = await (await projects.list(new Request("http://x/api/projects?space=team_seattle_solvers"))).json();
     expect(list.projects.find((p: { id: string }) => p.id === id).folderId).toBeNull();
 
-    const noSize = await projects.create(post("http://x/api/projects", { name: "Poster", format: "custom" }));
+    const noSize = await projects.create(post("http://x/api/projects?space=team_seattle_solvers", { name: "Poster", format: "custom" }));
     expect(noSize.status).toBe(400);
     expect(await noSize.json()).toEqual({ code: "INVALID", message: FRAME_SIZE_MESSAGE });
   });
 
   it("a viewer cannot create a custom size", async () => {
     const { projects } = await setup("viewer");
-    const res = await projects.create(post("http://x/api/projects", { name: "Poster", format: "custom", width: 816, height: 1056 }));
+    const res = await projects.create(post("http://x/api/projects?space=team_seattle_solvers", { name: "Poster", format: "custom", width: 816, height: 1056 }));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ code: "FORBIDDEN", message: "Your role doesn't allow this." });
     // The role is checked before the size, so a bad size gets the same answer.
-    const badSize = await projects.create(post("http://x/api/projects", { name: "Poster", format: "custom", width: 1081, height: 1920 }));
+    const badSize = await projects.create(post("http://x/api/projects?space=team_seattle_solvers", { name: "Poster", format: "custom", width: 1081, height: 1920 }));
     expect(badSize.status).toBe(403);
     expect(await badSize.json()).toEqual({ code: "FORBIDDEN", message: "Your role doesn't allow this." });
-    expect(await (await projects.list(new Request("http://x/api/projects"))).json()).toEqual({ projects: [] });
+    expect(await (await projects.list(new Request("http://x/api/projects?space=team_seattle_solvers"))).json()).toEqual({ projects: [] });
   });
 
   it("create validates name and format; get of an unknown project is 404", async () => {
     const { projects } = await setup("editor");
     for (const body of [{ name: "", format: "long_16x9" }, { name: "   ", format: "long_16x9" }, { name: "x".repeat(101), format: "long_16x9" }, { name: "ok", format: "nope" }, "{"]) {
-      const res = await projects.create(post("http://x/api/projects", body));
+      const res = await projects.create(post("http://x/api/projects?space=team_seattle_solvers", body));
       expect(res.status).toBe(400);
       expect(await res.json()).toMatchObject({ code: "INVALID" });
     }
@@ -319,7 +319,7 @@ describe("project routes", () => {
     const foreignCopy = await projects.duplicate(send("POST", `http://x/api/projects/${id}/duplicate`, undefined, "https://evil.example"), ctx(id));
     expect(foreignCopy.status).toBe(403);
     expect(await foreignCopy.json()).toMatchObject({ code: "FORBIDDEN" });
-    expect((await (await projects.list(new Request("http://x/api/projects"))).json()).projects.map((p: { name: string }) => p.name).sort())
+    expect((await (await projects.list(new Request("http://x/api/projects?space=team_seattle_solvers"))).json()).projects.map((p: { name: string }) => p.name).sort())
       .toEqual(["Finals", "Finals copy"]);
     const removed = await projects.remove(send("DELETE", `http://x/api/projects/${id}`), ctx(id));
     expect(removed.status).toBe(204);
