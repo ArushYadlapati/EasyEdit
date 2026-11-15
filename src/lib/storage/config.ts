@@ -5,6 +5,8 @@ export type StorageConfig = {
   clientSecret: string;
   tokenKey: Uint8Array; // 32 bytes, seals refresh tokens
   redirectUri: string;
+  // The Google Cloud project id where each team's read-only reader service account is created (IAM path projects/{id}/serviceAccounts).
+  // null (GOOGLE_CLOUD_PROJECT unset): teams can't get storage; personal spaces still can.
   projectId: string | null;
 };
 
