@@ -10,10 +10,13 @@ import {
   rememberSpace,
   roleIn,
   spaceOfAsset,
+  spaceOfFolder,
   spaceOfProject,
   syncSeedTeamMembership,
 } from "@/lib/spaces/service";
+import { createFolder } from "@/lib/projects/folders";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
+import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
 async function addUser(db: Awaited<ReturnType<typeof makeTestDb>>, id: string) {
@@ -103,5 +106,13 @@ describe("spaces service", () => {
     expect(await spaceOfProject(db, "p2")).toBeNull();
     expect(await spaceOfProject(db, "nope")).toBeNull();
     expect(await spaceOfAsset(db, "nope")).toBeNull();
+  });
+
+  it("spaceOfFolder names the space a folder is in, or null for an unknown one", async () => {
+    const db = await makeTestDb();
+    await addUser(db, "u1");
+    const folder = await createFolder(db, testActor({ userId: "u1" }), "Season");
+    expect(await spaceOfFolder(db, folder.id)).toBe(SEED_TEAM_ID);
+    expect(await spaceOfFolder(db, "nope")).toBeNull();
   });
 });

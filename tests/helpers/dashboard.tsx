@@ -88,6 +88,7 @@ export function renderDashboard(
       canEdit
       now={NOW}
       actions={actions}
+      spaceSlug="seattle-solvers"
       {...over}
     />,
   );

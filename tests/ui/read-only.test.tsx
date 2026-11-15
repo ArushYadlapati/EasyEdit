@@ -33,7 +33,7 @@ afterEach(() => {
 function show(canEdit: boolean) {
   const store = makeStore({ canEdit });
   store.getState().select(["x1"]);
-  const { container } = render(<EditorProvider store={store}><EditorScreen /></EditorProvider>);
+  const { container } = render(<EditorProvider store={store}><EditorScreen spaceSlug="seattle-solvers" /></EditorProvider>);
   const controls = [...container.querySelectorAll<HTMLButtonElement>("[data-edit-control]")];
   return { store, container, controls };
 }
@@ -106,7 +106,7 @@ function nameOf(control: HTMLElement): string {
 function showWith(canEdit: boolean, choose: (store: EditorStore) => void) {
   const store = makeStore({ canEdit });
   choose(store);
-  const { container } = render(<EditorProvider store={store}><EditorScreen /></EditorProvider>);
+  const { container } = render(<EditorProvider store={store}><EditorScreen spaceSlug="seattle-solvers" /></EditorProvider>);
   const controls = [...container.querySelectorAll<HTMLElement>("[data-edit-control]")];
   return { store, container, controls, names: controls.map((c) => `${c.tagName.toLowerCase()} ${nameOf(c)}`) };
 }

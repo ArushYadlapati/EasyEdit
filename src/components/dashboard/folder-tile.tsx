@@ -6,11 +6,13 @@ import type { ReactNode } from "react";
 import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-drop";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import type { DashboardFolder } from "@/lib/dashboard/view";
+import { spacePath } from "@/lib/spaces/paths";
 
 // A folder in the main view's Folders section: its icon, name and project count, opening the folder's view. For
 // editors it also takes a dragged project card, as the folder's sidebar link does.
-export function FolderTile({ folder, canEdit, onDropProject }: {
+export function FolderTile({ folder, spaceSlug, canEdit, onDropProject }: {
   folder: DashboardFolder;
+  spaceSlug: string;
   canEdit: boolean;
   onDropProject(projectId: string, folderId: string): void;
 }): ReactNode {
@@ -20,7 +22,7 @@ export function FolderTile({ folder, canEdit, onDropProject }: {
   return (
     <li className="min-w-0">
       <Link
-        href={`/dashboard?folder=${encodeURIComponent(folder.id)}`}
+        href={spacePath(spaceSlug, { folder: folder.id })}
         aria-label={`${folder.name}, ${count}`}
         className={cx(
           "flex h-12 min-w-0 items-center gap-3 rounded-md border border-ed-line bg-ed-panel px-3 text-sm font-medium text-ed-text hover:bg-ed-hover",

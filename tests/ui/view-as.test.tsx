@@ -11,7 +11,7 @@ function show(size?: { width: number; height: number; format: "short_9x16" | "lo
   const store = makeStore(size ? { doc: { ...sampleDoc(), ...size } } : {});
   render(
     <EditorProvider store={store}>
-      <EditorScreen />
+      <EditorScreen spaceSlug="seattle-solvers" />
     </EditorProvider>,
   );
   return store;

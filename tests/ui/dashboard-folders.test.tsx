@@ -178,7 +178,7 @@ describe("folders in the sidebar", () => {
     await click(button(asking, "Delete folder"));
     expect(actions.deleteFolder).toHaveBeenCalledTimes(1);
     expect(sent(actions.deleteFolder)).toEqual({ id: "f1" });
-    expect(router.replace).toHaveBeenCalledWith("/dashboard");
+    expect(router.replace).toHaveBeenCalledWith("/s/seattle-solvers");
   });
 
   it("a refused folder delete stays in the dialog, and Cancel deletes nothing", async () => {
@@ -210,7 +210,7 @@ describe("folders in the sidebar", () => {
     await pickFolderOption(option);
     await click(button(dialog(option), confirmLabel));
     rerender(
-      <Dashboard
+      <Dashboard spaceSlug="seattle-solvers"
         projects={PROJECTS.map((p) => ({ ...p, folderId: p.folderId === "f1" ? null : p.folderId }))}
         folders={FOLDERS.filter((f) => f.id !== "f1")}
         recentIds={RECENT_IDS}
@@ -343,7 +343,7 @@ describe("dragging projects into folders", () => {
     actions.move.mockResolvedValue({ error: "That folder no longer exists." });
     await drag(navLink(/^Sponsors/), "drop", dropOf("a"));
     expect(screen.getByRole("alert").textContent).toBe("That folder no longer exists.");
-    rerender(<Dashboard projects={PROJECTS} folders={FOLDERS} recentIds={RECENT_IDS} view="f1" canEdit now={NOW} actions={actions} />);
+    rerender(<Dashboard projects={PROJECTS} folders={FOLDERS} recentIds={RECENT_IDS} view="f1" canEdit now={NOW} actions={actions} spaceSlug="seattle-solvers" />);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -387,7 +387,7 @@ describe("folders on the home page", () => {
     renderDashboard();
     const links = within(tiles()).getAllByRole("link");
     expect(links.map((l) => l.getAttribute("aria-label"))).toEqual(["Season 2026, 1 project", "Sponsors, 0 projects"]);
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/dashboard?folder=f1", "/dashboard?folder=f2"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/s/seattle-solvers?folder=f1", "/s/seattle-solvers?folder=f2"]);
     expect(links[0].querySelector("svg")).not.toBeNull(); // the folder icon
     expect(links[0].textContent).toBe("Season 20261");
     expect(classes(within(tiles()).getByRole("list"))).toContain("grid-cols-[repeat(auto-fill,minmax(200px,1fr))]");
@@ -455,7 +455,7 @@ describe("folders on the home page", () => {
     expect(tile(/^Sponsors/).hasAttribute("data-drop-over")).toBe(false);
     unmount();
     const { actions } = renderDashboard({ canEdit: false });
-    expect(tile(/^Sponsors/).getAttribute("href")).toBe("/dashboard?folder=f2");
+    expect(tile(/^Sponsors/).getAttribute("href")).toBe("/s/seattle-solvers?folder=f2");
     expect((await drag(tile(/^Sponsors/), "dragover", projectDrag)).taken).toBe(false);
     expect((await drag(tile(/^Sponsors/), "drop", dropOf("a"))).taken).toBe(false);
     expect(actions.move).not.toHaveBeenCalled();

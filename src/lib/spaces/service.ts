@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { rowsOf, type DB } from "@/db";
-import { assets, projects } from "@/db/schema";
+import { assets, folders, projects } from "@/db/schema";
 import { getRole, type Role } from "@/lib/allowlist/service";
 import { PERSONAL_ALIAS, SEED_TEAM_ID, personalSpaceId, type MySpace } from "./types";
 
@@ -105,5 +105,10 @@ export async function spaceOfAsset(db: DB, assetId: string): Promise<string | nu
     .select({ spaceId: assets.spaceId })
     .from(assets)
     .where(and(eq(assets.id, assetId), isNull(assets.removedAt)));
+  return rows[0]?.spaceId ?? null;
+}
+
+export async function spaceOfFolder(db: DB, folderId: string): Promise<string | null> {
+  const rows = await db.select({ spaceId: folders.spaceId }).from(folders).where(eq(folders.id, folderId));
   return rows[0]?.spaceId ?? null;
 }

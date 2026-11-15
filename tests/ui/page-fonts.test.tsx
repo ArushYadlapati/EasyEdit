@@ -30,7 +30,7 @@ it("the preview asks for the font faces that its clips' own characters need", ()
   act(() => {
     store.getState().edit([{ op: "update_clip", clipId: "x1", patch: { text: "Žofia" } }], "text");
   });
-  render(<EditorProvider store={store}><EditorScreen /></EditorProvider>);
+  render(<EditorProvider store={store}><EditorScreen spaceSlug="seattle-solvers" /></EditorProvider>);
   // both text clips are Geist 700: "Žofia" adds Ž, and the other clip's "hi" adds h
   expect(load).toHaveBeenCalledWith(GEIST, `${PROBE_BASE}Žh`);
   // a new character asks again, by font and text together; a redraw of the same text asks nothing

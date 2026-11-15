@@ -1,0 +1,150 @@
+// @vitest-environment happy-dom
+import { eq } from "drizzle-orm";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import EditorPage from "@/app/(editor)/s/[space]/editor/[id]/page";
+import SpacePage from "@/app/(dashboard)/s/[space]/page";
+import type { DashboardProps } from "@/components/dashboard/dashboard";
+import type { DB } from "@/db";
+import { spaceVisits } from "@/db/schema";
+import type { CurrentUser } from "@/lib/access-rules";
+import { createProject } from "@/lib/projects/service";
+import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
+import { joinSpace, testActor } from "../helpers/actor";
+import { makeTestDb } from "../helpers/db";
+import { FOLDERS, NOW, PROJECTS, RECENT_IDS, fakeActions } from "../helpers/dashboard";
+import { render } from "../helpers/dom";
+
+class Redirected extends Error {
+  constructor(readonly to: string) {
+    super(`REDIRECT ${to}`);
+  }
+}
+class NotFound extends Error {}
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }),
+  redirect: (to: string) => {
+    throw new Redirected(to);
+  },
+  notFound: () => {
+    throw new NotFound();
+  },
+  unstable_rethrow: () => {},
+}));
+const { Dashboard, Shell, signedIn } = vi.hoisted(() => ({
+  Dashboard: vi.fn<(props: unknown) => null>(() => null),
+  Shell: vi.fn<(props: unknown) => null>(() => null),
+  signedIn: { user: null as CurrentUser | null },
+}));
+vi.mock("@/components/dashboard/dashboard", () => ({ Dashboard }));
+vi.mock("@/components/editor/editor-shell", () => ({ EditorShell: Shell }));
+vi.mock("@/components/keep-signed-in", () => ({ KeepSignedIn: () => null }));
+vi.mock("@/components/record-open", () => ({ RecordOpen: () => null }));
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }));
+vi.mock("@/app/(dashboard)/dashboard/actions", () => ({
+  createProjectAction: vi.fn(), renameProjectAction: vi.fn(), deleteProjectAction: vi.fn(), duplicateProjectAction: vi.fn(),
+  moveProjectAction: vi.fn(), createFolderAction: vi.fn(), renameFolderAction: vi.fn(), deleteFolderAction: vi.fn(),
+}));
+vi.mock("@/lib/access", async () => ({
+  requireUser: vi.fn(async () => signedIn.user!),
+  meetsRole: (await import("@/lib/access-rules")).meetsRole,
+}));
+let testDb: DB;
+vi.mock("@/db", async (orig) => ({ ...(await orig<typeof import("@/db")>()), getDb: () => testDb }));
+
+const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
+const bea: CurrentUser = { id: "u2", email: "bea@gmail.com", name: "Bea", image: null, allowlistRole: "editor" };
+const outsider: CurrentUser = { id: "u3", email: "o@gmail.com", name: "Out", image: null, allowlistRole: "viewer" };
+const inPersonal = (person: CurrentUser) => testActor({ userId: person.id, email: person.email, role: "admin", spaceId: personalSpaceId(person.id) });
+const inTeam = (person: CurrentUser) => testActor({ userId: person.id, email: person.email, role: "editor" });
+
+let teamProject: string;
+let personalProject: string;
+let beaProject: string;
+
+beforeEach(async () => {
+  testDb = await makeTestDb();
+  for (const person of [ada, bea, outsider]) await joinSpace(testDb, person, "editor", personalSpaceId(person.id));
+  for (const person of [ada, bea]) await joinSpace(testDb, person, "editor");
+  teamProject = (await createProject(testDb, inTeam(ada), { name: "Team cut", format: "short_9x16" })).id;
+  personalProject = (await createProject(testDb, inPersonal(ada), { name: "My own", format: "short_9x16" })).id;
+  beaProject = (await createProject(testDb, inPersonal(bea), { name: "Bea's", format: "short_9x16" })).id;
+  Dashboard.mockClear();
+  Shell.mockClear();
+});
+
+async function dashboardAt(person: CurrentUser, slug: string, searchParams: Record<string, string> = {}): Promise<DashboardProps & { spaceSlug: string }> {
+  signedIn.user = person;
+  Dashboard.mockClear();
+  const { unmount } = render(await SpacePage({ params: Promise.resolve({ space: slug }), searchParams: Promise.resolve(searchParams) } as never));
+  unmount();
+  return Dashboard.mock.calls[0][0] as DashboardProps & { spaceSlug: string };
+}
+
+async function editorAt(person: CurrentUser, slug: string, id: string) {
+  signedIn.user = person;
+  Shell.mockClear();
+  const { unmount } = render(await EditorPage({ params: Promise.resolve({ space: slug, id }) } as never));
+  unmount();
+  return Shell.mock.calls[0][0] as { initial: { projectId: string }; space: { id: string; slug: string; storageReady: boolean } };
+}
+
+describe("the space dashboard", () => {
+  it("shows only that space's projects and remembers the space", async () => {
+    const team = await dashboardAt(ada, "seattle-solvers");
+    expect(team.projects.map((p) => p.id)).toEqual([teamProject]);
+    expect(team.spaceSlug).toBe("seattle-solvers");
+    const mine = await dashboardAt(ada, "personal");
+    expect(mine.projects.map((p) => p.id)).toEqual([personalProject]);
+    expect(mine.spaceSlug).toBe("personal");
+    const rows = await testDb.select().from(spaceVisits).where(eq(spaceVisits.userId, "u1"));
+    expect(rows.map((r) => r.spaceId)).toEqual([personalSpaceId("u1")]);
+  });
+
+  it("binds each action to the space", async () => {
+    const { createProjectAction } = await import("@/app/(dashboard)/dashboard/actions");
+    const props = await dashboardAt(ada, "personal");
+    await (props.actions.create as (...a: unknown[]) => unknown)("arg");
+    expect(vi.mocked(createProjectAction)).toHaveBeenCalledWith(personalSpaceId("u1"), "arg");
+  });
+
+  it("a space you are not in is not found, and so is someone else's personal space", async () => {
+    await expect(dashboardAt(outsider, "seattle-solvers")).rejects.toBeInstanceOf(NotFound);
+    await expect(dashboardAt(ada, personalSpaceId("u2"))).rejects.toBeInstanceOf(NotFound);
+    await expect(dashboardAt(ada, "no-such-space")).rejects.toBeInstanceOf(NotFound);
+    expect(await testDb.select().from(spaceVisits).where(eq(spaceVisits.userId, "u3"))).toEqual([]);
+  });
+});
+
+describe("the space editor", () => {
+  it("opens a project of the space, with the space's slug and storage state", async () => {
+    const props = await editorAt(ada, "seattle-solvers", teamProject);
+    expect(props.initial.projectId).toBe(teamProject);
+    expect(props.space).toMatchObject({ id: SEED_TEAM_ID, slug: "seattle-solvers", storageReady: expect.any(Boolean) });
+    expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ id: personalSpaceId("u1"), slug: "personal" });
+  });
+
+  it("a project in another space of yours redirects to that space", async () => {
+    await expect(editorAt(ada, "personal", teamProject)).rejects.toMatchObject({ to: `/s/seattle-solvers/editor/${teamProject}` });
+    await expect(editorAt(ada, "seattle-solvers", personalProject)).rejects.toMatchObject({ to: `/s/personal/editor/${personalProject}` });
+  });
+
+  it("a project you cannot reach, or a space you are not in, is not found", async () => {
+    await expect(editorAt(ada, "personal", beaProject)).rejects.toBeInstanceOf(NotFound);
+    await expect(editorAt(outsider, "seattle-solvers", teamProject)).rejects.toBeInstanceOf(NotFound);
+    await expect(editorAt(ada, "seattle-solvers", "nope")).rejects.toBeInstanceOf(NotFound);
+  });
+});
+
+describe("links inside the space", () => {
+  it("project cards and folder links point inside the space", async () => {
+    const { Dashboard: Real } = await vi.importActual<typeof import("@/components/dashboard/dashboard")>("@/components/dashboard/dashboard");
+    const { container } = render(
+      <Real projects={PROJECTS} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={fakeActions()} spaceSlug="seattle-solvers" />,
+    );
+    const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/s/seattle-solvers/editor/a");
+    expect(hrefs).toContain("/s/seattle-solvers?folder=f1");
+    expect(hrefs).toContain("/s/seattle-solvers");
+    expect(hrefs.filter((h) => h?.startsWith("/dashboard") || h?.startsWith("/editor"))).toEqual([]);
+  });
+});

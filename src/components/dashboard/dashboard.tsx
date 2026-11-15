@@ -25,6 +25,7 @@ import {
   type SortKey,
 } from "@/lib/dashboard/view";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
+import { spacePath } from "@/lib/spaces/paths";
 
 export type DashboardProps = {
   projects: DashboardProject[];
@@ -34,6 +35,7 @@ export type DashboardProps = {
   canEdit: boolean;
   now: Date;
   actions: DashboardActions;
+  spaceSlug: string; // the space shown, for the links inside it
 };
 
 const FOLDER_ITEMS: MenuItem[] = [
@@ -44,13 +46,14 @@ const FOLDER_ITEMS: MenuItem[] = [
 const HEADING = "mb-3 text-sm font-semibold text-ed-text";
 const EMPTY = "text-[13px] text-ed-muted";
 
-function CardGrid({ projects, folderName, now, canEdit, folders, actions, onGone }: {
+function CardGrid({ projects, folderName, now, canEdit, folders, actions, spaceSlug, onGone }: {
   projects: readonly DashboardProject[];
   folderName(project: DashboardProject): string | null;
   now: Date;
   canEdit: boolean;
   folders: readonly DashboardFolder[];
   actions: DashboardActions;
+  spaceSlug: string;
   onGone(message: string): void;
 }) {
   // Each card is its own <li>, which takes the card's right-click.
@@ -65,6 +68,7 @@ function CardGrid({ projects, folderName, now, canEdit, folders, actions, onGone
           canEdit={canEdit}
           folders={folders}
           actions={actions}
+          spaceSlug={spaceSlug}
           onGone={onGone}
         />
       ))}
@@ -76,7 +80,7 @@ function CardGrid({ projects, folderName, now, canEdit, folders, actions, onGone
 // its menu), the search, the sort and New project. The main view lists Recent, then a tile for each folder, then All
 // projects; a folder view lists that folder's projects. A card dropped on a folder, in the sidebar or on its tile,
 // moves there, and a refused move says why in the bar.
-export function Dashboard({ projects, folders, recentIds, view, canEdit, now, actions }: DashboardProps): ReactNode {
+export function Dashboard({ projects, folders, recentIds, view, canEdit, now, actions, spaceSlug }: DashboardProps): ReactNode {
   useRefreshOnReturn();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -135,7 +139,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
       onStart: () => setDeleteError(null),
       onSuccess: () => {
         setFolderDialog(null);
-        router.replace("/dashboard");
+        router.replace(spacePath(spaceSlug));
       },
       onFailure: setDeleteError,
     });
@@ -179,6 +183,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
         folders={folders}
         actions={actions}
         onGone={setNotice}
+        spaceSlug={spaceSlug}
       />
     ) : (
       empty()
@@ -191,6 +196,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
           folders={folders}
           view={view}
           canEdit={canEdit}
+          spaceSlug={spaceSlug}
           onNewFolder={() => setFolderDialog("new")}
           onDropProject={dropProject}
         />
@@ -250,6 +256,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
                       folders={folders}
                       actions={actions}
                       onGone={setNotice}
+        spaceSlug={spaceSlug}
                     />
                   </section>
                 )}
@@ -260,7 +267,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
                     </h2>
                     <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
                       {folders.map((folder) => (
-                        <FolderTile key={folder.id} folder={folder} canEdit={canEdit} onDropProject={dropProject} />
+                        <FolderTile key={folder.id} folder={folder} spaceSlug={spaceSlug} canEdit={canEdit} onDropProject={dropProject} />
                       ))}
                     </ul>
                   </section>

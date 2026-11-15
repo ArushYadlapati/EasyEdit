@@ -30,7 +30,7 @@ function show(canEdit = true) {
   store.getState().select(["x1"]);
   render(
     <EditorProvider store={store} clipboard={clipboard}>
-      <EditorScreen />
+      <EditorScreen spaceSlug="seattle-solvers" />
     </EditorProvider>,
   );
   return { store, clipboard, st: () => store.getState() };
@@ -341,7 +341,7 @@ function showWithKeys(keymap: Keymap) {
   store.getState().seek(45);
   render(
     <EditorProvider store={store} settings={settings}>
-      <EditorScreen />
+      <EditorScreen spaceSlug="seattle-solvers" />
     </EditorProvider>,
   );
   return { settings, st: () => store.getState() };

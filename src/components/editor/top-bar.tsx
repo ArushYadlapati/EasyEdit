@@ -11,11 +11,13 @@ import { useClipboard, useEditor, useEditorStore } from "./context";
 import { EditingIndicator } from "./editing-indicator";
 import { LeaveLink } from "./leave-link";
 import { useToMenuItems } from "./menu-items";
+import { spacePath } from "@/lib/spaces/paths";
 import { ProjectName } from "./project-name";
 import { SaveStatus } from "./save-status";
 import { useCommandRunner, useShortcutLabel } from "./use-shortcuts";
 
 type TopBarProps = {
+  spaceSlug: string; // the space the project is in: Projects leads back to its dashboard
   onShowShortcuts(): void;
   onShowSettings?(): void;
   onResetLayout?(): void; // View → Reset panel sizes
@@ -26,7 +28,7 @@ type TopBarProps = {
 // The row across the top: Projects, the Edit and View menus, the project's name, then the save
 // status, the undo, redo, settings and shortcuts buttons, and Export. The menus read the editor as they open, so what
 // cannot run right then is greyed.
-export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout, onExport, exportPercent = null }: TopBarProps) {
+export function TopBar({ spaceSlug, onShowShortcuts, onShowSettings, onResetLayout, onExport, exportPercent = null }: TopBarProps) {
   const store = useEditorStore();
   const clipboard = useClipboard();
   const run = useCommandRunner(onShowShortcuts, onExport);
@@ -52,7 +54,7 @@ export function TopBar({ onShowShortcuts, onShowSettings, onResetLayout, onExpor
   return (
     <header className="col-span-3 flex min-w-0 items-center gap-2 bg-ed-panel px-3">
       <LeaveLink
-        href="/dashboard"
+        href={spacePath(spaceSlug)}
         className={cx(
           "inline-flex h-7 shrink-0 items-center gap-1 rounded-md pr-2 pl-1 text-xs font-medium text-ed-muted hover:bg-ed-hover hover:text-ed-text",
           FOCUS_RING,

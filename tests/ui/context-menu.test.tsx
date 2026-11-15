@@ -602,7 +602,7 @@ it("a key while the menu is open runs nothing", () => {
     store.getState().seek(45);
     render(
       <EditorProvider store={store}>
-        <EditorScreen />
+        <EditorScreen spaceSlug="seattle-solvers" />
       </EditorProvider>,
     );
     const c2 = document.querySelector<HTMLElement>('[data-clip-id="c2"]')!;

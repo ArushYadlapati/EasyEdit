@@ -49,7 +49,7 @@ describe("the dashboard", () => {
     expect(within(poster).getByText("Custom 816 × 1056")).toBeTruthy();
     expect(within(poster).getByText("Changed 1 hr ago by Sam")).toBeTruthy();
     expect(within(poster).getByText("Season 2026")).toBeTruthy();
-    expect(within(poster).getByRole("link", { name: "Poster" }).getAttribute("href")).toBe("/editor/b");
+    expect(within(poster).getByRole("link", { name: "Poster" }).getAttribute("href")).toBe("/s/seattle-solvers/editor/b");
     expect(poster.querySelector("[data-blank-frame]")?.getAttribute("style")).toContain("aspect-ratio: 816 / 1056");
     const qual = card("Qual recap");
     expect(within(qual).getByText("Vertical 9:16")).toBeTruthy();
@@ -113,10 +113,10 @@ describe("the dashboard", () => {
     renderDashboard();
     expect(within(nav()).getByRole("heading", { level: 2 }).textContent).toBe("Folders");
     const projects = within(nav()).getByRole("link", { name: "Projects" });
-    expect(projects.getAttribute("href")).toBe("/dashboard");
+    expect(projects.getAttribute("href")).toBe("/s/seattle-solvers");
     expect(projects.getAttribute("aria-current")).toBe("page");
     const season = within(nav()).getByRole("link", { name: /^Season 2026/ });
-    expect(season.getAttribute("href")).toBe("/dashboard?folder=f1");
+    expect(season.getAttribute("href")).toBe("/s/seattle-solvers?folder=f1");
     expect(season.textContent).toContain("1");
     expect(season.hasAttribute("aria-current")).toBe(false);
     expect(within(nav()).getByRole("link", { name: /^Sponsors/ }).textContent).toContain("0");

@@ -48,7 +48,10 @@ const CALLS: [keyof typeof serverActions, keyof typeof spies][] = [
 
 describe("the dashboard's server actions", () => {
   it("each server action calls its own action", async () => {
-    expect(built).toEqual([{ db: getDb, requireUser, revalidate: revalidatePath, redirect }]);
+    expect(built).toEqual([{ db: getDb, requireUser, revalidate: expect.any(Function), redirect }]);
+    // Revalidating takes the dynamic route as a page pattern.
+    (built[0] as { revalidate(path: string): void }).revalidate("/s/[space]");
+    expect(revalidatePath).toHaveBeenCalledWith("/s/[space]", "page");
     expect(Object.keys(serverActions).sort()).toEqual(CALLS.map(([name]) => name).sort());
     for (const [name, key] of CALLS) {
       const formData = new FormData();

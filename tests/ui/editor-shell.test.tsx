@@ -57,7 +57,7 @@ vi.mock("@/components/editor/export/browser-deps", async (importOriginal) => {
   return { ...real, browserExportDeps: vi.fn(real.browserExportDeps) };
 });
 
-const SPACE = { id: "s1", storageReady: true };
+const SPACE = { id: "s1", slug: "seattle-solvers", storageReady: true };
 const EDITOR_URL = "http://localhost:3000/editor/p1";
 const PREFS_TEXT = () => document.cookie.split("; ").find((c) => c.startsWith("easyedit-prefs="));
 // happy-dom keeps a cookie set with max-age=0, empty; a date in the past removes it.

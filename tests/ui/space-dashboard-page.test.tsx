@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardLayout, { metadata, viewport } from "@/app/(dashboard)/layout";
-import DashboardPage from "@/app/(dashboard)/dashboard/page";
+import DashboardPage from "@/app/(dashboard)/s/[space]/page";
 import {
   createFolderAction,
   createProjectAction,
@@ -82,7 +82,7 @@ async function dashboardFor(person: CurrentUser, searchParams: Record<string, st
   signedIn.user = person;
   Dashboard.mockClear();
   const { unmount } = render(
-    await DashboardPage({ params: Promise.resolve({}), searchParams: Promise.resolve(searchParams) } as never),
+    await DashboardPage({ params: Promise.resolve({ space: "seattle-solvers" }), searchParams: Promise.resolve(searchParams) } as never),
   );
   unmount();
   expect(Dashboard).toHaveBeenCalledTimes(1);

@@ -7,11 +7,13 @@ import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-dr
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import type { DashboardFolder } from "@/lib/dashboard/view";
+import { spacePath } from "@/lib/spaces/paths";
 
 export type SidebarProps = {
   folders: readonly DashboardFolder[];
   view: string | null;
   canEdit: boolean;
+  spaceSlug: string;
   onNewFolder(): void;
   onDropProject(projectId: string, folderId: string | null): void; // null: out of its folder, onto Projects
 };
@@ -50,7 +52,7 @@ function SidebarLink({ href, current, folderId, canEdit, onDropProject, children
 // the left on a wide window, and one row above the grid that scrolls sideways on its own on a narrow one. For
 // editors, New folder sits beside the Folders heading, or at the end of the row on a narrow window, where only the
 // heading's text is hidden; and a project dragged onto a folder goes into it, or onto Projects out of its folder.
-export function Sidebar({ folders, view, canEdit, onNewFolder, onDropProject }: SidebarProps): ReactNode {
+export function Sidebar({ folders, view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
   const drop = { canEdit, onDropProject };
   return (
     <nav
@@ -60,7 +62,7 @@ export function Sidebar({ folders, view, canEdit, onNewFolder, onDropProject }: 
         "md:w-56 md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-b-0 md:px-2 md:py-3",
       )}
     >
-      <SidebarLink href="/dashboard" current={view === null} folderId={null} {...drop}>
+      <SidebarLink href={spacePath(spaceSlug)} current={view === null} folderId={null} {...drop}>
         Projects
       </SidebarLink>
       {/* On a narrow window this box is not drawn, so the heading and New folder are items of the row. */}
@@ -75,7 +77,7 @@ export function Sidebar({ folders, view, canEdit, onNewFolder, onDropProject }: 
       {folders.map((folder) => (
         <SidebarLink
           key={folder.id}
-          href={`/dashboard?folder=${encodeURIComponent(folder.id)}`}
+          href={spacePath(spaceSlug, { folder: folder.id })}
           current={view === folder.id}
           folderId={folder.id}
           {...drop}

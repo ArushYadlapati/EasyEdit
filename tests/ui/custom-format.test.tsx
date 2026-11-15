@@ -11,7 +11,7 @@ it("a custom-size project opens in the editor with its size named", () => {
   expect(() =>
     render(
       <EditorProvider store={store}>
-        <EditorScreen />
+        <EditorScreen spaceSlug="seattle-solvers" />
       </EditorProvider>,
     ),
   ).not.toThrow();

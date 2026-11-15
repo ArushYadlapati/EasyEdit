@@ -18,12 +18,14 @@ import { NoticeBar } from "./notice-bar";
 import { PanelGrid } from "./panel-grid";
 import { Preview } from "./preview";
 import { RightPanel } from "./right-panel";
+import { spacePath } from "@/lib/spaces/paths";
 import { SettingsDialog, type SettingsSection } from "./settings-dialog";
 import { Timeline } from "./timeline/timeline";
 import { TopBar } from "./top-bar";
 import { useShortcuts } from "./use-shortcuts";
 
 type EditorScreenProps = {
+  spaceSlug: string; // the space the project is in, for the way back to its dashboard
   initialLayout?: Layout; // the panel sizes this browser kept
   saveLayout?(layout: Layout): void; // keeps the sizes once a resize ends
 };
@@ -32,7 +34,7 @@ type EditorScreenProps = {
 // top bar, then the add panel, preview and details side by side, then the timeline across the bottom.
 // The keyboard shortcuts work anywhere in the window, and any part can open a right-click menu. The panel
 // grid alone follows the panel sizes, so resizing a panel does not draw the panels again.
-export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writeLayoutCookie }: EditorScreenProps) {
+export function EditorScreen({ spaceSlug, initialLayout = DEFAULT_LAYOUT, saveLayout = writeLayoutCookie }: EditorScreenProps) {
   const store = useEditorStore();
   const deleted = useEditor((s) => s.status === "deleted");
   const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
@@ -82,6 +84,7 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
             <ExportingTopBar
               exporter={exporter}
               onShowShortcuts={openShortcuts}
+              spaceSlug={spaceSlug}
               onShowSettings={() => showSettingsAt(lastSection)}
               onResetLayout={() => layout.getState().reset()}
               onExport={openExport}
@@ -93,7 +96,7 @@ export function EditorScreen({ initialLayout = DEFAULT_LAYOUT, saveLayout = writ
               <>
                 <p className="text-sm font-semibold">This project was deleted.</p>
                 <LeaveLink
-                  href="/dashboard"
+                  href={spacePath(spaceSlug)}
                   className={cx("rounded-[4px] text-[13px] leading-5 text-ed-muted underline underline-offset-2 hover:text-ed-text", FOCUS_RING)}
                 >
                   Back to projects

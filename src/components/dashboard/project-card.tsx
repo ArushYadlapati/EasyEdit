@@ -16,6 +16,7 @@ import { Menu, type MenuItem } from "@/components/ui/menu";
 import { PROJECT_GONE, pictureFits, thumbnailUrl, type DashboardFolder, type DashboardProject } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
+import { editorPath } from "@/lib/spaces/paths";
 import { formatLabel } from "@/lib/timeline";
 import { timeAgo } from "@/lib/time-ago";
 
@@ -26,6 +27,7 @@ export type ProjectCardProps = {
   canEdit: boolean;
   folders: readonly DashboardFolder[];
   actions: Pick<DashboardActions, "rename" | "duplicate" | "remove" | "move">;
+  spaceSlug: string;
   onGone(message: string): void; // the project was deleted elsewhere, so its card is leaving the page: the dashboard says why
 };
 
@@ -52,7 +54,7 @@ const withId = (id: string, more: Record<string, string> = {}) => {
 // open it in the editor, then its format, who changed it last and when, and its folder. Its ⋯ button and a right-click
 // on it open the same menu: Open for everyone, and for editors Rename (in place), Duplicate, Move to folder… and Delete
 // (after asking).
-export function ProjectCard({ project, folderName, now, canEdit, folders, actions, onGone }: ProjectCardProps): ReactNode {
+export function ProjectCard({ project, folderName, now, canEdit, folders, actions, spaceSlug, onGone }: ProjectCardProps): ReactNode {
   const router = useRouter();
   const menu = useContextMenu();
   const box = useRef<HTMLLIElement>(null);
@@ -89,7 +91,7 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
   };
 
   function choose(id: string) {
-    if (id === "open") router.push(`/editor/${project.id}`);
+    if (id === "open") router.push(editorPath(spaceSlug, project.id));
     else if (!canEdit || busy) return;
     else if (id === "rename") setRenaming(true);
     else if (id === "duplicate") duplicate.submit(withId(project.id), onCard);
@@ -181,7 +183,7 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
           </div>
         ) : (
           <Link
-            href={`/editor/${project.id}`}
+            href={editorPath(spaceSlug, project.id)}
             draggable={canEdit ? false : undefined}
             className={cx("group flex min-w-0 flex-col gap-2 rounded-md", FOCUS_RING)}
           >

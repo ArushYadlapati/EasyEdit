@@ -7,11 +7,16 @@ import { createFolder, deleteFolder, FOLDER_GONE, moveProject, renameFolder } fr
 import { createProject, deleteProject, duplicateProject, renameProject } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn } from "@/lib/spaces/access";
+import { editorPath, slugFor } from "@/lib/spaces/paths";
+import { listMySpaces } from "@/lib/spaces/service";
 
 export type FormState = { error?: string };
 
 // Not a member of the space (any more).
 const SPACE_GONE = "You're not a member of this space.";
+
+// Every space's dashboard is this one route; revalidate takes it as a page pattern.
+export const SPACE_PAGE = "/s/[space]";
 
 export type DashboardActionDeps = {
   db: () => DB;
@@ -49,7 +54,7 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
       if (!(error instanceof ServiceError)) throw error;
       if (error.code !== "NOT_FOUND") return { error: error.message };
       // Deleted elsewhere: refresh the list so its card or folder goes away.
-      deps.revalidate("/dashboard");
+      deps.revalidate(SPACE_PAGE);
       return { error: error.message === FOLDER_GONE ? FOLDER_GONE : PROJECT_GONE };
     }
   }
@@ -57,23 +62,25 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
   async function change(spaceId: string, call: (db: DB, actor: Actor) => Promise<unknown>): Promise<FormState> {
     const result = await run(spaceId, call);
     if ("error" in result) return { error: result.error };
-    deps.revalidate("/dashboard");
+    deps.revalidate(SPACE_PAGE);
     return {};
   }
 
   return {
     async create(spaceId: string, _prev: FormState, formData: FormData): Promise<FormState> {
-      const result = await run(spaceId, (db, actor) =>
-        createProject(db, actor, {
+      const result = await run(spaceId, async (db, actor) => {
+        const project = await createProject(db, actor, {
           name: field(formData, "name"),
           format: field(formData, "format"),
           width: side(formData, "width"),
           height: side(formData, "height"),
           folderId: folder(formData),
-        }),
-      );
+        });
+        const space = (await listMySpaces(db, actor.userId)).find((s) => s.id === spaceId);
+        return { id: project.id, slug: space ? slugFor(space) : "personal" };
+      });
       if ("error" in result) return { error: result.error };
-      return deps.redirect(`/editor/${result.value.id}`);
+      return deps.redirect(editorPath(result.value.slug, result.value.id));
     },
     rename: (spaceId: string, formData: FormData) =>
       change(spaceId, (db, actor) => renameProject(db, actor, field(formData, "id"), field(formData, "name"))),

@@ -19,7 +19,7 @@ function show(over: Partial<EditorInit> = {}, keymap?: Keymap, prefs?: Prefs) {
   const settings = createSettingsStore({ prefs: prefs ?? DEFAULT_PREFS, keymap }, save);
   render(
     <EditorProvider store={store} settings={settings}>
-      <EditorScreen />
+      <EditorScreen spaceSlug="seattle-solvers" />
     </EditorProvider>,
   );
   return { store, settings, save, st: () => store.getState() };

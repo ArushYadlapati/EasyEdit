@@ -34,7 +34,7 @@ describe("dashboard actions", () => {
 
   it("create opens the new project in the editor", async () => {
     const { actions } = await setup();
-    await expect(actions.create(SEED_TEAM_ID, {}, form({ name: "Qual", format: "short_9x16" }))).rejects.toThrow(/^REDIRECT \/editor\/\S+$/);
+    await expect(actions.create(SEED_TEAM_ID, {}, form({ name: "Qual", format: "short_9x16" }))).rejects.toThrow(/^REDIRECT \/s\/seattle-solvers\/editor\/\S+$/);
   });
 
   it("rename, duplicate and delete change the project and refresh the dashboard", async () => {
@@ -46,7 +46,7 @@ describe("dashboard actions", () => {
     expect(await actions.remove(SEED_TEAM_ID, form({ id }))).toEqual({});
     expect(await getProject(db, owner, id)).toBeNull();
     expect(revalidate).toHaveBeenCalledTimes(3);
-    expect(revalidate).toHaveBeenCalledWith("/dashboard");
+    expect(revalidate).toHaveBeenCalledWith("/s/[space]");
   });
 
   it("a viewer gets the role message and nothing changes", async () => {
@@ -77,7 +77,7 @@ describe("dashboard actions", () => {
     for (const act of [() => actions.rename(SEED_TEAM_ID, form({ id, name: "X" })), () => actions.duplicate(SEED_TEAM_ID, form({ id })), () => actions.remove(SEED_TEAM_ID, form({ id }))]) {
       revalidate.mockClear();
       expect(await act()).toEqual({ error: "That project no longer exists." });
-      expect(revalidate).toHaveBeenCalledWith("/dashboard");
+      expect(revalidate).toHaveBeenCalledWith("/s/[space]");
     }
   });
   it("create makes a custom size in the folder chosen", async () => {
@@ -85,7 +85,7 @@ describe("dashboard actions", () => {
     const f = await createFolder(db, owner, "Season 2026");
     await expect(
       actions.create(SEED_TEAM_ID, {}, form({ name: "Poster", format: "custom", width: "816", height: "1056", folderId: f.id })),
-    ).rejects.toThrow(/^REDIRECT \/editor\/\S+$/);
+    ).rejects.toThrow(/^REDIRECT \/s\/seattle-solvers\/editor\/\S+$/);
     const [row] = await listProjects(db, owner);
     expect(row).toMatchObject({ format: "custom", width: 816, height: 1056, folderId: f.id });
   });
@@ -113,7 +113,7 @@ describe("dashboard actions", () => {
     expect((await listFolders(db, owner))[0]).toMatchObject({ id: f.id, projectCount: 0 });
     expect(await actions.deleteFolder(SEED_TEAM_ID, form({ id: f.id }))).toEqual({});
     expect(revalidate).toHaveBeenCalledTimes(5);
-    for (const call of revalidate.mock.calls) expect(call).toEqual(["/dashboard"]);
+    for (const call of revalidate.mock.calls) expect(call).toEqual(["/s/[space]"]);
     expect(await listFolders(db, owner)).toEqual([]);
     expect((await listProjects(db, owner))[0]).toMatchObject({ id: project, folderId: null });
   });
@@ -144,20 +144,20 @@ describe("dashboard actions", () => {
     ]) {
       revalidate.mockClear();
       expect(await act()).toEqual({ error: "That folder no longer exists." });
-      expect(revalidate).toHaveBeenCalledWith("/dashboard");
+      expect(revalidate).toHaveBeenCalledWith("/s/[space]");
     }
     const { id: gone } = await createProject(db, owner, { name: "Old", format: "short_9x16" });
     await deleteProject(db, owner, gone);
     revalidate.mockClear();
     expect(await actions.move(SEED_TEAM_ID, form({ id: gone, folderId: "" }))).toEqual({ error: "That project no longer exists." });
-    expect(revalidate).toHaveBeenCalledWith("/dashboard");
+    expect(revalidate).toHaveBeenCalledWith("/s/[space]");
   });
 
   it("an empty width or height means none", async () => {
     const { actions } = await setup();
     await expect(
       actions.create(SEED_TEAM_ID, {}, form({ name: "Qual", format: "short_9x16", width: "", height: "" })),
-    ).rejects.toThrow(/^REDIRECT \/editor\/\S+$/);
+    ).rejects.toThrow(/^REDIRECT \/s\/seattle-solvers\/editor\/\S+$/);
   });
 
   it("a viewer gets the role message from every folder action", async () => {

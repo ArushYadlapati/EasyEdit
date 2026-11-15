@@ -134,14 +134,14 @@ describe("a card's menu", () => {
   it("Open goes to the editor", async () => {
     renderDashboard();
     await pick(card("Qual recap"), "Open");
-    expect(router.push).toHaveBeenCalledWith("/editor/a");
+    expect(router.push).toHaveBeenCalledWith("/s/seattle-solvers/editor/a");
   });
 
   it("Open from a right-click goes to the editor too", async () => {
     renderDashboard({ canEdit: false });
     fireEvent.contextMenu(card("Poster"), { clientX: 5, clientY: 5 });
     await click(screen.getByRole("menuitem", { name: "Open" }));
-    expect(router.push).toHaveBeenCalledWith("/editor/b");
+    expect(router.push).toHaveBeenCalledWith("/s/seattle-solvers/editor/b");
   });
 });
 
@@ -319,7 +319,7 @@ describe("a project deleted elsewhere", () => {
     }
     // The refusal refreshes the page, which no longer has the project.
     rerender(
-      <Dashboard projects={PROJECTS.filter((p) => p.id !== "a")} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={actions} />,
+      <Dashboard projects={PROJECTS.filter((p) => p.id !== "a")} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={actions} spaceSlug="seattle-solvers" />,
     );
     await act(async () => answer({ error: "That project no longer exists." }));
     expect(screen.queryByRole("link", { name: "Qual recap" })).toBeNull();
@@ -336,7 +336,7 @@ describe("a project deleted elsewhere", () => {
     actions.duplicate.mockImplementation(() => new Promise<FormState>((resolve) => (answer = resolve)));
     await pick(within(region("Recent")).getByRole("link", { name: "Finals" }).closest("li")!, "Duplicate");
     rerender(
-      <Dashboard projects={PROJECTS.filter((p) => p.id !== "c")} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={actions} />,
+      <Dashboard projects={PROJECTS.filter((p) => p.id !== "c")} folders={FOLDERS} recentIds={RECENT_IDS} view={null} canEdit now={NOW} actions={actions} spaceSlug="seattle-solvers" />,
     );
     await act(async () => answer({ error: "That project no longer exists." }));
     expect(screen.queryByRole("link", { name: "Finals" })).toBeNull();
@@ -501,7 +501,7 @@ describe("the card's picture", () => {
     expect(picture(card("Qual recap"))).toBeNull();
     expect(card("Qual recap").querySelector("[data-blank-frame]")).not.toBeNull();
     rerender(
-      <Dashboard
+      <Dashboard spaceSlug="seattle-solvers"
         projects={[{ ...PICTURED[0], thumbnailVersion: 4 }, PROJECTS[1], PROJECTS[2]]}
         folders={FOLDERS}
         recentIds={RECENT_IDS}
@@ -533,7 +533,7 @@ describe("the card's picture", () => {
 
   it("a card hydrated from the server's markup asks for its picture again, so its load or error still counts", () => {
     const element = (
-      <ProjectCard project={PICTURED[0]} folderName={null} now={NOW} canEdit folders={FOLDERS} actions={fakeActions()} onGone={() => {}} />
+      <ProjectCard project={PICTURED[0]} folderName={null} now={NOW} canEdit folders={FOLDERS} actions={fakeActions()} spaceSlug="seattle-solvers" onGone={() => {}} />
     );
     const list = document.createElement("ul");
     document.body.appendChild(list);

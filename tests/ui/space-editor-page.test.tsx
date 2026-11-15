@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import EditorPage, { metadata, viewport } from "@/app/(editor)/editor/[id]/page";
+import EditorPage, { metadata, viewport } from "@/app/(editor)/s/[space]/editor/[id]/page";
 import { EditorShell } from "@/components/editor/editor-shell";
 import type { CurrentUser } from "@/lib/access-rules";
 import { createEmptyDoc } from "@/lib/timeline";
@@ -16,6 +16,11 @@ vi.mock("@/db", () => ({ getDb: () => ({}) }));
 // A viewer in the project's space.
 vi.mock("@/lib/spaces/access", () => ({
   actorIn: vi.fn(async (_db: unknown, user: CurrentUser, spaceId: string) => ({ userId: user.id, email: user.email, role: "viewer", spaceId })),
+}));
+vi.mock("@/lib/spaces/service", () => ({
+  findMySpace: vi.fn(async () => ({ id: "s1", slug: "seattle-solvers", name: "Seattle Solvers", kind: "team", role: "viewer" })),
+  listMySpaces: vi.fn(async () => []),
+  spaceOfProject: vi.fn(async () => null),
 }));
 vi.mock("@/lib/projects/service", () => ({
   getProject: vi.fn(async () => ({
@@ -42,7 +47,7 @@ describe("the editor page", () => {
   it("opening the editor records the open once, for a viewer too", async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
-    render(await EditorPage({ params: Promise.resolve({ id: "p1" }) } as never));
+    render(await EditorPage({ params: Promise.resolve({ space: "seattle-solvers", id: "p1" }) } as never));
     await act(async () => {});
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("/api/projects/p1/opened", {
@@ -54,7 +59,7 @@ describe("the editor page", () => {
 
   it("the editor gets the stored picture's version", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
-    render(await EditorPage({ params: Promise.resolve({ id: "p1" }) } as never));
+    render(await EditorPage({ params: Promise.resolve({ space: "seattle-solvers", id: "p1" }) } as never));
     await act(async () => {});
     // The mock is never cleared, and the test above renders first: the last call is this test's.
     expect(vi.mocked(EditorShell).mock.calls.at(-1)![0].initial).toMatchObject({

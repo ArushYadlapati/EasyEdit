@@ -34,7 +34,7 @@ export function show(over: Partial<ExportDeps> = {}, init: ShowInit = {}) {
     <Profiler id="editor" onRender={() => { renders += 1; }}>
       <EditorProvider store={store} exportDeps={made.deps}>
         <MediaProvider services={media}>
-          <EditorScreen />
+          <EditorScreen spaceSlug="seattle-solvers" />
         </MediaProvider>
       </EditorProvider>
     </Profiler>,

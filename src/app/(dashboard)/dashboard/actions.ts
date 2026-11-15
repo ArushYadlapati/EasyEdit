@@ -6,7 +6,7 @@ import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { makeDashboardActions, type FormState } from "@/lib/projects/dashboard-actions";
 
-const actions = makeDashboardActions({ db: getDb, requireUser, revalidate: revalidatePath, redirect });
+const actions = makeDashboardActions({ db: getDb, requireUser, revalidate: (path) => revalidatePath(path, "page"), redirect });
 
 export async function createProjectAction(spaceId: string, prev: FormState, formData: FormData): Promise<FormState> {
   return actions.create(spaceId, prev, formData);

@@ -21,7 +21,7 @@ it("undo and redo are disabled once the project is deleted, and stay on while si
   const store = makeStore();
   render(
     <EditorProvider store={store}>
-      <TopBar onShowShortcuts={() => {}} />
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
     </EditorProvider>,
   );
   act(() => {
@@ -40,7 +40,7 @@ it("'Sign in' opens in a new tab, so the editor and its unsent edits stay", () =
   store.getState().setStatus("signed-out");
   render(
     <EditorProvider store={store}>
-      <TopBar onShowShortcuts={() => {}} />
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
     </EditorProvider>,
   );
   const link = screen.getByRole("link", { name: "Sign in" });
@@ -60,7 +60,7 @@ function leaveWith(queued: number, status: SyncStatus, click: Partial<MouseEvent
   const { unmount } = render(
     <EditorProvider store={store}>
       <MediaProvider services={{ ...media, queue: { ...media.queue, active: () => uploading } }}>
-        <TopBar onShowShortcuts={() => {}} />
+        <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
       </MediaProvider>
     </EditorProvider>,
   );
@@ -78,16 +78,16 @@ it("'Projects' stays inside the app while queued edits can still be sent", () =>
 });
 
 it("'Projects' loads the page for real when queued edits cannot be sent, so the browser asks first", () => {
-  expect(leaveWith(1, "offline")).toEqual({ reloaded: true, assigned: ["/dashboard"] });
-  expect(leaveWith(2, "signed-out")).toEqual({ reloaded: true, assigned: ["/dashboard"] });
+  expect(leaveWith(1, "offline")).toEqual({ reloaded: true, assigned: ["/s/seattle-solvers"] });
+  expect(leaveWith(2, "signed-out")).toEqual({ reloaded: true, assigned: ["/s/seattle-solvers"] });
   // A click that opens a new tab leaves this one as it is.
   expect(leaveWith(1, "offline", { metaKey: true })).toEqual({ reloaded: false, assigned: [] });
 });
 
 it("'Projects' loads the page for real while an upload runs, so the browser asks before stopping it", () => {
-  expect(leaveWith(0, "saved", {}, 1)).toEqual({ reloaded: true, assigned: ["/dashboard"] });
-  expect(leaveWith(2, "saving", {}, 1)).toEqual({ reloaded: true, assigned: ["/dashboard"] });
-  expect(leaveWith(1, "deleted", {}, 2)).toEqual({ reloaded: true, assigned: ["/dashboard"] });
+  expect(leaveWith(0, "saved", {}, 1)).toEqual({ reloaded: true, assigned: ["/s/seattle-solvers"] });
+  expect(leaveWith(2, "saving", {}, 1)).toEqual({ reloaded: true, assigned: ["/s/seattle-solvers"] });
+  expect(leaveWith(1, "deleted", {}, 2)).toEqual({ reloaded: true, assigned: ["/s/seattle-solvers"] });
   expect(leaveWith(0, "saved", { metaKey: true }, 1)).toEqual({ reloaded: false, assigned: [] });
 });
 
@@ -99,7 +99,7 @@ it("'Projects' asks inside the app while an export runs, and Leave stays inside 
   const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
   render(
     <EditorProvider store={store}>
-      <TopBar onShowShortcuts={() => {}} onExport={() => {}} exportPercent={50} />
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} onExport={() => {}} exportPercent={50} />
     </EditorProvider>,
   );
   const projects = screen.getByRole("link", { name: "Projects" });
@@ -124,16 +124,16 @@ it("'Projects' still loads the page for real during an export when edits cannot 
   store.getState().setStatus("offline");
   store.getState().setExporting(true);
   const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
-  render(<EditorProvider store={store}><TopBar onShowShortcuts={() => {}} /></EditorProvider>);
+  render(<EditorProvider store={store}><TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} /></EditorProvider>);
   expect(fireEvent.click(screen.getByRole("link", { name: "Projects" }))).toBe(false);
-  expect(assign).toHaveBeenCalledWith("/dashboard");
+  expect(assign).toHaveBeenCalledWith("/s/seattle-solvers");
   expect(screen.queryByText("An export is running. Leaving stops it.")).toBeNull();
 });
 
 it("'Leave the editor?' follows the export: it closes when the export ends, speaks of a file waiting for Download, and does not come back by itself", () => {
   const store = makeStore();
   store.getState().setExporting(true);
-  render(<EditorProvider store={store}><TopBar onShowShortcuts={() => {}} /></EditorProvider>);
+  render(<EditorProvider store={store}><TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} /></EditorProvider>);
   const question = () => screen.queryByText("Leave the editor?", { selector: "h2" });
   fireEvent.click(screen.getByRole("link", { name: "Projects" }));
   expect(question()).toBeTruthy();
@@ -155,11 +155,11 @@ it("Leave loads the page for real when the queued edits can no longer be sent", 
   store.getState().setStatus("saving"); // can still be sent when the question opens
   store.getState().setExporting(true);
   const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
-  render(<EditorProvider store={store}><TopBar onShowShortcuts={() => {}} /></EditorProvider>);
+  render(<EditorProvider store={store}><TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} /></EditorProvider>);
   fireEvent.click(screen.getByRole("link", { name: "Projects" }));
   act(() => store.getState().setStatus("signed-out")); // the session ended while the question was open
   expect(fireEvent.click(screen.getByRole("link", { name: "Leave" }))).toBe(false);
-  expect(assign).toHaveBeenCalledWith("/dashboard");
+  expect(assign).toHaveBeenCalledWith("/s/seattle-solvers");
 });
 
 // Added beyond the brief: Leave's own click leaves a click that opens another tab alone, as the link's does.
@@ -169,7 +169,7 @@ it("Leave opened in another tab leaves this one as it is, even with the queued e
   store.getState().setStatus("saving");
   store.getState().setExporting(true);
   const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
-  render(<EditorProvider store={store}><TopBar onShowShortcuts={() => {}} /></EditorProvider>);
+  render(<EditorProvider store={store}><TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} /></EditorProvider>);
   fireEvent.click(screen.getByRole("link", { name: "Projects" }));
   act(() => store.getState().setStatus("signed-out"));
   expect(fireEvent.click(screen.getByRole("link", { name: "Leave" }), { metaKey: true })).toBe(true);
@@ -180,10 +180,10 @@ it("Leave opened in another tab leaves this one as it is, even with the queued e
 it("Leave goes where the link it asked for goes, and looks like the primary button", () => {
   const store = makeStore();
   store.getState().setExporting(true);
-  render(<EditorProvider store={store}><TopBar onShowShortcuts={() => {}} /></EditorProvider>);
+  render(<EditorProvider store={store}><TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} /></EditorProvider>);
   fireEvent.click(screen.getByRole("link", { name: "Projects" }));
   const leave = screen.getByRole("link", { name: "Leave" });
-  expect(leave.getAttribute("href")).toBe("/dashboard");
+  expect(leave.getAttribute("href")).toBe("/s/seattle-solvers");
   expect(leave.className.split(" ")).toEqual(expect.arrayContaining(["bg-ed-accent", "text-ed-bg"]));
 });
 
@@ -196,7 +196,7 @@ it("'Back to projects' on a deleted project leaves without asking: its edits can
   const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
   render(
     <EditorProvider store={store}>
-      <EditorScreen />
+      <EditorScreen spaceSlug="seattle-solvers" />
     </EditorProvider>,
   );
   expect(fireEvent.click(screen.getByRole("link", { name: "Back to projects" }))).toBe(true);
@@ -217,7 +217,7 @@ function showName(over: Parameters<typeof makeStore>[0] = {}) {
   };
   render(
     <EditorProvider store={store} api={api}>
-      <TopBar onShowShortcuts={() => {}} />
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
     </EditorProvider>,
   );
   const open = () => {
@@ -306,7 +306,7 @@ function showMenus(
   const clipboard = createClipboard();
   render(
     <EditorProvider store={store} clipboard={clipboard} settings={settings}>
-      <TopBar onShowShortcuts={props.onShowShortcuts ?? (() => {})} onResetLayout={props.onResetLayout} />
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={props.onShowShortcuts ?? (() => {})} onResetLayout={props.onResetLayout} />
     </EditorProvider>,
   );
   const open = (name: "Edit" | "View") => fireEvent.click(screen.getByRole("button", { name }));

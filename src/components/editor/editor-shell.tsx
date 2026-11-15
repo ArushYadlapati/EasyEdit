@@ -40,8 +40,8 @@ const quietly = (work: Promise<unknown>) => void work.catch(() => {});
 // preferences for one open project, and ties them to the page: tab visibility, focus, coming back online, the user's
 // clicks and keys, and leaving with unsent changes or running uploads. The panel sizes and the preferences come from the
 // browser's cookies, which the page read; the keymap is read from local storage once the editor is on screen.
-// space: the space the project is in, and whether it has storage for uploads.
-export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; space: { id: string; storageReady: boolean }; layout?: Layout; prefs?: Prefs }) {
+// space: the space the project is in (and its address slug), and whether it has storage for uploads.
+export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; space: { id: string; slug: string; storageReady: boolean }; layout?: Layout; prefs?: Prefs }) {
   const [{ store, api, sync, clipboard, media, drop, settings, savePrefs, presenceStore }] = useState(() => {
     const store = createEditorStore(initial, { view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones } });
     const api = createProjectApi(initial.projectId);
@@ -227,7 +227,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
     <EditorProvider store={store} api={api} clipboard={clipboard} settings={settings}>
       <MediaProvider services={media} spaceId={space.id} storageReady={space.storageReady} drop={drop}>
         <PresenceProvider store={presenceStore}>
-          <EditorScreen initialLayout={layout} />
+          <EditorScreen spaceSlug={space.slug} initialLayout={layout} />
         </PresenceProvider>
       </MediaProvider>
     </EditorProvider>

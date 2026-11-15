@@ -15,7 +15,7 @@ function show({ store = makeStore(), initialLayout }: { store?: EditorStore; ini
   const saveLayout = vi.fn();
   const { unmount } = render(
     <EditorProvider store={store}>
-      <EditorScreen initialLayout={initialLayout} saveLayout={saveLayout} />
+      <EditorScreen spaceSlug="seattle-solvers" initialLayout={initialLayout} saveLayout={saveLayout} />
     </EditorProvider>,
   );
   const bar = (name: string) => screen.getByRole("separator", { name });
@@ -168,7 +168,7 @@ it("a viewer can resize, and a deleted project has no separators.", () => {
   store.getState().setStatus("deleted");
   render(
     <EditorProvider store={store}>
-      <EditorScreen saveLayout={vi.fn()} />
+      <EditorScreen spaceSlug="seattle-solvers" saveLayout={vi.fn()} />
     </EditorProvider>,
   );
   expect(screen.getByText("This project was deleted.")).toBeTruthy();
