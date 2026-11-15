@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { CreateTeamDialog } from "@/components/dashboard/create-team-dialog";
+import { SidebarSection } from "@/components/dashboard/sidebar-section";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { PERSONAL_SOON } from "@/lib/spaces/personal";
@@ -77,47 +78,48 @@ export function SpaceSwitcher({
   const spaces = personalSoon ? [...given.filter((s) => s.kind === "team"), ...given.filter((s) => s.kind === "personal")] : given;
   return (
     <nav aria-label="My Spaces" className="flex shrink-0 flex-row items-center gap-1 md:mb-3 md:flex-col md:items-stretch md:border-b md:border-ed-line md:pb-3">
-      <h2 className={SIDEBAR_HEADING}>My Spaces</h2>
-      {spaces.map((space) => {
-        const isCurrent = space.id === current;
-        const soon = personalSoon && space.kind === "personal";
-        return (
-          <Link
-            key={space.id}
-            href={spacePath(slugFor(space))}
-            aria-current={isCurrent ? "page" : undefined}
-            aria-label={soon ? `${labelOf(space)}, ${PERSONAL_SOON.label}` : undefined}
-            className={cx(
-              "flex h-7 shrink-0 items-center gap-2 rounded-md px-2 text-xs font-semibold whitespace-nowrap",
-              isCurrent ? "bg-ed-accent-weak text-ed-accent" : soon ? "text-ed-muted hover:bg-ed-hover" : "text-ed-text hover:bg-ed-hover",
-              FOCUS_RING_INSET,
-              FADE,
-            )}
-          >
-            <span className="min-w-0 truncate">{labelOf(space)}</span>
-            {soon && " "}
-            {soon && (
-              <span className="rounded-sm border border-ed-line px-1 text-[10px] leading-4 font-medium text-ed-muted">{PERSONAL_SOON.tag}</span>
-            )}
-          </Link>
-        );
-      })}
-      {createTeam && (
-        <>
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className={cx(
-              "flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-semibold whitespace-nowrap text-ed-text hover:bg-ed-hover",
-              FOCUS_RING_INSET,
-              FADE,
-            )}
-          >
-            Create a team
-          </button>
-          <CreateTeamDialog open={creating} action={createTeam} onClose={() => setCreating(false)} />
-        </>
-      )}
+      <SidebarSection id="spaces" label="My Spaces">
+        {spaces.map((space) => {
+          const isCurrent = space.id === current;
+          const soon = personalSoon && space.kind === "personal";
+          return (
+            <Link
+              key={space.id}
+              href={spacePath(slugFor(space))}
+              aria-current={isCurrent ? "page" : undefined}
+              aria-label={soon ? `${labelOf(space)}, ${PERSONAL_SOON.label}` : undefined}
+              className={cx(
+                "flex h-7 shrink-0 items-center gap-2 rounded-md px-2 text-xs font-semibold whitespace-nowrap",
+                isCurrent ? "bg-ed-accent-weak text-ed-accent" : soon ? "text-ed-muted hover:bg-ed-hover" : "text-ed-text hover:bg-ed-hover",
+                FOCUS_RING_INSET,
+                FADE,
+              )}
+            >
+              <span className="min-w-0 truncate">{labelOf(space)}</span>
+              {soon && " "}
+              {soon && (
+                <span className="rounded-sm border border-ed-line px-1 text-[10px] leading-4 font-medium text-ed-muted">{PERSONAL_SOON.tag}</span>
+              )}
+            </Link>
+          );
+        })}
+        {createTeam && (
+          <>
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className={cx(
+                "flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-semibold whitespace-nowrap text-ed-text hover:bg-ed-hover",
+                FOCUS_RING_INSET,
+                FADE,
+              )}
+            >
+              Create a team
+            </button>
+            <CreateTeamDialog open={creating} action={createTeam} onClose={() => setCreating(false)} />
+          </>
+        )}
+      </SidebarSection>
     </nav>
   );
 }
