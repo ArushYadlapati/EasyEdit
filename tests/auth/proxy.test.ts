@@ -54,4 +54,11 @@ describe("proxy", () => {
     for (const url of ["/", "/privacy"]) expect(matches(url), url).toBe(false);
   });
 
+  // Reached by navigating (and by Google sending the browser back): the handlers turn a signed-out visitor into a page
+  // themselves, so the proxy's 401 JSON must not answer first.
+  it("skips the storage connect routes, which authenticate and redirect themselves", () => {
+    for (const url of ["/api/storage/connect?space=team_x", "/api/storage/callback?code=c&state=s", "/api/storage"]) expect(matches(url), url).toBe(false);
+    for (const url of ["/api/storagex", "/api/drive/read-token", "/api/media"]) expect(matches(url), url).toBe(true);
+  });
+
 });
