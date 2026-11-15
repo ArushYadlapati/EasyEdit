@@ -202,3 +202,13 @@ it("Text tab buttons are drawn in the kit fonts and add text in them", () => {
   const clip = findClip(store.getState().doc, store.getState().selection.clipIds[0])?.clip;
   expect(clip?.type === "text" && clip.style.fontFamily).toBe("Orbitron");
 });
+
+it("keeps its tabs compact, so Text, Media and Brand kit fit beside the tool rail", () => {
+  setup();
+  const tabs = screen.getAllByRole("tab", { hidden: true }).filter((t) => t.closest('[aria-label="Add"]'));
+  expect(tabs.length).toBeGreaterThan(1);
+  for (const tab of tabs) {
+    expect(tab.className, tab.textContent ?? "").toMatch(/\bpx-2\b/);
+    expect(tab.className).not.toMatch(/\bpx-3\b/);
+  }
+});

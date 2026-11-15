@@ -147,6 +147,9 @@ describe("the Text tool on the preview", () => {
     expect(added[0]).toMatchObject({ text: "Your text", start: 10, transform: { x: 0.25, y: 0.25 } });
     expect(st().textEditId).toBe(added[0].id);
     expect(st().tool).toBe("select");
+    // Its placeholder is selected, so typing replaces it.
+    const field = document.querySelector<HTMLTextAreaElement>("[data-canvas-overlay] textarea")!;
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, "Your text".length]);
   });
 
   it("a click on a text clip opens that clip instead of adding one", () => {
@@ -156,6 +159,9 @@ describe("the Text tool on the preview", () => {
     expect(textClips(st())).toHaveLength(textClips({ doc: sampleDoc() } as EditorState).length);
     expect(st().textEditId).toBe("x1");
     expect(st().tool).toBe("select");
+    // Text already there opens with the caret at its end, as a double-click does.
+    const field = document.querySelector<HTMLTextAreaElement>("[data-canvas-overlay] textarea")!;
+    expect(field.selectionStart).toBe(field.value.length);
   });
 
   it("shows a text cursor", () => {

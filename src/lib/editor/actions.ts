@@ -275,7 +275,7 @@ export function armCrop(store: EditorStore, clipId: string, isMac: boolean): voi
 
 // Opens a text clip for typing in place on the preview: pauses, brings the playhead into the clip and selects it. On a
 // locked or hidden track it says so instead. Nothing for a viewer, or while a drag or a typed value is live.
-export function editTextInPlace(store: EditorStore, clipId: string): void {
+export function editTextInPlace(store: EditorStore, clipId: string, opts?: { selectAll?: boolean }): void {
   const state = store.getState();
   const found = findClip(state.doc, clipId);
   if (!state.canEdit || !found || found.clip.type !== "text" || state.gesture !== null) return;
@@ -288,7 +288,7 @@ export function editTextInPlace(store: EditorStore, clipId: string): void {
     return;
   }
   focusClip(store, clipId);
-  store.getState().setTextEdit(clipId);
+  store.getState().setTextEdit(clipId, opts);
 }
 
 // Track runners, used by the track headers, the timeline toolbar and the inspector.

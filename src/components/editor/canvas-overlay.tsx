@@ -378,7 +378,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       const point = fromScreen(view, clientX, clientY);
       const at = { x: point.x / doc.width, y: point.y / doc.height };
       const id = addText(store, TEXT_TOOL_PRESET, settings.getState().textSeconds, fonts, at);
-      if (id) editTextInPlace(store, id);
+      if (id) editTextInPlace(store, id, { selectAll: true });
     }
     store.getState().setTool("select");
   }

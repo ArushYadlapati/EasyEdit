@@ -102,7 +102,8 @@ export function LeftPanel() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-11 shrink-0 items-center border-b border-ed-line px-3">
-        <Tabs label="Add" value={current.id} tabs={TABS} onChange={setTab} idPrefix={idPrefix} />
+        {/* Compact: the tool rail shares the column, and the three tabs must still read in full. */}
+        <Tabs label="Add" value={current.id} tabs={TABS} onChange={setTab} idPrefix={idPrefix} compact />
       </div>
       {current.id === "text" ? (
         <TextTab panel={panel} />

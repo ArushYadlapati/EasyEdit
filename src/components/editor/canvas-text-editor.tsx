@@ -85,14 +85,15 @@ export function CanvasTextEditor({ clipId, surface }: { clipId: string; surface:
     return surface.onChange(refresh);
   }, [surface, store, clipId, placed]);
 
-  // Opens with the caret at the end, remembering what had focus.
+  // Opens with the caret at the end, or with all of it selected for new text from the Text tool, remembering what had
+  // focus.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (document.activeElement !== el) before.current = document.activeElement;
     el.focus({ preventScroll: true });
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
+    el.setSelectionRange(store.getState().textEditSelectAll ? 0 : el.value.length, el.value.length);
+  }, [store]);
 
   // As tall as its lines, after every change.
   useLayoutEffect(() => {

@@ -11,6 +11,7 @@ export type TabsProps = {
   idPrefix?: string; // given: each tab controls the panel with id tabIds(idPrefix, id).panel
   autoFocusSelected?: boolean; // marks the selected tab data-autofocus, so a Dialog focuses it on opening
   className?: string;
+  compact?: boolean; // tighter padding, for a narrow panel
 };
 
 // The ids that link a tab and the one panel the caller renders under the tabs. Every tab controls
@@ -28,7 +29,7 @@ const KEY_MOVES: Record<string, (index: number, count: number) => number> = {
 
 // A row of tabs. The arrow keys, Home and End move to a tab and show it. The caller renders the
 // panel: role="tabpanel", with id and aria-labelledby from tabIds(idPrefix, value).
-export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected = false, className }: TabsProps) {
+export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected = false, className, compact = false }: TabsProps) {
   const ownPrefix = useId();
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const current = tabs.findIndex((t) => t.id === value);
@@ -59,7 +60,8 @@ export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected
           data-autofocus={autoFocusSelected && tab.id === value ? "" : undefined}
           tabIndex={index === tabStop ? 0 : -1}
           className={cx(
-            "h-7 truncate rounded-md px-3 text-xs font-medium text-ed-muted select-none hover:bg-ed-hover hover:text-ed-text",
+            "h-7 truncate rounded-md text-xs font-medium text-ed-muted select-none hover:bg-ed-hover hover:text-ed-text",
+            compact ? "px-2" : "px-3",
             "aria-selected:bg-ed-accent-weak aria-selected:text-ed-accent aria-selected:hover:bg-ed-accent-weak aria-selected:hover:text-ed-accent",
             FOCUS_RING,
             FADE,

@@ -67,6 +67,8 @@ export type EditorState = {
   // The text clip being typed in place on the preview. Its clip's removal, a lock or hide of its track, or the loss of
   // edit access clears it.
   textEditId: string | null;
+  // The text opened for typing starts with all of it selected (new text from the Text tool), else with the caret at the end.
+  textEditSelectAll: boolean;
   tool: Tool; // the rail's current tool, this person's own
   // The guide picked on the preview, this person's own. Picking a clip or a track clears it; so does its removal.
   guideId: string | null;
@@ -113,7 +115,7 @@ export type EditorState = {
   selectGuide(guideId: string | null): void; // clears the clip and track selection; a guide not there selects nothing
   setShowGuides(on: boolean): void; // hiding them clears the selected guide
   setBoardScale(k: number): void;
-  setTextEdit(clipId: string | null): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
+  setTextEdit(clipId: string | null, opts?: { selectAll?: boolean }): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
   setExporting(on: boolean): void;
   setExportHeld(on: boolean): void;
 };
@@ -332,6 +334,7 @@ export function createEditorStore(
       viewAs: null,
       cropArmed: null,
       textEditId: null,
+      textEditSelectAll: false,
       exporting: false,
       exportHeld: false,
 
@@ -658,10 +661,11 @@ export function createEditorStore(
         if (on !== get().showGuides) set({ showGuides: on, ...(!on && { guideId: null }) });
       },
 
-      setTextEdit(clipId) {
+      setTextEdit(clipId, opts) {
         const state = get();
         if (clipId !== null && (!state.canEdit || !typeableText(state.doc, clipId))) return false;
-        if (clipId !== state.textEditId) set({ textEditId: clipId });
+        const selectAll = clipId !== null && opts?.selectAll === true;
+        if (clipId !== state.textEditId || selectAll !== state.textEditSelectAll) set({ textEditId: clipId, textEditSelectAll: selectAll });
         return true;
       },
 
