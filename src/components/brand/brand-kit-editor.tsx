@@ -5,7 +5,6 @@ import { useId, useState, type ReactNode } from "react";
 import { usePoster } from "@/components/editor/media/use-poster";
 import { Button } from "@/components/ui/button";
 import { DISABLED, FADE, FOCUS_RING, cx } from "@/components/ui/cx";
-import { IconButton } from "@/components/ui/icon-button";
 import { Select } from "@/components/ui/select";
 import { TextInput } from "@/components/ui/text-input";
 import { FONT_LIST } from "@/lib/brand/fonts";
@@ -43,6 +42,28 @@ function Part({ title, children }: { title: string; children: ReactNode }) {
       </h3>
       {children}
     </section>
+  );
+}
+
+// The X on a swatch's or logo's corner. A 20 px badge mostly outside the tile, and only clickable while it shows (the
+// tile hovered, or the badge focused by keyboard): a hidden one over the tile would take the click meant for the tile.
+function RemoveBadge({ label, onClick }: { label: string; onClick(): void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className={cx(
+        "absolute -top-2.5 -right-2.5 flex size-5 items-center justify-center rounded-full border border-ed-line bg-ed-panel text-ed-muted",
+        "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
+        "hover:text-ed-text [&>svg]:size-3",
+        FOCUS_RING,
+        FADE,
+      )}
+      onClick={onClick}
+    >
+      <X aria-hidden />
+    </button>
   );
 }
 
@@ -130,15 +151,7 @@ function Colors({ kit, canEdit, save, onUseColor }: BrandKitEditorProps) {
             ) : (
               <span title={hex} className="block size-8 rounded-md border border-ed-line" style={{ background: hex }} />
             )}
-            {canEdit && (
-              <IconButton
-                label={`Remove ${hex}`}
-                className="absolute -top-2 -right-2 size-5 rounded-full bg-ed-panel opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                onClick={() => void save({ colors: kit.colors.filter((c) => c !== hex) })}
-              >
-                <X />
-              </IconButton>
-            )}
+            {canEdit && <RemoveBadge label={`Remove ${hex}`} onClick={() => void save({ colors: kit.colors.filter((c) => c !== hex) })} />}
           </li>
         ))}
       </ul>
@@ -211,13 +224,10 @@ function Logos({ kit, canEdit, save, onUseLogo, onAddLogo, layout }: BrandKitEdi
               </div>
             )}
             {canEdit && (
-              <IconButton
+              <RemoveBadge
                 label={`Remove ${asset.name} from the kit`}
-                className="absolute -top-2 -right-2 size-5 rounded-full bg-ed-panel opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                 onClick={() => void save({ logoAssetIds: kit.logos.filter((l) => l.id !== asset.id).map((l) => l.id) })}
-              >
-                <X />
-              </IconButton>
+              />
             )}
           </li>
         ))}

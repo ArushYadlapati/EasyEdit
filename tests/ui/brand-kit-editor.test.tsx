@@ -94,3 +94,14 @@ it("the color controls go away at 24 colors", () => {
   setup({ kit: { ...KIT, colors: Array.from({ length: 24 }, (_, i) => `#${(i + 1).toString(16).padStart(6, "0")}`) } });
   expect(screen.queryByLabelText("New color")).toBeNull();
 });
+
+it("a hidden remove badge takes no clicks, so clicking a swatch or logo never removes it", () => {
+  setup({ onUseColor: vi.fn(), onUseLogo: vi.fn() });
+  for (const name of ["Remove #ff5a1f", "Remove Solvers logo from the kit"]) {
+    const badge = screen.getByRole("button", { name });
+    const classes = badge.className.split(/\s+/);
+    expect(classes, name).toContain("pointer-events-none"); // until the tile is hovered or the badge is focused
+    expect(classes, name).toContain("group-hover:pointer-events-auto");
+    expect(classes, name).not.toContain("size-7"); // a 20 px badge on the corner, not a button over the swatch
+  }
+});
