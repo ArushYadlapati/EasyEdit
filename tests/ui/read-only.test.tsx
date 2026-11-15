@@ -68,9 +68,12 @@ it("an editor sees those controls working", () => {
 
 // Every edit control on the screen, by tag and name, in page order, for what is selected. The list is
 // exact, so a control that loses data-edit-control (or a new one without it) is noticed.
-const TOP = ["button Undo", "button Redo", "button Add title", "button Add subtitle", "button Add body text"];
+const TOP = [
+  "button Undo", "button Redo", "button Add title", "button Add subtitle", "button Add body text",
+  "button Razor", "button Text", "button Guide", "button Crop", "button Split", "button Delete", "button Ripple delete",
+];
 const TIMELINE = [
-  "button Add track", "button Split", "button Delete", "button Ripple delete",
+  "button Add track",
   "button Lock track", "button Hide track", "button Track options",
   "button Lock track", "button Hide track", "button Track options",
   "button Lock track", "button Hide track", "button Mute track", "button Track options",

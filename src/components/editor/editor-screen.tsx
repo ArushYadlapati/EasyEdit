@@ -14,6 +14,7 @@ import { ExportDialog } from "./export/export-dialog";
 import { useExport, type Exporter } from "./export/use-export";
 import { LeaveLink } from "./leave-link";
 import { LeftPanel } from "./left-panel";
+import { ToolRail } from "./tool-rail";
 import { NoticeBar } from "./notice-bar";
 import { PanelGrid } from "./panel-grid";
 import { Preview } from "./preview";
@@ -90,7 +91,15 @@ export function EditorScreen({ spaceSlug, initialLayout = DEFAULT_LAYOUT, saveLa
               onExport={openExport}
             />
           }
-          left={<LeftPanel />}
+          left={
+            // The rail's width comes out of the left column, so the preview is as wide as without it.
+            <div className="flex h-full min-h-0">
+              <div className="min-w-0 flex-1">
+                <LeftPanel />
+              </div>
+              <ToolRail />
+            </div>
+          }
           center={
             deleted ? (
               <>

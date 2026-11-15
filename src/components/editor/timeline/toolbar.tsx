@@ -1,10 +1,10 @@
 "use client";
 
-import { FoldHorizontal, Plus, Scissors, Trash2, UnfoldHorizontal, ZoomIn, ZoomOut } from "lucide-react";
+import { Plus, UnfoldHorizontal, ZoomIn, ZoomOut } from "lucide-react";
 import { Magnet } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
-import { addTrack, deleteSelection, splitAtPlayhead } from "@/lib/editor/actions";
+import { addTrack } from "@/lib/editor/actions";
 import { ZOOM_STEP, zoomLimits } from "@/lib/editor/geometry";
 import { LIMITS } from "@/lib/limits";
 import type { TrackKind } from "@/lib/timeline";
@@ -28,7 +28,6 @@ const TRACK_ITEMS_WITH_CAPTIONS: MenuItem[] = [...TRACK_ITEMS, CAPTIONS_ITEM];
 export function Toolbar({ duration, fps }: { duration: number; fps: number }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
-  const hasSelection = useEditor((s) => s.selection.clipIds.length > 0);
   const hasCaptions = useEditor((s) => s.doc.tracks.some((t) => t.kind === "caption"));
   const tracksFull = useEditor((s) => s.doc.tracks.length >= LIMITS.tracksPerProject);
   const zoom = useEditor((s) => s.zoom);
@@ -49,22 +48,6 @@ export function Toolbar({ duration, fps }: { duration: number; fps: number }) {
         items={hasCaptions ? TRACK_ITEMS : TRACK_ITEMS_WITH_CAPTIONS}
         onSelect={(kind) => addTrack(store, kind as TrackKind)}
       />
-      <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-ed-line" />
-      <IconButton data-edit-control disabled={!canEdit} label="Split" shortcut={key("split")} onClick={() => splitAtPlayhead(store)}>
-        <Scissors />
-      </IconButton>
-      <IconButton data-edit-control disabled={!canEdit || !hasSelection} label="Delete" shortcut={key("delete")} onClick={() => deleteSelection(store, false)}>
-        <Trash2 />
-      </IconButton>
-      <IconButton
-        data-edit-control
-        disabled={!canEdit || !hasSelection}
-        label="Ripple delete"
-        shortcut={key("ripple-delete")}
-        onClick={() => deleteSelection(store, true)}
-      >
-        <FoldHorizontal />
-      </IconButton>
       <div className="ml-auto flex items-center gap-1">
         <IconButton label="Snap" shortcut={key("toggle-snapping")} pressed={snapping} onClick={() => setSnapping(!snapping)}>
           <Magnet />
