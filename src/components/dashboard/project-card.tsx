@@ -25,19 +25,22 @@ export type ProjectCardProps = {
   folderName: string | null; // shown under the card, in All projects only
   now: Date;
   canEdit: boolean;
+  pinned: boolean; // in the space's Pinned list
   folders: readonly DashboardFolder[];
-  actions: Pick<DashboardActions, "rename" | "duplicate" | "remove" | "move">;
+  actions: Pick<DashboardActions, "rename" | "duplicate" | "remove" | "move" | "pin" | "unpin">;
   spaceSlug: string;
   onGone(message: string): void; // the project was deleted elsewhere, so its card is leaving the page: the dashboard says why
 };
 
 const OPEN: MenuItem = { id: "open", label: "Open" };
 const VIEWER_ITEMS: MenuItem[] = [OPEN];
-const EDITOR_ITEMS: MenuItem[] = [
+// Pin or Unpin, after Move to folder…, as the project is in the space's Pinned list or not.
+const editorItems = (pinned: boolean): MenuItem[] => [
   OPEN,
   { id: "rename", label: "Rename" },
   { id: "duplicate", label: "Duplicate" },
   { id: "move", label: "Move to folder…" },
+  pinned ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin" },
   { id: "delete", label: "Delete", danger: true, separatorBefore: true },
 ];
 
@@ -52,9 +55,9 @@ const withId = (id: string, more: Record<string, string> = {}) => {
 
 // A project on the dashboard: its picture in a frame of its shape (a blank frame until it has one) and its name, which
 // open it in the editor, then its format, who changed it last and when, and its folder. Its ⋯ button and a right-click
-// on it open the same menu: Open for everyone, and for editors Rename (in place), Duplicate, Move to folder… and Delete
-// (after asking).
-export function ProjectCard({ project, folderName, now, canEdit, folders, actions, spaceSlug, onGone }: ProjectCardProps): ReactNode {
+// on it open the same menu: Open for everyone, and for editors Rename (in place), Duplicate, Move to folder…, Pin or
+// Unpin (the space's Pinned list in the sidebar) and Delete (after asking).
+export function ProjectCard({ project, folderName, now, canEdit, pinned, folders, actions, spaceSlug, onGone }: ProjectCardProps): ReactNode {
   const router = useRouter();
   const menu = useContextMenu();
   const box = useRef<HTMLLIElement>(null);
@@ -68,12 +71,16 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
   const rename = useAction(actions.rename);
   const duplicate = useAction(actions.duplicate);
   const remove = useAction(actions.remove);
-  const busy = rename.pending || duplicate.pending || remove.pending; // the card's edits wait while one of them runs
+  const pin = useAction(actions.pin);
+  const unpin = useAction(actions.unpin);
+  // the card's edits wait while one of them runs
+  const busy = rename.pending || duplicate.pending || remove.pending || pin.pending || unpin.pending;
+  const editor = editorItems(pinned);
   const items = !canEdit
     ? VIEWER_ITEMS
     : busy
-      ? EDITOR_ITEMS.map((item) => (item.id === "open" ? item : { ...item, disabled: true }))
-      : EDITOR_ITEMS;
+      ? editor.map((item) => (item.id === "open" ? item : { ...item, disabled: true }))
+      : editor;
 
   // The ⋯ button is found in the card rather than by a ref: a ref given to Menu would replace its own.
   const optionsButton = () => box.current?.querySelector<HTMLButtonElement>("[data-card-options]") ?? null;
@@ -96,6 +103,8 @@ export function ProjectCard({ project, folderName, now, canEdit, folders, action
     else if (id === "rename") setRenaming(true);
     else if (id === "duplicate") duplicate.submit(withId(project.id), onCard);
     else if (id === "move") setMoving(true);
+    else if (id === "pin") pin.submit(withId(project.id), onCard);
+    else if (id === "unpin") unpin.submit(withId(project.id), onCard);
     else if (id === "delete") {
       setDeleteError(null);
       setDeleting(true);

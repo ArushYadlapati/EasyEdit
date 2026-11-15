@@ -38,6 +38,7 @@ export type DashboardProps = {
   projects: DashboardProject[];
   folders: DashboardFolder[];
   recentIds: string[];
+  pinnedIds?: string[]; // the space's Pinned list, oldest pin first; none when left out
   view: DashboardView;
   canEdit: boolean;
   now: Date;
@@ -51,14 +52,17 @@ const FOLDER_ITEMS: MenuItem[] = [
   { id: "delete", label: "Delete folder", danger: true },
 ];
 
+const NO_PINS: string[] = [];
+
 const HEADING = "mb-3 text-sm font-semibold text-ed-text";
 const EMPTY = "text-[13px] text-ed-muted";
 
-function CardGrid({ projects, folderName, now, canEdit, folders, actions, spaceSlug, onGone }: {
+function CardGrid({ projects, folderName, now, canEdit, pinned, folders, actions, spaceSlug, onGone }: {
   projects: readonly DashboardProject[];
   folderName(project: DashboardProject): string | null;
   now: Date;
   canEdit: boolean;
+  pinned: ReadonlySet<string>;
   folders: readonly DashboardFolder[];
   actions: DashboardActions;
   spaceSlug: string;
@@ -74,6 +78,7 @@ function CardGrid({ projects, folderName, now, canEdit, folders, actions, spaceS
           folderName={folderName(project)}
           now={now}
           canEdit={canEdit}
+          pinned={pinned.has(project.id)}
           folders={folders}
           actions={actions}
           spaceSlug={spaceSlug}
@@ -88,7 +93,7 @@ function CardGrid({ projects, folderName, now, canEdit, folders, actions, spaceS
 // its menu), the search, the sort and New project. Recent lists the projects you opened last, in that order (so it has
 // no sort); All projects lists a tile for each folder, then every project; a folder view lists that folder's projects.
 // A card dropped on a folder, in the sidebar or on its tile, moves there, and a refused move says why in the bar.
-export function Dashboard({ projects, folders, recentIds, view, canEdit, now, actions, spaceSlug, notices }: DashboardProps): ReactNode {
+export function Dashboard({ projects, folders, recentIds, pinnedIds = NO_PINS, view, canEdit, now, actions, spaceSlug, notices }: DashboardProps): ReactNode {
   useRefreshOnReturn();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -113,6 +118,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
   const foldersId = useId();
   const projectsId = useId();
 
+  const pinnedSet = new Set(pinnedIds);
   const folderNames = new Map(folders.map((folder) => [folder.id, folder.name]));
   const viewFolder = folderOf(view);
   const folderName = viewFolder === null ? null : (folderNames.get(viewFolder) ?? null);
@@ -207,6 +213,7 @@ export function Dashboard({ projects, folders, recentIds, view, canEdit, now, ac
         folderName={folderName}
         now={now}
         canEdit={canEdit}
+        pinned={pinnedSet}
         folders={folders}
         actions={actions}
         onGone={setNotice}

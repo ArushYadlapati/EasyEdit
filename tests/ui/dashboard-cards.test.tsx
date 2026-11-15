@@ -25,7 +25,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const EDITOR_ITEMS = ["Open", "Rename", "Duplicate", "Move to folder…", "Delete"];
+const EDITOR_ITEMS = ["Open", "Rename", "Duplicate", "Move to folder…", "Pin", "Delete"];
 
 const region = (name: string) => screen.getByRole("region", { name });
 // The section of project cards: headed Projects under the folder tiles, otherwise named by the title.
@@ -281,6 +281,7 @@ describe("duplicating a card", () => {
       ["Rename", true],
       ["Duplicate", true],
       ["Move to folder…", true],
+      ["Pin", true],
       ["Delete", true],
     ]);
     await click(screen.getByRole("menuitem", { name: "Duplicate" }));
@@ -292,8 +293,47 @@ describe("duplicating a card", () => {
   });
 });
 
+describe("pinning a card", () => {
+  it("Pin sends the project; a pinned card offers Unpin instead", async () => {
+    const { actions, unmount } = renderDashboard();
+    await pick(card("Qual recap"), "Pin");
+    expect(sent(actions.pin)).toEqual({ id: "a" });
+    expect(actions.unpin).not.toHaveBeenCalled();
+    unmount();
+
+    const pinned = renderDashboard({ pinnedIds: ["a"] });
+    fireEvent.click(options(card("Qual recap")));
+    expect(menuItems()).toEqual(["Open", "Rename", "Duplicate", "Move to folder…", "Unpin", "Delete"]);
+    escape();
+    await pick(card("Qual recap"), "Unpin");
+    expect(sent(pinned.actions.unpin)).toEqual({ id: "a" });
+    expect(pinned.actions.pin).not.toHaveBeenCalled();
+  });
+
+  it("a right-click offers the same Pin", async () => {
+    const { actions } = renderDashboard();
+    fireEvent.contextMenu(card("Poster"), { clientX: 5, clientY: 5 });
+    await click(screen.getByRole("menuitem", { name: "Pin" }));
+    expect(sent(actions.pin)).toEqual({ id: "b" });
+  });
+
+  it("a refused pin says why on the card", async () => {
+    const { actions } = renderDashboard();
+    actions.pin.mockResolvedValue({ error: "Your role doesn't allow this." });
+    const li = card("Qual recap");
+    await pick(li, "Pin");
+    expect(within(li).getByRole("alert").textContent).toBe("Your role doesn't allow this.");
+  });
+
+  it("a viewer can't pin or unpin", () => {
+    renderDashboard({ canEdit: false, pinnedIds: ["a"] });
+    fireEvent.click(options(card("Qual recap")));
+    expect(menuItems()).toEqual(["Open"]);
+  });
+});
+
 describe("a project deleted elsewhere", () => {
-  it.each(["Rename", "Duplicate", "Move to folder…", "Delete"])("%s says so in the bar after its card goes", async (option) => {
+  it.each(["Rename", "Duplicate", "Move to folder…", "Pin", "Delete"])("%s says so in the bar after its card goes", async (option) => {
     const { actions, rerender } = renderDashboard();
     let answer: (state: FormState) => void = () => {};
     const wait = () => new Promise<FormState>((resolve) => (answer = resolve));
@@ -314,6 +354,9 @@ describe("a project deleted elsewhere", () => {
       await pick(li, "Move to folder…");
       fireEvent.click(radio("Sponsors"));
       await click(button(dialog("Move to folder"), "Move"));
+    } else if (option === "Pin") {
+      actions.pin.mockImplementation(wait);
+      await pick(li, "Pin");
     } else {
       actions.remove.mockImplementation(wait);
       await pick(li, "Delete");
@@ -535,7 +578,7 @@ describe("the card's picture", () => {
 
   it("a card hydrated from the server's markup asks for its picture again, so its load or error still counts", () => {
     const element = (
-      <ProjectCard project={PICTURED[0]} folderName={null} now={NOW} canEdit folders={FOLDERS} actions={fakeActions()} spaceSlug="seattle-solvers" onGone={() => {}} />
+      <ProjectCard project={PICTURED[0]} folderName={null} now={NOW} canEdit pinned={false} folders={FOLDERS} actions={fakeActions()} spaceSlug="seattle-solvers" onGone={() => {}} />
     );
     const list = document.createElement("ul");
     document.body.appendChild(list);

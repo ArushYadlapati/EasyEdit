@@ -9,6 +9,7 @@ import type { DashboardActions } from "@/lib/projects/dashboard-actions";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
 import { listFolders } from "@/lib/projects/folders";
 import { listRecentProjectIds } from "@/lib/projects/opens";
+import { listPinnedIds } from "@/lib/projects/pins";
 import { listProjects } from "@/lib/projects/service";
 import { getUserNames } from "@/lib/projects/user-names";
 import { actorIn } from "@/lib/spaces/access";
@@ -60,10 +61,11 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   if (!actor) notFound();
   await rememberSpace(db, user.id, space.id);
   const canEdit = meetsRole(actor.role, "editor");
-  const [projects, folders, recentIds] = await Promise.all([
+  const [projects, folders, recentIds, pinnedIds] = await Promise.all([
     listProjects(db, actor),
     listFolders(db, actor),
     listRecentProjectIds(db, actor, LIMITS.dashboardRecent),
+    listPinnedIds(db, actor),
   ]);
   const names = await getUserNames(db, projects.map((project) => actorUserId(project.updatedBy)));
   const { folder, view: named, storage: storageNote } = await searchParams;
@@ -95,6 +97,7 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
       projects={projects.map((project) => ({ ...project, changedBy: displayActor(project.updatedBy, names) }))}
       folders={folders}
       recentIds={recentIds}
+      pinnedIds={pinnedIds}
       view={view}
       canEdit={canEdit}
       now={new Date()}
