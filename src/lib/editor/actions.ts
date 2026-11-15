@@ -22,16 +22,17 @@ import { mediaClipFor } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { findClip, type EditorStore } from "./store";
+import type { BrandFonts } from "@/lib/brand/types";
 import { presetClip, type TextPreset } from "./text-presets";
 
 // Puts a text preset at the playhead, on the selected text track when it has room, and selects it. The length in
-// seconds is the caller's (Settings), else the default.
-export function addText(store: EditorStore, preset: TextPreset, seconds?: number): void {
+// seconds is the caller's (Settings), else the default; the fonts are the space's brand kit's, else the default kit's.
+export function addText(store: EditorStore, preset: TextPreset, seconds?: number, fonts?: BrandFonts): void {
   const state = store.getState();
   if (!state.canEdit) return;
   const selected = state.doc.tracks.find((t) => t.id === state.selection.trackId);
   const trackId = selected?.kind === "text" ? selected.id : null;
-  const placement = placeClips(state.doc, [{ clip: presetClip(preset, state.playhead, state.doc.fps, seconds), trackId }], () => nanoid(10));
+  const placement = placeClips(state.doc, [{ clip: presetClip(preset, state.playhead, state.doc.fps, seconds, fonts), trackId }], () => nanoid(10));
   if (!placement.ok) {
     state.notify("error", MESSAGES.noRoom);
     return;

@@ -173,7 +173,7 @@ describe("placeClips", () => {
 describe("text presets", () => {
   it("offers three presets in the app font", () => {
     expect(TEXT_PRESETS.map((p) => [p.id, p.label, p.text])).toEqual([
-      ["title", "Title", "Your title"], ["subtitle", "Subtitle", "Your subtitle"], ["lower-third", "Lower third", "Name and role"],
+      ["title", "Title", "Your title"], ["subtitle", "Subtitle", "Your subtitle"], ["body", "Body text", "Your text"],
     ]);
     expect(presetClip(TEXT_PRESETS[0], 200, 30)).toEqual({
       id: "preset", type: "text", start: 200, duration: 90, text: "Your title",
@@ -184,7 +184,7 @@ describe("text presets", () => {
     // A length from Settings, in whole frames and never below one.
     expect(presetClip(TEXT_PRESETS[0], 0, 25, 2.5).duration).toBe(63);
     expect(presetClip(TEXT_PRESETS[0], 0, 30, 0.01).duration).toBe(1);
-    expect(presetClip(TEXT_PRESETS[2], 0, 30)).toMatchObject({ transform: { y: 0.62 }, style: { fontSize: 44, fontWeight: 600, align: "left" } });
+    expect(presetClip(TEXT_PRESETS[2], 0, 30)).toMatchObject({ transform: { y: 0.7 }, style: { fontSize: 40, fontWeight: 400, align: "center" } });
   });
 
   it("addText puts the preset at the playhead as one change and selects it", () => {

@@ -50,8 +50,11 @@ describe("the guide", () => {
   it("takes its numbers from the app", () => {
     expect(guide).toContain("Keep text inside the safe area. By default that keeps it clear of the top 14%, the bottom 35% and 6% at each side.");
     expect(guide).toContain('A project can set its own size for a format; get_project then shows a "Safe area" line, and that box is the one to keep text inside.');
-    expect(guide).toContain("- Presets for add_text: title (96 px, weight 700, center, y 0.5); subtitle (56 px, weight 500, center, y 0.6); lower-third (44 px, weight 600, left, y 0.62).");
-    expect(guide).toContain("A text clip lasts 3 seconds unless you say otherwise. The only font today is Geist.");
+    expect(guide).toContain("- Presets for add_text: title (96 px, weight 700, center, y 0.5); subtitle (56 px, weight 500, center, y 0.6); body (40 px, weight 400, center, y 0.7); lower-third (44 px, weight 600, left, y 0.62).");
+    expect(guide).toContain("Each preset starts in the space's brand kit font for its kind of text (lower-third uses the body font).");
+    expect(guide).toContain("A text clip lasts 3 seconds unless you say otherwise.");
+    expect(guide).not.toContain("The only font today is");
+    expect(guide).toMatch(/Fonts you can use: .*Inter.*Orbitron/);
     expect(guide).toContain("up to 2000 characters");
   });
 

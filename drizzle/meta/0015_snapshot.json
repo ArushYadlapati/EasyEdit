@@ -1,5 +1,5 @@
 {
-  "id": "4d680732-e4d6-48dc-852f-6ee8740ce11b",
+  "id": "e0c8fc8c-b75e-4bfa-81d1-500a77a0e61e",
   "prevId": "b9e36578-a21a-4973-9487-8b4c6de73ad3",
   "version": "7",
   "dialect": "postgresql",
@@ -514,19 +514,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "brand_kit_updated_by_user_id_fk": {
-          "name": "brand_kit_updated_by_user_id_fk",
-          "tableFrom": "brand_kit",
-          "tableTo": "user",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

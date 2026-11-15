@@ -11,7 +11,7 @@ import { makeStore } from "../editor/fixtures";
 import { act, cleanup, fireEvent, render, screen } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 
-const NAMES = ["Add title", "Add subtitle", "Add lower third"];
+const NAMES = ["Add title", "Add subtitle", "Add body text"];
 
 function setup(canEdit = true) {
   const store = makeStore({ canEdit });

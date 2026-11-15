@@ -137,7 +137,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "Add text",
       description:
-        "Add one or more text clips from a preset (title, subtitle or lower-third) at a time given in seconds. It finds a free text track or makes one. Defaults: preset title, start 0, 3 seconds. Use this for plain text; use edit_timeline to restyle or move it afterwards. Needs expected_version, like edit_timeline.",
+        "Add one or more text clips from a preset (title, subtitle, body or lower-third), in the space's brand kit fonts, at a time given in seconds. It finds a free text track or makes one. Defaults: preset title, start 0, 3 seconds. Use this for plain text; use edit_timeline to restyle or move it afterwards. Needs expected_version, like edit_timeline.",
       inputSchema: z.object({
         project_id: z.string().min(1),
         expected_version: z.number().int().min(0),
@@ -145,7 +145,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           .array(
             z.object({
               text: z.string().min(1).max(LIMITS.textClipChars),
-              preset: z.enum(["title", "subtitle", "lower-third"]).optional(),
+              preset: z.enum(["title", "subtitle", "body", "lower-third"]).optional(),
               start_seconds: z.number().min(0).optional(),
               duration_seconds: z.number().positive().optional(),
               track_id: z.string().min(1).optional(),

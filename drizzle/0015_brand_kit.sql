@@ -9,5 +9,4 @@ CREATE TABLE "brand_kit" (
 	"updated_by" text
 );
 --> statement-breakpoint
-ALTER TABLE "brand_kit" ADD CONSTRAINT "brand_kit_space_id_organization_id_fk" FOREIGN KEY ("space_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "brand_kit" ADD CONSTRAINT "brand_kit_updated_by_user_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "brand_kit" ADD CONSTRAINT "brand_kit_space_id_organization_id_fk" FOREIGN KEY ("space_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;

@@ -243,7 +243,7 @@ export const brandKit = pgTable("brand_kit", {
   colors: jsonb("colors").$type<string[]>().notNull().default([]),
   logoAssetIds: jsonb("logo_asset_ids").$type<string[]>().notNull().default([]),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+  updatedBy: text("updated_by"), // an actor id: a person's, or an agent's acting for them
 });
 
 // The space each person opened last, so /dashboard takes them back to it.

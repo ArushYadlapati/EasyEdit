@@ -1,7 +1,9 @@
 import { nanoid } from "nanoid";
 import { meetsRole } from "@/lib/access-rules";
 import { placeClips } from "@/lib/editor/placement";
-import { DEFAULT_TEXT_SECONDS, TEXT_PRESETS, presetClip } from "@/lib/editor/text-presets";
+import { getBrandKit } from "@/lib/brand/service";
+import type { BrandFonts } from "@/lib/brand/types";
+import { DEFAULT_TEXT_SECONDS, TOOL_PRESETS, presetClip, type TextPresetId } from "@/lib/editor/text-presets";
 import { LIMITS } from "@/lib/limits";
 import { getProject } from "@/lib/projects/service";
 import { isStorableText } from "@/lib/text";
@@ -13,13 +15,13 @@ import { fail, ok, type ToolContext, type ToolResult } from "../types";
 
 export type TextItem = {
   text: string;
-  preset?: "title" | "subtitle" | "lower-third";
+  preset?: TextPresetId;
   start_seconds?: number;
   duration_seconds?: number;
   track_id?: string;
 };
 
-// Text clips from the editor's presets, placed where the editor would put them: the wished track if it is free,
+// Text clips from the editor's presets in the space's brand kit fonts, placed where the editor would put them: the wished track if it is free,
 // else a free text track, else a new one. One call is one change.
 export async function addTextTool(
   base: ToolContext,
@@ -43,9 +45,10 @@ export async function addTextTool(
   if (!project) return fail(notFoundText(input.project_id));
   if (project.version !== input.expected_version) return conflictResult(ctx, input.project_id, input.expected_version);
 
+  const { fonts } = await getBrandKit(ctx.db, ctx.actor);
   const placement = placeClips(
     project.doc,
-    input.items.map((item) => ({ clip: textClip(project.doc, item), trackId: item.track_id ?? null })),
+    input.items.map((item) => ({ clip: textClip(project.doc, item, fonts), trackId: item.track_id ?? null })),
     () => nanoid(10),
   );
   if (!placement.ok) return fail(NO_ROOM_FOR_TEXT);
@@ -53,9 +56,9 @@ export async function addTextTool(
   return answer(ctx, input.items.length, await runEdit(ctx, { ...edit, ops: placement.ops }));
 }
 
-function textClip(doc: TimelineDoc, item: TextItem) {
-  const preset = TEXT_PRESETS.find((p) => p.id === (item.preset ?? "title")) ?? TEXT_PRESETS[0];
-  const clip = presetClip(preset, Math.round((item.start_seconds ?? 0) * doc.fps), doc.fps);
+function textClip(doc: TimelineDoc, item: TextItem, fonts: BrandFonts) {
+  const preset = TOOL_PRESETS.find((p) => p.id === (item.preset ?? "title")) ?? TOOL_PRESETS[0];
+  const clip = presetClip(preset, Math.round((item.start_seconds ?? 0) * doc.fps), doc.fps, DEFAULT_TEXT_SECONDS, fonts);
   return { ...clip, text: item.text, duration: Math.max(1, Math.round((item.duration_seconds ?? DEFAULT_TEXT_SECONDS) * doc.fps)) };
 }
 
