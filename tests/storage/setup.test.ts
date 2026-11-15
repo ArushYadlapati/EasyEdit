@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { describe, expect, it, vi } from "vitest";
 import type { DB } from "@/db";
-import { assets, driveConnection, spaceStorage } from "@/db/schema";
+import { assets, driveConnection, member, spaceStorage } from "@/db/schema";
 import { readerAccountId } from "@/lib/drive/reader";
 import { ServiceError } from "@/lib/service-error";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
@@ -203,6 +203,66 @@ describe("setting up storage", () => {
     const error = await setUp(w.db, { spaceId: team, connectionId: second.id, byUserId: "u1" }).catch((e: unknown) => e);
     expect(refusal(error)).toEqual({ code: "STORAGE_IN_USE", status: 409 });
     expect(await storageOf(w.db, team)).toMatchObject({ kind: "shared_folder", connectionId: null });
+  });
+
+  // A fetch that runs `change` once, before the first call to Google: something that happens while setup talks to Google.
+  const changingOnce = (w: StorageWorld, change: () => Promise<unknown>) => {
+    let done = false;
+    return (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!done) {
+        done = true;
+        await change();
+      }
+      return w.fake.fetch(input, init);
+    }) as typeof fetch;
+  };
+
+  it("saves nothing for an admin removed from the team while setting up, and answers as a missing space", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    await joinSpace(w.db, { id: "u2" }, "admin", team);
+    const theirs = await w.connect({ userId: "u2" });
+    const removing = changingOnce(w, () => w.db.delete(member).where(and(eq(member.organizationId, team), eq(member.userId, "u2"))));
+    const setUp = makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: removing });
+    const error = await setUp(w.db, { spaceId: team, connectionId: theirs.id, byUserId: "u2" }).catch((e: unknown) => e);
+    expect(refusal(error)).toEqual({ code: "NOT_FOUND", status: 404 });
+    expect(await storageOf(w.db, team)).toBeNull();
+  });
+
+  it("leaves the team's storage as it was for an admin demoted to editor while setting up", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    await joinSpace(w.db, { id: "u2" }, "admin", team);
+    const mine = await w.connect();
+    await setUpFor(w)(w.db, { spaceId: team, connectionId: mine.id, byUserId: "u1" });
+    const before = await storageOf(w.db, team);
+    const theirs = await w.connect({ userId: "u2" });
+    const demoting = changingOnce(w, () => joinSpace(w.db, { id: "u2" }, "editor", team));
+    const setUp = makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: demoting });
+    const error = await setUp(w.db, { spaceId: team, connectionId: theirs.id, byUserId: "u2" }).catch((e: unknown) => e);
+    expect(refusal(error)).toEqual({ code: "NOT_FOUND", status: 404 });
+    expect(await storageOf(w.db, team)).toEqual(before);
+  });
+
+  it("saves nothing for an admin demoted to editor while setting up a team with no storage yet", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    await joinSpace(w.db, { id: "u2" }, "admin", team);
+    const theirs = await w.connect({ userId: "u2" });
+    const demoting = changingOnce(w, () => joinSpace(w.db, { id: "u2" }, "editor", team));
+    const setUp = makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: demoting });
+    const error = await setUp(w.db, { spaceId: team, connectionId: theirs.id, byUserId: "u2" }).catch((e: unknown) => e);
+    expect(refusal(error)).toEqual({ code: "NOT_FOUND", status: 404 });
+    expect(await storageOf(w.db, team)).toBeNull();
+  });
+
+  it("saves storage for a second admin who stays an admin", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    await joinSpace(w.db, { id: "u2" }, "admin", team);
+    const theirs = await w.connect({ userId: "u2", email: "u2drive@gmail.com" });
+    await setUpFor(w)(w.db, { spaceId: team, connectionId: theirs.id, byUserId: "u2" });
+    expect(await storageOf(w.db, team)).toMatchObject({ kind: "google_account", connectionId: theirs.id, createdBy: "u2" });
   });
 
   it("refuses, as a missing space, someone who isn't the space's admin or a connection that isn't theirs", async () => {

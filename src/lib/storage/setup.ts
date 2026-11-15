@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { rowsOf, type DB } from "@/db";
 import { assets, driveConnection, organization, spaceStorage } from "@/db/schema";
 import { mainServiceAccount } from "@/lib/drive";
@@ -83,19 +83,27 @@ export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
       await shareFolderWith({ write, fetch: fetchFn, sleep: deps.sleep }, rootFolderId, readerEmail);
     }
 
-    const values = { kind: "google_account" as const, connectionId, rootFolderId, folderName, readerEmail, createdBy: byUserId };
-    // Both checks again, in the same statement: an upload that began since the first look, or a shared folder, keeps
-    // the old storage.
-    const saved = await db
-      .insert(spaceStorage)
-      .values({ spaceId, ...values })
-      .onConflictDoUpdate({
-        target: spaceStorage.spaceId,
-        set: { ...values, createdAt: sql`now()` },
-        setWhere: and(ne(spaceStorage.kind, "shared_folder"), sql`not ${uploadsIn(spaceId)}`),
-      })
-      .returning({ spaceId: spaceStorage.spaceId });
-    if (saved.length === 0) throw inUse();
+    // One statement re-checks what may have changed during the Google calls: the caller must still be an admin of the
+    // space (an admin removed or demoted meanwhile must not become, or replace, its storage owner), an upload that began
+    // since the first look keeps the old storage, and so does a shared folder. The caller's member row is locked for
+    // share, so a removal or demotion still in progress is waited for and then seen.
+    const saved = await db.execute(sql`
+      with caller as (
+        select 1 from member where organization_id = ${spaceId} and user_id = ${byUserId} and role = 'admin' for share
+      )
+      insert into space_storage (space_id, kind, connection_id, root_folder_id, folder_name, reader_email, created_by, created_at)
+      select ${spaceId}, 'google_account', ${connectionId}, ${rootFolderId}, ${folderName}, ${readerEmail}, ${byUserId}, now()
+      where exists (select 1 from caller)
+      on conflict (space_id) do update set
+        kind = excluded.kind, connection_id = excluded.connection_id, root_folder_id = excluded.root_folder_id,
+        folder_name = excluded.folder_name, reader_email = excluded.reader_email, created_by = excluded.created_by,
+        created_at = now()
+      where space_storage.kind <> 'shared_folder' and not ${uploadsIn(spaceId)} and exists (select 1 from caller)
+      returning space_id
+    `);
+    if (rowsOf(saved).length > 0) return;
+    if ((await roleIn(db, byUserId, spaceId)) !== "admin") throw notFound();
+    throw inUse();
   };
 }
 

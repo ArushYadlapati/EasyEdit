@@ -60,12 +60,15 @@ function checkedRole(role: unknown): Role {
 }
 
 // Shared pieces of every change statement. `admins` locks the team's admin rows in a fixed order, so two statements that
-// could each take away an admin run one after the other, and the second counts the admins the first left. The caller
-// being an admin is read from those locked rows too, so an admin demoted a moment ago can't still act. `team` makes sure
-// the statement only ever touches a team (never a personal space, never Seattle Solvers). `owner` is the person whose
-// Google Drive holds the team's videos, if anyone's does.
-const lockedAdmins = (spaceId: string) =>
-  sql`admins as (select user_id from member where organization_id = ${spaceId} and role = 'admin' order by id for update)`;
+// could each take away an admin run one after the other, and the second counts the admins the first left. `gate` sums
+// those locked rows up: how many admins there are, and whether the caller is one (so an admin demoted a moment ago can't
+// still act). Every write joins `gate`, so the admin rows are always locked before the row being changed: a statement
+// that locked its target first and an admin's change waiting on it could otherwise deadlock. `team` makes sure the
+// statement only ever touches a team (never a personal space, never Seattle Solvers). `owner` is the person whose Google
+// Drive holds the team's videos, if anyone's does.
+const lockedAdmins = (spaceId: string, callerId: string) => sql`
+  admins as (select user_id from member where organization_id = ${spaceId} and role = 'admin' order by id for update),
+  gate as (select count(*)::int as admin_count, coalesce(bool_or(user_id = ${callerId}), false) as caller_admin from admins)`;
 const teamOnly = (spaceId: string) =>
   sql`team as (select id from organization where id = ${spaceId} and kind = 'team' and id <> ${SEED_TEAM_ID})`;
 const storageOwner = (spaceId: string) =>
@@ -99,13 +102,13 @@ export async function addMemberByEmail(db: DB, actor: Actor, input: { email: str
   const role = checkedRole(input.role);
   const now = new Date();
   const result = await db.execute(sql`
-    with ${lockedAdmins(spaceId)}, ${teamOnly(spaceId)}, ${storageOwner(spaceId)},
+    with ${lockedAdmins(spaceId, actor.userId)}, ${teamOnly(spaceId)}, ${storageOwner(spaceId)},
       target as (select id, name, email, image from "user" where lower(trim(email)) = ${email} order by id limit 1),
       added as (
         insert into member (id, organization_id, user_id, role, created_at)
         select ${"m_" + nanoid(12)}, team.id, target.id, ${role}, ${now.toISOString()}
-        from team, target
-        where exists (select 1 from admins where user_id = ${actor.userId})
+        from gate, team, target
+        where gate.caller_admin
           and not exists (select 1 from member where organization_id = ${spaceId} and user_id = target.id)
           and (select count(*) from member where organization_id = ${spaceId}) < ${limits.teamMembers}
         on conflict (organization_id, user_id) do nothing
@@ -113,7 +116,7 @@ export async function addMemberByEmail(db: DB, actor: Actor, input: { email: str
       )
     select target.id, target.name, target.email, target.image,
       exists (select 1 from added) as added,
-      exists (select 1 from admins where user_id = ${actor.userId}) as caller_admin,
+      (select caller_admin from gate) as caller_admin,
       exists (select 1 from member where organization_id = ${spaceId} and user_id = target.id) as already,
       (select count(*)::int from member where organization_id = ${spaceId}) as members,
       exists (select 1 from owner where user_id = target.id) as storage_owner
@@ -153,20 +156,21 @@ export async function setMemberRole(db: DB, actor: Actor, input: { userId: strin
   const spaceId = await changeableTeam(db, actor, { admin: true });
   const role = checkedRole(input.role);
   const result = await db.execute(sql`
-    with ${lockedAdmins(spaceId)}, ${teamOnly(spaceId)}, ${storageOwner(spaceId)},
+    with ${lockedAdmins(spaceId, actor.userId)}, ${teamOnly(spaceId)}, ${storageOwner(spaceId)},
       changed as (
         update member set role = ${role}
-        where organization_id in (select id from team) and user_id = ${input.userId}
-          and exists (select 1 from admins where user_id = ${actor.userId})
-          and (role <> 'admin' or ${role} = 'admin' or (select count(*) from admins) > 1)
+        from gate
+        where member.organization_id in (select id from team) and member.user_id = ${input.userId}
+          and gate.caller_admin
+          and (member.role <> 'admin' or ${role} = 'admin' or gate.admin_count > 1)
           and (${role} = 'admin' or not exists (select 1 from owner where owner.user_id = member.user_id))
-        returning user_id
+        returning member.user_id
       )
     select
       exists (select 1 from changed) as changed,
-      exists (select 1 from admins where user_id = ${actor.userId}) as caller_admin,
+      (select caller_admin from gate) as caller_admin,
       (select role from member where organization_id = ${spaceId} and user_id = ${input.userId}) as target_role,
-      (select count(*)::int from admins) as admins,
+      (select admin_count from gate) as admins,
       exists (select 1 from owner where user_id = ${input.userId}) as is_owner
   `);
   const error = refusal(rowsOf<ChangeRow>(result)[0], role);
@@ -188,27 +192,30 @@ export async function leaveTeam(db: DB, actor: Actor): Promise<void> {
 }
 
 async function deleteMember(db: DB, actor: Actor, spaceId: string, userId: string, opts: { byAdmin: boolean }): Promise<void> {
-  const callerAdmin = opts.byAdmin ? sql`exists (select 1 from admins where user_id = ${actor.userId})` : sql`true`;
+  // Leaving needs no admin; the admin rows are still locked first, through `gate`.
+  const callerAdmin = opts.byAdmin ? sql`gate.caller_admin` : sql`true`;
   const result = await db.execute(sql`
-    with ${lockedAdmins(spaceId)}, ${teamOnly(spaceId)}, ${storageOwner(spaceId)},
+    with ${lockedAdmins(spaceId, actor.userId)}, ${teamOnly(spaceId)}, ${storageOwner(spaceId)},
       gone as (
         delete from member
-        where organization_id in (select id from team) and user_id = ${userId}
+        using gate
+        where member.organization_id in (select id from team) and member.user_id = ${userId}
           and ${callerAdmin}
-          and (role <> 'admin' or (select count(*) from admins) > 1)
+          and (member.role <> 'admin' or gate.admin_count > 1)
           and not exists (select 1 from owner where owner.user_id = member.user_id)
-        returning user_id
+        returning member.user_id
       )
     select
       exists (select 1 from gone) as changed,
-      ${callerAdmin} as caller_admin,
+      (select ${callerAdmin} from gate) as caller_admin,
       (select role from member where organization_id = ${spaceId} and user_id = ${userId}) as target_role,
-      (select count(*)::int from admins) as admins,
+      (select admin_count from gate) as admins,
       exists (select 1 from owner where user_id = ${userId}) as is_owner
   `);
   const row = rowsOf<ChangeRow>(result)[0];
-  // The leaver was in the team a moment ago; if they're gone now, someone removed them first.
-  if (!opts.byAdmin && !row.changed && row.target_role === null) throw spaceNotFound();
   const error = refusal(row, null);
-  if (error) throw error;
+  if (!error) return;
+  // A leaver who was removed while this ran is no longer in the space.
+  if (!opts.byAdmin && error.code === "NOT_FOUND") throw spaceNotFound();
+  throw error;
 }

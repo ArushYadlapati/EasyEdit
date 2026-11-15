@@ -377,6 +377,30 @@ describe("leaving and removing", () => {
     expect((await listMySpaces(db, "u2")).map((s) => s.id)).not.toContain(team);
   });
 
+  it("ends consistently when a member leaves while an admin changes their role, never with a database error", async () => {
+    const { db, team } = await setup();
+    await addAs(db, team, "u1", "u2@gmail.com", "admin");
+    await addAs(db, team, "u1", "u3@gmail.com", "viewer");
+    const results = await Promise.allSettled([
+      leaveTeam(db, await as(db, "u3", team)),
+      setMemberRole(db, await as(db, "u1", team), { userId: "u3", role: "editor" }),
+    ]);
+    expect(results[0].status).toBe("fulfilled");
+    // Either the role changed and then they left, or they left and the change found no one.
+    if (results[1].status === "rejected") expect(results[1].reason).toMatchObject(NOT_IN_TEAM);
+    expect(await roleIn(db, "u3", team)).toBeNull();
+    expect(await adminsOf(db, team)).toEqual(["u1", "u2"]);
+  });
+
+  it("answers Space not found to a member who leaves after being removed", async () => {
+    const { db, team } = await setup();
+    await addAs(db, team, "u1", "u2@gmail.com", "viewer");
+    const results = await Promise.allSettled([removeMember(db, await as(db, "u1", team), "u2"), leaveTeam(db, await as(db, "u2", team))]);
+    expect(results[0].status).toBe("fulfilled");
+    expect(results[1]).toMatchObject({ status: "rejected", reason: SPACE_NOT_FOUND });
+    expect(await roleIn(db, "u2", team)).toBeNull();
+  });
+
   it("answers NOT_FOUND for someone not in the team, on remove and set role", async () => {
     const { db, team } = await setup();
     const admin = await as(db, "u1", team);
