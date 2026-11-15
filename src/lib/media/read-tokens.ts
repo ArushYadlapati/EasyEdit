@@ -4,6 +4,9 @@ import type { MediaApi } from "./api";
 // this module's memory and nowhere else, and is sent in one header and never in an address.
 
 export const TOKEN_MARGIN_MS = 60_000; // a token with less than this left is not used for a new read
+// After the server said the space has no storage, or its Drive needs reconnecting, it is not asked again for this
+// long: every file read would otherwise ask, and get the same answer.
+export const REFUSED_WAIT_MS = 60_000;
 
 export type ReadTokens = { get(): Promise<string | null>; invalidate(): void }; // null: no token could be had
 
@@ -11,11 +14,16 @@ export function createReadTokens(deps: { api: Pick<MediaApi, "readToken">; now?:
   const now = deps.now ?? Date.now;
   let held: { accessToken: string; expiresAt: number } | null = null;
   let asking: Promise<string | null> | null = null; // the request on its way, shared by everyone who asks meanwhile
+  let refusedAt: number | null = null; // when the server last said there is no storage to read
 
   async function ask(): Promise<string | null> {
     try {
       const answer = await deps.api.readToken();
-      if (!answer.ok) return null;
+      if (!answer.ok) {
+        if (answer.kind === "not-set-up" || answer.kind === "broken") refusedAt = now();
+        return null;
+      }
+      refusedAt = null;
       held = { accessToken: answer.accessToken, expiresAt: answer.expiresAt };
       return held.accessToken;
     } catch {
@@ -26,7 +34,8 @@ export function createReadTokens(deps: { api: Pick<MediaApi, "readToken">; now?:
   return {
     async get() {
       if (held && held.expiresAt - now() >= TOKEN_MARGIN_MS) return held.accessToken;
-      // A failure is not remembered: once the request has ended, the next call asks again.
+      if (refusedAt !== null && now() - refusedAt < REFUSED_WAIT_MS) return null;
+      // Any other failure is not remembered: once the request has ended, the next call asks again.
       asking ??= ask().finally(() => (asking = null));
       return asking;
     },

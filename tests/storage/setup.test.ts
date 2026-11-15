@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { DB } from "@/db";
 import { assets, driveConnection, spaceStorage } from "@/db/schema";
 import { readerAccountId } from "@/lib/drive/reader";
@@ -132,6 +132,22 @@ describe("setting up storage", () => {
       expect(w.fake.calls).toEqual([]); // no folder made, no reader
       expect(w.fake.files.size).toBe(1); // only the shared drive's folder the fake starts with
     }
+  });
+
+  it("in a team when the service account key is set but can't be read: TEAM_STORAGE_NOT_CONFIGURED, one line, nothing written", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    const ada = await w.connect();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const unreadable = () => {
+      throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key.");
+    };
+    const error = await makeSetUpStorage({ config: w.cfg, mainSa: unreadable, fetch: w.fake.fetch })(w.db, { spaceId: team, connectionId: ada.id, byUserId: "u1" }).catch((e: unknown) => e);
+    expect(refusal(error)).toEqual({ code: "TEAM_STORAGE_NOT_CONFIGURED", status: 409 });
+    expect(log.mock.calls).toEqual([["Drive settings could not be read"]]);
+    expect(await storageOf(w.db, team)).toBeNull();
+    expect(w.fake.calls).toEqual([]);
+    log.mockRestore();
   });
 
   it("for a space that already holds uploads: answers STORAGE_IN_USE and changes nothing", async () => {

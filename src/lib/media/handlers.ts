@@ -4,10 +4,13 @@ import type { CurrentUser } from "@/lib/access-rules";
 import type { Actor } from "@/lib/actor";
 import { apiRoute } from "@/lib/api-route";
 import type { DriveClient } from "@/lib/drive/client";
-import { DriveError } from "@/lib/drive/token";
+import { SettingsError } from "@/lib/drive/config";
+import { type AccessSource, DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn, assetActor, spaceQuery } from "@/lib/spaces/access";
+import { ConnectionBrokenError } from "@/lib/storage/google-oauth";
+import { forgetAllSources } from "@/lib/storage/token-cache";
 import { MEDIA_MESSAGES } from "./messages";
 import {
   assetGone,
@@ -28,7 +31,9 @@ import type { OpenUploadInput } from "./types";
 export type MediaHandlerDeps = {
   db: () => DB;
   auth: (req: Request) => Promise<CurrentUser | Response>; // authentication only; the role comes from the space
-  drive: (db: DB, spaceId: string) => Promise<DriveClient | null>; // null: the space has no storage ready
+  // The space's storage: null when it has none ready; a connection that is broken throws ConnectionBrokenError.
+  drive: (db: DB, spaceId: string) => Promise<DriveClient | null>;
+  reader: (db: DB, spaceId: string) => Promise<AccessSource | null>; // what the read token is made from, the same way
   origin: () => string;
 };
 
@@ -36,6 +41,7 @@ export type AssetRouteContext = { params: Promise<{ id: string }> };
 
 export const NOT_SET_UP_BODY = { code: "STORAGE_NOT_SET_UP", message: "Uploads are not set up yet." } as const;
 export const STORAGE_DOWN_BODY = { code: "STORAGE_UNAVAILABLE", message: MEDIA_MESSAGES.storageDown } as const;
+export const BROKEN_BODY = { code: "STORAGE_BROKEN", message: MEDIA_MESSAGES.broken } as const;
 // What a collection route answers for a space that is unknown, not named, or not the caller's.
 const SPACE_NOT_FOUND_BODY = { code: "NOT_FOUND", message: "Space not found" } as const;
 
@@ -122,8 +128,10 @@ const inAssetSpace: Resolve<[AssetRouteContext]> = async (deps, user, _req, ctx)
 };
 
 // What every route does around its own work. `apiRoute` refuses a write from another site and answers what the
-// service refuses. Then the member and their role in the space are looked up, before anything else is read. And a
-// failed Drive call is answered 502 with that one line logged.
+// service refuses. Then the member and their role in the space are looked up, before anything else is read. A failed
+// Drive call is answered 502 with that one line logged, and a connection Google no longer honours, 409 STORAGE_BROKEN.
+// Google refusing a token (401) means a kept one is no longer good: the kept sources are dropped, so the next
+// request asks for a new one (and finds out if the connection is gone).
 function mediaRoute<Rest extends unknown[]>(
   deps: MediaHandlerDeps,
   resolve: Resolve<Rest>,
@@ -137,8 +145,10 @@ function mediaRoute<Rest extends unknown[]>(
     try {
       return await handler(actor, req, ...rest);
     } catch (error) {
+      if (error instanceof ConnectionBrokenError) return Response.json(BROKEN_BODY, { status: 409 });
       if (!(error instanceof DriveError)) throw error;
       logDriveError(error);
+      if (error.status === 401) forgetAllSources();
       return Response.json(STORAGE_DOWN_BODY, { status: 502 });
     }
   });
@@ -153,12 +163,15 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
     return drive ? { db, drive, origin: deps.origin(), onDriveError: logDriveError } : null;
   };
 
-  // Whether uploads are set up, as the list tells it: settings that cannot be read count as not set up, with one line
-  // saying only that, so the library still lists.
+  // Whether uploads can be made, as the list tells it. Settings that cannot be read count as not set up, with one line
+  // saying only that, and so does a broken connection, so the library still lists. Anything else (the database
+  // failing) is not a "no": it comes out of the request.
   const isSetUp = async (spaceId: string): Promise<boolean> => {
     try {
       return (await deps.drive(deps.db(), spaceId)) !== null;
-    } catch {
+    } catch (error) {
+      if (error instanceof ConnectionBrokenError) return false;
+      if (!(error instanceof SettingsError)) throw error;
       console.error("Drive settings could not be read");
       return false;
     }
@@ -230,12 +243,14 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
   };
 }
 
-// The token a browser reads media files with: read-only, for any signed-in member, and never kept by a cache.
+// The token a browser reads media files with, for any signed-in member, and never kept by a cache: the space's reader
+// (readerFor), which is a team's read-only reader, a personal space's own connection, or Seattle Solvers' read-only
+// service account token.
 export function makeReadTokenHandler(deps: MediaHandlerDeps): (req: Request) => Promise<Response> {
   return mediaRoute(deps, inQueriedSpace, async (actor) => {
-    const drive = await deps.drive(deps.db(), actor.spaceId);
-    if (!drive) return notSetUp();
-    const { accessToken, expiresAt } = await drive.readToken(LIMITS.mediaReadTokenMinSeconds);
+    const reader = await deps.reader(deps.db(), actor.spaceId);
+    if (!reader) return notSetUp();
+    const { accessToken, expiresAt } = await reader.token(LIMITS.mediaReadTokenMinSeconds);
     return Response.json({ accessToken, expiresAt }, { headers: { "Cache-Control": "no-store" } });
   });
 }

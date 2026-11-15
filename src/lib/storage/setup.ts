@@ -18,7 +18,7 @@ export type SetUpStorage = (db: DB, input: { spaceId: string; connectionId: stri
 
 export type SetUpDeps = {
   config: StorageConfig;
-  mainSa: () => AccessSource | null; // the app's service account for the Cloud scope; null when its key isn't set
+  mainSa: () => AccessSource | null; // the app's service account for the Cloud scope; null when its key isn't set (and throws when it can't be read)
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>; // between tries while a new reader isn't known to Drive yet
 };
@@ -30,6 +30,17 @@ const storageFolderName = (space: { kind: "personal" | "team"; name: string }) =
 const notFound = () => new ServiceError("NOT_FOUND", 404, "Space not found");
 const inUse = () => new ServiceError("STORAGE_IN_USE", 409, "This space already keeps files in Google Drive, so it can't move to another account yet.");
 const teamNotConfigured = () => new ServiceError("TEAM_STORAGE_NOT_CONFIGURED", 409, "Google Drive storage for teams isn't set up on this server yet.");
+
+// The app's service account, or null when its key isn't set or can't be read (one line saying only that, nothing of
+// the key): either way teams can't get storage on this server.
+function mainSaOf(deps: SetUpDeps): AccessSource | null {
+  try {
+    return deps.mainSa();
+  } catch {
+    console.error("Drive settings could not be read");
+    return null;
+  }
+}
 
 // Any upload the space holds, finished or not, that hasn't been removed.
 const uploadsIn = (spaceId: string) => sql`exists (select 1 from ${assets} where ${assets.spaceId} = ${spaceId} and ${assets.removedAt} is null)`;
@@ -53,7 +64,7 @@ export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
     if (current && (await holdsUploads(db, spaceId))) throw inUse();
 
     const team = space.kind === "team";
-    const caller = team ? deps.mainSa() : null;
+    const caller = team ? mainSaOf(deps) : null;
     const projectId = deps.config.projectId;
     if (team && (!caller || !projectId)) throw teamNotConfigured();
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AssetView, OpenUploadInput } from "./types";
 
 // Why a call did not work. `message` is the server's own sentence, and empty when it gave none.
-export type MediaFailure = { ok: false; kind: "network" | "signed-out" | "forbidden" | "not-set-up" | "storage" | "refused"; message: string };
+export type MediaFailure = { ok: false; kind: "network" | "signed-out" | "forbidden" | "not-set-up" | "broken" | "storage" | "refused"; message: string };
 export type MediaResult<T> = ({ ok: true } & T) | MediaFailure;
 
 export type MediaApi = {
@@ -69,6 +69,7 @@ function failureFor(status: number, body: unknown): MediaFailure {
   if (status === 401) return { ok: false, kind: "signed-out", message: sentence };
   if (status === 403) return { ok: false, kind: "forbidden", message: sentence };
   if (status === 409 && code === "STORAGE_NOT_SET_UP") return { ok: false, kind: "not-set-up", message: sentence };
+  if (status === 409 && code === "STORAGE_BROKEN") return { ok: false, kind: "broken", message: sentence };
   if (status === 502) return { ok: false, kind: "storage", message: sentence };
   // The server, or something between it and the page, failed: the same request may work a moment later.
   if (status >= 500) return NETWORK;

@@ -23,6 +23,7 @@ const SENTENCES = {
   noPreview: "The preview couldn't be made. The file can still be used in projects.",
   unreadable: "This file couldn't be read. It may be damaged.",
   readStopped: "Couldn't read this file just now. Retry.",
+  broken: "EasyEdit can't reach this space's Google Drive any more. An admin can reconnect it in storage settings.",
 };
 
 const videoFile = (name = "IMG_4821.MOV", sizeBytes = 20_000_000) => new File([new Uint8Array(sizeBytes)], name, { type: "video/quicktime", lastModified: 1_762_800_000_000 });
@@ -711,6 +712,7 @@ describe("an upload that fails", () => {
     { answer: failure("forbidden", "You don't have access."), message: SENTENCES.lostAccess, canRetry: true, resumed: false },
     { answer: failure("refused", "You have 20 unfinished uploads. Finish or cancel one first."), message: "You have 20 unfinished uploads. Finish or cancel one first.", canRetry: false, resumed: false },
     { answer: failure("not-set-up", "Uploads are not set up yet."), message: "Uploads are not set up yet.", canRetry: false, resumed: false },
+    { answer: failure("broken", SENTENCES.broken), message: SENTENCES.broken, canRetry: false, resumed: false },
     { answer: failure("refused"), message: SENTENCES.stopped, canRetry: true, resumed: true }, // a page from something in between: our server always gives a sentence
   ];
 
@@ -818,6 +820,7 @@ describe("an upload that fails", () => {
     { answer: failure("signed-out", "Sign in to continue."), message: SENTENCES.signedOut, canRetry: true },
     { answer: failure("forbidden", "You don't have access."), message: SENTENCES.lostAccess, canRetry: true },
     { answer: failure("not-set-up", "Uploads are not set up yet."), message: "Uploads are not set up yet.", canRetry: false },
+    { answer: failure("broken", SENTENCES.broken), message: SENTENCES.broken, canRetry: false },
     { answer: failure("refused"), message: SENTENCES.stopped, canRetry: true }, // a page from something in between
   ];
 

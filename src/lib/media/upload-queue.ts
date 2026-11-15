@@ -52,6 +52,9 @@ function failureOf(answer: MediaFailure): Failure {
       return { message: MEDIA_MESSAGES.signedOut, canRetry: true, network: false };
     case "forbidden":
       return { message: MEDIA_MESSAGES.lostAccess, canRetry: true, network: false };
+    case "broken":
+      // The space's Drive needs reconnecting: nothing gets in until an admin does, so the upload stops here.
+      return final(MEDIA_MESSAGES.broken);
     case "refused":
     case "not-set-up":
       // Our server always says why. A refusal with no sentence came from something in between, so it is the network's.

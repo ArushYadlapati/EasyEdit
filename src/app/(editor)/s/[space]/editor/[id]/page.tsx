@@ -41,7 +41,10 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
   const jar = await cookies();
   const layout = parseLayout(jar.get(LAYOUT_COOKIE)?.value);
   const prefs = parsePrefs(jar.get(PREFS_COOKIE)?.value);
+  // Whether the space has storage to upload to, from its rows (no Drive call), and if not, what to tell the person:
+  // "broken" when its Google connection needs reconnecting, "none" when it has none (or this server can't use it).
   const storage = await storageState(db, space.id);
+  const storageProblem = storage.ready ? null : storage.reason === "broken" ? "broken" : "none";
 
   return (
     <>
@@ -58,9 +61,7 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
           canEdit: meetsRole(actor.role, "editor"),
           thumbnailVersion: project.thumbnailVersion,
         }}
-        // Whether the space has storage, ready or not (from its rows, no Drive call). Storage that is set up but can't
-        // be used right now reaches the Media tab through its list.
-        space={{ id: space.id, slug: slugFor(space), storageReady: storage.ready || storage.reason !== "none" }}
+        space={{ id: space.id, slug: slugFor(space), storageReady: storage.ready, storageProblem }}
         layout={layout}
         prefs={prefs}
       />

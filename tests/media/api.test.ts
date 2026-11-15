@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CROSS_ORIGIN_BODY, FORBIDDEN_BODY, INTERNAL_BODY, UNAUTHENTICATED_BODY } from "@/lib/api-errors";
 import { createMediaApi, type MediaApi, type MediaResult } from "@/lib/media/api";
-import { NOT_SET_UP_BODY, STORAGE_DOWN_BODY } from "@/lib/media/handlers";
+import { BROKEN_BODY, NOT_SET_UP_BODY, STORAGE_DOWN_BODY } from "@/lib/media/handlers";
 import type { AssetView } from "@/lib/media/types";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { piece } from "../helpers/fake-drive";
@@ -88,6 +88,12 @@ describe("the browser's media API client", () => {
   it("403 is forbidden", async () => {
     expect(await everyCall(() => json(403, FORBIDDEN_BODY))).toEqual(all({ ok: false, kind: "forbidden", message: "Your role doesn't allow this." }));
     expect(await everyCall(() => json(403, CROSS_ORIGIN_BODY))).toEqual(all({ ok: false, kind: "forbidden", message: "This request came from another site." }));
+  });
+
+  it("409 with STORAGE_BROKEN is broken", async () => {
+    expect(BROKEN_BODY).toEqual({ code: "STORAGE_BROKEN", message: "EasyEdit can't reach this space's Google Drive any more. An admin can reconnect it in storage settings." });
+    expect(await everyCall(() => json(409, BROKEN_BODY))).toEqual(all({ ok: false, kind: "broken", message: BROKEN_BODY.message }));
+    expect(await everyCall(() => json(400, BROKEN_BODY))).toEqual(all({ ok: false, kind: "refused", message: BROKEN_BODY.message }));
   });
 
   it("409 with STORAGE_NOT_SET_UP is not set up", async () => {

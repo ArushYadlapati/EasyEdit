@@ -6,7 +6,7 @@ import { createMediaApi, type MediaApi, type MediaFailure } from "@/lib/media/ap
 import { pickEvictions } from "@/lib/media/cache-plan";
 import { createMediaFiles, createMemoryStore, type FileStore } from "@/lib/media/media-files";
 import { PLACEHOLDER_LABELS, playbackFileFor, posterFileFor } from "@/lib/media/playback";
-import { TOKEN_MARGIN_MS, createReadTokens, driveFileUrl, readDriveFile, type ReadTokens } from "@/lib/media/read-tokens";
+import { REFUSED_WAIT_MS, TOKEN_MARGIN_MS, createReadTokens, driveFileUrl, readDriveFile, type ReadTokens } from "@/lib/media/read-tokens";
 import type { AssetView } from "@/lib/media/types";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { makeFakeDrive } from "../helpers/fake-drive";
@@ -114,6 +114,27 @@ describe("the read token in the browser", () => {
     expect(await h.tokens.get()).toBe("t2");
     expect(await h.tokens.get()).toBe("t2"); // the new one is the one kept
     expect(h.calls()).toBe(2);
+  });
+
+  it("after the server says there is no storage, or it needs reconnecting, waits a minute before asking again", async () => {
+    expect(REFUSED_WAIT_MS).toBe(60_000);
+    for (const kind of ["not-set-up", "broken"] as const) {
+      let at = 1_762_900_000_000;
+      let calls = 0;
+      const api: Pick<MediaApi, "readToken"> = {
+        async readToken() {
+          calls += 1;
+          return calls === 1 ? { ok: false, kind, message: "No." } : { ok: true, accessToken: `t${calls}`, expiresAt: at + 3_600_000 };
+        },
+      };
+      const tokens = createReadTokens({ api, now: () => at });
+      expect(await tokens.get()).toBeNull();
+      at += REFUSED_WAIT_MS - 1;
+      expect(await tokens.get()).toBeNull();
+      expect(calls).toBe(1);
+      at += 1;
+      expect(await tokens.get()).toBe("t2");
+    }
   });
 
   it("two calls that share a failed request both get null, and it is not remembered", async () => {

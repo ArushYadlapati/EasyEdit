@@ -93,14 +93,14 @@ describe("storageState", () => {
 });
 
 describe("storageFor", () => {
-  it("is null for a space without storage or with a broken connection, without asking Google", async () => {
+  it("is null for a space without storage; a broken connection throws its ConnectionBrokenError, without asking Google", async () => {
     const w = await storageWorld();
     expect(await storageFor(w.db, w.personal, depsOf(w))).toBeNull();
     const team = await w.team("Robotics Club");
     const { connection } = await withStorage(w, team);
     await w.db.update(driveConnection).set({ brokenAt: new Date(), brokenReason: "revoked" }).where(eq(driveConnection.id, connection.id));
     const calls = w.fake.calls.length;
-    expect(await storageFor(w.db, team, depsOf(w))).toBeNull();
+    await expect(storageFor(w.db, team, depsOf(w))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "revoked" });
     expect(w.fake.calls.length).toBe(calls);
   });
 
@@ -152,7 +152,7 @@ describe("readerFor", () => {
     expect(await holderOf(w, (await readerFor(w.db, team, depsOf(w)))!)).toEqual({ email: reader, scope: SCOPE_READ });
   });
 
-  it("is null for a space without storage, a broken connection, or a team with no main service account", async () => {
+  it("is null for a space without storage or a team with no main service account, and throws for a broken connection", async () => {
     const w = await storageWorld();
     const other = await w.team("Other Team");
     expect(await readerFor(w.db, other, depsOf(w))).toBeNull();
@@ -160,7 +160,7 @@ describe("readerFor", () => {
     const { connection } = await withStorage(w, team);
     expect(await readerFor(w.db, team, depsOf(w, { mainSa: () => null }))).toBeNull();
     await w.db.update(driveConnection).set({ brokenAt: new Date(), brokenReason: "expired" }).where(eq(driveConnection.id, connection.id));
-    expect(await readerFor(w.db, team, depsOf(w))).toBeNull();
+    await expect(readerFor(w.db, team, depsOf(w))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "expired" });
   });
 
   it("a team reader's source asks only for read-only Drive, and refuses any other scope", async () => {

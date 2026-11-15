@@ -1,14 +1,22 @@
+import { randomBytes } from "node:crypto";
+import { eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { DB } from "@/db";
-import { assets, user } from "@/db/schema";
+import { assets, spaceStorage, user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import type { Actor } from "@/lib/actor";
 import { sharedFolderClient } from "@/lib/drive/client";
+import { type AccessSource, SCOPE_CLOUD, serviceAccountSource } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { makeMediaHandlers, makeReadTokenHandler, type AssetRouteContext, type MediaHandlerDeps } from "@/lib/media/handlers";
 import { completeUpload, openUpload, type MediaDeps } from "@/lib/media/service";
 import type { AssetView, OpenUploadInput } from "@/lib/media/types";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
+import { readerFor, storageFor, type StorageDeps } from "@/lib/spaces/storage";
+import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
+import type { StorageConfig } from "@/lib/storage/config";
+import { type Connection, saveConnection } from "@/lib/storage/connections";
+import { DRIVE_FILE_SCOPE } from "@/lib/storage/google-oauth";
+import { makeSetUpStorage } from "@/lib/storage/setup";
 import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { makeFakeDrive, piece, type FakeDrive } from "../helpers/fake-drive";
@@ -40,7 +48,20 @@ export const AUDIO: OpenUploadInput = {
 
 const APP_ORIGIN = "https://app.test"; // where the app is served in tests
 
-export type MediaContext = { db: DB; fake: FakeDrive; deps: MediaDeps; ada: Actor; grace: Actor; vera: Actor; root: Actor };
+// storage: what storageFor and readerFor read the server's settings with, pointed at the pretend Google: Seattle
+// Solvers' shared folder is deps.drive, a person's connection uses cfg, and a team's reader is spoken for by mainSa.
+export type MediaContext = {
+  db: DB;
+  fake: FakeDrive;
+  deps: MediaDeps;
+  ada: Actor;
+  grace: Actor;
+  vera: Actor;
+  root: Actor;
+  cfg: StorageConfig;
+  mainSa: AccessSource;
+  storage: StorageDeps;
+};
 
 const ada: Actor = testActor({ userId: "user-ada", email: "ada@gmail.com", role: "editor" });
 const grace: Actor = testActor({ userId: "user-grace", email: "grace@gmail.com", role: "editor" });
@@ -55,14 +76,62 @@ export async function mediaContext(): Promise<MediaContext> {
   for (const actor of [ada, grace, vera, root]) await joinSpace(db, { id: actor.userId, email: actor.email }, actor.role);
   const fake = makeFakeDrive();
   const drive = sharedFolderClient(fake.config, { fetch: fake.fetch, now: fake.now });
-  return { db, fake, deps: { db, drive, origin: APP_ORIGIN }, ada, grace, vera, root };
+  const cfg: StorageConfig = { clientId: "client-1", clientSecret: "shh", tokenKey: randomBytes(32), redirectUri: `${APP_ORIGIN}/api/storage/callback`, projectId: fake.projectId };
+  const mainSa = serviceAccountSource({ clientEmail: fake.config.clientEmail, privateKey: fake.config.privateKey, scope: SCOPE_CLOUD, fetch: fake.fetch, now: fake.now });
+  const storage: StorageDeps = { config: () => cfg, mainSa: () => mainSa, sharedFolder: () => drive, fetch: fake.fetch };
+  return { db, fake, deps: { db, drive, origin: APP_ORIGIN }, ada, grace, vera, root, cfg, mainSa, storage };
+}
+
+export type ConnectedStorage = { connection: Connection; refreshToken: string; rootFolderId: string; readerEmail: string | null };
+
+let people = 0;
+
+// `by` connects a Google account (a made-up one unless `email` is given) and sets up the space's storage in it, as
+// the connect callback does: a folder in that Drive, and for a team its reader.
+export async function connectStorage(ctx: MediaContext, spaceId: string, by: Actor, email?: string): Promise<ConnectedStorage> {
+  people += 1;
+  const connected = ctx.fake.connect({ email: email ?? `drive${people}@gmail.com` });
+  const connection = await saveConnection(ctx.db, ctx.cfg, { userId: by.userId, googleSub: `g-sub-${people}`, email: connected.email, refreshToken: connected.refreshToken, scopes: [DRIVE_FILE_SCOPE] });
+  await makeSetUpStorage({ config: ctx.cfg, mainSa: () => ctx.mainSa, fetch: ctx.fake.fetch })(ctx.db, { spaceId, connectionId: connection.id, byUserId: by.userId });
+  const [row] = await ctx.db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, spaceId));
+  return { connection, refreshToken: connected.refreshToken, rootFolderId: row.rootFolderId!, readerEmail: row.readerEmail };
+}
+
+// `owner`'s personal space with storage in a Drive they connected; `owner` as they act there.
+export async function personalWithStorage(ctx: MediaContext, owner: Actor = ctx.ada, email?: string): Promise<ConnectedStorage & { actor: Actor }> {
+  const actor: Actor = { ...owner, role: "admin", spaceId: personalSpaceId(owner.userId) };
+  await joinSpace(ctx.db, { id: owner.userId, email: owner.email }, "admin", actor.spaceId);
+  return { ...(await connectStorage(ctx, actor.spaceId, actor, email)), actor };
+}
+
+// A team run by `admin`, with `members` as editors, and storage in a Drive the admin connected, read through its reader.
+export async function teamWithStorage(ctx: MediaContext, name: string, admin: Actor = ctx.ada, members: Actor[] = [ctx.grace], email?: string): Promise<ConnectedStorage & { spaceId: string; as(actor: Actor): Actor }> {
+  const spaceId = `team_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  await ctx.db.execute(sql`insert into organization (id, name, slug, created_at, kind) values (${spaceId}, ${name}, ${slug}, now(), 'team')`);
+  await joinSpace(ctx.db, { id: admin.userId, email: admin.email }, "admin", spaceId);
+  for (const member of members) await joinSpace(ctx.db, { id: member.userId, email: member.email }, "editor", spaceId);
+  const as = (actor: Actor): Actor => ({ ...actor, spaceId, role: actor.userId === admin.userId ? "admin" : "editor" });
+  return { ...(await connectStorage(ctx, spaceId, as(admin), email)), spaceId, as };
+}
+
+// What the routes hand the handlers, with each space's storage found as the server finds it (storageFor, readerFor),
+// pointed at the pretend Google.
+export function handlerDeps(ctx: MediaContext, actor: Actor): MediaHandlerDeps {
+  const member: CurrentUser = { id: actor.userId, email: actor.email, name: actor.email, image: null, allowlistRole: actor.role };
+  return {
+    db: () => ctx.db,
+    auth: async () => member,
+    drive: (db, spaceId) => storageFor(db, spaceId, ctx.storage),
+    reader: (db, spaceId) => readerFor(db, spaceId, ctx.storage),
+    origin: () => APP_ORIGIN,
+  };
 }
 
 // A fetch for the browser's API client: each request goes to the route handler Next would call for its method
 // and path, with `actor` signed in. A request that has no route throws.
 export function handlersFetch(ctx: MediaContext, actor: Actor): typeof fetch {
-  const member: CurrentUser = { id: actor.userId, email: actor.email, name: actor.email, image: null, allowlistRole: actor.role };
-  const deps: MediaHandlerDeps = { db: () => ctx.db, auth: async () => member, drive: async (_db, spaceId) => (spaceId === SEED_TEAM_ID ? ctx.deps.drive : null), origin: () => APP_ORIGIN };
+  const deps = handlerDeps(ctx, actor);
   const media = makeMediaHandlers(deps);
   const readToken = makeReadTokenHandler(deps);
   const forAll = new Map<string, (req: Request) => Promise<Response>>([

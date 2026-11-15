@@ -14,6 +14,7 @@ import { connectionAccess, listConnections, saveConnection } from "@/lib/storage
 import { ConnectionBrokenError, DRIVE_FILE_SCOPE } from "@/lib/storage/google-oauth";
 import { open, seal } from "@/lib/storage/secret-box";
 import type { SetUpStorage } from "@/lib/storage/setup";
+import { forgetAllSources } from "@/lib/storage/token-cache";
 import { joinSpace, testUser } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { makeFakeDrive } from "../helpers/fake-drive";
@@ -376,8 +377,10 @@ describe("connections", () => {
     const access = await connectionAccess(db, cfg, saved.id, fake.fetch);
     const { accessToken } = await access.token();
     expect(fake.whoHas(accessToken)).toEqual({ email, scope: DRIVE_FILE_SCOPE });
+    expect(await connectionAccess(db, cfg, saved.id, fake.fetch)).toBe(access); // kept for the next request, token and all
 
     fake.revoke(refreshToken);
+    forgetAllSources(); // a server that holds no token for the connection yet
     const again = await connectionAccess(db, cfg, saved.id, fake.fetch);
     const error = await again.token().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConnectionBrokenError);

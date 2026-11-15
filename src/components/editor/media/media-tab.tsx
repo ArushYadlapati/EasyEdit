@@ -92,7 +92,7 @@ type MediaTabProps = {
 // dropped files.
 export function MediaTab({ panel, onAdd }: MediaTabProps) {
   const { library, queue } = useMedia();
-  const { storageReady } = useMediaSpace();
+  const { storageReady, storageProblem } = useMediaSpace();
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const { loaded, setUp, problem, query, kind, uploadEvent } = useLibrary(
@@ -172,8 +172,8 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
     return (
       <div {...panel} className="min-h-0 flex-1">
         <div className="flex flex-col gap-2 p-3">
-          <h3 className="text-sm font-semibold">{MEDIA_MESSAGES.storageNextTitle}</h3>
-          <p className="text-[13px] leading-5 text-ed-muted">{MEDIA_MESSAGES.storageNext}</p>
+          <h3 className="text-sm font-semibold">{storageProblem === "broken" ? MEDIA_MESSAGES.brokenTitle : MEDIA_MESSAGES.storageNextTitle}</h3>
+          <p className="text-[13px] leading-5 text-ed-muted">{storageProblem === "broken" ? MEDIA_MESSAGES.broken : MEDIA_MESSAGES.storageNext}</p>
         </div>
       </div>
     );

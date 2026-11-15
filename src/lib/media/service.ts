@@ -9,6 +9,7 @@ import { DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { getUserNames } from "@/lib/projects/user-names";
 import { ServiceError } from "@/lib/service-error";
+import { ConnectionBrokenError } from "@/lib/storage/google-oauth";
 import { graphemes, isStorableText } from "@/lib/text";
 import { FILE_REFUSALS, MEDIA_MESSAGES, NAMED_PROJECTS } from "./messages";
 import { checkFile, cleanName, driveName, probeFits } from "./rules";
@@ -338,6 +339,10 @@ const usedBy = (assetId: string, spaceId: string) =>
     sql`jsonb_path_exists(${projects.doc}, '$.tracks[*].clips[*] ? (@.assetId == $id)', jsonb_build_object('id', ${assetId}::text))`,
   );
 
+// A connection Google no longer honours counts as Drive's answer here too (the routes say so on the next request).
+const quietFailure = (error: unknown): DriveError | null =>
+  error instanceof DriveError ? error : error instanceof ConnectionBrokenError ? new DriveError("token", 400, "invalid_grant") : null;
+
 // Moves files to the trash, each on its own. What the member asked for is done by then, so a Drive failure here
 // is not shown to them. It is reported instead: that report is the only record that the file is still in Drive.
 // A failure that is not Drive's answer is not hidden: it is thrown once every file has been tried.
@@ -346,7 +351,8 @@ async function trashQuietly(deps: MediaDeps, fileIds: (string | null)[]): Promis
   const failures = tried.flatMap((result) => (result.status === "rejected" ? [result.reason as unknown] : []));
   const others: unknown[] = [];
   for (const failure of failures) {
-    if (failure instanceof DriveError) deps.onDriveError?.(failure);
+    const quiet = quietFailure(failure);
+    if (quiet) deps.onDriveError?.(quiet);
     else others.push(failure);
   }
   if (others.length > 0) throw others[0];
@@ -359,8 +365,9 @@ async function cancelQuietly(deps: MediaDeps, sessionUrl: string | null): Promis
   try {
     await deps.drive.cancelSession(sessionUrl);
   } catch (error) {
-    if (!(error instanceof DriveError)) throw error;
-    deps.onDriveError?.(error);
+    const quiet = quietFailure(error);
+    if (!quiet) throw error;
+    deps.onDriveError?.(quiet);
   }
 }
 

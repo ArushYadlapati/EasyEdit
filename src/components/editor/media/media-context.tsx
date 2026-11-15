@@ -89,31 +89,37 @@ function idleServices(): MediaServices {
 }
 
 const MediaContext = createContext<MediaServices | null>(null);
-// The space the library belongs to, and whether it has storage to upload to.
-type MediaSpace = { spaceId: string | null; storageReady: boolean };
+// Why a space has no storage to upload to: it has none ("none"), or its Google connection needs reconnecting
+// ("broken"). null: nothing is wrong.
+export type StorageProblem = "none" | "broken" | null;
+
+// The space the library belongs to, whether it has storage to upload to, and if not, why.
+type MediaSpace = { spaceId: string | null; storageReady: boolean; storageProblem: StorageProblem };
 // The default agrees with MediaProvider's: with no provider no space is named and storage counts as ready. "Not ready"
 // hides uploading, so it must only ever come from a provider that was told so (the editor page, from storageState).
-const MediaSpaceContext = createContext<MediaSpace>({ spaceId: null, storageReady: true });
+const MediaSpaceContext = createContext<MediaSpace>({ spaceId: null, storageReady: true, storageProblem: null });
 const MediaDropContext = createContext<MediaDrop | null>(null);
 const IDLE = idleServices();
 
 // drop: the editor's file and library drags. Without one, every drag feature does nothing.
-// spaceId, storageReady: the library's space and whether it has storage. Without them (tests of other parts of the
-// editor) no space is named and storage counts as ready.
+// spaceId, storageReady, storageProblem: the library's space, whether it has storage, and if not, why. Without them
+// (tests of other parts of the editor) no space is named and storage counts as ready.
 export function MediaProvider({
   services,
   spaceId = null,
   storageReady = true,
+  storageProblem = storageReady ? null : "none",
   drop = null,
   children,
 }: {
   services: MediaServices;
   spaceId?: string | null;
   storageReady?: boolean;
+  storageProblem?: StorageProblem;
   drop?: MediaDrop | null;
   children: ReactNode;
 }): ReactNode {
-  const space = useMemo(() => ({ spaceId, storageReady }), [spaceId, storageReady]);
+  const space = useMemo(() => ({ spaceId, storageReady, storageProblem }), [spaceId, storageReady, storageProblem]);
   return (
     <MediaContext value={services}>
       <MediaSpaceContext value={space}>

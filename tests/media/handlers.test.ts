@@ -20,9 +20,15 @@ const GONE = { code: "NOT_FOUND", message: "That file is no longer in the librar
 
 const memberOf = (actor: Actor): CurrentUser => ({ id: actor.userId, email: actor.email, name: actor.email, image: null, allowlistRole: actor.role });
 
-// The handlers of every route, as one member calls them.
+// The handlers of every route, as one member calls them. Unless given, the read token comes from the Drive client's
+// own read token, as Seattle Solvers' does.
 function handlersFor(ctx: MediaContext, actor: Actor, over: Partial<MediaHandlerDeps> = {}) {
-  const deps: MediaHandlerDeps = { db: () => ctx.db, auth: async () => memberOf(actor), drive: async () => ctx.deps.drive, origin: () => APP, ...over };
+  const drive = over.drive ?? (async () => ctx.deps.drive);
+  const reader: MediaHandlerDeps["reader"] = async (db, spaceId) => {
+    const client = await drive(db, spaceId);
+    return client && { token: (minSecondsLeft) => client.readToken(minSecondsLeft) };
+  };
+  const deps: MediaHandlerDeps = { db: () => ctx.db, auth: async () => memberOf(actor), drive, reader, origin: () => APP, ...over };
   return { ...makeMediaHandlers(deps), readToken: makeReadTokenHandler(deps) };
 }
 
@@ -527,7 +533,7 @@ describe("the media API", () => {
     const ctx = await mediaContext();
     const refusal = Response.json({ code: "UNAUTHENTICATED", message: "Sign in to continue." }, { status: 401 });
     const untouched = () => { throw new Error("asked before the member was known"); };
-    const api = handlersFor(ctx, ctx.ada, { auth: async () => refusal, db: untouched, drive: untouched, origin: untouched });
+    const api = handlersFor(ctx, ctx.ada, { auth: async () => refusal, db: untouched, drive: untouched, reader: untouched, origin: untouched });
     const path = "/api/media/a1";
     const answers = [
       await api.list(request("GET")),
@@ -660,16 +666,17 @@ describe("the route files", () => {
       for (const [method, handler] of Object.entries(methods)) expect(route[method], `${method} ${file}`).toBe(all[handler]);
     }
 
-    // Every file hands over the same four things, and none of them was called to load it.
+    // Every file hands over the same five things, and none of them was called to load it.
     const { getDb } = await import("@/db");
-    const { storageFor } = await import("@/lib/spaces/storage");
+    const { readerFor, storageFor } = await import("@/lib/spaces/storage");
     const { appBaseUrl } = await import("@/lib/connector/config");
     expect(makeMediaHandlers).toHaveBeenCalledTimes(7);
     expect(makeReadTokenHandler).toHaveBeenCalledTimes(1);
     for (const [deps] of [...makeMediaHandlers.mock.calls, ...makeReadTokenHandler.mock.calls]) {
-      expect(Object.keys(deps).sort()).toEqual(["auth", "db", "drive", "origin"]);
+      expect(Object.keys(deps).sort()).toEqual(["auth", "db", "drive", "origin", "reader"]);
       expect(deps.db).toBe(getDb);
       expect(deps.drive).toBe(storageFor);
+      expect(deps.reader).toBe(readerFor);
       expect(deps.origin).toBe(appBaseUrl);
       const asked = request("GET");
       requireUserApi.mockClear();

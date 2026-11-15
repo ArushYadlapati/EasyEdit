@@ -12,7 +12,7 @@ import { act, fireEvent, render, renderHook, screen } from "../helpers/dom";
 
 const COPY = "Uploading to your personal space isn't ready yet. Seattle Solvers' media works as before.";
 
-function setup(options: { storageReady?: boolean; setUp?: boolean }) {
+function setup(options: { storageReady?: boolean; storageProblem?: "none" | "broken" | null; setUp?: boolean }) {
   const refused = vi.fn(async (): Promise<never> => {
     throw new Error("not called");
   });
@@ -23,7 +23,7 @@ function setup(options: { storageReady?: boolean; setUp?: boolean }) {
   const view = render(
     <EditorProvider store={makeStore({ canEdit: true })}>
       <ContextMenuProvider>
-        <MediaProvider services={services} spaceId="s1" storageReady={options.storageReady}>
+        <MediaProvider services={services} spaceId="s1" storageReady={options.storageReady} storageProblem={options.storageProblem}>
           <LeftPanel />
         </MediaProvider>
       </ContextMenuProvider>
@@ -48,6 +48,16 @@ describe("the Media tab of a space with no storage", () => {
     expect(list).not.toHaveBeenCalled();
   });
 
+  it("says the Drive needs reconnecting when its connection broke, with no upload either", async () => {
+    const { list } = setup({ storageReady: false, storageProblem: "broken" });
+    await openMedia();
+    expect(screen.getByRole("heading", { name: "Google Drive needs reconnecting" })).toBeTruthy();
+    expect(screen.getByText("EasyEdit can't reach this space's Google Drive any more. An admin can reconnect it in storage settings.")).toBeTruthy();
+    expect(screen.queryByText(COPY)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
+    expect(list).not.toHaveBeenCalled();
+  });
+
   it("wins over a Drive that is not set up", async () => {
     setup({ storageReady: false, setUp: false });
     await openMedia();
@@ -67,7 +77,7 @@ describe("the Media tab of a space with no storage", () => {
 describe("the media space context", () => {
   it("defaults to storage ready with no provider, as MediaProvider does without the prop", () => {
     const bare = renderHook(() => useMediaSpace());
-    expect(bare.result.current).toEqual({ spaceId: null, storageReady: true });
+    expect(bare.result.current).toEqual({ spaceId: null, storageReady: true, storageProblem: null });
     const provided = renderHook(() => useMediaSpace(), {
       wrapper: ({ children }) => <MediaProvider services={{} as MediaServices}>{children}</MediaProvider>,
     });

@@ -37,6 +37,9 @@ export const MEDIA_MESSAGES = {
   wrongFileRole: "A preview copy is for a video, and a still picture for a video or an image.",
   badFileSize: "That file is empty or too large.",
   storageDown: "Google Drive didn't answer. Try again.",
+  // A space whose Google connection stopped working: the person removed EasyEdit's access, or Google ended it.
+  brokenTitle: "Google Drive needs reconnecting",
+  broken: "EasyEdit can't reach this space's Google Drive any more. An admin can reconnect it in storage settings.",
   // What an upload's row says when it stopped, or when it is done and has no preview copy.
   uploadStopped: "Upload stopped. Check your connection, then retry.",
   readStopped: "Couldn't read this file just now. Retry.",

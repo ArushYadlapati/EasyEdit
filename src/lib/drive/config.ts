@@ -10,6 +10,11 @@ type Settings = Record<string, string | undefined>;
 
 const NOT_A_KEY = "GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key. Encode the JSON key file with base64 (see docs/setup.md).";
 
+// A setting that is there but can't be read. Its message never holds any part of the value.
+export class SettingsError extends Error {
+  name = "SettingsError" as const;
+}
+
 const filled = (value: unknown): value is string => typeof value === "string" && value !== "";
 
 // The two fields of a base64 JSON key file that the app uses, or null when the value is not one.
@@ -33,7 +38,7 @@ export function serviceAccountKey(env: Settings = process.env): Pick<DriveConfig
   const value = env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (!value) return null;
   const key = readKey(value);
-  if (!key) throw new Error(NOT_A_KEY);
+  if (!key) throw new SettingsError(NOT_A_KEY);
   return key;
 }
 

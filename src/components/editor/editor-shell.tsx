@@ -19,7 +19,7 @@ import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser
 import { EditorProvider } from "./context";
 import { watchDrags } from "./drag-watch";
 import { EditorScreen } from "./editor-screen";
-import { MediaProvider, createMediaServices, gateStorage } from "./media/media-context";
+import { MediaProvider, createMediaServices, gateStorage, type StorageProblem } from "./media/media-context";
 import { PresenceProvider } from "./presence-context";
 import { browserThumbnailDeps } from "./thumbnail-deps";
 
@@ -36,12 +36,17 @@ const localStore = {
 // A refresh or an ensure that fails has nothing to tell the shell: the library store keeps its own problem.
 const quietly = (work: Promise<unknown>) => void work.catch(() => {});
 
+// The space a project is in, as the editor page hands it over.
+export type EditorSpace = { id: string; slug: string; storageReady: boolean; storageProblem?: StorageProblem };
+
 // Owns the store, the API client, the sync, the media services, the project's dashboard picture and this browser's
 // preferences for one open project, and ties them to the page: tab visibility, focus, coming back online, the user's
 // clicks and keys, and leaving with unsent changes or running uploads. The panel sizes and the preferences come from the
 // browser's cookies, which the page read; the keymap is read from local storage once the editor is on screen.
-// space: the space the project is in (and its address slug), and whether it has storage for uploads.
-export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; space: { id: string; slug: string; storageReady: boolean }; layout?: Layout; prefs?: Prefs }) {
+// space: the space the project is in (and its address slug), whether it has storage for uploads, and if not, why
+// (storageProblem: "none", no storage; "broken", its Google connection needs reconnecting; null when it is ready;
+// left out, it follows storageReady as MediaProvider says).
+export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; space: EditorSpace; layout?: Layout; prefs?: Prefs }) {
   const [{ store, api, sync, clipboard, media, drop, settings, savePrefs, presenceStore }] = useState(() => {
     const store = createEditorStore(initial, { view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones } });
     const api = createProjectApi(initial.projectId);
@@ -225,7 +230,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
 
   return (
     <EditorProvider store={store} api={api} clipboard={clipboard} settings={settings}>
-      <MediaProvider services={media} spaceId={space.id} storageReady={space.storageReady} drop={drop}>
+      <MediaProvider services={media} spaceId={space.id} storageReady={space.storageReady} storageProblem={space.storageProblem} drop={drop}>
         <PresenceProvider store={presenceStore}>
           <EditorScreen spaceSlug={space.slug} initialLayout={layout} />
         </PresenceProvider>

@@ -5,7 +5,7 @@ import EditorPage from "@/app/(editor)/s/[space]/editor/[id]/page";
 import SpacePage from "@/app/(dashboard)/s/[space]/page";
 import type { DashboardProps } from "@/components/dashboard/dashboard";
 import type { DB } from "@/db";
-import { spaceVisits } from "@/db/schema";
+import { driveConnection, spaceStorage, spaceVisits } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { createProject } from "@/lib/projects/service";
 import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
@@ -85,7 +85,7 @@ async function editorAt(person: CurrentUser, slug: string, id: string) {
   Shell.mockClear();
   const { unmount } = render(await EditorPage({ params: Promise.resolve({ space: slug, id }) } as never));
   unmount();
-  return Shell.mock.calls[0][0] as { initial: { projectId: string }; space: { id: string; slug: string; storageReady: boolean } };
+  return Shell.mock.calls[0][0] as { initial: { projectId: string }; space: { id: string; slug: string; storageReady: boolean; storageProblem: "none" | "broken" | null } };
 }
 
 describe("the space dashboard", () => {
@@ -123,18 +123,39 @@ describe("the space editor", () => {
     expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ id: personalSpaceId("u1"), slug: "personal" });
   });
 
-  it("says Seattle Solvers has storage even when its Drive is not set up, and a personal space has none", async () => {
-    // A key that is not base64: the Media tab shows the not-set-up message from its list, not "Storage comes next".
+  it("says storage is ready only when it can be used, and what is wrong when it can't", async () => {
+    // A key that is not base64: Seattle Solvers' storage can't be used on this server, which counts as none.
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", '{"type":"service_account"}');
     vi.stubEnv("DRIVE_FOLDER_ID", "folder1");
     try {
-      expect((await editorAt(ada, "seattle-solvers", teamProject)).space.storageReady).toBe(true);
-      expect((await editorAt(ada, "personal", personalProject)).space.storageReady).toBe(false);
+      expect((await editorAt(ada, "seattle-solvers", teamProject)).space).toMatchObject({ storageReady: false, storageProblem: "none" });
+      expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: false, storageProblem: "none" });
+      // With its settings there, it is ready and nothing is wrong.
+      const key = { type: "service_account", client_email: "media@easyedit-test.iam.gserviceaccount.com", private_key: "k" };
+      vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", Buffer.from(JSON.stringify(key)).toString("base64"));
+      delete (globalThis as { __easyEditDrive?: unknown }).__easyEditDrive;
+      expect((await editorAt(ada, "seattle-solvers", teamProject)).space).toMatchObject({ storageReady: true, storageProblem: null });
     } finally {
       vi.unstubAllEnvs();
       vi.restoreAllMocks();
       delete (globalThis as { __easyEditDrive?: unknown }).__easyEditDrive;
+    }
+  });
+
+  it("says a space's Drive is broken when its Google connection is, and ready once it isn't", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "client-1");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "shh");
+    vi.stubEnv("STORAGE_TOKEN_KEY", Buffer.alloc(32, 7).toString("base64"));
+    vi.stubEnv("BETTER_AUTH_URL", "https://app.test");
+    try {
+      await testDb.insert(driveConnection).values({ id: "dc_1", userId: "u1", googleSub: "g1", email: "ada.drive@gmail.com", refreshTokenEnc: "sealed", scopes: "drive.file", brokenAt: new Date(), brokenReason: "revoked" });
+      await testDb.insert(spaceStorage).values({ spaceId: personalSpaceId("u1"), kind: "google_account", connectionId: "dc_1", rootFolderId: "root1", folderName: "EasyEdit – Personal", createdBy: "u1" });
+      expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: false, storageProblem: "broken" });
+      await testDb.update(driveConnection).set({ brokenAt: null, brokenReason: null }).where(eq(driveConnection.id, "dc_1"));
+      expect((await editorAt(ada, "personal", personalProject)).space).toMatchObject({ storageReady: true, storageProblem: null });
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 
