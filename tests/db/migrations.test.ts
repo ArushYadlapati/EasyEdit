@@ -9,6 +9,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { rowsOf, type DB } from "@/db";
 import { AFTER_COMING_FORWARD, BEFORE_GOING_BACK, CUSTOM_AFTER_COMING_FORWARD, REFILL_PROJECT_SIZES } from "@/db/refill-project-sizes";
 import { RESYNC_SPACES } from "@/db/resync-spaces";
+import { AFTER_COMING_FORWARD as ROLLBACK_AFTER_COMING_FORWARD, BEFORE_GOING_BACK_PAST_0013 } from "@/db/rollback-uploads";
 import * as schema from "@/db/schema";
 import { projects } from "@/db/schema";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
@@ -553,5 +554,43 @@ describe("resyncing spaces after the earlier version was live", () => {
     expect(guide).toContain("**Before deploying the version with storage per space:** run the migration `0013_space_storage` against `dev` first");
     expect(guide).toContain("it can't start new uploads");
     expect(guide).toContain("Leave `OPEN_SIGNUP` unset");
+  });
+});
+
+describe("going back past 0013 for a while", () => {
+  // The upload insert of the version before storage per space, and of this one: same row, different conflict target.
+  const values = (id: string) =>
+    sql`insert into assets (id, space_id, kind, name, file_name, mime_type, size_bytes, last_modified_ms, uploaded_by, status)
+      values (${id}, ${SEED_TEAM_ID}, 'video', 'Clip', 'clip.mp4', 'video/mp4', 1, 1, 'u1', 'uploading')`;
+  const earlierInsert = (id: string) => sql`${values(id)} on conflict (uploaded_by, file_name, size_bytes, last_modified_ms) where status = 'uploading' do nothing`;
+  const currentInsert = (id: string) =>
+    sql`${values(id)} on conflict (space_id, uploaded_by, file_name, size_bytes, last_modified_ms) where status = 'uploading' do nothing`;
+  const ids = async (db: DB) => rowsOf<{ id: string }>(await db.execute(sql`select id from assets order by id`)).map((r) => r.id);
+
+  it("on a 0013 database the earlier version's upload insert fails until the old index is back", async () => {
+    const db = await makeTestDb();
+    await expect(db.execute(earlierInsert("a1"))).rejects.toMatchObject({ cause: { code: "42P10" } });
+    await db.execute(sql.raw(BEFORE_GOING_BACK_PAST_0013));
+    await db.execute(earlierInsert("a1"));
+    await db.execute(earlierInsert("a2")); // the same file again: yields
+    expect(await ids(db)).toEqual(["a1"]);
+  });
+
+  it("this version's upload insert still works with the old index there, and after it is dropped", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql.raw(BEFORE_GOING_BACK_PAST_0013));
+    await db.execute(currentInsert("a1"));
+    await db.execute(currentInsert("a2"));
+    expect(await ids(db)).toEqual(["a1"]);
+    await db.execute(sql.raw(ROLLBACK_AFTER_COMING_FORWARD));
+    await db.execute(currentInsert("a3"));
+    expect(await ids(db)).toEqual(["a1"]);
+    await expect(db.execute(earlierInsert("a4"))).rejects.toMatchObject({ cause: { code: "42P10" } });
+  });
+
+  it("the deploy guide quotes both statements", () => {
+    const guide = readFileSync("docs/deploy.md", "utf8");
+    expect(guide).toContain(BEFORE_GOING_BACK_PAST_0013);
+    expect(guide).toContain(ROLLBACK_AFTER_COMING_FORWARD);
   });
 });
