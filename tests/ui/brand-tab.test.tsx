@@ -65,12 +65,18 @@ it("clicking a swatch with no text selected says so", () => {
   expect(store.getState().notice).toMatchObject({ tone: "info", text: "Select a text clip to recolor it." });
 });
 
-it("clicking a logo adds it at the playhead", () => {
+it("clicking a logo adds it at the playhead, on top of the video at a medium size", () => {
   const { store } = setup();
   act(() => store.getState().seek(12));
   fireEvent.click(screen.getByRole("button", { name: "Add Solvers logo" }));
-  const clip = clipOf(store, store.getState().selection.clipIds[0]);
-  expect(clip).toMatchObject({ type: "image", assetId: "l1", start: 12 });
+  const id = store.getState().selection.clipIds[0];
+  const clip = clipOf(store, id);
+  expect(clip).toMatchObject({ type: "image", assetId: "l1", start: 12, transform: { x: 0.5, y: 0.5, fit: "contain", scale: 0.4 } });
+  const doc = store.getState().doc;
+  const track = doc.tracks.find((t) => t.clips.some((c) => c.id === id))!;
+  expect(track.kind).toBe("overlay");
+  expect(doc.tracks.findIndex((t) => t === track)).toBeGreaterThan(doc.tracks.findIndex((t) => t.kind === "video")); // drawn above the video
+  expect(store.getState().queue).toMatchObject([{ label: "add logo" }]);
 });
 
 it("Add logo marks an image from the library", async () => {

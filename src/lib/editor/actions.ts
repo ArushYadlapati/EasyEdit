@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
-import { NO_CROP, TRACK_ACCEPTS, isCropped, type OpInput, type TrackKind } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, NO_CROP, TRACK_ACCEPTS, isCropped, type OpInput, type TrackKind } from "@/lib/timeline";
 import { copyClips, pasteItems, type ClipboardStore } from "./clipboard";
 import {
   addTrackOps,
@@ -69,6 +69,31 @@ export function addMedia(
   }
   const result = state.edit(placement.ops, "add media");
   if (result.ok && opts.select !== false) state.select(placement.clipIds);
+  return result.ok;
+}
+
+// A brand kit logo's size: fitted inside the frame, then 40% of that, so a square logo is 432 px wide in a 1080-wide
+// project. Arush's "medium".
+export const LOGO_SCALE = 0.4;
+
+// Puts a logo at the playhead on top of the video: on a free overlay track (a new one when none is free, never a
+// video track), centred and medium sized, lasting stillSeconds (Settings), and selects it. Returns whether it went in.
+export function addLogo(store: EditorStore, asset: AssetView, opts: { stillSeconds?: number } = {}): boolean {
+  const state = store.getState();
+  if (!state.canEdit) return false;
+  const clip = asset.kind === "image" && asset.status === "ready" && !asset.removed ? mediaClipFor(asset, state.playhead, state.doc.fps, { durationSeconds: opts.stillSeconds }) : null;
+  if (!clip) {
+    state.notify("info", MESSAGES.mediaNotReady);
+    return false;
+  }
+  const transform = { ...DEFAULT_TRANSFORM, fit: "contain" as const, scale: LOGO_SCALE };
+  const placement = placeClips(state.doc, [{ clip: { ...clip, id: "new", transform }, trackId: null, kind: "overlay" }], () => nanoid(10));
+  if (!placement.ok) {
+    state.notify("error", MESSAGES.noRoom);
+    return false;
+  }
+  const result = state.edit(placement.ops, "add logo");
+  if (result.ok) state.select(placement.clipIds);
   return result.ok;
 }
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { BrandKitEditor } from "@/components/brand/brand-kit-editor";
-import { addMedia, addText, recolorSelection } from "@/lib/editor/actions";
+import { addLogo, addText, recolorSelection } from "@/lib/editor/actions";
 import { TEXT_PRESETS } from "@/lib/editor/text-presets";
 import { useEditor, useEditorStore, useSettingsStore } from "../context";
 import type { PanelProps } from "../media/media-tab";
@@ -10,7 +10,7 @@ import { useBrand } from "./brand-context";
 import { LogoPicker } from "./logo-picker";
 
 // The left panel's Brand kit tab: the space's kit, where a font adds that kind of text at the playhead, a color
-// recolors the selected text and a logo is added at the playhead. Editors change the kit here too.
+// recolors the selected text and a logo is added at the playhead, on top of the video at a medium size. Editors change the kit here too.
 export function BrandTab({ panel }: { panel: PanelProps }) {
   const store = useEditorStore();
   const settings = useSettingsStore();
@@ -29,7 +29,7 @@ export function BrandTab({ panel }: { panel: PanelProps }) {
           layout="panel"
           onUseFont={canEditProject ? (role) => addText(store, TEXT_PRESETS.find((p) => p.role === role)!, settings.getState().textSeconds, kit.fonts) : undefined}
           onUseColor={canEditProject ? (hex) => recolorSelection(store, hex) : undefined}
-          onUseLogo={canEditProject ? (asset) => addMedia(store, asset, { stillSeconds: settings.getState().stillSeconds }) : undefined}
+          onUseLogo={canEditProject ? (asset) => addLogo(store, asset, { stillSeconds: settings.getState().stillSeconds }) : undefined}
           onAddLogo={() => setPicking(true)}
         />
       </div>
