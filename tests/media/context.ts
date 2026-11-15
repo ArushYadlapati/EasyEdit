@@ -117,11 +117,11 @@ export async function teamWithStorage(ctx: MediaContext, name: string, admin: Ac
 
 // What the routes hand the handlers, with each space's storage found as the server finds it (storageFor, readerFor),
 // pointed at the pretend Google.
-export function handlerDeps(ctx: MediaContext, actor: Actor): MediaHandlerDeps {
+export function handlerDeps(ctx: MediaContext, actor: Actor, auth?: MediaHandlerDeps["auth"]): MediaHandlerDeps {
   const member: CurrentUser = { id: actor.userId, email: actor.email, name: actor.email, image: null, allowlistRole: actor.role };
   return {
     db: () => ctx.db,
-    auth: async () => member,
+    auth: auth ?? (async () => member),
     drive: (db, spaceId) => storageFor(db, spaceId, ctx.storage),
     reader: (db, spaceId) => readerFor(db, spaceId, ctx.storage),
     origin: () => APP_ORIGIN,
@@ -130,8 +130,8 @@ export function handlerDeps(ctx: MediaContext, actor: Actor): MediaHandlerDeps {
 
 // A fetch for the browser's API client: each request goes to the route handler Next would call for its method
 // and path, with `actor` signed in. A request that has no route throws.
-export function handlersFetch(ctx: MediaContext, actor: Actor): typeof fetch {
-  const deps = handlerDeps(ctx, actor);
+export function handlersFetch(ctx: MediaContext, actor: Actor, auth?: MediaHandlerDeps["auth"]): typeof fetch {
+  const deps = handlerDeps(ctx, actor, auth);
   const media = makeMediaHandlers(deps);
   const readToken = makeReadTokenHandler(deps);
   const forAll = new Map<string, (req: Request) => Promise<Response>>([

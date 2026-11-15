@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db";
 import { user } from "@/db/schema";
 import { getRole, normalizeEmail } from "@/lib/allowlist/service";
+import { openSignUp } from "@/lib/signup";
 import { ensurePersonalSpace, syncSeedTeamMembership } from "@/lib/spaces/service";
 
 // `code` makes Better Auth's OAuth callback redirect to the errorCallbackURL instead of answering with JSON.
@@ -14,7 +15,9 @@ export function makeUserCreateBefore(db: DB) {
   return async <U extends { email: string; emailVerified?: boolean }>(newUser: U): Promise<{ data: U }> => {
     const email = normalizeEmail(newUser.email);
     // An email the provider has not verified proves nothing about who owns it.
-    if (newUser.emailVerified === false || (await getRole(db, email)) === null) throw notAllowlisted();
+    // With sign-up open, a verified email is enough; otherwise it must be on the allowlist.
+    if (newUser.emailVerified === false) throw notAllowlisted();
+    if (!openSignUp() && (await getRole(db, email)) === null) throw notAllowlisted();
     return { data: { ...newUser, email } };
   };
 }
@@ -23,7 +26,8 @@ export function makeSessionCreateBefore(db: DB) {
   return async (session: { userId: string }): Promise<void> => {
     const rows = await db.select({ email: user.email }).from(user).where(eq(user.id, session.userId));
     const email = rows[0]?.email;
-    if (email === undefined || (await getRole(db, email)) === null) throw notAllowlisted();
+    if (email === undefined) throw notAllowlisted();
+    if (!openSignUp() && (await getRole(db, email)) === null) throw notAllowlisted();
     // Repairs a missing personal space or an out-of-date team role.
     await ensurePersonalSpace(db, { id: session.userId });
     await syncSeedTeamMembership(db, { id: session.userId, email });

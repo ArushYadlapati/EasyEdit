@@ -13,7 +13,7 @@ export function testActor(over: Partial<Actor> = {}): Actor {
 }
 
 // A signed-in person as a route handler sees them. Defaults: "u1", an admin on the allowlist.
-export function testUser(over: Partial<CurrentUser> = {}): CurrentUser {
+export function testUser(over: Partial<CurrentUser> & { allowlistRole?: Role } = {}): CurrentUser & { allowlistRole: Role } {
   const id = over.id ?? "u1";
   return { id, email: `${id}@gmail.com`, name: id.toUpperCase(), image: null, allowlistRole: "admin", ...over };
 }

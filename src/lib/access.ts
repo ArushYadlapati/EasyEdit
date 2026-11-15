@@ -3,7 +3,7 @@ import { cache } from "react";
 import { headers } from "next/headers";
 import { forbidden, redirect } from "next/navigation";
 import { getDb } from "@/db";
-import { meetsRole, resolveCurrentUser, type CurrentUser } from "@/lib/access-rules";
+import { resolveCurrentUser, userMeetsRole, type CurrentUser } from "@/lib/access-rules";
 import type { Role } from "@/lib/allowlist/service";
 import { FORBIDDEN_BODY, UNAUTHENTICATED_BODY } from "@/lib/api-errors";
 import { getAuth } from "@/lib/auth";
@@ -23,13 +23,13 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => cur
 export async function requireUser(min: Role = "viewer"): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (!meetsRole(user.allowlistRole, min)) forbidden();
+  if (!userMeetsRole(user, min)) forbidden();
   return user;
 }
 
 export async function requireUserApi(req: Request, min: Role): Promise<CurrentUser | Response> {
   const user = await currentUserFor(req.headers);
   if (!user) return Response.json(UNAUTHENTICATED_BODY, { status: 401 });
-  if (!meetsRole(user.allowlistRole, min)) return Response.json(FORBIDDEN_BODY, { status: 403 });
+  if (!userMeetsRole(user, min)) return Response.json(FORBIDDEN_BODY, { status: 403 });
   return user;
 }

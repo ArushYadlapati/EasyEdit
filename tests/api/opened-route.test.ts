@@ -7,11 +7,11 @@ import { createProject } from "@/lib/projects/service";
 import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
-function userWith(role: CurrentUser["allowlistRole"]): CurrentUser {
+function userWith(role: NonNullable<CurrentUser["allowlistRole"]>): CurrentUser {
   return { id: "u1", email: "u1@gmail.com", name: "U1", image: null, allowlistRole: role };
 }
 
-async function setup(role: CurrentUser["allowlistRole"]) {
+async function setup(role: NonNullable<CurrentUser["allowlistRole"]>) {
   const db = await makeTestDb();
   await db.insert(user).values({ id: "u1", name: "U1", email: "u1@gmail.com" });
   await joinSpace(db, { id: "u1" }, role);

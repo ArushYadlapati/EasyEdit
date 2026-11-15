@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/access";
 import { isConnectorRequest, readConsentRequest } from "@/lib/connector/consent";
 import { requiredEnv } from "@/lib/env";
+import { openSignUp } from "@/lib/signup";
 import { loginErrorMessage } from "@/lib/login-error-message";
 import { PasskeySignInButton } from "./passkey-sign-in-button";
 import { SignInButton } from "./sign-in-button";
@@ -38,6 +39,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             {errorMessage}
           </p>
         )}
+        {openSignUp() && <p>Sign in or create an account with Google.</p>}
         <SignInButton />
         <PasskeySignInButton />
       </div>

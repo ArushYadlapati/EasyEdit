@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import type { Role } from "@/lib/allowlist/service";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardLayout, { metadata, viewport } from "@/app/(dashboard)/layout";
 import DashboardPage from "@/app/(dashboard)/s/[space]/page";
@@ -53,10 +54,10 @@ vi.mock("@/db", async (orig) => ({ ...(await orig<typeof import("@/db")>()), get
 vi.mock("@/components/keep-signed-in", () => ({ KeepSignedIn }));
 
 // Each one's role in Seattle Solvers is their allowlist role.
-const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada Lovelace", image: null, allowlistRole: "editor" };
-const vic: CurrentUser = { id: "u2", email: "vic@gmail.com", name: "Vic", image: null, allowlistRole: "viewer" };
-const admin: CurrentUser = { id: "u3", email: "root@gmail.com", name: "Root", image: null, allowlistRole: "admin" };
-const as = (person: CurrentUser) => testActor({ userId: person.id, email: person.email, role: person.allowlistRole });
+const ada: CurrentUser & { allowlistRole: Role } = { id: "u1", email: "ada@gmail.com", name: "Ada Lovelace", image: null, allowlistRole: "editor" };
+const vic: CurrentUser & { allowlistRole: Role } = { id: "u2", email: "vic@gmail.com", name: "Vic", image: null, allowlistRole: "viewer" };
+const admin: CurrentUser & { allowlistRole: Role } = { id: "u3", email: "root@gmail.com", name: "Root", image: null, allowlistRole: "admin" };
+const as = (person: CurrentUser & { allowlistRole: Role }) => testActor({ userId: person.id, email: person.email, role: person.allowlistRole });
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
 

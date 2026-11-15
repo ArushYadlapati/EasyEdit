@@ -1,6 +1,9 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { driveConnection } from "@/db/schema";
+import { resolveCurrentUser } from "@/lib/access-rules";
+import { addEntry, SEED_ADMIN_EMAIL } from "@/lib/allowlist/service";
+import { UNAUTHENTICATED_BODY } from "@/lib/api-errors";
 import type { Actor } from "@/lib/actor";
 import { SCOPE_READ } from "@/lib/drive/token";
 import { createMediaApi } from "@/lib/media/api";
@@ -69,20 +72,36 @@ describe("media follows each space's storage", () => {
     expect(holderOf(ctx, await tokenFor(ctx, ctx.grace, SEED_TEAM_ID))).toEqual({ email: ctx.fake.config.clientEmail, scope: SCOPE_READ });
   });
 
+  // The sign-in check is the real one (resolveCurrentUser, as requireUserApi runs it), so the flag matters here: off, a
+  // person who is not on the allowlist is refused; on, they are signed in but still not in Seattle Solvers.
   for (const openSignup of ["true", ""]) {
     it(`seattle solvers still works (OPEN_SIGNUP ${openSignup === "true" ? "on" : "off"})`, async () => {
       vi.stubEnv("OPEN_SIGNUP", openSignup);
       const ctx = await mediaContext();
+      for (const person of [ctx.ada, ctx.vera]) await addEntry(ctx.db, { email: person.email, role: person.role, invitedBy: SEED_ADMIN_EMAIL });
+      const realAuth = (actor: Actor) => async () => {
+        const who = { id: actor.userId, email: actor.email, name: actor.email };
+        return (await resolveCurrentUser(ctx.db, who)) ?? Response.json(UNAUTHENTICATED_BODY, { status: 401 });
+      };
+      const asReal = (actor: Actor) => handlersFetch(ctx, actor, realAuth(actor));
+      const send = async (actor: Actor, path: string, method = "GET") => {
+        const res = await asReal(actor)(path, { method });
+        return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+      };
       const asset = await upload(ctx, ctx.ada, SEED_TEAM_ID, VIDEO);
       const file = ctx.fake.files.get(asset.originalFileId)!;
       expect(file.name).toContain("IMG_4821");
       expect(file.owner).toBeUndefined(); // in the shared drive
-      const listed = await call(ctx, ctx.vera, "GET", `/api/media?space=${SEED_TEAM_ID}`);
+      const listed = await send(ctx.vera, `/api/media?space=${SEED_TEAM_ID}`);
       expect(listed).toMatchObject({ status: 200, body: { assets: [{ id: asset.id, status: "ready" }], setUp: true } });
-      const token = await tokenFor(ctx, ctx.vera, SEED_TEAM_ID);
+      const token = await send(ctx.vera, `/api/drive/read-token?space=${SEED_TEAM_ID}`, "POST");
       expect(holderOf(ctx, token)).toEqual({ email: ctx.fake.config.clientEmail, scope: SCOPE_READ });
       const read = await ctx.fake.fetch(`https://www.googleapis.com/drive/v3/files/${asset.originalFileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${String(token.body?.accessToken)}` } });
       expect(read.status).toBe(200);
+
+      // Grace is a member of the team but not on the allowlist: only an open sign-up lets her in.
+      const grace = await send(ctx.grace, `/api/media?space=${SEED_TEAM_ID}`);
+      expect(grace.status).toBe(openSignup === "true" ? 200 : 401);
     });
   }
 

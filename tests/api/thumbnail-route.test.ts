@@ -12,11 +12,11 @@ const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
 
 const YEAR = "private, max-age=31536000, immutable";
 
-function userWith(role: CurrentUser["allowlistRole"]): CurrentUser {
+function userWith(role: NonNullable<CurrentUser["allowlistRole"]>): CurrentUser {
   return { id: "u1", email: "u1@gmail.com", name: "U1", image: null, allowlistRole: role };
 }
 
-async function setup(role: CurrentUser["allowlistRole"]) {
+async function setup(role: NonNullable<CurrentUser["allowlistRole"]>) {
   const db = await makeTestDb();
   await db.insert(user).values({ id: "u1", name: "U1", email: "u1@gmail.com" });
   await joinSpace(db, { id: "u1" }, role);

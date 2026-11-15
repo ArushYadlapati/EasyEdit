@@ -13,11 +13,11 @@ import { makeTestDb } from "../helpers/db";
 const owner: Actor = testActor({ role: "editor" });
 const grace: Actor = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 
-function userWith(role: CurrentUser["allowlistRole"]): CurrentUser {
+function userWith(role: NonNullable<CurrentUser["allowlistRole"]>): CurrentUser {
   return { id: "u1", email: "u1@gmail.com", name: "U1", image: null, allowlistRole: role };
 }
 
-async function setup(role: CurrentUser["allowlistRole"]) {
+async function setup(role: NonNullable<CurrentUser["allowlistRole"]>) {
   const db = await makeTestDb();
   await db.insert(user).values([
     { id: "u1", name: "U1", email: "u1@gmail.com" },
