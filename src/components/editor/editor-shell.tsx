@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPresenceApi, createProjectApi } from "@/lib/editor/api";
 import { createClipboard } from "@/lib/editor/clipboard";
 import type { Layout } from "@/lib/editor/layout";
@@ -16,12 +16,13 @@ import { startThumbnailTrigger } from "@/lib/editor/thumbnail-trigger";
 import type { EditorInit } from "@/lib/editor/types";
 import { docAssetIds } from "@/lib/media/library-store";
 import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser-prefs";
-import { EditorProvider } from "./context";
+import { EditorProvider, useEditor, useEditorStore } from "./context";
 import { watchDrags } from "./drag-watch";
 import { EditorScreen } from "./editor-screen";
 import type { SpaceKind } from "@/lib/spaces/types";
 import type { StorageBlock } from "@/lib/storage/messages";
-import { MediaProvider, createMediaServices, gateStorage, type StorageProblem } from "./media/media-context";
+import { BrandProvider } from "./brand/brand-context";
+import { MediaProvider, createMediaServices, gateStorage, useLibrary, type StorageProblem } from "./media/media-context";
 import { PresenceProvider } from "./presence-context";
 import { browserThumbnailDeps } from "./thumbnail-deps";
 
@@ -262,10 +263,26 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
         }
         drop={drop}
       >
-        <PresenceProvider store={presenceStore}>
-          <EditorScreen spaceSlug={space.slug} initialLayout={layout} />
-        </PresenceProvider>
+        <EditorBrand spaceId={space.id}>
+          <PresenceProvider store={presenceStore}>
+            <EditorScreen spaceSlug={space.slug} initialLayout={layout} />
+          </PresenceProvider>
+        </EditorBrand>
       </MediaProvider>
     </EditorProvider>
+  );
+}
+
+// The space's brand kit for the editor: editors change it as they can change the project, a refused change is told as
+// the editor tells any other, and images in the media library show as logos the moment they are added.
+function EditorBrand({ spaceId, children }: { spaceId: string; children: ReactNode }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const assets = useLibrary((s) => s.assets);
+  const knownLogos = useMemo(() => Object.values(assets).filter((a) => a.kind === "image"), [assets]);
+  return (
+    <BrandProvider spaceId={spaceId} canEdit={canEdit} knownLogos={knownLogos} onError={(message) => store.getState().notify("error", message)}>
+      {children}
+    </BrandProvider>
   );
 }

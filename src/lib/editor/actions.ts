@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
-import { NO_CROP, TRACK_ACCEPTS, isCropped, type OpInput, type TrackKind } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, NO_CROP, TRACK_ACCEPTS, isCropped, type OpInput, type TrackKind } from "@/lib/timeline";
 import { copyClips, pasteItems, type ClipboardStore } from "./clipboard";
 import {
   addTrackOps,
@@ -22,16 +22,17 @@ import { mediaClipFor } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { findClip, type EditorStore } from "./store";
+import type { BrandFonts } from "@/lib/brand/types";
 import { presetClip, type TextPreset } from "./text-presets";
 
 // Puts a text preset at the playhead, on the selected text track when it has room, and selects it. The length in
-// seconds is the caller's (Settings), else the default.
-export function addText(store: EditorStore, preset: TextPreset, seconds?: number): void {
+// seconds is the caller's (Settings), else the default; the fonts are the space's brand kit's, else the default kit's.
+export function addText(store: EditorStore, preset: TextPreset, seconds?: number, fonts?: BrandFonts): void {
   const state = store.getState();
   if (!state.canEdit) return;
   const selected = state.doc.tracks.find((t) => t.id === state.selection.trackId);
   const trackId = selected?.kind === "text" ? selected.id : null;
-  const placement = placeClips(state.doc, [{ clip: presetClip(preset, state.playhead, state.doc.fps, seconds), trackId }], () => nanoid(10));
+  const placement = placeClips(state.doc, [{ clip: presetClip(preset, state.playhead, state.doc.fps, seconds, fonts), trackId }], () => nanoid(10));
   if (!placement.ok) {
     state.notify("error", MESSAGES.noRoom);
     return;
@@ -69,6 +70,47 @@ export function addMedia(
   const result = state.edit(placement.ops, "add media");
   if (result.ok && opts.select !== false) state.select(placement.clipIds);
   return result.ok;
+}
+
+// A brand kit logo's size: fitted inside the frame, then 40% of that, so a square logo is 432 px wide in a 1080-wide
+// project. Arush's "medium".
+export const LOGO_SCALE = 0.4;
+
+// Puts a logo at the playhead on top of the video: on a free overlay track (a new one when none is free, never a
+// video track), centred and medium sized, lasting stillSeconds (Settings), and selects it. Returns whether it went in.
+export function addLogo(store: EditorStore, asset: AssetView, opts: { stillSeconds?: number } = {}): boolean {
+  const state = store.getState();
+  if (!state.canEdit) return false;
+  const clip = asset.kind === "image" && asset.status === "ready" && !asset.removed ? mediaClipFor(asset, state.playhead, state.doc.fps, { durationSeconds: opts.stillSeconds }) : null;
+  if (!clip) {
+    state.notify("info", MESSAGES.mediaNotReady);
+    return false;
+  }
+  const transform = { ...DEFAULT_TRANSFORM, fit: "contain" as const, scale: LOGO_SCALE };
+  const placement = placeClips(state.doc, [{ clip: { ...clip, id: "new", transform }, trackId: null, kind: "overlay" }], () => nanoid(10));
+  if (!placement.ok) {
+    state.notify("error", MESSAGES.noRoom);
+    return false;
+  }
+  const result = state.edit(placement.ops, "add logo");
+  if (result.ok) state.select(placement.clipIds);
+  return result.ok;
+}
+
+// Sets every selected text clip to the color, as one change. With no text clip selected it says how to use it.
+export function recolorSelection(store: EditorStore, color: string): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const texts = state.selection.clipIds.flatMap((id) => {
+    const clip = findClip(state.doc, id)?.clip;
+    return clip?.type === "text" ? [clip] : [];
+  });
+  if (texts.length === 0) {
+    state.notify("info", MESSAGES.selectTextToRecolor);
+    return;
+  }
+  const ops: OpInput[] = texts.filter((c) => c.style.color.toLowerCase() !== color).map((c) => ({ op: "update_clip", clipId: c.id, patch: { style: { color } } }));
+  if (ops.length > 0) state.edit(ops, "style change");
 }
 
 // The runners below edit the project. For a viewer they do nothing and say nothing.

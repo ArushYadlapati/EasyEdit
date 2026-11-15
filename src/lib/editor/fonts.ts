@@ -1,7 +1,12 @@
+import { FONT_LIST, fontVariable } from "@/lib/brand/fonts";
 import { defaultResolveFont } from "@/lib/render/compositor";
 
-// Document font names that the app loads itself, and the CSS variable holding each one's loaded family list.
-export const FONT_VARS: Record<string, string> = { Geist: "--font-geist-sans", "Geist Mono": "--font-geist-mono" };
+// Document font names that the app loads itself (src/app/fonts.ts), and the CSS variable holding each one's loaded
+// family list.
+export const FONT_VARS: Record<string, string> = {
+  ...Object.fromEntries(FONT_LIST.map(({ family }) => [family, fontVariable(family)])),
+  "Geist Mono": "--font-geist-mono",
+};
 
 // A document font name as a CSS font-family for the page itself, where the app fonts' variables apply directly.
 export function cssFontFamily(family: string): string {

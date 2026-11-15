@@ -173,7 +173,7 @@ describe("placeClips", () => {
 describe("text presets", () => {
   it("offers three presets in the app font", () => {
     expect(TEXT_PRESETS.map((p) => [p.id, p.label, p.text])).toEqual([
-      ["title", "Title", "Your title"], ["subtitle", "Subtitle", "Your subtitle"], ["lower-third", "Lower third", "Name and role"],
+      ["title", "Title", "Your title"], ["subtitle", "Subtitle", "Your subtitle"], ["body", "Body text", "Your text"],
     ]);
     expect(presetClip(TEXT_PRESETS[0], 200, 30)).toEqual({
       id: "preset", type: "text", start: 200, duration: 90, text: "Your title",
@@ -184,7 +184,7 @@ describe("text presets", () => {
     // A length from Settings, in whole frames and never below one.
     expect(presetClip(TEXT_PRESETS[0], 0, 25, 2.5).duration).toBe(63);
     expect(presetClip(TEXT_PRESETS[0], 0, 30, 0.01).duration).toBe(1);
-    expect(presetClip(TEXT_PRESETS[2], 0, 30)).toMatchObject({ transform: { y: 0.62 }, style: { fontSize: 44, fontWeight: 600, align: "left" } });
+    expect(presetClip(TEXT_PRESETS[2], 0, 30)).toMatchObject({ transform: { y: 0.7 }, style: { fontSize: 40, fontWeight: 400, align: "center" } });
   });
 
   it("addText puts the preset at the playhead as one change and selects it", () => {
@@ -232,5 +232,27 @@ describe("text presets", () => {
     addText(store, TEXT_PRESETS[0]); // the playhead is at 0, where x1 sits
     expect(store.getState().queue).toEqual([]);
     expect(store.getState().notice).toMatchObject({ tone: "error", text: MESSAGES.noRoom });
+  });
+});
+
+describe("placing on a kind of track", () => {
+  const image = { id: "new", type: "image", assetId: "logo", start: 100, duration: 90, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM } } as const;
+  let n = 0;
+  const id = () => `n${++n}`;
+
+  it("without an overlay track, an overlay item gets a new one, never a free video track", () => {
+    const doc = sampleDoc(); // Video 1 is free at frame 100
+    const r = placeClips(doc, [{ clip: image, trackId: null, kind: "overlay" }], id);
+    expect(r.ok && r.ops.map((o) => o.op)).toEqual(["add_track", "add_clip"]);
+    const add = r.ok ? r.ops[0] : null;
+    expect(add).toMatchObject({ op: "add_track", track: { kind: "overlay", name: "Overlay 1" } });
+    expect(applied(doc, r.ok ? r.ops : []).tracks.find((t) => t.kind === "overlay")?.clips.map((c) => c.type)).toEqual(["image"]);
+  });
+
+  it("an overlay item goes on a free overlay track when there is one", () => {
+    const doc = sampleDoc();
+    doc.tracks.push({ id: "o1", kind: "overlay", name: "Overlay 1", clips: [], locked: false, hidden: false, muted: false } as Track);
+    const r = placeClips(doc, [{ clip: image, trackId: null, kind: "overlay" }], id);
+    expect(r.ok && r.ops).toEqual([{ op: "add_clip", trackId: "o1", clip: { ...image, id: expect.any(String) } }]);
   });
 });

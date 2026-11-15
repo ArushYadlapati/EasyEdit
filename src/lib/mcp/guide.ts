@@ -1,4 +1,5 @@
-import { DEFAULT_TEXT_SECONDS, TEXT_FONT, TEXT_PRESETS } from "@/lib/editor/text-presets";
+import { FONT_LIST } from "@/lib/brand/fonts";
+import { DEFAULT_TEXT_SECONDS, TEXT_FONT, TOOL_PRESETS } from "@/lib/editor/text-presets";
 import { LIMITS } from "@/lib/limits";
 import { safeAreaMargins } from "@/lib/render/safe-zones";
 import { NO_CROP, type Crop, type TextStyle, type Transform } from "@/lib/timeline";
@@ -72,7 +73,7 @@ const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
 
 export function buildEditingGuide(): string {
   const zone = safeAreaMargins({ format: "short_9x16" });
-  const presets = TEXT_PRESETS.map((p) => `${p.id} (${p.fontSize} px, weight ${p.fontWeight}, ${p.align}, y ${p.y})`).join("; ");
+  const presets = TOOL_PRESETS.map((p) => `${p.id} (${p.fontSize} px, weight ${p.fontWeight}, ${p.align}, y ${p.y})`).join("; ");
   const lines = [
     "# EasyEdit editing guide",
     "",
@@ -103,7 +104,9 @@ export function buildEditingGuide(): string {
     "",
     "## Text",
     `- Presets for add_text: ${presets}.`,
-    `- A text clip lasts ${DEFAULT_TEXT_SECONDS} seconds unless you say otherwise. The only font today is ${TEXT_FONT}. Colors are hex, like #ffffff.`,
+    "- Each preset starts in the space's brand kit font for its kind of text (lower-third uses the body font).",
+    `- A text clip lasts ${DEFAULT_TEXT_SECONDS} seconds unless you say otherwise. Colors are hex, like #ffffff.`,
+    `- Fonts you can use: ${FONT_LIST.map((f) => f.family).join(", ")}. Any other font is drawn in a fallback. Not every font has every weight; the default is ${TEXT_FONT}.`,
     `- A clip's text can be up to ${LIMITS.textClipChars} characters. Long text wraps at 90% of the frame width.`,
     "",
     "## Media",

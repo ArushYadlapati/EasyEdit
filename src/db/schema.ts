@@ -248,6 +248,21 @@ export const spaceStorage = pgTable(
   ],
 );
 
+// A space's brand kit: the fonts its titles, subtitles and body text start in, its colors and its logos (images of
+// the space's own media, in the order shown). No row is the default kit (src/lib/brand/service.ts).
+export const brandKit = pgTable("brand_kit", {
+  spaceId: text("space_id")
+    .primaryKey()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  titleFont: text("title_font").notNull(),
+  subtitleFont: text("subtitle_font").notNull(),
+  bodyFont: text("body_font").notNull(),
+  colors: jsonb("colors").$type<string[]>().notNull().default([]),
+  logoAssetIds: jsonb("logo_asset_ids").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedBy: text("updated_by"), // an actor id: a person's, or an agent's acting for them
+});
+
 // The space each person opened last, so /dashboard takes them back to it.
 export const spaceVisits = pgTable("space_visits", {
   userId: text("user_id")

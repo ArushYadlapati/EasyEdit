@@ -4,10 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import RootLayout, { viewport } from "@/app/layout";
 import { DARK_READER_LOCK_WHEN_DARK } from "@/lib/color-scheme";
 
-vi.mock("next/font/google", () => ({
-  Geist: () => ({ variable: "font-sans" }),
-  Geist_Mono: () => ({ variable: "font-mono" }),
-}));
+// The app's fonts are next/font loaders, which only run in a Next build.
+vi.mock("@/app/fonts", () => ({ FONT_VARIABLE_CLASSES: "font-sans font-mono" }));
 
 const LOCK = 'meta[name="darkreader-lock"]';
 

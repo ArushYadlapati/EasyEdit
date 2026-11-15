@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { rowsOf } from "@/db";
+import { updateBrandKit } from "@/lib/brand/service";
 import { addTextTool } from "@/lib/mcp/tools/add-text";
 import { applyProjectOps, createProject, deleteProject, getProject } from "@/lib/projects/service";
 import type { OpInput, TextClip } from "@/lib/timeline";
@@ -34,6 +35,21 @@ describe("add_text", () => {
     const { add, project } = await setup();
     await add(0, [{ text: "Ada Lovelace, driver", preset: "lower-third", start_seconds: 1.5, duration_seconds: 2 }]);
     expect((await project()).doc.tracks[1].clips[0]).toMatchObject({ start: 45, duration: 60, transform: { y: 0.62 }, style: { fontSize: 44, fontWeight: 600, align: "left" } });
+  });
+
+  it("add_text accepts body and still accepts lower-third", async () => {
+    const { add, project } = await setup();
+    await add(0, [{ text: "Week 3", preset: "body" }, { text: "Ada, driver", preset: "lower-third", start_seconds: 4 }]);
+    const clips = (await project()).doc.tracks.flatMap((t) => t.clips) as TextClip[];
+    expect(clips.map((c) => [c.text, c.style.fontSize, c.transform.y])).toEqual([["Week 3", 40, 0.7], ["Ada, driver", 44, 0.62]]);
+  });
+
+  it("add_text uses the space's kit fonts", async () => {
+    const { db, add, project } = await setup();
+    await updateBrandKit(db, grace, { titleFont: "Orbitron", bodyFont: "Bebas Neue" });
+    await add(0, [{ text: "GO SOLVERS" }, { text: "Ada", preset: "lower-third", start_seconds: 4 }]);
+    const clips = (await project()).doc.tracks.flatMap((t) => t.clips) as TextClip[];
+    expect(clips.map((c) => [c.style.fontFamily, c.style.fontWeight])).toEqual([["Orbitron", 700], ["Bebas Neue", 400]]);
   });
 
   it("puts overlapping text on a new track, all in one version", async () => {

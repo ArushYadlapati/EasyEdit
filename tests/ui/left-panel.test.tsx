@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from "vitest";
+import { BrandProvider } from "@/components/editor/brand/brand-context";
 import { EditorProvider } from "@/components/editor/context";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { LeftPanel } from "@/components/editor/left-panel";
@@ -7,11 +8,13 @@ import { MediaProvider } from "@/components/editor/media/media-context";
 import { createMediaDrop } from "@/lib/editor/media-drop";
 import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
 import { findClip } from "@/lib/editor/store";
+import { cssFontFamily } from "@/lib/editor/fonts";
+import { DEFAULT_BRAND_KIT } from "@/lib/brand/types";
 import { makeStore } from "../editor/fixtures";
 import { act, cleanup, fireEvent, render, screen } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 
-const NAMES = ["Add title", "Add subtitle", "Add lower third"];
+const NAMES = ["Add title", "Add subtitle", "Add body text"];
 
 function setup(canEdit = true) {
   const store = makeStore({ canEdit });
@@ -180,4 +183,22 @@ it("the Media tab says files can be dragged in", () => {
   withDrop({ setUp: false });
   fireEvent.click(screen.getByRole("tab", { name: "Media" }));
   expect(screen.queryByText(DRAG_LINE)).toBeNull();
+});
+
+it("Text tab buttons are drawn in the kit fonts and add text in them", () => {
+  const store = makeStore({ canEdit: true });
+  const initial = { ...DEFAULT_BRAND_KIT, fonts: { title: "Orbitron", subtitle: "Geist", body: "Inter" } };
+  render(
+    <EditorProvider store={store}>
+      <BrandProvider spaceId="team1" canEdit initial={initial} api={{ fetch: vi.fn(), save: vi.fn() }}>
+        <ContextMenuProvider><LeftPanel /></ContextMenuProvider>
+      </BrandProvider>
+    </EditorProvider>,
+  );
+  const title = screen.getByRole("button", { name: "Add title" });
+  expect(title.style.fontFamily).toBe(cssFontFamily("Orbitron"));
+  expect(screen.getByRole("button", { name: "Add body text" }).style.fontFamily).toBe(cssFontFamily("Inter"));
+  fireEvent.click(title);
+  const clip = findClip(store.getState().doc, store.getState().selection.clipIds[0])?.clip;
+  expect(clip?.type === "text" && clip.style.fontFamily).toBe("Orbitron");
 });

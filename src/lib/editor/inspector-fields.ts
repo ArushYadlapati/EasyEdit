@@ -1,3 +1,4 @@
+import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
 import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
 import { CROP_MIN_SHOWN, clipRects, type Sizer } from "./clip-box";
@@ -12,6 +13,7 @@ import { fromUnit, showUnit } from "./units";
 
 export type ClipField =
   | "text"
+  | "fontFamily"
   | "fontSize"
   | "fontWeight"
   | "color"
@@ -35,6 +37,7 @@ export type CropField = "cropLeft" | "cropTop" | "cropRight" | "cropBottom";
 // The label of the change, for undo and the activity list.
 export const FIELD_LABEL: Record<ClipField, string> = {
   text: "text edit",
+  fontFamily: "style change",
   fontSize: "style change",
   fontWeight: "style change",
   color: "style change",
@@ -61,6 +64,18 @@ export const WEIGHTS: { value: number; label: string }[] = [
   { value: 700, label: "Bold" },
   { value: 900, label: "Black" },
 ];
+
+// The names of the weights fonts in the list have, beyond the five above.
+const WEIGHT_NAMES: Record<number, string> = { 300: "Light", 800: "Extra bold", ...Object.fromEntries(WEIGHTS.map((w) => [w.value, w.label])) };
+
+// The Weight menu for a clip in this font: the weights a listed font has; for any other font the five above. The
+// clip's own weight is added when it is not among them, so the menu always shows what the clip has.
+export function weightOptions(family: string, current: number): { value: number; label: string }[] {
+  const own = fontWeights(family);
+  const options = own ? own.map((value) => ({ value, label: WEIGHT_NAMES[value] ?? String(value) })) : [...WEIGHTS];
+  if (!options.some((o) => o.value === current)) options.push({ value: current, label: WEIGHT_NAMES[current] ?? String(current) });
+  return options.sort((a, b) => a.value - b.value);
+}
 
 export const FONT_SIZE_MIN = 8;
 export const FONT_SIZE_MAX = 1000;
@@ -165,6 +180,8 @@ export function clipFieldValue(clip: Clip, field: ClipField, ctx: FieldContext):
   switch (field) {
     case "text":
       return clip.text;
+    case "fontFamily":
+      return clip.style.fontFamily;
     case "fontSize":
       return oneDecimal(clip.style.fontSize);
     case "fontWeight":
@@ -275,6 +292,14 @@ export function clipFieldOps(clip: Clip, field: ClipField, raw: string, ctx: Fie
   switch (field) {
     case "text":
       return update({ text: raw });
+    case "fontFamily": {
+      // A font from the list, at the weight nearest the clip's that it has. A font the clip already has (even one not
+      // in the list, as an agent may write) changes nothing.
+      if (raw === clip.style.fontFamily) return [];
+      if (!isListedFont(raw)) return null;
+      const fontWeight = nearestWeight(raw, clip.style.fontWeight);
+      return update({ style: fontWeight === clip.style.fontWeight ? { fontFamily: raw } : { fontFamily: raw, fontWeight } });
+    }
     case "fontSize": {
       const n = parseNumber(raw);
       return n === null ? null : update({ style: { fontSize: clamp(Math.round(n), FONT_SIZE_MIN, FONT_SIZE_MAX) } });

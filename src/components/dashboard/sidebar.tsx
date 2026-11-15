@@ -83,6 +83,12 @@ export function Sidebar({ folders, pinned = [], collapsed, view, canEdit, spaceS
       <div className={SIDEBAR_BOX}>
         {/* The person's spaces (from the dashboard layout), above what is in this one. Not drawn without any, as in tests. */}
         {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} createTeam={createTeam} personalSoon={personalSoon} />}
+        {/* The space's brand kit, right under the spaces: its fonts, colors and logos. Not for a personal space while those are closed. */}
+        {current && !(personalSoon && current.kind === "personal") && (
+          <SidebarLink href={settingsTabPath(spaceSlug, "brand")} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+            Brand kit
+          </SidebarLink>
+        )}
         <nav aria-label="Projects" className="flex shrink-0 flex-row items-center gap-1 md:flex-col md:items-stretch">
           <SidebarSection id="projects" label="Projects">
             <SidebarLink href={spacePath(spaceSlug, viewQuery(RECENT_VIEW))} current={view.kind === "recent"} folderId={null} takesDrops={false} onDropProject={onDropProject}>
