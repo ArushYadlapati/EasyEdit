@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WelcomePage from "@/app/(dashboard)/welcome/page";
 import { finishOnboardingAction } from "@/app/(dashboard)/welcome/actions";
 import DashboardRedirect from "@/app/(dashboard)/dashboard/page";
@@ -10,7 +10,7 @@ import { connectHref } from "@/lib/storage/messages";
 import { personalSpaceId, SEED_TEAM_SLUG } from "@/lib/spaces/types";
 import { joinSpace } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
-import { render, screen } from "../helpers/dom";
+import { fireEvent, render, screen } from "../helpers/dom";
 
 class Redirected extends Error {
   constructor(readonly to: string) {
@@ -65,7 +65,25 @@ async function redirectOf(run: () => Promise<unknown>): Promise<string> {
   throw new Error("no redirect");
 }
 
+afterEach(() => void vi.unstubAllEnvs());
+
 describe("the welcome page", () => {
+  it("hides the step label when there is one step", async () => {
+    await show({ step: "agents", team: "" });
+    storage.block = "server";
+    document.body.innerHTML = "";
+    await show();
+    expect(screen.queryByText(/^Step \d+ of/)).toBeNull();
+  });
+
+  it("points the access token hints at the agents page", async () => {
+    await show({ step: "agents" });
+    fireEvent.click(screen.getAllByRole("tab")[2]);
+    const links = screen.getAllByRole("link", { name: /access tokens/i });
+    expect(links.length).toBeGreaterThan(0);
+    for (const l of links) expect(l.getAttribute("href")).toBe("/agents#access-tokens");
+  });
+
   it("starts with storage when it can be set up, with the exact copy and buttons", async () => {
     await show();
     expect(screen.getByRole("heading", { name: "Welcome to EasyEdit" })).toBeTruthy();
@@ -85,7 +103,7 @@ describe("the welcome page", () => {
       storage.ready = false;
       setup();
       await show();
-      expect(screen.getByText("Step 1 of 1")).toBeTruthy();
+      expect(screen.queryByText(/^Step \d+ of/)).toBeNull();
       expect(screen.getByText("Use EasyEdit with your AI agent")).toBeTruthy();
       expect(screen.queryByText("Where should your videos live?")).toBeNull();
       document.body.innerHTML = "";
@@ -110,7 +128,7 @@ describe("the welcome page", () => {
   it("an invited member of the team sees the agents step only", async () => {
     await joinSpace(testDb, ada, "editor");
     await show({ team: SEED_TEAM_SLUG });
-    expect(screen.getByText("Step 1 of 1")).toBeTruthy();
+    expect(screen.queryByText(/^Step \d+ of/)).toBeNull();
     expect(screen.getByText("Use EasyEdit with your AI agent")).toBeTruthy();
   });
 
@@ -148,6 +166,20 @@ describe("finishing", () => {
   it("ignores a team the person isn't in", async () => {
     expect(await redirectOf(() => finishOnboardingAction(form(SEED_TEAM_SLUG)))).toBe("/s/personal");
     expect(await redirectOf(() => finishOnboardingAction(form("no-such-team")))).toBe("/s/personal");
+  });
+
+  it("lands in the team, not the closed Personal space, while Personal spaces are off", async () => {
+    vi.stubEnv("PERSONAL_SPACES", "");
+    await joinSpace(testDb, ada, "editor");
+    expect(await redirectOf(() => finishOnboardingAction(form()))).toBe(`/s/${SEED_TEAM_SLUG}`);
+  });
+
+  it("still redirects when the mark can't be written", async () => {
+    await testDb.execute((await import("drizzle-orm")).sql`drop table onboarding`);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await redirectOf(() => finishOnboardingAction(form()))).toBe("/s/personal");
+    expect(log).toHaveBeenCalledTimes(1);
+    log.mockRestore();
   });
 
   it("finishing twice is fine", async () => {

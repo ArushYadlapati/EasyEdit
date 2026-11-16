@@ -18,20 +18,20 @@ const KEY_MOVES: Record<string, (index: number, count: number) => number> = {
 
 const LINK = cx("rounded-sm text-ed-accent underline-offset-2 hover:underline", FOCUS_RING);
 
-function TokenHint({ kind }: { kind: AgentKind }): ReactNode {
+function TokenHint({ kind, tokensHref }: { kind: AgentKind; tokensHref: string }): ReactNode {
   const { methods } = AGENTS[kind];
   if (!methods.includes("token")) return null;
   if (!methods.includes("oauth")) {
     return (
       <p className="text-xs text-ed-muted">
-        This agent needs an access token. <a href={`#${TOKENS_ANCHOR}`} className={LINK}>Make one under Access tokens</a>,
+        This agent needs an access token. <a href={tokensHref} className={LINK}>Make one under Access tokens</a>,
         then put it in place of &lt;your access token&gt;.
       </p>
     );
   }
   return (
     <p className="text-xs text-ed-muted">
-      Or use an access token instead of signing in: <a href={`#${TOKENS_ANCHOR}`} className={LINK}>make one under Access tokens</a>.
+      Or use an access token instead of signing in: <a href={tokensHref} className={LINK}>make one under Access tokens</a>.
     </p>
   );
 }
@@ -39,7 +39,18 @@ function TokenHint({ kind }: { kind: AgentKind }): ReactNode {
 // Every agent EasyEdit knows, Claude first and marked Recommended, as tabs: a column beside the steps on a wide
 // window, rows above them on a narrow one. The picked agent's steps show with the server address filled in, and its
 // config snippet when it has one. The arrow keys, Home and End move between agents.
-export function AgentSetup({ url, picked, onPick }: { url: string; picked: AgentKind; onPick(kind: AgentKind): void }): ReactNode {
+// `tokensHref` is where "Access tokens" is: on /agents itself by default, or that page when shown elsewhere.
+export function AgentSetup({
+  url,
+  picked,
+  onPick,
+  tokensHref = `#${TOKENS_ANCHOR}`,
+}: {
+  url: string;
+  picked: AgentKind;
+  onPick(kind: AgentKind): void;
+  tokensHref?: string;
+}): ReactNode {
   const prefix = useId();
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const info = AGENTS[picked];
@@ -111,7 +122,7 @@ export function AgentSetup({ url, picked, onPick }: { url: string; picked: Agent
         {info.snippet && (
           <CodeBlock label={info.snippet.label} code={fillTemplate(info.snippet.code, { url })} copyLabel="Copy setup snippet" />
         )}
-        <TokenHint kind={picked} />
+        <TokenHint kind={picked} tokensHref={tokensHref} />
       </div>
     </div>
   );

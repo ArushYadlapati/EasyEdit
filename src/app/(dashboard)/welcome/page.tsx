@@ -49,9 +49,11 @@ export default async function WelcomePage({ searchParams }: PageProps<"/welcome"
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
         <header className="flex flex-col items-start gap-1">
           <h1 className="text-base font-semibold">Welcome to EasyEdit</h1>
-          <p className="text-xs text-ed-muted">
-            Step {number} of {steps.length}
-          </p>
+          {steps.length > 1 && (
+            <p className="text-xs text-ed-muted">
+              Step {number} of {steps.length}
+            </p>
+          )}
         </header>
 
         {step === "storage" ? (
