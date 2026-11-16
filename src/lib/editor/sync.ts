@@ -11,6 +11,8 @@ import type { ActivityEntry, SyncStatus } from "./types";
 export const RETRY_DELAYS_MS = [2000, 4000, 8000, 16000, 30000]; // the last one repeats
 // A save the website refuses over a limit waits longer than a network failure, and tries sooner when the person edits again.
 export const LIMIT_RETRY_MS = 60_000;
+// While limited, a new edit tries the refused save again at once, but only this often.
+export const LIMITED_EDIT_RETRY_MS = 5000;
 export const PULL_PAGE = LIMITS.opsPageMax;
 
 // Indexed by the number of polls since the last activity; the last one repeats.
@@ -61,6 +63,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
   let closing = false; // stopWhenSent() was called: send the queue, poll no more, then stop
   let limited: string | null = null; // the website's refusal of a save; stays until a save is accepted, so catch-ups cannot show "Saving…" over it
   let failures = 0; // failed tries in a row; above 0 the status is offline (or still signed out, while trying again)
+  let lastLimitedEditRetryAt: number | null = null; // when a new edit last retried a refused save; cleared once a save is accepted
   let retryDue = false; // the wait after the last failure is over
   let quietPolls = 0;
   let lastActivityAt = 0;
@@ -259,6 +262,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
     if (!running) return;
     if (answer.ok || answer.kind === "op" || answer.kind === "conflict") {
       limited = null; // the website is accepting saves again
+      lastLimitedEditRetryAt = null;
       refreshStatus();
     }
     if (!answer.ok && answer.kind === "conflict") {
@@ -428,7 +432,14 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
         const last = next.queue.at(-1);
         if (last && !prev.queue.some((e) => e.id === last.id)) {
           activity();
-          if (state().status === "limited") retryDue = true; // a new edit tries the refused save again
+          if (state().status === "limited") {
+            // A new edit tries the refused save again, at most once per LIMITED_EDIT_RETRY_MS; otherwise it waits for the minute retry.
+            const now = Date.now();
+            if (lastLimitedEditRetryAt === null || now - lastLimitedEditRetryAt >= LIMITED_EDIT_RETRY_MS) {
+              lastLimitedEditRetryAt = now;
+              retryDue = true;
+            }
+          }
         }
         refreshStatus();
         void pump();

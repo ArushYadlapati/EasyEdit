@@ -57,7 +57,7 @@ describe("website daily limits, API", () => {
   it("postOps answers 429 with the message at the per-minute limit, and saves nothing", async () => {
     const { db, actor, ops } = await setup();
     const { id } = await createProject(db, actor, { name: "P", format: "short_9x16" });
-    await seedOps(db, id, "u1", 120);
+    await seedOps(db, id, "u1", 600);
     const res = await ops.postOps(post(`http://x/api/projects/${id}/ops`, { baseVersion: 0, ops: [addClip("c1")] }), ctx(id));
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ code: "LIMIT_EXCEEDED", message: MSG.minute });
@@ -79,7 +79,7 @@ describe("website daily limits, API", () => {
     const first = await ops.postOps(post(`http://x/api/projects/${id}/ops`, body), ctx(id));
     expect(first.status).toBe(200);
     const firstBody = await first.json();
-    await seedOps(db, id, "u1", 120);
+    await seedOps(db, id, "u1", 600);
     const again = await ops.postOps(post(`http://x/api/projects/${id}/ops`, body), ctx(id));
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual(firstBody);

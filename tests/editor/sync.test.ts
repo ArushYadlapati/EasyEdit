@@ -583,4 +583,44 @@ describe("a save the website refuses over its limit", () => {
     await after(60_000);
     expect(st()).toMatchObject({ status: "saved", limitMessage: null, queue: [] });
   });
+
+  it("while limited, edits retry at most once every 5 seconds and none are dropped", async () => {
+    const { server, st } = setup();
+    server.fail("limited", 3);
+    st().edit(move(120), "move");
+    await settle(); // refused
+    st().edit(move(130), "move"); // retries at once, refused again
+    await settle();
+    const cycles = server.calls.length; // the first refusal plus one retry cycle
+    expect(cycles).toBeGreaterThan(1);
+    for (const v of [140, 150, 160]) { await after(1000); st().edit(move(v), "move"); await settle(); }
+    expect(server.calls.length).toBe(cycles); // within 5 s: no new cycle
+    expect(st().status).toBe("limited");
+    await after(2000); // 5 s since the retry
+    st().edit(move(170), "move"); // allowed again; refused once more
+    await settle();
+    expect(server.calls.length).toBeGreaterThan(cycles); // a new cycle ran
+    expect(st().queue).toHaveLength(6);
+    await after(5000);
+    st().edit(move(180), "move"); // the server accepts now
+    await settle();
+    expect(st()).toMatchObject({ status: "saved", queue: [], limitMessage: null });
+    expect(server.log).toHaveLength(7);
+  });
+
+  it("after an accepted save, edits sync normally again", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    await after(60_000); // accepted
+    expect(st().status).toBe("saved");
+    const before = count(server.calls, "post");
+    st().edit(move(150), "move");
+    await settle();
+    st().edit(move(160), "move");
+    await settle();
+    expect(count(server.calls, "post")).toBe(before + 2);
+    expect(st()).toMatchObject({ status: "saved", queue: [] });
+  });
 });
