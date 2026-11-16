@@ -11,6 +11,7 @@ import type { CurrentUser } from "@/lib/access-rules";
 import type { Role } from "@/lib/allowlist/service";
 import { personalSpaceId, SEED_TEAM_ID, type MySpace } from "@/lib/spaces/types";
 import { actorIn } from "@/lib/spaces/access";
+import * as invites from "@/lib/spaces/invites";
 import { inviteToTeam } from "@/lib/spaces/invites";
 import { joinSpace } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
@@ -51,6 +52,10 @@ vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => signedIn.user!),
   meetsRole: (await import("@/lib/access-rules")).meetsRole,
 }));
+vi.mock("@/lib/spaces/invites", async (orig) => {
+  const real = await orig<typeof import("@/lib/spaces/invites")>();
+  return { ...real, listPendingInvites: vi.fn(real.listPendingInvites) };
+});
 let testDb: DB;
 vi.mock("@/db", async (orig) => ({ ...(await orig<typeof import("@/db")>()), getDb: () => testDb }));
 
@@ -116,6 +121,17 @@ describe("the members page", () => {
     await membersPage(bea, "robots");
     expect(screen.queryByText("lin@example.com")).toBeNull();
     vi.unstubAllEnvs();
+  });
+
+  it("never asks for waiting invites of Seattle Solvers, even for its admin", async () => {
+    vi.mocked(invites.listPendingInvites).mockClear();
+    await membersPage(ada, "seattle-solvers");
+    await membersPage(root, "seattle-solvers");
+    expect(screen.queryByRole("heading", { name: "Pending invites" })).toBeNull();
+    expect(invites.listPendingInvites).not.toHaveBeenCalled();
+    // The mock is live: a team admin does reach it.
+    await membersPage(ada, "robots");
+    expect(invites.listPendingInvites).toHaveBeenCalledTimes(1);
   });
 
   it("binds each action to the team", async () => {

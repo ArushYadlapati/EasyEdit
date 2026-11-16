@@ -179,6 +179,24 @@ describe("auth database hooks", () => {
       await expect(makeSessionCreateBefore(db)({ userId: "u3" })).rejects.toMatchObject(refused);
     });
 
+    // inAnyTeam leaves Seattle Solvers out, so the refusal alone cannot tell the order apart; the row repair can.
+    it("the session hook repairs the Seattle Solvers row before the gate: a stale row is gone, a missing one is back", async () => {
+      const { db } = await setup();
+      const seedRows = async (id: string) => rowsOf<{ id: string }>(await db.execute(sql`select id from member where user_id = ${id} and organization_id = 'team_seattle_solvers'`));
+
+      await db.insert(user).values({ id: "u4", name: "Stale", email: "stale@gmail.com", emailVerified: true });
+      await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('mt_u4', 'team_seattle_solvers', 'u4', 'editor', now())`);
+      expect(await seedRows("u4")).toHaveLength(1);
+      await expect(makeSessionCreateBefore(db)({ userId: "u4" })).rejects.toMatchObject(refused);
+      expect(await seedRows("u4")).toEqual([]);
+
+      await addEntry(db, { email: "fresh@gmail.com", role: "viewer", invitedBy: SEED_ADMIN_EMAIL });
+      await db.insert(user).values({ id: "u5", name: "Fresh", email: "fresh@gmail.com", emailVerified: true });
+      expect(await seedRows("u5")).toEqual([]);
+      await expect(makeSessionCreateBefore(db)({ userId: "u5" })).resolves.toBeUndefined();
+      expect(await seedRows("u5")).toEqual([{ id: "mt_u5" }]);
+    });
+
     it("an unverified Google email is refused even with an invite", async () => {
       const { db, admin } = await setup();
       await inviteToTeam(db, admin, { email: "rando@gmail.com", role: "editor" });

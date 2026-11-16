@@ -79,7 +79,7 @@ export async function inviteToTeam(
       throw new ServiceError("LIMIT_EXCEEDED", 400, `A team can have up to ${limits.teamMembers} members, counting invites.`);
     }
     if (row.others >= limits.teamPendingInvites) {
-      throw new ServiceError("LIMIT_EXCEEDED", 400, `This team has ${limits.teamPendingInvites} invites waiting. Cancel some first.`);
+      throw new ServiceError("LIMIT_EXCEEDED", 400, `This team has ${limits.teamPendingInvites} ${limits.teamPendingInvites === 1 ? "invite" : "invites"} waiting. Cancel some first.`);
     }
     // They joined while this ran.
     throw new ServiceError("ALREADY_MEMBER", 409, "They're already in this team.");

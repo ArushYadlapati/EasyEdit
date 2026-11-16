@@ -164,7 +164,12 @@ describe("inviting", () => {
     await expect(inviteToTeam(db, admin, { email: "b@x.com", role: "viewer" }, { limits })).rejects.toMatchObject({
       code: "LIMIT_EXCEEDED",
       status: 400,
-      message: "This team has 1 invites waiting. Cancel some first.",
+      message: "This team has 1 invite waiting. Cancel some first.",
+    });
+    const two = { ...LIMITS, teamPendingInvites: 2 };
+    await inviteToTeam(db, admin, { email: "c@x.com", role: "viewer" }, { limits: two });
+    await expect(inviteToTeam(db, admin, { email: "d@x.com", role: "viewer" }, { limits: two })).rejects.toMatchObject({
+      message: "This team has 2 invites waiting. Cancel some first.",
     });
     expect(LIMITS.teamPendingInvites).toBe(50);
   });

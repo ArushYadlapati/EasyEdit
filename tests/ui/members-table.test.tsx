@@ -184,6 +184,29 @@ describe("the invite dialog", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Invite someone" })).toBeNull());
   });
 
+  it("says Couldn't copy for two seconds when the clipboard is missing or refuses, then goes back to Copy link", async () => {
+    vi.useFakeTimers();
+    try {
+      show("u1", "admin", ALL, { pendingInvites: [INV_LIN] });
+      const click = async () => act(async () => void fireEvent.click(screen.getByRole("button", { name: /Copy link|Couldn't copy/ })));
+      writeText.mockRejectedValue(new Error("denied"));
+      await click();
+      expect(screen.getByRole("button", { name: "Couldn't copy" })).toBeTruthy();
+      await act(async () => void vi.advanceTimersByTime(1999));
+      expect(screen.getByRole("button", { name: "Couldn't copy" })).toBeTruthy();
+      await act(async () => void vi.advanceTimersByTime(1));
+      expect(screen.getByRole("button", { name: "Copy link" })).toBeTruthy();
+
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+      await click();
+      expect(screen.getByRole("button", { name: "Couldn't copy" })).toBeTruthy();
+      await act(async () => void vi.advanceTimersByTime(2000));
+      expect(screen.getByRole("button", { name: "Copy link" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows a refusal and stays on the form", async () => {
     actions.invite.mockResolvedValueOnce({ error: "They're already in this team." });
     show("u1", "admin");
