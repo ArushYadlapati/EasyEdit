@@ -8,6 +8,7 @@ import type { Actor } from "@/lib/actor";
 import { normalizeEmail, type Role } from "@/lib/allowlist/service";
 import { FORBIDDEN_BODY } from "@/lib/api-errors";
 import { LIMITS, type Limits } from "@/lib/limits";
+import { SEED_TEAM_ID } from "./types";
 import { ServiceError } from "@/lib/service-error";
 import { changeableTeam, checkedRole, EMAIL_MAX_CHARS, lockedAdmins, teamOnly } from "./members";
 
@@ -123,4 +124,138 @@ export async function cancelInvite(db: DB, actor: Actor, inviteId: string): Prom
   if (row.changed) return;
   if (!row.caller_admin) throw forbidden();
   throw new ServiceError("NOT_FOUND", 404, "That invite is gone.");
+}
+
+export type InviteStatus = "pending" | "expired" | "accepted" | "canceled" | "declined";
+export type InviteView = { id: string; email: string; role: Role; status: InviteStatus; teamName: string; teamSlug: string; invitedBy: string };
+
+const notFound = () => new ServiceError("NOT_FOUND", 404, "This invite link doesn't work.");
+
+type ViewRow = { id: string; email: string; role: string; status: string; expired: boolean; team_name: string; team_slug: string; invited_by: string | null };
+
+function toView(r: ViewRow): InviteView {
+  const expired = r.status === "pending" && r.expired;
+  return {
+    id: r.id,
+    email: r.email,
+    role: r.role as Role,
+    status: expired ? "expired" : (r.status as InviteStatus),
+    teamName: r.team_name,
+    teamSlug: r.team_slug,
+    invitedBy: r.invited_by ?? "",
+  };
+}
+
+// An invite as the invitee sees it. Null for an unknown id, or for a team with no members left (a deleted team).
+export async function findInvite(db: DB, inviteId: string, now: Date = new Date()): Promise<InviteView | null> {
+  const result = await db.execute(sql`
+    select i.id, i.email, i.role, i.status, i.expires_at <= ${now.toISOString()}::timestamp as expired, o.name as team_name, o.slug as team_slug, u.name as invited_by
+    from invitation i
+    join organization o on o.id = i.organization_id and o.kind = 'team'
+    left join "user" u on u.id = i.inviter_id
+    where i.id = ${inviteId} and exists (select 1 from member m where m.organization_id = o.id)
+  `);
+  const row = rowsOf<ViewRow>(result)[0];
+  return row ? toView(row) : null;
+}
+
+// Joins the team with the invited role. One statement: the invite row is locked, must be pending, unexpired, for this
+// email, and for a real team (never Seattle Solvers, never a deleted team). Already being a member is fine; the role is
+// left alone. The cap counts members only, since this invite turns into one.
+export async function acceptInvite(
+  db: DB,
+  who: { id: string; email: string },
+  inviteId: string,
+  opts: { limits?: Limits; now?: Date } = {},
+): Promise<{ teamSlug: string }> {
+  const limits = opts.limits ?? LIMITS;
+  const now = opts.now ?? new Date();
+  const nowIso = now.toISOString();
+  const email = normalizeEmail(who.email);
+  const result = await db.execute(sql`
+    with inv as (select id, organization_id, email, role, status, expires_at from invitation where id = ${inviteId} for update),
+      team as (
+        select o.id, o.slug from organization o, inv
+        where o.id = inv.organization_id and o.kind = 'team' and o.id <> ${SEED_TEAM_ID}
+          and exists (select 1 from member where organization_id = o.id)
+      ),
+      ok as (
+        select inv.id, inv.organization_id, inv.role from inv, team
+        where inv.status = 'pending' and inv.expires_at > ${nowIso}::timestamp and inv.email = ${email}
+      ),
+      counts as (
+        select
+          exists (select 1 from member m, ok where m.organization_id = ok.organization_id and m.user_id = ${who.id}) as already,
+          (select count(*)::int from member m, ok where m.organization_id = ok.organization_id) as members
+      ),
+      added as (
+        insert into member (id, organization_id, user_id, role, created_at)
+        select ${"m_" + nanoid(12)}, ok.organization_id, ${who.id}, ok.role, ${nowIso}::timestamp
+        from ok, counts
+        where not counts.already and counts.members < ${limits.teamMembers}
+        on conflict (organization_id, user_id) do nothing
+        returning user_id
+      ),
+      accepted as (
+        update invitation set status = 'accepted'
+        from ok, counts
+        where invitation.id = ok.id and (counts.already or counts.members < ${limits.teamMembers})
+        returning invitation.id
+      )
+    select
+      exists (select 1 from accepted) as accepted,
+      (select slug from team) as team_slug,
+      (select email from inv) as invite_email,
+      (select status from inv) as status,
+      (select expires_at <= ${nowIso}::timestamp from inv) as expired,
+      (select members from counts) as members
+  `);
+  type Row = { accepted: boolean; team_slug: string | null; invite_email: string | null; status: string | null; expired: boolean | null; members: number | null };
+  const row = rowsOf<Row>(result)[0];
+  if (row.accepted && row.team_slug) return { teamSlug: row.team_slug };
+  if (!row.team_slug || !row.status) throw notFound();
+  if (row.invite_email !== email) throw new ServiceError("WRONG_ACCOUNT", 403, "This invite is for a different email address.");
+  if (row.status !== "pending") throw new ServiceError("INVITE_USED", 409, "This invite has already been used or cancelled.");
+  if (row.expired) {
+    throw new ServiceError("EXPIRED", 410, "This invite has expired. Ask a team admin for a new one.");
+  }
+  if (row.members !== null && row.members >= limits.teamMembers) throw new ServiceError("LIMIT_EXCEEDED", 400, "This team is full.");
+  throw new ServiceError("INVITE_USED", 409, "This invite has already been used or cancelled.");
+}
+
+// Says no to an invite. Only the invited email can; a pending invite becomes declined.
+export async function declineInvite(db: DB, who: { id: string; email: string }, inviteId: string): Promise<void> {
+  const email = normalizeEmail(who.email);
+  const result = await db.execute(sql`
+    with inv as (select id, email, status from invitation where id = ${inviteId} for update),
+      declined as (
+        update invitation set status = 'declined'
+        from inv where invitation.id = inv.id and inv.status = 'pending' and inv.email = ${email}
+        returning invitation.id
+      )
+    select exists (select 1 from declined) as declined, (select email from inv) as invite_email, (select status from inv) as status
+  `);
+  const row = rowsOf<{ declined: boolean; invite_email: string | null; status: string | null }>(result)[0];
+  if (row.declined) return;
+  if (!row.status) throw notFound();
+  if (row.invite_email !== email) throw new ServiceError("WRONG_ACCOUNT", 403, "This invite is for a different email address.");
+  throw new ServiceError("INVITE_USED", 409, "This invite has already been used or cancelled.");
+}
+
+// Invites waiting for this email: pending and unexpired, oldest first.
+export async function listMyInvites(db: DB, email: string, now: Date = new Date()): Promise<InviteView[]> {
+  const result = await db.execute(sql`
+    select i.id, i.email, i.role, i.status, i.expires_at <= ${now.toISOString()}::timestamp as expired, o.name as team_name, o.slug as team_slug, u.name as invited_by
+    from invitation i
+    join organization o on o.id = i.organization_id and o.kind = 'team' and o.id <> ${SEED_TEAM_ID}
+    left join "user" u on u.id = i.inviter_id
+    where i.email = ${normalizeEmail(email)} and i.status = 'pending' and i.expires_at > ${now.toISOString()}::timestamp
+      and exists (select 1 from member m where m.organization_id = o.id)
+    order by i.created_at, i.id
+  `);
+  return rowsOf<ViewRow>(result).map(toView);
+}
+
+export async function hasPendingInvite(db: DB, email: string, now: Date = new Date()): Promise<boolean> {
+  return (await listMyInvites(db, email, now)).length > 0;
 }
