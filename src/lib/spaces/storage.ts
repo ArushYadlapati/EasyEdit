@@ -7,7 +7,7 @@ import { createDriveClient, type DriveClient } from "@/lib/drive/client";
 import { readerSource } from "@/lib/drive/reader";
 import type { AccessSource } from "@/lib/drive/token";
 import { type StorageConfig, storageConfig } from "@/lib/storage/config";
-import { brokenReason, connectionAccess } from "@/lib/storage/connections";
+import { brokenReason, connectionAccess, healKeyBroken } from "@/lib/storage/connections";
 import { ConnectionBrokenError } from "@/lib/storage/google-oauth";
 import { keptSource } from "@/lib/storage/token-cache";
 
@@ -58,6 +58,7 @@ async function find(db: DB, spaceId: string, deps: StorageDeps): Promise<Found> 
       spaceKind: organization.kind,
       brokenAt: driveConnection.brokenAt,
       brokenReason: driveConnection.brokenReason,
+      refreshTokenEnc: driveConnection.refreshTokenEnc,
     })
     .from(spaceStorage)
     .innerJoin(organization, eq(organization.id, spaceStorage.spaceId))
@@ -75,13 +76,15 @@ async function find(db: DB, spaceId: string, deps: StorageDeps): Promise<Found> 
   if (!connectionId || !rootFolderId) return unready("not_configured"); // the table's check rules this out
   const cfg = (deps.config ?? storageConfig)();
   if (!cfg) return unready("not_configured"); // without the OAuth client a connection's token can't be had, whatever its state
+  // A connection broken by a wrong key mends itself once the right key is back.
+  const brokenAt = connectionId && row.refreshTokenEnc !== null && (await healKeyBroken(db, cfg, { id: connectionId, refreshTokenEnc: row.refreshTokenEnc, brokenAt: row.brokenAt, brokenReason: row.brokenReason })) ? null : row.brokenAt;
   if (row.spaceKind === "personal") {
-    if (row.brokenAt !== null) return { kind: "broken", reason: brokenReason(row.brokenReason) };
+    if (brokenAt !== null) return { kind: "broken", reason: brokenReason(row.brokenReason) };
     return { kind: "personal", cfg, connectionId, rootFolderId };
   }
 
   const caller = readSetting(deps.mainSa ?? mainServiceAccount);
-  if (row.brokenAt !== null) {
+  if (brokenAt !== null) {
     const reader = caller && row.readerEmail ? { caller, readerEmail: row.readerEmail } : undefined;
     return { kind: "broken", reason: brokenReason(row.brokenReason), reader };
   }

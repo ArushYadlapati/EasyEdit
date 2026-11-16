@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, type SQL, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { DB } from "@/db";
 import { driveConnection } from "@/db/schema";
@@ -48,14 +48,40 @@ export async function listConnections(db: DB, userId: string): Promise<Connectio
 
 // Why a row is broken when its sealed token won't open with the server's key.
 const KEY_REASON = "key";
-const opens = (sealed: string, cfg: StorageConfig) => {
+
+// A connection broken because its token wouldn't open (the key was wrong for a while) heals once the right key is
+// back: no call to Google, and no reconnecting. Every path that reads a connection's state or token goes through
+// this (storage lookups, connectionAccess, the settings page). Returns true when the row is now mended. A connection
+// Google ended (revoked, expired) is never healed here. A database error leaves it broken.
+export async function healKeyBroken(
+  db: DB,
+  cfg: StorageConfig | null,
+  row: { id: string; refreshTokenEnc: string; brokenAt: Date | null; brokenReason: string | null },
+): Promise<boolean> {
+  if (!cfg || row.brokenAt === null || row.brokenReason !== KEY_REASON) return false;
   try {
-    open(sealed, cfg.tokenKey);
-    return true;
+    open(row.refreshTokenEnc, cfg.tokenKey);
   } catch {
     return false;
   }
-};
+  try {
+    await db
+      .update(driveConnection)
+      .set({ brokenAt: null, brokenReason: null })
+      .where(and(eq(driveConnection.id, row.id), eq(driveConnection.refreshTokenEnc, row.refreshTokenEnc), eq(driveConnection.brokenReason, KEY_REASON)));
+    return true;
+  } catch {
+    console.error("A connection broken by the storage key could not be mended");
+    return false;
+  }
+}
+
+// Heals the key-broken connections matching `where` (a person's, or one by id).
+export async function healKeyBrokenWhere(db: DB, cfg: StorageConfig | null, where: SQL): Promise<void> {
+  if (!cfg) return;
+  const rows = await db.select().from(driveConnection).where(and(where, eq(driveConnection.brokenReason, KEY_REASON)));
+  for (const row of rows) await healKeyBroken(db, cfg, row);
+}
 
 // Access tokens for the connection, refreshed from its sealed refresh token. When Google says the connection is gone
 // (invalid_grant), the row is marked broken and the ConnectionBrokenError comes out. A connection already marked broken
@@ -67,16 +93,7 @@ export async function connectionAccess(db: DB, cfg: StorageConfig, connectionId:
   const [row] = await db.select().from(driveConnection).where(eq(driveConnection.id, connectionId));
   if (!row) throw new Error(`No Drive connection ${connectionId}`);
   const prefix = `connection:${connectionId}:`;
-  // A row broken because its token wouldn't open ("key") heals when the right key is back: tried again here, with no
-  // call to Google. One broken by Google (revoked, expired) is never healed this way.
-  let brokenAt = row.brokenAt;
-  if (brokenAt !== null && row.brokenReason === KEY_REASON && opens(row.refreshTokenEnc, cfg)) {
-    await db
-      .update(driveConnection)
-      .set({ brokenAt: null, brokenReason: null })
-      .where(and(eq(driveConnection.id, connectionId), eq(driveConnection.refreshTokenEnc, row.refreshTokenEnc), eq(driveConnection.brokenReason, KEY_REASON)));
-    brokenAt = null;
-  }
+  const brokenAt = (await healKeyBroken(db, cfg, row)) ? null : row.brokenAt;
   if (brokenAt !== null) {
     forgetSources(prefix);
     const reason = brokenReason(row.brokenReason);

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { driveConnection, spaceStorage } from "@/db/schema";
@@ -7,7 +8,8 @@ import { readerAccountId, readerSource } from "@/lib/drive/reader";
 import { SCOPE_READ, SCOPE_WRITE } from "@/lib/drive/token";
 import { readerFor, storageFor, storageState, type StorageDeps } from "@/lib/spaces/storage";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
-import { DRIVE_FILE_SCOPE } from "@/lib/storage/google-oauth";
+import { ConnectionBrokenError, DRIVE_FILE_SCOPE } from "@/lib/storage/google-oauth";
+import { forgetAllSources } from "@/lib/storage/token-cache";
 import { makeSetUpStorage } from "@/lib/storage/setup";
 import { type StorageWorld, storageWorld } from "../helpers/storage";
 
@@ -42,6 +44,38 @@ function stubSharedFolderSettings(w: StorageWorld) {
   vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", Buffer.from(JSON.stringify(key)).toString("base64"));
   vi.stubEnv("DRIVE_FOLDER_ID", "folder1");
 }
+
+describe("a connection broken by a wrong storage key", () => {
+  const wrongKey = (w: StorageWorld): StorageDeps => ({ config: () => ({ ...w.cfg, tokenKey: randomBytes(32) }) });
+
+  it.each(["personal", "team"] as const)("in a %s space: broken while the key is wrong, mended and working once the right key is back", async (kind) => {
+    const w = await storageWorld();
+    const spaceId = kind === "personal" ? w.personal : await w.team("Robotics Club");
+    const { connection } = await withStorage(w, spaceId);
+    const bad = depsOf(w, wrongKey(w));
+    forgetAllSources();
+    // The wrong key: the first upload attempt finds the token won't open and marks the connection broken.
+    const wrongClient = await storageFor(w.db, spaceId, bad);
+    await expect(wrongClient!.folderId("Originals")).rejects.toBeInstanceOf(ConnectionBrokenError);
+    expect((await w.db.select().from(driveConnection).where(eq(driveConnection.id, connection.id)))[0].brokenReason).toBe("key");
+    expect(await storageState(w.db, spaceId, bad)).toEqual({ ready: false, reason: "broken" });
+    await expect(storageFor(w.db, spaceId, bad)).rejects.toBeInstanceOf(ConnectionBrokenError);
+
+    // The right key is back: the same calls heal it, with no reconnecting.
+    expect(await storageState(w.db, spaceId, depsOf(w))).toEqual({ ready: true });
+    expect((await w.db.select().from(driveConnection).where(eq(driveConnection.id, connection.id)))[0]).toMatchObject({ brokenAt: null, brokenReason: null });
+    const client = await storageFor(w.db, spaceId, depsOf(w));
+    expect(await client!.folderId("Originals")).toEqual(expect.any(String));
+  });
+
+  it("a connection Google revoked is not mended by the right key", async () => {
+    const w = await storageWorld();
+    const { connection } = await withStorage(w, w.personal);
+    await w.db.update(driveConnection).set({ brokenAt: new Date(), brokenReason: "revoked" }).where(eq(driveConnection.id, connection.id));
+    expect(await storageState(w.db, w.personal, depsOf(w))).toEqual({ ready: false, reason: "broken" });
+    await expect(storageFor(w.db, w.personal, depsOf(w))).rejects.toBeInstanceOf(ConnectionBrokenError);
+  });
+});
 
 describe("storageState", () => {
   it("is ready for Seattle Solvers' shared folder when its settings are there, without a Drive call", async () => {

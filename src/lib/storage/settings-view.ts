@@ -7,7 +7,7 @@ import { slugFor } from "@/lib/spaces/paths";
 import type { MySpace, Space } from "@/lib/spaces/types";
 import { storageBlock } from "./availability";
 import { type StorageConfig, storageConfig } from "./config";
-import { connectionAccess, listConnections } from "./connections";
+import { connectionAccess, healKeyBrokenWhere, listConnections } from "./connections";
 import type { DriveUsage, StorageBlock } from "./messages";
 import { holdsUploads } from "./setup";
 import { driveUsage } from "./usage";
@@ -75,6 +75,12 @@ export async function connectionOwner(db: DB, spaceId: string): Promise<{ userId
 export async function storageSettings(db: DB, space: MySpace, viewerId: string, deps: SettingsViewDeps = {}): Promise<StorageSettingsView> {
   const config = deps.config ?? storageConfig;
   const cfg = config();
+  // A connection broken by a wrong key mends itself once the right key is back: the space's, and the viewer's own.
+  if (cfg) {
+    const [held] = await db.select({ id: spaceStorage.connectionId }).from(spaceStorage).where(eq(spaceStorage.spaceId, space.id));
+    if (held?.id) await healKeyBrokenWhere(db, cfg, eq(driveConnection.id, held.id));
+    await healKeyBrokenWhere(db, cfg, eq(driveConnection.userId, viewerId));
+  }
   const [row] = await db
     .select({ kind: spaceStorage.kind, connectionId: spaceStorage.connectionId, folderName: spaceStorage.folderName, email: driveConnection.email, brokenAt: driveConnection.brokenAt, ownerId: driveConnection.userId, ownerEmail: user.email })
     .from(spaceStorage)
