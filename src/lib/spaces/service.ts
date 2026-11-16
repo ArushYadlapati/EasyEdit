@@ -25,11 +25,12 @@ export async function listMySpaces(db: DB, userId: string): Promise<MySpace[]> {
   return rowsOf<SpaceRow>(result).map(toMySpace);
 }
 
-// True when the user is a member of any team (a personal space does not count).
+// True when the user is a member of a team other than Seattle Solvers (a personal space does not count, and Seattle
+// Solvers membership follows the allowlist, so a stale row there must never let someone in).
 export async function inAnyTeam(db: DB, userId: string): Promise<boolean> {
   const result = await db.execute(sql`
     select 1 as one from member m join organization o on o.id = m.organization_id
-    where m.user_id = ${userId} and o.kind = 'team' limit 1
+    where m.user_id = ${userId} and o.kind = 'team' and o.id <> ${SEED_TEAM_ID} limit 1
   `);
   return rowsOf<{ one: number }>(result).length > 0;
 }

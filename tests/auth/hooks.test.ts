@@ -170,6 +170,15 @@ describe("auth database hooks", () => {
       await expect(makeSessionCreateBefore(db)({ userId: "u2" })).rejects.toMatchObject(refused);
     });
 
+    it("session create refuses someone removed from the allowlist whose only team was Seattle Solvers", async () => {
+      const { db } = await setup();
+      await addEntry(db, { email: "kid@gmail.com", role: "editor", invitedBy: SEED_ADMIN_EMAIL });
+      await db.insert(user).values({ id: "u3", name: "Kid", email: "kid@gmail.com", emailVerified: true });
+      await makeUserCreateAfter(db)({ id: "u3", email: "kid@gmail.com" });
+      await db.execute(sql`delete from allowlist where email = 'kid@gmail.com'`);
+      await expect(makeSessionCreateBefore(db)({ userId: "u3" })).rejects.toMatchObject(refused);
+    });
+
     it("an unverified Google email is refused even with an invite", async () => {
       const { db, admin } = await setup();
       await inviteToTeam(db, admin, { email: "rando@gmail.com", role: "editor" });
