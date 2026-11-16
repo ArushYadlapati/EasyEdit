@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "@/components/ui/logo";
-import styles from "./home.module.css";
 
 // The home page's one live thing: pick a request in plain words and watch a model of the editor change the way an
 // agent's edit changes a real project. Each request is one of the connector's real tools (add_text, trim_clip,
@@ -21,8 +20,8 @@ const BASE: Doc = {
   vertical: false,
   title: false,
   video: [
-    { id: "a", ...ARM, start: 0, end: 5 },
-    { id: "b", ...SOLDER, start: 5, end: 9 },
+    { id: "a", ...SOLDER, start: 0, end: 5 },
+    { id: "b", ...ARM, start: 5, end: 9 },
   ],
 };
 
@@ -40,7 +39,7 @@ export const REQUESTS: Request[] = [
   {
     key: "trim",
     agent: "ChatGPT",
-    words: "Make the soldering shot two seconds long.",
+    words: "Make the robot arm shot two seconds long.",
     summary: "Trimmed a video clip",
     apply: (d) => ({ ...d, video: d.video.map((c) => (c.id === "b" ? { ...c, end: 7 } : c)) }),
     fresh: "b",
@@ -56,7 +55,7 @@ export const REQUESTS: Request[] = [
   {
     key: "split",
     agent: "Cursor",
-    words: "Split the arm clip at the playhead.",
+    words: "Split the soldering clip at the playhead.",
     summary: "Split a video clip",
     apply: (d) => ({
       ...d,
@@ -91,65 +90,65 @@ export function AgentDemo() {
   const shown = doc.video.find((c) => c.start <= PLAYHEAD && PLAYHEAD < c.end) ?? doc.video[0];
 
   return (
-    <div className={styles.demo}>
-      <ul className={styles.demoRequests} aria-label="Ask an agent">
+    <div className="h-demo">
+      <ul className="h-demoRequests" aria-label="Ask an agent">
         {REQUESTS.map((r, i) => (
           <li key={r.key}>
-            <button type="button" aria-pressed={i === chosen} onClick={() => choose(i)} className={styles.demoRequest}>
-              <span className={styles.demoWords}>{r.words}</span>
-              <span className={styles.demoAgent}>Ask {r.agent}</span>
+            <button type="button" aria-pressed={i === chosen} onClick={() => choose(i)} className="h-demoRequest">
+              <span className="h-demoWords">{r.words}</span>
+              <span className="h-demoAgent">Ask {r.agent}</span>
             </button>
           </li>
         ))}
       </ul>
 
-      <div className={styles.demoStage}>
-        <figure className={styles.demoFigure}>
-        <div data-ui className={styles.ui}>
-          <div className={styles.uiBar}>
+      <div className="h-demoStage">
+        <figure className="h-demoFigure">
+        <div data-ui className="h-ui">
+          <div className="h-uiBar">
             <LogoMark size={16} />
-            <span className={styles.uiProject}>Spring showcase</span>
-            <span className={styles.uiStatus}>
+            <span className="h-uiProject">Spring showcase</span>
+            <span className="h-uiStatus">
               {phase === "working" ? (
                 <>
-                  <span className={styles.uiDot} /> {request.agent} is editing…
+                  <span className="h-uiDot" /> {request.agent} is editing…
                 </>
               ) : (
                 "Saved"
               )}
             </span>
-            <span className={styles.uiExport}>Export</span>
+            <span className="h-uiExport">Export</span>
           </div>
 
-          <div className={styles.uiMain}>
-            <div className={styles.uiPreview}>
-              <div className={styles.uiFrame} data-vertical={doc.vertical || undefined} data-fresh={fresh === "frame" || undefined}>
+          <div className="h-uiMain">
+            <div className="h-uiPreview">
+              <div className="h-uiFrame" data-vertical={doc.vertical || undefined} data-fresh={fresh === "frame" || undefined}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- a fixed still inside a drawn interface */}
                 <img src={shown.thumb} alt="" width={960} height={540} />
                 {doc.title && (
-                  <span className={styles.uiTitle} data-fresh={fresh === "text" || undefined}>
+                  <span className="h-uiTitle" data-fresh={fresh === "text" || undefined}>
                     Spring showcase
                   </span>
                 )}
               </div>
             </div>
 
-            <div className={styles.uiSide}>
-              <div className={styles.uiTabs}>
+            <div className="h-uiSide">
+              <div className="h-uiTabs">
                 <span>Inspect</span>
                 <span data-on>Activity</span>
               </div>
-              <ol className={styles.uiActivity}>
+              <ol className="h-uiActivity">
                 {phase !== "working" && (
                   <li key={`${request.key}-${phase}`} data-fresh>
-                    <span className={styles.uiWho}>
+                    <span className="h-uiWho">
                       {request.agent} (for you) · {request.summary}
                     </span>
-                    <span className={styles.uiWhen}>
+                    <span className="h-uiWhen">
                       just now
                       <button
                         type="button"
-                        className={styles.uiUndo}
+                        className="h-uiUndo"
                         disabled={phase === "undone"}
                         onClick={() => setPhase("undone")}
                       >
@@ -159,27 +158,27 @@ export function AgentDemo() {
                   </li>
                 )}
                 <li>
-                  <span className={styles.uiWho}>You · Added 2 clips</span>
-                  <span className={styles.uiWhen}>3 minutes ago</span>
+                  <span className="h-uiWho">You · Added 2 clips</span>
+                  <span className="h-uiWhen">3 minutes ago</span>
                 </li>
               </ol>
             </div>
           </div>
 
-          <div className={styles.uiTimeline}>
-            <div className={styles.uiRuler}>
+          <div className="h-uiTimeline">
+            <div className="h-uiRuler">
               {Array.from({ length: SECONDS }, (_, s) => (
                 <span key={s} style={{ left: at(s) }}>
                   {time(s)}
                 </span>
               ))}
             </div>
-            <div className={styles.uiTrack}>
-              <span className={styles.uiTrackName}>Text 1</span>
-              <div className={styles.uiLane}>
+            <div className="h-uiTrack">
+              <span className="h-uiTrackName">Text 1</span>
+              <div className="h-uiLane">
                 {doc.title && (
                   <span
-                    className={`${styles.uiClip} ${styles.uiClipText}`}
+                    className="h-uiClip h-uiClipText"
                     style={{ left: at(0), width: at(4) }}
                     data-fresh={fresh === "text" || undefined}
                   >
@@ -188,13 +187,13 @@ export function AgentDemo() {
                 )}
               </div>
             </div>
-            <div className={styles.uiTrack}>
-              <span className={styles.uiTrackName}>Video 1</span>
-              <div className={styles.uiLane}>
+            <div className="h-uiTrack">
+              <span className="h-uiTrackName">Video 1</span>
+              <div className="h-uiLane">
                 {doc.video.map((c) => (
                   <span
                     key={c.id}
-                    className={styles.uiClip}
+                    className="h-uiClip"
                     style={{ left: at(c.start), width: at(c.end - c.start) }}
                     data-fresh={fresh === c.id || undefined}
                   >
@@ -205,10 +204,10 @@ export function AgentDemo() {
                 ))}
               </div>
             </div>
-            <span className={styles.uiPlayhead} style={{ "--at": PLAYHEAD / SECONDS } as React.CSSProperties} />
+            <span className="h-uiPlayhead" style={{ "--at": PLAYHEAD / SECONDS } as React.CSSProperties} />
           </div>
         </div>
-        <figcaption className={styles.demoNote}>
+        <figcaption className="h-demoNote">
           A working model of the editor. In EasyEdit, you connect your own agent and ask it anything a person could do
           on the timeline.
         </figcaption>

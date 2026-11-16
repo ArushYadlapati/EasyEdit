@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import styles from "./home.module.css";
 
 export type StageClip = {
   key: string;
@@ -81,15 +80,15 @@ export function Stage({ clips, mode, className }: { clips: StageClip[]; mode: "c
   const next = () => setActive((i) => (i + 1) % clips.length);
 
   return (
-    <div ref={root} className={`${styles.stage} ${className ?? ""}`} data-still={still || undefined}>
-      <div className={styles.stageScreen}>
+    <div ref={root} className={`h-stage ${className ?? ""}`} data-still={still || undefined}>
+      <div className="h-stageScreen">
         {clips.map((clip, i) => (
           <video
             key={clip.key}
             ref={(el) => {
               videos.current[i] = el;
             }}
-            className={styles.stageVideo}
+            className="h-stageVideo"
             data-on={i === active || undefined}
             src={clip.src}
             poster={clip.poster}
@@ -103,16 +102,16 @@ export function Stage({ clips, mode, className }: { clips: StageClip[]; mode: "c
           />
         ))}
       </div>
-      <div className={styles.stageWords} aria-live="off">
+      <div className="h-stageWords" aria-live="off">
         {clips.map((clip, i) => (
-          <div key={clip.key} className={styles.stageLine} data-on={i === active || undefined} aria-hidden={i === active ? undefined : true}>
-            <p className={styles.stageStatus}>{clip.status}</p>
-            <p className={styles.stageCaption}>{clip.caption}</p>
+          <div key={clip.key} className="h-stageLine" data-on={i === active || undefined} aria-hidden={i === active ? undefined : true}>
+            <p className="h-stageStatus">{clip.status}</p>
+            <p className="h-stageCaption">{clip.caption}</p>
           </div>
         ))}
       </div>
       {!still && (
-        <button type="button" className={styles.stagePause} onClick={() => setPaused((p) => !p)} aria-pressed={paused}>
+        <button type="button" className="h-stagePause" onClick={() => setPaused((p) => !p)} aria-pressed={paused}>
           {paused ? "Play" : "Pause"}
         </button>
       )}

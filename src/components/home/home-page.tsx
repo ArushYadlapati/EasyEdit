@@ -4,7 +4,7 @@ import { AgentDemo } from "./agent-demo";
 import { CutBand } from "./cut-band";
 import { erode } from "./erode";
 import { Stage, type StageClip } from "./stage";
-import styles from "./home.module.css";
+import "./home.css";
 
 // The public home page, for anyone who lands on easyedit.arush.dev signed out. Its pictures are the app itself:
 // clips and stills cut from the intro tutorial's recording of the real editor (public/home), and one working model
@@ -45,8 +45,35 @@ const CLIPS: Record<"ai" | "team" | "edit" | "export", StageClip> = {
   },
 };
 
+// What the stage beside the reading column shows for each block of it: the same recordings, each with its own words,
+// so the picture changes as the reader moves on.
+const FOLLOW: StageClip[] = [
+  { ...CLIPS.team, key: "presence" },
+  {
+    ...CLIPS.ai,
+    key: "undo",
+    status: "Undo this change",
+    caption: "Every line in Activity has its own undo, whether a teammate or an agent made the change.",
+  },
+  {
+    ...CLIPS.team,
+    key: "spaces",
+    status: "Sam Okafor · Added a video clip",
+    caption: "Everyone in the team space works on the same projects, folders and media.",
+  },
+  { ...CLIPS.edit, key: "brand" },
+  {
+    ...CLIPS.edit,
+    key: "tools",
+    status: "Regional Recap",
+    caption: "Text from the Text tab, typed on the preview, styled in Inspect, laid on its own track.",
+  },
+  { ...CLIPS.export, key: "export" },
+];
+
 const TEAM = [
   {
+    stage: "presence",
     img: "/home/presence.jpg",
     w: 820,
     h: 420,
@@ -58,6 +85,7 @@ const TEAM = [
     ],
   },
   {
+    stage: "undo",
     img: "/home/activity.jpg",
     w: 540,
     h: 370,
@@ -69,6 +97,7 @@ const TEAM = [
     ],
   },
   {
+    stage: "spaces",
     img: "/home/projects.jpg",
     w: 1580,
     h: 760,
@@ -80,6 +109,7 @@ const TEAM = [
     ],
   },
   {
+    stage: "brand",
     img: "/home/brand-kit.jpg",
     w: 1180,
     h: 820,
@@ -208,28 +238,28 @@ const FAQ: [string, string][] = [
 // closedBeta: sign-up isn't open (openSignUp() in signup.ts, read on the server), so only invited people get in.
 export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
   return (
-    <main className={`${erode.variable} ${styles.page}`}>
+    <main className={`${erode.variable} h-page`}>
       {/* First screen: the card on one side, the editor playing on the other. */}
-      <section className={styles.hero} aria-labelledby="home-title">
-        <div className={styles.card}>
+      <section className="h-hero" aria-labelledby="home-title">
+        <div className="h-card">
           <CutBand />
-          <div className={styles.cardBody}>
-            <p className={styles.wordmark}>
+          <div className="h-cardBody">
+            <p className="h-wordmark">
               <LogoMark size={44} />
               <span>EasyEdit</span>
             </p>
-            <h1 id="home-title" className={styles.heroTitle}>
+            <h1 id="home-title" className="h-heroTitle">
               Edit videos with your team and AI
             </h1>
-            <p className={styles.heroLead}>
+            <p className="h-heroLead">
               A free video editor in your browser. Teammates work in the same project at once, and AI agents like Claude
               and ChatGPT make edits when you ask in plain words.
             </p>
-            <Link href="/login" className={styles.button}>
+            <Link href="/login" className="h-button">
               {closedBeta ? "Sign in" : "Start editing, free"}
             </Link>
-            {closedBeta && <p className={styles.heroNote}>EasyEdit is in closed beta. Sign-in is by invitation only for now.</p>}
-            <nav className={styles.heroLinks} aria-label="On this page">
+            {closedBeta && <p className="h-heroNote">EasyEdit is in closed beta. Sign-in is by invitation only for now.</p>}
+            <nav className="h-heroLinks" aria-label="On this page">
               <a href="#ai">AI agents</a>
               <a href="#team">Teams</a>
               <a href="#tools">The editor</a>
@@ -237,16 +267,16 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
             </nav>
           </div>
         </div>
-        <Stage clips={[CLIPS.ai, CLIPS.team, CLIPS.edit, CLIPS.export]} mode="cycle" className={styles.heroStage} />
+        <Stage clips={[CLIPS.ai, CLIPS.team, CLIPS.edit, CLIPS.export]} mode="cycle" className="h-heroStage" />
       </section>
 
       {/* The live thing, full width. */}
-      <section id="ai" className={styles.ai} aria-labelledby="ai-title">
-        <div className={styles.aiHead}>
-          <h2 id="ai-title" className={styles.sectionTitle}>
+      <section id="ai" className="h-ai" aria-labelledby="ai-title">
+        <div className="h-aiHead">
+          <h2 id="ai-title" className="h-sectionTitle">
             Ask an agent to edit
           </h2>
-          <p className={styles.aiLead}>
+          <p className="h-aiLead">
             Connect Claude, ChatGPT, Cursor or any agent that speaks MCP. Then say what you want. The change lands in
             your project in front of you, signed with the agent&apos;s name.
           </p>
@@ -255,26 +285,26 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
       </section>
 
       {/* The second split: the editor playing on the left, the team and the tools on the right. */}
-      <div className={styles.split}>
-        <Stage clips={[CLIPS.team, CLIPS.edit, CLIPS.export]} mode="follow" className={styles.splitStage} />
-        <div className={styles.column}>
-          <section id="team" data-stage="team" className={styles.team} aria-labelledby="team-title">
-            <h2 id="team-title" className={styles.sectionTitle}>
+      <div className="h-split">
+        <Stage clips={FOLLOW} mode="follow" className="h-splitStage" />
+        <div className="h-column">
+          <section id="team" className="h-team" aria-labelledby="team-title">
+            <h2 id="team-title" className="h-sectionTitle">
               Your whole team, one project
             </h2>
-            <p className={styles.columnLead}>
+            <p className="h-columnLead">
               Make a team space, invite people, and everyone edits the same project at the same time. Nobody waits for
               a file.
             </p>
             {TEAM.map((m) => (
-              <article key={m.title} className={styles.module}>
-                <div className={styles.modulePanel}>
+              <article key={m.title} data-stage={m.stage} className="h-module">
+                <div className="h-modulePanel">
                   {/* eslint-disable-next-line @next/next/no-img-element -- a fixed crop of a recording, served as is */}
                   <img src={m.img} alt={m.alt} width={m.w} height={m.h} loading="lazy" />
                 </div>
-                <h3 className={styles.moduleTitle}>{m.title}</h3>
+                <h3 className="h-moduleTitle">{m.title}</h3>
                 {m.body.map((p) => (
-                  <p key={p} className={styles.moduleText}>
+                  <p key={p} className="h-moduleText">
                     {p}
                   </p>
                 ))}
@@ -282,16 +312,16 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
             ))}
           </section>
 
-          <section id="tools" data-stage="edit" className={styles.tools} aria-labelledby="tools-title">
-            <h2 id="tools-title" className={styles.giant}>
+          <section id="tools" data-stage="tools" className="h-tools" aria-labelledby="tools-title">
+            <h2 id="tools-title" className="h-giant">
               Tools
             </h2>
-            <p className={styles.columnLead}>
+            <p className="h-columnLead">
               A real timeline with tracks, a tool rail and a keyboard for everything. Open a group to see what&apos;s in it.
             </p>
-            <div className={styles.bars}>
+            <div className="h-bars">
               {TOOLS.map((group, i) => (
-                <details key={group.name} className={styles.bar} open={i === 0}>
+                <details key={group.name} className="h-bar" open={i === 0}>
                   <summary>{group.name}</summary>
                   <dl>
                     {group.rows.map(([what, how]) => (
@@ -306,12 +336,12 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
             </div>
           </section>
 
-          <section data-stage="export" className={styles.export} aria-labelledby="export-title">
-            <h2 id="export-title" className={styles.sectionTitle}>
+          <section data-stage="export" className="h-export" aria-labelledby="export-title">
+            <h2 id="export-title" className="h-sectionTitle">
               Export in your browser
             </h2>
-            <p className={styles.exportFigure}>MP4</p>
-            <p className={styles.columnLead}>
+            <p className="h-exportFigure">MP4</p>
+            <p className="h-columnLead">
               Click Export and the video renders on your own computer, frame by frame, into an MP4 ready for TikTok,
               Reels, Shorts or YouTube. Nothing is uploaded, and there&apos;s no queue to wait in.
             </p>
@@ -319,11 +349,11 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
         </div>
       </div>
 
-      <section className={styles.faq} aria-labelledby="faq-title">
-        <h2 id="faq-title" className={styles.sectionTitle}>
+      <section className="h-faq" aria-labelledby="faq-title">
+        <h2 id="faq-title" className="h-sectionTitle">
           Questions, answered
         </h2>
-        <div className={styles.faqText}>
+        <div className="h-faqText">
           {FAQ.map(([q, a]) => (
             <p key={q}>
               <strong>{q}</strong> {a}
@@ -332,9 +362,9 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
         </div>
       </section>
 
-      <section className={styles.cta} aria-labelledby="cta-title">
-        <div className={styles.ctaWords}>
-          <h2 id="cta-title" className={styles.ctaTitle}>
+      <section className="h-cta" aria-labelledby="cta-title">
+        <div className="h-ctaWords">
+          <h2 id="cta-title" className="h-ctaTitle">
             Make the first cut.
           </h2>
           <p>Sign in with Google and your first project opens in the editor.</p>
@@ -342,9 +372,9 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
         <NewProjectDialog />
       </section>
 
-      <footer className={styles.footer}>
-        <CutBand tracks={1} className={styles.footerBand} />
-        <div className={styles.footerLine}>
+      <footer className="h-footer">
+        <CutBand tracks={1} className="h-footerBand" />
+        <div className="h-footerLine">
           <span>A video editor for teams and AI agents</span>
           <nav aria-label="Footer">
             <Link href="/login">Sign in</Link>
@@ -362,22 +392,22 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
 // not a form: its button takes you to sign in, where the real one waits.
 function NewProjectDialog() {
   return (
-    <div data-ui className={styles.dialog}>
-      <p className={styles.dialogTitle}>New project</p>
-      <p className={styles.dialogLabel}>Name</p>
-      <p className={styles.dialogField}>Spring showcase</p>
-      <p className={styles.dialogLabel}>Format</p>
-      <div className={styles.dialogFormats}>
+    <div data-ui className="h-dialog">
+      <p className="h-dialogTitle">New project</p>
+      <p className="h-dialogLabel">Name</p>
+      <p className="h-dialogField">Spring showcase</p>
+      <p className="h-dialogLabel">Format</p>
+      <div className="h-dialogFormats">
         <span data-on>
-          <span className={styles.dialogShape} data-shape="tall" />
+          <span className="h-dialogShape" data-shape="tall" />
           Vertical 9:16
         </span>
         <span>
-          <span className={styles.dialogShape} data-shape="wide" />
+          <span className="h-dialogShape" data-shape="wide" />
           Landscape 16:9
         </span>
       </div>
-      <Link href="/login" className={styles.dialogButton}>
+      <Link href="/login" className="h-dialogButton">
         Sign in to create it
       </Link>
     </div>
