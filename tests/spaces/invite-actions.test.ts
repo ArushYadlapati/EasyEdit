@@ -35,12 +35,19 @@ async function setup() {
 
 const as = (id: string, email: string): CurrentUser => ({ ...testUser({ id, email }), allowlistRole: null });
 
-function actionsAs(db: DB, who: CurrentUser) {
+function actionsAs(db: DB, who: CurrentUser, onboarded: boolean | "error" = true) {
   const revalidate = vi.fn();
   const redirect = vi.fn((to: string): never => {
     throw new Redirected(to);
   });
-  return { actions: makeInviteActions({ db: () => db, requireUser: async () => who, revalidate, redirect }), revalidate, redirect };
+  return { actions: makeInviteActions({ db: () => db, requireUser: async () => who, revalidate,
+      redirect,
+      hasOnboarded: async () => {
+        if (onboarded === "error") throw new Error("db down");
+        return onboarded;
+      },
+    }),
+    revalidate, redirect };
 }
 
 describe("invite actions", () => {
@@ -51,6 +58,18 @@ describe("invite actions", () => {
     expect(revalidate).toHaveBeenCalled();
     const rows = rowsOf<{ role: string }>(await db.execute(sql`select role from member where user_id = 'ada' and organization_id = ${team.id}`));
     expect(rows[0].role).toBe("editor");
+  });
+
+  it("accept sends an account that has not onboarded to the short welcome", async () => {
+    const { db, team, inviteId } = await setup();
+    const { actions } = actionsAs(db, as("ada", "ada@example.com"), false);
+    await expect(actions.accept(inviteId)).rejects.toThrow(new Redirected(`/welcome?team=${team.slug}`));
+  });
+
+  it("accept still joins when the onboarding read fails", async () => {
+    const { db, team, inviteId } = await setup();
+    const { actions } = actionsAs(db, as("ada", "ada@example.com"), "error");
+    await expect(actions.accept(inviteId)).rejects.toThrow(new Redirected(`/s/${team.slug}`));
   });
 
   it("accept by someone else returns the refusal and does not redirect", async () => {
