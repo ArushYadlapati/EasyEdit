@@ -205,3 +205,14 @@ These checks need a real Google client and a real database, so work through them
     The answer starts with `{"version":1`.
 
     The cookie is a secret, like `.env.local`: anyone who has it is signed in as you. Do not paste it into chats, issues or commits.
+
+## Database size alert
+
+Neon's Free plan caps a project at 1 GB, counted across all its branches (production, dev and any test branches together), and sends no warning: at 1 GB every save fails until space is freed or the plan is upgraded. So once a day (during the 16:00 UTC hour, set in `vercel.json`) Vercel calls `/api/cron/db-size`, which reads each branch's size from Neon and sends a phone push through [ntfy](https://ntfy.sh) when the total is past 500 MB, and an urgent one past 800 MB, every day it stays there. The push names the two biggest branches, so a forgotten test branch is easy to spot. It needs four settings in Vercel (Production), followed by a redeploy:
+
+- **`CRON_SECRET`**: any long random value (`openssl rand -hex 32`). Vercel sends it with each cron call; the route refuses every other request, and every request while it is unset.
+- **`NTFY_TOPIC`**: a long random topic name (for example `easyedit-` plus `openssl rand -hex 12`). Anyone who knows it can read the pushes, so keep it private. In the ntfy app, subscribe to the same name on `ntfy.sh`.
+- **`NEON_API_KEY`**: a Neon API key limited to this one project (`neon api-keys create --project-id <project id>`). Revoke it with `neon api-keys revoke <id>` if it ever leaks.
+- **`NEON_PROJECT_ID`**: the Neon project's id.
+
+To send a test push: `curl -H "Authorization: Bearer $CRON_SECRET" "https://<your site>/api/cron/db-size?test=1"`.
