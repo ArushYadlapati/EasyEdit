@@ -13,6 +13,8 @@ import { LogoMark } from "@/components/ui/logo";
 
 type Scene = { key: string; ms: number; phrase: string; line: string; video: string; poster: string };
 
+// Each clip is longer than its scene (the city one is slowed to 80% to make 7.5 s), and none loops, so a scene never
+// shows its clip jumping back to the start.
 const SCENES: Scene[] = [
   {
     key: "ai",
@@ -189,7 +191,6 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                   src={s.video}
                   poster={s.poster}
                   muted
-                  loop
                   playsInline
                   preload={i === active || i === (active + 1) % SCENES.length ? "auto" : "metadata"}
                 />
