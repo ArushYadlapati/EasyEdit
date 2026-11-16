@@ -55,7 +55,7 @@ export default async function AgentsPage(): Promise<ReactNode> {
           </p>
           {!canChangeInAnySpace(spaces) && (
             <p className="text-[13px] leading-5 text-ed-muted">
-              You&apos;re a viewer, so your agents can read projects but not change them.
+              You&apos;re not in a team yet, so your agents can&apos;t create or change anything.
             </p>
           )}
         </header>

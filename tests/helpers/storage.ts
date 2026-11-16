@@ -27,7 +27,7 @@ export async function storageWorld(): Promise<StorageWorld> {
   const fake = makeFakeDrive();
   await joinSpace(db, { id: "u1" }, "admin");
   await joinSpace(db, { id: "u1" }, "admin", personalSpaceId("u1"));
-  const cfg: StorageConfig = { clientId: "client-1", clientSecret: "shh", tokenKey: randomBytes(32), redirectUri: "https://app.test/api/storage/callback", projectId: fake.projectId };
+  const cfg: StorageConfig = { clientId: "client-1", clientSecret: "shh", tokenKey: randomBytes(32), redirectUri: "https://app.test/api/storage/callback" };
   const mainSa = serviceAccountSource({ clientEmail: fake.config.clientEmail, privateKey: fake.config.privateKey, scope: SCOPE_CLOUD, fetch: fake.fetch, now: fake.now });
   let people = 0;
   return {

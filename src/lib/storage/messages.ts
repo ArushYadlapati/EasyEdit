@@ -1,9 +1,9 @@
 import { MEDIA_MESSAGES } from "@/lib/media/messages";
 import type { SpaceKind } from "@/lib/spaces/types";
 
-// What stops this server connecting a Google account for a space: no storage settings at all ("server"), or none
-// for team readers ("team": no Google Cloud project or app service account). null: nothing does.
-export type StorageBlock = "server" | "team" | null;
+// What stops this server connecting a Google account for a space: no storage settings at all ("server"). null:
+// nothing does.
+export type StorageBlock = "server" | null;
 
 // How much of a Google account's Drive is used, and its limit (null: the account has none).
 export type DriveUsage = { usedBytes: number; limitBytes: number | null };
@@ -26,7 +26,6 @@ export const STORAGE_MESSAGES = {
   firstRun: "Choose where this team's videos are stored.",
   ownFolder: "EasyEdit keeps the videos in a folder of its own there, and can't see your other files.",
   serverNotSetUp: "Storage isn't set up on this server yet.",
-  teamNotSetUp: "Team storage isn't set up on this server yet.",
   connect: "Connect Google Drive",
   reconnect: "Reconnect",
   useDifferent: "Use a different Google account",
@@ -35,8 +34,8 @@ export const STORAGE_MESSAGES = {
   banner: "Google Drive needs reconnecting. Uploads are paused until an admin reconnects it.",
   // A choice of account that didn't go through.
   failed: "That didn't work. Nothing was changed. Try again.",
-  // Google's own cap on service accounts for EasyEdit's project, hit while making a team's reader.
-  readerLimit: "This team's storage couldn't be set up because EasyEdit has reached a Google limit. Try again later, or contact help@arush.dev.",
+  // A Google account already backing another space: one account holds one space's storage.
+  accountInUse: "That Google account already holds another EasyEdit space's storage. Choose a different Google account.",
   // A connection broken because the server's key changed, not because Google ended it.
   connectionNeedsReconnect: "That account needs reconnecting. Choose it again to reconnect it.",
   connectionEnded: "Google ended EasyEdit's access to that account. Choose it again to reconnect it.",
@@ -62,7 +61,7 @@ const SETTINGS_NOTES: Record<string, Note> = {
   failed: { text: STORAGE_MESSAGES.failed, problem: true },
   expired: { text: "That took too long, so nothing was changed. Try again.", problem: true },
   "not-configured": { text: STORAGE_MESSAGES.serverNotSetUp, problem: true },
-  "reader-limit": { text: STORAGE_MESSAGES.readerLimit, problem: true },
+  "account-in-use": { text: STORAGE_MESSAGES.accountInUse, problem: true },
   "in-use": { text: "This space already has videos in another Google account, so its storage can't be changed yet.", problem: true },
 };
 
@@ -101,7 +100,7 @@ export function storageCard(input: {
       ? card(MEDIA_MESSAGES.brokenTitle, MEDIA_MESSAGES.broken, null, STORAGE_MESSAGES.onlyOwner(input.ownerEmail ?? null))
       : card(MEDIA_MESSAGES.brokenTitle, MEDIA_MESSAGES.broken, "reconnect");
   }
-  if (input.block !== null) return card(SETUP_CARD.noneTitle, input.block === "team" ? STORAGE_MESSAGES.teamNotSetUp : STORAGE_MESSAGES.serverNotSetUp);
+  if (input.block !== null) return card(SETUP_CARD.noneTitle, STORAGE_MESSAGES.serverNotSetUp);
   if (input.kind === "personal") return card(SETUP_CARD.personalTitle, SETUP_CARD.personalText, "choose");
   if (input.isAdmin) return card(SETUP_CARD.teamTitle, SETUP_CARD.teamText, "choose");
   return card(SETUP_CARD.noneTitle, SETUP_CARD.memberText);

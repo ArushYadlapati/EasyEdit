@@ -65,7 +65,7 @@ export default async function ConsentPage({ searchParams }: PageProps<"/consent"
             {canChange ? (
               <li>{`It will be able to create projects and change them. Each change is listed in the editor as “${listedAs}” and can be undone there.`}</li>
             ) : (
-              <li>Your role is viewer, so it will not be able to change anything.</li>
+              <li>You&apos;re not in a team yet, so it will not be able to change anything.</li>
             )}
           </ul>
           <p>Signed in as {me.email}.</p>

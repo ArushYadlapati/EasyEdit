@@ -19,8 +19,7 @@ export type StorageActionDeps = {
 function refusalOf(error: unknown): string | null {
   if (error instanceof ServiceError) {
     if (error.code === "STORAGE_IN_USE") return error.message;
-    if (error.code === "TEAM_STORAGE_NOT_CONFIGURED") return STORAGE_MESSAGES.teamNotSetUp;
-    if (error.code === "READER_LIMIT") return STORAGE_MESSAGES.readerLimit;
+    if (error.code === "ACCOUNT_IN_USE") return STORAGE_MESSAGES.accountInUse;
     if (error.code === "CONFLICT") return STORAGE_MESSAGES.serverNotSetUp;
     return STORAGE_MESSAGES.failed; // a space or connection that isn't theirs reads like any failure
   }

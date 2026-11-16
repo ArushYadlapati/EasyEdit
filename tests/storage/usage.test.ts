@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { DB } from "@/db";
 import { assets, driveConnection } from "@/db/schema";
 import { SEED_TEAM_ID, type MySpace } from "@/lib/spaces/types";
@@ -17,8 +17,8 @@ const GiB = 1024 ** 3;
 
 const personalOf = (w: StorageWorld): MySpace => ({ id: w.personal, slug: w.personal, name: "Personal", kind: "personal", role: "admin" });
 const teamOf = (id: string, name: string): MySpace => ({ id, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name, kind: "team", role: "admin" });
-const deps = (w: StorageWorld, over: Partial<Parameters<typeof storageSettings>[3]> = {}) => ({ config: () => w.cfg, mainSa: () => w.mainSa, fetch: w.fake.fetch, ...over });
-const setUp = (w: StorageWorld) => makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: w.fake.fetch });
+const deps = (w: StorageWorld, over: Partial<Parameters<typeof storageSettings>[3]> = {}) => ({ config: () => w.cfg, fetch: w.fake.fetch, ...over });
+const setUp = (w: StorageWorld) => makeSetUpStorage({ config: w.cfg, fetch: w.fake.fetch });
 
 async function addAsset(db: DB, spaceId: string) {
   await db.insert(assets).values({ id: nanoid(12), spaceId, kind: "video", name: "clip", fileName: "clip.mov", mimeType: "video/quicktime", sizeBytes: 1000, lastModifiedMs: 1, uploadedBy: "u1" });
@@ -75,27 +75,15 @@ describe("usage as people read it", () => {
 });
 
 describe("storageBlock", () => {
-  it("is null when this server can connect a Google account for the space", () => {
-    const w = { cfg: { clientId: "c", clientSecret: "s", tokenKey: new Uint8Array(32), redirectUri: "https://app.test/api/storage/callback", projectId: "p1" } };
-    const mainSa = { token: async () => ({ accessToken: "t", expiresAt: 0 }) };
-    expect(storageBlock("personal", { config: () => w.cfg, mainSa: () => mainSa })).toBeNull();
-    expect(storageBlock("team", { config: () => w.cfg, mainSa: () => mainSa })).toBeNull();
+  it("is null when this server can connect a Google account, for a team as for a personal space", () => {
+    const cfg = { clientId: "c", clientSecret: "s", tokenKey: new Uint8Array(32), redirectUri: "https://app.test/api/storage/callback" };
+    expect(storageBlock("personal", { config: () => cfg })).toBeNull();
+    expect(storageBlock("team", { config: () => cfg })).toBeNull();
   });
 
-  it("names the server when it has no storage settings, and team storage when teams can't have it here", () => {
-    const cfg = { clientId: "c", clientSecret: "s", tokenKey: new Uint8Array(32), redirectUri: "https://app.test/api/storage/callback", projectId: null };
-    const mainSa = { token: async () => ({ accessToken: "t", expiresAt: 0 }) };
-    expect(storageBlock("personal", { config: () => null, mainSa: () => mainSa })).toBe("server");
-    expect(storageBlock("team", { config: () => null, mainSa: () => mainSa })).toBe("server");
-    expect(storageBlock("personal", { config: () => cfg, mainSa: () => null })).toBeNull(); // a personal space needs neither
-    expect(storageBlock("team", { config: () => cfg, mainSa: () => mainSa })).toBe("team"); // no project for readers
-    expect(storageBlock("team", { config: () => ({ ...cfg, projectId: "p1" }), mainSa: () => null })).toBe("team");
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(storageBlock("team", { config: () => ({ ...cfg, projectId: "p1" }), mainSa: () => { throw new Error("bad key"); } })).toBe("team");
-    } finally {
-      vi.restoreAllMocks();
-    }
+  it("names the server when it has no storage settings", () => {
+    expect(storageBlock("personal", { config: () => null })).toBe("server");
+    expect(storageBlock("team", { config: () => null })).toBe("server");
   });
 });
 
@@ -174,11 +162,10 @@ describe("what the storage settings page shows", () => {
     expect((await storageSettings(w.db, teamOf(team, "Robotics Club"), "u1", deps(w))).storage).toMatchObject({ ownedByViewer: true });
   });
 
-  it("says what stops a new connection here: no settings on this server, or teams can't have storage here", async () => {
+  it("says what stops a new connection here: no settings on this server", async () => {
     const w = await storageWorld();
     const team = await w.team("Robotics Club");
     expect((await storageSettings(w.db, personalOf(w), "u1", deps(w, { config: () => null }))).blocked).toBe("server");
-    expect((await storageSettings(w.db, teamOf(team, "Robotics Club"), "u1", deps(w, { mainSa: () => null }))).blocked).toBe("team");
     expect((await storageSettings(w.db, teamOf(team, "Robotics Club"), "u1", deps(w))).blocked).toBeNull();
   });
 

@@ -46,7 +46,7 @@ describe("agents across spaces", () => {
     const { text, isError } = await listProjectsTool(ctx, {});
     expect(isError).toBe(false);
     const lines = text.split("\n");
-    expect(lines[1]).toBe('Spaces: "Personal" (personal, admin), "Seattle Solvers" (seattle-solvers, editor). You can change projects in a space where you are an editor or admin, and only read them where you are a viewer. Name a space in create_project\'s space.');
+    expect(lines[1]).toBe('Spaces: "Personal" (personal, admin), "Seattle Solvers" (seattle-solvers, editor). You can change projects in every space you belong to. Name a space in create_project\'s space.');
     expect(lines.find((l) => l.startsWith(mine.id))).toMatch(/ {2}Space: "Personal"$/);
     expect(lines.find((l) => l.startsWith(team.id))).toMatch(/ {2}Space: "Seattle Solvers"$/);
     expect(text).not.toContain("Secret reel");
@@ -107,15 +107,6 @@ describe("agents across spaces", () => {
       expect(result.text).toBe(`No space "${space.replace(/"/g, '\\"').replace("\n", " ")}". Your spaces: "Personal" (space: personal), "Seattle Solvers" (space: seattle-solvers).`);
     }
     expect(await listProjects(db, elsewhere)).toHaveLength(1);
-  });
-
-  it("a viewer in the team can create in their personal space and not in the team", async () => {
-    const db = await makeTestDb();
-    const ctx = await toolContext(db, { role: "viewer" });
-    expect((await createProjectTool(ctx, { name: "Mine", format: "short_9x16" })).isError).toBe(false); // the only space they can create in
-    const refused = await createProjectTool(ctx, { name: "Theirs", format: "short_9x16", space: "seattle-solvers" });
-    expect(refused.isError).toBe(true);
-    expect(refused.text).toMatch(/viewer/);
   });
 
   it("actorInSpace is the agent in a space of the person, and null elsewhere", async () => {

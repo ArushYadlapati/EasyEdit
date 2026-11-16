@@ -199,10 +199,10 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     } catch (failure) {
       if (!(failure instanceof ServiceError || failure instanceof DriveError || failure instanceof ConnectionBrokenError)) throw failure;
       console.error("Setting up storage failed:", failure.message);
-      // A space whose videos are already in another account keeps its storage, and is told so in its own words; so
-      // is a team this server turns out not to be set up for.
+      // A space whose videos are already in another account keeps its storage, and is told so in its own words; so is
+      // a Google account that already backs another space.
       const code = failure instanceof ServiceError ? failure.code : null;
-      return go(storagePage(space, code === "STORAGE_IN_USE" ? "in-use" : code === "TEAM_STORAGE_NOT_CONFIGURED" ? "not-configured" : code === "READER_LIMIT" ? "reader-limit" : "failed"));
+      return go(storagePage(space, code === "STORAGE_IN_USE" ? "in-use" : code === "ACCOUNT_IN_USE" ? "account-in-use" : "failed"));
     }
     return go((started.return && returnPath(started.return)) || storagePage(space, "connected"));
   }

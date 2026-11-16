@@ -33,10 +33,10 @@ async function setup(requireUser: (min: string) => Promise<CurrentUser> = async 
 describe("admin actions", () => {
   it("adding an existing member returns an error and leaves their role alone", async () => {
     const { db, revalidate, actions } = await setup();
-    await addEntry(db, { email: "kid@gmail.com", role: "viewer", invitedBy: admin.email });
+    await addEntry(db, { email: "kid@gmail.com", role: "editor", invitedBy: admin.email });
     expect(await actions.addMember(form({ email: "Kid@gmail.com", role: "admin" })))
       .toEqual({ error: "That email is already a member. Change their role in the table." });
-    expect((await listEntries(db)).find((e) => e.email === "kid@gmail.com")?.role).toBe("viewer");
+    expect((await listEntries(db)).find((e) => e.email === "kid@gmail.com")?.role).toBe("editor");
     expect(revalidate).not.toHaveBeenCalled();
   });
 
@@ -44,7 +44,7 @@ describe("admin actions", () => {
     const { db, revalidate, requireSpy, actions } = await setup(async () => {
       throw new Error("FORBIDDEN");
     });
-    await addEntry(db, { email: "kid@gmail.com", role: "viewer", invitedBy: admin.email });
+    await addEntry(db, { email: "kid@gmail.com", role: "editor", invitedBy: admin.email });
     const before = await listEntries(db);
 
     await expect(actions.addMember(form({ email: "x@gmail.com", role: "admin" }))).rejects.toThrow("FORBIDDEN");
@@ -59,7 +59,7 @@ describe("admin actions", () => {
 
   it("returns the last-admin error when demoting the only admin", async () => {
     const { db, revalidate, actions } = await setup();
-    const result = await actions.setRole(form({ email: admin.email, role: "viewer" }));
+    const result = await actions.setRole(form({ email: admin.email, role: "editor" }));
     expect(result).toEqual({ error: "There must always be at least one admin." });
     expect((await listEntries(db))[0].role).toBe("admin");
     expect(revalidate).not.toHaveBeenCalled();
@@ -84,9 +84,9 @@ describe("admin actions", () => {
 
   it("changes a role and removes a member", async () => {
     const { db, revalidate, actions } = await setup();
-    await actions.addMember(form({ email: "kid@gmail.com", role: "viewer" }));
-    expect(await actions.setRole(form({ email: "kid@gmail.com", role: "editor" }))).toEqual({});
-    expect((await listEntries(db)).find((e) => e.email === "kid@gmail.com")?.role).toBe("editor");
+    await actions.addMember(form({ email: "kid@gmail.com", role: "editor" }));
+    expect(await actions.setRole(form({ email: "kid@gmail.com", role: "admin" }))).toEqual({});
+    expect((await listEntries(db)).find((e) => e.email === "kid@gmail.com")?.role).toBe("admin");
     expect(await actions.removeMember(form({ email: "kid@gmail.com" }))).toEqual({});
     expect((await listEntries(db)).map((e) => e.email)).toEqual(["admin@seattlesolvers.com"]);
     expect(revalidate).toHaveBeenCalledTimes(3);
@@ -102,11 +102,13 @@ describe("admin actions", () => {
 
   it("rejects an unknown role and changes nothing", async () => {
     const { db, revalidate, actions } = await setup();
-    await addEntry(db, { email: "kid@gmail.com", role: "viewer", invitedBy: admin.email });
+    await addEntry(db, { email: "kid@gmail.com", role: "editor", invitedBy: admin.email });
     const before = await listEntries(db);
     expect(await actions.addMember(form({ email: "new@gmail.com", role: "owner" }))).toEqual({ error: "Unknown role." });
     expect(await actions.setRole(form({ email: "kid@gmail.com", role: "superuser" }))).toEqual({ error: "Unknown role." });
     expect(await actions.addMember(form({ email: "new@gmail.com" }))).toEqual({ error: "Unknown role." });
+    expect(await actions.addMember(form({ email: "new@gmail.com", role: "viewer" }))).toEqual({ error: "Unknown role." });
+    expect(await actions.setRole(form({ email: "kid@gmail.com", role: "viewer" }))).toEqual({ error: "Unknown role." });
     expect(await listEntries(db)).toEqual(before);
     expect(revalidate).not.toHaveBeenCalled();
   });
@@ -120,10 +122,10 @@ describe("admin actions", () => {
     const { db, actions } = await setup();
     await db.insert(user).values({ id: "u2", name: "Kid", email: "kid@gmail.com" });
     expect(await teamRole(db, "u2")).toBeNull();
-    expect(await actions.addMember(form({ email: "Kid@Gmail.com", role: "viewer" }))).toEqual({});
-    expect(await teamRole(db, "u2")).toBe("viewer");
-    expect(await actions.setRole(form({ email: "kid@gmail.com", role: "editor" }))).toEqual({});
+    expect(await actions.addMember(form({ email: "Kid@Gmail.com", role: "editor" }))).toEqual({});
     expect(await teamRole(db, "u2")).toBe("editor");
+    expect(await actions.setRole(form({ email: "kid@gmail.com", role: "admin" }))).toEqual({});
+    expect(await teamRole(db, "u2")).toBe("admin");
     expect(await actions.removeMember(form({ email: "kid@gmail.com" }))).toEqual({});
     expect(await teamRole(db, "u2")).toBeNull();
   });

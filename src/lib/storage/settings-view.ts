@@ -2,7 +2,6 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db";
 import { driveConnection, spaceStorage, user } from "@/db/schema";
-import type { AccessSource } from "@/lib/drive/token";
 import { slugFor } from "@/lib/spaces/paths";
 import type { MySpace, Space } from "@/lib/spaces/types";
 import { storageBlock } from "./availability";
@@ -36,7 +35,6 @@ export type StorageSettingsView = {
 
 export type SettingsViewDeps = {
   config?: () => StorageConfig | null;
-  mainSa?: () => AccessSource | null;
   fetch?: typeof fetch;
   usageTimeoutMs?: number; // the page never waits longer than this on Google for the usage line
 };
@@ -101,6 +99,6 @@ export async function storageSettings(db: DB, space: MySpace, viewerId: string, 
     space: { id: space.id, slug: slugFor(space), name: space.name, kind: space.kind },
     storage,
     connections,
-    blocked: storageBlock(space.kind, { config: () => cfg, mainSa: deps.mainSa }),
+    blocked: storageBlock(space.kind, { config: () => cfg }),
   };
 }

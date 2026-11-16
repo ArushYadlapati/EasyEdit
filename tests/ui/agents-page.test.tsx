@@ -347,7 +347,6 @@ describe("access tokens", () => {
 describe("the AI agents page", () => {
   const space = (kind: "personal" | "team", role: Role): MySpace => ({ id: kind === "personal" ? "personal_u1" : "team_seattle_solvers", slug: "s", name: kind === "personal" ? "Personal" : "Seattle Solvers", kind, role });
   const editor: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
-  const viewer: CurrentUser = { ...editor, id: "u2", allowlistRole: "viewer" };
 
   beforeEach(() => {
     vi.stubEnv("BETTER_AUTH_URL", "https://easyedit.test/");
@@ -368,31 +367,23 @@ describe("the AI agents page", () => {
     expect((screen.getByRole("textbox", { name: "Server address" }) as HTMLInputElement).value).toBe(URL_);
     expect(within(screen.getByRole("list", { name: "Connected agents" })).getAllByRole("listitem")).toHaveLength(4);
     expect(screen.getByRole("link", { name: "Projects" }).getAttribute("href")).toBe("/dashboard");
-    expect(screen.queryByText(/You're a viewer/)).toBeNull();
+    expect(screen.queryByText(/not in a team yet/)).toBeNull();
     const { listAgentConnections } = await import("@/lib/connector/connections");
     expect(listAgentConnections).toHaveBeenCalledWith(expect.anything(), "u1");
   });
 
-  it("tells a viewer their agents are read-only", async () => {
-    server.user = viewer;
-    server.spaces = [space("team", "viewer")];
-    render(await AgentsPage());
-    expect(screen.getByText("You're a viewer, so your agents can read projects but not change them.")).toBeTruthy();
-  });
-
-  it("calls a team viewer read-only while personal spaces are not offered, whatever their own space allows", async () => {
+  it("tells someone in no team, while personal spaces are closed, that their agents can't change anything", async () => {
     vi.stubEnv("PERSONAL_SPACES", "");
-    server.user = viewer;
-    server.spaces = [space("personal", "admin"), space("team", "viewer")];
+    server.spaces = [space("personal", "admin")];
     render(await AgentsPage());
-    expect(screen.getByText("You're a viewer, so your agents can read projects but not change them.")).toBeTruthy();
+    expect(screen.getByText("You're not in a team yet, so your agents can't create or change anything.")).toBeTruthy();
+    expect(screen.queryByText(/viewer/)).toBeNull();
   });
 
-  it("does not call a team viewer read-only when their personal space lets agents change things", async () => {
-    server.user = viewer;
-    server.spaces = [space("personal", "admin"), space("team", "viewer")];
+  it("says nothing of the kind once personal spaces are offered", async () => {
+    server.spaces = [space("personal", "admin")];
     render(await AgentsPage());
-    expect(screen.queryByText(/You're a viewer/)).toBeNull();
+    expect(screen.queryByText(/not in a team yet/)).toBeNull();
   });
 });
 

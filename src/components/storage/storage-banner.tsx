@@ -5,7 +5,7 @@ import { cx } from "@/components/ui/cx";
 import { STORAGE_MESSAGES, type Note, type StorageCard } from "@/lib/storage/messages";
 
 // A space whose Google connection broke, at the top of its dashboard: uploads wait for an admin, and admins get
-// Reconnect, which opens storage settings. The page shows it to editors and admins only; viewers upload nothing.
+// Reconnect, which opens storage settings. The page shows it to every member, since they all upload.
 // Reconnect is for the admin who connected the account (isOwner); another admin is told who can.
 export function StorageBanner({ settingsHref, isAdmin, isOwner, ownerEmail }: { settingsHref: string; isAdmin: boolean; isOwner: boolean; ownerEmail: string | null }): ReactNode {
   return (

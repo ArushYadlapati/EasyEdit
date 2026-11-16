@@ -15,7 +15,6 @@ const cfg: StorageConfig = {
   clientSecret: "shh",
   tokenKey: randomBytes(32),
   redirectUri: "https://app.test/api/storage/callback",
-  projectId: null,
 };
 
 const idToken = (claims: Record<string, unknown>) =>
@@ -42,7 +41,6 @@ describe("storageConfig", () => {
     const c = storageConfig(env)!;
     expect(c.redirectUri).toBe("https://app.test/api/storage/callback");
     expect(c.tokenKey.length).toBe(32);
-    expect(c.projectId).toBeNull();
   });
   it("is null when something is missing or the key is the wrong size", () => {
     expect(storageConfig({ ...env, STORAGE_TOKEN_KEY: undefined })).toBeNull();

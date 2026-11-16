@@ -159,7 +159,7 @@ describe("auth database hooks", () => {
     it("session create is allowed with a pending invite", async () => {
       const { db, admin } = await setup();
       await db.insert(user).values({ id: "u2", name: "Rando", email: "rando@gmail.com", emailVerified: true });
-      await inviteToTeam(db, admin, { email: "rando@gmail.com", role: "viewer" });
+      await inviteToTeam(db, admin, { email: "rando@gmail.com", role: "editor" });
       await expect(makeSessionCreateBefore(db)({ userId: "u2" })).resolves.toBeUndefined();
     });
 

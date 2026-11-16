@@ -5,9 +5,6 @@ export type StorageConfig = {
   clientSecret: string;
   tokenKey: Uint8Array; // 32 bytes, seals refresh tokens
   redirectUri: string;
-  // The Google Cloud project id where each team's read-only reader service account is created (IAM path projects/{id}/serviceAccounts).
-  // null (GOOGLE_CLOUD_PROJECT unset): teams can't get storage; personal spaces still can.
-  projectId: string | null;
 };
 
 type Settings = Record<string, string | undefined>;
@@ -37,6 +34,5 @@ export function storageConfig(env: Settings = process.env): StorageConfig | null
     clientSecret,
     tokenKey: new Uint8Array(tokenKey),
     redirectUri: `${base.replace(/\/+$/, "")}/api/storage/callback`,
-    projectId: env.GOOGLE_CLOUD_PROJECT || null,
   };
 }

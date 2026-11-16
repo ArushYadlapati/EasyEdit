@@ -45,7 +45,7 @@ function actionsAs(db: DB, signedIn: CurrentUser) {
   const redirect = vi.fn((to: string): never => {
     throw new Redirected(to);
   });
-  const actions = makeMemberActions({ db: () => db, requireUser: async () => signedIn, revalidate, redirect, inviteLink: (id) => `https://easyedit.test/invite/${id}`, deleteReader: async () => {} });
+  const actions = makeMemberActions({ db: () => db, requireUser: async () => signedIn, revalidate, redirect, inviteLink: (id) => `https://easyedit.test/invite/${id}` });
   return { actions, revalidate, redirect };
 }
 
@@ -71,7 +71,7 @@ describe("actions re-check the caller", () => {
     const { db, team } = await setup();
     const { actions, revalidate } = actionsAs(db, person("u2"));
     expect(await actions.invite(team, form({ email: "ada@example.com", role: "editor" }))).toEqual({ error: FORBIDDEN });
-    expect(await actions.setRole(team, form({ userId: "u1", role: "viewer" }))).toEqual({ error: FORBIDDEN });
+    expect(await actions.setRole(team, form({ userId: "u1", role: "editor" }))).toEqual({ error: FORBIDDEN });
     expect(await actions.remove(team, form({ userId: "u1" }))).toEqual({ error: FORBIDDEN });
     expect(await roleOf(db, team, "ada")).toBeNull();
     expect(await roleOf(db, team, "u1")).toBe("admin");
@@ -83,7 +83,7 @@ describe("actions re-check the caller", () => {
     const { db, team } = await setup();
     const { actions } = actionsAs(db, person("u3"));
     expect(await actions.invite(team, form({ email: "ada@example.com", role: "editor" }))).toEqual({ error: SPACE_NOT_FOUND });
-    expect(await actions.setRole(team, form({ userId: "u2", role: "viewer" }))).toEqual({ error: SPACE_NOT_FOUND });
+    expect(await actions.setRole(team, form({ userId: "u2", role: "editor" }))).toEqual({ error: SPACE_NOT_FOUND });
     expect(await actions.remove(team, form({ userId: "u2" }))).toEqual({ error: SPACE_NOT_FOUND });
     expect(await actions.leave(team)).toEqual({ error: SPACE_NOT_FOUND });
     expect(await actions.invite("team_nope", form({ email: "ada@example.com", role: "editor" }))).toEqual({ error: SPACE_NOT_FOUND });
@@ -93,12 +93,12 @@ describe("actions re-check the caller", () => {
 
   it("an admin's invite returns the link and revalidates; setRole and remove go through", async () => {
     const { db, team } = await setup();
-    await joinSpace(db, { id: "ada" }, "viewer", team);
+    await joinSpace(db, { id: "ada" }, "editor", team);
     const { actions, revalidate } = actionsAs(db, person("u1"));
-    const [pending] = [await actions.invite(team, form({ email: "  New@Example.com ", role: "viewer" }))];
+    const [pending] = [await actions.invite(team, form({ email: "  New@Example.com ", role: "editor" }))];
     const invites = await listPendingInvites(db, await actorFor(db, "u1", team));
     expect(invites).toHaveLength(1);
-    expect(invites[0]).toMatchObject({ email: "new@example.com", role: "viewer" });
+    expect(invites[0]).toMatchObject({ email: "new@example.com", role: "editor" });
     expect(pending).toEqual({ link: `https://easyedit.test/invite/${invites[0]!.id}` });
     expect(revalidate).toHaveBeenCalledTimes(1);
     expect(await actions.setRole(team, form({ userId: "ada", role: "editor" }))).toEqual({});

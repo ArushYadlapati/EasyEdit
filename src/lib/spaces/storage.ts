@@ -1,26 +1,24 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db";
-import { driveConnection, organization, spaceStorage } from "@/db/schema";
-import { getDrive, mainServiceAccount } from "@/lib/drive";
+import { driveConnection, spaceStorage } from "@/db/schema";
+import { getDrive } from "@/lib/drive";
 import { createDriveClient, type DriveClient } from "@/lib/drive/client";
-import { readerSource } from "@/lib/drive/reader";
 import type { AccessSource } from "@/lib/drive/token";
 import { type StorageConfig, storageConfig } from "@/lib/storage/config";
 import { brokenReason, connectionAccess, healKeyBroken } from "@/lib/storage/connections";
 import { ConnectionBrokenError } from "@/lib/storage/google-oauth";
-import { keptSource } from "@/lib/storage/token-cache";
 
 // Where a space keeps its media comes from its space_storage row: Seattle Solvers' shared folder (the main service
-// account's), or a folder in the Drive of a person who connected their Google account. A team's members are handed
-// the team reader's read-only token; a personal space's owner, their own connection's.
+// account's), or a folder in the Drive of a person who connected their Google account. A space in someone's Drive,
+// personal or team, reads and writes with that connection; one Google account backs only one space (setup.ts), so
+// its token reaches no other space's files, and every member of a team may edit.
 
 export type StorageState = { ready: true } | { ready: false; reason: "none" | "broken" | "not_configured" };
 
 // What the server reads its settings with; tests point them at a pretend Google.
 export type StorageDeps = {
   config?: () => StorageConfig | null; // the OAuth client and token key, for a person's connection
-  mainSa?: () => AccessSource | null; // the app's service account for the Cloud scope, which speaks for team readers
   sharedFolder?: () => DriveClient | null; // Seattle Solvers' shared folder
   fetch?: typeof fetch;
 };
@@ -28,11 +26,9 @@ export type StorageDeps = {
 type Unready = Extract<StorageState, { ready: false }>["reason"];
 type Found =
   | { kind: "unready"; reason: Unready }
-  // A team's reader still reads what is in its folder when the connection that writes it is broken (reader).
-  | { kind: "broken"; reason: ConnectionBrokenError["reason"]; reader?: { caller: AccessSource; readerEmail: string } }
+  | { kind: "broken"; reason: ConnectionBrokenError["reason"] }
   | { kind: "shared_folder"; shared: DriveClient }
-  | { kind: "personal"; cfg: StorageConfig; connectionId: string; rootFolderId: string }
-  | { kind: "team"; cfg: StorageConfig; connectionId: string; rootFolderId: string; caller: AccessSource; readerEmail: string };
+  | { kind: "connected"; cfg: StorageConfig; connectionId: string; rootFolderId: string };
 
 const unready = (reason: Unready): Found => ({ kind: "unready", reason });
 
@@ -54,14 +50,11 @@ async function find(db: DB, spaceId: string, deps: StorageDeps): Promise<Found> 
       kind: spaceStorage.kind,
       connectionId: spaceStorage.connectionId,
       rootFolderId: spaceStorage.rootFolderId,
-      readerEmail: spaceStorage.readerEmail,
-      spaceKind: organization.kind,
       brokenAt: driveConnection.brokenAt,
       brokenReason: driveConnection.brokenReason,
       refreshTokenEnc: driveConnection.refreshTokenEnc,
     })
     .from(spaceStorage)
-    .innerJoin(organization, eq(organization.id, spaceStorage.spaceId))
     .leftJoin(driveConnection, eq(driveConnection.id, spaceStorage.connectionId))
     .where(eq(spaceStorage.spaceId, spaceId));
   if (!row) return unready("none");
@@ -78,18 +71,8 @@ async function find(db: DB, spaceId: string, deps: StorageDeps): Promise<Found> 
   if (!cfg) return unready("not_configured"); // without the OAuth client a connection's token can't be had, whatever its state
   // A connection broken by a wrong key mends itself once the right key is back.
   const brokenAt = connectionId && row.refreshTokenEnc !== null && (await healKeyBroken(db, cfg, { id: connectionId, refreshTokenEnc: row.refreshTokenEnc, brokenAt: row.brokenAt, brokenReason: row.brokenReason })) ? null : row.brokenAt;
-  if (row.spaceKind === "personal") {
-    if (brokenAt !== null) return { kind: "broken", reason: brokenReason(row.brokenReason) };
-    return { kind: "personal", cfg, connectionId, rootFolderId };
-  }
-
-  const caller = readSetting(deps.mainSa ?? mainServiceAccount);
-  if (brokenAt !== null) {
-    const reader = caller && row.readerEmail ? { caller, readerEmail: row.readerEmail } : undefined;
-    return { kind: "broken", reason: brokenReason(row.brokenReason), reader };
-  }
-  if (!caller || !row.readerEmail) return unready("not_configured");
-  return { kind: "team", cfg, connectionId, rootFolderId, caller, readerEmail: row.readerEmail };
+  if (brokenAt !== null) return { kind: "broken", reason: brokenReason(row.brokenReason) };
+  return { kind: "connected", cfg, connectionId, rootFolderId };
 }
 
 // Whether the space has storage to upload to, and if not, why. No call to Google.
@@ -107,35 +90,25 @@ function usable(found: Found): Exclude<Found, { kind: "unready" | "broken" }> | 
   return found;
 }
 
-// A team reader's tokens, kept between requests by the reader's address (token-cache.ts).
-const teamReader = (caller: AccessSource, email: string, fetchFn: typeof fetch | undefined) =>
-  keptSource(`reader:${email}`, [caller, fetchFn], () => readerSource({ caller, email, fetch: fetchFn }));
-
 // The Drive client for a space's media, or null when its storage isn't ready; throws ConnectionBrokenError for a
-// connection marked broken. A person's Drive is written with their connection; what it hands to browsers is the
-// space's reader (readerFor).
+// connection marked broken. A person's Drive is written and read with their connection.
 export async function storageFor(db: DB, spaceId: string, deps: StorageDeps = {}): Promise<DriveClient | null> {
   const found = usable(await find(db, spaceId, deps));
   if (!found) return null;
   if (found.kind === "shared_folder") return found.shared;
-  const write = await connectionAccess(db, found.cfg, found.connectionId, deps.fetch);
-  const read = found.kind === "personal" ? write : teamReader(found.caller, found.readerEmail, deps.fetch);
-  return createDriveClient({ rootFolderId: found.rootFolderId, write, read, fetch: deps.fetch });
+  const access = await connectionAccess(db, found.cfg, found.connectionId, deps.fetch);
+  return createDriveClient({ rootFolderId: found.rootFolderId, write: access, read: access, fetch: deps.fetch });
 }
 
 // What /api/drive/read-token hands out for this space, or null when its storage isn't ready: Seattle Solvers' main
-// service account's read-only token, a personal space's own connection, a team's reader (read-only Drive only).
-// A team's reader keeps reading when the team's connection is broken (uploads stop, playback goes on); a personal
-// space has only its connection, so there a broken one throws ConnectionBrokenError, as storageFor does.
+// service account's read-only token, or the space's own connection (personal or team). A broken connection throws
+// ConnectionBrokenError, as storageFor does, so members are asked to reconnect.
 export async function readerFor(db: DB, spaceId: string, deps: StorageDeps = {}): Promise<AccessSource | null> {
-  const all = await find(db, spaceId, deps);
-  if (all.kind === "broken" && all.reader) return teamReader(all.reader.caller, all.reader.readerEmail, deps.fetch);
-  const found = usable(all);
+  const found = usable(await find(db, spaceId, deps));
   if (!found) return null;
   if (found.kind === "shared_folder") {
     const { shared } = found;
     return { token: (minSecondsLeft) => shared.readToken(minSecondsLeft) };
   }
-  if (found.kind === "personal") return connectionAccess(db, found.cfg, found.connectionId, deps.fetch);
-  return teamReader(found.caller, found.readerEmail, deps.fetch);
+  return connectionAccess(db, found.cfg, found.connectionId, deps.fetch);
 }

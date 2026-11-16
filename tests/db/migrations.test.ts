@@ -58,9 +58,9 @@ describe("migrations", () => {
   it("the allowlist only stores trimmed, lowercase emails", async () => {
     const db = await makeTestDb();
     for (const email of ["Kid@gmail.com", " kid@gmail.com"]) {
-      await expect(db.execute(sql`insert into allowlist (email, role) values (${email}, 'viewer')`)).rejects.toThrow();
+      await expect(db.execute(sql`insert into allowlist (email, role) values (${email}, 'editor')`)).rejects.toThrow();
     }
-    await db.execute(sql`insert into allowlist (email, role) values ('kid@gmail.com', 'viewer')`);
+    await db.execute(sql`insert into allowlist (email, role) values ('kid@gmail.com', 'editor')`);
     expect(rowsOf(await db.execute(sql`select email from allowlist`))).toEqual([{ email: "kid@gmail.com" }]);
   });
 
@@ -428,7 +428,7 @@ describe("migration 0012: spaces", () => {
     const db = await spacesMigrated();
     await expect(db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m2', 'team_seattle_solvers', 'u1', 'editor', now())`))
       .rejects.toMatchObject({ cause: { code: "23505", constraint: "member_organizationId_userId_idx" } });
-    await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m3', 'personal_u1', 'u2', 'viewer', now())`);
+    await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m3', 'personal_u1', 'u2', 'editor', now())`);
   });
 });
 
@@ -503,7 +503,7 @@ describe("resyncing spaces after the earlier version was live", () => {
   // added and signed in, with no member rows and no personal space.
   async function drifted(): Promise<DB> {
     const db = await spacesMigrated();
-    await db.execute(sql`update allowlist set role = 'viewer' where email = 'bob@x.com'`);
+    await db.execute(sql`update allowlist set role = 'admin' where email = 'bob@x.com'`);
     await db.execute(sql`delete from allowlist where email = 'ann@x.com'`);
     await db.execute(sql`insert into allowlist (email, role) values ('dee@x.com', 'editor')`);
     await db.execute(sql`insert into "user" (id, name, email) values ('u4', 'Dee', ' Dee@X.com ')`);
@@ -527,7 +527,7 @@ describe("resyncing spaces after the earlier version was live", () => {
         { id: "mp_u2", spaceId: "personal_u2", userId: "u2", role: "admin" },
         { id: "mp_u3", spaceId: "personal_u3", userId: "u3", role: "admin" },
         { id: "mp_u4", spaceId: "personal_u4", userId: "u4", role: "admin" },
-        { id: "mt_u2", spaceId: "team_seattle_solvers", userId: "u2", role: "viewer" },
+        { id: "mt_u2", spaceId: "team_seattle_solvers", userId: "u2", role: "admin" },
         { id: "mt_u4", spaceId: "team_seattle_solvers", userId: "u4", role: "editor" },
       ],
       spaces: [
@@ -592,5 +592,82 @@ describe("going back past 0013 for a while", () => {
     const guide = readFileSync("docs/deploy.md", "utf8");
     expect(guide).toContain(BEFORE_GOING_BACK_PAST_0013);
     expect(guide).toContain(ROLLBACK_AFTER_COMING_FORWARD);
+  });
+});
+
+describe("0019: one Google account per space, no viewers", () => {
+  it("turns every viewer into an editor and leaves admins and editors alone", async () => {
+    const db = await migratedTo(17);
+    await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Ann', 'ann@x.com'), ('u2', 'Bob', 'bob@x.com'), ('u3', 'Cat', 'cat@x.com')`);
+    await db.execute(sql`insert into allowlist (email, role) values ('ann@x.com', 'admin'), ('bob@x.com', 'editor'), ('cat@x.com', 'viewer')`);
+    await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values
+      ('m1', ${SEED_TEAM_ID}, 'u1', 'admin', now()), ('m2', ${SEED_TEAM_ID}, 'u2', 'editor', now()), ('m3', ${SEED_TEAM_ID}, 'u3', 'viewer', now())`);
+    await db.execute(sql`insert into invitation (id, organization_id, email, role, status, expires_at, inviter_id) values
+      ('i1', ${SEED_TEAM_ID}, 'new@x.com', 'viewer', 'pending', now(), 'u1'), ('i2', ${SEED_TEAM_ID}, 'adm@x.com', 'admin', 'pending', now(), 'u1')`);
+    await migrate(db, { migrationsFolder: "drizzle" });
+    expect(rowsOf(await db.execute(sql`select email, role from allowlist order by email`))).toEqual([
+      { email: "ann@x.com", role: "admin" },
+      { email: "bob@x.com", role: "editor" },
+      { email: "cat@x.com", role: "editor" },
+    ]);
+    expect(rowsOf(await db.execute(sql`select user_id, role from member where organization_id = ${SEED_TEAM_ID} order by user_id`))).toEqual([
+      { user_id: "u1", role: "admin" },
+      { user_id: "u2", role: "editor" },
+      { user_id: "u3", role: "editor" },
+    ]);
+    expect(rowsOf(await db.execute(sql`select id, role from invitation order by id`))).toEqual([
+      { id: "i1", role: "editor" },
+      { id: "i2", role: "admin" },
+    ]);
+  });
+
+  it("fills in the Google account of each connected space", async () => {
+    const db = await migratedTo(17);
+    await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Ann', 'ann@x.com')`);
+    await db.execute(sql`insert into organization (id, name, slug, created_at, kind) values ('t2', 'T2', 'team-two', now(), 'team')`);
+    await db.execute(sql`insert into drive_connection (id, user_id, google_sub, email, refresh_token_enc, scopes) values ('c1', 'u1', 'g1', 'ann@x.com', 'enc', 'drive.file')`);
+    await db.execute(sql`insert into space_storage (space_id, kind, connection_id, root_folder_id, created_by) values ('t2', 'google_account', 'c1', 'r1', 'u1')`);
+    await migrate(db, { migrationsFolder: "drizzle" });
+    expect(rowsOf(await db.execute(sql`select space_id, google_sub from space_storage order by space_id`))).toEqual([
+      { space_id: "t2", google_sub: "g1" },
+      { space_id: SEED_TEAM_ID, google_sub: null },
+    ]);
+  });
+
+  it("a Google account backs one space", async () => {
+    const db = await makeTestDb();
+    await db.execute(sql`insert into "user" (id, name, email) values ('u1', 'Ann', 'ann@x.com')`);
+    await db.execute(sql`insert into organization (id, name, slug, created_at, kind) values ('t2', 'T2', 'team-two', now(), 'team'), ('t3', 'T3', 'team-three', now(), 'team')`);
+    await db.execute(sql`insert into drive_connection (id, user_id, google_sub, email, refresh_token_enc, scopes) values ('c1', 'u1', 'g1', 'ann@x.com', 'enc', 'drive.file')`);
+    await db.execute(sql`insert into space_storage (space_id, kind, connection_id, root_folder_id, google_sub, created_by) values ('t2', 'google_account', 'c1', 'r1', 'g1', 'u1')`);
+    await expect(db.execute(sql`insert into space_storage (space_id, kind, connection_id, root_folder_id, google_sub, created_by) values ('t3', 'google_account', 'c1', 'r2', 'g1', 'u1')`))
+      .rejects.toMatchObject({ cause: { code: "23505", constraint: "space_storage_google_sub_unique" } });
+    // Spaces without a Google account (Seattle Solvers' shared folder) don't collide.
+    expect(rowsOf(await db.execute(sql`select count(*)::int as n from space_storage where google_sub is null`))).toEqual([{ n: 1 }]);
+  });
+});
+
+describe("the deploy guide for 0019", () => {
+  it("has the one-account paragraph, with the check to run first", () => {
+    const guide = readFileSync("docs/deploy.md", "utf8");
+    expect(guide).toContain("**Before deploying the version with one Google account per space:**");
+    expect(guide).toContain(
+      "select d.google_sub, count(*) from space_storage s join drive_connection d on d.id = s.connection_id where s.kind = 'google_account' group by d.google_sub having count(*) > 1;",
+    );
+    // A personal space can't be seen or changed while personal spaces are closed, so an account it holds would be stuck.
+    expect(guide).toContain(
+      "select s.space_id, d.email from space_storage s join organization o on o.id = s.space_id join drive_connection d on d.id = s.connection_id where o.kind = 'personal' and s.kind = 'google_account';",
+    );
+    // What the earlier version may write between the migration and the deploy is put right once the deploy is live.
+    expect(guide).toContain("**After the deploy:** run the migration's statements that change rows once more");
+  });
+
+  it("the deploy guide's checks run on the database before and after 0019", async () => {
+    const guide = readFileSync("docs/deploy.md", "utf8");
+    const queries = [...guide.matchAll(/^    (select (?:d\.google_sub|s\.space_id)[^\n]*;)$/gm)].map((m) => m[1]);
+    expect(queries).toHaveLength(2);
+    const before = await migratedTo(17);
+    const after = await makeTestDb();
+    for (const db of [before, after]) for (const query of queries) await db.execute(sql.raw(query));
   });
 });

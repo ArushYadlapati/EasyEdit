@@ -9,6 +9,11 @@ export type Role = "admin" | "editor" | "viewer";
 
 export const ROLE_RANK: Record<Role, number> = { viewer: 1, editor: 2, admin: 3 };
 
+// The roles a person can be given. "viewer" is only the lowest bar a route asks for (signed in); nobody is given it.
+export const ASSIGNABLE_ROLES = ["admin", "editor"] as const;
+export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
+export const isAssignableRole = (role: unknown): role is AssignableRole => ASSIGNABLE_ROLES.some((r) => r === role);
+
 export const SEED_ADMIN_EMAIL = "admin@seattlesolvers.com";
 
 export class AllowlistError extends Error {

@@ -16,7 +16,7 @@ const u2: CurrentUser = { id: "u2", email: "u2@gmail.com", name: "U2", image: nu
 
 function actionsFor(w: StorageWorld, over: { user?: CurrentUser; setUp?: SetUpStorage } = {}) {
   const revalidate = vi.fn();
-  const setUp = over.setUp ?? makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: w.fake.fetch });
+  const setUp = over.setUp ?? makeSetUpStorage({ config: w.cfg, fetch: w.fake.fetch });
   const actions = makeStorageActions({ db: () => w.db, requireUser: async () => over.user ?? u1, setUp, revalidate });
   return { actions, revalidate };
 }
@@ -28,38 +28,16 @@ const form = (connectionId: string) => {
 };
 
 describe("choosing an account the person already connected", () => {
-  it.each([
-    ["429 from IAM", 429, "RESOURCE_EXHAUSTED"],
-    ["a quota refusal on a 403", 403, "quotaExceeded"],
-    ["a limit refusal on a 400", 400, "limitExceeded"],
-  ])("a team's reader refused for Google's service-account limit (%s) says so, and changes nothing", async (_name, status, reason) => {
+  it("an account that already holds another space's storage is refused with that reason, and nothing changes", async () => {
     const w = await storageWorld();
-    const team = await w.team("Robotics Club");
     const ada = await w.connect({ email: "ada@gmail.com" });
-    w.fake.failNext(/POST \/v1\/projects\/[^/]+\/serviceAccounts$/, status, reason);
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const { actions } = actionsFor(w);
-      expect(await actions.choose(team, form(ada.id))).toEqual({
-        error: "This team's storage couldn't be set up because EasyEdit has reached a Google limit. Try again later, or contact help@arush.dev.",
-      });
-      expect(await w.db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, team))).toEqual([]);
-    } finally {
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("any other refusal of the reader stays the generic one", async () => {
-    const w = await storageWorld();
+    const { actions } = actionsFor(w);
+    expect(await actions.choose(w.personal, form(ada.id))).toEqual({});
     const team = await w.team("Robotics Club");
-    const ada = await w.connect({ email: "ada@gmail.com" });
-    w.fake.failNext(/POST \/v1\/projects\/[^/]+\/serviceAccounts$/, 403, "PERMISSION_DENIED");
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(await actionsFor(w).actions.choose(team, form(ada.id))).toEqual({ error: "That didn't work. Nothing was changed. Try again." });
-    } finally {
-      vi.restoreAllMocks();
-    }
+    expect(await actions.choose(team, form(ada.id))).toEqual({
+      error: "That Google account already holds another EasyEdit space's storage. Choose a different Google account.",
+    });
+    expect(await w.db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, team))).toEqual([]);
   });
 
   it("sets up the space's storage in it, with no new Google screen, and refreshes the pages", async () => {
@@ -108,7 +86,7 @@ describe("choosing an account the person already connected", () => {
     const w = await storageWorld();
     const ada = await w.connect({ email: "ada@gmail.com" });
     const cases: [unknown, string][] = [
-      [new ServiceError("TEAM_STORAGE_NOT_CONFIGURED", 409, "x"), "Team storage isn't set up on this server yet."],
+      [new ServiceError("ACCOUNT_IN_USE", 409, "x"), "That Google account already holds another EasyEdit space's storage. Choose a different Google account."],
       [new ServiceError("CONFLICT", 409, "x"), "Storage isn't set up on this server yet."],
       [new DriveError("files.create", 503, "backendError"), "That didn't work. Nothing was changed. Try again."],
       [new ConnectionBrokenError("revoked"), "Google ended EasyEdit's access to that account. Choose it again to reconnect it."],

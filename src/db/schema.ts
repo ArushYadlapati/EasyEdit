@@ -235,7 +235,8 @@ export const spaceStorage = pgTable(
     connectionId: text("connection_id").references(() => driveConnection.id, { onDelete: "restrict" }), // null for shared_folder
     rootFolderId: text("root_folder_id"), // null for shared_folder: use DRIVE_FOLDER_ID
     folderName: text("folder_name"),
-    readerEmail: text("reader_email"), // the team's reader service account; null for personal and shared_folder
+    readerEmail: text("reader_email"), // no longer used (teams had reader service accounts until 0019); kept, not dropped
+    googleSub: text("google_sub"), // the Google account of a google_account space; one account backs one space
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -245,6 +246,7 @@ export const spaceStorage = pgTable(
       "space_storage_shape_check",
       sql`(${t.kind} = 'shared_folder' and ${t.connectionId} is null) or (${t.kind} = 'google_account' and ${t.connectionId} is not null and ${t.rootFolderId} is not null)`,
     ),
+    uniqueIndex("space_storage_google_sub_unique").on(t.googleSub).where(sql`google_sub is not null`),
   ],
 );
 

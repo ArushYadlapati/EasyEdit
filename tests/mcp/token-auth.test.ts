@@ -37,7 +37,7 @@ const LIST = { name: "list_projects", arguments: {} };
 const INVALID = 'Bearer error="invalid_token"';
 
 // A member signed in to the website who makes an access token for an agent on the AI agents page.
-async function memberWithToken(email: string, opts: { role?: "viewer" | "editor" | "admin"; expiresInDays?: number } = {}) {
+async function memberWithToken(email: string, opts: { role?: "editor" | "admin"; expiresInDays?: number } = {}) {
   const { userId } = await app.signIn(email, opts.role ?? "editor");
   const { token, summary } = await createAgentToken(app.db, { userId, name: "Responses API", agent: "openai-api", expiresInDays: opts.expiresInDays });
   return { userId, token, tokenId: summary.id };
@@ -79,8 +79,8 @@ describe("POST /api/mcp with an access token", () => {
 
   it("takes the role the member has now", async () => {
     const m = await memberWithToken("dorothy@gmail.com");
-    await adminActions(app.db).setRole(form({ email: "dorothy@gmail.com", role: "viewer" }));
-    expect((await app.callTool(m.token, "list_projects")).text).toContain('"Seattle Solvers" (seattle-solvers, viewer)');
+    await adminActions(app.db).setRole(form({ email: "dorothy@gmail.com", role: "admin" }));
+    expect((await app.callTool(m.token, "list_projects")).text).toContain('"Seattle Solvers" (seattle-solvers, admin)');
   });
 
   it("answers an unknown, revoked or expired token with 401 and an invalid_token challenge", async () => {

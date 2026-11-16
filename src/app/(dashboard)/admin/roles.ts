@@ -5,7 +5,6 @@ import type { Role } from "@/lib/allowlist/service";
 export const ROLE_CHOICES: readonly { value: Role; label: string; hint: string }[] = [
   { value: "admin", label: "Admin", hint: "Edits projects and manages members." },
   { value: "editor", label: "Editor", hint: "Creates and edits projects." },
-  { value: "viewer", label: "Viewer", hint: "Opens projects but can't change them." },
 ];
 
 export function roleChoice(value: string) {

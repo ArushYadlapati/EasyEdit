@@ -1,10 +1,10 @@
+import { settingsNote } from "@/lib/storage/messages";
 import { createHash, randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import type { DB } from "@/db";
 import { driveConnection } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
-import { shareFolderWith } from "@/lib/drive/reader";
 import { driveFileUrl } from "@/lib/media/read-tokens";
 import { ServiceError } from "@/lib/service-error";
 import { personalSpaceId, SEED_TEAM_ID, type SpaceKind } from "@/lib/spaces/types";
@@ -26,7 +26,6 @@ const cfg: StorageConfig = {
   clientSecret: "shh",
   tokenKey: randomBytes(32),
   redirectUri: `${BASE}/api/storage/callback`,
-  projectId: "easyedit-test",
 };
 const COOKIE = "ee_storage_oauth";
 const REFUSED = `${BASE}/dashboard?storage=refused`;
@@ -159,9 +158,9 @@ describe("connect", () => {
     expectCleared(cb);
   });
 
-  it("a team this server can't set storage up for goes back to its storage page, never to Google", async () => {
+  it("a space this server can't set storage up for goes back to its storage page, never to Google", async () => {
     const kinds: SpaceKind[] = [];
-    const ctx = await setup({ block: (kind) => (kinds.push(kind), kind === "team" ? "team" : null) });
+    const ctx = await setup({ block: (kind) => (kinds.push(kind), kind === "team" ? "server" : null) });
     const res = await ctx.handlers.connect(new Request(`${BASE}/api/storage/connect?space=${SEED_TEAM_ID}`));
     await expectPage(res, `${STORAGE_PAGE}?storage=not-configured`);
     expect(cookiesOf(res)).toEqual([]);
@@ -175,8 +174,10 @@ describe("connect", () => {
   it("checks the same block the pages use by default", async () => {
     const db = await makeTestDb();
     await joinSpace(db, { id: "u1" }, "admin");
-    const handlers = makeConnectHandlers({ db: () => db, auth: async () => testUser({ id: "u1" }), config: () => ({ ...cfg, projectId: null }), setUp: async () => {} });
-    await expectPage(await handlers.connect(new Request(`${BASE}/api/storage/connect?space=${SEED_TEAM_ID}`)), `${STORAGE_PAGE}?storage=not-configured`);
+    const handlers = makeConnectHandlers({ db: () => db, auth: async () => testUser({ id: "u1" }), config: () => cfg, setUp: async () => {} });
+    // A team needs nothing a personal space doesn't, so with the settings there it goes on to Google.
+    const res = await handlers.connect(new Request(`${BASE}/api/storage/connect?space=${SEED_TEAM_ID}`));
+    expect(new URL(res.headers.get("location")!).origin).toBe("https://accounts.google.com");
   });
 
   it("a signed-out or refused person lands on the fixed page, not the auth answer's JSON", async () => {
@@ -367,6 +368,20 @@ describe("the callback", () => {
     expect(await rows(ctx.db)).toHaveLength(1);
   });
 
+  it("a Google account that backs another space goes back with account-in-use", async () => {
+    const ctx = await setup();
+    ctx.setUp.mockRejectedValueOnce(new ServiceError("ACCOUNT_IN_USE", 409, "taken"));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { state, cookie } = await start(ctx);
+    const res = await back(ctx, `code=c&state=${state}`, cookie);
+    quiet.mockRestore();
+    await expectPage(res, `${STORAGE_PAGE}?storage=account-in-use`);
+    expect(settingsNote("account-in-use")).toEqual({
+      text: "That Google account already holds another EasyEdit space's storage. Choose a different Google account.",
+      problem: true,
+    });
+  });
+
   it("a space whose videos are already in another account goes back with in-use, not failed", async () => {
     const ctx = await setup();
     ctx.setUp.mockRejectedValueOnce(new ServiceError("STORAGE_IN_USE", 409, "in use"));
@@ -377,17 +392,6 @@ describe("the callback", () => {
     await expectPage(res, `${STORAGE_PAGE}?storage=in-use`);
     expectCleared(res);
     expect(await rows(ctx.db)).toHaveLength(1);
-  });
-
-  it("a team this server can't set up after all goes back with not-configured, not failed", async () => {
-    const ctx = await setup();
-    ctx.setUp.mockRejectedValueOnce(new ServiceError("TEAM_STORAGE_NOT_CONFIGURED", 409, "not here"));
-    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { state, cookie } = await start(ctx);
-    const res = await back(ctx, `code=c&state=${state}`, cookie);
-    quiet.mockRestore();
-    await expectPage(res, `${STORAGE_PAGE}?storage=not-configured`);
-    expectCleared(res);
   });
 
   it("an unexpected failure lands on a fixed page too, and still clears the cookie", async () => {
@@ -528,7 +532,11 @@ describe("connections", () => {
       body: JSON.stringify({ name: "EasyEdit – Personal", mimeType: "application/vnd.google-apps.folder" }),
     });
     const { id: folderId } = (await made.json()) as { id: string };
-    await shareFolderWith({ write: adaAccess, fetch: fake.fetch, sleep: async () => {} }, folderId, bob.email);
+    await fake.fetch(`https://www.googleapis.com/drive/v3/files/${folderId}/permissions?supportsAllDrives=true&sendNotificationEmail=false`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${(await adaAccess.token()).accessToken}`, "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ role: "reader", type: "user", emailAddress: bob.email }),
+    });
 
     const read = async (who: typeof adaAccess) => (await fake.fetch(driveFileUrl(folderId), { headers: { Authorization: `Bearer ${(await who.token()).accessToken}` } })).status;
     expect(await read(adaAccess)).toBe(200);

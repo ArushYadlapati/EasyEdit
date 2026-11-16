@@ -7,7 +7,7 @@ import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { addText, toolContext } from "./context";
 
-const spacesLine = (role: string) => `Spaces: "Personal" (personal, admin), "Seattle Solvers" (seattle-solvers, ${role}). You can change projects in a space where you are an editor or admin, and only read them where you are a viewer. Name a space in create_project's space.`;
+const spacesLine = (role: string) => `Spaces: "Personal" (personal, admin), "Seattle Solvers" (seattle-solvers, ${role}). You can change projects in every space you belong to. Name a space in create_project's space.`;
 const TEAM = '  Space: "Seattle Solvers"';
 const grace = testActor({ userId: "u2", email: "u2@gmail.com", role: "editor" });
 // The test database's clock counts whole milliseconds, so changes meant to sort apart need a gap.
@@ -45,10 +45,10 @@ describe("list_projects", () => {
     );
   });
 
-  it("tells a viewer they can only read, and says so when there is nothing yet", async () => {
+  it("says so when there is nothing yet", async () => {
     const db = await makeTestDb();
-    expect((await listProjectsTool(await toolContext(db, { role: "viewer" }), {})).text).toBe(
-      `Signed in as Ada Lovelace.\n${spacesLine("viewer")}\nNo projects yet. Create one with create_project.`,
+    expect((await listProjectsTool(await toolContext(db, { role: "editor" }), {})).text).toBe(
+      `Signed in as Ada Lovelace.\n${spacesLine("editor")}\nNo projects yet. Create one with create_project.`,
     );
   });
 

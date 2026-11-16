@@ -6,7 +6,7 @@ import { ConnectionBrokenError, refreshAccess } from "@/lib/storage/google-oauth
 import { type FakeDrive, makeFakeDrive } from "../helpers/fake-drive";
 
 const HOUR = 3_600_000;
-const oauth: StorageConfig = { clientId: "client-1", clientSecret: "shh", tokenKey: randomBytes(32), redirectUri: "https://app.test/api/storage/callback", projectId: "easyedit-test" };
+const oauth: StorageConfig = { clientId: "client-1", clientSecret: "shh", tokenKey: randomBytes(32), redirectUri: "https://app.test/api/storage/callback" };
 const mainSa = (fake: FakeDrive, scope: string, fetchFn: typeof fetch = fake.fetch) =>
   serviceAccountSource({ clientEmail: fake.config.clientEmail, privateKey: fake.config.privateKey, scope, fetch: fetchFn, now: fake.now });
 const tokenCalls = (fake: FakeDrive) => fake.calls.filter((call) => call.path === "/token").length;

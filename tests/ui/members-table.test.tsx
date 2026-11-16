@@ -28,11 +28,11 @@ const writeText = vi.fn<(text: string) => Promise<void>>();
 const FUTURE = new Date(Date.now() + 5 * 86_400_000).toISOString();
 const PAST = new Date(Date.now() - 86_400_000).toISOString();
 const INV_LIN: PendingInviteRow = { id: "inv_lin", email: "lin@example.com", role: "editor", invitedBy: "Uma", expiresAt: FUTURE, expired: false, link: "https://easyedit.test/invite/inv_lin" };
-const INV_OLD: PendingInviteRow = { id: "inv_old", email: "old@example.com", role: "viewer", invitedBy: "Uma", expiresAt: PAST, expired: true, link: "https://easyedit.test/invite/inv_old" };
+const INV_OLD: PendingInviteRow = { id: "inv_old", email: "old@example.com", role: "editor", invitedBy: "Uma", expiresAt: PAST, expired: true, link: "https://easyedit.test/invite/inv_old" };
 
 const UMA: MemberRow = { userId: "u1", name: "Uma", email: "u1@gmail.com", role: "admin", joinedAt: "2026-11-01T12:00:00.000Z", storageOwner: false };
 const BEN: MemberRow = { userId: "u2", name: "Ben", email: "u2@gmail.com", role: "admin", joinedAt: "2026-11-02T12:00:00.000Z", storageOwner: true };
-const CARA: MemberRow = { userId: "u3", name: "Cara", email: "u3@gmail.com", role: "viewer", joinedAt: "2026-11-03T12:00:00.000Z", storageOwner: false };
+const CARA: MemberRow = { userId: "u3", name: "Cara", email: "u3@gmail.com", role: "editor", joinedAt: "2026-11-03T12:00:00.000Z", storageOwner: false };
 const ALL = [UMA, BEN, CARA];
 
 function show(me: string, viewerRole: Role, members: MemberRow[] = ALL, extra: { managedElsewhere?: boolean; adminPageLink?: boolean; pendingInvites?: PendingInviteRow[] } = {}) {
@@ -66,7 +66,7 @@ describe("the members table", () => {
   });
 
   it("shows each member's name, email, role and when they joined", () => {
-    show("u3", "viewer");
+    show("u3", "editor");
     const cells = within(row("u2@gmail.com")).getAllByRole("cell").map((cell) => cell.textContent);
     expect(cells.slice(0, 4).join("|")).toMatch(/^Ben.*\|u2@gmail\.com\|Admin\|.*2026/);
     expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Name", "Email", "Role", "Joined", "Actions"]);
@@ -76,7 +76,7 @@ describe("the members table", () => {
     show("u1", "admin");
     expect(screen.getByRole("button", { name: "Invite" })).toBeTruthy();
     for (const m of ALL) expect(roleSelect(m.email)).toBeTruthy();
-    expect(roleSelect("u3@gmail.com")!.value).toBe("viewer");
+    expect(roleSelect("u3@gmail.com")!.value).toBe("editor");
     expect(roleSelect("u3@gmail.com")!.disabled).toBe(false);
 
     // Their own row: You and Leave team, no Remove.
@@ -106,25 +106,25 @@ describe("the members table", () => {
     expect(within(row("u2@gmail.com")).queryByRole("button", { name: "Leave team" })).toBeNull();
   });
 
-  it("a viewer sees no controls except Leave team on their own row", () => {
-    show("u3", "viewer");
+  it("an editor sees no controls except Leave team on their own row", () => {
+    show("u3", "editor");
     expect(screen.queryByRole("button", { name: "Invite" })).toBeNull();
     expect(screen.queryAllByRole("combobox")).toEqual([]);
     expect(screen.queryAllByRole("button", { name: /^Actions for/ })).toEqual([]);
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((b) => b.textContent)).toEqual(["Leave team"]);
     expect(within(row("u3@gmail.com")).getByRole("button", { name: "Leave team" })).toBeTruthy();
-    expect(within(row("u3@gmail.com")).getByText("Viewer")).toBeTruthy();
+    expect(within(row("u3@gmail.com")).getByText("Editor")).toBeTruthy();
   });
 
   it("changing a role sends the member and the role; a refusal shows and the select goes back", async () => {
     actions.setRole.mockResolvedValue({ error: "A team needs at least one admin. Make someone else an admin first." });
     show("u1", "admin");
-    await act(async () => fireEvent.change(roleSelect("u3@gmail.com")!, { target: { value: "editor" } }));
+    await act(async () => fireEvent.change(roleSelect("u3@gmail.com")!, { target: { value: "admin" } }));
     const sent = actions.setRole.mock.calls[0]![0];
-    expect(Object.fromEntries(sent.entries())).toEqual({ userId: "u3", role: "editor" });
+    expect(Object.fromEntries(sent.entries())).toEqual({ userId: "u3", role: "admin" });
     await waitFor(() => expect(within(row("u3@gmail.com")).getByRole("alert").textContent).toBe("A team needs at least one admin. Make someone else an admin first."));
-    expect(roleSelect("u3@gmail.com")!.value).toBe("viewer");
+    expect(roleSelect("u3@gmail.com")!.value).toBe("editor");
   });
 
   it("Remove from team asks first, then sends the member", async () => {
@@ -168,12 +168,12 @@ describe("the invite dialog", () => {
     const invite = dialog("Invite someone");
     expect(within(invite).getByText("They'll join once they accept. You'll get a link to send them.")).toBeTruthy();
     const role = within(invite).getByRole<HTMLSelectElement>("combobox", { name: "Role" });
-    expect([...role.options].map((o) => o.textContent)).toEqual(["Admin", "Editor", "Viewer"]);
+    expect([...role.options].map((o) => o.textContent)).toEqual(["Admin", "Editor"]);
     expect(role.value).toBe("editor");
     fireEvent.change(within(invite).getByRole("textbox", { name: "Email" }), { target: { value: "ada@example.com" } });
-    fireEvent.change(role, { target: { value: "viewer" } });
+    fireEvent.change(role, { target: { value: "admin" } });
     await act(async () => fireEvent.click(within(invite).getByRole("button", { name: "Create invite" })));
-    expect(Object.fromEntries(actions.invite.mock.calls[0]![0].entries())).toEqual({ email: "ada@example.com", role: "viewer" });
+    expect(Object.fromEntries(actions.invite.mock.calls[0]![0].entries())).toEqual({ email: "ada@example.com", role: "admin" });
 
     const done = await waitFor(() => dialog("Invite someone"));
     expect(within(done).getByDisplayValue("https://easyedit.test/invite/inv_new")).toBeTruthy();
@@ -252,7 +252,7 @@ describe("pending invites", () => {
   it("Renew submits the invite's email and role", async () => {
     show("u1", "admin", ALL, { pendingInvites: [INV_OLD] });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Renew" })));
-    expect(Object.fromEntries(actions.invite.mock.calls[0]![0].entries())).toEqual({ email: "old@example.com", role: "viewer" });
+    expect(Object.fromEntries(actions.invite.mock.calls[0]![0].entries())).toEqual({ email: "old@example.com", role: "editor" });
   });
 
   it("Cancel invite asks first, then sends the invite id", async () => {
@@ -279,7 +279,7 @@ describe("pending invites", () => {
 
 describe("delete team", () => {
   it("is for admins only, and never for Seattle Solvers", () => {
-    show("u3", "viewer");
+    show("u3", "editor");
     expect(screen.queryByRole("button", { name: "Delete team" })).toBeNull();
   });
 

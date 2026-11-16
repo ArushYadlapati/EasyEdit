@@ -1,9 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { DB } from "@/db";
 import { assets, driveConnection, member, spaceStorage } from "@/db/schema";
-import { readerAccountId } from "@/lib/drive/reader";
 import { ServiceError } from "@/lib/service-error";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { ConnectionBrokenError, DRIVE_FILE_SCOPE } from "@/lib/storage/google-oauth";
@@ -13,12 +12,7 @@ import { type StorageWorld, storageWorld } from "../helpers/storage";
 
 const FOLDER = "application/vnd.google-apps.folder";
 
-const setUpFor = (w: StorageWorld, over: { mainSa?: StorageWorld["mainSa"] | null; projectId?: string | null } = {}) =>
-  makeSetUpStorage({
-    config: { ...w.cfg, ...(over.projectId === undefined ? {} : { projectId: over.projectId }) },
-    mainSa: () => (over.mainSa === undefined ? w.mainSa : over.mainSa),
-    fetch: w.fake.fetch,
-  });
+const setUpFor = (w: StorageWorld) => makeSetUpStorage({ config: w.cfg, fetch: w.fake.fetch });
 
 const storageOf = async (db: DB, spaceId: string) => (await db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, spaceId)))[0] ?? null;
 
@@ -61,29 +55,20 @@ describe("setting up storage", () => {
     expect(w.fake.calls.some((call) => call.path.startsWith("/v1/"))).toBe(false);
   });
 
-  it("in a personal space needs no main service account", async () => {
-    const w = await storageWorld();
-    const ada = await w.connect();
-    await setUpFor(w, { mainSa: null, projectId: null })(w.db, { spaceId: w.personal, connectionId: ada.id, byUserId: "u1" });
-    expect(await storageOf(w.db, w.personal)).toMatchObject({ kind: "google_account", connectionId: ada.id });
-  });
-
-  it("in a team: makes one reader and shares the folder with it, read-only and without an email", async () => {
+  it("in a team: the same folder as a personal space, with no reader, no sharing and no Google Cloud call", async () => {
     const w = await storageWorld();
     const team = await w.team("Robotics Club");
     const ada = await w.connect({ email: "ada@gmail.com" });
     await setUpFor(w)(w.db, { spaceId: team, connectionId: ada.id, byUserId: "u1" });
 
-    const reader = `${readerAccountId(team)}@${w.fake.projectId}.iam.gserviceaccount.com`;
     const row = await storageOf(w.db, team);
-    expect(row).toMatchObject({ kind: "google_account", connectionId: ada.id, folderName: "EasyEdit – Robotics Club", readerEmail: reader, createdBy: "u1" });
-    const rootId = row!.rootFolderId!;
-    expect(w.fake.files.get(rootId)).toMatchObject({ name: "EasyEdit – Robotics Club", parents: [], owner: "ada@gmail.com" });
-    expect(inside(w, rootId).map((file) => file.name)).toEqual(["Originals", "Previews"]);
-    expect([...w.fake.accounts.keys()]).toEqual([reader]);
-    expect(w.fake.shares.get(rootId)).toEqual(new Map([[reader, "reader"]])); // the reader only: never the main service account
-    expect(w.fake.permissionRequests).toHaveLength(1);
-    expect(w.fake.permissionRequests[0].query.sendNotificationEmail).toBe("false");
+    expect(row).toMatchObject({ kind: "google_account", connectionId: ada.id, folderName: "EasyEdit – Robotics Club", readerEmail: null, createdBy: "u1" });
+    expect(w.fake.files.get(row!.rootFolderId!)).toMatchObject({ name: "EasyEdit – Robotics Club", parents: [], owner: "ada@gmail.com" });
+    expect(inside(w, row!.rootFolderId!).map((file) => file.name)).toEqual(["Originals", "Previews"]);
+    expect(w.fake.accounts.size).toBe(0);
+    expect(w.fake.permissionRequests).toEqual([]);
+    expect(w.fake.impersonations).toEqual([]);
+    expect(w.fake.calls.some((call) => call.path.startsWith("/v1/"))).toBe(false);
   });
 
   it("again with the same connection (a reconnect) keeps the storage as it is", async () => {
@@ -98,10 +83,10 @@ describe("setting up storage", () => {
     await setUp(w.db, { spaceId: team, connectionId: ada.id, byUserId: "u1" });
     expect(await storageOf(w.db, team)).toEqual(before);
     expect(w.fake.files.size).toBe(files);
-    expect(w.fake.accounts.size).toBe(1);
+    expect(w.fake.accounts.size).toBe(0);
   });
 
-  it("with another account while the space holds no uploads moves it there, with the same reader", async () => {
+  it("with another account while the space holds no uploads moves it there", async () => {
     const w = await storageWorld();
     const team = await w.team("Robotics Club");
     const first = await w.connect({ email: "first@gmail.com" });
@@ -113,41 +98,10 @@ describe("setting up storage", () => {
     await setUp(w.db, { spaceId: team, connectionId: second.id, byUserId: "u1" });
 
     const after = await storageOf(w.db, team);
-    expect(after).toMatchObject({ connectionId: second.id, readerEmail: before!.readerEmail });
+    expect(after).toMatchObject({ connectionId: second.id, readerEmail: null });
     expect(after!.rootFolderId).not.toBe(before!.rootFolderId);
     expect(w.fake.files.get(after!.rootFolderId!)).toMatchObject({ owner: "second@gmail.com", name: "EasyEdit – Robotics Club" });
-    expect(w.fake.accounts.size).toBe(1);
-    expect(w.fake.shares.get(after!.rootFolderId!)?.get(before!.readerEmail!)).toBe("reader");
-  });
-
-  it("in a team with no main service account or no project: answers TEAM_STORAGE_NOT_CONFIGURED and writes nothing", async () => {
-    for (const over of [{ mainSa: null }, { projectId: null }]) {
-      const w = await storageWorld();
-      const team = await w.team("Robotics Club");
-      const ada = await w.connect();
-      const error = await setUpFor(w, over)(w.db, { spaceId: team, connectionId: ada.id, byUserId: "u1" }).catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(ServiceError);
-      expect(refusal(error)).toEqual({ code: "TEAM_STORAGE_NOT_CONFIGURED", status: 409 });
-      expect(await storageOf(w.db, team)).toBeNull();
-      expect(w.fake.calls).toEqual([]); // no folder made, no reader
-      expect(w.fake.files.size).toBe(1); // only the shared drive's folder the fake starts with
-    }
-  });
-
-  it("in a team when the service account key is set but can't be read: TEAM_STORAGE_NOT_CONFIGURED, one line, nothing written", async () => {
-    const w = await storageWorld();
-    const team = await w.team("Robotics Club");
-    const ada = await w.connect();
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    const unreadable = () => {
-      throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY is not a service account key.");
-    };
-    const error = await makeSetUpStorage({ config: w.cfg, mainSa: unreadable, fetch: w.fake.fetch })(w.db, { spaceId: team, connectionId: ada.id, byUserId: "u1" }).catch((e: unknown) => e);
-    expect(refusal(error)).toEqual({ code: "TEAM_STORAGE_NOT_CONFIGURED", status: 409 });
-    expect(log.mock.calls).toEqual([["Drive settings could not be read"]]);
-    expect(await storageOf(w.db, team)).toBeNull();
-    expect(w.fake.calls).toEqual([]);
-    log.mockRestore();
+    expect(w.fake.accounts.size).toBe(0);
   });
 
   it("for a space that already holds uploads: answers STORAGE_IN_USE and changes nothing", async () => {
@@ -199,7 +153,7 @@ describe("setting up storage", () => {
       }
       return w.fake.fetch(input, init);
     }) as typeof fetch;
-    const setUp = makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: flipping });
+    const setUp = makeSetUpStorage({ config: w.cfg, fetch: flipping });
     const error = await setUp(w.db, { spaceId: team, connectionId: second.id, byUserId: "u1" }).catch((e: unknown) => e);
     expect(refusal(error)).toEqual({ code: "STORAGE_IN_USE", status: 409 });
     expect(await storageOf(w.db, team)).toMatchObject({ kind: "shared_folder", connectionId: null });
@@ -223,7 +177,7 @@ describe("setting up storage", () => {
     await joinSpace(w.db, { id: "u2" }, "admin", team);
     const theirs = await w.connect({ userId: "u2" });
     const removing = changingOnce(w, () => w.db.delete(member).where(and(eq(member.organizationId, team), eq(member.userId, "u2"))));
-    const setUp = makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: removing });
+    const setUp = makeSetUpStorage({ config: w.cfg, fetch: removing });
     const error = await setUp(w.db, { spaceId: team, connectionId: theirs.id, byUserId: "u2" }).catch((e: unknown) => e);
     expect(refusal(error)).toEqual({ code: "NOT_FOUND", status: 404 });
     expect(await storageOf(w.db, team)).toBeNull();
@@ -238,7 +192,7 @@ describe("setting up storage", () => {
     const before = await storageOf(w.db, team);
     const theirs = await w.connect({ userId: "u2" });
     const demoting = changingOnce(w, () => joinSpace(w.db, { id: "u2" }, "editor", team));
-    const setUp = makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: demoting });
+    const setUp = makeSetUpStorage({ config: w.cfg, fetch: demoting });
     const error = await setUp(w.db, { spaceId: team, connectionId: theirs.id, byUserId: "u2" }).catch((e: unknown) => e);
     expect(refusal(error)).toEqual({ code: "NOT_FOUND", status: 404 });
     expect(await storageOf(w.db, team)).toEqual(before);
@@ -250,7 +204,7 @@ describe("setting up storage", () => {
     await joinSpace(w.db, { id: "u2" }, "admin", team);
     const theirs = await w.connect({ userId: "u2" });
     const demoting = changingOnce(w, () => joinSpace(w.db, { id: "u2" }, "editor", team));
-    const setUp = makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: demoting });
+    const setUp = makeSetUpStorage({ config: w.cfg, fetch: demoting });
     const error = await setUp(w.db, { spaceId: team, connectionId: theirs.id, byUserId: "u2" }).catch((e: unknown) => e);
     expect(refusal(error)).toEqual({ code: "NOT_FOUND", status: 404 });
     expect(await storageOf(w.db, team)).toBeNull();
@@ -295,5 +249,76 @@ describe("setting up storage", () => {
     expect(row.brokenAt).toBeInstanceOf(Date);
     expect(row.brokenReason).toBe("revoked");
     expect(await storageOf(w.db, w.personal)).toBeNull();
+  });
+});
+
+describe("one Google account per space", () => {
+  const ACCOUNT_IN_USE = { code: "ACCOUNT_IN_USE", status: 409 };
+  // A fetch that runs `change` once, before the first call to Google.
+  const changingOnce = (w: StorageWorld, change: () => Promise<unknown>) => {
+    let done = false;
+    return (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!done) {
+        done = true;
+        await change();
+      }
+      return w.fake.fetch(input, init);
+    }) as typeof fetch;
+  };
+
+  it("refuses a Google account that already backs another space, before any call to Google", async () => {
+    const w = await storageWorld();
+    const first = await w.team("Robotics Club");
+    await setUpFor(w)(w.db, { spaceId: first, connectionId: (await w.connect({ googleSub: "g1" })).id, byUserId: "u1" });
+    const second = await w.team("Chess Club", "u2");
+    const theirs = await w.connect({ userId: "u2", googleSub: "g1" }); // another EasyEdit person, the same Google account
+    const calls = w.fake.calls.length;
+    const error = await setUpFor(w)(w.db, { spaceId: second, connectionId: theirs.id, byUserId: "u2" }).catch((e: unknown) => e);
+    expect(refusal(error)).toEqual(ACCOUNT_IN_USE);
+    expect((error as Error).message).toBe("That Google account already holds another EasyEdit space's storage. Choose a different Google account.");
+    expect(w.fake.calls.length).toBe(calls);
+    expect(await storageOf(w.db, second)).toBeNull();
+  });
+
+  it("counts a personal space too", async () => {
+    const w = await storageWorld();
+    const mine = await w.connect({ googleSub: "g1" });
+    await setUpFor(w)(w.db, { spaceId: w.personal, connectionId: mine.id, byUserId: "u1" });
+    const team = await w.team("Robotics Club");
+    const error = await setUpFor(w)(w.db, { spaceId: team, connectionId: mine.id, byUserId: "u1" }).catch((e: unknown) => e);
+    expect(refusal(error)).toEqual(ACCOUNT_IN_USE);
+  });
+
+  it("lets a space reconnect with the Google account it already uses, through any of its admins", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    await joinSpace(w.db, { id: "u2" }, "admin", team);
+    await setUpFor(w)(w.db, { spaceId: team, connectionId: (await w.connect({ googleSub: "g1" })).id, byUserId: "u1" });
+    const again = await w.connect({ userId: "u2", googleSub: "g1" });
+    await setUpFor(w)(w.db, { spaceId: team, connectionId: again.id, byUserId: "u2" });
+    expect(await storageOf(w.db, team)).toMatchObject({ connectionId: again.id, googleSub: "g1" });
+  });
+
+  it("saves the Google account's id with the storage", async () => {
+    const w = await storageWorld();
+    const ada = await w.connect({ googleSub: "g-ada" });
+    await setUpFor(w)(w.db, { spaceId: w.personal, connectionId: ada.id, byUserId: "u1" });
+    expect(await storageOf(w.db, w.personal)).toMatchObject({ googleSub: "g-ada" });
+  });
+
+  it("two spaces racing for one Google account: the second gets ACCOUNT_IN_USE, not a database error", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    const other = await w.team("Chess Club");
+    const ada = await w.connect({ googleSub: "g1" });
+    const otherConnection = await w.connect({ googleSub: "g-other" });
+    // While this setup talks to Google, another space takes the same account.
+    const racing = changingOnce(w, () =>
+      w.db.insert(spaceStorage).values({ spaceId: other, kind: "google_account", connectionId: otherConnection.id, rootFolderId: "r-other", googleSub: "g1", createdBy: "u1" }),
+    );
+    const setUp = makeSetUpStorage({ config: w.cfg, fetch: racing });
+    const error = await setUp(w.db, { spaceId: team, connectionId: ada.id, byUserId: "u1" }).catch((e: unknown) => e);
+    expect(refusal(error)).toEqual(ACCOUNT_IN_USE);
+    expect(await storageOf(w.db, team)).toBeNull();
   });
 });

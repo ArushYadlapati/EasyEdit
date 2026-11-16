@@ -77,11 +77,11 @@ describe("team limits", () => {
 });
 
 describe("only admins change membership", () => {
-  it("gives an editor and a viewer 403 on add, set role and remove", async () => {
+  it("gives editors 403 on add, set role and remove", async () => {
     const { db, team } = await setup();
     await addAs(db, team, "u1", "u2@gmail.com", "editor");
-    await addAs(db, team, "u1", "u3@gmail.com", "viewer");
-    await addAs(db, team, "u1", "u4@gmail.com", "viewer");
+    await addAs(db, team, "u1", "u3@gmail.com", "editor");
+    await addAs(db, team, "u1", "u4@gmail.com", "editor");
     for (const id of ["u2", "u3"]) {
       const actor = await as(db, id, team);
       await expect(setMemberRole(db, actor, { userId: "u4", role: "admin" })).rejects.toMatchObject(FORBIDDEN);
@@ -89,15 +89,15 @@ describe("only admins change membership", () => {
       await expect(removeMember(db, actor, "u4")).rejects.toMatchObject(FORBIDDEN);
     }
     expect(await roleIn(db, "ada", team)).toBeNull();
-    expect(await roleIn(db, "u4", team)).toBe("viewer");
+    expect(await roleIn(db, "u4", team)).toBe("editor");
   });
 
   it("goes by the member row, not the role the actor claims", async () => {
     const { db, team } = await setup();
-    await addAs(db, team, "u1", "u2@gmail.com", "viewer");
+    await addAs(db, team, "u1", "u2@gmail.com", "editor");
     const claimsAdmin = testActor({ userId: "u2", email: "u2@gmail.com", role: "admin", spaceId: team });
     await expect(setMemberRole(db, claimsAdmin, { userId: "u2", role: "admin" })).rejects.toMatchObject(FORBIDDEN);
-    expect(await roleIn(db, "u2", team)).toBe("viewer");
+    expect(await roleIn(db, "u2", team)).toBe("editor");
   });
 
   it("answers NOT_FOUND to a hand-built actor for a team the person isn't in, on every function", async () => {
@@ -105,7 +105,7 @@ describe("only admins change membership", () => {
     await addAs(db, team, "u1", "u2@gmail.com", "editor");
     const outsider = testActor({ userId: "u3", email: "u3@gmail.com", role: "admin", spaceId: team });
     await expect(listTeamMembers(db, outsider)).rejects.toMatchObject(SPACE_NOT_FOUND);
-    await expect(setMemberRole(db, outsider, { userId: "u2", role: "viewer" })).rejects.toMatchObject(SPACE_NOT_FOUND);
+    await expect(setMemberRole(db, outsider, { userId: "u2", role: "editor" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(removeMember(db, outsider, "u2")).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(leaveTeam(db, outsider)).rejects.toMatchObject(SPACE_NOT_FOUND);
     expect(await roleIn(db, "u3", team)).toBeNull();
@@ -136,7 +136,7 @@ describe("a team always keeps an admin", () => {
     await addAs(db, team, "u1", "u2@gmail.com", "editor");
     const admin = await as(db, "u1", team);
     await expect(setMemberRole(db, admin, { userId: "u1", role: "editor" })).rejects.toMatchObject(LAST_ADMIN);
-    await expect(setMemberRole(db, admin, { userId: "u1", role: "viewer" })).rejects.toMatchObject(LAST_ADMIN);
+    await expect(setMemberRole(db, admin, { userId: "u1", role: "editor" })).rejects.toMatchObject(LAST_ADMIN);
     await expect(leaveTeam(db, admin)).rejects.toMatchObject(LAST_ADMIN);
     expect(await adminsOf(db, team)).toEqual(["u1"]);
     // Making yourself admin again is a no-op, not a refusal.
@@ -150,7 +150,7 @@ describe("a team always keeps an admin", () => {
     const u1 = await as(db, "u1", team);
     await setMemberRole(db, u1, { userId: "u2", role: "editor" });
     expect(await roleIn(db, "u2", team)).toBe("editor");
-    await expect(setMemberRole(db, u1, { userId: "u1", role: "viewer" })).rejects.toMatchObject(LAST_ADMIN);
+    await expect(setMemberRole(db, u1, { userId: "u1", role: "editor" })).rejects.toMatchObject(LAST_ADMIN);
     expect(await adminsOf(db, team)).toEqual(["u1"]);
   });
 
@@ -209,10 +209,10 @@ describe("the storage owner stays", () => {
     expect(await roleIn(db, "u2", team)).toBe("admin");
   });
 
-  it("won't demote the owner to editor or viewer, by another admin or themselves", async () => {
+  it("won't demote the owner to editor, by another admin or themselves", async () => {
     const { db, team } = await ownedTeam();
     for (const by of ["u1", "u2"]) {
-      for (const role of ["editor", "viewer"] as const) {
+      for (const role of ["editor"] as const) {
         await expect(setMemberRole(db, await as(db, by, team), { userId: "u2", role })).rejects.toMatchObject(OWNER_ADMIN);
       }
     }
@@ -243,7 +243,7 @@ describe("personal spaces have no members screen", () => {
     const owner = await as(db, "u1", personalSpaceId("u1"));
     expect(owner.role).toBe("admin");
     await expect(listTeamMembers(db, owner)).rejects.toMatchObject(SPACE_NOT_FOUND);
-    await expect(setMemberRole(db, owner, { userId: "u1", role: "viewer" })).rejects.toMatchObject(SPACE_NOT_FOUND);
+    await expect(setMemberRole(db, owner, { userId: "u1", role: "editor" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(removeMember(db, owner, "u1")).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(leaveTeam(db, owner)).rejects.toMatchObject(SPACE_NOT_FOUND);
     // A hand-built actor for someone else's personal space too.
@@ -272,7 +272,7 @@ describe("seattle solvers is managed on the admin page", () => {
   it("answers MANAGED_ELSEWHERE to add, set role, remove and leave", async () => {
     const db = await seeded();
     const admin = await as(db, "u1", SEED_TEAM_ID);
-    await expect(setMemberRole(db, admin, { userId: "u2", role: "viewer" })).rejects.toMatchObject(MANAGED);
+    await expect(setMemberRole(db, admin, { userId: "u2", role: "editor" })).rejects.toMatchObject(MANAGED);
     await expect(removeMember(db, admin, "u2")).rejects.toMatchObject(MANAGED);
     await expect(leaveTeam(db, admin)).rejects.toMatchObject(MANAGED);
     await expect(leaveTeam(db, await as(db, "u2", SEED_TEAM_ID))).rejects.toMatchObject(MANAGED);
@@ -308,7 +308,7 @@ describe("leaving and removing", () => {
 
   it("takes a member who leaves out of the team", async () => {
     const { db, team } = await setup();
-    await addAs(db, team, "u1", "u2@gmail.com", "viewer");
+    await addAs(db, team, "u1", "u2@gmail.com", "editor");
     await leaveTeam(db, await as(db, "u2", team));
     expect(await roleIn(db, "u2", team)).toBeNull();
     expect((await listMySpaces(db, "u2")).map((s) => s.id)).not.toContain(team);
@@ -317,7 +317,7 @@ describe("leaving and removing", () => {
   it("ends consistently when a member leaves while an admin changes their role, never with a database error", async () => {
     const { db, team } = await setup();
     await addAs(db, team, "u1", "u2@gmail.com", "admin");
-    await addAs(db, team, "u1", "u3@gmail.com", "viewer");
+    await addAs(db, team, "u1", "u3@gmail.com", "editor");
     const results = await Promise.allSettled([
       leaveTeam(db, await as(db, "u3", team)),
       setMemberRole(db, await as(db, "u1", team), { userId: "u3", role: "editor" }),
@@ -331,7 +331,7 @@ describe("leaving and removing", () => {
 
   it("answers Space not found to a member who leaves after being removed", async () => {
     const { db, team } = await setup();
-    await addAs(db, team, "u1", "u2@gmail.com", "viewer");
+    await addAs(db, team, "u1", "u2@gmail.com", "editor");
     const results = await Promise.allSettled([removeMember(db, await as(db, "u1", team), "u2"), leaveTeam(db, await as(db, "u2", team))]);
     expect(results[0].status).toBe("fulfilled");
     expect(results[1]).toMatchObject({ status: "rejected", reason: SPACE_NOT_FOUND });
@@ -351,13 +351,23 @@ describe("leaving and removing", () => {
 describe("listing members", () => {
   it("lists admins first, then by name ignoring case, then email, with what the screen shows", async () => {
     const { db, team } = await setup();
-    await addAs(db, team, "u1", "u4@gmail.com", "viewer"); // Dev
+    await addAs(db, team, "u1", "u4@gmail.com", "editor"); // Dev
     await addAs(db, team, "u1", "u3@gmail.com", "editor"); // cara
     await addAs(db, team, "u1", "u2@gmail.com", "admin"); // Ben
-    await addAs(db, team, "u1", "ada@example.com", "viewer"); // Ada
+    await addAs(db, team, "u1", "ada@example.com", "editor"); // Ada
     const list = await listTeamMembers(db, await as(db, "u4", team));
     expect(list.map((m) => m.name)).toEqual(["Ben", "Uma", "Ada", "cara", "Dev"]);
     expect(list[1]).toMatchObject({ userId: "u1", email: "u1@gmail.com", image: null, role: "admin", storageOwner: false });
     expect(list.every((m) => m.joinedAt instanceof Date)).toBe(true);
+  });
+});
+
+describe("roles that can be given", () => {
+  it("refuses viewer as a new role and leaves the member as they were", async () => {
+    const { db, team } = await setup();
+    await addAs(db, team, "u1", "u2@gmail.com", "editor");
+    const admin = await as(db, "u1", team);
+    await expect(setMemberRole(db, admin, { userId: "u2", role: "viewer" as Role })).rejects.toMatchObject({ code: "INVALID", status: 400, message: "Unknown role." });
+    expect(await roleIn(db, "u2", team)).toBe("editor");
   });
 });

@@ -49,7 +49,7 @@ export const AUDIO: OpenUploadInput = {
 const APP_ORIGIN = "https://app.test"; // where the app is served in tests
 
 // storage: what storageFor and readerFor read the server's settings with, pointed at the pretend Google: Seattle
-// Solvers' shared folder is deps.drive, a person's connection uses cfg, and a team's reader is spoken for by mainSa.
+// Solvers' shared folder is deps.drive, and a person's connection (personal or team) uses cfg.
 export type MediaContext = {
   db: DB;
   fake: FakeDrive;
@@ -76,9 +76,9 @@ export async function mediaContext(): Promise<MediaContext> {
   for (const actor of [ada, grace, vera, root]) await joinSpace(db, { id: actor.userId, email: actor.email }, actor.role);
   const fake = makeFakeDrive();
   const drive = sharedFolderClient(fake.config, { fetch: fake.fetch, now: fake.now });
-  const cfg: StorageConfig = { clientId: "client-1", clientSecret: "shh", tokenKey: randomBytes(32), redirectUri: `${APP_ORIGIN}/api/storage/callback`, projectId: fake.projectId };
+  const cfg: StorageConfig = { clientId: "client-1", clientSecret: "shh", tokenKey: randomBytes(32), redirectUri: `${APP_ORIGIN}/api/storage/callback` };
   const mainSa = serviceAccountSource({ clientEmail: fake.config.clientEmail, privateKey: fake.config.privateKey, scope: SCOPE_CLOUD, fetch: fake.fetch, now: fake.now });
-  const storage: StorageDeps = { config: () => cfg, mainSa: () => mainSa, sharedFolder: () => drive, fetch: fake.fetch };
+  const storage: StorageDeps = { config: () => cfg, sharedFolder: () => drive, fetch: fake.fetch };
   return { db, fake, deps: { db, drive, origin: APP_ORIGIN }, ada, grace, vera, root, cfg, mainSa, storage };
 }
 
@@ -87,12 +87,12 @@ export type ConnectedStorage = { connection: Connection; refreshToken: string; r
 let people = 0;
 
 // `by` connects a Google account (a made-up one unless `email` is given) and sets up the space's storage in it, as
-// the connect callback does: a folder in that Drive, and for a team its reader.
+// the connect callback does: a folder in that Drive.
 export async function connectStorage(ctx: MediaContext, spaceId: string, by: Actor, email?: string): Promise<ConnectedStorage> {
   people += 1;
   const connected = ctx.fake.connect({ email: email ?? `drive${people}@gmail.com` });
   const connection = await saveConnection(ctx.db, ctx.cfg, { userId: by.userId, googleSub: `g-sub-${people}`, email: connected.email, refreshToken: connected.refreshToken, scopes: [DRIVE_FILE_SCOPE] });
-  await makeSetUpStorage({ config: ctx.cfg, mainSa: () => ctx.mainSa, fetch: ctx.fake.fetch })(ctx.db, { spaceId, connectionId: connection.id, byUserId: by.userId });
+  await makeSetUpStorage({ config: ctx.cfg, fetch: ctx.fake.fetch })(ctx.db, { spaceId, connectionId: connection.id, byUserId: by.userId });
   const [row] = await ctx.db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, spaceId));
   return { connection, refreshToken: connected.refreshToken, rootFolderId: row.rootFolderId!, readerEmail: row.readerEmail };
 }
@@ -104,7 +104,7 @@ export async function personalWithStorage(ctx: MediaContext, owner: Actor = ctx.
   return { ...(await connectStorage(ctx, actor.spaceId, actor, email)), actor };
 }
 
-// A team run by `admin`, with `members` as editors, and storage in a Drive the admin connected, read through its reader.
+// A team run by `admin`, with `members` as editors, and storage in a Drive the admin connected, read with that connection.
 export async function teamWithStorage(ctx: MediaContext, name: string, admin: Actor = ctx.ada, members: Actor[] = [ctx.grace], email?: string): Promise<ConnectedStorage & { spaceId: string; as(actor: Actor): Actor }> {
   const spaceId = `team_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");

@@ -8,7 +8,7 @@ import { joinSpace, testUser } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
 const BASE = "https://app.test";
-const cfg: StorageConfig = { clientId: "client-1", clientSecret: "shh", tokenKey: randomBytes(32), redirectUri: `${BASE}/api/storage/callback`, projectId: "easyedit-test" };
+const cfg: StorageConfig = { clientId: "client-1", clientSecret: "shh", tokenKey: randomBytes(32), redirectUri: `${BASE}/api/storage/callback` };
 
 async function connect(space: string) {
   const db = await makeTestDb();
@@ -34,11 +34,11 @@ describe("what stops a personal space getting storage", () => {
 
   it("closed, it reads as a server that can't set storage up, so no page offers a setup", () => {
     vi.stubEnv("PERSONAL_SPACES", "");
-    expect(storageBlock("personal", { config: () => cfg, mainSa: () => null })).toBe("server");
+    expect(storageBlock("personal", { config: () => cfg })).toBe("server");
   });
 
   it("switched on, nothing stops it", () => {
-    expect(storageBlock("personal", { config: () => cfg, mainSa: () => null })).toBeNull();
+    expect(storageBlock("personal", { config: () => cfg })).toBeNull();
   });
 });
 

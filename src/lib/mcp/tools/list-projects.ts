@@ -11,7 +11,7 @@ import { ok, type ToolContext, type ToolResult } from "../types";
 export async function listProjectsTool(ctx: ToolContext, input: { cursor?: number }): Promise<ToolResult> {
   const lines = [
     `Signed in as ${oneLine(ctx.user.name)}.`,
-    `Spaces: ${spacesWithRoles(ctx)}. You can change projects in a space where you are an editor or admin, and only read them where you are a viewer. Name a space in create_project's space.`,
+    `Spaces: ${spacesWithRoles(ctx)}. You can change projects in every space you belong to. Name a space in create_project's space.`,
   ];
 
   const projects = await projectsOfAllSpaces(ctx);

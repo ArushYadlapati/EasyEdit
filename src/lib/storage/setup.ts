@@ -1,15 +1,14 @@
 import "server-only";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { rowsOf, type DB } from "@/db";
 import { assets, driveConnection, organization, spaceStorage } from "@/db/schema";
-import { mainServiceAccount } from "@/lib/drive";
 import { createDriveClient, makeTopFolder } from "@/lib/drive/client";
-import { createReader, shareFolderWith } from "@/lib/drive/reader";
-import { type AccessSource, DriveError } from "@/lib/drive/token";
+import { failedOn } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 import { roleIn } from "@/lib/spaces/service";
 import { type StorageConfig, storageConfig } from "./config";
 import { connectionAccess } from "./connections";
+import { STORAGE_MESSAGES } from "./messages";
 
 // Makes a space's storage in the Drive of a connection its admin just made. What it refuses comes out as a
 // ServiceError; a Drive call that fails, as a DriveError; a connection Google no longer honours, as a
@@ -18,9 +17,7 @@ export type SetUpStorage = (db: DB, input: { spaceId: string; connectionId: stri
 
 export type SetUpDeps = {
   config: StorageConfig;
-  mainSa: () => AccessSource | null; // the app's service account for the Cloud scope; null when its key isn't set (and throws when it can't be read)
   fetch?: typeof fetch;
-  sleep?: (ms: number) => Promise<void>; // between tries while a new reader isn't known to Drive yet
 };
 
 // "EasyEdit – <space name>"; a personal space's is "EasyEdit – Personal".
@@ -29,23 +26,20 @@ const storageFolderName = (space: { kind: "personal" | "team"; name: string }) =
 // A space that is unknown, or not run by this person, and a connection that isn't theirs, all get the same answer.
 const notFound = () => new ServiceError("NOT_FOUND", 404, "Space not found");
 const inUse = () => new ServiceError("STORAGE_IN_USE", 409, "This space already keeps files in Google Drive, so it can't move to another account yet.");
-const teamNotConfigured = () => new ServiceError("TEAM_STORAGE_NOT_CONFIGURED", 409, "Google Drive storage for teams isn't set up on this server yet.");
+// One Google account backs one space: members are handed the connection's own token, which reaches every file EasyEdit
+// made in that account, so two spaces in one account would see each other's media. Never names the other space.
+const accountInUse = () => new ServiceError("ACCOUNT_IN_USE", 409, STORAGE_MESSAGES.accountInUse);
 
-// The app's service account, or null when its key isn't set or can't be read (one line saying only that, nothing of
-// the key): either way teams can't get storage on this server.
-function mainSaOf(deps: SetUpDeps): AccessSource | null {
+// Runs the statement that saves a space's storage; another space taking the same Google account meanwhile (the
+// unique index) comes out as ACCOUNT_IN_USE.
+async function claimingAccount<T>(save: () => Promise<T>): Promise<T> {
   try {
-    return deps.mainSa();
-  } catch {
-    console.error("Drive settings could not be read");
-    return null;
+    return await save();
+  } catch (error) {
+    if (failedOn(error, "23505", "space_storage_google_sub_unique")) throw accountInUse();
+    throw error;
   }
 }
-
-// Google refusing a new service account because the project is out of quota: 429, or a 400/403 whose reason names a
-// quota or limit.
-const atServiceAccountLimit = (error: DriveError) =>
-  error.status === 429 || ((error.status === 400 || error.status === 403) && /quota|limit|exhausted/i.test(error.reason));
 
 // Any upload the space holds, finished or not, that hasn't been removed.
 const uploadsIn = (spaceId: string) => sql`exists (select 1 from ${assets} where ${assets.spaceId} = ${spaceId} and ${assets.removedAt} is null)`;
@@ -57,23 +51,26 @@ export async function holdsUploads(db: DB, spaceId: string): Promise<boolean> {
 
 // Setting up again with the same connection (a reconnect after it broke) keeps the storage as it is. A space whose
 // storage holds uploads keeps it: moving media between accounts comes later. A shared folder (Seattle Solvers' shared
-// drive) is never replaced, uploads or not. Refusals are made before any call to Google, except READER_LIMIT: Google
-// refuses the team's reader after the top folder is made, so that refusal leaves an empty folder in the person's Drive.
+// drive) is never replaced, uploads or not. Refusals are made before any call to Google, so a refused
+// setup leaves nothing in the person's Drive (apart from a lost race for the same Google account).
 export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
   return async (db, { spaceId, connectionId, byUserId }) => {
     const [space] = await db.select({ name: organization.name, kind: organization.kind }).from(organization).where(eq(organization.id, spaceId));
     if (!space || (await roleIn(db, byUserId, spaceId)) !== "admin") throw notFound();
-    const [connection] = await db.select({ userId: driveConnection.userId }).from(driveConnection).where(eq(driveConnection.id, connectionId));
+    const [connection] = await db.select({ userId: driveConnection.userId, googleSub: driveConnection.googleSub }).from(driveConnection).where(eq(driveConnection.id, connectionId));
     if (!connection || connection.userId !== byUserId) throw notFound();
+    const { googleSub } = connection;
 
     const [current] = await db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, spaceId));
     if (current?.kind === "google_account" && current.connectionId === connectionId) return;
     if (current?.kind === "shared_folder" || (current && (await holdsUploads(db, spaceId)))) throw inUse();
-
-    const team = space.kind === "team";
-    const caller = team ? mainSaOf(deps) : null;
-    const projectId = deps.config.projectId;
-    if (team && (!caller || !projectId)) throw teamNotConfigured();
+    // Before any call to Google, so a refused account gets no empty folder; the unique index catches a race.
+    const [taken] = await db
+      .select({ spaceId: spaceStorage.spaceId })
+      .from(spaceStorage)
+      .where(and(eq(spaceStorage.googleSub, googleSub), ne(spaceStorage.spaceId, spaceId)))
+      .limit(1);
+    if (taken) throw accountInUse();
 
     const fetchFn = deps.fetch;
     const write = await connectionAccess(db, deps.config, connectionId, fetchFn);
@@ -82,35 +79,24 @@ export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
     const drive = createDriveClient({ rootFolderId, write, read: write, fetch: fetchFn });
     await Promise.all([drive.folderId("Originals"), drive.folderId("Previews")]);
 
-    let readerEmail: string | null = null;
-    if (caller && projectId) {
-      try {
-        ({ email: readerEmail } = await createReader({ caller, projectId, spaceId, fetch: fetchFn }));
-      } catch (error) {
-        if (error instanceof DriveError && atServiceAccountLimit(error)) throw new ServiceError("READER_LIMIT", 409, "Google's limit on service accounts for this project was reached");
-        throw error;
-      }
-      await shareFolderWith({ write, fetch: fetchFn, sleep: deps.sleep }, rootFolderId, readerEmail);
-    }
-
     // One statement re-checks what may have changed during the Google calls: the caller must still be an admin of the
     // space (an admin removed or demoted meanwhile must not become, or replace, its storage owner), an upload that began
     // since the first look keeps the old storage, and so does a shared folder. The caller's member row is locked for
     // share, so a removal or demotion still in progress is waited for and then seen.
-    const saved = await db.execute(sql`
+    const saved = await claimingAccount(() => db.execute(sql`
       with caller as (
         select 1 from member where organization_id = ${spaceId} and user_id = ${byUserId} and role = 'admin' for share
       )
-      insert into space_storage (space_id, kind, connection_id, root_folder_id, folder_name, reader_email, created_by, created_at)
-      select ${spaceId}, 'google_account', ${connectionId}, ${rootFolderId}, ${folderName}, ${readerEmail}, ${byUserId}, now()
+      insert into space_storage (space_id, kind, connection_id, root_folder_id, folder_name, google_sub, created_by, created_at)
+      select ${spaceId}, 'google_account', ${connectionId}, ${rootFolderId}, ${folderName}, ${googleSub}, ${byUserId}, now()
       where exists (select 1 from caller)
       on conflict (space_id) do update set
         kind = excluded.kind, connection_id = excluded.connection_id, root_folder_id = excluded.root_folder_id,
-        folder_name = excluded.folder_name, reader_email = excluded.reader_email, created_by = excluded.created_by,
+        folder_name = excluded.folder_name, reader_email = null, google_sub = excluded.google_sub, created_by = excluded.created_by,
         created_at = now()
       where space_storage.kind <> 'shared_folder' and not ${uploadsIn(spaceId)} and exists (select 1 from caller)
       returning space_id
-    `);
+    `));
     if (rowsOf(saved).length > 0) return;
     if ((await roleIn(db, byUserId, spaceId)) !== "admin") throw notFound();
     throw inUse();
@@ -121,5 +107,5 @@ export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
 export async function setUpStorage(...[db, input]: Parameters<SetUpStorage>): Promise<void> {
   const config = storageConfig();
   if (!config) throw new ServiceError("CONFLICT", 409, "Connecting Google Drive isn't set up on this server.");
-  await makeSetUpStorage({ config, mainSa: mainServiceAccount })(db, input);
+  await makeSetUpStorage({ config })(db, input);
 }

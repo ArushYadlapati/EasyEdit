@@ -44,7 +44,7 @@ export function StorageSettings({ view, note, first, choose }: StorageSettingsPr
   const { space, storage, connections, blocked } = view;
   const shown = settingsNote(note);
   const firstRun = first && space.kind === "team"; // a team just made, with no storage yet
-  const blockedText = blocked === "server" ? STORAGE_MESSAGES.serverNotSetUp : blocked === "team" ? STORAGE_MESSAGES.teamNotSetUp : null;
+  const blockedText = blocked === "server" ? STORAGE_MESSAGES.serverNotSetUp : null;
 
   function pick(connectionId: string) {
     const formData = new FormData();
@@ -58,9 +58,8 @@ export function StorageSettings({ view, note, first, choose }: StorageSettingsPr
     if (storage.kind === "shared_folder") return <p className={TEXT}>{STORAGE_MESSAGES.sharedFolder}</p>;
 
     if (storage.kind === "google_account") {
-      // Reconnecting the same account keeps the storage as it is, so it works even where new team storage can't be made.
       const canReconnect = blocked !== "server";
-      const moveRefused = storage.hasUploads ? STORAGE_MESSAGES.moveLater : blocked === "team" ? STORAGE_MESSAGES.teamNotSetUp : null;
+      const moveRefused = storage.hasUploads ? STORAGE_MESSAGES.moveLater : null;
       return (
         <>
           <div className="flex flex-col gap-1">

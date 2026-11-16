@@ -59,11 +59,12 @@ describe("media follows each space's storage", () => {
     expect(await tokenFor(ctx, ctx.grace, mine.actor.spaceId)).toEqual(unknown);
     expect(await tokenFor(ctx, ctx.vera, team.spaceId)).toEqual(unknown);
 
-    // A team member, the admin who connected the Drive included, gets the team reader's read-only token, never the connection's.
+    // A team member, the admin who connected the Drive included, gets the team's connection token: it reaches only
+    // what EasyEdit made in that Google account, which backs this team alone.
     for (const member of [ctx.grace, ctx.ada]) {
       const answer = await tokenFor(ctx, member, team.spaceId);
       expect(answer.status).toBe(200);
-      expect(holderOf(ctx, answer)).toEqual({ email: team.readerEmail, scope: SCOPE_READ });
+      expect(holderOf(ctx, answer)).toEqual({ email: "club.drive@gmail.com", scope: DRIVE_FILE_SCOPE });
     }
     // The personal space's owner gets their own connection's token.
     const own = await tokenFor(ctx, ctx.ada, mine.actor.spaceId);
@@ -192,7 +193,7 @@ describe("media follows each space's storage", () => {
     expect(tokenCalls(ctx) - before).toBe(1);
   });
 
-  it("a team whose connection broke refuses uploads, but its members still list and play what the reader can read", async () => {
+  it("a team whose connection broke refuses uploads and playback alike, asking for a reconnect, but still lists its media", async () => {
     const ctx = await mediaContext();
     const team = await teamWithStorage(ctx, "Robotics Club", ctx.ada, [ctx.grace], "club.drive@gmail.com");
     const asset = await upload(ctx, ctx.grace, team.spaceId);
@@ -204,31 +205,15 @@ describe("media follows each space's storage", () => {
     expect(ctx.fake.calls.length).toBe(calls); // refused without asking Google
     expect(await call(ctx, ctx.grace, "GET", `/api/media?space=${team.spaceId}`)).toMatchObject({ status: 200, body: { assets: [{ id: asset.id }], setUp: false } });
 
-    // Every member, the admin who connected it included, still gets the team reader's read-only token, never the connection's.
-    for (const member of [ctx.grace, ctx.ada]) {
-      const answer = await tokenFor(ctx, member, team.spaceId);
-      expect(answer.status).toBe(200);
-      expect(holderOf(ctx, answer)).toEqual({ email: team.readerEmail, scope: SCOPE_READ });
-      const read = await ctx.fake.fetch(`https://www.googleapis.com/drive/v3/files/${asset.originalFileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${String(answer.body?.accessToken)}` } });
-      expect(read.status).toBe(200);
-    }
+    // With no reader account left, playback needs the connection too: every member is told to reconnect.
+    for (const member of [ctx.grace, ctx.ada]) expect(await tokenFor(ctx, member, team.spaceId)).toEqual({ status: 409, body: BROKEN });
     expect(await tokenFor(ctx, ctx.vera, team.spaceId)).toMatchObject({ status: 404 });
     // No refresh of the broken connection was tried.
     const [row] = await ctx.db.select().from(driveConnection).where(eq(driveConnection.id, team.connection.id));
     expect(row.brokenReason).toBe("expired");
   });
 
-  it("a team with no main service account to read with is not set up", async () => {
-    const ctx = await mediaContext();
-    const team = await teamWithStorage(ctx, "Robotics Club");
-    const storage = ctx.storage;
-    ctx.storage = { ...storage, mainSa: () => null };
-    const notSetUp = { status: 409, body: { code: "STORAGE_NOT_SET_UP", message: "Uploads are not set up yet." } };
-    expect(await call(ctx, ctx.grace, "POST", `/api/media?space=${team.spaceId}`, IMAGE)).toEqual(notSetUp);
-    expect(await tokenFor(ctx, ctx.grace, team.spaceId)).toEqual(notSetUp);
-  });
-
-  it("each request does not refresh at Google: a connection's and a reader's tokens are kept, and a reconnect is a new one", async () => {
+  it("each request does not refresh at Google: a connection's tokens are kept, and a reconnect is a new one", async () => {
     const ctx = await mediaContext();
     const mine = await personalWithStorage(ctx, ctx.ada, "ada.drive@gmail.com");
     const space = mine.actor.spaceId;
@@ -245,11 +230,13 @@ describe("media follows each space's storage", () => {
     expect(holderOf(ctx, await tokenFor(ctx, ctx.ada, space))).toEqual({ email: "ada.drive@gmail.com", scope: DRIVE_FILE_SCOPE });
     expect(tokenCalls(ctx)).toBe(before + 1);
 
+    // A team's members share its connection's kept token, and nothing asks Google Cloud for a reader's.
     const team = await teamWithStorage(ctx, "Robotics Club");
-    const asked = ctx.fake.impersonations.length;
     await tokenFor(ctx, ctx.grace, team.spaceId);
+    const afterFirst = tokenCalls(ctx);
     await tokenFor(ctx, ctx.ada, team.spaceId);
-    expect(ctx.fake.impersonations.length).toBe(asked + 1);
+    expect(tokenCalls(ctx)).toBe(afterFirst);
+    expect(ctx.fake.impersonations).toEqual([]);
   });
 
   it("the list surfaces a database failure instead of calling it not set up", async () => {

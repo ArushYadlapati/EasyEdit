@@ -61,7 +61,7 @@ const ME = "root@gmail.com";
 const MEMBERS: Member[] = [
   { email: ME, role: "admin", invitedBy: null, createdAt: "2026-01-05T12:00:00.000Z", claudeConnected: true },
   { email: "ada@gmail.com", role: "editor", invitedBy: ME, createdAt: "2026-02-10T12:00:00.000Z", claudeConnected: true },
-  { email: "vic@gmail.com", role: "viewer", invitedBy: "ada@gmail.com", createdAt: "2026-03-15T12:00:00.000Z", claudeConnected: false },
+  { email: "vic@gmail.com", role: "editor", invitedBy: "ada@gmail.com", createdAt: "2026-03-15T12:00:00.000Z", claudeConnected: false },
 ];
 
 // Each member's row, found by the role picker the row holds.
@@ -125,7 +125,7 @@ describe("the members table", () => {
     expect(roleSelect(ME).value).toBe("admin");
     expect(roleSelect(ME).selectedOptions[0].textContent).toBe("Admin");
     expect(roleSelect("ada@gmail.com").selectedOptions[0].textContent).toBe("Editor");
-    expect(roleSelect("vic@gmail.com").selectedOptions[0].textContent).toBe("Viewer");
+    expect(roleSelect("vic@gmail.com").selectedOptions[0].textContent).toBe("Editor");
 
     const invited = within(row("ada@gmail.com")).getByText(`Invited by ${ME}`);
     expect(classes(invited)).toEqual(expect.arrayContaining(["text-xs", "text-ed-muted"]));
@@ -419,7 +419,6 @@ describe("the role picker", () => {
     expect(optionPairs(select)).toEqual([
       ["admin", "Admin"],
       ["editor", "Editor"],
-      ["viewer", "Viewer"],
     ]);
     expect(classes(select)).toEqual(expect.arrayContaining(["appearance-none", "border-transparent", "bg-transparent", "h-7", "text-[13px]"]));
     expect(select.parentElement!.querySelector("svg")?.getAttribute("class")).toContain("lucide-chevron-down");
@@ -430,11 +429,11 @@ describe("the role picker", () => {
     const errors = vi.spyOn(console, "error");
     render(<RoleSelect email="ada@gmail.com" role="editor" />);
     await act(async () => {
-      fireEvent.change(roleSelect("ada@gmail.com"), { target: { value: "viewer" } });
+      fireEvent.change(roleSelect("ada@gmail.com"), { target: { value: "admin" } });
     });
     expect(setRoleAction).toHaveBeenCalledTimes(1);
-    expect(sent(setRoleAction)).toEqual({ email: "ada@gmail.com", role: "viewer" });
-    expect(roleSelect("ada@gmail.com").value).toBe("viewer");
+    expect(sent(setRoleAction)).toEqual({ email: "ada@gmail.com", role: "admin" });
+    expect(roleSelect("ada@gmail.com").value).toBe("admin");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(errors).not.toHaveBeenCalled();
   });
@@ -451,7 +450,7 @@ describe("the role picker", () => {
     expect(roleSelect("ada@gmail.com").disabled).toBe(false);
     expect(roleSelect("ada@gmail.com").getAttribute("aria-disabled")).toBe("true");
     await act(async () => {
-      fireEvent.change(roleSelect("ada@gmail.com"), { target: { value: "viewer" } });
+      fireEvent.change(roleSelect("ada@gmail.com"), { target: { value: "editor" } });
     });
     expect(setRoleAction).toHaveBeenCalledTimes(1);
     expect(roleSelect("ada@gmail.com").value).toBe("admin");
@@ -467,7 +466,7 @@ describe("the role picker", () => {
     render(<RoleSelect email="ada@gmail.com" role="editor" />);
     roleSelect("ada@gmail.com").focus();
     await act(async () => {
-      fireEvent.change(roleSelect("ada@gmail.com"), { target: { value: "viewer" } });
+      fireEvent.change(roleSelect("ada@gmail.com"), { target: { value: "admin" } });
     });
     expect(document.activeElement).toBe(roleSelect("ada@gmail.com"));
     await act(async () => finish({}));
@@ -477,7 +476,7 @@ describe("the role picker", () => {
     vi.mocked(setRoleAction).mockResolvedValue({ error: "There must always be at least one admin." });
     render(<RoleSelect email="ada@gmail.com" role="editor" />);
     await act(async () => {
-      fireEvent.change(roleSelect("ada@gmail.com"), { target: { value: "viewer" } });
+      fireEvent.change(roleSelect("ada@gmail.com"), { target: { value: "admin" } });
     });
     expect(roleSelect("ada@gmail.com").value).toBe("editor");
     const alert = screen.getByRole("alert");
@@ -532,7 +531,6 @@ describe("adding a member", () => {
     expect(optionPairs(role())).toEqual([
       ["admin", "Admin"],
       ["editor", "Editor"],
-      ["viewer", "Viewer"],
     ]);
     expect(within(dialog("Add member")).getByText(hint("editor"))).toBeTruthy();
     expect(within(dialog("Add member")).queryByRole("alert")).toBeNull();
@@ -541,14 +539,14 @@ describe("adding a member", () => {
   it("the hint follows the role chosen", async () => {
     render(<AddMemberButton />);
     await click(opener());
-    fireEvent.change(role(), { target: { value: "viewer" } });
-    expect(within(dialog("Add member")).getByText(hint("viewer"))).toBeTruthy();
-    // Read out with the select, since it is the only text saying what the role can do.
-    const describedBy = role().getAttribute("aria-describedby")!;
-    expect(document.getElementById(describedBy)?.textContent).toBe(hint("viewer"));
-    expect(within(dialog("Add member")).queryByText(hint("editor"))).toBeNull();
     fireEvent.change(role(), { target: { value: "admin" } });
     expect(within(dialog("Add member")).getByText(hint("admin"))).toBeTruthy();
+    // Read out with the select, since it is the only text saying what the role can do.
+    const describedBy = role().getAttribute("aria-describedby")!;
+    expect(document.getElementById(describedBy)?.textContent).toBe(hint("admin"));
+    expect(within(dialog("Add member")).queryByText(hint("editor"))).toBeNull();
+    fireEvent.change(role(), { target: { value: "editor" } });
+    expect(within(dialog("Add member")).getByText(hint("editor"))).toBeTruthy();
   });
 
   it("the footer's Add member submits the form", async () => {
@@ -579,14 +577,14 @@ describe("adding a member", () => {
     render(<AddMemberButton />);
     await click(opener());
     typeEmail("lin@gmail.com");
-    fireEvent.change(role(), { target: { value: "viewer" } });
+    fireEvent.change(role(), { target: { value: "admin" } });
     let submitted = true;
     await act(async () => {
       submitted = fireEvent.submit(email().form!);
     });
     expect(submitted).toBe(false); // the page itself is never submitted
     expect(addMemberAction).toHaveBeenCalledTimes(1);
-    expect(sent(addMemberAction)).toEqual({ email: "lin@gmail.com", role: "viewer" });
+    expect(sent(addMemberAction)).toEqual({ email: "lin@gmail.com", role: "admin" });
   });
 
   it("a refused add is explained in the dialog, which stays open with what was typed", async () => {
@@ -648,7 +646,7 @@ describe("adding a member", () => {
     // And after an add that went through.
     vi.mocked(addMemberAction).mockResolvedValue({});
     typeEmail("lin@gmail.com");
-    fireEvent.change(role(), { target: { value: "viewer" } });
+    fireEvent.change(role(), { target: { value: "admin" } });
     await click(submit());
     expect(screen.queryByRole("dialog")).toBeNull();
     await click(opener());
@@ -660,7 +658,7 @@ describe("adding a member", () => {
 describe("the admin page", () => {
   const root: CurrentUser = { id: "u1", email: ME, name: "Root", image: null, allowlistRole: "admin" };
 
-  async function seed(rows: { email: string; role: "admin" | "editor" | "viewer"; invitedBy: string | null; createdAt: Date }[]) {
+  async function seed(rows: { email: string; role: "admin" | "editor"; invitedBy: string | null; createdAt: Date }[]) {
     testDb = await makeTestDb();
     await testDb.insert(allowlist).values(rows);
   }
@@ -672,7 +670,7 @@ describe("the admin page", () => {
 
   it("is for admins, and lists every member from the database in the order they were added", async () => {
     await seed([
-      { email: "vic@gmail.com", role: "viewer", invitedBy: "ada@gmail.com", createdAt: new Date("2026-03-15T12:00:00.000Z") },
+      { email: "vic@gmail.com", role: "editor", invitedBy: "ada@gmail.com", createdAt: new Date("2026-03-15T12:00:00.000Z") },
       { email: ME, role: "admin", invitedBy: null, createdAt: new Date("2026-01-05T12:00:00.000Z") },
       { email: "ada@gmail.com", role: "editor", invitedBy: ME, createdAt: new Date("2026-02-10T12:00:00.000Z") },
     ]);
@@ -687,7 +685,7 @@ describe("the admin page", () => {
     ]);
     expect(roleSelect(ME).value).toBe("admin");
     expect(roleSelect("ada@gmail.com").value).toBe("editor");
-    expect(roleSelect("vic@gmail.com").value).toBe("viewer");
+    expect(roleSelect("vic@gmail.com").value).toBe("editor");
     expect(cells(ME)[2].textContent).toBe("Connected");
     expect(cells("ada@gmail.com")[2].textContent).toBe("Connected");
     expect(cells("vic@gmail.com")[2].textContent).toBe("Not connected");
@@ -708,7 +706,7 @@ describe("the admin page", () => {
     await seed([
       { email: ME, role: "admin", invitedBy: null, createdAt: new Date("2026-01-05T12:00:00.000Z") },
       { email: "ada@gmail.com", role: "editor", invitedBy: ME, createdAt: new Date("2026-02-10T12:00:00.000Z") },
-      { email: "vic@gmail.com", role: "viewer", invitedBy: ME, createdAt: new Date("2026-03-15T12:00:00.000Z") },
+      { email: "vic@gmail.com", role: "editor", invitedBy: ME, createdAt: new Date("2026-03-15T12:00:00.000Z") },
     ]);
     signedIn.connected = new Set(["ada@gmail.com", "vic@gmail.com"]);
     await renderPage();
@@ -737,5 +735,11 @@ describe("the admin page", () => {
     expect(cells(ME)[2].textContent).toBe("Not connected");
     // Your own row without Claude has nothing to act on.
     expect(screen.queryByRole("button", { name: `Actions for ${ME}` })).toBeNull();
+  });
+});
+
+describe("role choices", () => {
+  it("offers Admin and Editor only", () => {
+    expect(ROLE_CHOICES.map((choice) => choice.value)).toEqual(["admin", "editor"]);
   });
 });

@@ -4,8 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { driveConnection, spaceStorage } from "@/db/schema";
 import { getDrive } from "@/lib/drive";
 import { sharedFolderClient } from "@/lib/drive/client";
-import { readerAccountId, readerSource } from "@/lib/drive/reader";
-import { SCOPE_READ, SCOPE_WRITE } from "@/lib/drive/token";
+import { SCOPE_READ } from "@/lib/drive/token";
 import { readerFor, storageFor, storageState, type StorageDeps } from "@/lib/spaces/storage";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { ConnectionBrokenError, DRIVE_FILE_SCOPE } from "@/lib/storage/google-oauth";
@@ -23,7 +22,6 @@ afterEach(() => {
 // What the server would use, pointed at the pretend Google.
 const depsOf = (w: StorageWorld, over: StorageDeps = {}): StorageDeps => ({
   config: () => w.cfg,
-  mainSa: () => w.mainSa,
   sharedFolder: () => sharedFolderClient(w.fake.config, { fetch: w.fake.fetch, now: w.fake.now }),
   fetch: w.fake.fetch,
   ...over,
@@ -32,7 +30,7 @@ const depsOf = (w: StorageWorld, over: StorageDeps = {}): StorageDeps => ({
 // A space with storage in a person's Drive: its row and the connection's email.
 async function withStorage(w: StorageWorld, spaceId: string) {
   const connection = await w.connect();
-  await makeSetUpStorage({ config: w.cfg, mainSa: () => w.mainSa, fetch: w.fake.fetch })(w.db, { spaceId, connectionId: connection.id, byUserId: "u1" });
+  await makeSetUpStorage({ config: w.cfg, fetch: w.fake.fetch })(w.db, { spaceId, connectionId: connection.id, byUserId: "u1" });
   const [row] = await w.db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, spaceId));
   return { row, connection };
 }
@@ -110,19 +108,17 @@ describe("storageState", () => {
     const calls = w.fake.calls.length;
     expect(await storageState(w.db, w.personal, depsOf(w))).toEqual({ ready: true });
     expect(await storageState(w.db, w.personal, depsOf(w, { config: () => null }))).toEqual({ ready: false, reason: "not_configured" });
-    expect(await storageState(w.db, w.personal, depsOf(w, { mainSa: () => null }))).toEqual({ ready: true }); // a personal space doesn't need it
 
     await w.db.update(driveConnection).set({ brokenAt: new Date(), brokenReason: "revoked" }).where(eq(driveConnection.id, connection.id));
     expect(await storageState(w.db, w.personal, depsOf(w))).toEqual({ ready: false, reason: "broken" });
     expect(w.fake.calls.length).toBe(calls); // no Drive call
   });
 
-  it("is not_configured for a team's Drive when there is no main service account to read with", async () => {
+  it("is ready for a team's Drive, like a person's", async () => {
     const w = await storageWorld();
     const team = await w.team("Robotics Club");
     await withStorage(w, team);
     expect(await storageState(w.db, team, depsOf(w))).toEqual({ ready: true });
-    expect(await storageState(w.db, team, depsOf(w, { mainSa: () => null }))).toEqual({ ready: false, reason: "not_configured" });
   });
 });
 
@@ -159,21 +155,21 @@ describe("storageFor", () => {
     expect(w.fake.calls.filter((call) => call.path.startsWith("/drive/")).every((call) => call.scope === DRIVE_FILE_SCOPE)).toBe(true);
   });
 
-  it("in a team: writes with the connection and hands out only the team reader's read-only token", async () => {
+  it("in a team: writes and reads with the team's connection, with no reader account", async () => {
     const w = await storageWorld();
     const team = await w.team("Robotics Club");
     const { row, connection } = await withStorage(w, team);
     const drive = (await storageFor(w.db, team, depsOf(w)))!;
     const previews = await drive.folderId("Previews");
     expect(w.fake.files.get(previews)).toMatchObject({ name: "Previews", parents: [row.rootFolderId], owner: connection.email });
-    const reader = `${readerAccountId(team)}@${w.fake.projectId}.iam.gserviceaccount.com`;
-    expect(w.fake.whoHas((await drive.readToken(300)).accessToken)).toEqual({ email: reader, scope: SCOPE_READ });
-    expect(w.fake.impersonations.at(-1)).toMatchObject({ caller: w.fake.config.clientEmail, target: reader, scope: [SCOPE_READ] });
+    expect(w.fake.whoHas((await drive.readToken(300)).accessToken)).toEqual({ email: connection.email, scope: DRIVE_FILE_SCOPE });
+    expect(w.fake.impersonations).toEqual([]);
+    expect(w.fake.accounts.size).toBe(0);
   });
 });
 
 describe("readerFor", () => {
-  it("is Seattle Solvers' read-only main service account token, a person's own connection, or a team's reader", async () => {
+  it("is Seattle Solvers' read-only main service account token, or the space's own connection", async () => {
     const w = await storageWorld();
     expect(await holderOf(w, (await readerFor(w.db, SEED_TEAM_ID, depsOf(w)))!)).toEqual({ email: w.fake.config.clientEmail, scope: SCOPE_READ });
 
@@ -181,43 +177,31 @@ describe("readerFor", () => {
     expect(await holderOf(w, (await readerFor(w.db, w.personal, depsOf(w)))!)).toEqual({ email: connection.email, scope: DRIVE_FILE_SCOPE });
 
     const team = await w.team("Robotics Club");
-    await withStorage(w, team);
-    const reader = `${readerAccountId(team)}@${w.fake.projectId}.iam.gserviceaccount.com`;
-    expect(await holderOf(w, (await readerFor(w.db, team, depsOf(w)))!)).toEqual({ email: reader, scope: SCOPE_READ });
+    const teams = await withStorage(w, team);
+    expect(await holderOf(w, (await readerFor(w.db, team, depsOf(w)))!)).toEqual({ email: teams.connection.email, scope: DRIVE_FILE_SCOPE });
+    expect(w.fake.impersonations).toEqual([]);
   });
 
-  it("is null for a space without storage or a team with no main service account", async () => {
+  it("is null for a space without storage, and the connection's own token for a team", async () => {
     const w = await storageWorld();
     const other = await w.team("Other Team");
     expect(await readerFor(w.db, other, depsOf(w))).toBeNull();
     const team = await w.team("Robotics Club");
-    await withStorage(w, team);
-    expect(await readerFor(w.db, team, depsOf(w, { mainSa: () => null }))).toBeNull();
+    const { connection } = await withStorage(w, team);
+    expect(await holderOf(w, (await readerFor(w.db, team, depsOf(w)))!)).toEqual({ email: connection.email, scope: DRIVE_FILE_SCOPE });
   });
 
-  it("a team whose connection broke still reads with its reader, while writes refuse; a personal space's broken connection throws", async () => {
+  it("a team or personal space whose connection broke asks for a reconnect, for reads and writes alike", async () => {
     const w = await storageWorld();
     const team = await w.team("Robotics Club");
     const { connection } = await withStorage(w, team);
     await w.db.update(driveConnection).set({ brokenAt: new Date(), brokenReason: "expired" }).where(eq(driveConnection.id, connection.id));
-    const reader = `${readerAccountId(team)}@${w.fake.projectId}.iam.gserviceaccount.com`;
-    expect(await holderOf(w, (await readerFor(w.db, team, depsOf(w)))!)).toEqual({ email: reader, scope: SCOPE_READ });
+    await expect(readerFor(w.db, team, depsOf(w))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "expired" });
     await expect(storageFor(w.db, team, depsOf(w))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "expired" });
     expect(await storageState(w.db, team, depsOf(w))).toEqual({ ready: false, reason: "broken" });
-    // With no main service account to read with, there is nothing left that can read.
-    await expect(readerFor(w.db, team, depsOf(w, { mainSa: () => null }))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "expired" });
 
     const own = await withStorage(w, w.personal);
     await w.db.update(driveConnection).set({ brokenAt: new Date(), brokenReason: "revoked" }).where(eq(driveConnection.id, own.connection.id));
     await expect(readerFor(w.db, w.personal, depsOf(w))).rejects.toMatchObject({ name: "ConnectionBrokenError", reason: "revoked" });
-  });
-
-  it("a team reader's source asks only for read-only Drive, and refuses any other scope", async () => {
-    const w = await storageWorld();
-    const email = w.fake.addServiceAccount("ee-r-0123456789");
-    expect(await holderOf(w, readerSource({ caller: w.mainSa, email, fetch: w.fake.fetch }))).toEqual({ email, scope: SCOPE_READ });
-    for (const scope of [SCOPE_WRITE, DRIVE_FILE_SCOPE, "https://www.googleapis.com/auth/cloud-platform"]) {
-      expect(() => readerSource({ caller: w.mainSa, email, scope, fetch: w.fake.fetch }), scope).toThrow(/bad_scope/);
-    }
   });
 });

@@ -70,11 +70,11 @@ describe("inviting", () => {
     const { db, team } = await setup();
     const admin = await as(db, "u1", team);
     const before = await memberCount(db);
-    const known = await inviteToTeam(db, admin, { email: "ada@example.com", role: "viewer" });
-    const unknown = await inviteToTeam(db, admin, { email: "new@x.com", role: "viewer" });
+    const known = await inviteToTeam(db, admin, { email: "ada@example.com", role: "editor" });
+    const unknown = await inviteToTeam(db, admin, { email: "new@x.com", role: "editor" });
     expect(Object.keys(known).sort()).toEqual(Object.keys(unknown).sort());
-    expect(known).toMatchObject({ email: "ada@example.com", role: "viewer", invitedBy: "Uma", expired: false });
-    expect(unknown).toMatchObject({ email: "new@x.com", role: "viewer", invitedBy: "Uma", expired: false });
+    expect(known).toMatchObject({ email: "ada@example.com", role: "editor", invitedBy: "Uma", expired: false });
+    expect(unknown).toMatchObject({ email: "new@x.com", role: "editor", invitedBy: "Uma", expired: false });
     expect(await memberCount(db)).toBe(before);
   });
 
@@ -83,7 +83,7 @@ describe("inviting", () => {
     const admin = await as(db, "u1", team);
     const start = new Date("2026-11-15T12:00:00.000Z");
     const later = new Date(start.getTime() + 3 * DAY);
-    const first = await inviteToTeam(db, admin, { email: "new@x.com", role: "viewer" }, { now: start });
+    const first = await inviteToTeam(db, admin, { email: "new@x.com", role: "editor" }, { now: start });
     const again = await inviteToTeam(db, admin, { email: "NEW@x.com", role: "admin" }, { now: later });
     expect(again.id).toBe(first.id);
     expect(again.role).toBe("admin");
@@ -96,39 +96,36 @@ describe("inviting", () => {
 
   it("inviting someone already in the team is refused", async () => {
     const { db, team } = await setup();
-    await join(db, team, "u2", "viewer");
+    await join(db, team, "u2", "editor");
     const admin = await as(db, "u1", team);
     await expect(inviteToTeam(db, admin, { email: "U2@gmail.com", role: "editor" })).rejects.toMatchObject(ALREADY);
     await expect(inviteToTeam(db, admin, { email: "u1@gmail.com", role: "editor" })).rejects.toMatchObject(ALREADY);
     expect(await listPendingInvites(db, admin)).toEqual([]);
   });
 
-  it("editors and viewers can't invite or list", async () => {
+  it("editors can't invite or list", async () => {
     const { db, team } = await setup();
     await join(db, team, "u2", "editor");
-    await join(db, team, "u3", "viewer");
-    for (const id of ["u2", "u3"]) {
-      const actor = await as(db, id, team);
-      await expect(inviteToTeam(db, actor, { email: "new@x.com", role: "viewer" })).rejects.toMatchObject(FORBIDDEN);
-      await expect(listPendingInvites(db, actor)).rejects.toMatchObject(FORBIDDEN);
-    }
+    const actor = await as(db, "u2", team);
+    await expect(inviteToTeam(db, actor, { email: "new@x.com", role: "editor" })).rejects.toMatchObject(FORBIDDEN);
+    await expect(listPendingInvites(db, actor)).rejects.toMatchObject(FORBIDDEN);
   });
 
   it("Seattle Solvers refuses", async () => {
     const { db } = await setup();
     const actor = { ...(await as(db, "u1", personalSpaceId("u1"))), spaceId: SEED_TEAM_ID, role: "admin" as Role };
     await db.insert(member).values({ id: "m_seed_u1", organizationId: SEED_TEAM_ID, userId: "u1", role: "admin", createdAt: new Date() });
-    await expect(inviteToTeam(db, actor, { email: "new@x.com", role: "viewer" })).rejects.toMatchObject(MANAGED);
+    await expect(inviteToTeam(db, actor, { email: "new@x.com", role: "editor" })).rejects.toMatchObject(MANAGED);
     await expect(listPendingInvites(db, actor)).rejects.toMatchObject(MANAGED);
   });
 
   it("a personal space and a non-member answer Space not found", async () => {
     const { db, team } = await setup();
     const personal = await as(db, "u1", personalSpaceId("u1"));
-    await expect(inviteToTeam(db, personal, { email: "new@x.com", role: "viewer" })).rejects.toMatchObject(SPACE_NOT_FOUND);
+    await expect(inviteToTeam(db, personal, { email: "new@x.com", role: "editor" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(listPendingInvites(db, personal)).rejects.toMatchObject(SPACE_NOT_FOUND);
     const outsider = { ...(await as(db, "u2", personalSpaceId("u2"))), spaceId: team, role: "admin" as Role };
-    await expect(inviteToTeam(db, outsider, { email: "new@x.com", role: "viewer" })).rejects.toMatchObject(SPACE_NOT_FOUND);
+    await expect(inviteToTeam(db, outsider, { email: "new@x.com", role: "editor" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(listPendingInvites(db, outsider)).rejects.toMatchObject(SPACE_NOT_FOUND);
   });
 
@@ -142,12 +139,19 @@ describe("inviting", () => {
     expect(await listPendingInvites(db, admin)).toEqual([]);
   });
 
+  it("refuses an invite as viewer, a role that can't be given any more", async () => {
+    const { db, team } = await setup();
+    const admin = await as(db, "u1", team);
+    await expect(inviteToTeam(db, admin, { email: "v@x.com", role: "viewer" as Role })).rejects.toMatchObject({ code: "INVALID", status: 400, message: "Unknown role." });
+    expect(await listPendingInvites(db, admin)).toEqual([]);
+  });
+
   it("members plus pending invites stay under the team cap", async () => {
     const { db, team } = await setup();
     const admin = await as(db, "u1", team);
     const limits = { ...LIMITS, teamMembers: 2 };
-    await inviteToTeam(db, admin, { email: "a@x.com", role: "viewer" }, { limits });
-    await expect(inviteToTeam(db, admin, { email: "b@x.com", role: "viewer" }, { limits })).rejects.toMatchObject({
+    await inviteToTeam(db, admin, { email: "a@x.com", role: "editor" }, { limits });
+    await expect(inviteToTeam(db, admin, { email: "b@x.com", role: "editor" }, { limits })).rejects.toMatchObject({
       code: "LIMIT_EXCEEDED",
       status: 400,
       message: "A team can have up to 2 members, counting invites.",
@@ -160,15 +164,15 @@ describe("inviting", () => {
     const { db, team } = await setup();
     const admin = await as(db, "u1", team);
     const limits = { ...LIMITS, teamPendingInvites: 1 };
-    await inviteToTeam(db, admin, { email: "a@x.com", role: "viewer" }, { limits });
-    await expect(inviteToTeam(db, admin, { email: "b@x.com", role: "viewer" }, { limits })).rejects.toMatchObject({
+    await inviteToTeam(db, admin, { email: "a@x.com", role: "editor" }, { limits });
+    await expect(inviteToTeam(db, admin, { email: "b@x.com", role: "editor" }, { limits })).rejects.toMatchObject({
       code: "LIMIT_EXCEEDED",
       status: 400,
       message: "This team has 1 invite waiting. Cancel some first.",
     });
     const two = { ...LIMITS, teamPendingInvites: 2 };
-    await inviteToTeam(db, admin, { email: "c@x.com", role: "viewer" }, { limits: two });
-    await expect(inviteToTeam(db, admin, { email: "d@x.com", role: "viewer" }, { limits: two })).rejects.toMatchObject({
+    await inviteToTeam(db, admin, { email: "c@x.com", role: "editor" }, { limits: two });
+    await expect(inviteToTeam(db, admin, { email: "d@x.com", role: "editor" }, { limits: two })).rejects.toMatchObject({
       message: "This team has 2 invites waiting. Cancel some first.",
     });
     expect(LIMITS.teamPendingInvites).toBe(50);
@@ -178,12 +182,12 @@ describe("inviting", () => {
     const { db, team } = await setup();
     const admin = await as(db, "u1", team);
     const start = new Date("2026-11-15T12:00:00.000Z");
-    const first = await inviteToTeam(db, admin, { email: "new@x.com", role: "viewer" }, { now: start });
+    const first = await inviteToTeam(db, admin, { email: "new@x.com", role: "editor" }, { now: start });
     const late = new Date(start.getTime() + 8 * DAY);
     const listed = await listPendingInvites(db, admin, late);
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({ id: first.id, expired: true });
-    const renewed = await inviteToTeam(db, admin, { email: "new@x.com", role: "viewer" }, { now: late });
+    const renewed = await inviteToTeam(db, admin, { email: "new@x.com", role: "editor" }, { now: late });
     expect(renewed).toMatchObject({ id: first.id, expired: false });
     expect((await listPendingInvites(db, admin, late))[0]).toMatchObject({ expired: false });
   });
@@ -192,8 +196,8 @@ describe("inviting", () => {
     const { db, team } = await setup();
     const admin = await as(db, "u1", team);
     const t = new Date("2026-11-15T12:00:00.000Z");
-    await inviteToTeam(db, admin, { email: "a@x.com", role: "viewer" }, { now: t });
-    await inviteToTeam(db, admin, { email: "b@x.com", role: "viewer" }, { now: new Date(t.getTime() + 1000) });
+    await inviteToTeam(db, admin, { email: "a@x.com", role: "editor" }, { now: t });
+    await inviteToTeam(db, admin, { email: "b@x.com", role: "editor" }, { now: new Date(t.getTime() + 1000) });
     expect((await listPendingInvites(db, admin, t)).map((i) => i.email)).toEqual(["b@x.com", "a@x.com"]);
   });
 });
@@ -202,23 +206,23 @@ describe("cancelling", () => {
   it("takes it off the list; cancelling twice or another team's invite answers That invite is gone.", async () => {
     const { db, team } = await setup();
     const admin = await as(db, "u1", team);
-    const invite = await inviteToTeam(db, admin, { email: "new@x.com", role: "viewer" });
+    const invite = await inviteToTeam(db, admin, { email: "new@x.com", role: "editor" });
     await cancelInvite(db, admin, invite.id);
     expect(await listPendingInvites(db, admin)).toEqual([]);
     await expect(cancelInvite(db, admin, invite.id)).rejects.toMatchObject(GONE);
     const other = await createTeam(db, { name: "Other Club", byUserId: "u1" });
     const otherAdmin = await as(db, "u1", other.id);
-    const theirs = await inviteToTeam(db, otherAdmin, { email: "z@x.com", role: "viewer" });
+    const theirs = await inviteToTeam(db, otherAdmin, { email: "z@x.com", role: "editor" });
     await expect(cancelInvite(db, admin, theirs.id)).rejects.toMatchObject(GONE);
     expect(await listPendingInvites(db, otherAdmin)).toHaveLength(1);
     // A cancelled invite can be sent again.
-    await expect(inviteToTeam(db, admin, { email: "new@x.com", role: "viewer" })).resolves.toMatchObject({ email: "new@x.com" });
+    await expect(inviteToTeam(db, admin, { email: "new@x.com", role: "editor" })).resolves.toMatchObject({ email: "new@x.com" });
   });
 
   it("is for admins only", async () => {
     const { db, team } = await setup();
     await join(db, team, "u2", "editor");
-    const invite = await inviteToTeam(db, await as(db, "u1", team), { email: "new@x.com", role: "viewer" });
+    const invite = await inviteToTeam(db, await as(db, "u1", team), { email: "new@x.com", role: "editor" });
     await expect(cancelInvite(db, await as(db, "u2", team), invite.id)).rejects.toMatchObject(FORBIDDEN);
     expect(await listPendingInvites(db, await as(db, "u1", team))).toHaveLength(1);
   });
@@ -229,8 +233,8 @@ describe("races", () => {
     const { db, team } = await setup();
     await join(db, team, "u2", "admin");
     const stale = await as(db, "u2", team);
-    await db.execute(sql`update member set role = 'viewer' where organization_id = ${team} and user_id = 'u2'`);
-    await expect(inviteToTeam(db, stale, { email: "new@x.com", role: "viewer" })).rejects.toMatchObject(FORBIDDEN);
+    await db.execute(sql`update member set role = 'editor' where organization_id = ${team} and user_id = 'u2'`);
+    await expect(inviteToTeam(db, stale, { email: "new@x.com", role: "editor" })).rejects.toMatchObject(FORBIDDEN);
     await expect(cancelInvite(db, stale, "whatever")).rejects.toMatchObject(FORBIDDEN);
     expect(await listPendingInvites(db, await as(db, "u1", team))).toEqual([]);
   });
@@ -240,7 +244,7 @@ describe("races", () => {
     const insert = (id: string) =>
       db.execute(sql`
         insert into invitation (id, organization_id, email, role, status, expires_at, inviter_id)
-        values (${id}, ${team}, 'dup@x.com', 'viewer', 'pending', now(), 'u1')
+        values (${id}, ${team}, 'dup@x.com', 'editor', 'pending', now(), 'u1')
       `);
     await insert("i1");
     await expect(insert("i2")).rejects.toThrow();

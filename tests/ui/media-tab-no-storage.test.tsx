@@ -83,11 +83,6 @@ describe("the Media tab of a space with no storage", () => {
     expect(screen.getByText("Storage isn't set up on this server yet.")).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
     personal.view.unmount();
-
-    setup({ storageReady: false, storageProblem: "none", storageSetup: { ...TEAM_ADMIN, block: "team" } });
-    await openMedia();
-    expect(screen.getByText("Team storage isn't set up on this server yet.")).toBeTruthy();
-    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("says the Drive needs reconnecting when its connection broke, with Reconnect for admins and no upload", async () => {

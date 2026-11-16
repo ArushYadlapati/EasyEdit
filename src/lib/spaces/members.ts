@@ -3,7 +3,7 @@ import { asc, eq, sql } from "drizzle-orm";
 import { rowsOf, type DB } from "@/db";
 import { driveConnection, member, spaceStorage, user } from "@/db/schema";
 import { requireRole, type Actor } from "@/lib/actor";
-import { ROLE_RANK, type Role } from "@/lib/allowlist/service";
+import { isAssignableRole, type AssignableRole, type Role } from "@/lib/allowlist/service";
 import { FORBIDDEN_BODY } from "@/lib/api-errors";
 import { ServiceError } from "@/lib/service-error";
 import { SEED_TEAM_ID } from "./types";
@@ -50,9 +50,9 @@ export async function changeableTeam(db: DB, actor: Actor, opts: { admin: boolea
   return actor.spaceId;
 }
 
-export function checkedRole(role: unknown): Role {
-  if (typeof role !== "string" || !Object.hasOwn(ROLE_RANK, role)) throw new ServiceError("INVALID", 400, "Unknown role.");
-  return role as Role;
+export function checkedRole(role: unknown): AssignableRole {
+  if (!isAssignableRole(role)) throw new ServiceError("INVALID", 400, "Unknown role.");
+  return role;
 }
 
 // Shared pieces of every change statement. `admins` locks the team's admin rows in a fixed order, so two statements that
@@ -175,14 +175,14 @@ async function deleteMember(db: DB, actor: Actor, spaceId: string, userId: strin
 
 const hasProjects = () => new ServiceError("HAS_PROJECTS", 409, "Delete this team's projects first.");
 
-type DeleteRow = { changed: boolean; caller_admin: boolean; name_ok: boolean; has_projects: boolean; reader_email: string | null };
+type DeleteRow = { changed: boolean; caller_admin: boolean; name_ok: boolean; has_projects: boolean };
 
 // Deletes a team: its member, invitation, space_visits and space_storage rows go, so nobody sees it and its invite links
 // stop working. The organization row stays (projects, folders and assets point at it with no cascade), as do the
 // team's folders, assets, brand kit, pins and Drive connection. An admin only, and only with the team's name typed
 // exactly, and only when no project is left in it (deleted ones don't count). One statement after the early checks, so
-// an admin demoted a moment ago can't still delete. Hands back the team's reader account so the caller can remove it.
-export async function deleteTeam(db: DB, actor: Actor, input: { confirmName: string }): Promise<{ readerEmail: string | null }> {
+// an admin demoted a moment ago can't still delete. Its storage row going frees its Google account for another space.
+export async function deleteTeam(db: DB, actor: Actor, input: { confirmName: string }): Promise<void> {
   if (actor.spaceId === SEED_TEAM_ID) throw new ServiceError("MANAGED_ELSEWHERE", 409, "Seattle Solvers can't be deleted.");
   const spaceId = await changeableTeam(db, actor, { admin: true });
   const typed = (input.confirmName ?? "").trim();
@@ -194,18 +194,17 @@ export async function deleteTeam(db: DB, actor: Actor, input: { confirmName: str
           and not exists (select 1 from projects p where p.space_id = team.id and p.deleted_at is null)
       ),
       del_invitation as (delete from invitation where organization_id in (select id from ok)),
-      del_storage as (delete from space_storage where space_id in (select id from ok) returning reader_email),
+      del_storage as (delete from space_storage where space_id in (select id from ok)),
       del_visits as (delete from space_visits where space_id in (select id from ok)),
       del_member as (delete from member where organization_id in (select id from ok) returning id)
     select
       exists (select 1 from ok) as changed,
       (select caller_admin from gate) as caller_admin,
       coalesce((select name = ${typed} from organization where id = ${spaceId}), false) as name_ok,
-      exists (select 1 from projects where space_id = ${spaceId} and deleted_at is null) as has_projects,
-      (select reader_email from del_storage limit 1) as reader_email
+      exists (select 1 from projects where space_id = ${spaceId} and deleted_at is null) as has_projects
   `);
   const row = rowsOf<DeleteRow>(result)[0];
-  if (row.changed) return { readerEmail: row.reader_email };
+  if (row.changed) return;
   if (!row.caller_admin) throw forbidden();
   if (!row.name_ok) throw new ServiceError("INVALID", 400, "Type the team's name to delete it.");
   if (row.has_projects) throw hasProjects();

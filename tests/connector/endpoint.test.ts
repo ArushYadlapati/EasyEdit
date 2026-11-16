@@ -109,8 +109,8 @@ describe("POST /api/mcp", () => {
 
   it("removal and a role change take effect on the next call", async () => {
     const c = await app.connect("dorothy@gmail.com");
-    await adminActions(app.db).setRole(form({ email: "dorothy@gmail.com", role: "viewer" }));
-    expect((await app.callTool(c.accessToken, "list_projects")).text).toContain('"Seattle Solvers" (seattle-solvers, viewer)');
+    await adminActions(app.db).setRole(form({ email: "dorothy@gmail.com", role: "admin" }));
+    expect((await app.callTool(c.accessToken, "list_projects")).text).toContain('"Seattle Solvers" (seattle-solvers, admin)');
 
     await adminActions(app.db).removeMember(form({ email: "dorothy@gmail.com" }));
     const res = await app.rpc(c.accessToken, "tools/call", LIST);

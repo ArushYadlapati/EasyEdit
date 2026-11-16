@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ConsentPage from "@/app/(auth)/consent/page";
 import LoginPage from "@/app/(auth)/login/page";
 import { getCurrentUser, requireUser, type CurrentUser } from "@/lib/access";
@@ -8,6 +8,8 @@ import { listMySpaces } from "@/lib/spaces/service";
 import type { Role } from "@/lib/allowlist/service";
 import type { MySpace } from "@/lib/spaces/types";
 import { cleanup, render, screen } from "../helpers/dom";
+
+afterEach(() => vi.unstubAllEnvs());
 
 vi.mock("@/lib/access", () => ({ getCurrentUser: vi.fn(), requireUser: vi.fn() }));
 vi.mock("@/lib/connector/consent", async (original) => ({
@@ -171,16 +173,16 @@ describe("the consent page", () => {
     expect(screen.getAllByRole("listitem")[1].textContent).toMatch(/^It will be able to create projects and change them/);
   });
 
-  it("tells a viewer the app cannot change anything, and does not vouch for a self-named app", async () => {
-    vi.mocked(requireUser).mockResolvedValue({ ...ada, allowlistRole: "viewer" });
-    vi.mocked(listMySpaces).mockResolvedValue([space("team", "viewer")]);
+  it("tells someone in no team that the app cannot change anything, and does not vouch for a self-named app", async () => {
+    vi.stubEnv("PERSONAL_SPACES", "");
+    vi.mocked(listMySpaces).mockResolvedValue([space("personal", "admin")]);
     vi.mocked(readConsentRequest).mockResolvedValue(ok(views.helper));
     await show(ConsentPage, signedRequest);
     expect(screen.getByRole("heading").textContent).toBe("Connect an app");
     expect(screen.getByText("An app that calls itself “Helper” is asking to use EasyEdit as you.")).toBeTruthy();
     expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "It will be able to see the projects in your spaces.",
-      "Your role is viewer, so it will not be able to change anything.",
+      "You're not in a team yet, so it will not be able to change anything.",
     ]);
     expect(screen.getByText("EasyEdit cannot confirm which app this is or who runs it.")).toBeTruthy();
     expect(screen.getByText(THIS_COMPUTER(43117))).toBeTruthy();

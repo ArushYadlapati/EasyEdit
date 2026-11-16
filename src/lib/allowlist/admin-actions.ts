@@ -4,7 +4,7 @@ import { user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { revokeAccess } from "@/lib/connector/grants";
 import { syncSeedTeamMembership } from "@/lib/spaces/service";
-import { addEntry, AllowlistError, normalizeEmail, removeEntry, setRole, type Role } from "@/lib/allowlist/service";
+import { addEntry, AllowlistError, ASSIGNABLE_ROLES, normalizeEmail, removeEntry, setRole, type Role } from "@/lib/allowlist/service";
 
 export type ActionResult = { error?: string };
 
@@ -14,7 +14,7 @@ export type AdminActionDeps = {
   revalidate: (path: string) => void;
 };
 
-const ROLES: readonly Role[] = ["admin", "editor", "viewer"];
+const ROLES: readonly Role[] = ASSIGNABLE_ROLES;
 
 const ERROR_MESSAGES: Record<AllowlistError["code"], string> = {
   LAST_ADMIN: "There must always be at least one admin.",

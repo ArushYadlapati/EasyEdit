@@ -177,35 +177,18 @@ describe("the storage settings", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 
-  it("team storage not set up on this server: says so; a team already in an account can still reconnect", () => {
-    const none = show({ space: TEAM, blocked: "team", connections: [{ id: "dc_1", email: "ada@gmail.com", broken: false }] });
-    expect(screen.getByText("Team storage isn't set up on this server yet.")).toBeTruthy();
-    expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
-    none.unmount();
-    show({ space: TEAM, blocked: "team", storage: inAccount({ folderName: "EasyEdit – Robots" }) });
-    expect(connectQuery("Reconnect")).toEqual({ space: "team_robots", hint: "ada@gmail.com" });
-    expect(button("Use a different Google account").disabled).toBe(true);
-    expect(screen.getByText("Team storage isn't set up on this server yet.")).toBeTruthy();
-  });
-
   it("blocked on this server, a space with none says only that: no instructions, nothing to press", () => {
-    const personal = show({ blocked: "server", connections: [{ id: "dc_1", email: "ada@gmail.com", broken: false }] });
+    show({ blocked: "server", connections: [{ id: "dc_1", email: "ada@gmail.com", broken: false }] });
     expect(screen.getByText("No storage yet.")).toBeTruthy();
     expect(screen.getByText("Storage isn't set up on this server yet.")).toBeTruthy();
     expect(screen.queryByText("Pick a Google account for your own videos.")).toBeNull();
     expect(screen.queryByText(/folder of its own/)).toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
-    personal.unmount();
-    show({ space: TEAM, blocked: "team" });
-    expect(screen.getByText("No storage yet.")).toBeTruthy();
-    expect(screen.getByText("Team storage isn't set up on this server yet.")).toBeTruthy();
-    expect(screen.queryByText("This team has no storage yet.")).toBeNull();
   });
 
-  it.each(["server", "team"] as const)("a team just made, blocked (%s): it's ready, and the way on is its projects", (blocked) => {
-    show({ space: TEAM, blocked }, { first: true });
+  it("a team just made, blocked on this server: it's ready, and the way on is its projects", () => {
+    show({ space: TEAM, blocked: "server" }, { first: true });
     expect(screen.getByText("Your team is ready. You can add videos once storage is set up on this server.")).toBeTruthy();
     expect(screen.queryByText("Choose where this team's videos are stored.")).toBeNull();
     const onward = link("Go to the team's projects");

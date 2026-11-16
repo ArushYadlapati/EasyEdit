@@ -4,12 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
-import { removeTeamReader } from "@/lib/storage/remove-reader";
 import { inviteUrl } from "@/lib/spaces/invite-link";
 import { makeMemberActions, type ActionResult, type InviteResult } from "@/lib/spaces/member-actions";
 
 // The whole layout: the space switcher and every page that shows the team change with its members.
-const actions = makeMemberActions({ db: getDb, requireUser: () => requireUser(), revalidate: () => revalidatePath("/", "layout"), redirect, inviteLink: inviteUrl, deleteReader: removeTeamReader });
+const actions = makeMemberActions({ db: getDb, requireUser: () => requireUser(), revalidate: () => revalidatePath("/", "layout"), redirect, inviteLink: inviteUrl });
 
 // The Members page binds the space as the first argument of each.
 export async function inviteMemberAction(spaceId: string, formData: FormData): Promise<InviteResult> {

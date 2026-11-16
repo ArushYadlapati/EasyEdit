@@ -35,7 +35,7 @@ async function setup() {
 }
 
 const ada = { id: "ada", email: "ada@example.com" };
-const invite = (db: DB, admin: Actor, role: "viewer" | "editor" | "admin" = "editor", now?: Date) =>
+const invite = (db: DB, admin: Actor, role: "editor" | "admin" = "editor", now?: Date) =>
   inviteToTeam(db, admin, { email: "ada@example.com", role }, { now });
 async function status(db: DB, id: string) {
   return rowsOf<{ status: string }>(await db.execute(sql`select status from invitation where id = ${id}`))[0].status;
@@ -87,7 +87,7 @@ describe("accepting an invite", () => {
 
   it("accepting when already a member succeeds", async () => {
     const { db, admin, slug, team } = await setup();
-    const inv = await invite(db, admin, "viewer");
+    const inv = await invite(db, admin, "editor");
     await db.execute(sql`insert into member (id, organization_id, user_id, role, created_at) values ('m_ada', ${team}, 'ada', 'admin', now())`);
     expect(await acceptInvite(db, ada, inv.id)).toEqual({ teamSlug: slug });
     expect(await status(db, inv.id)).toBe("accepted");
@@ -123,12 +123,12 @@ describe("declining and listing", () => {
   it("listMyInvites shows only pending, unexpired invites for that email", async () => {
     const { db, admin } = await setup();
     const start = new Date("2026-11-01T12:00:00.000Z");
-    await invite(db, admin, "viewer", start);
-    await inviteToTeam(db, admin, { email: "u2@gmail.com", role: "viewer" }, { now: start });
+    await invite(db, admin, "editor", start);
+    await inviteToTeam(db, admin, { email: "u2@gmail.com", role: "editor" }, { now: start });
     const now = new Date(start.getTime() + 1 * DAY);
     const list = await listMyInvites(db, " ADA@example.com ", now);
     expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ email: "ada@example.com", role: "viewer", status: "pending", teamName: "Robotics Club", invitedBy: "Uma" });
+    expect(list[0]).toMatchObject({ email: "ada@example.com", role: "editor", status: "pending", teamName: "Robotics Club", invitedBy: "Uma" });
     expect(await listMyInvites(db, "ada@example.com", new Date(start.getTime() + 8 * DAY))).toHaveLength(0);
   });
 
@@ -145,7 +145,7 @@ describe("declining and listing", () => {
   it("hasPendingInvite is false once expired", async () => {
     const { db, admin } = await setup();
     const start = new Date("2026-11-01T12:00:00.000Z");
-    await invite(db, admin, "viewer", start);
+    await invite(db, admin, "editor", start);
     expect(await hasPendingInvite(db, "ada@example.com", start)).toBe(true);
     expect(await hasPendingInvite(db, "ada@example.com", new Date(start.getTime() + 7 * DAY))).toBe(false);
     expect(await hasPendingInvite(db, "u2@gmail.com", start)).toBe(false);

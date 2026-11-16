@@ -38,7 +38,7 @@ const addProject = (db: DB, spaceId: string, id: string, deletedAt: Date | null 
 describe("deleting a team", () => {
   it("an admin deletes an empty team; nobody has it in listMySpaces", async () => {
     const { db, team, as } = await setup();
-    expect(await deleteTeam(db, await as("u1"), { confirmName: `  ${NAME} ` })).toEqual({ readerEmail: null });
+    await deleteTeam(db, await as("u1"), { confirmName: `  ${NAME} ` });
     for (const id of ["u1", "u2"]) expect((await listMySpaces(db, id)).some((s) => s.id === team)).toBe(false);
     expect(await db.select().from(member).where(eq(member.organizationId, team))).toEqual([]);
   });
@@ -63,11 +63,12 @@ describe("deleting a team", () => {
     expect((await listMySpaces(db, "u1")).some((s) => s.id === team)).toBe(false);
   });
 
-  it("the storage row goes and its reader email is returned; the Drive connection stays", async () => {
+  it("the storage row goes, freeing its Google account for another space; the Drive connection stays", async () => {
     const { db, team, as } = await setup();
     await db.insert(driveConnection).values({ id: "dc_1", userId: "u1", googleSub: "g1", email: "u1.drive@gmail.com", refreshTokenEnc: "sealed", scopes: "drive.file" });
-    await db.insert(spaceStorage).values({ spaceId: team, kind: "google_account", connectionId: "dc_1", rootFolderId: "root1", folderName: "EasyEdit – x", readerEmail: "ee-r-abc@proj.iam.gserviceaccount.com", createdBy: "u1" });
-    expect(await deleteTeam(db, await as("u1"), { confirmName: NAME })).toEqual({ readerEmail: "ee-r-abc@proj.iam.gserviceaccount.com" });
+    await db.insert(spaceStorage).values({ spaceId: team, kind: "google_account", connectionId: "dc_1", rootFolderId: "root1", folderName: "EasyEdit – x", googleSub: "g1", createdBy: "u1" });
+    await deleteTeam(db, await as("u1"), { confirmName: NAME });
+    expect(await db.select().from(spaceStorage).where(eq(spaceStorage.googleSub, "g1"))).toEqual([]);
     expect(await db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, team))).toEqual([]);
     expect(await db.select().from(driveConnection).where(eq(driveConnection.id, "dc_1"))).toHaveLength(1);
   });
@@ -102,13 +103,12 @@ class Redirected extends Error {
 
 describe("the deleteTeam action", () => {
   function actionsAs(db: DB, id: string) {
-    const deleteReader = vi.fn<(email: string) => Promise<void>>(async () => {});
     const redirect = vi.fn((to: string): never => {
       throw new Redirected(to);
     });
     const signedIn: CurrentUser = { ...testUser({ id }), allowlistRole: null };
-    const actions = makeMemberActions({ db: () => db, requireUser: async () => signedIn, revalidate: vi.fn(), redirect, inviteLink: (i) => i, deleteReader });
-    return { actions, deleteReader, redirect };
+    const actions = makeMemberActions({ db: () => db, requireUser: async () => signedIn, revalidate: vi.fn(), redirect, inviteLink: (i) => i });
+    return { actions, redirect };
   }
   const form = (confirmName: string) => {
     const data = new FormData();
@@ -116,37 +116,23 @@ describe("the deleteTeam action", () => {
     return data;
   };
 
-  it("redirects to /dashboard and calls deleteReader once when there was a reader", async () => {
+  it("redirects to /dashboard, with or without storage, and calls nothing in Google Cloud", async () => {
     const { db, team } = await setup();
     await db.insert(driveConnection).values({ id: "dc_1", userId: "u1", googleSub: "g1", email: "u1.drive@gmail.com", refreshTokenEnc: "sealed", scopes: "drive.file" });
-    await db.insert(spaceStorage).values({ spaceId: team, kind: "google_account", connectionId: "dc_1", rootFolderId: "root1", folderName: "x", readerEmail: "ee-r-abc@proj.iam.gserviceaccount.com", createdBy: "u1" });
-    const { actions, deleteReader } = actionsAs(db, "u1");
-    await expect(actions.deleteTeam(team, form(NAME))).rejects.toMatchObject({ to: "/dashboard" });
-    expect(deleteReader).toHaveBeenCalledTimes(1);
-    expect(deleteReader).toHaveBeenCalledWith("ee-r-abc@proj.iam.gserviceaccount.com");
-  });
+    await db.insert(spaceStorage).values({ spaceId: team, kind: "google_account", connectionId: "dc_1", rootFolderId: "root1", folderName: "x", googleSub: "g1", createdBy: "u1" });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await expect(actionsAs(db, "u1").actions.deleteTeam(team, form(NAME))).rejects.toMatchObject({ to: "/dashboard" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
 
-  it("redirects without a reader call when there was none, and survives a failing deleteReader", async () => {
-    const { db, team } = await setup();
-    const a = actionsAs(db, "u1");
-    await expect(a.actions.deleteTeam(team, form(NAME))).rejects.toMatchObject({ to: "/dashboard" });
-    expect(a.deleteReader).not.toHaveBeenCalled();
-
-    const t2 = await setup();
-    await t2.db.insert(driveConnection).values({ id: "dc_1", userId: "u1", googleSub: "g1", email: "u1.drive@gmail.com", refreshTokenEnc: "sealed", scopes: "drive.file" });
-    await t2.db.insert(spaceStorage).values({ spaceId: t2.team, kind: "google_account", connectionId: "dc_1", rootFolderId: "r", folderName: "x", readerEmail: "ee-r-x@p.iam.gserviceaccount.com", createdBy: "u1" });
-    const b = actionsAs(t2.db, "u1");
-    b.deleteReader.mockRejectedValue(new Error("boom"));
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    await expect(b.actions.deleteTeam(t2.team, form(NAME))).rejects.toMatchObject({ to: "/dashboard" });
-    log.mockRestore();
+    const other = await setup();
+    await expect(actionsAs(other.db, "u1").actions.deleteTeam(other.team, form(NAME))).rejects.toMatchObject({ to: "/dashboard" });
   });
 
   it("returns the refusal and doesn't redirect", async () => {
     const { db, team } = await setup();
-    const { actions, redirect, deleteReader } = actionsAs(db, "u1");
+    const { actions, redirect } = actionsAs(db, "u1");
     expect(await actions.deleteTeam(team, form("nope"))).toEqual({ error: "Type the team's name to delete it." });
     expect(redirect).not.toHaveBeenCalled();
-    expect(deleteReader).not.toHaveBeenCalled();
   });
 });
