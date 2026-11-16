@@ -109,7 +109,7 @@ Also planned: thumbnails and waveforms on the timeline, captions, text animation
     | `GOOGLE_CLIENT_ID` | From your OAuth client |
     | `GOOGLE_CLIENT_SECRET` | From your OAuth client |
     | `GOOGLE_SERVICE_ACCOUNT_KEY`, `DRIVE_FOLDER_ID` | Optional. Leave them empty to run without uploads. |
-    | `STORAGE_TOKEN_KEY`, `GOOGLE_CLOUD_PROJECT` | Optional. For storage per space: see [Storage per space](docs/setup.md#storage-per-space). |
+    | `STORAGE_TOKEN_KEY` | Optional. For storage per space: see [Storage per space](docs/setup.md#storage-per-space). |
     | `OPEN_SIGNUP` | Optional. Set to `true` so anyone with a Google account can sign up. Leave it unset and only the allowlist and team invites can sign in. |
     | `TUTORIAL_VIDEO_URL` | Optional. A link to the intro video: see [Tutorial video](docs/setup.md#tutorial-video). |
 

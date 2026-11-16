@@ -66,4 +66,29 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     ```
 
     **Before deploying the version with the intro tutorial:** run the migration `0018_tutorial_views` against the production database right before the push, with the command above. It adds one table and changes nothing else, and the earlier version keeps working against it. Set `TUTORIAL_VIDEO_URL` only once the table is there.
+
+    **Before deploying the version with one Google account per space:** first run these two checks in the Neon SQL editor for the production database. The first must return no rows; if it returns any, one Google account already holds two spaces' storage, so stop and sort that out by hand before going on:
+
+    ```sql
+    select d.google_sub, count(*) from space_storage s join drive_connection d on d.id = s.connection_id where s.kind = 'google_account' group by d.google_sub having count(*) > 1;
+    ```
+
+    The second lists personal spaces that already keep storage in a Google account. While personal spaces are not offered, nobody can see or change that storage, so its Google account can't be connected to a team ("That Google account already holds another EasyEdit space's storage"). For each row whose space holds no uploads, delete its `space_storage` row by hand to free the account; tell the owner of any other:
+
+    ```sql
+    select s.space_id, d.email from space_storage s join organization o on o.id = s.space_id join drive_connection d on d.id = s.connection_id where o.kind = 'personal' and s.kind = 'google_account';
+    ```
+
+    Then run the migration `0019_one_drive_per_space` against the production database right before the push, with the command above. It turns every viewer (on the allowlist, in a team, or in a pending invite) into an editor, adds `space_storage.google_sub` with one row per Google account, and fills it in for spaces already connected. The earlier version still runs against it, but until the deploy it can still give the viewer role and save a team's storage without its Google account.
+
+    **After the deploy:** run the migration's statements that change rows once more, in the Neon SQL editor, to put right anything the earlier version wrote in between. They change nothing the second time round. If the last one fails on `space_storage_google_sub_unique`, a space was given a Google account another space already holds in the meantime: sort that out by hand.
+
+    ```sql
+    update allowlist set role = 'editor' where role = 'viewer';
+    update member set role = 'editor' where role = 'viewer';
+    update invitation set role = 'editor' where role = 'viewer';
+    update space_storage set google_sub = drive_connection.google_sub from drive_connection where space_storage.connection_id = drive_connection.id and space_storage.kind = 'google_account' and space_storage.google_sub is null;
+    ```
+
+    `GOOGLE_CLOUD_PROJECT` can then be removed from Vercel, and the "Service Account Admin" and "Service Account Token Creator" roles taken off the media service account: teams no longer get reader service accounts.
 5. Optional: publish the Google app, so teammates no longer have to be test users. In Google Cloud, open **Branding** and fill in the app domain details (home page, privacy policy link, authorized domain) with your deployed web address. You will need a public privacy policy page to link to. Then open **Audience** and click **Publish app**. Signing in only asks Google for name, email and profile picture, and the allowlist still decides who gets in. Connecting storage for a space also asks for access to the files EasyEdit itself creates in that person's Drive (`drive.file`), and nothing else in it; see [Storage per space](setup.md#storage-per-space).

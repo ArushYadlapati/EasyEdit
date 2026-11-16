@@ -4,19 +4,19 @@ All routes need you to be signed in (they use the same cookie as the website). B
 
 | Route | Who may call it | What it does |
 | --- | --- | --- |
-| `GET /api/projects` | viewer and up | List projects: `{ "projects": [...] }` |
+| `GET /api/projects` | any member | List projects: `{ "projects": [...] }` |
 | `POST /api/projects` | editor and up | Create a project from `{ "name", "format" }`, with `"width"` and `"height"` in pixels when `"format"` is `"custom"`. Answers `201` with `{ "id" }`. |
-| `GET /api/projects/:id` | viewer and up | Get `{ id, name, format, doc, version }`. |
-| `GET /api/projects/:id/version` | viewer and up | Get just the current version: `{ version }`. |
-| `POST /api/projects/:id/presence` | viewer and up | The editor's check for changes. Send `{ tabId, clipIds, trackId, changedAgoMs }` for what this tab has selected. Answers `{ version, peers }`, where each peer is `{ userId, name, clipIds, trackId }`, or just `{ version }` when selections cannot be read. |
-| `DELETE /api/projects/:id/presence?tab=…` | viewer and up | A tab going away. Answers `204`. |
+| `GET /api/projects/:id` | any member | Get `{ id, name, format, doc, version }`. |
+| `GET /api/projects/:id/version` | any member | Get just the current version: `{ version }`. |
+| `POST /api/projects/:id/presence` | any member | The editor's check for changes. Send `{ tabId, clipIds, trackId, changedAgoMs }` for what this tab has selected. Answers `{ version, peers }`, where each peer is `{ userId, name, clipIds, trackId }`, or just `{ version }` when selections cannot be read. |
+| `DELETE /api/projects/:id/presence?tab=…` | any member | A tab going away. Answers `204`. |
 | `PATCH /api/projects/:id` | editor and up | Rename a project: send `{ "name" }`. Answers `{ id, name }`. |
 | `DELETE /api/projects/:id` | editor and up | Delete a project. Answers `204`. |
 | `POST /api/projects/:id/duplicate` | editor and up | Make a copy of a project. Answers `201` with `{ "id" }` of the copy. |
-| `POST /api/projects/:id/opened` | viewer and up | Records that you opened the project, for your Recent list on the dashboard. Answers `204`. |
-| `GET /api/projects/:id/thumbnail?v=N` | viewer and up | Get the project's picture for its dashboard card, a JPEG. `N` is `thumbnailVersion` from the project list; each new picture has a new `N`, so browsers keep each one. Answers `404` when the project has no picture. |
+| `POST /api/projects/:id/opened` | any member | Records that you opened the project, for your Recent list on the dashboard. Answers `204`. |
+| `GET /api/projects/:id/thumbnail?v=N` | any member | Get the project's picture for its dashboard card, a JPEG. `N` is `thumbnailVersion` from the project list; each new picture has a new `N`, so browsers keep each one. Answers `404` when the project has no picture. |
 | `PUT /api/projects/:id/thumbnail?v=N` | editor and up | Store the project's picture: send a JPEG of at most 300 KB drawn from version `N`. It is kept only when `N` is newer than the stored picture's and not past the project's version, and it changes neither the version nor when the project last changed. Answers `{ saved }`. The editor sends it by itself. |
-| `GET /api/projects/:id/ops?since=N` | viewer and up | Get the changes after version `N`: `{ version, entries, hasMore }`. Each entry is `{ version, ops, inverse, actor, actorName, requestId, createdAt }`. Add `limit` to set the page size (default 100, at most 500). A page holds fewer entries when they are large. When `hasMore` is true, ask again from the `version` in the answer. |
+| `GET /api/projects/:id/ops?since=N` | any member | Get the changes after version `N`: `{ version, entries, hasMore }`. Each entry is `{ version, ops, inverse, actor, actorName, requestId, createdAt }`. Add `limit` to set the page size (default 100, at most 500). A page holds fewer entries when they are large. When `hasMore` is true, ask again from the `version` in the answer. |
 | `POST /api/projects/:id/ops` | editor and up | Apply changes: send `{ "baseVersion": N, "ops": [...] }` (1 to 500 ops). Answers `{ version, ops, inverse }`. |
 
 Edits are versioned. Send the version you last saw as `baseVersion`. Changes that do not clash with newer edits still apply. A `baseVersion` newer than the project is refused.

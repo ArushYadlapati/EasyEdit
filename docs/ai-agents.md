@@ -33,7 +33,7 @@ The **AI agents** page (account menu → **AI agents**, or `/agents`) shows the 
 
 No agent can see inside footage yet.
 
-**Roles:** a viewer's agents can read projects but not change them. An editor's agents can create and change them. Every change an agent makes is listed in the editor's **Activity** with the agent's name, for example "Claude (for <name>)" or "ChatGPT (for <name>)", and can be undone there. A change from an agent is refused if the project changed since it last read it, and it is told what changed, so it never overwrites an edit it has not seen.
+**Roles:** everyone in a space can edit, so their agents can create and change projects there. Every change an agent makes is listed in the editor's **Activity** with the agent's name, for example "Claude (for <name>)" or "ChatGPT (for <name>)", and can be undone there. A change from an agent is refused if the project changed since it last read it, and it is told what changed, so it never overwrites an edit it has not seen.
 
 **Limits:** through agents, each member gets 30 changes a minute, 10 MB of change data a day and 50 new projects a day. One page of a read is 16,000 characters; longer projects come in several pages.
 
