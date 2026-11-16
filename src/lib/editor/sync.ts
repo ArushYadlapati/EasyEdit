@@ -59,6 +59,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
   let busy = false; // a request is in flight; requests never overlap
   let halted: Halt | null = null;
   let closing = false; // stopWhenSent() was called: send the queue, poll no more, then stop
+  let limited: string | null = null; // the website's refusal of a save; stays until a save is accepted, so catch-ups cannot show "Saving…" over it
   let failures = 0; // failed tries in a row; above 0 the status is offline (or still signed out, while trying again)
   let retryDue = false; // the wait after the last failure is over
   let quietPolls = 0;
@@ -127,7 +128,12 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
 
   // Saving while edits wait and the last request worked; saved once they are all in.
   function refreshStatus() {
-    if (halted || failures > 0) return;
+    if (halted) return;
+    if (limited !== null) {
+      if (state().status !== "limited") state().setStatus("limited", limited);
+      return;
+    }
+    if (failures > 0) return;
     const next: SyncStatus = state().queue.length > 0 ? "saving" : "saved";
     if (state().status !== next) state().setStatus(next);
   }
@@ -181,6 +187,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
         if (sendingId) state().markSent(sendingId, true);
         failures += 1;
         retryDue = false;
+        limited = failure.message;
         state().setStatus("limited", failure.message);
         if (retryTimer !== null) clearTimeout(retryTimer);
         retryTimer = setTimeout(() => {
@@ -249,6 +256,10 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
     const head = state().queue[0];
     const answer = await api.postOps({ baseVersion: state().server.version, ops: head.ops, requestId: head.id });
     if (!running) return;
+    if (answer.ok || answer.kind === "op" || answer.kind === "conflict") {
+      limited = null; // the website took this save
+      refreshStatus();
+    }
     if (!answer.ok && answer.kind === "conflict") {
       conflicts = { editId: head.id, count: conflicts.editId === head.id ? conflicts.count + 1 : 1 };
       if (conflicts.count >= MAX_CONFLICTS) state().refuse(head.id, "INVALID");

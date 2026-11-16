@@ -544,4 +544,27 @@ describe("a save the website refuses over its limit", () => {
     expect(st()).toMatchObject({ status: "saved", queue: [] });
     expect(st().doc).toEqual(server.doc());
   });
+
+  it("stays limited through the retry's catch-up, so leaving is warned about and nothing is discarded", async () => {
+    const { server, sync, st } = setup();
+    server.fail("limited", 2);
+    st().edit(move(120), "move");
+    await settle();
+    expect(st().status).toBe("limited");
+    st().edit(move(150), "move"); // retries at once: catch-up, then a post that is refused again
+    await vi.advanceTimersByTimeAsync(0);
+    sync.stopWhenSent();
+    await settle();
+    expect(st()).toMatchObject({ status: "limited", limitMessage: LIMIT_MESSAGE });
+    expect(st().queue.length).toBeGreaterThan(0); // the leave check (queue and status not "saving") sees edits at risk
+  });
+
+  it("a later accepted save clears the limited state", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    await after(60_000);
+    expect(st()).toMatchObject({ status: "saved", limitMessage: null, queue: [] });
+  });
 });
