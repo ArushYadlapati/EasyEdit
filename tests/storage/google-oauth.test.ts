@@ -6,7 +6,9 @@ import {
   exchangeCode,
   pkcePair,
   refreshAccess,
+  revokeGrant,
 } from "@/lib/storage/google-oauth";
+import { DriveError } from "@/lib/drive/token";
 import { resetKeyWarning, storageConfig, type StorageConfig } from "@/lib/storage/config";
 import { createHash, randomBytes } from "node:crypto";
 
@@ -144,5 +146,27 @@ describe("refreshAccess", () => {
     const e = await refreshAccess(cfg, "rt", reply(500, {})).catch((x) => x);
     expect(e).not.toBeInstanceOf(ConnectionBrokenError);
     expect(e.status).toBe(500);
+  });
+});
+
+describe("revokeGrant", () => {
+  const answering = (status: number) => vi.fn<typeof fetch>(async () => new Response(status === 200 ? "" : JSON.stringify({ error: "invalid_token" }), { status }));
+
+  it("posts the refresh token to Google's revoke endpoint", async () => {
+    const fetchFn = answering(200);
+    await revokeGrant("rt-1", fetchFn);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchFn.mock.calls[0]!;
+    expect(String(url)).toBe("https://oauth2.googleapis.com/revoke");
+    expect(init?.method).toBe("POST");
+    expect(new URLSearchParams(String(init?.body)).get("token")).toBe("rt-1");
+  });
+
+  it("a token Google no longer knows (400) counts as revoked", async () => {
+    await expect(revokeGrant("gone", answering(400))).resolves.toBeUndefined();
+  });
+
+  it("anything else is a DriveError", async () => {
+    await expect(revokeGrant("rt-1", answering(503))).rejects.toBeInstanceOf(DriveError);
   });
 });

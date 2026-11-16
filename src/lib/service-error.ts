@@ -14,6 +14,9 @@ export type ServiceErrorCode =
   | "LAST_ADMIN"
   | "STORAGE_OWNER"
   | "HAS_PROJECTS"
+  | "NO_STORAGE"
+  | "NOT_OWNER"
+  | "HAS_UPLOADS"
   | "WRONG_ACCOUNT"
   | "EXPIRED"
   | "INVITE_USED";
