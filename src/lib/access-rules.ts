@@ -23,6 +23,6 @@ export async function resolveCurrentUser(db: DB, sessionUser: SessionUser | null
   if (!sessionUser) return null;
   const email = normalizeEmail(sessionUser.email);
   const allowlistRole = await getRole(db, email);
-  if (allowlistRole === null && !(await mayUseEasyEdit(db, { id: sessionUser.id, email }))) return null;
+  if (allowlistRole === null && !(await mayUseEasyEdit(db, { id: sessionUser.id, email }, allowlistRole))) return null;
   return { id: sessionUser.id, email, name: sessionUser.name, image: sessionUser.image ?? null, allowlistRole };
 }

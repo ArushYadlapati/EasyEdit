@@ -26,7 +26,7 @@ export function POST(request: Request): Promise<Response> {
   return requireMcpAuth(
     getAuth(),
     async (req, claims) => {
-      // The token says who is calling. The allowlist and the grant, read now, decide whether they may.
+      // The token says who is calling. Whether they may use EasyEdit and the grant, read now, decide whether they may.
       const caller = await resolveConnectorCaller(getDb(), claims);
       if (!caller.ok) return refusalResponse(caller.reason);
       return serve(req, caller.user, caller.agent);
@@ -38,8 +38,6 @@ export function POST(request: Request): Promise<Response> {
 // The same server for both kinds of token, acting for the member through the named agent.
 async function serve(request: Request, member: CurrentUser, agent: AgentKind): Promise<Response> {
   const ctx = await toolContextFor(member, agent);
-  // Null for a person who is not in Seattle Solvers: the sign-in gate stays the allowlist this stage.
-  if (ctx === null) return refusalResponse("not-allowlisted");
   const handler = createMcpHandler((server) => registerTools(server, ctx), {
     serverInfo: { name: "easyedit", version: "1.0.0" },
     instructions: SERVER_INSTRUCTIONS,
@@ -52,7 +50,7 @@ function bearerToken(request: Request): string | null {
   return match === null ? null : match[1];
 }
 
-// A personal access token: it must be known and unexpired, and its member still on the allowlist, checked now.
+// A personal access token: it must be known and unexpired, and its member still allowed in (resolveCurrentUser), checked now.
 async function withAccessToken(request: Request, token: string): Promise<Response> {
   const db = getDb();
   const resolved = await resolveAgentToken(db, token);

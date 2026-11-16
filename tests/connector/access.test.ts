@@ -99,7 +99,7 @@ describe("who is calling", () => {
     const removed = refusalResponse("not-allowlisted");
     expect(removed.status).toBe(403);
     expect(removed.headers.get("www-authenticate")).toBeNull();
-    expect(await removed.json()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "This Google account isn't on the Seattle Solvers allowlist. Ask an admin to add you." } });
+    expect(await removed.json()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "This account doesn't have access to EasyEdit. Ask a team admin to invite you, or an admin to add you." } });
 
     const ended = refusalResponse("revoked");
     expect(ended.status).toBe(401);

@@ -38,7 +38,7 @@ export async function resolveConnectorCaller(db: DB, claims: { sub?: unknown; az
 }
 
 const REFUSALS = {
-  "not-allowlisted": { status: 403, message: "This Google account isn't on the Seattle Solvers allowlist. Ask an admin to add you." },
+  "not-allowlisted": { status: 403, message: "This account doesn't have access to EasyEdit. Ask a team admin to invite you, or an admin to add you." },
   revoked: { status: 401, message: "This AI agent was disconnected from your EasyEdit account. Connect it again." },
 } as const;
 

@@ -116,7 +116,7 @@ describe("POST /api/mcp", () => {
     const res = await app.rpc(c.accessToken, "tools/call", LIST);
     expect(res.status).toBe(403);
     expect(res.headers.get("www-authenticate")).toBeNull();
-    expect(await res.json()).toMatchObject({ error: { message: "This Google account isn't on the Seattle Solvers allowlist. Ask an admin to add you." } });
+    expect(await res.json()).toMatchObject({ error: { message: "This account doesn't have access to EasyEdit. Ask a team admin to invite you, or an admin to add you." } });
   });
 
   it("a disconnected member is asked to sign in again, and connecting again works", async () => {

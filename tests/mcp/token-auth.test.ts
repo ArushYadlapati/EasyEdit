@@ -7,6 +7,7 @@ import { makeAdminActions } from "@/lib/allowlist/admin-actions";
 import { createAgentToken, revokeAgentToken, TOKEN_PREFIX } from "@/lib/connector/tokens";
 import { agentActorId, claudeActorId } from "@/lib/projects/display-actor";
 import { createProject } from "@/lib/projects/service";
+import { createTeam } from "@/lib/spaces/service";
 import { testActor } from "../helpers/actor";
 import { BASE_URL, MCP_URL, startConnectorApp, type ConnectorApp } from "../helpers/connector";
 
@@ -122,7 +123,17 @@ describe("POST /api/mcp with an access token", () => {
     const res = await app.rpc(m.token, "tools/call", LIST);
     expect(res.status).toBe(403);
     expect(res.headers.get("www-authenticate")).toBeNull();
-    expect(await res.json()).toMatchObject({ error: { message: "This Google account isn't on the Seattle Solvers allowlist. Ask an admin to add you." } });
+    expect(await res.json()).toMatchObject({ error: { message: "This account doesn't have access to EasyEdit. Ask a team admin to invite you, or an admin to add you." } });
+  });
+
+  it("serves a non-allowlisted member of another team while sign-up is closed, and refuses one with no team or invite", async () => {
+    const m = await memberWithToken("team@gmail.com");
+    await app.db.execute(sql`delete from allowlist where email = 'team@gmail.com'`);
+    await app.db.execute(sql`delete from member where id = ${`mt_${m.userId}`}`);
+    expect((await app.rpc(m.token, "tools/call", LIST)).status).toBe(403);
+    await createTeam(app.db, { name: "Robotics Club", byUserId: m.userId });
+    const res = await app.rpc(m.token, "tools/call", LIST);
+    expect(res.status).toBe(200);
   });
 
   it("stops working when an admin removes the member", async () => {
