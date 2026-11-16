@@ -9,4 +9,5 @@ it("labels the save status", () => {
   expect(saveStatusLabel("offline", 0, true)).toBe("Offline");
   expect(saveStatusLabel("signed-out", 1, true)).toBe("Signed out");
   expect(saveStatusLabel("deleted", 0, true)).toBe("Deleted");
+  expect(saveStatusLabel("limited", 1, true, "Too many changes at once. Wait a minute, then keep going.")).toBe("Too many changes at once. Wait a minute, then keep going.");
 });

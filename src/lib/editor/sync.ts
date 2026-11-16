@@ -9,6 +9,8 @@ import type { EditorStore } from "./store";
 import type { ActivityEntry, SyncStatus } from "./types";
 
 export const RETRY_DELAYS_MS = [2000, 4000, 8000, 16000, 30000]; // the last one repeats
+// A save the website refuses over a limit waits longer than a network failure, and tries sooner when the person edits again.
+export const LIMIT_RETRY_MS = 60_000;
 export const PULL_PAGE = LIMITS.opsPageMax;
 
 // Indexed by the number of polls since the last activity; the last one repeats.
@@ -175,6 +177,19 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
         reached();
         if (state().canEdit) state().revokeEditing();
         return;
+      case "limited": {
+        if (sendingId) state().markSent(sendingId, true);
+        failures += 1;
+        retryDue = false;
+        state().setStatus("limited", failure.message);
+        if (retryTimer !== null) clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          retryDue = true;
+          pump();
+        }, LIMIT_RETRY_MS);
+        return;
+      }
       default: {
         // A network failure, or an answer that makes no sense for this request: wait and try again.
         if (sendingId) state().markSent(sendingId, true);
@@ -399,7 +414,10 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
         }
         if (next.queue === prev.queue) return;
         const last = next.queue.at(-1);
-        if (last && !prev.queue.some((e) => e.id === last.id)) activity();
+        if (last && !prev.queue.some((e) => e.id === last.id)) {
+          activity();
+          if (state().status === "limited") retryDue = true; // a new edit tries the refused save again
+        }
         refreshStatus();
         void pump();
       });

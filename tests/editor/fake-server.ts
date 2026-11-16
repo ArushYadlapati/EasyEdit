@@ -2,7 +2,9 @@ import type { ProjectApi } from "@/lib/editor/api";
 import type { ActivityEntry } from "@/lib/editor/types";
 import { OpError, applyOps, prepareOps, type Op, type OpInput, type TimelineDoc } from "@/lib/timeline";
 
-type Failure = "network" | "signed-out" | "forbidden" | "not-found" | "conflict";
+type Failure = "network" | "signed-out" | "forbidden" | "not-found" | "conflict" | "limited";
+
+export const LIMIT_MESSAGE = "Today's limit for saved changes is used up (20 MB a day). It frees up over the next 24 hours.";
 
 // What survives the trip over the network: keys set to undefined are dropped, and nothing is shared by reference.
 const wire = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -30,6 +32,7 @@ export function makeFakeServer(initial: TimelineDoc, startVersion: number) {
     calls.push(name);
     const kind = failures.shift();
     if (!kind) return null;
+    if (kind === "limited") return { ok: false, kind, message: LIMIT_MESSAGE } as const;
     return kind === "conflict" ? ({ ok: false, kind, currentVersion: version } as const) : ({ ok: false, kind } as const);
   }
 

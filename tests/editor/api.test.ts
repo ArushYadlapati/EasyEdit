@@ -75,6 +75,8 @@ describe("project api", () => {
     [401, { code: "UNAUTHENTICATED", message: "m" }, { ok: false, kind: "signed-out" }],
     [403, { code: "FORBIDDEN", message: "m" }, { ok: false, kind: "forbidden" }],
     [404, { code: "NOT_FOUND", message: "m" }, { ok: false, kind: "not-found" }],
+    [429, { code: "LIMIT_EXCEEDED", message: "Too many changes at once. Wait a minute, then keep going." }, { ok: false, kind: "limited", message: "Too many changes at once. Wait a minute, then keep going." }],
+    [429, { code: "RATE", message: "m" }, { ok: false, kind: "network" }],
     [500, { code: "INTERNAL", message: "m" }, { ok: false, kind: "network" }],
   ])("maps status %i to a typed failure", async (status, body, expected) => {
     expect(await apiWith(() => json(status, body)).api.postOps({ baseVersion: 5, ops: [] })).toEqual(expected);

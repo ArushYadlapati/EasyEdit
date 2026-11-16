@@ -62,7 +62,7 @@ export function explainOpError(code: OpErrorCode): string {
 }
 
 // The top bar's save status. A viewer has nothing to save, so "Saved" reads as "Up to date".
-export function saveStatusLabel(status: SyncStatus, pending: number, canEdit: boolean): string {
+export function saveStatusLabel(status: SyncStatus, pending: number, canEdit: boolean, limitMessage?: string | null): string {
   switch (status) {
     case "saved":
       return canEdit ? "Saved" : "Up to date";
@@ -70,6 +70,8 @@ export function saveStatusLabel(status: SyncStatus, pending: number, canEdit: bo
       return "Saving…";
     case "offline":
       return pending > 0 ? "Offline. Changes will save when you reconnect." : "Offline";
+    case "limited":
+      return limitMessage ?? "Changes are waiting to save."; // the server's own sentence
     case "signed-out":
       return "Signed out";
     case "deleted":

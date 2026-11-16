@@ -100,7 +100,8 @@ export type EditorState = {
   refuse(editId: string, code: OpErrorCode): void;
   applyRemote(entries: ActivityEntry[]): boolean; // false: an entry is missing or does not apply; the caller reloads
   replaceServer(doc: TimelineDoc, version: number): void;
-  setStatus(status: SyncStatus): void;
+  limitMessage: string | null; // why saving waits, while the status is "limited"
+  setStatus(status: SyncStatus, limitMessage?: string): void;
   revokeEditing(): void;
   // playback, open to viewers too
   play(): void; // from the start when the playhead is at the end; not in a project with no clips
@@ -319,6 +320,7 @@ export function createEditorStore(
       fitRequest: 0,
       snapping: deps.view?.snapping ?? true, // view: what this browser kept, which the caller read
       status: "saved",
+      limitMessage: null,
       notice: null,
       undoStack: [],
       redoStack: [],
@@ -571,8 +573,8 @@ export function createEditorStore(
         rebaseAndTell(state, { doc, version }, state.queue);
       },
 
-      setStatus(status) {
-        set({ status });
+      setStatus(status, limitMessage) {
+        set({ status, limitMessage: status === "limited" ? (limitMessage ?? null) : null });
       },
 
       revokeEditing() {

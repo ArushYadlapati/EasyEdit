@@ -370,6 +370,14 @@ it("the server's sentence shows in the dialog", async () => {
   expect(errors).not.toHaveBeenCalled();
 });
 
+it("the daily project limit's sentence shows in the dialog", async () => {
+  const text = "You've reached today's limit for new projects (25). It frees up over the next 24 hours.";
+  action = vi.fn<Action>(async () => ({ error: text }));
+  render(dialog());
+  await clickCreate();
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(text));
+});
+
 it("a create that fails without an answer says so in the dialog", async () => {
   action = vi.fn<Action>(async () => {
     throw new TypeError("Failed to fetch");

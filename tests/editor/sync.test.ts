@@ -3,7 +3,7 @@ import { MESSAGES } from "@/lib/editor/messages";
 import { findClip } from "@/lib/editor/store";
 import { POLL_IDLE_LIMIT_MS, createSync, nextPollDelay } from "@/lib/editor/sync";
 import type { Op, OpInput } from "@/lib/timeline";
-import { makeFakeServer } from "./fake-server";
+import { LIMIT_MESSAGE, makeFakeServer } from "./fake-server";
 import { entry, makeStore, sampleDoc, text } from "./fixtures";
 
 const move = (start: number): OpInput[] => [{ op: "move_clip", clipId: "x2", start }];
@@ -500,5 +500,48 @@ describe("stopping", () => {
     sync.start();
     await after(2000);
     expect(server.calls).toEqual(["version"]);
+  });
+});
+
+describe("a save the website refuses over its limit", () => {
+  it("keeps the change, shows the server's message, and retries after a minute", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    expect(st()).toMatchObject({ status: "limited", limitMessage: LIMIT_MESSAGE });
+    expect(st().queue).toHaveLength(1);
+    expect(findClip(st().doc, "x2")!.clip.start).toBe(120); // not reverted
+    await after(59_000);
+    expect(st().status).toBe("limited");
+    await after(1_000);
+    expect(st()).toMatchObject({ status: "saved", queue: [], limitMessage: null });
+    expect(server.log).toHaveLength(1);
+  });
+
+  it("retries when the person edits again, and the message clears once it lands", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    st().edit(move(150), "move");
+    await settle();
+    expect(st()).toMatchObject({ status: "saved", queue: [], limitMessage: null });
+    expect(server.log.map((e) => e.ops[0])).toMatchObject([{ start: 120 }, { start: 150 }]);
+  });
+
+  it("undo is refused the same way and goes through later", async () => {
+    const { server, st } = setup();
+    st().edit(move(120), "move");
+    await settle();
+    server.fail("limited");
+    st().undo();
+    await settle();
+    expect(st()).toMatchObject({ status: "limited", limitMessage: LIMIT_MESSAGE });
+    expect(st().queue).toHaveLength(1);
+    expect(st().redoStack).toHaveLength(1); // history intact
+    await after(60_000);
+    expect(st()).toMatchObject({ status: "saved", queue: [] });
+    expect(st().doc).toEqual(server.doc());
   });
 });
