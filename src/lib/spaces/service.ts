@@ -142,9 +142,10 @@ const SLUG_EXHAUSTED = "Couldn't make a web address for that name. Try a differe
 const TEAM_NAME_INVALID = `Give the team a name of up to ${LIMITS.teamNameChars} characters.`;
 const TEAM_NAME_PERSONAL = 'Pick a different name. "Personal" is your own space.';
 
-// Characters a name could hide or reorder text with: C0 and C1 controls (and DEL), zero-width spaces and joiners,
-// direction marks, embeddings and overrides, invisible operators and isolates, and the byte order mark.
-const HIDDEN_CHARS = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
+// Characters a name could hide or reorder text with: C0 and C1 controls (and DEL), the Arabic letter mark, soft hyphen,
+// combining grapheme joiner, Mongolian vowel separator, zero-width spaces and joiners, direction marks, embeddings and
+// overrides, invisible operators and isolates, the byte order mark, and the tag block (outside the BMP, hence the u flag).
+const HIDDEN_CHARS = /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u034F\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu;
 
 // A team's name as it is kept: runs of whitespace (tabs and newlines too) become one space, hidden characters go, and
 // the ends are trimmed.

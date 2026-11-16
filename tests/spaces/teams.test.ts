@@ -37,6 +37,29 @@ describe("team names and slugs", () => {
     expect((await createTeam(db, { name: padded, byUserId: "u1" })).name).toBe("x".repeat(LIMITS.teamNameChars));
   });
 
+  it("strips the remaining hidden characters: soft hyphen, Arabic letter mark, combining grapheme joiner, Mongolian vowel separator and tags", async () => {
+    const db = await setup();
+    const cases: [string, string][] = [
+      ["A­B", "AB"],
+      ["A؜B", "AB"],
+      ["A͏B", "AB"],
+      ["A᠎B", "AB"],
+      ["A\u{E0001}B", "AB"],
+      ["A\u{E007F}B", "AB"],
+      ["A\u{E0020}\u{E0041}B", "AB"],
+    ];
+    for (const [name, expected] of cases) {
+      expect((await createTeam(db, { name, byUserId: "u1" })).name, JSON.stringify(name)).toBe(expected);
+    }
+  });
+
+  it("refuses a name made only of the new hidden characters, with the usual message", async () => {
+    const db = await setup();
+    for (const name of ["­؜͏᠎", "\u{E0001}\u{E007F}"]) {
+      await expect(createTeam(db, { name, byUserId: "u1" }), JSON.stringify(name)).rejects.toMatchObject({ code: "INVALID", message: "Give the team a name of up to 60 characters." });
+    }
+  });
+
   it("refuses a name that is empty once cleaned, with the usual message", async () => {
     const db = await setup();
     for (const name of ["\u200B\u200C\u200D", "\u202A\u202B\u202C\u202D\u202E", "\u2060\u2069\uFEFF", "\u0001 \u009F \t"]) {
