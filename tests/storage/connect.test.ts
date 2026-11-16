@@ -453,11 +453,41 @@ describe("connections", () => {
     expect(fake.calls.length).toBe(0); // Google was never asked
     const [row] = await db.select().from(driveConnection);
     expect(row.brokenAt).toBeInstanceOf(Date);
+    expect(row.brokenReason).toBe("key");
     expect((await listConnections(db, "u1"))[0].broken).toBe(true);
     // Reconnecting seals a new token with the current key and mends it.
     await saveConnection(db, cfg, { userId: "u1", googleSub: "s1", email, refreshToken, scopes: [DRIVE_FILE_SCOPE] });
     const { accessToken } = await (await connectionAccess(db, cfg, saved.id, fake.fetch)).token();
     expect(fake.whoHas(accessToken)?.email).toBe("ada@gmail.com");
+  });
+
+  it("a connection broken by the wrong key heals when the right key is back; one Google revoked does not", async () => {
+    const db = await makeTestDb();
+    await joinSpace(db, { id: "u1" }, "admin");
+    const fake = makeFakeDrive();
+    const { refreshToken, email } = fake.connect({ email: "ada@gmail.com" });
+    const wrong: StorageConfig = { ...cfg, tokenKey: randomBytes(32) };
+    const saved = await saveConnection(db, cfg, { userId: "u1", googleSub: "s1", email, refreshToken, scopes: [DRIVE_FILE_SCOPE] });
+    forgetAllSources();
+    await expect((await connectionAccess(db, wrong, saved.id, fake.fetch)).token()).rejects.toBeInstanceOf(ConnectionBrokenError);
+    expect(fake.calls.length).toBe(0);
+    expect((await db.select().from(driveConnection))[0].brokenReason).toBe("key");
+    // Still the wrong key: stays broken.
+    await expect((await connectionAccess(db, wrong, saved.id, fake.fetch)).token()).rejects.toBeInstanceOf(ConnectionBrokenError);
+    expect((await listConnections(db, "u1"))[0].broken).toBe(true);
+    // The right key is back.
+    const { accessToken } = await (await connectionAccess(db, cfg, saved.id, fake.fetch)).token();
+    expect(fake.whoHas(accessToken)?.email).toBe("ada@gmail.com");
+    expect((await db.select().from(driveConnection))[0]).toMatchObject({ brokenAt: null, brokenReason: null });
+    expect((await listConnections(db, "u1"))[0].broken).toBe(false);
+
+    // A real revocation is not healed, whatever the key.
+    fake.revoke(refreshToken);
+    forgetAllSources();
+    await expect((await connectionAccess(db, cfg, saved.id, fake.fetch)).token()).rejects.toBeInstanceOf(ConnectionBrokenError);
+    expect((await db.select().from(driveConnection))[0].brokenReason).toBe("revoked");
+    await expect((await connectionAccess(db, cfg, saved.id, fake.fetch)).token()).rejects.toBeInstanceOf(ConnectionBrokenError);
+    expect((await db.select().from(driveConnection))[0].brokenReason).toBe("revoked");
   });
 
   it("a refresh that started with the old token and fails after a reconnect doesn't mark the new token broken", async () => {

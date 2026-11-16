@@ -46,16 +46,16 @@ export async function listConnections(db: DB, userId: string): Promise<Connectio
   return rows.map(toConnection);
 }
 
-// A token the current key can't open (the key was changed) is as good as gone: it reads as a connection that needs
-// reconnecting, like a revoked one, and Google is not asked.
-function openToken(sealed: string, cfg: StorageConfig): string {
+// Why a row is broken when its sealed token won't open with the server's key.
+const KEY_REASON = "key";
+const opens = (sealed: string, cfg: StorageConfig) => {
   try {
-    return open(sealed, cfg.tokenKey);
-  } catch (error) {
-    if (error instanceof SecretBoxError) throw new ConnectionBrokenError("unknown");
-    throw error;
+    open(sealed, cfg.tokenKey);
+    return true;
+  } catch {
+    return false;
   }
-}
+};
 
 // Access tokens for the connection, refreshed from its sealed refresh token. When Google says the connection is gone
 // (invalid_grant), the row is marked broken and the ConnectionBrokenError comes out. A connection already marked broken
@@ -67,7 +67,17 @@ export async function connectionAccess(db: DB, cfg: StorageConfig, connectionId:
   const [row] = await db.select().from(driveConnection).where(eq(driveConnection.id, connectionId));
   if (!row) throw new Error(`No Drive connection ${connectionId}`);
   const prefix = `connection:${connectionId}:`;
-  if (row.brokenAt !== null) {
+  // A row broken because its token wouldn't open ("key") heals when the right key is back: tried again here, with no
+  // call to Google. One broken by Google (revoked, expired) is never healed this way.
+  let brokenAt = row.brokenAt;
+  if (brokenAt !== null && row.brokenReason === KEY_REASON && opens(row.refreshTokenEnc, cfg)) {
+    await db
+      .update(driveConnection)
+      .set({ brokenAt: null, brokenReason: null })
+      .where(and(eq(driveConnection.id, connectionId), eq(driveConnection.refreshTokenEnc, row.refreshTokenEnc), eq(driveConnection.brokenReason, KEY_REASON)));
+    brokenAt = null;
+  }
+  if (brokenAt !== null) {
     forgetSources(prefix);
     const reason = brokenReason(row.brokenReason);
     return { token: () => Promise.reject(new ConnectionBrokenError(reason)) };
@@ -78,18 +88,29 @@ export async function connectionAccess(db: DB, cfg: StorageConfig, connectionId:
   return keptSource(key, [fetchFn], () =>
     connectionSource({
       refresh: async () => {
+        // Only while the row still holds the token this source was built from: a reconnect that saved a new one
+        // in the meantime must not be marked broken by the old token's failure.
+        const markBroken = async (reason: string) => {
+          forgetSources(prefix);
+          await db
+            .update(driveConnection)
+            .set({ brokenAt: sql`now()`, brokenReason: reason })
+            .where(and(eq(driveConnection.id, connectionId), eq(driveConnection.refreshTokenEnc, sealed)));
+        };
+        let refresh: string;
         try {
-          return await refreshAccess(cfg, openToken(sealed, cfg), fetchFn);
+          refresh = open(sealed, cfg.tokenKey);
+        } catch (cause) {
+          // The key can't open the token (it was changed): reads as a connection that needs reconnecting, and Google
+          // is not asked. Stored as "key" so the right key coming back heals it; shown as "unknown".
+          if (!(cause instanceof SecretBoxError)) throw cause;
+          await markBroken(KEY_REASON);
+          throw new ConnectionBrokenError("unknown");
+        }
+        try {
+          return await refreshAccess(cfg, refresh, fetchFn);
         } catch (error) {
-          if (error instanceof ConnectionBrokenError) {
-            forgetSources(prefix);
-            // Only while the row still holds the token this source was built from: a reconnect that saved a new one
-            // in the meantime must not be marked broken by the old token's failure.
-            await db
-              .update(driveConnection)
-              .set({ brokenAt: sql`now()`, brokenReason: error.reason })
-              .where(and(eq(driveConnection.id, connectionId), eq(driveConnection.refreshTokenEnc, sealed)));
-          }
+          if (error instanceof ConnectionBrokenError) await markBroken(error.reason);
           throw error;
         }
       },
