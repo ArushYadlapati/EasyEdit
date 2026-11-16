@@ -47,7 +47,6 @@ vi.mock("@/app/(dashboard)/dashboard/actions", () => ({
 }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }));
 vi.mock("@/app/(dashboard)/s/new/actions", () => ({ createTeamAction: vi.fn() }));
-vi.mock("@/app/(dashboard)/s/[space]/settings/storage/actions", () => ({ chooseConnectionAction: vi.fn() }));
 vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => signedIn.user!),
   meetsRole: (await import("@/lib/access-rules")).meetsRole,

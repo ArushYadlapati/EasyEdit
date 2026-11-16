@@ -7,7 +7,6 @@ import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace } from "@/lib/spaces/service";
 import { storageSettings } from "@/lib/storage/settings-view";
-import { chooseConnectionAction } from "./actions";
 
 // Where a space keeps its videos, and the ways to change it, for its admins (a personal space's owner is one).
 // Anyone else gets a plain 404. ?storage=<note> is what connecting a Google account came back with; ?first=1, a team
@@ -23,5 +22,5 @@ export default async function StorageSettingsPage({ params, searchParams }: Page
   const { storage, first } = await searchParams;
   const note = (Array.isArray(storage) ? storage[0] : storage) ?? null;
 
-  return <StorageSettings view={view} note={note} first={first === "1"} choose={chooseConnectionAction.bind(null, space.id)} />;
+  return <StorageSettings view={view} note={note} first={first === "1"} />;
 }

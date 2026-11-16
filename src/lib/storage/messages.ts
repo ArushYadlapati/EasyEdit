@@ -26,10 +26,11 @@ export const STORAGE_MESSAGES = {
   firstRun: "Choose where this team's videos are stored.",
   ownFolder: "EasyEdit keeps the videos in a folder of its own there, and can't see your other files.",
   serverNotSetUp: "Storage isn't set up on this server yet.",
-  connect: "Connect Google Drive",
   reconnect: "Reconnect",
   useDifferent: "Use a different Google account",
-  accountChoice: (email: string) => `Use ${email}`, // "Use <email>"
+  chooseGoogleAccount: "Choose Google account",
+  // One Google account holds one space's storage, so the setup screen says so before Google's account picker.
+  oneAccountOneSpace: "Each Google account can store videos for only one space: your Personal space or one team. Pick one that isn't already in use.",
   chooseAccount: "Choose account",
   banner: "Google Drive needs reconnecting. Uploads are paused until an admin reconnects it.",
   // A choice of account that didn't go through.

@@ -32,8 +32,7 @@ vi.mock("next/navigation", () => ({
   },
   unstable_rethrow: () => {},
 }));
-const { signedIn, choose } = vi.hoisted(() => ({ signedIn: { user: null as CurrentUser | null }, choose: vi.fn(async () => ({})) }));
-vi.mock("@/app/(dashboard)/s/[space]/settings/storage/actions", () => ({ chooseConnectionAction: choose }));
+const { signedIn } = vi.hoisted(() => ({ signedIn: { user: null as CurrentUser | null } }));
 vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => signedIn.user!),
   meetsRole: (await import("@/lib/access-rules")).meetsRole,
@@ -57,9 +56,9 @@ const inAccount = (over: Partial<Extract<StorageSettingsView["storage"], { kind:
   ...over,
 });
 
-function show(view: Partial<StorageSettingsView> = {}, extra: { note?: string | null; first?: boolean; choose?: typeof choose } = {}) {
+function show(view: Partial<StorageSettingsView> = {}, extra: { note?: string | null; first?: boolean } = {}) {
   const full: StorageSettingsView = { space: PERSONAL, storage: { kind: "none" }, connections: [], blocked: null, ...view };
-  return render(<StorageSettings view={full} note={extra.note ?? null} first={extra.first ?? false} choose={extra.choose ?? choose} />);
+  return render(<StorageSettings view={full} note={extra.note ?? null} first={extra.first ?? false} />);
 }
 
 const link = (name: string) => screen.getByRole<HTMLAnchorElement>("link", { name });
@@ -75,8 +74,6 @@ const isPrimary = (element: HTMLElement) => element.className.split(/\s+/).inclu
 beforeEach(() => {
   router.replace.mockClear();
   router.refresh.mockClear();
-  choose.mockReset();
-  choose.mockResolvedValue({});
 });
 
 describe("the storage settings", () => {
@@ -119,45 +116,30 @@ describe("the storage settings", () => {
     expect(link("Reconnect")).toBeTruthy();
   });
 
-  it("none, with no connection yet: Connect Google Drive", () => {
+  it("none: one Choose Google account, through Google's own account picker, with the one-space rule", () => {
     show();
     expect(screen.getByText("Pick a Google account for your own videos.")).toBeTruthy();
-    expect(connectQuery("Connect Google Drive")).toEqual({ space: "personal_u1" });
-    expect(isPrimary(link("Connect Google Drive"))).toBe(true);
+    expect(connectQuery("Choose Google account")).toEqual({ space: "personal_u1" });
+    expect(isPrimary(link("Choose Google account"))).toBe(true);
+    expect(
+      screen.getByText("Each Google account can store videos for only one space: your Personal space or one team. Pick one that isn't already in use."),
+    ).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Use a different Google account" })).toBeNull();
   });
 
-  it("none, with the person's connections: Use <email> for each, and Use a different Google account", async () => {
-    show({ connections: [{ id: "dc_1", email: "ada@gmail.com", broken: false }, { id: "dc_2", email: "ada.school@gmail.com", broken: false }] });
-    expect(button("Use ada@gmail.com")).toBeTruthy();
-    expect(button("Use ada.school@gmail.com")).toBeTruthy();
-    expect(connectQuery("Use a different Google account")).toEqual({ space: "personal_u1" });
-    expect(screen.queryByRole("link", { name: "Connect Google Drive" })).toBeNull();
-
-    await act(async () => fireEvent.click(button("Use ada.school@gmail.com")));
-    expect(choose).toHaveBeenCalledTimes(1);
-    expect((choose.mock.calls[0] as unknown as [FormData])[0].get("connectionId")).toBe("dc_2");
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/s/personal/settings/storage?storage=connected"));
-  });
-
-  it("a connection Google ended goes back through Google, for that account", () => {
-    show({ connections: [{ id: "dc_1", email: "ada@gmail.com", broken: true }] });
-    expect(connectQuery("Use ada@gmail.com")).toEqual({ space: "personal_u1", hint: "ada@gmail.com" });
-  });
-
-  it("a choice that is refused says why, and can be tried again", async () => {
-    choose.mockResolvedValueOnce({ error: "Team storage isn't set up on this server yet." });
-    show({ space: TEAM, connections: [{ id: "dc_1", email: "ada@gmail.com", broken: false }] });
-    await act(async () => fireEvent.click(button("Use ada@gmail.com")));
-    expect((await screen.findByRole("alert")).textContent).toBe("Team storage isn't set up on this server yet.");
-    expect(button("Use ada@gmail.com").disabled).toBe(false);
-    expect(router.replace).not.toHaveBeenCalled();
+  it("none, with the person's connections: still only Choose Google account, never a Use <email> per account", () => {
+    // A connected account may already hold another space's storage, so none is offered as a one-click choice.
+    show({ space: TEAM, connections: [{ id: "dc_1", email: "ada@gmail.com", broken: false }, { id: "dc_2", email: "ada.school@gmail.com", broken: true }] });
+    expect(connectQuery("Choose Google account")).toEqual({ space: "team_robots" });
+    expect(screen.queryByText(/Use ada/)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
   it("a team without storage: the first-run note above the choices", () => {
     const first = show({ space: TEAM }, { first: true });
     const note = screen.getByText("Choose where this team's videos are stored.");
-    const connect = link("Connect Google Drive");
+    const connect = link("Choose Google account");
     expect(note.compareDocumentPosition(connect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     first.unmount();
     show({ space: TEAM });
@@ -201,7 +183,7 @@ describe("the storage settings", () => {
   it("a team just made, not blocked: the note, the choices, and Set this up later", () => {
     show({ space: TEAM }, { first: true });
     expect(screen.getByText("Choose where this team's videos are stored.")).toBeTruthy();
-    expect(link("Connect Google Drive")).toBeTruthy();
+    expect(link("Choose Google account")).toBeTruthy();
     const later = link("Set this up later");
     expect(later.getAttribute("href")).toBe("/s/robots");
     expect(isPrimary(later)).toBe(false);
@@ -267,7 +249,7 @@ describe("the storage settings page", () => {
   it("an admin sees the space's storage; here, a server with no storage settings", async () => {
     await storagePage(ada, "personal");
     expect(screen.getByText("Storage isn't set up on this server yet.")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Connect Google Drive" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Choose Google account" })).toBeNull();
   });
 
   it("Seattle Solvers' admins see its shared drive", async () => {

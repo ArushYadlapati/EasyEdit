@@ -29,7 +29,7 @@ export type ConnectHandlerDeps = {
   block?: (kind: SpaceKind) => StorageBlock;
 };
 
-// What the browser keeps between pressing "Connect Google Drive" and Google sending it back: sealed with the token key,
+// What the browser keeps between pressing "Choose Google account" and Google sending it back: sealed with the token key,
 // so it can't be read or made up. Only /api/storage gets it.
 export const OAUTH_COOKIE = "ee_storage_oauth";
 const COOKIE_PATH = "/api/storage";

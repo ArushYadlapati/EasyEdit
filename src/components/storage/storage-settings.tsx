@@ -1,22 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useId, type ReactNode } from "react";
-import { useAction } from "@/app/(app)/action-ui";
 import { StorageNote } from "@/components/storage/storage-banner";
 import { Button } from "@/components/ui/button";
 import { linkButtonClass } from "@/components/ui/button-class";
-import { SETUP_CARD, STORAGE_MESSAGES, connectHref, settingsNote, storageSettingsPath, usageLine } from "@/lib/storage/messages";
+import { SETUP_CARD, STORAGE_MESSAGES, connectHref, settingsNote, usageLine } from "@/lib/storage/messages";
 import { spacePath } from "@/lib/spaces/paths";
 import type { StorageSettingsView } from "@/lib/storage/settings-view";
-import type { StorageFormState } from "@/lib/storage/storage-actions";
 
 export type StorageSettingsProps = {
   view: StorageSettingsView;
   note: string | null; // ?storage=… as the address has it; only the known ones say anything
   first: boolean; // just after creating the team (?first=1)
-  choose(formData: FormData): Promise<StorageFormState>; // "Use <email>", with the space bound
 };
 
 const TEXT = "text-[13px] leading-5 text-ed-text";
@@ -37,22 +33,12 @@ function ConnectLink({ href, primary, children }: { href: string; primary?: bool
 
 // The storage tab of a space's settings, for its admins: where its videos are stored, and the ways to change that
 // this server can carry out. Nothing here sends anyone to Google when the server couldn't finish the connect.
-export function StorageSettings({ view, note, first, choose }: StorageSettingsProps): ReactNode {
-  const router = useRouter();
-  const chosen = useAction(choose);
+export function StorageSettings({ view, note, first }: StorageSettingsProps): ReactNode {
   const headingId = useId();
-  const { space, storage, connections, blocked } = view;
+  const { space, storage, blocked } = view;
   const shown = settingsNote(note);
   const firstRun = first && space.kind === "team"; // a team just made, with no storage yet
   const blockedText = blocked === "server" ? STORAGE_MESSAGES.serverNotSetUp : null;
-
-  function pick(connectionId: string) {
-    const formData = new FormData();
-    formData.set("connectionId", connectionId);
-    chosen.submit(formData, {
-      onSuccess: () => router.replace(`${storageSettingsPath(space.slug)}?storage=connected`),
-    });
-  }
 
   function current(): ReactNode {
     if (storage.kind === "shared_folder") return <p className={TEXT}>{STORAGE_MESSAGES.sharedFolder}</p>;
@@ -127,41 +113,15 @@ export function StorageSettings({ view, note, first, choose }: StorageSettingsPr
         {firstRun && <p className="text-sm font-semibold text-ed-text">{STORAGE_MESSAGES.firstRun}</p>}
         {intro !== null && <p className={TEXT}>{intro}</p>}
         <div className="flex flex-col gap-2">
-          {connections.length === 0 ? (
-            <div className={ROW}>
-              <ConnectLink href={connectHref(space.id)} primary>
-                {STORAGE_MESSAGES.connect}
-              </ConnectLink>
-            </div>
-          ) : (
-            <>
-              <ul aria-label="Your Google accounts" className="flex flex-col items-start gap-2">
-                {connections.map((connection) => (
-                  <li key={connection.id} className={FITS}>
-                    {/* Google ended this one: choosing it goes back through Google's screen, for that account. */}
-                    {connection.broken ? (
-                      <ConnectLink href={connectHref(space.id, connection.email)} primary>
-                        {STORAGE_MESSAGES.accountChoice(connection.email)}
-                      </ConnectLink>
-                    ) : (
-                      <Button variant="primary" className={FITS} disabled={chosen.pending} onClick={() => pick(connection.id)}>
-                        <span className={LABEL}>{STORAGE_MESSAGES.accountChoice(connection.email)}</span>
-                      </Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <div className={ROW}>
-                <ConnectLink href={connectHref(space.id)}>{STORAGE_MESSAGES.useDifferent}</ConnectLink>
-              </div>
-            </>
-          )}
+          {/* One way in: Google's own account picker. A connected account can't be offered as a one-click choice,
+              because it may already hold another space's storage (one Google account, one space). */}
+          <div className={ROW}>
+            <ConnectLink href={connectHref(space.id)} primary>
+              {STORAGE_MESSAGES.chooseGoogleAccount}
+            </ConnectLink>
+          </div>
+          <p className={MUTED}>{STORAGE_MESSAGES.oneAccountOneSpace}</p>
           <p className={MUTED}>{STORAGE_MESSAGES.ownFolder}</p>
-          {chosen.error !== null && (
-            <p role="alert" className="text-[13px] leading-5 text-ed-danger">
-              {chosen.error}
-            </p>
-          )}
           {/* Nobody is held on this page after making a team. */}
           {firstRun && (
             <div className={ROW}>

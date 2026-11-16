@@ -74,7 +74,7 @@ type Ctx = Awaited<ReturnType<typeof setup>>;
 const cookiesOf = (res: Response) => res.headers.getSetCookie();
 const valueOf = (setCookie: string) => setCookie.split(";")[0].slice(COOKIE.length + 1);
 
-// Presses "Connect Google Drive": the redirect to Google, its state, and the cookie the browser keeps.
+// Presses "Choose Google account": the redirect to Google, its state, and the cookie the browser keeps.
 async function start(ctx: Ctx, query = `space=${SEED_TEAM_ID}`, base = BASE) {
   const res = await ctx.handlers.connect(new Request(`${base}/api/storage/connect?${query}`));
   expect(res.status).toBe(302);
