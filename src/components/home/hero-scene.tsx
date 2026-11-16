@@ -74,6 +74,9 @@ const ACTIVITY: Record<string, { who: string; what: string; at: number }[]> = {
 
 export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
   const [active, setActive] = useState(0);
+  // The scene fading out, kept on screen as it ended (its overlay stays mounted, its clip keeps its zoom) for the
+  // length of the crossfade, so nothing snaps back while it goes.
+  const [leaving, setLeaving] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
   const [still, setStill] = useState(false);
   const videos = useRef<(HTMLVideoElement | null)[]>([]);
@@ -90,9 +93,18 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
   useEffect(() => {
     if (paused) return;
     const ms = SCENES[active].ms;
-    const t = window.setTimeout(() => setActive((i) => (i + 1) % SCENES.length), still ? ms * 2 : ms);
+    const t = window.setTimeout(() => {
+      setLeaving(active);
+      setActive((active + 1) % SCENES.length);
+    }, still ? ms * 2 : ms);
     return () => window.clearTimeout(t);
   }, [active, paused, still]);
+
+  useEffect(() => {
+    if (leaving === null) return;
+    const t = window.setTimeout(() => setLeaving(null), 600);
+    return () => window.clearTimeout(t);
+  }, [leaving]);
 
   useEffect(() => {
     videos.current.forEach((video, i) => {
@@ -171,7 +183,9 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                     videos.current[i] = el;
                   }}
                   className="h-edVideo"
+                  data-key={s.key}
                   data-on={i === active || undefined}
+                  data-leaving={i === leaving || undefined}
                   src={s.video}
                   poster={s.poster}
                   muted
@@ -180,47 +194,13 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                   preload={i === active || i === (active + 1) % SCENES.length ? "auto" : "metadata"}
                 />
               ))}
-              <div key={scene.key} className="h-edOverlay">
-                {scene.key === "ai" && (
-                  // Claude adds the title over the group, then moves it up into the dark sky where it reads.
-                  <span className="h-edTitle h-edTitleNew">Summer nights</span>
-                )}
-                {scene.key === "team" && (
-                  <>
-                    {/* Sam puts the city and the time over the busy middle of the shot. Mika takes the whole clip,
-                        enlarges it and moves it so the dark sky sits behind the words. Then Priya changes the font. */}
-                    <span className="h-edMika">
-                      <span className="h-edPeerTag">Mika</span>
-                      <span className="h-edHandle" data-at="tl" />
-                      <span className="h-edHandle" data-at="tr" />
-                      <span className="h-edHandle" data-at="bl" />
-                      <span className="h-edHandle" data-at="br" />
-                    </span>
-                    <span className="h-edTitle h-edPeerTitle">
-                      <span className="h-edFontA">Shibuya, 2 a.m.</span>
-                      <span className="h-edFontB">Shibuya, 2 a.m.</span>
-                      <span className="h-edSam">
-                        <span className="h-edPeerTag">Sam</span>
-                        <span className="h-edHandle" data-at="tl" />
-                        <span className="h-edHandle" data-at="tr" />
-                        <span className="h-edHandle" data-at="bl" />
-                        <span className="h-edHandle" data-at="br" />
-                      </span>
-                      <span className="h-edPriya">
-                        <span className="h-edPeerTag">Priya</span>
-                        <span className="h-edHandle" data-at="tl" />
-                        <span className="h-edHandle" data-at="tr" />
-                        <span className="h-edHandle" data-at="bl" />
-                        <span className="h-edHandle" data-at="br" />
-                        <svg className="h-edCursor" viewBox="0 0 16 20" aria-hidden="true">
-                          <path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" />
-                        </svg>
-                      </span>
-                    </span>
-                  </>
-                )}
-                {scene.key === "creators" && <span className="h-edTitle">Into the hills</span>}
-              </div>
+              {[leaving, active]
+                .filter((i): i is number => i !== null)
+                .map((i) => (
+                  <div key={SCENES[i].key} className="h-edOverlay" data-leaving={i === leaving || undefined}>
+                    <Overlay scene={SCENES[i].key} />
+                  </div>
+                ))}
             </div>
             {scene.key === "browser" && (
               <div key="export" className="h-edDialog">
@@ -386,5 +366,61 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
         </button>
       )}
     </section>
+  );
+}
+
+// What lies over the preview in each scene: titles and the selections of whoever is editing them.
+function Overlay({ scene }: { scene: string }) {
+  return (
+    <>
+      {scene === "ai" && (
+        // Claude adds the title over the group, then moves it up into the dark sky where it reads.
+        <span className="h-edTitle h-edTitleNew">
+          Summer nights
+          <span className="h-edClaude">
+            <span className="h-edPeerTag">Claude</span>
+            <span className="h-edHandle" data-at="tl" />
+            <span className="h-edHandle" data-at="tr" />
+            <span className="h-edHandle" data-at="bl" />
+            <span className="h-edHandle" data-at="br" />
+          </span>
+        </span>
+      )}
+      {scene === "team" && (
+        <>
+          {/* Sam puts the city and the time over the busy middle of the shot. Mika takes the whole clip,
+              enlarges it and moves it so the dark sky sits behind the words. Then Priya changes the font. */}
+          <span className="h-edMika">
+            <span className="h-edPeerTag">Mika</span>
+            <span className="h-edHandle" data-at="tl" />
+            <span className="h-edHandle" data-at="tr" />
+            <span className="h-edHandle" data-at="bl" />
+            <span className="h-edHandle" data-at="br" />
+          </span>
+          <span className="h-edTitle h-edPeerTitle">
+            <span className="h-edFontA">Shibuya, 2 a.m.</span>
+            <span className="h-edFontB">Shibuya, 2 a.m.</span>
+            <span className="h-edSam">
+              <span className="h-edPeerTag">Sam</span>
+              <span className="h-edHandle" data-at="tl" />
+              <span className="h-edHandle" data-at="tr" />
+              <span className="h-edHandle" data-at="bl" />
+              <span className="h-edHandle" data-at="br" />
+            </span>
+            <span className="h-edPriya">
+              <span className="h-edPeerTag">Priya</span>
+              <span className="h-edHandle" data-at="tl" />
+              <span className="h-edHandle" data-at="tr" />
+              <span className="h-edHandle" data-at="bl" />
+              <span className="h-edHandle" data-at="br" />
+              <svg className="h-edCursor" viewBox="0 0 16 20" aria-hidden="true">
+                <path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" />
+              </svg>
+            </span>
+          </span>
+        </>
+      )}
+      {scene === "creators" && <span className="h-edTitle">Into the hills</span>}
+    </>
   );
 }

@@ -303,15 +303,15 @@
 .h-edTitleNew {
   left: 50%;
   top: 60%;
-  outline: 2px solid var(--ed-accent);
+  font-size: clamp(18px, 4.3cqw, 52px);
   animation:
     h-popCentered 500ms var(--h-ease) 1s both,
     h-toSky 900ms var(--h-ease) 2.7s forwards;
 }
 @keyframes h-toSky {
   to {
-    left: 24%;
-    top: 8%;
+    left: 23%;
+    top: 10%;
   }
 }
 /* The team scene, 7 seconds: Sam adds the title (pink), Mika enlarges and moves the clip (teal) so the dark sky sits
@@ -340,11 +340,21 @@
 .h-edFontA {
   animation: h-out 300ms ease 4.6s both;
 }
+.h-edClaude,
 .h-edSam,
 .h-edPriya {
   position: absolute;
   inset: -4px;
   outline: 2px solid var(--peer);
+}
+/* Claude's own selection, in Claude's orange; its tag hangs below, where the sky is dark. */
+.h-edClaude {
+  --peer: #d97757;
+}
+.h-edClaude > .h-edPeerTag {
+  top: calc(100% + 4px);
+  bottom: auto;
+  border-radius: 0 3px 3px 3px;
 }
 .h-edSam {
   --peer: var(--ed-peer-1);
@@ -414,7 +424,7 @@
   bottom: auto;
   border-radius: 0 0 3px 0;
 }
-.h-edFrame[data-scene="team"] .h-edVideo[data-on] {
+.h-edVideo[data-key="team"]:is([data-on], [data-leaving]) {
   animation: h-zoom 1.2s var(--h-ease) 2.3s forwards;
 }
 @keyframes h-zoom {
@@ -424,6 +434,10 @@
 }
 .h-edOverlay {
   isolation: isolate;
+}
+.h-edOverlay[data-leaving] {
+  opacity: 0;
+  transition: opacity 350ms ease;
 }
 .h-edAvatarPriya {
   margin-left: -10px;
