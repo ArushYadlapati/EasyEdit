@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 
-export function SignInButton() {
+export function SignInButton({ callbackURL = "/dashboard" }: { callbackURL?: string }) {
   const [pending, setPending] = useState(false);
 
   async function signIn() {
     setPending(true);
     const { error } = await authClient.signIn.social({
       provider: "google",
-      callbackURL: "/dashboard",
+      callbackURL,
       errorCallbackURL: "/login",
     });
     if (error) setPending(false);

@@ -54,6 +54,11 @@ describe("proxy", () => {
     for (const url of ["/", "/privacy", "/terms"]) expect(matches(url), url).toBe(false);
   });
 
+  it("skips the invite page, which renders signed out and asks the person to sign in itself", () => {
+    for (const url of ["/invite/abc", "/invite/abc123XYZ"]) expect(matches(url), url).toBe(false);
+    expect(matches("/invitex"), "/invitex").toBe(true);
+  });
+
   // Reached by navigating (and by Google sending the browser back): the handlers turn a signed-out visitor into a page
   // themselves, so the proxy's 401 JSON must not answer first.
   it("skips the storage connect routes, which authenticate and redirect themselves", () => {
