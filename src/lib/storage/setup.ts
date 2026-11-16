@@ -5,7 +5,7 @@ import { assets, driveConnection, organization, spaceStorage } from "@/db/schema
 import { mainServiceAccount } from "@/lib/drive";
 import { createDriveClient, makeTopFolder } from "@/lib/drive/client";
 import { createReader, shareFolderWith } from "@/lib/drive/reader";
-import type { AccessSource } from "@/lib/drive/token";
+import { type AccessSource, DriveError } from "@/lib/drive/token";
 import { ServiceError } from "@/lib/service-error";
 import { roleIn } from "@/lib/spaces/service";
 import { type StorageConfig, storageConfig } from "./config";
@@ -41,6 +41,11 @@ function mainSaOf(deps: SetUpDeps): AccessSource | null {
     return null;
   }
 }
+
+// Google refusing a new service account because the project is out of quota: 429, or a 400/403 whose reason names a
+// quota or limit.
+const atServiceAccountLimit = (error: DriveError) =>
+  error.status === 429 || ((error.status === 400 || error.status === 403) && /quota|limit|exhausted/i.test(error.reason));
 
 // Any upload the space holds, finished or not, that hasn't been removed.
 const uploadsIn = (spaceId: string) => sql`exists (select 1 from ${assets} where ${assets.spaceId} = ${spaceId} and ${assets.removedAt} is null)`;
@@ -79,7 +84,12 @@ export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
 
     let readerEmail: string | null = null;
     if (caller && projectId) {
-      ({ email: readerEmail } = await createReader({ caller, projectId, spaceId, fetch: fetchFn }));
+      try {
+        ({ email: readerEmail } = await createReader({ caller, projectId, spaceId, fetch: fetchFn }));
+      } catch (error) {
+        if (error instanceof DriveError && atServiceAccountLimit(error)) throw new ServiceError("READER_LIMIT", 409, "Google's limit on service accounts for this project was reached");
+        throw error;
+      }
       await shareFolderWith({ write, fetch: fetchFn, sleep: deps.sleep }, rootFolderId, readerEmail);
     }
 

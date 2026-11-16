@@ -9,6 +9,7 @@ export type ServiceErrorCode =
   | "CONFLICT"
   | "STORAGE_IN_USE"
   | "TEAM_STORAGE_NOT_CONFIGURED"
+  | "READER_LIMIT"
   | "MANAGED_ELSEWHERE"
   | "ALREADY_MEMBER"
   | "LAST_ADMIN"

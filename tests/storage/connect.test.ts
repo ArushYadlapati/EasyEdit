@@ -440,6 +440,26 @@ describe("connections", () => {
     expect(fake.calls.length).toBe(calls);
   });
 
+  it("a token sealed with another key is a broken connection, not an exception", async () => {
+    const db = await makeTestDb();
+    await joinSpace(db, { id: "u1" }, "admin");
+    const fake = makeFakeDrive();
+    const { refreshToken, email } = fake.connect({ email: "ada@gmail.com" });
+    const saved = await saveConnection(db, { ...cfg, tokenKey: randomBytes(32) }, { userId: "u1", googleSub: "s1", email, refreshToken, scopes: [DRIVE_FILE_SCOPE] });
+    forgetAllSources();
+    const access = await connectionAccess(db, cfg, saved.id, fake.fetch); // the server's key is now another one
+    const error = await access.token().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ConnectionBrokenError);
+    expect(fake.calls.length).toBe(0); // Google was never asked
+    const [row] = await db.select().from(driveConnection);
+    expect(row.brokenAt).toBeInstanceOf(Date);
+    expect((await listConnections(db, "u1"))[0].broken).toBe(true);
+    // Reconnecting seals a new token with the current key and mends it.
+    await saveConnection(db, cfg, { userId: "u1", googleSub: "s1", email, refreshToken, scopes: [DRIVE_FILE_SCOPE] });
+    const { accessToken } = await (await connectionAccess(db, cfg, saved.id, fake.fetch)).token();
+    expect(fake.whoHas(accessToken)?.email).toBe("ada@gmail.com");
+  });
+
   it("a refresh that started with the old token and fails after a reconnect doesn't mark the new token broken", async () => {
     const db = await makeTestDb();
     await joinSpace(db, { id: "u1" }, "admin");

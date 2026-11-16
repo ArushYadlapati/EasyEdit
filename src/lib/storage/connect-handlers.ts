@@ -202,7 +202,7 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
       // A space whose videos are already in another account keeps its storage, and is told so in its own words; so
       // is a team this server turns out not to be set up for.
       const code = failure instanceof ServiceError ? failure.code : null;
-      return go(storagePage(space, code === "STORAGE_IN_USE" ? "in-use" : code === "TEAM_STORAGE_NOT_CONFIGURED" ? "not-configured" : "failed"));
+      return go(storagePage(space, code === "STORAGE_IN_USE" ? "in-use" : code === "TEAM_STORAGE_NOT_CONFIGURED" ? "not-configured" : code === "READER_LIMIT" ? "reader-limit" : "failed"));
     }
     return go((started.return && returnPath(started.return)) || storagePage(space, "connected"));
   }

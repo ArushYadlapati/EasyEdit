@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   authorizeUrl,
   ConnectionBrokenError,
@@ -7,7 +7,7 @@ import {
   pkcePair,
   refreshAccess,
 } from "@/lib/storage/google-oauth";
-import { storageConfig, type StorageConfig } from "@/lib/storage/config";
+import { resetKeyWarning, storageConfig, type StorageConfig } from "@/lib/storage/config";
 import { createHash, randomBytes } from "node:crypto";
 
 const cfg: StorageConfig = {
@@ -47,6 +47,24 @@ describe("storageConfig", () => {
   it("is null when something is missing or the key is the wrong size", () => {
     expect(storageConfig({ ...env, STORAGE_TOKEN_KEY: undefined })).toBeNull();
     expect(storageConfig({ ...env, STORAGE_TOKEN_KEY: "AAAA" })).toBeNull();
+  });
+  it("logs one clear error naming the variable, never its value, for a key of the wrong size", () => {
+    resetKeyWarning();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const bad = { ...env, STORAGE_TOKEN_KEY: "c2VjcmV0LXNob3J0LWtleQ==" };
+      expect(storageConfig(bad)).toBeNull();
+      expect(storageConfig(bad)).toBeNull();
+      expect(log).toHaveBeenCalledTimes(1);
+      const line = String(log.mock.calls[0].join(" "));
+      expect(line).toContain("STORAGE_TOKEN_KEY");
+      expect(line).not.toContain(bad.STORAGE_TOKEN_KEY);
+      log.mockClear();
+      storageConfig({ ...env, STORAGE_TOKEN_KEY: undefined }); // not set at all: nothing to say
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 

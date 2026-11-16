@@ -35,6 +35,8 @@ export const STORAGE_MESSAGES = {
   banner: "Google Drive needs reconnecting. Uploads are paused until an admin reconnects it.",
   // A choice of account that didn't go through.
   failed: "That didn't work. Nothing was changed. Try again.",
+  // Google's own cap on service accounts for EasyEdit's project, hit while making a team's reader.
+  readerLimit: "This team's storage couldn't be set up because EasyEdit has reached a Google limit. Try again later, or contact EasyEdit.",
   connectionEnded: "Google ended EasyEdit's access to that account. Choose it again to reconnect it.",
 };
 
@@ -58,6 +60,7 @@ const SETTINGS_NOTES: Record<string, Note> = {
   failed: { text: STORAGE_MESSAGES.failed, problem: true },
   expired: { text: "That took too long, so nothing was changed. Try again.", problem: true },
   "not-configured": { text: STORAGE_MESSAGES.serverNotSetUp, problem: true },
+  "reader-limit": { text: STORAGE_MESSAGES.readerLimit, problem: true },
   "in-use": { text: "This space already has videos in another Google account, so its storage can't be changed yet.", problem: true },
 };
 

@@ -7,7 +7,7 @@ import { driveConnection } from "@/db/schema";
 import { type AccessSource, connectionSource } from "@/lib/drive/token";
 import type { StorageConfig } from "./config";
 import { ConnectionBrokenError, refreshAccess } from "./google-oauth";
-import { open, seal } from "./secret-box";
+import { open, SecretBoxError, seal } from "./secret-box";
 import { forgetSources, keptSource } from "./token-cache";
 
 // A person's Google account, connected for storage. The refresh token never leaves this file unsealed.
@@ -46,6 +46,17 @@ export async function listConnections(db: DB, userId: string): Promise<Connectio
   return rows.map(toConnection);
 }
 
+// A token the current key can't open (the key was changed) is as good as gone: it reads as a connection that needs
+// reconnecting, like a revoked one, and Google is not asked.
+function openToken(sealed: string, cfg: StorageConfig): string {
+  try {
+    return open(sealed, cfg.tokenKey);
+  } catch (error) {
+    if (error instanceof SecretBoxError) throw new ConnectionBrokenError("unknown");
+    throw error;
+  }
+}
+
 // Access tokens for the connection, refreshed from its sealed refresh token. When Google says the connection is gone
 // (invalid_grant), the row is marked broken and the ConnectionBrokenError comes out. A connection already marked broken
 // is not tried again: its source refuses without asking Google, until the person reconnects.
@@ -68,7 +79,7 @@ export async function connectionAccess(db: DB, cfg: StorageConfig, connectionId:
     connectionSource({
       refresh: async () => {
         try {
-          return await refreshAccess(cfg, open(sealed, cfg.tokenKey), fetchFn);
+          return await refreshAccess(cfg, openToken(sealed, cfg), fetchFn);
         } catch (error) {
           if (error instanceof ConnectionBrokenError) {
             forgetSources(prefix);

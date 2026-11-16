@@ -28,6 +28,40 @@ const form = (connectionId: string) => {
 };
 
 describe("choosing an account the person already connected", () => {
+  it.each([
+    ["429 from IAM", 429, "RESOURCE_EXHAUSTED"],
+    ["a quota refusal on a 403", 403, "quotaExceeded"],
+    ["a limit refusal on a 400", 400, "limitExceeded"],
+  ])("a team's reader refused for Google's service-account limit (%s) says so, and changes nothing", async (_name, status, reason) => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    const ada = await w.connect({ email: "ada@gmail.com" });
+    w.fake.failNext(/POST \/v1\/projects\/[^/]+\/serviceAccounts$/, status, reason);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { actions } = actionsFor(w);
+      expect(await actions.choose(team, form(ada.id))).toEqual({
+        error: "This team's storage couldn't be set up because EasyEdit has reached a Google limit. Try again later, or contact EasyEdit.",
+      });
+      expect(await w.db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, team))).toEqual([]);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("any other refusal of the reader stays the generic one", async () => {
+    const w = await storageWorld();
+    const team = await w.team("Robotics Club");
+    const ada = await w.connect({ email: "ada@gmail.com" });
+    w.fake.failNext(/POST \/v1\/projects\/[^/]+\/serviceAccounts$/, 403, "PERMISSION_DENIED");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await actionsFor(w).actions.choose(team, form(ada.id))).toEqual({ error: "That didn't work. Nothing was changed. Try again." });
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it("sets up the space's storage in it, with no new Google screen, and refreshes the pages", async () => {
     const w = await storageWorld();
     const ada = await w.connect({ email: "ada@gmail.com" });
