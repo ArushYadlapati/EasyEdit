@@ -80,7 +80,7 @@ export const projects = pgTable(
     // The project version the picture was drawn from.
     thumbnailVersion: integer("thumbnail_version"),
   },
-  (t) => [index("projects_space_id_idx").on(t.spaceId)],
+  (t) => [index("projects_space_id_idx").on(t.spaceId), index("projects_created_by_created_at_idx").on(t.createdBy, t.createdAt)],
 );
 
 // When each person last opened each project, for their Recent list.
@@ -201,6 +201,7 @@ export const assets = pgTable(
     uniqueIndex("assets_unfinished_upload_unique").on(t.spaceId, t.uploadedBy, t.fileName, t.sizeBytes, t.lastModifiedMs).where(sql`${t.status} = 'uploading'`),
     index("assets_created_at_idx").on(t.createdAt),
     index("assets_space_id_idx").on(t.spaceId),
+    index("assets_uploaded_by_created_at_idx").on(t.uploadedBy, t.createdAt),
   ],
 );
 
@@ -282,6 +283,14 @@ export const tutorialViews = pgTable("tutorial_views", {
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
   seenAt: timestamp("seen_at").notNull().defaultNow(),
+});
+
+// Who has finished the first-visit flow. The migration that made this table marks every account that already existed.
+export const onboarding = pgTable("onboarding", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  finishedAt: timestamp("finished_at").notNull().defaultNow(),
 });
 
 // A member's personal access token for an AI agent that cannot sign in through a browser and sends a header instead.
