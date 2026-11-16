@@ -34,7 +34,7 @@ describe("home page", () => {
     vi.stubEnv("OPEN_SIGNUP", "true");
     render(await Home());
     vi.unstubAllEnvs();
-    expect(screen.getByRole("heading", { level: 1, name: "The video editor for AI agents and teams" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "The video editor for AI agents, teams and creators, in your browser" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Start editing, free" }).getAttribute("href")).toBe("/login");
     expect(screen.getByRole("link", { name: "Start free" }).getAttribute("href")).toBe("/login");
     for (const a of screen.getAllByRole("link", { name: "Sign in" })) expect(a.getAttribute("href")).toBe("/login");
@@ -42,15 +42,29 @@ describe("home page", () => {
     expect(screen.getByRole("link", { name: "Terms" }).getAttribute("href")).toBe("/terms");
   });
 
-  it("changes the headline's ending from the tabs: for AI agents, for teams, and so on", async () => {
+  it("changes the headline's ending every few seconds: for AI agents, for teams, for creators, in your browser", async () => {
+    vi.useFakeTimers();
     render(await Home());
     const phrase = () => document.querySelector(".h-heroPhrase [data-on]")?.textContent;
     expect(phrase()).toBe("for AI agents.");
-    fireEvent.click(screen.getByRole("button", { name: "Teams" }));
-    expect(phrase()).toBe("for teams.");
-    expect(screen.getByRole("button", { name: "Teams" }).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "In your browser" }));
-    expect(phrase()).toBe("in your browser.");
+    for (const next of ["for teams.", "for creators.", "in your browser.", "for AI agents."]) {
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(phrase()).toBe(next);
+    }
+    vi.useRealTimers();
+  });
+
+  it("holds the scene while paused", async () => {
+    vi.useFakeTimers();
+    render(await Home());
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    act(() => {
+      vi.advanceTimersByTime(12000);
+    });
+    expect(document.querySelector(".h-heroPhrase [data-on]")?.textContent).toBe("for AI agents.");
+    vi.useRealTimers();
   });
 
   it("has the AI, team and get-started sections, linked from the top, and no tools section", async () => {
@@ -66,8 +80,9 @@ describe("home page", () => {
     expect(document.getElementById("tools")).toBeNull();
   });
 
-  it("says it's completely free and works with every AI agent, then offers the first project", async () => {
+  it("says it works with every AI agent inside the AI section, that it's completely free, then offers the first project", async () => {
     render(await Home());
+    expect(document.getElementById("ai")?.textContent).toContain("Works with every AI agent.");
     expect(screen.getByRole("heading", { level: 2, name: "Completely free." })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 2, name: "Works with every AI agent." })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 2, name: "Make your first project." })).toBeTruthy();
@@ -143,10 +158,10 @@ describe("home page agent demo", () => {
 
   it("undoes the agent's change from Activity", () => {
     render(<AgentDemo />);
-    expect(screen.getAllByText("Spring showcase").length).toBeGreaterThan(1); // the project name, the title, its clip
+    expect(screen.getAllByText("Summer trip").length).toBeGreaterThan(1); // the project name, the title, its clip
     fireEvent.click(screen.getByRole("button", { name: "Undo this change" }));
     expect(screen.getByRole("button", { name: "Undone" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getAllByText("Spring showcase")).toHaveLength(1); // only the project name is left
+    expect(screen.getAllByText("Summer trip")).toHaveLength(1); // only the project name is left
   });
 
   it("offers one request per real agent tool, in the app's own Activity wording", () => {

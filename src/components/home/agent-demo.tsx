@@ -13,15 +13,16 @@ type Doc = { vertical: boolean; title: boolean; video: Clip[] };
 const SECONDS = 10; // the timeline's visible length
 const PLAYHEAD = 3;
 
-const ARM = { name: "arm-test-01", thumb: "/home/clip-arm.jpg" };
-const SOLDER = { name: "soldering", thumb: "/home/clip-solder.jpg" };
+// Stills from Pexels footage (free to use, no credit required).
+const DOG = { name: "beach-dog", thumb: "/home/still-dog.jpg" };
+const SURF = { name: "surf", thumb: "/home/still-surf.jpg" };
 
 const BASE: Doc = {
   vertical: false,
   title: false,
   video: [
-    { id: "a", ...SOLDER, start: 0, end: 5 },
-    { id: "b", ...ARM, start: 5, end: 9 },
+    { id: "a", ...DOG, start: 0, end: 5 },
+    { id: "b", ...SURF, start: 5, end: 9 },
   ],
 };
 
@@ -31,7 +32,7 @@ export const REQUESTS: Request[] = [
   {
     key: "title",
     agent: "Claude",
-    words: "Add a title that says Spring showcase.",
+    words: "Add a title that says Summer trip.",
     summary: "Added text",
     apply: (d) => ({ ...d, title: true }),
     fresh: "text",
@@ -39,7 +40,7 @@ export const REQUESTS: Request[] = [
   {
     key: "trim",
     agent: "ChatGPT",
-    words: "Make the robot arm shot two seconds long.",
+    words: "Make the surf shot two seconds long.",
     summary: "Trimmed a video clip",
     apply: (d) => ({ ...d, video: d.video.map((c) => (c.id === "b" ? { ...c, end: 7 } : c)) }),
     fresh: "b",
@@ -55,7 +56,7 @@ export const REQUESTS: Request[] = [
   {
     key: "split",
     agent: "Cursor",
-    words: "Split the soldering clip at the playhead.",
+    words: "Split the beach clip at the playhead.",
     summary: "Split a video clip",
     apply: (d) => ({
       ...d,
@@ -107,7 +108,7 @@ export function AgentDemo() {
         <div data-ui className="h-ui">
           <div className="h-uiBar">
             <LogoMark size={16} />
-            <span className="h-uiProject">Spring showcase</span>
+            <span className="h-uiProject">Summer trip</span>
             <span className="h-uiStatus">
               {phase === "working" ? (
                 <>
@@ -127,7 +128,7 @@ export function AgentDemo() {
                 <img src={shown.thumb} alt="" width={960} height={540} />
                 {doc.title && (
                   <span className="h-uiTitle" data-fresh={fresh === "text" || undefined}>
-                    Spring showcase
+                    Summer trip
                   </span>
                 )}
               </div>
@@ -182,7 +183,7 @@ export function AgentDemo() {
                     style={{ left: at(0), width: at(4) }}
                     data-fresh={fresh === "text" || undefined}
                   >
-                    Spring showcase
+                    Summer trip
                   </span>
                 )}
               </div>
