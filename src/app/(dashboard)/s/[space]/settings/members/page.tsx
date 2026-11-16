@@ -10,7 +10,7 @@ import type { MemberActions } from "@/lib/spaces/member-actions";
 import { listTeamMembers } from "@/lib/spaces/members";
 import { findMySpace } from "@/lib/spaces/service";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
-import { cancelInviteAction, deleteTeamAction, inviteMemberAction, leaveTeamAction, removeMemberAction, setMemberRoleAction } from "./actions";
+import { cancelInviteAction, deleteTeamAction, inviteMemberAction, leaveTeamAction, removeMemberAction, renameTeamAction, setMemberRoleAction } from "./actions";
 
 // The server actions with this team already bound as their first argument.
 const actionsFor = (spaceId: string): MemberActions => ({
@@ -20,6 +20,7 @@ const actionsFor = (spaceId: string): MemberActions => ({
   remove: removeMemberAction.bind(null, spaceId),
   leave: leaveTeamAction.bind(null, spaceId),
   deleteTeam: deleteTeamAction.bind(null, spaceId),
+  rename: renameTeamAction.bind(null, spaceId),
 });
 
 // A team's members, for anyone in it; its admins get the controls. A personal space has no members page, and a space

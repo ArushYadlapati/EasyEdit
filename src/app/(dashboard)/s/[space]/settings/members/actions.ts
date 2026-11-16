@@ -34,3 +34,7 @@ export async function leaveTeamAction(spaceId: string): Promise<ActionResult> {
 export async function deleteTeamAction(spaceId: string, formData: FormData): Promise<ActionResult> {
   return actions.deleteTeam(spaceId, formData);
 }
+
+export async function renameTeamAction(spaceId: string, formData: FormData): Promise<ActionResult> {
+  return actions.rename(spaceId, formData);
+}

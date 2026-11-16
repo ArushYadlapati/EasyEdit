@@ -5,7 +5,7 @@ import type { Role } from "@/lib/allowlist/service";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn } from "./access";
 import { cancelInvite as cancelInviteById, inviteToTeam } from "./invites";
-import { deleteTeam as deleteTeamById, leaveTeam, removeMember, setMemberRole } from "./members";
+import { deleteTeam as deleteTeamById, leaveTeam, removeMember, renameTeam, setMemberRole } from "./members";
 
 export type ActionResult = { error?: string };
 // An invite also hands back the link to send.
@@ -75,6 +75,8 @@ export function makeMemberActions(deps: MemberActionDeps) {
       if (result.error !== undefined) return result;
       return deps.redirect("/dashboard");
     },
+    // The new name shows everywhere once the layout is revalidated; the address stays.
+    rename: (spaceId: string, formData: FormData) => plain(run(spaceId, (db, actor) => renameTeam(db, actor, field(formData, "name")))),
     // The team is gone for everyone once this returns.
     async deleteTeam(spaceId: string, formData: FormData): Promise<ActionResult> {
       const result = await run(spaceId, (db, actor) => deleteTeamById(db, actor, { confirmName: field(formData, "confirmName") }));

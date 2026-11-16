@@ -6,6 +6,7 @@ import { requireRole, type Actor } from "@/lib/actor";
 import { isAssignableRole, type AssignableRole, type Role } from "@/lib/allowlist/service";
 import { FORBIDDEN_BODY } from "@/lib/api-errors";
 import { ServiceError } from "@/lib/service-error";
+import { checkedTeamName } from "./service";
 import { SEED_TEAM_ID } from "./types";
 
 // A person in a team, as the Members screen shows them. `storageOwner`: the team's videos are in their Google Drive.
@@ -209,4 +210,22 @@ export async function deleteTeam(db: DB, actor: Actor, input: { confirmName: str
   if (!row.name_ok) throw new ServiceError("INVALID", 400, "Type the team's name to delete it.");
   if (row.has_projects) throw hasProjects();
   throw spaceNotFound(); // gone while the statement ran
+}
+
+// Renames a team: an admin only, never Seattle Solvers, with createTeam's cleaning and refusals. Only the name changes,
+// so the team's address (and every link to it) stays. The update joins `gate`, so an admin demoted a moment ago can't
+// still rename.
+export async function renameTeam(db: DB, actor: Actor, rawName: string): Promise<{ name: string }> {
+  const spaceId = await changeableTeam(db, actor, { admin: true });
+  const name = checkedTeamName(rawName);
+  const result = await db.execute(sql`
+    with ${lockedAdmins(spaceId, actor.userId)}, ${teamOnly(spaceId)},
+      ok as (select team.id from team, gate where gate.caller_admin),
+      upd as (update organization set name = ${name} where id in (select id from ok) returning id)
+    select exists (select 1 from upd) as changed, (select caller_admin from gate) as caller_admin
+  `);
+  const row = rowsOf<{ changed: boolean; caller_admin: boolean }>(result)[0];
+  if (row.changed) return { name };
+  if (!row.caller_admin) throw forbidden();
+  throw spaceNotFound();
 }

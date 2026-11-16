@@ -45,6 +45,7 @@ const { signedIn, memberActions } = vi.hoisted(() => ({
     removeMemberAction: vi.fn(async () => ({})),
     leaveTeamAction: vi.fn(async () => ({})),
     deleteTeamAction: vi.fn(async () => ({})),
+    renameTeamAction: vi.fn(async () => ({})),
   },
 }));
 vi.mock("@/app/(dashboard)/s/[space]/settings/members/actions", () => memberActions);

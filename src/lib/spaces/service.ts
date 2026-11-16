@@ -153,13 +153,20 @@ function cleanTeamName(raw: string): string {
   return raw.replace(/\s+/g, " ").replace(HIDDEN_CHARS, "").replace(/\s+/g, " ").trim();
 }
 
+// A team's name as it is kept, or the refusal: cleaned, 1 to teamNameChars characters, and not "Personal". Shared by
+// createTeam and renameTeam.
+export function checkedTeamName(raw: string): string {
+  const name = cleanTeamName(raw);
+  if (name.length < 1 || name.length > LIMITS.teamNameChars) throw new ServiceError("INVALID", 400, TEAM_NAME_INVALID);
+  if (name.toLowerCase() === "personal") throw new ServiceError("INVALID", 400, TEAM_NAME_PERSONAL);
+  return name;
+}
+
 // A new team with the creator as its admin. The address comes from the name, made unique (case-insensitively) with -2,
 // -3 …; the organization and the member row go in as one statement, and a clash from a simultaneous create tries the
 // next suffix.
 export async function createTeam(db: DB, input: { name: string; byUserId: string; now?: Date }): Promise<MySpace> {
-  const name = cleanTeamName(input.name);
-  if (name.length < 1 || name.length > LIMITS.teamNameChars) throw new ServiceError("INVALID", 400, TEAM_NAME_INVALID);
-  if (name.toLowerCase() === "personal") throw new ServiceError("INVALID", 400, TEAM_NAME_PERSONAL);
+  const name = checkedTeamName(input.name);
   const now = input.now ?? new Date();
   const stamp = now.toISOString();
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);

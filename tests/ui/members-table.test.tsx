@@ -15,6 +15,7 @@ const actions = {
   remove: vi.fn<FormAction>(async () => ({})),
   leave: vi.fn<() => Promise<{ error?: string }>>(async () => ({})),
   deleteTeam: vi.fn<FormAction>(async () => ({})),
+  rename: vi.fn<FormAction>(async () => ({})),
 };
 
 beforeEach(() => {
@@ -310,5 +311,43 @@ describe("delete team", () => {
   it("is not shown for Seattle Solvers", () => {
     show("u1", "admin", ALL, { managedElsewhere: true });
     expect(screen.queryByRole("button", { name: "Delete team" })).toBeNull();
+  });
+});
+
+describe("team name", () => {
+  it("shows for an admin, prefilled, above Delete team", () => {
+    show("u1", "admin");
+    const field = screen.getByRole("textbox", { name: "Team name" }) as HTMLInputElement;
+    expect(field.value).toBe("Robots");
+    const heading = screen.getByRole("heading", { name: "Team name" });
+    const del = screen.getByRole("heading", { name: "Delete team" });
+    expect(heading.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("is not shown for an editor or in Seattle Solvers", () => {
+    const editor = show("u3", "editor");
+    expect(screen.queryByRole("textbox", { name: "Team name" })).toBeNull();
+    editor.unmount();
+    show("u1", "admin", ALL, { managedElsewhere: true });
+    expect(screen.queryByRole("textbox", { name: "Team name" })).toBeNull();
+  });
+
+  it("Save stays off until the name changes, then sends the trimmed name", async () => {
+    show("u1", "admin");
+    const save = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(screen.getByRole("textbox", { name: "Team name" }), { target: { value: "  Robots United " } });
+    expect(save.disabled).toBe(false);
+    await act(async () => fireEvent.click(save));
+    await waitFor(() => expect(actions.rename).toHaveBeenCalledTimes(1));
+    expect(actions.rename.mock.calls[0]![0].get("name")).toBe("Robots United");
+  });
+
+  it("shows a refusal under the field", async () => {
+    actions.rename.mockResolvedValue({ error: 'Pick a different name. "Personal" is your own space.' });
+    show("u1", "admin");
+    fireEvent.change(screen.getByRole("textbox", { name: "Team name" }), { target: { value: "Personal" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect((await screen.findByRole("alert")).textContent).toBe('Pick a different name. "Personal" is your own space.');
   });
 });
