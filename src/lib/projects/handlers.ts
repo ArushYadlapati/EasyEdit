@@ -3,6 +3,7 @@ import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
 import { requireRole, type Actor } from "@/lib/actor";
 import { apiRoute } from "@/lib/api-route";
+import { checkAppBudget } from "@/lib/app-budget";
 import { LIMITS } from "@/lib/limits";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
 import { recordOpen } from "@/lib/projects/opens";
@@ -12,6 +13,7 @@ import {
   createProject,
   deleteProject,
   duplicateProject,
+  getAppliedRequest,
   getOpsSince,
   getProject,
   getProjectVersion,
@@ -177,6 +179,7 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       if (!json.ok) return invalid("Body must be valid JSON");
       const parsed = createBody.safeParse(json.value);
       if (!parsed.success) return invalid(describeIssue(parsed.error));
+      await checkAppBudget(deps.db(), actor.userId, "project");
       const { id } = await createProject(deps.db(), actor, parsed.data);
       return Response.json({ id }, { status: 201 });
     }),
@@ -228,6 +231,7 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       const { id } = await ctx.params;
       const actor = await itemActor(deps, req, id);
       if (actor instanceof Response) return actor;
+      await checkAppBudget(deps.db(), actor.userId, "project");
       const copy = await duplicateProject(deps.db(), actor, id);
       return Response.json({ id: copy.id }, { status: 201 });
     }),
@@ -327,6 +331,10 @@ export function makeOpsHandlers(deps: HandlerDeps) {
       if (!json.ok) return invalid("Body must be valid JSON");
       const parsed = opsBody.safeParse(json.value);
       if (!parsed.success) return invalid(describeIssue(parsed.error));
+      // A retry of a request that already landed is answered by the service, so it costs nothing and is never refused.
+      const { requestId } = parsed.data;
+      const retry = requestId !== undefined && (await getAppliedRequest(deps.db(), actor, id, requestId)) !== null;
+      if (!retry) await checkAppBudget(deps.db(), actor.userId, "edit");
       const { version, ops, inverse } = await applyProjectOps(deps.db(), actor, {
         projectId: id,
         baseVersion: parsed.data.baseVersion,

@@ -14,7 +14,7 @@ const MSG = {
 };
 const lim = (o: Partial<Limits>): Limits => ({ ...LIMITS, ...o });
 const refused = (p: Promise<void>, message: string) =>
-  expect(p).rejects.toMatchObject({ name: "ServiceError", code: "LIMIT_EXCEEDED", status: 400, message });
+  expect(p).rejects.toMatchObject({ name: "ServiceError", code: "LIMIT_EXCEEDED", status: 429, message });
 
 let db: DB;
 let n = 0;

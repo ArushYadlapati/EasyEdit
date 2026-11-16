@@ -9,7 +9,7 @@ import { ServiceError } from "@/lib/service-error";
 // instant can both pass. That is accepted.
 export type AppAction = "edit" | "project" | "upload";
 
-const limit = (message: string) => new ServiceError("LIMIT_EXCEEDED", 400, message);
+const limit = (message: string) => new ServiceError("LIMIT_EXCEEDED", 429, message);
 
 const DAY_USED_UP = "Today's limit for saved changes is used up (20 MB a day). It frees up over the next 24 hours.";
 const TOO_MANY_AT_ONCE = "Too many changes at once. Wait a minute, then keep going.";

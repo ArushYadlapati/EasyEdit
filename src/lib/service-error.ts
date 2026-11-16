@@ -23,14 +23,14 @@ export type ServiceErrorCode =
 
 export class ServiceError extends Error {
   code: ServiceErrorCode;
-  status: 400 | 403 | 404 | 409 | 410;
+  status: 400 | 403 | 404 | 409 | 410 | 429;
   // Declared, not defined, so an absent value is not an own property set to undefined.
   declare opIndex?: number;
   declare currentVersion?: number;
 
   constructor(
     code: ServiceErrorCode,
-    status: 400 | 403 | 404 | 409 | 410,
+    status: 400 | 403 | 404 | 409 | 410 | 429,
     message: string,
     extra: { opIndex?: number; currentVersion?: number } = {},
   ) {
