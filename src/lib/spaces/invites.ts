@@ -23,6 +23,9 @@ const forbidden = () => new ServiceError("FORBIDDEN", 403, FORBIDDEN_BODY.messag
 // who has one). One statement: the caller still an admin, the email not already in the team, and the team under both
 // caps. Inviting an email that already has a waiting invite renews it (new role, new expiry) through the partial unique
 // index. The caps count unexpired invites except this email's own, which is the row being renewed.
+// The caps are checks, not locks: only the admin rows are re-read after waiting on the admin lock, while the counts come
+// from the statement's start snapshot. Invites sent at the same instant can therefore overshoot a cap slightly. The
+// partial unique index still holds exactly.
 export async function inviteToTeam(
   db: DB,
   actor: Actor,
@@ -50,7 +53,7 @@ export async function inviteToTeam(
       ),
       saved as (
         insert into invitation (id, organization_id, email, role, status, expires_at, created_at, inviter_id)
-        select ${"inv_" + nanoid(12)}, team.id, ${email}, ${role}, 'pending', ${expiresAt.toISOString()}::timestamp, ${nowIso}::timestamp, ${actor.userId}
+        select ${"inv_" + nanoid(24)}, team.id, ${email}, ${role}, 'pending', ${expiresAt.toISOString()}::timestamp, ${nowIso}::timestamp, ${actor.userId}
         from gate, team, counts
         where gate.caller_admin and not counts.already
           and counts.members + counts.others < ${limits.teamMembers}
