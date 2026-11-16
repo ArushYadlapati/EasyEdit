@@ -3,6 +3,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --logo-accent: #2f6fdb; /* the cut-off half of the logo mark (components/ui/logo.tsx), deep enough to read on white */
 }
 
 @theme inline {
@@ -39,6 +40,7 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --logo-accent: #6ea8ff;
   }
 }
 
@@ -50,6 +52,7 @@ html:has(.editor, .ed-theme) {
   color-scheme: dark;
   --background: #0a0a0a;
   --foreground: #ededed;
+  --logo-accent: #6ea8ff; /* the same as --ed-accent */
 }
 
 /* The editor is always dark. Everything inside .editor uses these roles, and the dashboard (.ed-theme) shares them. */

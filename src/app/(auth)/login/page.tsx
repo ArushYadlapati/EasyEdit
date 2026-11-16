@@ -7,6 +7,7 @@ import { openSignUp } from "@/lib/signup";
 import { loginErrorMessage } from "@/lib/login-error-message";
 import { PasskeySignInButton } from "./passkey-sign-in-button";
 import { SignInButton } from "./sign-in-button";
+import { LogoMark } from "@/components/ui/logo";
 
 const ERROR = "rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800";
 
@@ -28,6 +29,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   return (
     <main className="flex flex-1 items-center justify-center px-6 py-24">
       <div className="flex w-full max-w-sm flex-col items-center gap-6 text-center">
+        <LogoMark size={56} />
         <h1 className="text-2xl font-semibold tracking-tight">EasyEdit</h1>
         {forClaude && !expired && <p>{`Sign in to connect ${agentName}.`}</p>}
         {expired && (

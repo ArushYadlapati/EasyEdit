@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogoMark } from "@/components/ui/logo";
 
 export const metadata = { title: "Privacy - EasyEdit" };
 
@@ -8,7 +9,8 @@ export default function PrivacyPage() {
   return (
     <main className="flex flex-1 justify-center px-6 py-16">
       <article className="flex w-full max-w-2xl flex-col gap-5 leading-relaxed">
-        <Link href="/" className="text-sm text-foreground/70 underline underline-offset-4">
+        <Link href="/" className="flex w-fit items-center gap-2 text-sm text-foreground/70 underline underline-offset-4">
+          <LogoMark size={18} className="text-foreground" />
           EasyEdit
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Privacy</h1>

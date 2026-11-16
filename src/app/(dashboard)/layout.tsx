@@ -6,6 +6,7 @@ import { AdminLink } from "@/components/dashboard/admin-link";
 import { SpacesProvider } from "@/components/dashboard/space-switcher";
 import { KeepSignedIn } from "@/components/keep-signed-in";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
+import { LogoMark } from "@/components/ui/logo";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { canCreateTeam } from "@/lib/spaces/create-team-access";
@@ -29,11 +30,12 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
     <SpacesProvider spaces={spaces} createTeam={canCreateTeam(spaces) ? createTeamAction : undefined} personalSoon={!personalSpacesOpen()}>
       <div className="ed-theme flex h-dvh flex-col bg-ed-bg font-sans text-ed-text">
         <header className="flex h-11 shrink-0 items-center gap-4 border-b border-ed-line bg-ed-panel px-4">
-          {/* The wordmark leads back to the projects, from Admin too. The negative margin keeps it where the plain text was. */}
+          {/* The logo and name lead back to the projects, from Admin too. The negative margin keeps them where the plain text was. */}
           <Link
             href="/dashboard"
-            className={cx("-mx-1.5 rounded-md px-1.5 py-0.5 text-sm font-semibold hover:bg-ed-hover", FOCUS_RING, FADE)}
+            className={cx("-mx-1.5 flex items-center gap-2 rounded-md px-1.5 py-0.5 text-sm font-semibold hover:bg-ed-hover", FOCUS_RING, FADE)}
           >
+            <LogoMark size={18} />
             EasyEdit
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">

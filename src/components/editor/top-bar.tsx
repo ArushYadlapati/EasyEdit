@@ -1,9 +1,10 @@
 "use client";
 
-import { ChevronLeft, Keyboard, Redo2, SettingsIcon, Undo2 } from "lucide-react";
+import { Keyboard, Redo2, SettingsIcon, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
+import { LogoMark } from "@/components/ui/logo";
 import { Menu } from "@/components/ui/menu";
 import { editMenu, topMenuInput, viewMenu, type MenuEntry, type TopMenuInput } from "@/lib/editor/menus";
 import type { CommandId } from "@/lib/editor/shortcuts";
@@ -25,7 +26,7 @@ type TopBarProps = {
   exportPercent?: number | null; // how far a running export is; null or absent when none runs
 };
 
-// The row across the top: Projects, the Edit and View menus, the project's name, then the save
+// The row across the top: the logo with Projects (back to the space), the Edit and View menus, the project's name, then the save
 // status, the undo, redo, settings and shortcuts buttons, and Export. The menus read the editor as they open, so what
 // cannot run right then is greyed.
 export function TopBar({ spaceSlug, onShowShortcuts, onShowSettings, onResetLayout, onExport, exportPercent = null }: TopBarProps) {
@@ -56,12 +57,12 @@ export function TopBar({ spaceSlug, onShowShortcuts, onShowSettings, onResetLayo
       <LeaveLink
         href={spacePath(spaceSlug)}
         className={cx(
-          "inline-flex h-7 shrink-0 items-center gap-1 rounded-md pr-2 pl-1 text-xs font-medium text-ed-muted hover:bg-ed-hover hover:text-ed-text",
+          "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md pr-2 pl-1.5 text-xs font-medium text-ed-muted hover:bg-ed-hover hover:text-ed-text",
           FOCUS_RING,
           FADE,
         )}
       >
-        <ChevronLeft aria-hidden size={16} strokeWidth={1.75} />
+        <LogoMark size={16} className="text-ed-text" />
         Projects
       </LeaveLink>
       <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
