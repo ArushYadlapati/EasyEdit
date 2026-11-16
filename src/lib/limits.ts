@@ -19,6 +19,11 @@ export const LIMITS = {
   connectorWritesPerMinute: 30, // changes one member's Claude may make in a minute
   connectorBytesPerDay: 10 * 1024 * 1024, // change data one member's Claude may store in a day
   connectorProjectsPerDay: 50, // projects one member's Claude may create in a day
+  appEditBytesPerDay: 20 * 1024 * 1024, // edit data one person may store through the app in a day
+  appEditsPerMinute: 120, // changes one person may save through the app in a minute
+  appProjectsPerDay: 25, // projects one person may create in a day
+  appUploadsPerDay: 500, // uploads one person may start in a day
+  foldersPerSpace: 200, // folders in one space, in total
   connectorNewIdLines: 50, // new ids listed after a write; the rest are in the project
   mediaFileBytes: 2 * 1024 * 1024 * 1024, // one uploaded file
   mediaChunkBytes: 8 * 1024 * 1024, // one piece of an upload; Drive needs a multiple of 256 KiB
