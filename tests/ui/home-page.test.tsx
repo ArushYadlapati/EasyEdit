@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "@/app/page";
+import { AgentDemo, REQUESTS } from "@/components/home/agent-demo";
 import PrivacyPage from "@/app/privacy/page";
 import TermsPage from "@/app/terms/page";
 import type { CurrentUser } from "@/lib/access-rules";
-import { render, screen } from "../helpers/dom";
+import { act, fireEvent, render, screen } from "../helpers/dom";
 
 class Redirected extends Error {
   constructor(readonly to: string) {
@@ -18,6 +19,8 @@ vi.mock("next/navigation", () => ({
 }));
 const { signedIn } = vi.hoisted(() => ({ signedIn: { user: null as CurrentUser | null } }));
 vi.mock("@/lib/access", () => ({ getCurrentUser: vi.fn(async () => signedIn.user) }));
+// The home page's font is a next/font loader, which only runs in a Next build.
+vi.mock("@/components/home/erode", () => ({ erode: { variable: "font-erode" } }));
 
 const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
 
@@ -26,26 +29,46 @@ beforeEach(() => {
 });
 
 describe("home page", () => {
-  it("signed out shows the pitch, a link to /login, a link to /privacy and a link to /terms", async () => {
+  it("signed out shows the pitch, the start button to /login, and links to /privacy and /terms", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
     render(await Home());
-    expect(screen.getByText("Edit short videos with your team, and with AI agents.")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/login");
+    vi.unstubAllEnvs();
+    expect(screen.getByRole("heading", { level: 1, name: "Edit videos with your team and AI" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Start editing, free" }).getAttribute("href")).toBe("/login");
+    for (const a of screen.getAllByRole("link", { name: "Sign in" })) expect(a.getAttribute("href")).toBe("/login");
     expect(screen.getByRole("link", { name: "Privacy" }).getAttribute("href")).toBe("/privacy");
     expect(screen.getByRole("link", { name: "Terms" }).getAttribute("href")).toBe("/terms");
   });
 
-  it("says EasyEdit is in closed beta while sign-up is closed", async () => {
+  it("has a section for AI agents, teams and the editor, each linked from the first screen", async () => {
+    render(await Home());
+    for (const [name, id] of [
+      ["AI agents", "ai"],
+      ["Teams", "team"],
+      ["The editor", "tools"],
+    ]) {
+      expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(`#${id}`);
+      expect(document.getElementById(id)).toBeTruthy();
+    }
+  });
+
+  it("says EasyEdit is free, as the terms do", async () => {
+    render(await Home());
+    expect(screen.getByText("Nothing. EasyEdit is free.")).toBeTruthy();
+  });
+
+  it("says EasyEdit is in closed beta while sign-up is closed, and the button just signs in", async () => {
     vi.stubEnv("OPEN_SIGNUP", "");
     render(await Home());
-    expect(screen.getByText("Closed beta")).toBeTruthy();
-    expect(screen.getByText("Sign-in is by invitation only for now.")).toBeTruthy();
+    expect(screen.getByText("EasyEdit is in closed beta. Sign-in is by invitation only for now.")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Start editing, free" })).toBeNull();
     vi.unstubAllEnvs();
   });
 
   it("drops the closed beta note once sign-up is open", async () => {
     vi.stubEnv("OPEN_SIGNUP", "true");
     render(await Home());
-    expect(screen.queryByText("Closed beta")).toBeNull();
+    expect(screen.queryByText(/closed beta/)).toBeNull();
     expect(screen.queryByText(/by invitation only/)).toBeNull();
     vi.unstubAllEnvs();
   });
@@ -53,6 +76,42 @@ describe("home page", () => {
   it("signed in goes to the dashboard", async () => {
     signedIn.user = ada;
     await expect(Home()).rejects.toMatchObject({ to: "/dashboard" });
+  });
+});
+
+describe("home page agent demo", () => {
+  it("starts with Claude's title in Activity, then shows the agent at work and its change for another request", () => {
+    vi.useFakeTimers();
+    render(<AgentDemo />);
+    expect(screen.getByText("Claude (for you) · Added text")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Make it vertical for Reels and TikTok/ }));
+    expect(screen.getByText(/Codex is editing/)).toBeTruthy();
+    expect(screen.queryByText(/Codex \(for you\)/)).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByText("Codex (for you) · Changed the format to Vertical 9:16")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Make it vertical/ }).getAttribute("aria-pressed")).toBe("true");
+    vi.useRealTimers();
+  });
+
+  it("undoes the agent's change from Activity", () => {
+    render(<AgentDemo />);
+    expect(screen.getAllByText("Spring showcase").length).toBeGreaterThan(1); // the project name, the title, its clip
+    fireEvent.click(screen.getByRole("button", { name: "Undo this change" }));
+    expect(screen.getByRole("button", { name: "Undone" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getAllByText("Spring showcase")).toHaveLength(1); // only the project name is left
+  });
+
+  it("offers one request per real agent tool, in the app's own Activity wording", () => {
+    expect(REQUESTS.map((r) => r.summary)).toEqual([
+      "Added text",
+      "Trimmed a video clip",
+      "Changed the format to Vertical 9:16",
+      "Split a video clip",
+    ]);
   });
 });
 
