@@ -81,15 +81,27 @@ describe("invite actions", () => {
       throw new Redirected(to);
     });
     let current = as("ada", "ada@example.com");
+    // The first database call (ada's accept) is held, so bob's whole request runs while ada is mid-accept.
+    let held = false;
+    const slowDb = new Proxy(db, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (prop !== "execute" || typeof value !== "function") return value;
+        return async (...args: unknown[]) => {
+          if (!held) {
+            held = true;
+            await gate;
+          }
+          return value.apply(target, args);
+        };
+      },
+    }) as DB;
     const actions = makeInviteActions({
-      db: () => db,
+      db: () => slowDb,
       requireUser: async () => current,
       revalidate: vi.fn(),
       redirect,
-      hasOnboarded: async (_db, id) => {
-        if (id === "ada") await gate; // ada's read is slow, so bob's whole request lands in between
-        return id === "bob";
-      },
+      hasOnboarded: async (_db, id) => id === "bob",
     });
     const first = actions.accept(inviteId).catch((e) => e);
     await new Promise((r) => setTimeout(r, 50));
