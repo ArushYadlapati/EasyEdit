@@ -25,6 +25,15 @@ export async function listMySpaces(db: DB, userId: string): Promise<MySpace[]> {
   return rowsOf<SpaceRow>(result).map(toMySpace);
 }
 
+// True when the user is a member of any team (a personal space does not count).
+export async function inAnyTeam(db: DB, userId: string): Promise<boolean> {
+  const result = await db.execute(sql`
+    select 1 as one from member m join organization o on o.id = m.organization_id
+    where m.user_id = ${userId} and o.kind = 'team' limit 1
+  `);
+  return rowsOf<{ one: number }>(result).length > 0;
+}
+
 // "personal" is the viewer's own personal space. Null when the viewer is not a member.
 export async function findMySpace(db: DB, userId: string, slug: string): Promise<MySpace | null> {
   const wanted = slug === PERSONAL_ALIAS ? personalSpaceId(userId) : slug;

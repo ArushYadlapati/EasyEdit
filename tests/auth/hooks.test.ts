@@ -4,7 +4,11 @@ import { rowsOf } from "@/db";
 import { user } from "@/db/schema";
 import { addEntry, removeEntry, SEED_ADMIN_EMAIL, seedAdmin } from "@/lib/allowlist/service";
 import { makeSessionCreateBefore, makeUserCreateAfter, makeUserCreateBefore } from "@/lib/auth-hooks";
-import { listMySpaces } from "@/lib/spaces/service";
+import type { Actor } from "@/lib/actor";
+import { actorIn } from "@/lib/spaces/access";
+import { inviteToTeam } from "@/lib/spaces/invites";
+import { createTeam, ensurePersonalSpace, listMySpaces } from "@/lib/spaces/service";
+import { testUser } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
 // Better Auth's APIError (better-call) keeps the payload on `.body`, so the message is matched at `body.message`.
@@ -120,5 +124,56 @@ describe("auth database hooks", () => {
     ]);
     const members = rowsOf<{ id: string }>(await db.execute(sql`select id from member where user_id = 'u1' order by id`));
     expect(members.map((m) => m.id)).toEqual(["mp_u1", "mt_u1"]);
+  });
+
+  describe("with sign-up closed and an email that is not on the allowlist", () => {
+    const rando = { email: "rando@gmail.com", emailVerified: true };
+    async function setup() {
+      const db = await makeTestDb();
+      await seedAdmin(db);
+      await db.insert(user).values({ id: "u1", name: "Uma", email: "u1@gmail.com", emailVerified: true });
+      await ensurePersonalSpace(db, { id: "u1" });
+      const team = await createTeam(db, { name: "Robotics Club", byUserId: "u1" });
+      const admin = (await actorIn(db, testUser({ id: "u1" }), team.id)) as Actor;
+      return { db, admin, team };
+    }
+    const refused = { status: "FORBIDDEN", body: { message: "NOT_ALLOWLISTED" } };
+
+    it("user create is allowed for an email with a pending invite", async () => {
+      const { db, admin } = await setup();
+      await inviteToTeam(db, admin, { email: "rando@gmail.com", role: "editor" });
+      await expect(makeUserCreateBefore(db)(rando)).resolves.toEqual({ data: rando });
+    });
+
+    it("user create is refused when the only invite expired", async () => {
+      const { db, admin } = await setup();
+      await inviteToTeam(db, admin, { email: "rando@gmail.com", role: "editor" }, { now: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) });
+      await expect(makeUserCreateBefore(db)(rando)).rejects.toMatchObject(refused);
+    });
+
+    it("session create is allowed for a team member who is not allowlisted", async () => {
+      const { db } = await setup();
+      await expect(makeSessionCreateBefore(db)({ userId: "u1" })).resolves.toBeUndefined();
+    });
+
+    it("session create is allowed with a pending invite", async () => {
+      const { db, admin } = await setup();
+      await db.insert(user).values({ id: "u2", name: "Rando", email: "rando@gmail.com", emailVerified: true });
+      await inviteToTeam(db, admin, { email: "rando@gmail.com", role: "viewer" });
+      await expect(makeSessionCreateBefore(db)({ userId: "u2" })).resolves.toBeUndefined();
+    });
+
+    it("session create is still refused with no team, no invite, not allowlisted", async () => {
+      const { db } = await setup();
+      await db.insert(user).values({ id: "u2", name: "Rando", email: "rando@gmail.com", emailVerified: true });
+      await ensurePersonalSpace(db, { id: "u2" });
+      await expect(makeSessionCreateBefore(db)({ userId: "u2" })).rejects.toMatchObject(refused);
+    });
+
+    it("an unverified Google email is refused even with an invite", async () => {
+      const { db, admin } = await setup();
+      await inviteToTeam(db, admin, { email: "rando@gmail.com", role: "editor" });
+      await expect(makeUserCreateBefore(db)({ email: "rando@gmail.com", emailVerified: false })).rejects.toMatchObject(refused);
+    });
   });
 });
