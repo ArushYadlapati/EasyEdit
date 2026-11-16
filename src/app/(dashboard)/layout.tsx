@@ -4,6 +4,7 @@ import { createTeamAction } from "@/app/(dashboard)/s/new/actions";
 import { markTutorialSeenAction } from "@/app/(dashboard)/tutorial/actions";
 import { AccountMenu } from "@/components/dashboard/account-menu";
 import { AdminLink } from "@/components/dashboard/admin-link";
+import { LearnLink } from "@/components/dashboard/learn-link";
 import { SpacesProvider } from "@/components/dashboard/space-switcher";
 import { KeepSignedIn } from "@/components/keep-signed-in";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
@@ -26,7 +27,8 @@ export const viewport: Viewport = { colorScheme: "dark" };
 // The dashboard's own frame: a header with the person's account menu, and the page filling the rest of the window.
 // Admin shares this frame; sign-in keeps the (auth) look. The person's spaces reach the header too, which shows Admin
 // only in Seattle Solvers (AdminLink). When the server has the intro tutorial's video, the account menu is told
-// whether this person has yet to see it; the menu opens it for them once and offers it from then on.
+// whether this person has yet to see it; the menu opens it for them once, and the header's Learn link and the
+// menu's Tutorial lead to it on a page of its own from then on.
 export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
   const db = getDb();
@@ -55,6 +57,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
             EasyEdit
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">
+            {tutorial && <LearnLink />}
             {user.allowlistRole === "admin" && <AdminLink />}
             <AccountMenu name={user.name || user.email} image={user.image ?? null} openSignUp={openSignUp()} tutorial={tutorial} />
           </div>

@@ -221,14 +221,10 @@ describe("the tutorial in the account menu", () => {
     expect(items()).toEqual(["Passkeys", "AI agents", "Tutorial", "Sign out"]);
   });
 
-  it("Tutorial opens the dialog; for someone who has seen it nothing is written and skipping is not offered", () => {
+  it("Tutorial goes to the Learn page, and opens no dialog", () => {
     render(menu(false));
-    expect(welcome()).toBeNull();
     pickTutorial();
-    expect(welcome()).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Watch" }));
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(router.push).toHaveBeenCalledWith("/learn");
     expect(welcome()).toBeNull();
     expect(markSeen).not.toHaveBeenCalled();
   });
@@ -240,11 +236,10 @@ describe("the tutorial in the account menu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
     expect(welcome()).toBeNull();
     expect(markSeen).toHaveBeenCalledTimes(1);
-    // Opened again from the menu, it is no longer a first visit.
+    // From then on Tutorial is the page, as for everyone.
     pickTutorial();
-    expect(welcome()).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(router.push).toHaveBeenCalledWith("/learn");
+    expect(welcome()).toBeNull();
     expect(markSeen).toHaveBeenCalledTimes(1);
   });
 

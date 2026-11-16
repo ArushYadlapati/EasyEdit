@@ -26,8 +26,8 @@ export type AccountTutorial = TutorialVideo & { firstVisit: boolean; markSeen():
 
 // The header's account button: the person's picture and name, opening a menu with Settings, Passkeys, AI agents,
 // Tutorial and Sign out. Settings (the editor's General and Shortcuts) is offered on the space pages only: the
-// preferences cookie it edits belongs to /s, so the Admin and AI agents pages cannot read it. Tutorial is offered
-// when the server has the video (tutorial).
+// preferences cookie it edits belongs to /s, so the Admin and AI agents pages cannot read it. Tutorial (the Learn
+// page) is offered when the server has the video (tutorial).
 // openSignUp: whether anyone may make an account, as the server reads it, for what a refused Google sign-in says.
 export function AccountMenu({ name, image, openSignUp = false, tutorial }: { name: string; image: string | null; openSignUp?: boolean; tutorial?: AccountTutorial }): ReactNode {
   const router = useRouter();
@@ -39,7 +39,8 @@ export function AccountMenu({ name, image, openSignUp = false, tutorial }: { nam
 
   // Someone who has not seen the tutorial gets it once, by itself, the first time this page load shows a space page:
   // not over Admin or AI agents, where they went on purpose. Playing it or closing it writes the mark, once; from
-  // then on it is only the menu's Tutorial. A mark that cannot be written is let go: the dialog comes back next visit.
+  // then on the tutorial is the Learn page, which the menu's Tutorial goes to. A mark that cannot be written is let
+  // go: the dialog comes back next visit.
   // It opens once the page is live in the browser, never in the page as the server sends it: a player in that page
   // would start loading before anything listens to it, and a video that failed to load would go unsaid.
   const live = useSyncExternalStore(noChanges, () => true, () => false);
@@ -110,7 +111,7 @@ export function AccountMenu({ name, image, openSignUp = false, tutorial }: { nam
           if (id === "settings") setSettingsOpen(true);
           if (id === "passkeys") setPasskeysOpen(true);
           if (id === "agents") router.push("/agents");
-          if (id === "tutorial") setTutorialOpen(true);
+          if (id === "tutorial") router.push("/learn");
           if (id === "sign-out") void signOut();
         }}
       />

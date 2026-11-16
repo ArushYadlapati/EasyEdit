@@ -1,6 +1,9 @@
 // The words of the welcome dialog and its menu item.
 export const TUTORIAL_WORDS = {
   menu: "Tutorial",
+  learn: "Learn",
+  learnIntro: "How EasyEdit works, on video. Pick a chapter to jump to it.",
+  basics: "The basics",
   title: "Welcome to EasyEdit",
   intro: "The basics, in a few minutes: spaces, the dashboard, making and editing a project, shortcuts, working with your team and with AI agents.",
   video: "EasyEdit intro tutorial",

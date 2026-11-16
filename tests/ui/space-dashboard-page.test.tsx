@@ -227,9 +227,10 @@ describe("the tutorial in the dashboard's frame", () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it("with no video on the server there is no welcome and no Tutorial item, and nobody is looked up", async () => {
+  it("with no video on the server there is no welcome, no Learn link and no Tutorial item, and nobody is looked up", async () => {
     await frame();
     expect(welcome()).toBeNull();
+    expect(screen.queryByRole("link", { name: "Learn" })).toBeNull();
     expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Sign out"]);
     expect(hasSeenTutorial).not.toHaveBeenCalled();
   });
@@ -252,6 +253,8 @@ describe("the tutorial in the dashboard's frame", () => {
     await markTutorialSeen(testDb, ada.id);
     await frame();
     expect(welcome()).toBeNull();
+    // The header's way back to it, on every dashboard page.
+    expect(screen.getByRole("link", { name: "Learn" }).getAttribute("href")).toBe("/learn");
     expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Tutorial", "Sign out"]);
   });
 
