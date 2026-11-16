@@ -7,6 +7,7 @@ export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 const ISSUERS = ["https://accounts.google.com", "accounts.google.com"];
 
 export class ConnectionBrokenError extends Error {
@@ -135,4 +136,15 @@ export async function refreshAccess(
   const { access_token: accessToken, expires_in: expiresIn } = isRecord(body) ? body : {};
   if (typeof accessToken !== "string" || typeof expiresIn !== "number") throw new OAuthError("bad_answer");
   return { accessToken, expiresAt: askedAt + expiresIn * 1000 };
+}
+
+// Ends EasyEdit's access to a Google account: revoking the refresh token also ends the access tokens made from it.
+// A token Google no longer knows (400) is already as good as revoked. Anything else comes out as a DriveError.
+export async function revokeGrant(refreshToken: string, fetchFn: typeof fetch = fetch): Promise<void> {
+  const answer = await reach(fetchFn, "oauth", REVOKE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token: refreshToken }).toString(),
+  });
+  if (!answer.ok && answer.status !== 400) throw new DriveError("oauth", answer.status, await refusalReason(answer));
 }

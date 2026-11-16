@@ -3,7 +3,7 @@ import { MESSAGES } from "@/lib/editor/messages";
 import { findClip } from "@/lib/editor/store";
 import { POLL_IDLE_LIMIT_MS, createSync, nextPollDelay } from "@/lib/editor/sync";
 import type { Op, OpInput } from "@/lib/timeline";
-import { makeFakeServer } from "./fake-server";
+import { LIMIT_MESSAGE, makeFakeServer } from "./fake-server";
 import { entry, makeStore, sampleDoc, text } from "./fixtures";
 
 const move = (start: number): OpInput[] => [{ op: "move_clip", clipId: "x2", start }];
@@ -500,5 +500,127 @@ describe("stopping", () => {
     sync.start();
     await after(2000);
     expect(server.calls).toEqual(["version"]);
+  });
+});
+
+describe("a save the website refuses over its limit", () => {
+  it("keeps the change, shows the server's message, and retries after a minute", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    expect(st()).toMatchObject({ status: "limited", limitMessage: LIMIT_MESSAGE });
+    expect(st().queue).toHaveLength(1);
+    expect(findClip(st().doc, "x2")!.clip.start).toBe(120); // not reverted
+    await after(59_000);
+    expect(st().status).toBe("limited");
+    await after(1_000);
+    expect(st()).toMatchObject({ status: "saved", queue: [], limitMessage: null });
+    expect(server.log).toHaveLength(1);
+  });
+
+  it("retries when the person edits again, and the message clears once it lands", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    st().edit(move(150), "move");
+    await settle();
+    expect(st()).toMatchObject({ status: "saved", queue: [], limitMessage: null });
+    expect(server.log.map((e) => e.ops[0])).toMatchObject([{ start: 120 }, { start: 150 }]);
+  });
+
+  it("undo is refused the same way and goes through later", async () => {
+    const { server, st } = setup();
+    st().edit(move(120), "move");
+    await settle();
+    server.fail("limited");
+    st().undo();
+    await settle();
+    expect(st()).toMatchObject({ status: "limited", limitMessage: LIMIT_MESSAGE });
+    expect(st().queue).toHaveLength(1);
+    expect(st().redoStack).toHaveLength(1); // history intact
+    await after(60_000);
+    expect(st()).toMatchObject({ status: "saved", queue: [] });
+    expect(st().doc).toEqual(server.doc());
+  });
+
+  it("stays limited while the retry's post is in flight, so leaving is warned about and the edits are kept", async () => {
+    const { server, sync, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    expect(st().status).toBe("limited");
+    st().edit(move(150), "move"); // retries at once: the catch-up goes out now and works
+    server.fail("limited"); // the post after it is refused again
+    for (let i = 0; i < 50 && count(server.calls, "post") < 2; i++) await Promise.resolve();
+    expect(count(server.calls, "post")).toBe(2); // the post is in flight
+    const { status, queue } = st(); // what the leave link reads
+    expect(status).toBe("limited");
+    expect(queue.length > 0 && status !== "saving" && status !== "deleted").toBe(true);
+    sync.stopWhenSent();
+    await settle();
+    expect(st()).toMatchObject({ status: "limited", limitMessage: LIMIT_MESSAGE });
+    expect(st().queue.length).toBeGreaterThan(0);
+  });
+
+  it("losing editing rights while limited clears the limit message", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    server.fail("forbidden");
+    await after(60_000); // the retry's catch-up is refused as forbidden
+    expect(st()).toMatchObject({ canEdit: false, queue: [], limitMessage: null });
+    expect(st().status).not.toBe("limited");
+  });
+
+  it("a later accepted save clears the limited state", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    await after(60_000);
+    expect(st()).toMatchObject({ status: "saved", limitMessage: null, queue: [] });
+  });
+
+  it("while limited, edits retry at most once every 5 seconds and none are dropped", async () => {
+    const { server, st } = setup();
+    server.fail("limited", 3);
+    st().edit(move(120), "move");
+    await settle(); // refused
+    st().edit(move(130), "move"); // retries at once, refused again
+    await settle();
+    const cycles = server.calls.length; // the first refusal plus one retry cycle
+    expect(cycles).toBeGreaterThan(1);
+    for (const v of [140, 150, 160]) { await after(1000); st().edit(move(v), "move"); await settle(); }
+    expect(server.calls.length).toBe(cycles); // within 5 s: no new cycle
+    expect(st().status).toBe("limited");
+    await after(2000); // 5 s since the retry
+    st().edit(move(170), "move"); // allowed again; refused once more
+    await settle();
+    expect(server.calls.length).toBeGreaterThan(cycles); // a new cycle ran
+    expect(st().queue).toHaveLength(6);
+    await after(5000);
+    st().edit(move(180), "move"); // the server accepts now
+    await settle();
+    expect(st()).toMatchObject({ status: "saved", queue: [], limitMessage: null });
+    expect(server.log).toHaveLength(7);
+  });
+
+  it("after an accepted save, edits sync normally again", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    await after(60_000); // accepted
+    expect(st().status).toBe("saved");
+    const before = count(server.calls, "post");
+    st().edit(move(150), "move");
+    await settle();
+    st().edit(move(160), "move");
+    await settle();
+    expect(count(server.calls, "post")).toBe(before + 2);
+    expect(st()).toMatchObject({ status: "saved", queue: [] });
   });
 });

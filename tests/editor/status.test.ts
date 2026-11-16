@@ -9,4 +9,10 @@ it("labels the save status", () => {
   expect(saveStatusLabel("offline", 0, true)).toBe("Offline");
   expect(saveStatusLabel("signed-out", 1, true)).toBe("Signed out");
   expect(saveStatusLabel("deleted", 0, true)).toBe("Deleted");
+  expect(saveStatusLabel("limited", 1, true, "Too many changes at once. Wait a minute, then keep going.")).toBe("Too many changes at once. Wait a minute, then keep going.");
+});
+
+it("the limit sentence is whole in the label the top bar puts in its title", () => {
+  const text = "Today's limit for saved changes is used up (20 MB a day). It frees up over the next 24 hours.";
+  expect(saveStatusLabel("limited", 3, true, text)).toBe(text);
 });

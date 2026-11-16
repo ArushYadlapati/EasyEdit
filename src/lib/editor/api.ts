@@ -6,6 +6,7 @@ export type ApiFailure =
   | { ok: false; kind: "conflict"; currentVersion: number } // 409
   | { ok: false; kind: "signed-out" } // 401 with the code UNAUTHENTICATED
   | { ok: false; kind: "forbidden" } // 403
+  | { ok: false; kind: "limited"; message: string } // 429 with the code LIMIT_EXCEEDED: the website refuses this save for now
   | { ok: false; kind: "not-found" } // 404 with the code NOT_FOUND
   | { ok: false; kind: "network" }; // fetch threw, timed out, 5xx, the body was not JSON, or a 401 or 404 without its code
 
@@ -64,6 +65,8 @@ function failureFor(status: number, body: Body | null): ApiFailure {
       return body?.code === "NOT_FOUND" ? { ok: false, kind: "not-found" } : NETWORK;
     case 409:
       return typeof body?.currentVersion === "number" ? { ok: false, kind: "conflict", currentVersion: body.currentVersion } : NETWORK;
+    case 429:
+      return body?.code === "LIMIT_EXCEEDED" && typeof body.message === "string" ? { ok: false, kind: "limited", message: body.message } : NETWORK;
     default:
       return NETWORK;
   }

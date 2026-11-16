@@ -24,7 +24,7 @@ export type Selection = { clipIds: string[]; trackId: string | null };
 
 export type Notice = { id: number; tone: "info" | "error"; text: string };
 
-export type SyncStatus = "saved" | "saving" | "offline" | "signed-out" | "deleted";
+export type SyncStatus = "saved" | "saving" | "offline" | "limited" | "signed-out" | "deleted";
 
 // One entry of the project's op log.
 export type ActivityEntry = {

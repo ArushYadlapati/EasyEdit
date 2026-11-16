@@ -5,6 +5,7 @@ import { assets, spaceStorage } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { DriveError } from "@/lib/drive/token";
 import { ServiceError } from "@/lib/service-error";
+import { makeDisconnectStorage } from "@/lib/storage/disconnect";
 import { ConnectionBrokenError } from "@/lib/storage/google-oauth";
 import { makeSetUpStorage, type SetUpStorage } from "@/lib/storage/setup";
 import { makeStorageActions } from "@/lib/storage/storage-actions";
@@ -17,7 +18,8 @@ const u2: CurrentUser = { id: "u2", email: "u2@gmail.com", name: "U2", image: nu
 function actionsFor(w: StorageWorld, over: { user?: CurrentUser; setUp?: SetUpStorage } = {}) {
   const revalidate = vi.fn();
   const setUp = over.setUp ?? makeSetUpStorage({ config: w.cfg, fetch: w.fake.fetch });
-  const actions = makeStorageActions({ db: () => w.db, requireUser: async () => over.user ?? u1, setUp, revalidate });
+  const disconnect = makeDisconnectStorage({ config: w.cfg, revoke: async () => {} });
+  const actions = makeStorageActions({ db: () => w.db, requireUser: async () => over.user ?? u1, setUp, disconnect, revalidate });
   return { actions, revalidate };
 }
 
@@ -109,5 +111,36 @@ describe("choosing an account the person already connected", () => {
     } finally {
       vi.restoreAllMocks();
     }
+  });
+});
+
+describe("disconnecting the space's Google account", () => {
+  it("the person who connected it, with no videos: no error, the storage is gone, the page refreshes", async () => {
+    const w = await storageWorld();
+    const ada = await w.connect();
+    const { actions, revalidate } = actionsFor(w);
+    expect(await actions.choose(w.personal, form(ada.id))).toEqual({});
+    expect(await actions.disconnect(w.personal)).toEqual({});
+    expect(await w.db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, w.personal))).toEqual([]);
+    expect(revalidate).toHaveBeenCalled();
+  });
+
+  it("a refusal comes back as the action's error, and the page refreshes", async () => {
+    const w = await storageWorld();
+    const ada = await w.connect();
+    const { actions, revalidate } = actionsFor(w);
+    await actions.choose(w.personal, form(ada.id));
+    await w.db.insert(assets).values({
+      id: nanoid(12), spaceId: w.personal, kind: "video", name: "clip", fileName: "clip.mov", mimeType: "video/quicktime", sizeBytes: 1, lastModifiedMs: 1, uploadedBy: "u1",
+    });
+    revalidate.mockClear();
+    expect(await actions.disconnect(w.personal)).toEqual({ error: "This space has videos in that Google Drive, so it can't be disconnected yet." });
+    expect(revalidate).toHaveBeenCalled();
+  });
+
+  it("a space the person doesn't run reads like any failure, never naming the space", async () => {
+    const w = await storageWorld();
+    const { actions } = actionsFor(w, { user: u2 });
+    expect(await actions.disconnect(w.personal)).toEqual({ error: "That didn't work. Nothing was changed. Try again." });
   });
 });

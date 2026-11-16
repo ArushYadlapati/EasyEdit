@@ -1,6 +1,7 @@
 import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
 import type { Actor } from "@/lib/actor";
+import { checkAppBudget } from "@/lib/app-budget";
 import type { Role } from "@/lib/allowlist/service";
 import { PROJECT_GONE } from "@/lib/dashboard/view";
 import { createFolder, deleteFolder, FOLDER_GONE, moveProject, renameFolder } from "@/lib/projects/folders";
@@ -70,6 +71,7 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
   return {
     async create(spaceId: string, _prev: FormState, formData: FormData): Promise<FormState> {
       const result = await run(spaceId, async (db, actor) => {
+        await checkAppBudget(db, actor.userId, "project");
         const project = await createProject(db, actor, {
           name: field(formData, "name"),
           format: field(formData, "format"),
@@ -88,7 +90,10 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
     remove: (spaceId: string, formData: FormData) =>
       change(spaceId, (db, actor) => deleteProject(db, actor, field(formData, "id"))),
     duplicate: (spaceId: string, formData: FormData) =>
-      change(spaceId, (db, actor) => duplicateProject(db, actor, field(formData, "id"))),
+      change(spaceId, async (db, actor) => {
+        await checkAppBudget(db, actor.userId, "project");
+        return duplicateProject(db, actor, field(formData, "id"));
+      }),
     move: (spaceId: string, formData: FormData) =>
       change(spaceId, (db, actor) => moveProject(db, actor, field(formData, "id"), folder(formData))),
     pin: (spaceId: string, formData: FormData) =>

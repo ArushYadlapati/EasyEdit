@@ -14,20 +14,23 @@ export type ServiceErrorCode =
   | "LAST_ADMIN"
   | "STORAGE_OWNER"
   | "HAS_PROJECTS"
+  | "NO_STORAGE"
+  | "NOT_OWNER"
+  | "HAS_UPLOADS"
   | "WRONG_ACCOUNT"
   | "EXPIRED"
   | "INVITE_USED";
 
 export class ServiceError extends Error {
   code: ServiceErrorCode;
-  status: 400 | 403 | 404 | 409 | 410;
+  status: 400 | 403 | 404 | 409 | 410 | 429;
   // Declared, not defined, so an absent value is not an own property set to undefined.
   declare opIndex?: number;
   declare currentVersion?: number;
 
   constructor(
     code: ServiceErrorCode,
-    status: 400 | 403 | 404 | 409 | 410,
+    status: 400 | 403 | 404 | 409 | 410 | 429,
     message: string,
     extra: { opIndex?: number; currentVersion?: number } = {},
   ) {

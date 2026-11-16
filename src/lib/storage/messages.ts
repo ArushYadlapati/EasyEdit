@@ -32,6 +32,11 @@ export const STORAGE_MESSAGES = {
   // One Google account holds one space's storage, so the setup screen says so before Google's account picker.
   oneAccountOneSpace: "Each Google account can store videos for only one space: your Personal space or one team. Pick one that isn't already in use.",
   chooseAccount: "Choose account",
+  disconnect: "Disconnect",
+  disconnectTitle: (email: string) => `Disconnect ${email}?`, // "Disconnect <email>?"
+  disconnectQuestion: "EasyEdit stops using this Google account for this space and gives up its access to it. The EasyEdit folder stays in your Google Drive.",
+  // Disconnect waits until nothing in the space depends on the account (the same rule as moving to another account).
+  disconnectLater: "This space has videos in that Google Drive, so it can't be disconnected yet.",
   banner: "Google Drive needs reconnecting. Uploads are paused until an admin reconnects it.",
   // A choice of account that didn't go through.
   failed: "That didn't work. Nothing was changed. Try again.",
@@ -57,6 +62,7 @@ export type Note = { text: string; problem: boolean };
 // What the storage settings page says for ?storage=<note>, which the connect routes send back. Anything else: nothing.
 const SETTINGS_NOTES: Record<string, Note> = {
   connected: { text: "Google Drive connected.", problem: false },
+  disconnected: { text: "Google account disconnected. Its EasyEdit folder is still in your Google Drive.", problem: false },
   "needs-drive": { text: "EasyEdit needs permission to its own files in your Drive. Try again and leave that box ticked.", problem: true },
   cancelled: { text: "Nothing was changed.", problem: false },
   failed: { text: STORAGE_MESSAGES.failed, problem: true },

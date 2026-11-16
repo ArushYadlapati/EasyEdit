@@ -3,6 +3,7 @@ import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
 import type { Actor } from "@/lib/actor";
 import { apiRoute } from "@/lib/api-route";
+import { checkAppBudget } from "@/lib/app-budget";
 import type { DriveClient } from "@/lib/drive/client";
 import { SettingsError } from "@/lib/drive/config";
 import { type AccessSource, DriveError } from "@/lib/drive/token";
@@ -187,7 +188,11 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
     open: mediaRoute(deps, inQueriedSpace, async (actor, req) => {
       const service = await media(actor);
       if (!service) return notSetUp();
-      const { asset, uploadUrl, offset } = await openUpload(service, actor, await bodyOf(req, openBody));
+      const { asset, uploadUrl, offset } = await openUpload(
+        { ...service, checkNew: () => checkAppBudget(service.db, actor.userId, "upload") },
+        actor,
+        await bodyOf(req, openBody),
+      );
       return Response.json({ asset, uploadUrl, offset }, { status: 201 });
     }),
 

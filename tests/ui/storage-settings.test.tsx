@@ -32,7 +32,7 @@ vi.mock("next/navigation", () => ({
   },
   unstable_rethrow: () => {},
 }));
-const { signedIn } = vi.hoisted(() => ({ signedIn: { user: null as CurrentUser | null } }));
+const { signedIn, disconnect } = vi.hoisted(() => ({ signedIn: { user: null as CurrentUser | null }, disconnect: vi.fn(async () => ({})) }));
 vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => signedIn.user!),
   meetsRole: (await import("@/lib/access-rules")).meetsRole,
@@ -58,7 +58,7 @@ const inAccount = (over: Partial<Extract<StorageSettingsView["storage"], { kind:
 
 function show(view: Partial<StorageSettingsView> = {}, extra: { note?: string | null; first?: boolean } = {}) {
   const full: StorageSettingsView = { space: PERSONAL, storage: { kind: "none" }, connections: [], blocked: null, ...view };
-  return render(<StorageSettings view={full} note={extra.note ?? null} first={extra.first ?? false} />);
+  return render(<StorageSettings view={full} note={extra.note ?? null} first={extra.first ?? false} disconnect={disconnect} />);
 }
 
 const link = (name: string) => screen.getByRole<HTMLAnchorElement>("link", { name });
@@ -73,6 +73,8 @@ const isPrimary = (element: HTMLElement) => element.className.split(/\s+/).inclu
 
 beforeEach(() => {
   router.replace.mockClear();
+  disconnect.mockReset();
+  disconnect.mockResolvedValue({});
   router.refresh.mockClear();
 });
 
@@ -187,6 +189,47 @@ describe("the storage settings", () => {
     const later = link("Set this up later");
     expect(later.getAttribute("href")).toBe("/s/robots");
     expect(isPrimary(later)).toBe(false);
+  });
+
+  it("Disconnect, for the person who connected it: asks first, then shows the space with no storage", async () => {
+    show({ storage: inAccount({ hasUploads: false }) });
+    await act(async () => fireEvent.click(button("Disconnect")));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Disconnect ada@gmail.com?")).toBeTruthy();
+    expect(within(dialog).getByText(/The EasyEdit folder stays in your Google Drive\./)).toBeTruthy();
+    expect(disconnect).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" })));
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/s/personal/settings/storage?storage=disconnected"));
+  });
+
+  it("a refused Disconnect says why in the dialog, and stays on the page", async () => {
+    disconnect.mockResolvedValueOnce({ error: "This space has videos in that Google Drive, so it can't be disconnected yet." });
+    show({ storage: inAccount({ hasUploads: false }) });
+    await act(async () => fireEvent.click(button("Disconnect")));
+    const dialog = screen.getByRole("dialog");
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" })));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe("This space has videos in that Google Drive, so it can't be disconnected yet.");
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("a space with videos: Disconnect is off, and says why", () => {
+    show({ storage: inAccount({ hasUploads: true }) });
+    expect(button("Disconnect").disabled).toBe(true);
+    expect(screen.getByText("This space has videos in that Google Drive, so it can't be disconnected yet.")).toBeTruthy();
+  });
+
+  it("no Disconnect for an admin who didn't connect the account, or on a server without storage settings", () => {
+    const other = show({ space: TEAM, storage: inAccount({ ownedByViewer: false, ownerEmail: "bea@gmail.com" }) });
+    expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
+    other.unmount();
+    show({ blocked: "server", storage: inAccount() });
+    expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
+  });
+
+  it("after a disconnect, the note says the folder is still in their Drive", () => {
+    show({}, { note: "disconnected" });
+    expect(screen.getByText("Google account disconnected. Its EasyEdit folder is still in your Google Drive.")).toBeTruthy();
   });
 
   it("an admin who didn't connect the account is told who can reconnect it, not given a Reconnect that can't work", () => {

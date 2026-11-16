@@ -16,7 +16,10 @@ import { checkFile, cleanName, driveName, probeFits } from "./rules";
 import type { AssetKind, AssetView, OpenUploadInput } from "./types";
 
 // onDriveError: told of each Drive failure that the member is not shown. The service itself prints nothing.
-export type MediaDeps = { db: DB; drive: DriveClient; origin: string; onDriveError?: (error: DriveError) => void };
+export type MediaDeps = { db: DB; drive: DriveClient; origin: string; onDriveError?: (error: DriveError) => void;
+  // Run only when a brand-new upload is about to start (not when an unfinished one is taken up); it may throw to refuse.
+  checkNew?: () => Promise<void>;
+};
 export type OpenedUpload = { asset: AssetView; uploadUrl: string; offset: number };
 
 type AssetRow = typeof assets.$inferSelect;
@@ -168,6 +171,7 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
   const before = await takeUpUnfinished(deps, actor, input);
   if (before) return before;
 
+  await deps.checkNew?.();
   const count = await db.$count(assets, unfinishedOf(actor));
   if (count >= LIMITS.mediaPendingPerMember) throw tooManyUnfinished();
 

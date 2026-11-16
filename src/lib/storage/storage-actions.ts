@@ -2,6 +2,7 @@ import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
 import { DriveError } from "@/lib/drive/token";
 import { ServiceError } from "@/lib/service-error";
+import type { DisconnectStorage } from "./disconnect";
 import { ConnectionBrokenError } from "./google-oauth";
 import { STORAGE_MESSAGES } from "./messages";
 import type { SetUpStorage } from "./setup";
@@ -12,6 +13,7 @@ export type StorageActionDeps = {
   db: () => DB;
   requireUser: () => Promise<CurrentUser>;
   setUp: SetUpStorage;
+  disconnect: DisconnectStorage;
   revalidate: () => void; // the pages that show the space's storage
 };
 
@@ -45,6 +47,19 @@ export function makeStorageActions(deps: StorageActionDeps) {
         console.error("Setting up storage failed:", error instanceof Error ? error.message : "unknown");
         if (error instanceof ConnectionBrokenError) deps.revalidate(); // the page then shows it as needing Google again
         return { error: message };
+      }
+      deps.revalidate();
+      return {};
+    },
+    // Disconnect: the space's storage off the Google account the person connected, while the space has no videos.
+    async disconnect(spaceId: string): Promise<StorageFormState> {
+      const user = await deps.requireUser();
+      try {
+        await deps.disconnect(deps.db(), { spaceId, byUserId: user.id });
+      } catch (error) {
+        if (!(error instanceof ServiceError)) throw error;
+        deps.revalidate(); // a refusal often means the page is out of date
+        return { error: error.code === "NOT_FOUND" ? STORAGE_MESSAGES.failed : error.message };
       }
       deps.revalidate();
       return {};

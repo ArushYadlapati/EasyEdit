@@ -2,6 +2,7 @@ import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { DB } from "@/db";
 import { folders, projects } from "@/db/schema";
+import { checkFolderCap } from "@/lib/app-budget";
 import { requireRole, type Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
 import { folderName } from "@/lib/projects/schemas";
@@ -51,6 +52,7 @@ export async function listFolders(db: DB, actor: Actor): Promise<FolderSummary[]
 export async function createFolder(db: DB, actor: Actor, name: string): Promise<{ id: string; name: string }> {
   requireRole(actor, "editor");
   const folder = { id: nanoid(12), name: parseName(name) };
+  await checkFolderCap(db, actor.spaceId);
   await savingName(db.insert(folders).values({ ...folder, spaceId: actor.spaceId, createdBy: actor.userId }));
   return folder;
 }

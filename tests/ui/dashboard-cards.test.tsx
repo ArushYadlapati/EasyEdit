@@ -263,6 +263,15 @@ describe("duplicating a card", () => {
     expect(alert.className).toContain("text-ed-danger");
   });
 
+  it("Duplicate at the daily project limit says so on the card", async () => {
+    const { actions } = renderDashboard();
+    const text = "You've reached today's limit for new projects (25). It frees up over the next 24 hours.";
+    actions.duplicate.mockResolvedValue({ error: text });
+    const li = card("Qual recap");
+    await pick(li, "Duplicate");
+    expect(within(li).getByRole("alert").textContent).toBe(text);
+  });
+
   it("a card's edits wait while one of them runs", async () => {
     const { actions } = renderDashboard();
     // The duplicate is held while the test looks, then finished: React holds every later transition until a running
