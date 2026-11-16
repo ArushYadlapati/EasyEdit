@@ -128,6 +128,16 @@ describe("connect", () => {
     expect(google.searchParams.get("code_challenge")).toBe(createHash("sha256").update(String(kept.verifier)).digest("base64url"));
   });
 
+  it("account=signed-in hints the signed-in person's own Google account and skips Google's account chooser", async () => {
+    const ctx = await setup();
+    const { google } = await start(ctx, `space=${SEED_TEAM_ID}&account=signed-in&hint=eve%40gmail.com`);
+    expect(google.searchParams.get("login_hint")).toBe("u1@gmail.com");
+    expect(google.searchParams.get("prompt")).toBe("consent");
+    const plain = await start(ctx, `space=${SEED_TEAM_ID}`);
+    expect(plain.google.searchParams.get("prompt")).toBe("consent select_account");
+    expect(plain.google.searchParams.get("login_hint")).toBeNull();
+  });
+
   it("leaves Secure off on plain http", async () => {
     const ctx = await setup();
     const { setCookie } = await start(ctx, `space=${SEED_TEAM_ID}`, "http://localhost:3000");
@@ -409,6 +419,50 @@ describe("the callback", () => {
     quiet.mockRestore();
     await expectPage(res, `${BASE}/dashboard?storage=failed`);
     expectCleared(res);
+  });
+});
+
+describe("a connect started from the welcome page", () => {
+  const WELCOME = encodeURIComponent("/welcome?step=storage");
+  const fromWelcome = (ctx: Ctx) => start(ctx, `space=${personalSpaceId("u1")}&return=${WELCOME}`);
+  const landing = (note: string) => `${BASE}/welcome?step=storage&storage=${note}`;
+
+  it("comes back to the welcome page saying it connected", async () => {
+    const ctx = await setup();
+    const { state, cookie } = await fromWelcome(ctx);
+    const res = await back(ctx, `code=c&state=${state}`, cookie);
+    await expectPage(res, landing("connected"));
+    expectCleared(res);
+  });
+
+  it("comes back to the welcome page, never storage settings, when it doesn't work", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const cases: [string, (ctx: Ctx) => void, string][] = [
+      ["account-in-use", (ctx) => ctx.setUp.mockRejectedValueOnce(new ServiceError("ACCOUNT_IN_USE", 409, "taken")), "code=c"],
+      ["in-use", (ctx) => ctx.setUp.mockRejectedValueOnce(new ServiceError("STORAGE_IN_USE", 409, "in use")), "code=c"],
+      ["failed", (ctx) => ctx.setUp.mockRejectedValueOnce(new ServiceError("CONFLICT", 409, "no")), "code=c"],
+      ["failed", (ctx) => void (ctx.google.grant.refreshToken = ""), "code=c"],
+      ["needs-drive", (ctx) => void (ctx.google.grant.scope = "openid https://www.googleapis.com/auth/userinfo.email"), "code=c"],
+      ["cancelled", () => {}, "error=access_denied"],
+      ["failed", () => {}, "error=server_error"],
+      ["expired", (ctx) => void (ctx.clock.now = new Date(ctx.clock.now.getTime() + 600_001)), "code=c"],
+    ];
+    for (const [note, arrange, answer] of cases) {
+      const ctx = await setup();
+      const { state, cookie } = await fromWelcome(ctx);
+      arrange(ctx);
+      const res = await back(ctx, `${answer}&state=${state}`, cookie);
+      await expectPage(res, landing(note));
+      expectCleared(res);
+    }
+    quiet.mockRestore();
+  });
+
+  it("anything it can't trust still lands on the fixed page", async () => {
+    const ctx = await setup();
+    const { state, cookie } = await fromWelcome(ctx);
+    ctx.signedIn.user = testUser({ id: "u2" });
+    await expectPage(await back(ctx, `code=c&state=${state}`, cookie), REFUSED);
   });
 });
 

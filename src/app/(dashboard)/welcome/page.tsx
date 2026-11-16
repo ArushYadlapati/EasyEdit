@@ -11,7 +11,8 @@ import { mcpResourceUrl } from "@/lib/connector/config";
 import { welcomePlan, type WelcomeStep } from "@/lib/onboarding/steps";
 import { ensurePersonalSpace } from "@/lib/spaces/service";
 import { personalSpaceId } from "@/lib/spaces/types";
-import { connectHref, STORAGE_MESSAGES } from "@/lib/storage/messages";
+import { StorageNote } from "@/components/storage/storage-banner";
+import { connectHref, settingsNote, STORAGE_MESSAGES } from "@/lib/storage/messages";
 import { finishOnboardingAction } from "./actions";
 
 export const metadata: Metadata = { title: "Welcome" };
@@ -25,12 +26,20 @@ export default async function WelcomePage({ searchParams }: PageProps<"/welcome"
   const db = getDb();
   const query = await searchParams;
   await ensurePersonalSpace(db, me);
-  const { steps, team } = await welcomePlan(db, me.id, first(query.team));
+  // What a connect started here came back with (?storage=<note>): said on the storage step, before moving on.
+  const told = first(query.storage);
+  const note = settingsNote(told);
+  const { steps, team, connected } = await welcomePlan(db, me.id, first(query.team), { justConnected: told === "connected" });
   const asked = first(query.step);
   const step: WelcomeStep = steps.find((s) => s === asked) ?? steps[0];
   const number = steps.indexOf(step) + 1;
   const teamSlug = team?.slug ?? "";
   const agentsHref = `/welcome?${new URLSearchParams({ step: "agents" }).toString()}`;
+  // Every connect from here comes back to this step, worked or not.
+  const storageHref = `/welcome?${new URLSearchParams({ step: "storage" }).toString()}`;
+  const personalId = personalSpaceId(me.id);
+  // The Google account just tried already holds another space: choosing a different one is the way on.
+  const differentFirst = told === "account-in-use";
 
   const skipSetup = (
     <form action={finishOnboardingAction}>
@@ -62,15 +71,36 @@ export default async function WelcomePage({ searchParams }: PageProps<"/welcome"
             <p className="text-[13px] leading-5 text-ed-muted">
               EasyEdit keeps your videos in your own Google Drive, in a folder of its own. It can&apos;t see your other files.
             </p>
-            <p className="text-[13px] leading-5 text-ed-muted">{STORAGE_MESSAGES.oneAccountOneSpace}</p>
-            <div className="flex flex-wrap items-center gap-3">
-              <a href={connectHref(personalSpaceId(me.id), undefined, agentsHref)} className={linkButtonClass("primary")}>
-                Choose Google account
-              </a>
-              <Link href={agentsHref} className={linkButtonClass()}>
-                Skip for now
-              </Link>
-            </div>
+            {connected ? (
+              <>
+                {note && <StorageNote note={note} />}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link href={agentsHref} className={linkButtonClass("primary")}>
+                    Continue
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                {note && told !== "connected" && <StorageNote note={note} />}
+                <p className="text-[13px] leading-5 text-ed-muted">{STORAGE_MESSAGES.oneAccountOneSpace}</p>
+                <p className="text-[13px] leading-5 text-ed-muted">{STORAGE_MESSAGES.signedInAs(me.email)}</p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <a
+                    href={connectHref(personalId, { signedInAccount: true, returnTo: storageHref })}
+                    className={linkButtonClass(differentFirst ? undefined : "primary")}
+                  >
+                    {STORAGE_MESSAGES.connectSignedIn}
+                  </a>
+                  <a href={connectHref(personalId, { returnTo: storageHref })} className={linkButtonClass(differentFirst ? "primary" : undefined)}>
+                    {STORAGE_MESSAGES.chooseDifferent}
+                  </a>
+                  <Link href={agentsHref} className={linkButtonClass()}>
+                    Skip for now
+                  </Link>
+                </div>
+              </>
+            )}
           </section>
         ) : (
           <section className="flex flex-col gap-4">

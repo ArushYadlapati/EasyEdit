@@ -108,7 +108,7 @@ export function StorageSettings({ view, note, first, disconnect }: StorageSettin
               {!storage.ownedByViewer && <p className={MUTED}>{STORAGE_MESSAGES.onlyOwner(storage.ownerEmail)}</p>}
               <div className={ROW}>
                 {storage.ownedByViewer && (
-                  <ConnectLink href={connectHref(space.id, storage.email)} primary={storage.broken}>
+                  <ConnectLink href={connectHref(space.id, { hint: storage.email })} primary={storage.broken}>
                     {STORAGE_MESSAGES.reconnect}
                   </ConnectLink>
                 )}

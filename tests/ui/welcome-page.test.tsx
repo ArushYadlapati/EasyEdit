@@ -91,8 +91,12 @@ describe("the welcome page", () => {
     expect(screen.getByText("Where should your videos live?")).toBeTruthy();
     expect(screen.getByText("EasyEdit keeps your videos in your own Google Drive, in a folder of its own. It can't see your other files.")).toBeTruthy();
     expect(screen.getByText(/Each Google account can store videos for only one space/)).toBeTruthy();
-    const choose = screen.getByRole("link", { name: "Choose Google account" });
-    expect(choose.getAttribute("href")).toBe(connectHref(personalSpaceId(ada.id), undefined, "/welcome?step=agents"));
+    expect(screen.getByText("You're signed in as ada@gmail.com.")).toBeTruthy();
+    const here = screen.getByRole("link", { name: "Connect to this Google Drive" });
+    expect(here.getAttribute("href")).toBe(connectHref(personalSpaceId(ada.id), { signedInAccount: true, returnTo: "/welcome?step=storage" }));
+    const other = screen.getByRole("link", { name: "Choose a different Google account" });
+    expect(other.getAttribute("href")).toBe(connectHref(personalSpaceId(ada.id), { returnTo: "/welcome?step=storage" }));
+    expect(screen.queryByRole("link", { name: "Choose Google account" })).toBeNull();
     expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents");
     expect(screen.getByRole("button", { name: "Skip setup" })).toBeTruthy();
   });
@@ -118,6 +122,38 @@ describe("the welcome page", () => {
     expect(screen.getByRole("button", { name: "Skip" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Skip setup" })).toBeTruthy();
     expect(screen.getAllByRole("tab").length).toBeGreaterThan(1);
+  });
+
+  it("after a connect, shows that it worked and waits for Continue", async () => {
+    storage.ready = true; // the connect just gave Personal its storage
+    await show({ step: "storage", storage: "connected" });
+    expect(screen.getByText("Step 1 of 2")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Google Drive connected.");
+    expect(screen.getByRole("link", { name: "Continue" }).getAttribute("href")).toBe("/welcome?step=agents");
+    expect(screen.queryByRole("link", { name: "Connect to this Google Drive" })).toBeNull();
+    expect(screen.queryByText("Use EasyEdit with your AI agent")).toBeNull();
+  });
+
+  it("a connected note with no storage behind it shows the normal storage step", async () => {
+    await show({ step: "storage", storage: "connected" });
+    expect(screen.queryByText("Google Drive connected.")).toBeNull();
+    expect(screen.getByRole("link", { name: "Connect to this Google Drive" })).toBeTruthy();
+  });
+
+  it("after a connect that didn't work, says why and offers the choices again", async () => {
+    await show({ step: "storage", storage: "account-in-use" });
+    expect(screen.getByRole("alert").textContent).toBe(
+      "That Google account already holds another EasyEdit space's storage. Choose a different Google account.",
+    );
+    expect(screen.getByRole("link", { name: "Connect to this Google Drive" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Choose a different Google account" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents");
+  });
+
+  it("ignores a storage note it doesn't know", async () => {
+    await show({ step: "storage", storage: "<b>hi</b>" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("an unknown step is the first step", async () => {

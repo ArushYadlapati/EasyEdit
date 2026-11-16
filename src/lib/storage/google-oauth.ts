@@ -35,14 +35,16 @@ export function pkcePair(): { verifier: string; challenge: string } {
   return { verifier, challenge: createHash("sha256").update(verifier).digest("base64url") };
 }
 
-export function authorizeUrl(cfg: StorageConfig, input: { state: string; codeChallenge: string; loginHint?: string }): string {
+// chooseAccount false: Google goes straight to the hinted account (still asking for consent) instead of its account
+// chooser; for "Connect to this Google Drive", the account the person signed in with.
+export function authorizeUrl(cfg: StorageConfig, input: { state: string; codeChallenge: string; loginHint?: string; chooseAccount?: boolean }): string {
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
     response_type: "code",
     scope: `openid email ${DRIVE_FILE_SCOPE}`,
     access_type: "offline",
-    prompt: "consent select_account",
+    prompt: input.chooseAccount === false && input.loginHint ? "consent" : "consent select_account",
     include_granted_scopes: "false",
     state: input.state,
     code_challenge: input.codeChallenge,

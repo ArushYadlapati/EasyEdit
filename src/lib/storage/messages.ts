@@ -29,6 +29,10 @@ export const STORAGE_MESSAGES = {
   reconnect: "Reconnect",
   useDifferent: "Use a different Google account",
   chooseGoogleAccount: "Choose Google account",
+  // The welcome page's two ways to connect: the account the person signed in with, or another one.
+  connectSignedIn: "Connect to this Google Drive",
+  signedInAs: (email: string) => `You're signed in as ${email}.`,
+  chooseDifferent: "Choose a different Google account",
   // One Google account holds one space's storage, so the setup screen says so before Google's account picker.
   oneAccountOneSpace: "Each Google account can store videos for only one space: your Personal space or one team. Pick one that isn't already in use.",
   chooseAccount: "Choose account",
@@ -133,9 +137,16 @@ export function usageLine(usage: DriveUsage): string {
   return usage.limitBytes === null ? `${used} used` : `${used} of ${formatDriveBytes(usage.limitBytes)} used`;
 }
 
-// The address that starts connecting a Google account for the space; with `hint`, Google's screen offers that account; with `returnTo` (a path the connect allows), a successful connect comes back there.
-export function connectHref(spaceId: string, hint?: string, returnTo?: string): string {
-  const query = new URLSearchParams({ space: spaceId, ...(hint ? { hint } : {}), ...(returnTo ? { return: returnTo } : {}) });
+// The address that starts connecting a Google account for the space. `hint`: Google's screen offers that account.
+// `signedInAccount`: the account the person signed in with, without Google's account chooser. `returnTo` (a path the
+// connect allows): a successful connect comes back there (and, for the welcome page, every outcome does).
+export function connectHref(spaceId: string, opts: { hint?: string; signedInAccount?: boolean; returnTo?: string } = {}): string {
+  const query = new URLSearchParams({
+    space: spaceId,
+    ...(opts.hint ? { hint: opts.hint } : {}),
+    ...(opts.signedInAccount ? { account: "signed-in" } : {}),
+    ...(opts.returnTo ? { return: opts.returnTo } : {}),
+  });
   return `/api/storage/connect?${query.toString()}`;
 }
 

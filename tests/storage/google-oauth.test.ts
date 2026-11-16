@@ -84,6 +84,12 @@ describe("authorizeUrl", () => {
     expect(p.get("response_type")).toBe("code");
     expect(p.get("login_hint")).toBe("x@y.z");
   });
+
+  it("goes straight to the hinted account, without Google's account chooser, when asked to", () => {
+    const p = new URL(authorizeUrl(cfg, { state: "st", codeChallenge: "ch", loginHint: "x@y.z", chooseAccount: false })).searchParams;
+    expect(p.get("prompt")).toBe("consent");
+    expect(p.get("login_hint")).toBe("x@y.z");
+  });
 });
 
 describe("pkcePair", () => {

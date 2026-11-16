@@ -110,6 +110,13 @@ async function mySpace(db: DB, userId: string, spaceId: string): Promise<MySpace
 
 const storagePage = (space: MySpace, note: string) => `/s/${slugFor(space)}/settings/storage?storage=${note}`;
 
+// The path with ?storage=<note> set (replacing one it already had).
+function withNote(path: string, note: string): string {
+  const url = new URL(path, "https://return.invalid");
+  url.searchParams.set("storage", note);
+  return url.pathname + url.search;
+}
+
 // A redirect to a path of this app: on the configured address when there is one (never the request's Host), else as a
 // path the browser resolves against the address it used.
 function goTo(cfg: StorageConfig | null, path: string): Response {
@@ -135,7 +142,8 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     return space?.role === "admin" ? space : null;
   };
 
-  // GET /api/storage/connect?space=<id>[&hint=<email>][&return=/s/…]
+  // GET /api/storage/connect?space=<id>[&hint=<email>|&account=signed-in][&return=/s/…|/welcome…]
+  // account=signed-in: the signed-in person's own Google account, straight to it without Google's account chooser.
   const startConnect = apiRoute(async (req: Request): Promise<Response> => {
     const user = await deps.auth(req);
     if (user instanceof Response) return user;
@@ -152,8 +160,14 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     const { verifier, challenge } = pkcePair();
     const back = returnPath(params.get("return"));
     const started: Started = { state, verifier, userId: user.id, spaceId: space.id, exp: now().getTime() + LIFE_SECONDS * 1000, ...(back ? { return: back } : {}) };
-    const hint = params.get("hint");
-    const location = authorizeUrl(cfg, { state, codeChallenge: challenge, ...(hint && EMAIL.test(hint) ? { loginHint: hint } : {}) });
+    const own = params.get("account") === "signed-in" && EMAIL.test(user.email);
+    const hint = own ? user.email : params.get("hint");
+    const location = authorizeUrl(cfg, {
+      state,
+      codeChallenge: challenge,
+      ...(hint && EMAIL.test(hint) ? { loginHint: hint } : {}),
+      ...(own ? { chooseAccount: false } : {}),
+    });
     return new Response(null, {
       status: 302,
       headers: { location, "set-cookie": cookieLine(req, seal(JSON.stringify(started), cfg.tokenKey), COOKIE_SECONDS), "cache-control": "no-store" },
@@ -171,12 +185,17 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     if (!started || !state || !sameState(state, started.state) || started.userId !== user.id) return refused();
     const space = await adminSpace(user.id, started.spaceId);
     if (!space) return refused();
+    // Where each outcome is told: a connect started on the welcome page goes back there, success or not, so a new
+    // person sees what happened on the step they were on; any other goes to the space's storage settings.
+    const kept = started.return ? returnPath(started.return) : null;
+    const welcome = kept?.startsWith("/welcome") ? kept : null;
+    const outcome = (note: string) => goTo(cfg, welcome ? withNote(welcome, note) : storagePage(space, note));
     // Took too long on Google's screen: the cookie is ours, theirs and for a space they still run, so back to it.
-    if (started.exp <= now().getTime()) return goTo(cfg, storagePage(space, "expired"));
+    if (started.exp <= now().getTime()) return outcome("expired");
 
     const go = (path: string) => goTo(cfg, path);
     const error = params.get("error");
-    if (error) return go(storagePage(space, error === "access_denied" ? "cancelled" : "failed"));
+    if (error) return outcome(error === "access_denied" ? "cancelled" : "failed");
     const code = params.get("code");
     if (!code) return refused();
 
@@ -186,10 +205,10 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     } catch (failure) {
       if (!(failure instanceof DriveError || failure instanceof OAuthError)) throw failure;
       console.error("Connecting Google Drive failed:", failure.message);
-      return go(storagePage(space, "failed"));
+      return outcome("failed");
     }
     // The person can untick the Drive box on Google's screen: then there is nothing to store.
-    if (!granted.scopes.includes(DRIVE_FILE_SCOPE)) return go(storagePage(space, "needs-drive"));
+    if (!granted.scopes.includes(DRIVE_FILE_SCOPE)) return outcome("needs-drive");
 
     const connection = await saveConnection(deps.db(), cfg, {
       userId: user.id,
@@ -206,9 +225,10 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
       // A space whose videos are already in another account keeps its storage, and is told so in its own words; so is
       // a Google account that already backs another space.
       const code = failure instanceof ServiceError ? failure.code : null;
-      return go(storagePage(space, code === "STORAGE_IN_USE" ? "in-use" : code === "ACCOUNT_IN_USE" ? "account-in-use" : "failed"));
+      return outcome(code === "STORAGE_IN_USE" ? "in-use" : code === "ACCOUNT_IN_USE" ? "account-in-use" : "failed");
     }
-    return go((started.return && returnPath(started.return)) || storagePage(space, "connected"));
+    if (welcome) return outcome("connected");
+    return go(kept ?? storagePage(space, "connected"));
   }
 
   // GET /api/storage/callback?code&state (or ?error&state).
