@@ -24,7 +24,7 @@ const SCENES: Scene[] = [
   },
   {
     key: "team",
-    ms: 5500,
+    ms: 7000,
     phrase: "for teams.",
     line: "Everyone edits the same project at once, and sees who's working on what.",
     video: "/home/scene-city.mp4",
@@ -65,7 +65,8 @@ const ACTIVITY: Record<string, { who: string; what: string; at: number }[]> = {
   ],
   team: [
     { who: "Sam Okafor", what: "Added text", at: 0.7 },
-    { who: "Mika Kato", what: "Changed a video clip: position and scale", at: 3.8 },
+    { who: "Mika Kato", what: "Changed a video clip: position and scale", at: 3.6 },
+    { who: "Priya Shah", what: "Changed text: font", at: 4.9 },
   ],
   creators: [{ who: "You", what: "Changed the format to Vertical 9:16", at: 0.6 }],
   browser: [{ who: "You", what: "Trimmed a video clip", at: 0.3 }],
@@ -123,9 +124,10 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
               <>
                 <span className="h-edAvatar">SO</span>
                 <span className="h-edAvatar h-edAvatarMika">MK</span>
+                <span className="h-edAvatar h-edAvatarPriya">PS</span>
               </>
             )}
-            <span key={scene.key} className="h-edStatus" style={{ "--busy": scene.key === "team" ? "4.2s" : "3.6s" } as React.CSSProperties}>
+            <span key={scene.key} className="h-edStatus" style={{ "--busy": scene.key === "team" ? "5.4s" : "3.6s" } as React.CSSProperties}>
               {scene.key === "ai" && (
                 <span className="h-edWorking">
                   <span className="h-edDot" /> Claude is editing…
@@ -185,25 +187,35 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                 )}
                 {scene.key === "team" && (
                   <>
-                    {/* Sam adds a title; then Mika selects the whole clip, shrinks it and moves it down and right,
-                        so the white title sits on the black of the frame. */}
-                    <span className="h-edTitle h-edPeerTitle">
-                      Shibuya, 2 a.m.
-                      <span className="h-edPeerTag">Sam</span>
-                      <span className="h-edHandle" data-at="tl" />
-                      <span className="h-edHandle" data-at="tr" />
-                      <span className="h-edHandle" data-at="bl" />
-                      <span className="h-edHandle" data-at="br" />
-                    </span>
+                    {/* Sam puts the city and the time over the busy middle of the shot. Mika takes the whole clip,
+                        enlarges it and moves it so the dark sky sits behind the words. Then Priya changes the font. */}
                     <span className="h-edMika">
                       <span className="h-edPeerTag">Mika</span>
                       <span className="h-edHandle" data-at="tl" />
                       <span className="h-edHandle" data-at="tr" />
                       <span className="h-edHandle" data-at="bl" />
                       <span className="h-edHandle" data-at="br" />
-                      <svg className="h-edCursor" viewBox="0 0 16 20" aria-hidden="true">
-                        <path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" />
-                      </svg>
+                    </span>
+                    <span className="h-edTitle h-edPeerTitle">
+                      <span className="h-edFontA">Shibuya, 2 a.m.</span>
+                      <span className="h-edFontB">Shibuya, 2 a.m.</span>
+                      <span className="h-edSam">
+                        <span className="h-edPeerTag">Sam</span>
+                        <span className="h-edHandle" data-at="tl" />
+                        <span className="h-edHandle" data-at="tr" />
+                        <span className="h-edHandle" data-at="bl" />
+                        <span className="h-edHandle" data-at="br" />
+                      </span>
+                      <span className="h-edPriya">
+                        <span className="h-edPeerTag">Priya</span>
+                        <span className="h-edHandle" data-at="tl" />
+                        <span className="h-edHandle" data-at="tr" />
+                        <span className="h-edHandle" data-at="bl" />
+                        <span className="h-edHandle" data-at="br" />
+                        <svg className="h-edCursor" viewBox="0 0 16 20" aria-hidden="true">
+                          <path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" />
+                        </svg>
+                      </span>
                     </span>
                   </>
                 )}

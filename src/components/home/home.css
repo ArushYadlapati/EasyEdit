@@ -311,36 +311,91 @@
 @keyframes h-toSky {
   to {
     left: 24%;
-    top: 15%;
+    top: 8%;
   }
 }
-/* A teammate's selection on the title: their colour, their name tag, the handles, their pointer. */
+/* The team scene, 7 seconds: Sam adds the title (pink), Mika enlarges and moves the clip (teal) so the dark sky sits
+   behind it, Priya changes its font (orange). Each teammate's selection is their colour, name tag and handles. */
 .h-edPeerTitle {
-  left: 26%;
-  top: 18%;
-  font-size: clamp(18px, 3.6cqw, 44px);
-  outline: 2px solid var(--ed-peer-1);
-  outline-offset: 2px;
+  left: 50%;
+  top: 42%;
+  display: grid;
+  font-size: clamp(22px, 5.2cqw, 60px);
   animation: h-popCentered 450ms var(--h-ease) 400ms both;
 }
-/* Sam lets go of the title when Mika takes the clip. */
-.h-edPeerTitle > .h-edPeerTag,
-.h-edPeerTitle > .h-edHandle {
-  animation: h-out 250ms ease 2.2s both;
+.h-edPeerTitle > .h-edFontA,
+.h-edPeerTitle > .h-edFontB {
+  grid-area: 1 / 1;
+  justify-self: center;
 }
-.h-edPeerTitle {
-  transition: outline-color 250ms;
+.h-edFontB {
+  font-family: var(--font-bebas-neue), Impact, sans-serif;
+  font-weight: 400;
+  font-size: 1.3em;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  align-self: center;
+  animation: h-in 350ms ease 4.7s both;
 }
-.h-edFrame[data-scene="team"] .h-edPeerTitle {
-  animation:
-    h-popCentered 450ms var(--h-ease) 400ms both,
-    h-letGo 250ms ease 2.2s forwards;
+.h-edFontA {
+  animation: h-out 300ms ease 4.6s both;
 }
-@keyframes h-letGo {
-  to {
-    outline-color: transparent;
+.h-edSam,
+.h-edPriya {
+  position: absolute;
+  inset: -4px;
+  outline: 2px solid var(--peer);
+}
+.h-edSam {
+  --peer: var(--ed-peer-1);
+  animation: h-out 250ms ease 1.8s both;
+}
+.h-edPriya {
+  --peer: var(--ed-peer-3);
+  animation: h-in 250ms ease 3.9s both;
+}
+.h-edPeerTag {
+  position: absolute;
+  left: -2px;
+  bottom: calc(100% + 4px);
+  padding: 2px 7px;
+  border-radius: 3px 3px 3px 0;
+  background: var(--peer);
+  color: #0a0a0a;
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.h-edHandle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  border: 2px solid var(--peer);
+}
+.h-edHandle[data-at="tl"] { left: -6px; top: -6px; }
+.h-edHandle[data-at="tr"] { right: -6px; top: -6px; }
+.h-edHandle[data-at="bl"] { left: -6px; bottom: -6px; }
+.h-edHandle[data-at="br"] { right: -6px; bottom: -6px; }
+.h-edCursor {
+  position: absolute;
+  right: -24px;
+  bottom: -28px;
+  width: 18px;
+  height: 22px;
+  fill: var(--peer);
+  stroke: #0a0a0a;
+  stroke-width: 1.2;
+  animation: h-drift 900ms var(--h-ease) 3.9s both;
+}
+@keyframes h-drift {
+  from {
+    transform: translate(40px, 30px);
+    opacity: 0;
   }
 }
+/* Mika's selection is the whole clip; it grows with the clip, then lets go. */
 .h-edMika {
   position: absolute;
   inset: 0;
@@ -349,35 +404,32 @@
   outline-offset: -2px;
   --peer: var(--ed-peer-2);
   animation:
-    h-in 250ms ease 2.3s both,
-    h-shrink 1.1s var(--h-ease) 2.8s forwards;
+    h-in 250ms ease 1.9s both,
+    h-zoom 1.2s var(--h-ease) 2.3s forwards,
+    h-out 300ms ease 3.6s forwards;
 }
 .h-edMika .h-edPeerTag {
-  left: 0;
+  left: 2px;
+  top: 2px;
   bottom: auto;
-  top: 0;
   border-radius: 0 0 3px 0;
-  background: var(--ed-peer-2);
-}
-.h-edMika .h-edHandle {
-  border-color: var(--ed-peer-2);
-}
-.h-edMika .h-edCursor {
-  right: -10px;
-  bottom: -14px;
-  fill: var(--ed-peer-2);
-  animation: h-drift 900ms var(--h-ease) 2.3s both;
 }
 .h-edFrame[data-scene="team"] .h-edVideo[data-on] {
-  animation: h-shrink 1.1s var(--h-ease) 2.8s forwards;
+  animation: h-zoom 1.2s var(--h-ease) 2.3s forwards;
 }
-@keyframes h-shrink {
+@keyframes h-zoom {
   to {
-    transform: translate(19%, 17%) scale(0.62);
+    transform: translate(3%, 30%) scale(1.6);
   }
 }
 .h-edOverlay {
   isolation: isolate;
+}
+.h-edAvatarPriya {
+  margin-left: -10px;
+  background: var(--ed-peer-3);
+  box-shadow: 0 0 0 2px var(--ed-panel);
+  animation-delay: 3.8s;
 }
 .h-edPeerTag {
   position: absolute;
