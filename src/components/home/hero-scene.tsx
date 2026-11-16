@@ -20,8 +20,8 @@ const SCENES: Scene[] = [
     key: "ai",
     phrase: "for AI agents.",
     line: "Ask Claude, ChatGPT or Cursor in plain words, and watch the edit land in your project.",
-    video: "/home/scene-laugh.mp4",
-    poster: "/home/scene-laugh.jpg",
+    video: "/home/scene-friends.mp4",
+    poster: "/home/scene-friends.jpg",
   },
   {
     key: "team",
@@ -47,7 +47,7 @@ const SCENES: Scene[] = [
 ];
 
 const MEDIA = [
-  { name: "laugh.mp4", img: "/home/scene-laugh.jpg" },
+  { name: "bonfire.mp4", img: "/home/scene-friends.jpg" },
   { name: "shibuya.mp4", img: "/home/scene-city.jpg" },
   { name: "ridge.mp4", img: "/home/scene-mountain.jpg" },
   { name: "wave.mp4", img: "/home/scene-wave.jpg" },
@@ -57,7 +57,7 @@ const MEDIA = [
 
 const ACTIVITY: Record<string, { who: string; what: string }> = {
   ai: { who: "Claude (for you)", what: "Added text" },
-  team: { who: "Sam Okafor", what: "Added a video clip" },
+  team: { who: "Sam Okafor", what: "Changed text: font and size" },
   creators: { who: "You", what: "Changed the format to Vertical 9:16" },
   browser: { who: "You", what: "Trimmed a video clip" },
 };
@@ -164,10 +164,19 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                 />
               ))}
               <div key={scene.key} className="h-edOverlay">
-                {scene.key === "ai" && <span className="h-edTitle h-edTitleNew">Take two.</span>}
+                {scene.key === "ai" && <span className="h-edTitle h-edTitleNew">Summer nights</span>}
                 {scene.key === "team" && (
-                  <span className="h-edPeer">
-                    <span>Sam</span>
+                  // Sam has the title selected: their colour, their name, the handles, and their pointer on it.
+                  <span className="h-edTitle h-edPeerTitle">
+                    Shibuya, 2 a.m.
+                    <span className="h-edPeerTag">Sam</span>
+                    <span className="h-edHandle" data-at="tl" />
+                    <span className="h-edHandle" data-at="tr" />
+                    <span className="h-edHandle" data-at="bl" />
+                    <span className="h-edHandle" data-at="br" />
+                    <svg className="h-edCursor" viewBox="0 0 16 20" aria-hidden="true">
+                      <path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" />
+                    </svg>
                   </span>
                 )}
                 {scene.key === "creators" && <span className="h-edTitle">Into the hills</span>}
@@ -238,7 +247,11 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
             <span className="h-edTrackName">Text 1</span>
             <span className="h-edLane">
               <span className="h-edClip h-edClipText" style={{ left: "1%", width: "12%" }} data-fresh={scene.key === "ai" || undefined}>
-                Take two.
+                Summer nights
+              </span>
+              <span className="h-edClip h-edClipText" style={{ left: "26%", width: "14%" }} data-peer={scene.key === "team" || undefined}>
+                Shibuya, 2 a.m.
+                {scene.key === "team" && <span className="h-edBadge">SO</span>}
               </span>
               <span className="h-edClip h-edClipText" style={{ left: "51%", width: "14%" }}>
                 Into the hills
@@ -253,12 +266,10 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                   key={s.key}
                   className="h-edClip"
                   style={{ left: `${i * 25}%`, width: "24.6%" }}
-                  data-peer={(s.key === "team" && scene.key === "team") || undefined}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element -- a clip thumbnail in a drawn interface */}
                   <img src={s.poster} alt="" width={64} height={36} />
                   {MEDIA[i].name}
-                  {s.key === "team" && scene.key === "team" && <span className="h-edBadge">SO</span>}
                 </span>
               ))}
             </span>

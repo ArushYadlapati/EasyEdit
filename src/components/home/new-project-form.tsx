@@ -85,7 +85,6 @@ export function NewProjectForm() {
         </div>
       </div>
       <div className="h-npFoot">
-        <p className="text-xs text-ed-muted">You&apos;ll sign in with Google first. It&apos;s free.</p>
         <Button variant="primary" type="submit" disabled={!size}>
           Create project
         </Button>

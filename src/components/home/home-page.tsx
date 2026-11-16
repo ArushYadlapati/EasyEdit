@@ -4,7 +4,7 @@ import { LogoMark } from "@/components/ui/logo";
 import { AgentDemo } from "./agent-demo";
 import { HeroScene } from "./hero-scene";
 import { NewProjectForm } from "./new-project-form";
-import { PresenceShot, ProjectsShot } from "./team-shots";
+import { PresenceShot, ProjectsShot, StorageConnectedShot, StorageSetupShot } from "./team-shots";
 import "./home.css";
 
 // The public home page, for anyone who lands on easyedit.arush.dev signed out. Always dark, in the app's own type.
@@ -69,10 +69,16 @@ const TEAM: { shot: ReactNode; title: string; text: string }[] = [
 
 const AGENTS = ["Claude", "ChatGPT", "Claude Code", "Codex", "Cursor", "Gemini CLI", "VS Code Copilot", "OpenAI API"];
 
-const MORE = [
-  { title: "Your files stay yours", text: "Media goes into the Google Drive your space connects. You keep ownership of everything you make." },
-  { title: "Saved as you go", text: "There's no save button. Every change is kept, and Activity remembers each one." },
-  { title: "Nothing uploads on export", text: "The MP4 is rendered in your browser, frame by frame, and saved to your computer." },
+// The marquee's marks: monochrome icons from LobeHub's icon set (MIT), tinted by CSS.
+const AGENT_LOGOS: { name: string; logo: string }[] = [
+  { name: "Claude", logo: "claude" },
+  { name: "ChatGPT", logo: "openai" },
+  { name: "Claude Code", logo: "claudecode" },
+  { name: "Codex", logo: "codex" },
+  { name: "Cursor", logo: "cursor" },
+  { name: "Gemini CLI", logo: "geminicli" },
+  { name: "VS Code Copilot", logo: "githubcopilot" },
+  { name: "OpenAI API", logo: "openai" },
 ];
 
 // closedBeta: sign-up isn't open (openSignUp() in signup.ts, read on the server), so only invited people get in.
@@ -108,8 +114,11 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
         </div>
         <div className="h-marquee" aria-hidden="true">
           <div className="h-marqueeTrack">
-            {[...AGENTS, ...AGENTS].map((a, i) => (
-              <span key={`${a}-${i}`}>{a}</span>
+            {[...AGENT_LOGOS, ...AGENT_LOGOS].map((a, i) => (
+              <span key={`${a.name}-${i}`} className="h-agent">
+                <span className="h-agentLogo" style={{ maskImage: `url(/home/logos/${a.logo}.svg)` }} />
+                {a.name}
+              </span>
             ))}
           </div>
         </div>
@@ -136,27 +145,27 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
         </div>
       </section>
 
-      <section className="h-statements" aria-label="Free">
-        <div className="h-statement">
-          <h2 className="h-giant">Completely free.</h2>
-          <p className="h-lead">Every feature, for everyone. No plans to pick, no trial, no card.</p>
+      <section className="h-section h-drive" aria-labelledby="drive-title">
+        <div className="h-sectionHead">
+          <h2 id="drive-title" className="h-h2">
+            <span className="h-line">Completely free.</span> <span className="h-line">Based in your Drive.</span>
+          </h2>
+          <p className="h-lead">
+            EasyEdit costs nothing. Connect a Google account, and your videos, images and audio live in a folder EasyEdit
+            makes in that Drive. They stay yours, and EasyEdit can&apos;t see your other files.
+          </p>
         </div>
-        <ul className="h-more">
-          {MORE.map((m) => (
-            <li key={m.title}>
-              <h3>{m.title}</h3>
-              <p>{m.text}</p>
-            </li>
-          ))}
-        </ul>
+        <div className="h-driveShots">
+          <StorageSetupShot />
+          <StorageConnectedShot />
+        </div>
       </section>
 
       <section id="start" className="h-section h-start" aria-labelledby="start-title">
         <div className="h-sectionHead">
-          <h2 id="start-title" className="h-h2">
+          <h2 id="start-title" className="h-wide">
             Make your first project.
           </h2>
-          <p className="h-lead">Name it, pick where you&apos;ll post it, and you&apos;re in the editor.</p>
         </div>
         <NewProjectForm />
       </section>

@@ -133,6 +133,7 @@
 .h-edProject {
   font-weight: 600;
   margin-left: 12px;
+  white-space: nowrap;
 }
 .h-edRight {
   display: flex;
@@ -294,24 +295,59 @@
   white-space: nowrap;
 }
 .h-edTitleNew {
+  left: 64%;
+  top: 24%;
   outline: 2px solid var(--ed-accent);
   animation: h-pop 500ms var(--h-ease) 1.2s both;
 }
-.h-edPeer {
-  position: absolute;
-  inset: 10% 40% 22% 8%;
+/* A teammate's selection on the title: their colour, their name tag, the handles, their pointer. */
+.h-edPeerTitle {
+  left: 64%;
+  top: 24%;
+  font-size: clamp(18px, 3.6cqw, 44px);
   outline: 2px solid var(--ed-peer-1);
-  animation: h-pop 500ms var(--h-ease) 300ms both;
+  outline-offset: 2px;
+  animation: h-popCentered 450ms var(--h-ease) 250ms both;
 }
-.h-edPeer > span {
+.h-edPeerTag {
   position: absolute;
-  top: 0;
-  left: 0;
-  padding: 2px 6px;
+  left: -4px;
+  bottom: calc(100% + 4px);
+  padding: 2px 7px;
+  border-radius: 3px 3px 3px 0;
   background: var(--ed-peer-1);
   color: #0a0a0a;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
+}
+.h-edHandle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  border: 2px solid var(--ed-peer-1);
+}
+.h-edHandle[data-at="tl"] { left: -7px; top: -7px; }
+.h-edHandle[data-at="tr"] { right: -7px; top: -7px; }
+.h-edHandle[data-at="bl"] { left: -7px; bottom: -7px; }
+.h-edHandle[data-at="br"] { right: -7px; bottom: -7px; }
+.h-edCursor {
+  position: absolute;
+  right: -26px;
+  bottom: -30px;
+  width: 18px;
+  height: 22px;
+  fill: var(--ed-peer-1);
+  stroke: #0a0a0a;
+  stroke-width: 1.2;
+  animation: h-drift 1.6s var(--h-ease) 500ms both;
+}
+@keyframes h-drift {
+  from {
+    transform: translate(40px, 30px);
+    opacity: 0;
+  }
 }
 
 .h-edDialog {
@@ -488,6 +524,7 @@
 }
 .h-edClip[data-peer] {
   box-shadow: inset 0 0 0 2px var(--ed-peer-1);
+  padding-right: 28px;
 }
 .h-edBadge {
   position: absolute;
@@ -806,6 +843,47 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.h-shotPad {
+  padding: 28px;
+  gap: 10px;
+  font-size: 14px;
+}
+.h-shotTitle {
+  font-size: 17px;
+  font-weight: 600;
+}
+.h-shotButton {
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--ed-accent);
+  color: #0a0a0a;
+  font-weight: 600;
+}
+.h-shotMeter {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ed-raised);
+  overflow: hidden;
+}
+.h-shotMeter > span {
+  display: block;
+  height: 100%;
+  background: var(--ed-accent);
+}
+.h-shotFiles {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.h-shotFiles > span {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--ed-raised);
+  color: var(--ed-muted);
+}
 .h-shotCardName {
   font-size: 12px;
   font-weight: 600;
@@ -839,8 +917,7 @@
   max-width: 54ch;
 }
 
-.h-points,
-.h-more {
+.h-points {
   list-style: none;
   margin: 64px 0 0;
   padding: 0;
@@ -848,14 +925,12 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 40px;
 }
-.h-points h3,
-.h-more h3 {
+.h-points h3 {
   font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
-.h-points p,
-.h-more p {
+.h-points p {
   margin-top: 8px;
   color: var(--h-muted);
 }
@@ -1234,18 +1309,13 @@
   color: var(--h-muted);
 }
 
-/* ---------- The middle: free, and every agent ---------- */
+/* ---------- Every agent (in the AI section), and the Drive ---------- */
 
-.h-statements {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: clamp(140px, 16vw, 220px) var(--h-pad) 0;
-}
 .h-agents {
   margin-top: clamp(120px, 14vw, 180px);
 }
-.h-statement + .h-statement {
-  margin-top: clamp(100px, 12vw, 160px);
+.h-statement .h-lead {
+  margin-top: 28px;
 }
 .h-giant {
   font-size: clamp(52px, 9.5vw, 156px);
@@ -1253,9 +1323,6 @@
   letter-spacing: -0.055em;
   line-height: 0.92;
   text-wrap: balance;
-}
-.h-statement .h-lead {
-  margin-top: 28px;
 }
 
 .h-marquee {
@@ -1269,12 +1336,24 @@
   width: max-content;
   animation: h-scroll 36s linear infinite;
 }
-.h-marqueeTrack > span {
+.h-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32em;
   font-size: clamp(30px, 4.2vw, 60px);
   font-weight: 600;
   letter-spacing: -0.04em;
-  color: #6b6b74;
+  color: #8b8b94;
   white-space: nowrap;
+}
+.h-agentLogo {
+  flex: none;
+  width: 0.92em;
+  height: 0.92em;
+  background: currentColor;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
 }
 @keyframes h-scroll {
   to {
@@ -1282,14 +1361,37 @@
   }
 }
 
-.h-more {
-  margin-top: clamp(100px, 12vw, 160px);
+.h-drive .h-sectionHead {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+}
+.h-line {
+  display: block;
+}
+.h-driveShots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.h-driveShots > .h-shot {
+  border-radius: 20px;
+  box-shadow: 0 0 0 1px var(--ed-line-strong); /* taste-skill-ignore: the app panel's own edge */
 }
 
 /* ---------- Make your first project ---------- */
 
 .h-start .h-sectionHead {
+  display: block;
+  container-type: inline-size;
   margin-bottom: 40px;
+}
+/* One line, edge to edge of the content column, at any width. */
+.h-wide {
+  font-size: 10cqw;
+  font-weight: 600;
+  letter-spacing: -0.055em;
+  line-height: 0.9;
+  white-space: nowrap;
 }
 
 .h-np {
@@ -1343,7 +1445,7 @@
 .h-npFoot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   padding: 14px 20px;
   border-top: 1px solid var(--ed-line);
@@ -1399,7 +1501,7 @@
   .h-points li,
   .h-teamCard,
   .h-statement,
-  .h-more li,
+  .h-driveShots > *,
   .h-np {
     animation: h-rise linear both;
     animation-timeline: view();
@@ -1408,13 +1510,11 @@
   .h-sectionHead > :nth-child(2),
   .h-demoRequests li:nth-child(2),
   .h-points li:nth-child(2),
-  .h-teamCard:nth-child(2n),
-  .h-more li:nth-child(2) {
+  .h-teamCard:nth-child(2n) {
     animation-range: entry 8% entry 58%;
   }
   .h-demoRequests li:nth-child(3),
-  .h-points li:nth-child(3),
-  .h-more li:nth-child(3) {
+  .h-points li:nth-child(3) {
     animation-range: entry 16% entry 66%;
   }
   .h-demoRequests li:nth-child(4) {
@@ -1433,7 +1533,7 @@
     flex-wrap: wrap;
     width: auto;
   }
-  .h-marqueeTrack > span:nth-child(n + 9) {
+  .h-marqueeTrack > .h-agent:nth-child(n + 9) {
     display: none;
   }
 }
@@ -1475,10 +1575,10 @@
   .h-shotGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .h-driveShots,
   .h-sectionHead,
   .h-demo,
   .h-points,
-  .h-more,
   .h-teamGrid,
   .h-npBody {
     grid-template-columns: minmax(0, 1fr);

@@ -83,7 +83,7 @@ describe("home page", () => {
   it("says it works with every AI agent inside the AI section, that it's completely free, then offers the first project", async () => {
     render(await Home());
     expect(document.getElementById("ai")?.textContent).toContain("Works with every AI agent.");
-    expect(screen.getByRole("heading", { level: 2, name: "Completely free." })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Completely free. Based in your Drive." })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 2, name: "Works with every AI agent." })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 2, name: "Make your first project." })).toBeTruthy();
   });

@@ -63,3 +63,34 @@ export function ProjectsShot() {
     </div>
   );
 }
+
+// Storage, as the app shows it (wording from lib/storage/messages.ts): the setup card a new team sees, and the
+// storage settings once a Google account is connected.
+export function StorageSetupShot() {
+  return (
+    <div className="h-shot h-shotPad" data-ui aria-hidden="true">
+      <p className="h-shotTitle">Set up this team&apos;s storage</p>
+      <p className="h-shotMuted">Choose where this team&apos;s videos are stored.</p>
+      <p className="h-shotMuted">EasyEdit keeps the videos in a folder of its own there, and can&apos;t see your other files.</p>
+      <span className="h-shotButton">Choose Google account</span>
+    </div>
+  );
+}
+
+export function StorageConnectedShot() {
+  return (
+    <div className="h-shot h-shotPad" data-ui aria-hidden="true">
+      <p className="h-shotTitle">Storage</p>
+      <p>Stored in maya.lin@gmail.com&apos;s Google Drive</p>
+      <p className="h-shotMuted">Folder &quot;EasyEdit – Summer crew&quot;</p>
+      <p className="h-shotMuted">2.4 GB of 15 GB used</p>
+      <span className="h-shotMeter">
+        <span style={{ width: "16%" }} />
+      </span>
+      <div className="h-shotFiles">
+        <span>Originals</span>
+        <span>Previews</span>
+      </div>
+    </div>
+  );
+}
