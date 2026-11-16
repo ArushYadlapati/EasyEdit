@@ -19,9 +19,14 @@ export function HomePage({ closedBeta }: { closedBeta: boolean }) {
         >
           Sign in
         </Link>
-        <Link href="/privacy" className="text-sm text-foreground/70 underline underline-offset-4">
-          Privacy
-        </Link>
+        <nav className="flex gap-4 text-sm text-foreground/70">
+          <Link href="/privacy" className="underline underline-offset-4">
+            Privacy
+          </Link>
+          <Link href="/terms" className="underline underline-offset-4">
+            Terms
+          </Link>
+        </nav>
       </div>
     </main>
   );

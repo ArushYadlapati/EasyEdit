@@ -36,11 +36,29 @@ export default function PrivacyPage() {
         <p>An AI agent can work on your projects only after you connect it to your account. It acts with your connection, and you can disconnect it.</p>
 
         <h2 className={H2}>Deleting your data</h2>
-        <p>To have your data deleted, contact the owner of this EasyEdit site.</p>
+        <p>
+          To have your data deleted, email{" "}
+          <a className="underline underline-offset-4" href="mailto:privacy@arush.dev">
+            privacy@arush.dev
+          </a>
+          .
+        </p>
+
+        <h2 className={H2}>Rules for using EasyEdit</h2>
+        <p>
+          The rules are in the{" "}
+          <Link href="/terms" className="underline underline-offset-4">
+            terms of service
+          </Link>
+          .
+        </p>
 
         <h2 className={H2}>Contact</h2>
         <p>
-          Questions about privacy: <a className="underline underline-offset-4" href="mailto:privacy@<your-domain>">privacy@&lt;your-domain&gt;</a>
+          Questions about privacy:{" "}
+          <a className="underline underline-offset-4" href="mailto:privacy@arush.dev">
+            privacy@arush.dev
+          </a>
         </p>
       </article>
     </main>

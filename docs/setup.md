@@ -129,7 +129,7 @@ Each space (your personal one, or a team) can keep its media in its own Google D
 6. **`GOOGLE_CLOUD_PROJECT`.** Set it to the id of the Google Cloud project where EasyEdit creates each team's read-only reader service account. Without it, teams can't get storage; personal spaces still can, once they are offered ([Personal spaces](#personal-spaces)).
 7. **`OPEN_SIGNUP`.** Set it to `true` to let anyone with a Google account sign up. Leave it unset until the Google sign-in screen is published.
 
-While the Google sign-in screen is in "Testing", only the listed test users can sign in, and Google cuts off every connected Drive after 7 days. To publish it, Google needs a home page and a privacy policy on a domain you own: a `vercel.app` address can't be verified. EasyEdit has both (`/` and `/privacy`). The privacy page is a draft: read it, fill in `privacy@<your-domain>`, and remove the "Draft" line before you publish.
+While the Google sign-in screen is in "Testing", only the listed test users can sign in, and Google cuts off every connected Drive after 7 days. To publish it, Google needs a home page and a privacy policy on a domain you own: a `vercel.app` address can't be verified. EasyEdit has both (`/` and `/privacy`), plus a terms of service page (`/terms`) for the optional terms link. Both pages give contact addresses at `arush.dev` (`privacy@` on the privacy page, `help@` on the terms page): on your own copy, change them to addresses you read.
 
 ## Personal spaces
 

@@ -7,7 +7,7 @@ const matches = (url: string) => unstable_doesMiddlewareMatch({ config, url });
 
 describe("proxy", () => {
   it("runs on app pages and app API routes", () => {
-    for (const url of ["/dashboard", "/admin", "/editor/abc", "/api/projects", "/api/projects/abc/ops", "/api/projects/abc/thumbnail", "/loginx", "/consent", "/privacyx"]) {
+    for (const url of ["/dashboard", "/admin", "/editor/abc", "/api/projects", "/api/projects/abc/ops", "/api/projects/abc/thumbnail", "/loginx", "/consent", "/privacyx", "/termsx"]) {
       expect(matches(url), url).toBe(true);
     }
   });
@@ -50,8 +50,8 @@ describe("proxy", () => {
     expect(res.headers.get("x-middleware-next")).toBe("1");
   });
 
-  it("skips the home page and the privacy page, which the pages themselves guard", () => {
-    for (const url of ["/", "/privacy"]) expect(matches(url), url).toBe(false);
+  it("skips the home page, the privacy page and the terms page, which the pages themselves guard", () => {
+    for (const url of ["/", "/privacy", "/terms"]) expect(matches(url), url).toBe(false);
   });
 
   // Reached by navigating (and by Google sending the browser back): the handlers turn a signed-out visitor into a page
