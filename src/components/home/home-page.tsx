@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogoMark } from "@/components/ui/logo";
 
 // closedBeta: sign-up isn't open yet (openSignUp() in signup.ts, read on the server), so only invited people get in.
 export function HomePage({ closedBeta }: { closedBeta: boolean }) {
@@ -10,6 +11,7 @@ export function HomePage({ closedBeta }: { closedBeta: boolean }) {
             Closed beta
           </span>
         )}
+        <LogoMark size={56} />
         <h1 className="text-2xl font-semibold tracking-tight">EasyEdit</h1>
         <p>Edit short videos with your team, and with AI agents.</p>
         {closedBeta && <p className="text-sm text-foreground/70">Sign-in is by invitation only for now.</p>}
