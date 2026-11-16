@@ -142,6 +142,17 @@ Everyone has a personal space as well as their teams, but it is not offered unti
 
 Switch it on once personal spaces can have storage ([Storage per space](#storage-per-space)): without storage, a personal space holds projects but no videos.
 
+## Tutorial video
+
+EasyEdit can welcome each person with a short intro video the first time they open their dashboard, and offer it again under **Tutorial** in the account menu. It does so only when `TUTORIAL_VIDEO_URL` is set (in `.env.local`, and in Vercel followed by a redeploy):
+
+- The value is an `https` link to the MP4. A JPG with the same name beside it (`…/easyedit-intro.jpg` for `…/easyedit-intro.mp4`) is the picture shown before it plays.
+- Unset, or set to anything that is not such a link, there is no welcome dialog and no Tutorial item.
+- The dialog opens once per account, on a space's page. Playing the video or closing the dialog marks it as seen, which needs the migration `0018_tutorial_views`.
+- The chapter list and the captions come from `src/lib/tutorial/script.ts`, which belongs to one recording of the video. Replace the file and the video together.
+
+Plain `http` is accepted from `localhost` only, to try a new recording on your own computer.
+
 ## 4. Run it
 
 Create the database tables, add the first admin, and start the app:

@@ -64,4 +64,6 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     create unique index assets_unfinished_upload_old on assets (uploaded_by, file_name, size_bytes, last_modified_ms) where status = 'uploading';
     drop index assets_unfinished_upload_old;
     ```
+
+    **Before deploying the version with the intro tutorial:** run the migration `0018_tutorial_views` against the production database right before the push, with the command above. It adds one table and changes nothing else, and the earlier version keeps working against it. Set `TUTORIAL_VIDEO_URL` only once the table is there.
 5. Optional: publish the Google app, so teammates no longer have to be test users. In Google Cloud, open **Branding** and fill in the app domain details (home page, privacy policy link, authorized domain) with your deployed web address. You will need a public privacy policy page to link to. Then open **Audience** and click **Publish app**. Signing in only asks Google for name, email and profile picture, and the allowlist still decides who gets in. Connecting storage for a space also asks for access to the files EasyEdit itself creates in that person's Drive (`drive.file`), and nothing else in it; see [Storage per space](setup.md#storage-per-space).
