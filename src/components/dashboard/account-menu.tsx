@@ -4,9 +4,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { PasskeysDialog } from "@/components/dashboard/passkeys-dialog";
 import { DashboardSettingsDialog } from "@/components/dashboard/settings-dialog";
+import { TutorialDialog } from "@/components/dashboard/tutorial-dialog";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { authClient } from "@/lib/auth-client";
 import { signOutAndLeave } from "@/lib/sign-out";
+import type { TutorialVideo } from "@/lib/tutorial/video";
+import { TUTORIAL_WORDS } from "@/lib/tutorial/words";
 
 const noChanges = () => () => {};
 // The parameters signing in again from the Passkeys dialog comes back with: its own, and Better Auth's when it failed.
@@ -17,17 +20,42 @@ function backFromSigningIn(): string | null {
   return params.get("passkeys") === "1" ? (params.get("error") ?? "") : null;
 }
 
-// The header's account button: the person's picture and name, opening a menu with Settings, Passkeys, AI agents and
-// Sign out. Settings (the editor's General and Shortcuts) is offered on the space pages only: the preferences cookie it
-// edits belongs to /s, so the Admin and AI agents pages cannot read it.
+// The intro tutorial as the server offers it: the video, whether this person has yet to see it, and the action that
+// remembers they have.
+export type AccountTutorial = TutorialVideo & { firstVisit: boolean; markSeen(): Promise<unknown> };
+
+// The header's account button: the person's picture and name, opening a menu with Settings, Passkeys, AI agents,
+// Tutorial and Sign out. Settings (the editor's General and Shortcuts) is offered on the space pages only: the
+// preferences cookie it edits belongs to /s, so the Admin and AI agents pages cannot read it. Tutorial is offered
+// when the server has the video (tutorial).
 // openSignUp: whether anyone may make an account, as the server reads it, for what a refused Google sign-in says.
-export function AccountMenu({ name, image, openSignUp = false }: { name: string; image: string | null; openSignUp?: boolean }): ReactNode {
+export function AccountMenu({ name, image, openSignUp = false, tutorial }: { name: string; image: string | null; openSignUp?: boolean; tutorial?: AccountTutorial }): ReactNode {
   const router = useRouter();
   const inSpace = (usePathname() ?? "").startsWith("/s/");
   const [failed, setFailed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [passkeysOpen, setPasskeysOpen] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
+
+  // Someone who has not seen the tutorial gets it once, by itself, the first time this page load shows a space page:
+  // not over Admin or AI agents, where they went on purpose. Playing it or closing it writes the mark, once; from
+  // then on it is only the menu's Tutorial. A mark that cannot be written is let go: the dialog comes back next visit.
+  // It opens once the page is live in the browser, never in the page as the server sends it: a player in that page
+  // would start loading before anything listens to it, and a video that failed to load would go unsaid.
+  const live = useSyncExternalStore(noChanges, () => true, () => false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [welcomed, setWelcomed] = useState(false);
+  const [seen, setSeen] = useState(false);
+  const firstVisit = tutorial?.firstVisit === true && !seen;
+  if (live && firstVisit && inSpace && !welcomed) {
+    setWelcomed(true);
+    setTutorialOpen(true);
+  }
+  function markSeen() {
+    if (!tutorial || !firstVisit) return;
+    setSeen(true);
+    void tutorial.markSeen().catch(() => {});
+  }
 
   // Signing in again from the Passkeys dialog comes back to ?passkeys=1, which opens it again, with the error when the
   // sign-in failed. The parameters are then taken out of the address, so a reload or a copied link does not open it.
@@ -75,16 +103,30 @@ export function AccountMenu({ name, image, openSignUp = false }: { name: string;
           ...(inSpace ? [{ id: "settings", label: "Settings" } satisfies MenuItem] : []),
           { id: "passkeys", label: "Passkeys" },
           { id: "agents", label: "AI agents" },
+          ...(tutorial ? [{ id: "tutorial", label: TUTORIAL_WORDS.menu } satisfies MenuItem] : []),
           { id: "sign-out", label: "Sign out", separatorBefore: true },
         ]}
         onSelect={(id) => {
           if (id === "settings") setSettingsOpen(true);
           if (id === "passkeys") setPasskeysOpen(true);
           if (id === "agents") router.push("/agents");
+          if (id === "tutorial") setTutorialOpen(true);
           if (id === "sign-out") void signOut();
         }}
       />
       {settingsOpen && <DashboardSettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {tutorial && (
+        <TutorialDialog
+          open={tutorialOpen}
+          video={tutorial}
+          firstVisit={firstVisit}
+          onWatched={markSeen}
+          onClose={() => {
+            setTutorialOpen(false);
+            markSeen();
+          }}
+        />
+      )}
       <PasskeysDialog
         open={passkeysOpen}
         signInError={signInError}

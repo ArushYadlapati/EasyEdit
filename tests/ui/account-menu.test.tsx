@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToString } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountMenu } from "@/components/dashboard/account-menu";
 import { act, fireEvent, render, screen, waitFor, within } from "../helpers/dom";
 
@@ -181,5 +182,133 @@ describe("the account menu", () => {
       // The switches chosen here, and the editor's guides switch, stay when another field is saved.
       expect(kept()).toBe("u:cm.sz:1.sn:1.z:150.st:40.tx:30.gd:1");
     });
+  });
+});
+
+describe("the tutorial in the account menu", () => {
+  const VIDEO = { url: "https://cdn.test/easyedit-intro.mp4", poster: "https://cdn.test/easyedit-intro.jpg" };
+  type MarkSeen = () => Promise<unknown>;
+  let markSeen: ReturnType<typeof vi.fn<MarkSeen>>;
+  const menu = (firstVisit: boolean) => <AccountMenu name="Ada Lovelace" image={null} tutorial={{ ...VIDEO, firstVisit, markSeen }} />;
+  const welcome = () => screen.queryByRole("dialog", { name: "Welcome to EasyEdit" });
+  const items = () => {
+    fireEvent.click(account());
+    const names = screen.getAllByRole("menuitem").map((item) => item.textContent);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    return names;
+  };
+  const pickTutorial = () => {
+    fireEvent.click(account());
+    fireEvent.click(screen.getByRole("menuitem", { name: "Tutorial" }));
+  };
+
+  beforeEach(() => {
+    markSeen = vi.fn<MarkSeen>(async () => ({}));
+    at.path = "/s/rocket";
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) {
+      this.dispatchEvent(new Event("play"));
+      return Promise.resolve();
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("Tutorial sits after AI agents on every dashboard page, when the server has a video", () => {
+    const { unmount } = render(menu(false));
+    expect(items()).toEqual(["Settings", "Passkeys", "AI agents", "Tutorial", "Sign out"]);
+    unmount();
+    at.path = "/agents";
+    render(menu(false));
+    expect(items()).toEqual(["Passkeys", "AI agents", "Tutorial", "Sign out"]);
+  });
+
+  it("Tutorial opens the dialog; for someone who has seen it nothing is written and skipping is not offered", () => {
+    render(menu(false));
+    expect(welcome()).toBeNull();
+    pickTutorial();
+    expect(welcome()).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Watch" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(welcome()).toBeNull();
+    expect(markSeen).not.toHaveBeenCalled();
+  });
+
+  it("on a first visit to a space page the dialog is open at once, and skipping it writes the mark once", () => {
+    render(menu(true));
+    expect(welcome()).toBeTruthy();
+    expect(markSeen).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+    expect(welcome()).toBeNull();
+    expect(markSeen).toHaveBeenCalledTimes(1);
+    // Opened again from the menu, it is no longer a first visit.
+    pickTutorial();
+    expect(welcome()).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(markSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it("on a first visit, playing it writes the mark, and closing afterwards does not write it again", () => {
+    render(menu(true));
+    fireEvent.click(screen.getByRole("button", { name: "Watch" }));
+    expect(markSeen).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(welcome()).toBeNull();
+    expect(markSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it("it does not open over Admin or AI agents, and opens when the person reaches a space page", () => {
+    at.path = "/agents";
+    const { rerender } = render(menu(true));
+    expect(welcome()).toBeNull();
+    at.path = "/admin";
+    rerender(menu(true));
+    expect(welcome()).toBeNull();
+    at.path = "/s/rocket";
+    rerender(menu(true));
+    expect(welcome()).toBeTruthy();
+    expect(markSeen).not.toHaveBeenCalled();
+  });
+
+  it("it opens by itself only once in a page load", () => {
+    const { rerender } = render(menu(true));
+    fireEvent.keyDown(welcome()!, { key: "Escape" });
+    expect(welcome()).toBeNull();
+    at.path = "/s/rocket/settings/members";
+    rerender(menu(true));
+    expect(welcome()).toBeNull();
+    expect(markSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it("the page as the server sends it holds no player: the welcome opens once the page is live, so a failed video is heard", () => {
+    const html = renderToString(menu(true));
+    expect(html).not.toContain("<video");
+    expect(html).toContain("Ada Lovelace");
+  });
+
+  it("a welcome whose video cannot load still closes, and still writes the mark once", () => {
+    render(menu(true));
+    act(() => {
+      document.querySelector("video")!.dispatchEvent(new Event("error"));
+    });
+    expect(screen.getByRole("alert")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(welcome()).toBeNull();
+    expect(markSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it("when the mark cannot be written the dialog still closes and says nothing", async () => {
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    markSeen.mockRejectedValue(new Error("offline"));
+    render(menu(true));
+    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    process.off("unhandledRejection", unhandled);
+    expect(welcome()).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(unhandled).not.toHaveBeenCalled();
   });
 });

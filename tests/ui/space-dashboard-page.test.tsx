@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import type { Role } from "@/lib/allowlist/service";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardLayout, { metadata, viewport } from "@/app/(dashboard)/layout";
 import DashboardPage from "@/app/(dashboard)/s/[space]/page";
 import {
@@ -25,9 +25,10 @@ import { pinProject } from "@/lib/projects/pins";
 import { createProject } from "@/lib/projects/service";
 import { saveThumbnail } from "@/lib/projects/thumbnails";
 import { SEED_TEAM_ID, personalSpaceId } from "@/lib/spaces/types";
+import { hasSeenTutorial, markTutorialSeen } from "@/lib/tutorial/seen";
 import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
-import { render, screen } from "../helpers/dom";
+import { fireEvent, render, screen } from "../helpers/dom";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
 const at = vi.hoisted(() => ({ path: "/s/seattle-solvers" }));
@@ -60,6 +61,11 @@ vi.mock("@/lib/access", async () => ({
 let testDb: DB;
 vi.mock("@/db", async (orig) => ({ ...(await orig<typeof import("@/db")>()), getDb: () => testDb }));
 vi.mock("@/components/keep-signed-in", () => ({ KeepSignedIn }));
+// The real lookup, watched, to see when the frame asks whether someone has seen the tutorial.
+vi.mock("@/lib/tutorial/seen", async (orig) => {
+  const real = await orig<typeof import("@/lib/tutorial/seen")>();
+  return { ...real, hasSeenTutorial: vi.fn(real.hasSeenTutorial) };
+});
 
 // Each one's role in Seattle Solvers is their allowlist role.
 const ada: CurrentUser & { allowlistRole: Role } = { id: "u1", email: "ada@gmail.com", name: "Ada Lovelace", image: null, allowlistRole: "editor" };
@@ -203,5 +209,65 @@ describe("the dashboard page", () => {
     expect(screen.getByRole("button", { name: "Account" }).textContent).toContain("ada@gmail.com");
     expect(metadata.other).toEqual({ "darkreader-lock": "true" });
     expect(viewport).toEqual({ colorScheme: "dark" });
+  });
+});
+
+describe("the tutorial in the dashboard's frame", () => {
+  const frame = async () => render(await DashboardLayout({ children: <p>x</p> } as never));
+  const welcome = () => screen.queryByRole("dialog", { name: "Welcome to EasyEdit" });
+  const menuItems = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    return screen.getAllByRole("menuitem").map((item) => item.textContent);
+  };
+
+  beforeEach(() => {
+    signedIn.user = ada;
+    at.path = "/s/seattle-solvers";
+    vi.mocked(hasSeenTutorial).mockClear();
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("with no video on the server there is no welcome and no Tutorial item, and nobody is looked up", async () => {
+    await frame();
+    expect(welcome()).toBeNull();
+    expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Sign out"]);
+    expect(hasSeenTutorial).not.toHaveBeenCalled();
+  });
+
+  it("with a video, someone who has not seen it is welcomed with it", async () => {
+    vi.stubEnv("TUTORIAL_VIDEO_URL", "https://cdn.test/easyedit-intro.mp4");
+    await frame();
+    expect(welcome()).toBeTruthy();
+    expect(document.querySelector("video")?.getAttribute("src")).toBe("https://cdn.test/easyedit-intro.mp4");
+    expect(document.querySelector("video")?.getAttribute("poster")).toBe("https://cdn.test/easyedit-intro.jpg");
+    expect(hasSeenTutorial).toHaveBeenCalledTimes(1);
+  });
+
+  it("with a video, someone who has seen it only gets the Tutorial item, and another person's mark does not count", async () => {
+    vi.stubEnv("TUTORIAL_VIDEO_URL", "https://cdn.test/easyedit-intro.mp4");
+    await markTutorialSeen(testDb, vic.id);
+    const first = await frame();
+    expect(welcome()).toBeTruthy();
+    first.unmount();
+    await markTutorialSeen(testDb, ada.id);
+    await frame();
+    expect(welcome()).toBeNull();
+    expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Tutorial", "Sign out"]);
+  });
+
+  it("when the seen marks cannot be read the dashboard still opens, with no welcome", async () => {
+    vi.stubEnv("TUTORIAL_VIDEO_URL", "https://cdn.test/easyedit-intro.mp4");
+    vi.mocked(hasSeenTutorial).mockRejectedValueOnce(new Error('relation "tutorial_views" does not exist'));
+    await frame();
+    expect(screen.getByText("x")).toBeTruthy();
+    expect(welcome()).toBeNull();
+    expect(menuItems()).toContain("Tutorial");
+  });
+
+  it("an address that is not a video link counts as no video", async () => {
+    vi.stubEnv("TUTORIAL_VIDEO_URL", "http://cdn.test/easyedit-intro.mp4");
+    await frame();
+    expect(welcome()).toBeNull();
+    expect(menuItems()).not.toContain("Tutorial");
   });
 });
