@@ -11,6 +11,7 @@
   --h-panel: #0c0c0e;
   --h-line: rgb(255 255 255 / 0.08);
   --h-accent: #6ea8ff;
+  --h-claude: #f97316; /* Claude's own colour, wherever Claude is the one editing */
   --h-pad: clamp(20px, 3vw, 40px);
   --h-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
 
@@ -301,8 +302,8 @@
   white-space: nowrap;
 }
 .h-edTitleNew {
-  left: 50%;
-  top: 60%;
+  left: 40%;
+  top: 30%;
   font-size: clamp(18px, 4.3cqw, 52px);
   animation:
     h-popCentered 500ms var(--h-ease) 1s both,
@@ -349,7 +350,7 @@
 }
 /* Claude's own selection, in Claude's orange; its tag hangs below, where the sky is dark. */
 .h-edClaude {
-  --peer: #f97316;
+  --peer: var(--h-claude);
 }
 .h-edClaude > .h-edPeerTag {
   top: calc(100% + 4px);
@@ -1106,6 +1107,9 @@
 .h-demoRequest[aria-pressed="true"] .h-demoAgent {
   color: var(--h-accent);
 }
+.h-demoRequest[aria-pressed="true"][data-agent="Claude"] .h-demoAgent {
+  color: var(--h-claude);
+}
 
 .h-demoStage {
   display: flex;
@@ -1212,6 +1216,18 @@
   font-weight: 700;
   letter-spacing: -0.01em;
   color: #fff;
+}
+.h-ui[data-agent="Claude"] {
+  --fresh: var(--h-claude);
+}
+.h-uiTitleText {
+  position: relative;
+}
+.h-uiClaude {
+  animation: h-in 300ms ease both;
+}
+.h-uiClaude > .h-edPeerTag {
+  font-size: 11px;
 }
 .h-uiSide {
   background: var(--ed-panel);
@@ -1342,12 +1358,12 @@
 }
 @keyframes h-fresh {
   from {
-    outline: 2px solid var(--ed-accent);
+    outline: 2px solid var(--fresh, var(--ed-accent));
     outline-offset: -2px;
     transform: scale(0.97);
   }
   60% {
-    outline: 2px solid var(--ed-accent);
+    outline: 2px solid var(--fresh, var(--ed-accent));
     outline-offset: -2px;
   }
 }

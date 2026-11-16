@@ -95,7 +95,13 @@ export function AgentDemo() {
       <ul className="h-demoRequests" aria-label="Ask an agent">
         {REQUESTS.map((r, i) => (
           <li key={r.key}>
-            <button type="button" aria-pressed={i === chosen} onClick={() => choose(i)} className="h-demoRequest">
+            <button
+              type="button"
+              aria-pressed={i === chosen}
+              onClick={() => choose(i)}
+              className="h-demoRequest"
+              data-agent={r.agent}
+            >
               <span className="h-demoWords">{r.words}</span>
               <span className="h-demoAgent">Ask {r.agent}</span>
             </button>
@@ -105,7 +111,7 @@ export function AgentDemo() {
 
       <div className="h-demoStage">
         <figure className="h-demoFigure">
-        <div data-ui className="h-ui">
+        <div data-ui className="h-ui" data-agent={phase === "done" ? request.agent : undefined}>
           <div className="h-uiBar">
             <LogoMark size={16} />
             <span className="h-uiProject">Summer trip</span>
@@ -127,8 +133,20 @@ export function AgentDemo() {
                 {/* eslint-disable-next-line @next/next/no-img-element -- a fixed still inside a drawn interface */}
                 <img src={shown.thumb} alt="" width={960} height={540} />
                 {doc.title && (
-                  <span className="h-uiTitle" data-fresh={fresh === "text" || undefined}>
-                    Summer trip
+                  <span className="h-uiTitle">
+                    <span className="h-uiTitleText">
+                      Summer trip
+                      {/* Claude's own selection on what it just made, in Claude's orange, as in the editor. */}
+                      {fresh === "text" && (
+                        <span className="h-edClaude h-uiClaude">
+                          <span className="h-edPeerTag">Claude</span>
+                          <span className="h-edHandle" data-at="tl" />
+                          <span className="h-edHandle" data-at="tr" />
+                          <span className="h-edHandle" data-at="bl" />
+                          <span className="h-edHandle" data-at="br" />
+                        </span>
+                      )}
+                    </span>
                   </span>
                 )}
               </div>
