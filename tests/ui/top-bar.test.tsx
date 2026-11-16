@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
+import { LEAVE_SETTLE_MS } from "@/components/editor/leave-link";
 import { MediaProvider } from "@/components/editor/media/media-context";
 import { TopBar } from "@/components/editor/top-bar";
 import type { ProjectApi } from "@/lib/editor/api";
@@ -73,7 +74,8 @@ function leaveWith(queued: number, status: SyncStatus, click: Partial<MouseEvent
 
 it("'Projects' stays inside the app while queued edits can still be sent", () => {
   expect(leaveWith(0, "saved")).toEqual({ reloaded: false, assigned: [] });
-  expect(leaveWith(2, "saving")).toEqual({ reloaded: false, assigned: [] });
+  // A save in flight holds the link back until it ends (the tests after "Back to projects"), loading nothing yet.
+  expect(leaveWith(2, "saving")).toEqual({ reloaded: true, assigned: [] });
   expect(leaveWith(0, "offline")).toEqual({ reloaded: false, assigned: [] });
 });
 
@@ -201,6 +203,129 @@ it("'Back to projects' on a deleted project leaves without asking: its edits can
   );
   expect(fireEvent.click(screen.getByRole("link", { name: "Back to projects" }))).toBe(true);
   expect(assign).not.toHaveBeenCalled();
+});
+
+// A top bar whose store has one queued edit being sent ("saving"). Records every click that reaches the window, and
+// whether something had already stopped it there (the app's own navigation leaves a click alone; a link it holds back
+// or a page load it does instead stops it).
+function leaveWhileSaving() {
+  const store = makeStore();
+  store.getState().edit([{ op: "move_clip", clipId: "x2", start: 100 }], "move");
+  store.getState().setStatus("saving");
+  const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
+  const clicks: boolean[] = []; // defaultPrevented of each click on the link, once it has bubbled up
+  const record = (event: Event) => clicks.push(event.defaultPrevented);
+  window.addEventListener("click", record);
+  const view = render(
+    <EditorProvider store={store}>
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
+    </EditorProvider>,
+  );
+  const projects = screen.getByRole("link", { name: "Projects" });
+  const sent = () => {
+    const head = store.getState().queue[0];
+    store.getState().ack(head.id, store.getState().server.version + 1, []);
+    store.getState().setStatus("saved");
+  };
+  return { store, assign, clicks, projects, sent, view, done: () => window.removeEventListener("click", record) };
+}
+
+it("'Projects' during a save waits for it, then stays inside the app once it worked", () => {
+  const { assign, clicks, projects, sent, done } = leaveWhileSaving();
+  expect(fireEvent.click(projects)).toBe(false); // held back while the save is in flight
+  expect(clicks).toEqual([true]);
+  act(sent);
+  expect(clicks).toEqual([true, false]); // the link clicked again, and left to the app's own navigation
+  expect(assign).not.toHaveBeenCalled();
+  expect(screen.queryByText("Leave the editor?")).toBeNull();
+  done();
+});
+
+it("'Projects' during a save that then fails loads the page for real, so the browser asks before the edit is lost", () => {
+  for (const failed of ["offline", "limited"] as const) {
+    const { store, assign, clicks, projects, view, done } = leaveWhileSaving();
+    expect(fireEvent.click(projects)).toBe(false);
+    act(() => store.getState().setStatus(failed)); // the queued edit is kept
+    expect(assign).toHaveBeenCalledWith("/s/seattle-solvers");
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(clicks).toEqual([true, true]); // clicked again once the save ended, and held back again: no navigation inside the app
+    done();
+    view.unmount();
+    assign.mockRestore();
+  }
+});
+
+it("'Projects' during a save that never ends loads the page for real after 4 s", () => {
+  vi.useFakeTimers();
+  try {
+    const { assign, clicks, projects, done } = leaveWhileSaving();
+    expect(fireEvent.click(projects)).toBe(false);
+    act(() => vi.advanceTimersByTime(LEAVE_SETTLE_MS - 1));
+    expect(assign).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(assign).toHaveBeenCalledWith("/s/seattle-solvers");
+    expect(clicks).toEqual([true]);
+    done();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("a second click on 'Projects' during the wait starts no second wait, and closing the editor ends the wait", () => {
+  vi.useFakeTimers();
+  try {
+    const { store, assign, clicks, projects, view, done } = leaveWhileSaving();
+    expect(fireEvent.click(projects)).toBe(false);
+    expect(fireEvent.click(projects)).toBe(false);
+    act(() => store.getState().setStatus("offline"));
+    expect(assign).toHaveBeenCalledTimes(1);
+    assign.mockClear();
+    store.getState().setStatus("saving");
+    expect(fireEvent.click(projects)).toBe(false);
+    view.unmount(); // the editor closed some other way: nothing happens later
+    act(() => store.getState().setStatus("offline"));
+    act(() => vi.advanceTimersByTime(LEAVE_SETTLE_MS));
+    expect(assign).not.toHaveBeenCalled();
+    expect(clicks).toEqual([true, true, true, true]); // the third is the link clicked again when the save failed
+    done();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("Leave during a save waits for it like the link: it stays inside the app once the save worked, and loads the page for real when it failed", () => {
+  for (const outcome of ["saved", "offline"] as const) {
+    const { store, assign, clicks, projects, sent, view, done } = leaveWhileSaving();
+    act(() => store.getState().setExporting(true));
+    expect(fireEvent.click(projects)).toBe(false); // asks first, without waiting
+    expect(screen.getByText("An export is running. Leaving stops it.")).toBeTruthy();
+    expect(fireEvent.click(screen.getByRole("link", { name: "Leave" }))).toBe(false); // held back while the save is in flight
+    act(() => (outcome === "saved" ? sent() : store.getState().setStatus(outcome)));
+    if (outcome === "saved") {
+      expect(clicks).toEqual([true, true, false]); // Leave clicked again, and left to the app's own navigation
+      expect(assign).not.toHaveBeenCalled();
+    } else {
+      expect(clicks).toEqual([true, true, true]); // Leave clicked again, and held back again
+      expect(assign).toHaveBeenCalledWith("/s/seattle-solvers");
+      expect(assign).toHaveBeenCalledTimes(1);
+    }
+    done();
+    view.unmount();
+    assign.mockRestore();
+  }
+});
+
+// Beyond the brief: Stay after Leave was held back for a save ends the wait, so the editor does not close by itself later.
+it("Stay after Leave was held back for a save keeps the editor open once the save ends", () => {
+  const { store, assign, clicks, projects, sent, done } = leaveWhileSaving();
+  act(() => store.getState().setExporting(true));
+  fireEvent.click(projects);
+  expect(fireEvent.click(screen.getByRole("link", { name: "Leave" }))).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Stay" }));
+  act(sent);
+  expect(clicks).toEqual([true, true, false]); // Projects, Leave, Stay (a plain button): nothing clicked after the save
+  expect(assign).not.toHaveBeenCalled();
+  done();
 });
 
 // A top bar whose api answers every rename with the name it was sent.
