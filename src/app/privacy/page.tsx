@@ -27,6 +27,17 @@ export default function PrivacyPage() {
           EasyEdit asks Google for one permission, <code>drive.file</code>. It lets EasyEdit see only the files and folders that EasyEdit itself
           creates in your Drive. It cannot see anything else in your Drive.
         </p>
+        <p>
+          EasyEdit&apos;s use and transfer of information received from Google APIs to any other app will adhere to the{" "}
+          <a className="underline underline-offset-4" href="https://developers.google.com/terms/api-services-user-data-policy">
+            Google API Services User Data Policy
+          </a>
+          , including the Limited Use requirements.
+        </p>
+        <p>
+          The access EasyEdit keeps for a connected Google Drive is stored encrypted, and is used only to store and play the videos you add to
+          EasyEdit.
+        </p>
 
         <h2 className={H2}>Where your data lives</h2>
         <p>
