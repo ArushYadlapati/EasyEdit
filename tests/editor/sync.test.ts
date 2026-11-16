@@ -545,18 +545,34 @@ describe("a save the website refuses over its limit", () => {
     expect(st().doc).toEqual(server.doc());
   });
 
-  it("stays limited through the retry's catch-up, so leaving is warned about and nothing is discarded", async () => {
+  it("stays limited while the retry's post is in flight, so leaving is warned about and the edits are kept", async () => {
     const { server, sync, st } = setup();
-    server.fail("limited", 2);
+    server.fail("limited");
     st().edit(move(120), "move");
     await settle();
     expect(st().status).toBe("limited");
-    st().edit(move(150), "move"); // retries at once: catch-up, then a post that is refused again
-    await vi.advanceTimersByTimeAsync(0);
+    st().edit(move(150), "move"); // retries at once: the catch-up goes out now and works
+    server.fail("limited"); // the post after it is refused again
+    for (let i = 0; i < 50 && count(server.calls, "post") < 2; i++) await Promise.resolve();
+    expect(count(server.calls, "post")).toBe(2); // the post is in flight
+    const { status, queue } = st(); // what the leave link reads
+    expect(status).toBe("limited");
+    expect(queue.length > 0 && status !== "saving" && status !== "deleted").toBe(true);
     sync.stopWhenSent();
     await settle();
     expect(st()).toMatchObject({ status: "limited", limitMessage: LIMIT_MESSAGE });
-    expect(st().queue.length).toBeGreaterThan(0); // the leave check (queue and status not "saving") sees edits at risk
+    expect(st().queue.length).toBeGreaterThan(0);
+  });
+
+  it("losing editing rights while limited clears the limit message", async () => {
+    const { server, st } = setup();
+    server.fail("limited");
+    st().edit(move(120), "move");
+    await settle();
+    server.fail("forbidden");
+    await after(60_000); // the retry's catch-up is refused as forbidden
+    expect(st()).toMatchObject({ canEdit: false, queue: [], limitMessage: null });
+    expect(st().status).not.toBe("limited");
   });
 
   it("a later accepted save clears the limited state", async () => {

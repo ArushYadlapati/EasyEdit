@@ -129,6 +129,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
   // Saving while edits wait and the last request worked; saved once they are all in.
   function refreshStatus() {
     if (halted) return;
+    if (state().queue.length === 0) limited = null; // nothing is waiting (sent, or editing was revoked)
     if (limited !== null) {
       if (state().status !== "limited") state().setStatus("limited", limited);
       return;
@@ -257,7 +258,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
     const answer = await api.postOps({ baseVersion: state().server.version, ops: head.ops, requestId: head.id });
     if (!running) return;
     if (answer.ok || answer.kind === "op" || answer.kind === "conflict") {
-      limited = null; // the website took this save
+      limited = null; // the website is accepting saves again
       refreshStatus();
     }
     if (!answer.ok && answer.kind === "conflict") {
