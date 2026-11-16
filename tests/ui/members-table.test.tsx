@@ -14,6 +14,7 @@ const actions = {
   setRole: vi.fn<FormAction>(async () => ({})),
   remove: vi.fn<FormAction>(async () => ({})),
   leave: vi.fn<() => Promise<{ error?: string }>>(async () => ({})),
+  deleteTeam: vi.fn<FormAction>(async () => ({})),
 };
 
 beforeEach(() => {
@@ -235,5 +236,41 @@ describe("pending invites", () => {
     editor.unmount();
     show("u1", "admin", ALL, { managedElsewhere: true, pendingInvites: [INV_LIN] });
     expect(screen.queryByText("lin@example.com")).toBeNull();
+  });
+});
+
+describe("delete team", () => {
+  it("is for admins only, and never for Seattle Solvers", () => {
+    show("u3", "viewer");
+    expect(screen.queryByRole("button", { name: "Delete team" })).toBeNull();
+  });
+
+  it("the confirm button stays disabled until the exact name is typed, then sends it", async () => {
+    show("u1", "admin");
+    fireEvent.click(screen.getByRole("button", { name: "Delete team" }));
+    const confirm = within(dialog("Delete Robots?")).getByRole("button", { name: "Delete team" }) as HTMLButtonElement;
+    const field = within(dialog("Delete Robots?")).getByRole("textbox") as HTMLInputElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(field, { target: { value: "robots" } });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(field, { target: { value: "Robots" } });
+    expect(confirm.disabled).toBe(false);
+    await act(async () => fireEvent.click(confirm));
+    await waitFor(() => expect(actions.deleteTeam).toHaveBeenCalledTimes(1));
+    expect(actions.deleteTeam.mock.calls[0]![0].get("confirmName")).toBe("Robots");
+  });
+
+  it("shows a refusal in the dialog", async () => {
+    actions.deleteTeam.mockResolvedValue({ error: "Delete this team's projects first." });
+    show("u1", "admin");
+    fireEvent.click(screen.getByRole("button", { name: "Delete team" }));
+    fireEvent.change(within(dialog("Delete Robots?")).getByRole("textbox"), { target: { value: "Robots" } });
+    await act(async () => fireEvent.click(within(dialog("Delete Robots?")).getByRole("button", { name: "Delete team" })));
+    expect((await screen.findByRole("alert")).textContent).toBe("Delete this team's projects first.");
+  });
+
+  it("is not shown for Seattle Solvers", () => {
+    show("u1", "admin", ALL, { managedElsewhere: true });
+    expect(screen.queryByRole("button", { name: "Delete team" })).toBeNull();
   });
 });

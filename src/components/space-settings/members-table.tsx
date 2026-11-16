@@ -6,6 +6,7 @@ import { roleChoice } from "@/app/(dashboard)/admin/roles";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import type { Role } from "@/lib/allowlist/service";
 import type { MemberActions } from "@/lib/spaces/member-actions";
+import { DeleteTeam } from "./delete-team";
 import { InviteButton } from "./invite-dialog";
 import { LeaveTeam, MemberRoleSelect, RemoveMember } from "./member-controls";
 import { PendingInvites, type PendingInviteRow } from "./pending-invites";
@@ -135,6 +136,7 @@ export function MembersTable({ teamName, members, me, viewerRole, managedElsewhe
         </table>
       </div>
       {canManage && <PendingInvites invites={pendingInvites} cancel={actions.cancelInvite} />}
+      {canManage && <DeleteTeam teamName={teamName} deleteTeam={actions.deleteTeam} />}
     </section>
   );
 }

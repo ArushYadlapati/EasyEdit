@@ -5,7 +5,7 @@ import type { Role } from "@/lib/allowlist/service";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn } from "./access";
 import { cancelInvite as cancelInviteById, inviteToTeam } from "./invites";
-import { leaveTeam, removeMember, setMemberRole } from "./members";
+import { deleteTeam as deleteTeamById, leaveTeam, removeMember, setMemberRole } from "./members";
 
 export type ActionResult = { error?: string };
 // An invite also hands back the link to send.
@@ -17,6 +17,7 @@ export type MemberActionDeps = {
   revalidate: () => void; // every page that shows the person's spaces or the team's members
   redirect: (path: string) => never;
   inviteLink: (inviteId: string) => string; // the address an invitee opens (server-only, so it is passed in)
+  deleteReader: (email: string) => Promise<void>; // removes a deleted team's reader account from Google Cloud
 };
 
 // What a space the caller isn't in answers, the same as one that doesn't exist (the members service's own message).
@@ -73,6 +74,21 @@ export function makeMemberActions(deps: MemberActionDeps) {
     async leave(spaceId: string): Promise<ActionResult> {
       const result = await plain(run(spaceId, (db, actor) => leaveTeam(db, actor)));
       if (result.error !== undefined) return result;
+      return deps.redirect("/dashboard");
+    },
+    // The team is gone for everyone once this returns; its reader account is removed after, best effort (an orphaned
+    // reader has no folder shared with it that anyone can reach, so a failure here never undoes the deletion).
+    async deleteTeam(spaceId: string, formData: FormData): Promise<ActionResult> {
+      const result = await run(spaceId, (db, actor) => deleteTeamById(db, actor, { confirmName: field(formData, "confirmName") }));
+      if (result.error !== undefined || result.value === undefined) return { error: result.error };
+      const email = result.value.readerEmail;
+      if (email !== null) {
+        try {
+          await deps.deleteReader(email);
+        } catch {
+          console.error("A deleted team's reader account could not be removed");
+        }
+      }
       return deps.redirect("/dashboard");
     },
   };

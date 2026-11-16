@@ -172,3 +172,42 @@ async function deleteMember(db: DB, actor: Actor, spaceId: string, userId: strin
   if (!opts.byAdmin && error.code === "NOT_FOUND") throw spaceNotFound();
   throw error;
 }
+
+const hasProjects = () => new ServiceError("HAS_PROJECTS", 409, "Delete this team's projects first.");
+
+type DeleteRow = { changed: boolean; caller_admin: boolean; name_ok: boolean; has_projects: boolean; reader_email: string | null };
+
+// Deletes a team: its member, invitation, space_visits and space_storage rows go, so nobody sees it and its invite links
+// stop working. The organization row stays (projects, folders and assets point at it with no cascade), as do the
+// team's folders, assets, brand kit, pins and Drive connection. An admin only, and only with the team's name typed
+// exactly, and only when no project is left in it (deleted ones don't count). One statement after the early checks, so
+// an admin demoted a moment ago can't still delete. Hands back the team's reader account so the caller can remove it.
+export async function deleteTeam(db: DB, actor: Actor, input: { confirmName: string }): Promise<{ readerEmail: string | null }> {
+  if (actor.spaceId === SEED_TEAM_ID) throw new ServiceError("MANAGED_ELSEWHERE", 409, "Seattle Solvers can't be deleted.");
+  const spaceId = await changeableTeam(db, actor, { admin: true });
+  const typed = (input.confirmName ?? "").trim();
+  const result = await db.execute(sql`
+    with ${lockedAdmins(spaceId, actor.userId)}, ${teamOnly(spaceId)},
+      ok as (
+        select team.id from team join organization o on o.id = team.id, gate
+        where gate.caller_admin and o.name = ${typed}
+          and not exists (select 1 from projects p where p.space_id = team.id and p.deleted_at is null)
+      ),
+      del_invitation as (delete from invitation where organization_id in (select id from ok)),
+      del_storage as (delete from space_storage where space_id in (select id from ok) returning reader_email),
+      del_visits as (delete from space_visits where space_id in (select id from ok)),
+      del_member as (delete from member where organization_id in (select id from ok) returning id)
+    select
+      exists (select 1 from ok) as changed,
+      (select caller_admin from gate) as caller_admin,
+      coalesce((select name = ${typed} from organization where id = ${spaceId}), false) as name_ok,
+      exists (select 1 from projects where space_id = ${spaceId} and deleted_at is null) as has_projects,
+      (select reader_email from del_storage limit 1) as reader_email
+  `);
+  const row = rowsOf<DeleteRow>(result)[0];
+  if (row.changed) return { readerEmail: row.reader_email };
+  if (!row.caller_admin) throw forbidden();
+  if (!row.name_ok) throw new ServiceError("INVALID", 400, "Type the team's name to delete it.");
+  if (row.has_projects) throw hasProjects();
+  throw spaceNotFound(); // gone while the statement ran
+}

@@ -13,6 +13,7 @@ export type ServiceErrorCode =
   | "ALREADY_MEMBER"
   | "LAST_ADMIN"
   | "STORAGE_OWNER"
+  | "HAS_PROJECTS"
   | "WRONG_ACCOUNT"
   | "EXPIRED"
   | "INVITE_USED";

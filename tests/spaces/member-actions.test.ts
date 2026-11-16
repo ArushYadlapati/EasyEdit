@@ -45,7 +45,7 @@ function actionsAs(db: DB, signedIn: CurrentUser) {
   const redirect = vi.fn((to: string): never => {
     throw new Redirected(to);
   });
-  const actions = makeMemberActions({ db: () => db, requireUser: async () => signedIn, revalidate, redirect, inviteLink: (id) => `https://easyedit.test/invite/${id}` });
+  const actions = makeMemberActions({ db: () => db, requireUser: async () => signedIn, revalidate, redirect, inviteLink: (id) => `https://easyedit.test/invite/${id}`, deleteReader: async () => {} });
   return { actions, revalidate, redirect };
 }
 
