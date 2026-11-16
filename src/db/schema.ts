@@ -274,6 +274,14 @@ export const spaceVisits = pgTable("space_visits", {
   visitedAt: timestamp("visited_at").notNull().defaultNow(),
 });
 
+// Who has seen the intro tutorial, so the welcome dialog opens once per account and not once per browser.
+export const tutorialViews = pgTable("tutorial_views", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  seenAt: timestamp("seen_at").notNull().defaultNow(),
+});
+
 // A member's personal access token for an AI agent that cannot sign in through a browser and sends a header instead.
 // Only the sha256 of the token is kept; the token itself is shown once, when it is made. The agent kinds are listed
 // here as in AGENT_KINDS (src/lib/connector/agents.ts): adding a kind there needs a migration that widens the check.

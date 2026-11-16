@@ -120,6 +120,13 @@
       "when": 1794798374582,
       "tag": "0017_invitation_pending",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794802681918,
+      "tag": "0018_tutorial_views",
+      "breakpoints": true
     }
   ]
 }
