@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "@/app/page";
 import { AgentDemo, REQUESTS } from "@/components/home/agent-demo";
+import { NewProjectForm } from "@/components/home/new-project-form";
 import PrivacyPage from "@/app/privacy/page";
 import TermsPage from "@/app/terms/page";
 import type { CurrentUser } from "@/lib/access-rules";
@@ -12,15 +13,15 @@ class Redirected extends Error {
     super(`REDIRECT ${to}`);
   }
 }
+const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
     throw new Redirected(to);
   },
+  useRouter: () => ({ push }),
 }));
 const { signedIn } = vi.hoisted(() => ({ signedIn: { user: null as CurrentUser | null } }));
 vi.mock("@/lib/access", () => ({ getCurrentUser: vi.fn(async () => signedIn.user) }));
-// The home page's font is a next/font loader, which only runs in a Next build.
-vi.mock("@/components/home/erode", () => ({ erode: { variable: "font-erode" } }));
 
 const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
 
@@ -29,39 +30,55 @@ beforeEach(() => {
 });
 
 describe("home page", () => {
-  it("signed out shows the pitch, the start button to /login, and links to /privacy and /terms", async () => {
+  it("signed out shows the headline, the start buttons to /login, and links to /privacy and /terms", async () => {
     vi.stubEnv("OPEN_SIGNUP", "true");
     render(await Home());
     vi.unstubAllEnvs();
-    expect(screen.getByRole("heading", { level: 1, name: "Edit videos with your team and AI" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "The video editor for AI agents and teams" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Start editing, free" }).getAttribute("href")).toBe("/login");
+    expect(screen.getByRole("link", { name: "Start free" }).getAttribute("href")).toBe("/login");
     for (const a of screen.getAllByRole("link", { name: "Sign in" })) expect(a.getAttribute("href")).toBe("/login");
     expect(screen.getByRole("link", { name: "Privacy" }).getAttribute("href")).toBe("/privacy");
     expect(screen.getByRole("link", { name: "Terms" }).getAttribute("href")).toBe("/terms");
   });
 
-  it("has a section for AI agents, teams and the editor, each linked from the first screen", async () => {
+  it("changes the headline's ending from the tabs: for AI agents, for teams, and so on", async () => {
+    render(await Home());
+    const phrase = () => document.querySelector(".h-heroPhrase [data-on]")?.textContent;
+    expect(phrase()).toBe("for AI agents.");
+    fireEvent.click(screen.getByRole("button", { name: "Teams" }));
+    expect(phrase()).toBe("for teams.");
+    expect(screen.getByRole("button", { name: "Teams" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "In your browser" }));
+    expect(phrase()).toBe("in your browser.");
+  });
+
+  it("has the AI, team and get-started sections, linked from the top, and no tools section", async () => {
     render(await Home());
     for (const [name, id] of [
       ["AI agents", "ai"],
-      ["Teams", "team"],
-      ["The editor", "tools"],
+      ["Teams", "teams"],
+      ["Get started", "start"],
     ]) {
       expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(`#${id}`);
       expect(document.getElementById(id)).toBeTruthy();
     }
+    expect(document.getElementById("tools")).toBeNull();
   });
 
-  it("says EasyEdit is free, as the terms do", async () => {
+  it("says it's completely free and works with every AI agent, then offers the first project", async () => {
     render(await Home());
-    expect(screen.getByText("Nothing. EasyEdit is free.")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Completely free." })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Works with every AI agent." })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Make your first project." })).toBeTruthy();
   });
 
-  it("says EasyEdit is in closed beta while sign-up is closed, and the button just signs in", async () => {
+  it("says EasyEdit is in closed beta while sign-up is closed, and the buttons just sign in", async () => {
     vi.stubEnv("OPEN_SIGNUP", "");
     render(await Home());
     expect(screen.getByText("EasyEdit is in closed beta. Sign-in is by invitation only for now.")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Start editing, free" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Start free" })).toBeNull();
     vi.unstubAllEnvs();
   });
 
@@ -76,6 +93,33 @@ describe("home page", () => {
   it("signed in goes to the dashboard", async () => {
     signedIn.user = ada;
     await expect(Home()).rejects.toMatchObject({ to: "/dashboard" });
+  });
+});
+
+describe("home page new project form", () => {
+  beforeEach(() => push.mockClear());
+
+  it("shows the typed name in the preview and the chosen format's size", () => {
+    render(<NewProjectForm />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Launch teaser" } });
+    expect(screen.getByText("Launch teaser")).toBeTruthy();
+    expect(screen.getByText("1080 × 1920 px · 30 fps")).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: /Landscape 16:9/ }));
+    expect(screen.getByText("1920 × 1080 px · 30 fps")).toBeTruthy();
+  });
+
+  it("offers a custom size and refuses one outside the limits", () => {
+    render(<NewProjectForm />);
+    fireEvent.click(screen.getByRole("radio", { name: /Custom size/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Width (px)" }), { target: { value: "5" } });
+    expect(screen.getByRole("alert").textContent).toContain("Width and height go from");
+    expect(screen.getByRole("button", { name: "Create project" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("Create project goes to sign in", () => {
+    render(<NewProjectForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+    expect(push).toHaveBeenCalledWith("/login");
   });
 });
 
