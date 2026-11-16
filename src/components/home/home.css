@@ -315,7 +315,7 @@
   }
 }
 /* The team scene, 7 seconds: Sam adds the title (pink), Mika enlarges and moves the clip (teal) so the dark sky sits
-   behind it, Priya changes its font (orange). Each teammate's selection is their colour, name tag and handles. */
+   behind it, Priya changes its font (lime). Each teammate's selection is their colour, name tag and handles. */
 .h-edPeerTitle {
   left: 50%;
   top: 42%;
@@ -349,7 +349,7 @@
 }
 /* Claude's own selection, in Claude's orange; its tag hangs below, where the sky is dark. */
 .h-edClaude {
-  --peer: #d97757;
+  --peer: #f97316;
 }
 .h-edClaude > .h-edPeerTag {
   top: calc(100% + 4px);
@@ -361,7 +361,7 @@
   animation: h-out 250ms ease 1.8s both;
 }
 .h-edPriya {
-  --peer: var(--ed-peer-3);
+  --peer: var(--ed-peer-4);
   animation: h-in 250ms ease 3.9s both;
 }
 .h-edPeerTag {
@@ -441,51 +441,10 @@
 }
 .h-edAvatarPriya {
   margin-left: -10px;
-  background: var(--ed-peer-3);
+  background: var(--ed-peer-4);
   box-shadow: 0 0 0 2px var(--ed-panel);
   animation-delay: 3.8s;
 }
-.h-edPeerTag {
-  position: absolute;
-  left: -4px;
-  bottom: calc(100% + 4px);
-  padding: 2px 7px;
-  border-radius: 3px 3px 3px 0;
-  background: var(--ed-peer-1);
-  color: #0a0a0a;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-.h-edHandle {
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  background: #fff;
-  border: 2px solid var(--ed-peer-1);
-}
-.h-edHandle[data-at="tl"] { left: -7px; top: -7px; }
-.h-edHandle[data-at="tr"] { right: -7px; top: -7px; }
-.h-edHandle[data-at="bl"] { left: -7px; bottom: -7px; }
-.h-edHandle[data-at="br"] { right: -7px; bottom: -7px; }
-.h-edCursor {
-  position: absolute;
-  right: -26px;
-  bottom: -30px;
-  width: 18px;
-  height: 22px;
-  fill: var(--ed-peer-1);
-  stroke: #0a0a0a;
-  stroke-width: 1.2;
-  animation: h-drift 1.6s var(--h-ease) 500ms both;
-}
-@keyframes h-drift {
-  from {
-    transform: translate(40px, 30px);
-    opacity: 0;
-  }
-}
-
 .h-edDialog {
   position: absolute;
   left: 50%;
@@ -755,14 +714,13 @@
   }
 }
 
-/* Dark where the headline sits (left and bottom), so it reads over any frame; the editor stays visible on the right. */
 .h-heroScrim {
   position: absolute;
   inset: 0;
+  /* Dark only where the headline sits (bottom and bottom-left), so the editor above keeps its true colours. */
   background:
-    linear-gradient(to top, rgb(0 0 0 / 0.92) 0%, rgb(0 0 0 / 0.55) 42%, rgb(0 0 0 / 0) 70%),
-    linear-gradient(to right, rgb(0 0 0 / 0.75) 0%, rgb(0 0 0 / 0.35) 45%, rgb(0 0 0 / 0) 70%),
-    linear-gradient(to bottom, rgb(0 0 0 / 0.4) 0, rgb(0 0 0 / 0) 160px);
+    linear-gradient(to top, rgb(0 0 0 / 0.92) 0%, rgb(0 0 0 / 0.55) 38%, rgb(0 0 0 / 0) 60%),
+    radial-gradient(75% 65% at 0% 100%, rgb(0 0 0 / 0.65), rgb(0 0 0 / 0) 70%);
 }
 
 .h-nav {
