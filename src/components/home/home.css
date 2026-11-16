@@ -495,7 +495,7 @@
 }
 .h-uiFrame {
   position: relative;
-  height: 100%;
+  height: var(--frame-h, 218px); /* explicit: a percentage height doesn't resolve here, and 9:16 needs one */
   aspect-ratio: 16 / 9;
   max-width: 100%;
   overflow: hidden;
@@ -692,6 +692,7 @@
   }
   .h-uiPreview {
     height: 200px;
+    --frame-h: 168px;
   }
   .h-uiSide {
     border-left: 0;
