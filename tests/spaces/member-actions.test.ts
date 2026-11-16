@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { DB } from "@/db";
 import { member, user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
+import { inviteToTeam, listPendingInvites } from "@/lib/spaces/invites";
+import { actorIn } from "@/lib/spaces/access";
 import { makeMemberActions } from "@/lib/spaces/member-actions";
 import { createTeam, ensurePersonalSpace } from "@/lib/spaces/service";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
@@ -43,7 +45,7 @@ function actionsAs(db: DB, signedIn: CurrentUser) {
   const redirect = vi.fn((to: string): never => {
     throw new Redirected(to);
   });
-  const actions = makeMemberActions({ db: () => db, requireUser: async () => signedIn, revalidate, redirect });
+  const actions = makeMemberActions({ db: () => db, requireUser: async () => signedIn, revalidate, redirect, inviteLink: (id) => `https://easyedit.test/invite/${id}` });
   return { actions, revalidate, redirect };
 }
 
@@ -53,16 +55,22 @@ const form = (fields: Record<string, string>) => {
   return data;
 };
 
+async function actorFor(db: DB, id: string, spaceId: string) {
+  const actor = await actorIn(db, testUser({ id }), spaceId);
+  if (!actor) throw new Error("not in space");
+  return actor;
+}
+
 async function roleOf(db: DB, spaceId: string, userId: string) {
   const rows = await db.select({ role: member.role }).from(member).where(and(eq(member.organizationId, spaceId), eq(member.userId, userId)));
   return rows[0]?.role ?? null;
 }
 
 describe("actions re-check the caller", () => {
-  it("an editor's add, setRole and remove return the forbidden message and change nothing", async () => {
+  it("an editor's invite, setRole and remove return the forbidden message and change nothing", async () => {
     const { db, team } = await setup();
     const { actions, revalidate } = actionsAs(db, person("u2"));
-    expect(await actions.add(team, form({ email: "ada@example.com", role: "editor" }))).toEqual({ error: FORBIDDEN });
+    expect(await actions.invite(team, form({ email: "ada@example.com", role: "editor" }))).toEqual({ error: FORBIDDEN });
     expect(await actions.setRole(team, form({ userId: "u1", role: "viewer" }))).toEqual({ error: FORBIDDEN });
     expect(await actions.remove(team, form({ userId: "u1" }))).toEqual({ error: FORBIDDEN });
     expect(await roleOf(db, team, "ada")).toBeNull();
@@ -74,26 +82,43 @@ describe("actions re-check the caller", () => {
   it("a non-member's return the not-found message", async () => {
     const { db, team } = await setup();
     const { actions } = actionsAs(db, person("u3"));
-    expect(await actions.add(team, form({ email: "ada@example.com", role: "editor" }))).toEqual({ error: SPACE_NOT_FOUND });
+    expect(await actions.invite(team, form({ email: "ada@example.com", role: "editor" }))).toEqual({ error: SPACE_NOT_FOUND });
     expect(await actions.setRole(team, form({ userId: "u2", role: "viewer" }))).toEqual({ error: SPACE_NOT_FOUND });
     expect(await actions.remove(team, form({ userId: "u2" }))).toEqual({ error: SPACE_NOT_FOUND });
     expect(await actions.leave(team)).toEqual({ error: SPACE_NOT_FOUND });
-    expect(await actions.add("team_nope", form({ email: "ada@example.com", role: "editor" }))).toEqual({ error: SPACE_NOT_FOUND });
+    expect(await actions.invite("team_nope", form({ email: "ada@example.com", role: "editor" }))).toEqual({ error: SPACE_NOT_FOUND });
     expect(await roleOf(db, team, "ada")).toBeNull();
     expect(await roleOf(db, team, "u2")).toBe("editor");
   });
 
-  it("an admin's add returns ok and the row exists; setRole and remove go through", async () => {
+  it("an admin's invite returns the link and revalidates; setRole and remove go through", async () => {
     const { db, team } = await setup();
+    await joinSpace(db, { id: "ada" }, "viewer", team);
     const { actions, revalidate } = actionsAs(db, person("u1"));
-    expect(await actions.add(team, form({ email: "  Ada@Example.com ", role: "viewer" }))).toEqual({});
-    expect(await roleOf(db, team, "ada")).toBe("viewer");
+    const [pending] = [await actions.invite(team, form({ email: "  New@Example.com ", role: "viewer" }))];
+    const invites = await listPendingInvites(db, await actorFor(db, "u1", team));
+    expect(invites).toHaveLength(1);
+    expect(invites[0]).toMatchObject({ email: "new@example.com", role: "viewer" });
+    expect(pending).toEqual({ link: `https://easyedit.test/invite/${invites[0]!.id}` });
     expect(revalidate).toHaveBeenCalledTimes(1);
     expect(await actions.setRole(team, form({ userId: "ada", role: "editor" }))).toEqual({});
     expect(await roleOf(db, team, "ada")).toBe("editor");
     expect(await actions.remove(team, form({ userId: "ada" }))).toEqual({});
     expect(await roleOf(db, team, "ada")).toBeNull();
     expect(revalidate).toHaveBeenCalledTimes(3);
+  });
+
+  it("cancelInvite removes a waiting invite, refreshes, and is refused for an editor", async () => {
+    const { db, team } = await setup();
+    const admin = await actorFor(db, "u1", team);
+    const invite = await inviteToTeam(db, admin, { email: "new@example.com", role: "editor" });
+    const editor = actionsAs(db, person("u2"));
+    expect(await editor.actions.cancelInvite(team, form({ inviteId: invite.id }))).toEqual({ error: FORBIDDEN });
+    expect(await listPendingInvites(db, admin)).toHaveLength(1);
+    const { actions, revalidate } = actionsAs(db, person("u1"));
+    expect(await actions.cancelInvite(team, form({ inviteId: invite.id }))).toEqual({});
+    expect(revalidate).toHaveBeenCalledTimes(1);
+    expect(await listPendingInvites(db, admin)).toEqual([]);
   });
 
   it("leave goes on to /dashboard, which picks where the person lands", async () => {
@@ -130,12 +155,9 @@ describe("actions re-check the caller", () => {
   it("a ServiceError's message comes back verbatim", async () => {
     const { db, team } = await setup();
     const { actions } = actionsAs(db, person("u1"));
-    expect(await actions.add(team, form({ email: "nobody@example.com", role: "editor" }))).toEqual({
-      error: "No EasyEdit account uses that email yet. Ask them to sign in once, then add them.",
-    });
-    expect(await actions.add(team, form({ email: "u2@gmail.com", role: "editor" }))).toEqual({ error: "They're already in this team." });
-    expect(await actions.add(team, form({ email: "ada@example.com", role: "owner" }))).toEqual({ error: "Unknown role." });
-    expect(await actions.add(team, new FormData())).toEqual({ error: "Enter an email address." });
+    expect(await actions.invite(team, form({ email: "u2@gmail.com", role: "editor" }))).toEqual({ error: "They're already in this team." });
+    expect(await actions.invite(team, form({ email: "ada@example.com", role: "owner" }))).toEqual({ error: "Unknown role." });
+    expect(await actions.invite(team, new FormData())).toEqual({ error: "Enter an email address." });
     expect(await actions.remove(team, form({ userId: "u1" }))).toEqual({ error: "To leave the team, use Leave team." });
     expect(await actions.remove(team, form({ userId: "u3" }))).toEqual({ error: "They're not in this team." });
   });
@@ -145,7 +167,7 @@ describe("actions re-check the caller", () => {
     await joinSpace(db, { id: "u1" }, "admin");
     const { actions } = actionsAs(db, testUser({ id: "u1" }));
     const managed = { error: "Seattle Solvers' members are managed on the Admin page." };
-    expect(await actions.add(SEED_TEAM_ID, form({ email: "ada@example.com", role: "editor" }))).toEqual(managed);
+    expect(await actions.invite(SEED_TEAM_ID, form({ email: "ada@example.com", role: "editor" }))).toEqual(managed);
     expect(await actions.leave(SEED_TEAM_ID)).toEqual(managed);
   });
 });

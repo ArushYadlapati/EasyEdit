@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MembersTable, type MemberRow } from "@/components/space-settings/members-table";
+import { MembersTable, type MemberRow, type PendingInviteRow } from "@/components/space-settings/members-table";
 import type { Role } from "@/lib/allowlist/service";
 import { act, fireEvent, render, screen, waitFor, within } from "../helpers/dom";
 
@@ -9,7 +9,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => 
 
 type FormAction = (formData: FormData) => Promise<{ error?: string }>;
 const actions = {
-  add: vi.fn<FormAction>(async () => ({})),
+  invite: vi.fn<(formData: FormData) => Promise<{ error?: string; link?: string }>>(async () => ({ link: "https://easyedit.test/invite/inv_new" })),
+  cancelInvite: vi.fn<FormAction>(async () => ({})),
   setRole: vi.fn<FormAction>(async () => ({})),
   remove: vi.fn<FormAction>(async () => ({})),
   leave: vi.fn<() => Promise<{ error?: string }>>(async () => ({})),
@@ -17,14 +18,23 @@ const actions = {
 
 beforeEach(() => {
   for (const action of Object.values(actions)) action.mockReset().mockResolvedValue({});
+  actions.invite.mockResolvedValue({ link: "https://easyedit.test/invite/inv_new" });
+  writeText.mockReset().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
 });
+const writeText = vi.fn<(text: string) => Promise<void>>();
+
+const FUTURE = new Date(Date.now() + 5 * 86_400_000).toISOString();
+const PAST = new Date(Date.now() - 86_400_000).toISOString();
+const INV_LIN: PendingInviteRow = { id: "inv_lin", email: "lin@example.com", role: "editor", invitedBy: "Uma", expiresAt: FUTURE, expired: false, link: "https://easyedit.test/invite/inv_lin" };
+const INV_OLD: PendingInviteRow = { id: "inv_old", email: "old@example.com", role: "viewer", invitedBy: "Uma", expiresAt: PAST, expired: true, link: "https://easyedit.test/invite/inv_old" };
 
 const UMA: MemberRow = { userId: "u1", name: "Uma", email: "u1@gmail.com", role: "admin", joinedAt: "2026-11-01T12:00:00.000Z", storageOwner: false };
 const BEN: MemberRow = { userId: "u2", name: "Ben", email: "u2@gmail.com", role: "admin", joinedAt: "2026-11-02T12:00:00.000Z", storageOwner: true };
 const CARA: MemberRow = { userId: "u3", name: "Cara", email: "u3@gmail.com", role: "viewer", joinedAt: "2026-11-03T12:00:00.000Z", storageOwner: false };
 const ALL = [UMA, BEN, CARA];
 
-function show(me: string, viewerRole: Role, members: MemberRow[] = ALL, extra: { managedElsewhere?: boolean; adminPageLink?: boolean } = {}) {
+function show(me: string, viewerRole: Role, members: MemberRow[] = ALL, extra: { managedElsewhere?: boolean; adminPageLink?: boolean; pendingInvites?: PendingInviteRow[] } = {}) {
   return render(
     <MembersTable
       teamName="Robots"
@@ -33,6 +43,7 @@ function show(me: string, viewerRole: Role, members: MemberRow[] = ALL, extra: {
       viewerRole={viewerRole}
       managedElsewhere={extra.managedElsewhere ?? false}
       adminPageLink={extra.adminPageLink ?? false}
+      pendingInvites={extra.pendingInvites ?? []}
       actions={actions}
     />,
   );
@@ -62,7 +73,7 @@ describe("the members table", () => {
 
   it("an admin sees role selects, Remove on others, Leave on their own row, and no Remove on the storage owner", async () => {
     show("u1", "admin");
-    expect(screen.getByRole("button", { name: "Add member" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Invite" })).toBeTruthy();
     for (const m of ALL) expect(roleSelect(m.email)).toBeTruthy();
     expect(roleSelect("u3@gmail.com")!.value).toBe("viewer");
     expect(roleSelect("u3@gmail.com")!.disabled).toBe(false);
@@ -96,7 +107,7 @@ describe("the members table", () => {
 
   it("a viewer sees no controls except Leave team on their own row", () => {
     show("u3", "viewer");
-    expect(screen.queryByRole("button", { name: "Add member" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Invite" })).toBeNull();
     expect(screen.queryAllByRole("combobox")).toEqual([]);
     expect(screen.queryAllByRole("button", { name: /^Actions for/ })).toEqual([]);
     const buttons = screen.getAllByRole("button");
@@ -149,31 +160,80 @@ describe("the members table", () => {
   });
 });
 
-describe("the add member dialog", () => {
-  it("asks for an email and a role, says they need an account, and shows a refusal", async () => {
-    actions.add.mockResolvedValueOnce({ error: "No EasyEdit account uses that email yet. Ask them to sign in once, then add them." });
+describe("the invite dialog", () => {
+  it("asks for an email and a role, then shows the link to copy", async () => {
     show("u1", "admin");
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add member" })));
-    const add = dialog("Add member");
-    expect(within(add).getByText("They need to have signed in to EasyEdit at least once.")).toBeTruthy();
-    const role = within(add).getByRole<HTMLSelectElement>("combobox", { name: "Role" });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Invite" })));
+    const invite = dialog("Invite someone");
+    expect(within(invite).getByText("They'll join once they accept. You'll get a link to send them.")).toBeTruthy();
+    const role = within(invite).getByRole<HTMLSelectElement>("combobox", { name: "Role" });
     expect([...role.options].map((o) => o.textContent)).toEqual(["Admin", "Editor", "Viewer"]);
     expect(role.value).toBe("editor");
-    expect(within(add).getByText("Creates and edits projects.")).toBeTruthy();
-    expect(within(add).getByRole("button", { name: "Cancel" })).toBeTruthy();
-
-    fireEvent.change(within(add).getByRole("textbox", { name: "Email" }), { target: { value: "ada@example.com" } });
+    fireEvent.change(within(invite).getByRole("textbox", { name: "Email" }), { target: { value: "ada@example.com" } });
     fireEvent.change(role, { target: { value: "viewer" } });
-    expect(within(add).getByText("Opens projects but can't change them.")).toBeTruthy();
-    await act(async () => fireEvent.click(within(add).getByRole("button", { name: "Add" })));
-    expect(Object.fromEntries(actions.add.mock.calls[0]![0].entries())).toEqual({ email: "ada@example.com", role: "viewer" });
-    await waitFor(() =>
-      expect(within(dialog("Add member")).getByRole("alert").textContent).toBe("No EasyEdit account uses that email yet. Ask them to sign in once, then add them."),
-    );
+    await act(async () => fireEvent.click(within(invite).getByRole("button", { name: "Create invite" })));
+    expect(Object.fromEntries(actions.invite.mock.calls[0]![0].entries())).toEqual({ email: "ada@example.com", role: "viewer" });
 
-    // Tried again, it goes through and the dialog closes.
-    await act(async () => fireEvent.click(within(dialog("Add member")).getByRole("button", { name: "Add" })));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add member" })).toBeNull());
-    expect(actions.add).toHaveBeenCalledTimes(2);
+    const done = await waitFor(() => dialog("Invite someone"));
+    expect(within(done).getByDisplayValue("https://easyedit.test/invite/inv_new")).toBeTruthy();
+    await act(async () => fireEvent.click(within(done).getByRole("button", { name: "Copy link" })));
+    expect(writeText).toHaveBeenCalledWith("https://easyedit.test/invite/inv_new");
+    expect(within(done).getByRole("button", { name: "Copied" })).toBeTruthy();
+    await act(async () => fireEvent.click(within(done).getByRole("button", { name: "Done" })));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Invite someone" })).toBeNull());
+  });
+
+  it("shows a refusal and stays on the form", async () => {
+    actions.invite.mockResolvedValueOnce({ error: "They're already in this team." });
+    show("u1", "admin");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Invite" })));
+    const invite = dialog("Invite someone");
+    fireEvent.change(within(invite).getByRole("textbox", { name: "Email" }), { target: { value: "u2@gmail.com" } });
+    await act(async () => fireEvent.click(within(invite).getByRole("button", { name: "Create invite" })));
+    await waitFor(() => expect(within(dialog("Invite someone")).getByRole("alert").textContent).toBe("They're already in this team."));
+    expect(within(dialog("Invite someone")).queryByRole("button", { name: "Copy link" })).toBeNull();
+  });
+
+  it("no Invite button in Seattle Solvers or for an editor", () => {
+    const solvers = show("u1", "admin", ALL, { managedElsewhere: true });
+    expect(screen.queryByRole("button", { name: "Invite" })).toBeNull();
+    solvers.unmount();
+    show("u3", "editor");
+    expect(screen.queryByRole("button", { name: "Invite" })).toBeNull();
+  });
+});
+
+describe("pending invites", () => {
+  it("an admin sees each waiting invite with its expiry, Copy link and Cancel invite", async () => {
+    show("u1", "admin", ALL, { pendingInvites: [INV_LIN, INV_OLD] });
+    expect(screen.getByRole("heading", { name: "Pending invites" })).toBeTruthy();
+    const lin = screen.getByText("lin@example.com").closest("li")!;
+    expect(within(lin).getByText("Editor")).toBeTruthy();
+    expect(within(lin).getByText((_, el) => el?.tagName === "SPAN" && /^Expires .*2026|^Expires \w+/.test(el.textContent ?? ""))).toBeTruthy();
+    expect(within(screen.getByText("old@example.com").closest("li")!).getByText("Expired")).toBeTruthy();
+    await act(async () => fireEvent.click(within(lin).getByRole("button", { name: "Copy link" })));
+    expect(writeText).toHaveBeenCalledWith("https://easyedit.test/invite/inv_lin");
+    expect(within(lin).getByRole("button", { name: "Copied" })).toBeTruthy();
+  });
+
+  it("Cancel invite asks first, then sends the invite id", async () => {
+    show("u1", "admin", ALL, { pendingInvites: [INV_LIN] });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Cancel invite" })));
+    const ask = dialog("Cancel invite");
+    expect(within(ask).getByText("Cancel the invite to lin@example.com?")).toBeTruthy();
+    expect(actions.cancelInvite).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(within(ask).getByRole("button", { name: "Cancel invite" })));
+    expect(Object.fromEntries(actions.cancelInvite.mock.calls[0]![0].entries())).toEqual({ inviteId: "inv_lin" });
+  });
+
+  it("is hidden when empty, and for an editor and in Seattle Solvers", () => {
+    const empty = show("u1", "admin");
+    expect(screen.queryByRole("heading", { name: "Pending invites" })).toBeNull();
+    empty.unmount();
+    const editor = show("u3", "editor", ALL, { pendingInvites: [INV_LIN] });
+    expect(screen.queryByText("lin@example.com")).toBeNull();
+    editor.unmount();
+    show("u1", "admin", ALL, { managedElsewhere: true, pendingInvites: [INV_LIN] });
+    expect(screen.queryByText("lin@example.com")).toBeNull();
   });
 });

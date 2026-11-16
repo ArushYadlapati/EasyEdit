@@ -4,15 +4,18 @@ import { MembersTable } from "@/components/space-settings/members-table";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { actorIn } from "@/lib/spaces/access";
+import { inviteUrl } from "@/lib/spaces/invite-link";
+import { listPendingInvites } from "@/lib/spaces/invites";
 import type { MemberActions } from "@/lib/spaces/member-actions";
 import { listTeamMembers } from "@/lib/spaces/members";
 import { findMySpace } from "@/lib/spaces/service";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
-import { addMemberAction, leaveTeamAction, removeMemberAction, setMemberRoleAction } from "./actions";
+import { cancelInviteAction, inviteMemberAction, leaveTeamAction, removeMemberAction, setMemberRoleAction } from "./actions";
 
 // The server actions with this team already bound as their first argument.
 const actionsFor = (spaceId: string): MemberActions => ({
-  add: addMemberAction.bind(null, spaceId),
+  invite: inviteMemberAction.bind(null, spaceId),
+  cancelInvite: cancelInviteAction.bind(null, spaceId),
   setRole: setMemberRoleAction.bind(null, spaceId),
   remove: removeMemberAction.bind(null, spaceId),
   leave: leaveTeamAction.bind(null, spaceId),
@@ -28,6 +31,8 @@ export default async function MembersPage({ params }: PageProps<"/s/[space]/sett
   const actor = await actorIn(db, user, space.id);
   if (!actor) notFound();
   const members = await listTeamMembers(db, actor);
+  // Waiting invites are the admins' to see; Seattle Solvers' people come from the allowlist, so it has none.
+  const invites = actor.role === "admin" && space.id !== SEED_TEAM_ID ? await listPendingInvites(db, actor) : [];
 
   return (
     <MembersTable
@@ -44,6 +49,15 @@ export default async function MembersPage({ params }: PageProps<"/s/[space]/sett
       viewerRole={actor.role}
       managedElsewhere={space.id === SEED_TEAM_ID}
       adminPageLink={user.allowlistRole === "admin"}
+      pendingInvites={invites.map((i) => ({
+        id: i.id,
+        email: i.email,
+        role: i.role,
+        invitedBy: i.invitedBy,
+        expiresAt: i.expiresAt.toISOString(),
+        expired: i.expired,
+        link: inviteUrl(i.id),
+      }))}
       actions={actionsFor(space.id)}
     />
   );

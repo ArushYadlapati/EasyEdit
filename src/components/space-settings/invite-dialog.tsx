@@ -10,16 +10,17 @@ import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { TextInput } from "@/components/ui/text-input";
 import type { Role } from "@/lib/allowlist/service";
-import type { ActionResult } from "@/lib/spaces/member-actions";
+import type { InviteResult } from "@/lib/spaces/member-actions";
+import { CopyLinkButton } from "./copy-link-button";
 
-type AddAction = (formData: FormData) => Promise<ActionResult>;
+type InviteAction = (formData: FormData) => Promise<InviteResult>;
 
 const DEFAULT_ROLE: Role = "editor";
 
-// The Add member button on a team's Members page, for its admins, and the dialog it opens. Each opening starts from an
-// empty form with no old message: the form is mounted afresh each time, and the dialog stays in place while closed so
-// it can hand focus back to the button.
-export function AddMemberButton({ add }: { add: AddAction }): ReactNode {
+// The Invite button on a team's Members page, for its admins, and the dialog it opens. Each opening starts from an
+// empty form with no old message or link: the dialog's contents are mounted afresh each time, and the dialog stays in
+// place while closed so it can hand focus back to the button.
+export function InviteButton({ invite }: { invite: InviteAction }): ReactNode {
   const [open, setOpen] = useState(false);
   const [openings, setOpenings] = useState(0);
 
@@ -32,31 +33,55 @@ export function AddMemberButton({ add }: { add: AddAction }): ReactNode {
     <>
       <Button variant="primary" onClick={show}>
         <UserPlus aria-hidden />
-        Add member
+        Invite
       </Button>
-      <AddMemberDialog key={openings} open={open} add={add} onClose={() => setOpen(false)} />
+      <InviteDialog key={openings} open={open} invite={invite} onClose={() => setOpen(false)} />
     </>
   );
 }
 
-// Asks for the email of someone who already has an account, and a role. It closes once they are added, and the table
-// refreshes from the server. A refusal, such as an email no account uses, shows in the dialog.
-function AddMemberDialog({ open, add, onClose }: { open: boolean; add: AddAction; onClose(): void }): ReactNode {
+// Asks for an email and a role. Once the invite is made the dialog shows its link to copy and send; the table refreshes
+// from the server. A refusal shows in the dialog.
+function InviteDialog({ open, invite, onClose }: { open: boolean; invite: InviteAction; onClose(): void }): ReactNode {
   const formId = useId();
   const hintId = useId();
   // Only drives the hint: the role that is sent is read from the form.
   const [role, setRole] = useState<string>(DEFAULT_ROLE);
-  const { error, pending, submit } = useAction(add);
+  const [link, setLink] = useState<string | null>(null);
+  const { error, pending, submit } = useAction(invite);
 
   function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
-    submit(new FormData(event.currentTarget), { onSuccess: onClose });
+    submit(new FormData(event.currentTarget), { onSuccess: (result) => setLink(result.link ?? null) });
+  }
+
+  if (link !== null) {
+    return (
+      <Dialog
+        title="Invite someone"
+        open={open}
+        onClose={onClose}
+        footer={
+          <>
+            <CopyLinkButton link={link} />
+            <Button variant="primary" onClick={onClose}>
+              Done
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <p>Send them this link. It works for 7 days.</p>
+          <TextInput readOnly value={link} aria-label="Invite link" onFocus={(event) => event.currentTarget.select()} />
+        </div>
+      </Dialog>
+    );
   }
 
   return (
     <Dialog
-      title="Add member"
+      title="Invite someone"
       open={open}
       onClose={onClose}
       footer={
@@ -68,13 +93,13 @@ function AddMemberDialog({ open, add, onClose }: { open: boolean; add: AddAction
           )}
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit" form={formId} disabled={pending}>
-            Add
+            Create invite
           </Button>
         </>
       }
     >
       <form id={formId} onSubmit={send} className="flex flex-col gap-4">
-        <Field label="Email" hint="They need to have signed in to EasyEdit at least once.">
+        <Field label="Email" hint="They'll join once they accept. You'll get a link to send them.">
           <TextInput type="email" name="email" required data-autofocus autoComplete="off" spellCheck={false} />
         </Field>
         {/* The hint is drawn here rather than by Field, so the select can point screen readers at it. */}

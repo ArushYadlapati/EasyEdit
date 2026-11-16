@@ -5,24 +5,26 @@ import { useState, useTransition } from "react";
 
 type ActionResult = { error?: string };
 
-type Outcome = { onStart?: () => void; onSuccess?: () => void; onFailure?: (message: string) => void };
+type Outcome<R> = { onStart?: () => void; onSuccess?: (result: R) => void; onFailure?: (message: string) => void };
 
-export function useAction(action: (formData: FormData) => Promise<ActionResult>) {
+export function useAction<R extends ActionResult = ActionResult>(action: (formData: FormData) => Promise<R>) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  function submit(formData: FormData, { onStart, onSuccess, onFailure }: Outcome = {}) {
+  function submit(formData: FormData, { onStart, onSuccess, onFailure }: Outcome<R> = {}) {
     onStart?.();
     startTransition(async () => {
       let message: string | null;
+      let result: R | null = null;
       try {
-        message = (await action(formData)).error ?? null;
+        result = await action(formData);
+        message = result.error ?? null;
       } catch (e) {
         unstable_rethrow(e);
         message = "Something went wrong. Try again.";
       }
       setError(message);
-      if (message === null) onSuccess?.();
-      else onFailure?.(message);
+      if (message === null && result !== null) onSuccess?.(result);
+      else onFailure?.(message ?? "Something went wrong. Try again.");
     });
   }
   return { error, pending, submit };

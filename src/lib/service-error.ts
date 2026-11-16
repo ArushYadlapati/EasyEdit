@@ -10,7 +10,6 @@ export type ServiceErrorCode =
   | "STORAGE_IN_USE"
   | "TEAM_STORAGE_NOT_CONFIGURED"
   | "MANAGED_ELSEWHERE"
-  | "NO_ACCOUNT"
   | "ALREADY_MEMBER"
   | "LAST_ADMIN"
   | "STORAGE_OWNER"

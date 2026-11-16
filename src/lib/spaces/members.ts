@@ -1,13 +1,10 @@
 import "server-only";
 import { asc, eq, sql } from "drizzle-orm";
-import { nanoid } from "nanoid";
-import { z } from "zod";
 import { rowsOf, type DB } from "@/db";
 import { driveConnection, member, spaceStorage, user } from "@/db/schema";
 import { requireRole, type Actor } from "@/lib/actor";
-import { normalizeEmail, ROLE_RANK, type Role } from "@/lib/allowlist/service";
+import { ROLE_RANK, type Role } from "@/lib/allowlist/service";
 import { FORBIDDEN_BODY } from "@/lib/api-errors";
-import { LIMITS, type Limits } from "@/lib/limits";
 import { ServiceError } from "@/lib/service-error";
 import { SEED_TEAM_ID } from "./types";
 
@@ -21,7 +18,6 @@ const notInTeam = () => new ServiceError("NOT_FOUND", 404, "They're not in this 
 const managedElsewhere = () => new ServiceError("MANAGED_ELSEWHERE", 409, "Seattle Solvers' members are managed on the Admin page.");
 // requireRole's 403, for an admin demoted while their change ran.
 const forbidden = () => new ServiceError("FORBIDDEN", 403, FORBIDDEN_BODY.message);
-const badEmail = () => new ServiceError("INVALID", 400, "Enter an email address.");
 const lastAdmin = () => new ServiceError("LAST_ADMIN", 409, "A team needs at least one admin. Make someone else an admin first.");
 const ownerStays = () =>
   new ServiceError("STORAGE_OWNER", 409, "This team's videos are stored in their Google Drive, so they can't leave or be removed yet.");
@@ -91,49 +87,6 @@ export async function listTeamMembers(db: DB, actor: Actor): Promise<TeamMember[
     .where(eq(member.organizationId, spaceId))
     .orderBy(sql`(${member.role} = 'admin') desc`, sql`lower(${user.name})`, asc(user.email), asc(user.id));
   return rows.map((r) => ({ ...r, role: r.role as Role, storageOwner: r.userId === ownerId }));
-}
-
-// Adds someone who already has an account, found by email. One statement: the caller still an admin, the person not
-// already in the team (the unique index on organization and user is the final guard), and the team not full.
-export async function addMemberByEmail(db: DB, actor: Actor, input: { email: string; role: Role }, limits: Limits = LIMITS): Promise<TeamMember> {
-  const spaceId = await changeableTeam(db, actor, { admin: true });
-  const email = normalizeEmail(typeof input.email === "string" ? input.email : "");
-  if (email.length === 0 || email.length > EMAIL_MAX_CHARS || !z.email().safeParse(email).success) throw badEmail();
-  const role = checkedRole(input.role);
-  const now = new Date();
-  const result = await db.execute(sql`
-    with ${lockedAdmins(spaceId, actor.userId)}, ${teamOnly(spaceId)}, ${storageOwner(spaceId)},
-      target as (select id, name, email, image from "user" where lower(trim(email)) = ${email} order by id limit 1),
-      added as (
-        insert into member (id, organization_id, user_id, role, created_at)
-        select ${"m_" + nanoid(12)}, team.id, target.id, ${role}, ${now.toISOString()}
-        from gate, team, target
-        where gate.caller_admin
-          and not exists (select 1 from member where organization_id = ${spaceId} and user_id = target.id)
-          and (select count(*) from member where organization_id = ${spaceId}) < ${limits.teamMembers}
-        on conflict (organization_id, user_id) do nothing
-        returning user_id
-      )
-    select target.id, target.name, target.email, target.image,
-      exists (select 1 from added) as added,
-      (select caller_admin from gate) as caller_admin,
-      exists (select 1 from member where organization_id = ${spaceId} and user_id = target.id) as already,
-      (select count(*)::int from member where organization_id = ${spaceId}) as members,
-      exists (select 1 from owner where user_id = target.id) as storage_owner
-    from target
-  `);
-  type Row = { id: string; name: string; email: string; image: string | null; added: boolean; caller_admin: boolean; already: boolean; members: number; storage_owner: boolean };
-  const row = rowsOf<Row>(result)[0];
-  if (!row) throw new ServiceError("NO_ACCOUNT", 404, "No EasyEdit account uses that email yet. Ask them to sign in once, then add them.");
-  if (!row.added) {
-    if (!row.caller_admin) throw forbidden();
-    if (!row.already && row.members >= limits.teamMembers) {
-      throw new ServiceError("LIMIT_EXCEEDED", 400, `A team can have up to ${limits.teamMembers} members.`);
-    }
-    // Already in the team, or added by another admin while this ran.
-    throw new ServiceError("ALREADY_MEMBER", 409, "They're already in this team.");
-  }
-  return { userId: row.id, name: row.name, email: row.email, image: row.image, role, joinedAt: now, storageOwner: row.storage_owner };
 }
 
 type ChangeRow = { changed: boolean; caller_admin: boolean; target_role: Role | null; admins: number; is_owner: boolean };

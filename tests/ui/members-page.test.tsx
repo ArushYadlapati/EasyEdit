@@ -10,6 +10,8 @@ import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
 import type { Role } from "@/lib/allowlist/service";
 import { personalSpaceId, SEED_TEAM_ID, type MySpace } from "@/lib/spaces/types";
+import { actorIn } from "@/lib/spaces/access";
+import { inviteToTeam } from "@/lib/spaces/invites";
 import { joinSpace } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { render, screen, within } from "../helpers/dom";
@@ -36,7 +38,8 @@ vi.mock("next/navigation", () => ({
 const { signedIn, memberActions } = vi.hoisted(() => ({
   signedIn: { user: null as CurrentUser | null },
   memberActions: {
-    addMemberAction: vi.fn(async () => ({})),
+    inviteMemberAction: vi.fn(async () => ({})),
+    cancelInviteAction: vi.fn(async () => ({})),
     setMemberRoleAction: vi.fn(async () => ({})),
     removeMemberAction: vi.fn(async () => ({})),
     leaveTeamAction: vi.fn(async () => ({})),
@@ -87,15 +90,31 @@ describe("the members page", () => {
     expect(screen.getByText("2 members")).toBeTruthy();
     expect(screen.getByText("ada@gmail.com")).toBeTruthy();
     expect(screen.getByText("bea@gmail.com")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add member" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Invite" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Role for bea@gmail.com" })).toBeTruthy();
     page.unmount();
 
     await membersPage(bea, "robots");
     expect(screen.getByText("2 members")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add member" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Invite" })).toBeNull();
     expect(screen.queryAllByRole("combobox")).toEqual([]);
     expect(screen.getByRole("button", { name: "Leave team" })).toBeTruthy();
+  });
+
+  it("an admin sees pending invites with finished links; others and Seattle Solvers see none", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "https://easyedit.test");
+    const invite = await inviteToTeam(testDb, (await actorIn(testDb, ada, "team_robots"))!, { email: "lin@example.com", role: "editor" });
+    const page = await membersPage(ada, "robots");
+    expect(screen.getByRole("heading", { name: "Pending invites" })).toBeTruthy();
+    expect(screen.getByText("lin@example.com")).toBeTruthy();
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    screen.getByRole("button", { name: "Copy link" }).click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith(`https://easyedit.test/invite/${invite.id}`));
+    page.unmount();
+    await membersPage(bea, "robots");
+    expect(screen.queryByText("lin@example.com")).toBeNull();
+    vi.unstubAllEnvs();
   });
 
   it("binds each action to the team", async () => {

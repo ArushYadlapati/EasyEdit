@@ -6,8 +6,11 @@ import { roleChoice } from "@/app/(dashboard)/admin/roles";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import type { Role } from "@/lib/allowlist/service";
 import type { MemberActions } from "@/lib/spaces/member-actions";
-import { AddMemberButton } from "./add-member-dialog";
+import { InviteButton } from "./invite-dialog";
 import { LeaveTeam, MemberRoleSelect, RemoveMember } from "./member-controls";
+import { PendingInvites, type PendingInviteRow } from "./pending-invites";
+
+export type { PendingInviteRow };
 
 // One person in the team, as the server page hands it over. joinedAt is an ISO string so it can cross into the client
 // date component.
@@ -20,6 +23,7 @@ export type MembersTableProps = {
   viewerRole: Role; // in this team
   managedElsewhere: boolean; // Seattle Solvers: its members follow the allowlist, changed on the Admin page
   adminPageLink: boolean; // the viewer may open the Admin page
+  pendingInvites: PendingInviteRow[]; // waiting invites, for admins only (empty for everyone else)
   actions: MemberActions;
 };
 
@@ -28,9 +32,9 @@ const CELL = "px-3 py-2.5 align-middle";
 const BADGE = "shrink-0 rounded bg-ed-raised px-1.5 text-[11px] leading-4 text-ed-muted";
 
 // A team's Members tab: how many, and a table of everyone (name, email, role, when they joined). The team's admins add
-// people, change roles and remove others; anyone may leave from their own row. The storage owner's Google Drive holds
+// people by invite link, change roles and remove others; anyone may leave from their own row. The storage owner's Google Drive holds
 // the team's videos, so they stay, as an admin. Seattle Solvers' list is read-only here.
-export function MembersTable({ teamName, members, me, viewerRole, managedElsewhere, adminPageLink, actions }: MembersTableProps): ReactNode {
+export function MembersTable({ teamName, members, me, viewerRole, managedElsewhere, adminPageLink, pendingInvites, actions }: MembersTableProps): ReactNode {
   const canManage = viewerRole === "admin" && !managedElsewhere;
   return (
     <section aria-labelledby={MEMBERS_HEADING_ID} className="flex flex-col gap-4">
@@ -44,7 +48,7 @@ export function MembersTable({ teamName, members, me, viewerRole, managedElsewhe
             {members.length} {members.length === 1 ? "member" : "members"}
           </p>
         </div>
-        {canManage && <AddMemberButton add={actions.add} />}
+        {canManage && <InviteButton invite={actions.invite} />}
       </div>
       {managedElsewhere && (
         <p className="text-[13px] text-ed-muted">
@@ -130,6 +134,7 @@ export function MembersTable({ teamName, members, me, viewerRole, managedElsewhe
           </tbody>
         </table>
       </div>
+      {canManage && <PendingInvites invites={pendingInvites} cancel={actions.cancelInvite} />}
     </section>
   );
 }

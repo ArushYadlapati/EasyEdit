@@ -1,23 +1,20 @@
-import { and, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { rowsOf, type DB } from "@/db";
-import { driveConnection, member, spaceStorage, user } from "@/db/schema";
+import { driveConnection, spaceStorage, user } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
 import { LIMITS } from "@/lib/limits";
 import { actorIn } from "@/lib/spaces/access";
-import { addMemberByEmail, leaveTeam, listTeamMembers, removeMember, setMemberRole } from "@/lib/spaces/members";
+import { leaveTeam, listTeamMembers, removeMember, setMemberRole } from "@/lib/spaces/members";
 import { createTeam, ensurePersonalSpace, listMySpaces, roleIn } from "@/lib/spaces/service";
 import { SEED_TEAM_ID, personalSpaceId } from "@/lib/spaces/types";
-import { testActor, testUser } from "../helpers/actor";
+import { joinSpace, testActor, testUser } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
 const SPACE_NOT_FOUND = { code: "NOT_FOUND", status: 404, message: "Space not found" };
 const MANAGED = { code: "MANAGED_ELSEWHERE", status: 409, message: "Seattle Solvers' members are managed on the Admin page." };
 const FORBIDDEN = { code: "FORBIDDEN", status: 403 };
-const BAD_EMAIL = { code: "INVALID", status: 400, message: "Enter an email address." };
-const NO_ACCOUNT = { code: "NO_ACCOUNT", status: 404, message: "No EasyEdit account uses that email yet. Ask them to sign in once, then add them." };
-const ALREADY = { code: "ALREADY_MEMBER", status: 409, message: "They're already in this team." };
 const NOT_IN_TEAM = { code: "NOT_FOUND", status: 404, message: "They're not in this team." };
 const LAST_ADMIN = { code: "LAST_ADMIN", status: 409, message: "A team needs at least one admin. Make someone else an admin first." };
 const OWNER_STAYS = { code: "STORAGE_OWNER", status: 409, message: "This team's videos are stored in their Google Drive, so they can't leave or be removed yet." };
@@ -48,8 +45,11 @@ async function as(db: DB, id: string, spaceId: string): Promise<Actor> {
   return actor;
 }
 
-async function addAs(db: DB, team: string, adminId: string, email: string, role: Role) {
-  return addMemberByEmail(db, await as(db, adminId, team), { email, role });
+// Puts an existing account in the team with a role (the way an accepted invite does), so a test can start from a team
+// with members.
+async function addAs(db: DB, team: string, _adminId: string, email: string, role: Role) {
+  const rows = rowsOf<{ id: string }>(await db.execute(sql`select id from "user" where lower(email) = ${email.toLowerCase()}`));
+  await joinSpace(db, { id: rows[0]!.id }, role, team);
 }
 
 async function adminsOf(db: DB, spaceId: string): Promise<string[]> {
@@ -70,60 +70,7 @@ async function storageOwnedBy(db: DB, spaceId: string, userId: string) {
   await db.insert(spaceStorage).values({ spaceId, kind: "google_account", connectionId: `dc_${userId}`, rootFolderId: "folder_x", folderName: "EasyEdit", createdBy: userId });
 }
 
-describe("adding by email", () => {
-  it("adds Ada by a padded, mixed-case email with the given role, and the team shows up in her spaces", async () => {
-    const { db, team } = await setup();
-    const added = await addAs(db, team, "u1", "  Ada@Example.com ", "editor");
-    expect(added).toMatchObject({ userId: "ada", name: "Ada", email: "ada@example.com", image: null, role: "editor", storageOwner: false });
-    expect(added.joinedAt).toBeInstanceOf(Date);
-    expect(await roleIn(db, "ada", team)).toBe("editor");
-    expect((await listMySpaces(db, "ada")).map((s) => s.id)).toContain(team);
-    const [row] = await db.select().from(member).where(and(eq(member.userId, "ada"), eq(member.organizationId, team)));
-    expect(row.id).toMatch(/^m_[A-Za-z0-9_-]{12}$/);
-  });
-
-  it("answers NO_ACCOUNT for an email no account uses", async () => {
-    const { db, team } = await setup();
-    await expect(addAs(db, team, "u1", "nobody@example.com", "viewer")).rejects.toMatchObject(NO_ACCOUNT);
-  });
-
-  it("answers ALREADY_MEMBER for someone already in the team, and for your own email", async () => {
-    const { db, team } = await setup();
-    await addAs(db, team, "u1", "u2@gmail.com", "viewer");
-    await expect(addAs(db, team, "u1", "U2@gmail.com", "admin")).rejects.toMatchObject(ALREADY);
-    expect(await roleIn(db, "u2", team)).toBe("viewer");
-    await expect(addAs(db, team, "u1", "u1@gmail.com", "editor")).rejects.toMatchObject(ALREADY);
-  });
-
-  it("answers INVALID for an empty email, one that isn't an address, and one of 300 characters", async () => {
-    const { db, team } = await setup();
-    for (const email of ["", "   ", "not-an-email", `${"a".repeat(288)}@example.com`]) {
-      await expect(addAs(db, team, "u1", email, "editor")).rejects.toMatchObject(BAD_EMAIL);
-    }
-  });
-
-  it("refuses a role that isn't admin, editor or viewer", async () => {
-    const { db, team } = await setup();
-    await expect(addAs(db, team, "u1", "u2@gmail.com", "owner" as Role)).rejects.toMatchObject({ code: "INVALID", status: 400 });
-    expect(await roleIn(db, "u2", team)).toBeNull();
-  });
-
-  it("answers LIMIT_EXCEEDED once the team is full", async () => {
-    const { db, team } = await setup();
-    const limits = { ...LIMITS, teamMembers: 3 };
-    const admin = await as(db, "u1", team);
-    await addMemberByEmail(db, admin, { email: "u2@gmail.com", role: "editor" }, limits);
-    await addMemberByEmail(db, admin, { email: "u3@gmail.com", role: "editor" }, limits);
-    await expect(addMemberByEmail(db, admin, { email: "u4@gmail.com", role: "editor" }, limits)).rejects.toMatchObject({
-      code: "LIMIT_EXCEEDED",
-      status: 400,
-      message: "A team can have up to 3 members.",
-    });
-    expect(await roleIn(db, "u4", team)).toBeNull();
-    // Someone already in a full team is still told so.
-    await expect(addMemberByEmail(db, admin, { email: "u2@gmail.com", role: "editor" }, limits)).rejects.toMatchObject(ALREADY);
-  });
-
+describe("team limits", () => {
   it("states the limit as 100 by default", () => {
     expect(LIMITS.teamMembers).toBe(100);
   });
@@ -137,7 +84,6 @@ describe("only admins change membership", () => {
     await addAs(db, team, "u1", "u4@gmail.com", "viewer");
     for (const id of ["u2", "u3"]) {
       const actor = await as(db, id, team);
-      await expect(addMemberByEmail(db, actor, { email: "ada@example.com", role: "viewer" })).rejects.toMatchObject(FORBIDDEN);
       await expect(setMemberRole(db, actor, { userId: "u4", role: "admin" })).rejects.toMatchObject(FORBIDDEN);
       await expect(setMemberRole(db, actor, { userId: id, role: "admin" })).rejects.toMatchObject(FORBIDDEN);
       await expect(removeMember(db, actor, "u4")).rejects.toMatchObject(FORBIDDEN);
@@ -150,7 +96,6 @@ describe("only admins change membership", () => {
     const { db, team } = await setup();
     await addAs(db, team, "u1", "u2@gmail.com", "viewer");
     const claimsAdmin = testActor({ userId: "u2", email: "u2@gmail.com", role: "admin", spaceId: team });
-    await expect(addMemberByEmail(db, claimsAdmin, { email: "ada@example.com", role: "admin" })).rejects.toMatchObject(FORBIDDEN);
     await expect(setMemberRole(db, claimsAdmin, { userId: "u2", role: "admin" })).rejects.toMatchObject(FORBIDDEN);
     expect(await roleIn(db, "u2", team)).toBe("viewer");
   });
@@ -160,8 +105,6 @@ describe("only admins change membership", () => {
     await addAs(db, team, "u1", "u2@gmail.com", "editor");
     const outsider = testActor({ userId: "u3", email: "u3@gmail.com", role: "admin", spaceId: team });
     await expect(listTeamMembers(db, outsider)).rejects.toMatchObject(SPACE_NOT_FOUND);
-    await expect(addMemberByEmail(db, outsider, { email: "u4@gmail.com", role: "admin" })).rejects.toMatchObject(SPACE_NOT_FOUND);
-    await expect(addMemberByEmail(db, outsider, { email: "u3@gmail.com", role: "admin" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(setMemberRole(db, outsider, { userId: "u2", role: "viewer" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(removeMember(db, outsider, "u2")).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(leaveTeam(db, outsider)).rejects.toMatchObject(SPACE_NOT_FOUND);
@@ -174,10 +117,8 @@ describe("only admins change membership", () => {
     const { db, team } = await setup();
     const unknown = testActor({ userId: "u1", spaceId: "team_nowhere" });
     await expect(listTeamMembers(db, unknown)).rejects.toMatchObject(SPACE_NOT_FOUND);
-    await expect(addMemberByEmail(db, unknown, { email: "u2@gmail.com", role: "editor" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     const agent = testActor({ userId: "claude:u1", email: "u1@gmail.com", role: "admin", spaceId: team });
     await expect(listTeamMembers(db, agent)).rejects.toMatchObject(SPACE_NOT_FOUND);
-    await expect(addMemberByEmail(db, agent, { email: "u2@gmail.com", role: "editor" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(leaveTeam(db, agent)).rejects.toMatchObject(SPACE_NOT_FOUND);
     expect(await roleIn(db, "u2", team)).toBeNull();
   });
@@ -186,7 +127,6 @@ describe("only admins change membership", () => {
     const { db } = await setup();
     const actor = await as(db, "u1", personalSpaceId("u1"));
     await expect(listTeamMembers(db, actor)).rejects.toMatchObject(SPACE_NOT_FOUND);
-    await expect(addMemberByEmail(db, actor, { email: "u2@gmail.com", role: "editor" })).rejects.toMatchObject(SPACE_NOT_FOUND);
   });
 });
 
@@ -303,13 +243,11 @@ describe("personal spaces have no members screen", () => {
     const owner = await as(db, "u1", personalSpaceId("u1"));
     expect(owner.role).toBe("admin");
     await expect(listTeamMembers(db, owner)).rejects.toMatchObject(SPACE_NOT_FOUND);
-    await expect(addMemberByEmail(db, owner, { email: "u2@gmail.com", role: "admin" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(setMemberRole(db, owner, { userId: "u1", role: "viewer" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(removeMember(db, owner, "u1")).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(leaveTeam(db, owner)).rejects.toMatchObject(SPACE_NOT_FOUND);
     // A hand-built actor for someone else's personal space too.
     const intruder = testActor({ userId: "u2", email: "u2@gmail.com", role: "admin", spaceId: personalSpaceId("u1") });
-    await expect(addMemberByEmail(db, intruder, { email: "u2@gmail.com", role: "admin" })).rejects.toMatchObject(SPACE_NOT_FOUND);
     await expect(leaveTeam(db, intruder)).rejects.toMatchObject(SPACE_NOT_FOUND);
 
     const after = await memberRows(db);
@@ -334,7 +272,6 @@ describe("seattle solvers is managed on the admin page", () => {
   it("answers MANAGED_ELSEWHERE to add, set role, remove and leave", async () => {
     const db = await seeded();
     const admin = await as(db, "u1", SEED_TEAM_ID);
-    await expect(addMemberByEmail(db, admin, { email: "u3@gmail.com", role: "viewer" })).rejects.toMatchObject(MANAGED);
     await expect(setMemberRole(db, admin, { userId: "u2", role: "viewer" })).rejects.toMatchObject(MANAGED);
     await expect(removeMember(db, admin, "u2")).rejects.toMatchObject(MANAGED);
     await expect(leaveTeam(db, admin)).rejects.toMatchObject(MANAGED);

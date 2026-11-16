@@ -4,15 +4,19 @@ import type { Actor } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
 import { ServiceError } from "@/lib/service-error";
 import { actorIn } from "./access";
-import { addMemberByEmail, leaveTeam, removeMember, setMemberRole } from "./members";
+import { cancelInvite as cancelInviteById, inviteToTeam } from "./invites";
+import { leaveTeam, removeMember, setMemberRole } from "./members";
 
 export type ActionResult = { error?: string };
+// An invite also hands back the link to send.
+export type InviteResult = ActionResult & { link?: string };
 
 export type MemberActionDeps = {
   db: () => DB;
   requireUser: () => Promise<CurrentUser>;
   revalidate: () => void; // every page that shows the person's spaces or the team's members
   redirect: (path: string) => never;
+  inviteLink: (inviteId: string) => string; // the address an invitee opens (server-only, so it is passed in)
 };
 
 // What a space the caller isn't in answers, the same as one that doesn't exist (the members service's own message).
@@ -23,15 +27,21 @@ const field = (formData: FormData, key: string) => {
   return typeof value === "string" ? value : "";
 };
 
+const plain = async (result: Promise<ActionResult & { value?: unknown }>): Promise<ActionResult> => {
+  const { error } = await result;
+  return error === undefined ? {} : { error };
+};
+
 // The Members screen's changes. Each finds the caller's role in the space afresh; the service checks it again in the
 // statement that makes the change, and its refusals come back as the action's error.
 export function makeMemberActions(deps: MemberActionDeps) {
-  async function run(spaceId: string, call: (db: DB, actor: Actor) => Promise<unknown>): Promise<ActionResult> {
+  async function run<T>(spaceId: string, call: (db: DB, actor: Actor) => Promise<T>): Promise<ActionResult & { value?: T }> {
     const db = deps.db();
     const actor = await actorIn(db, await deps.requireUser(), spaceId);
     if (!actor) return { error: SPACE_NOT_FOUND };
+    let value: T;
     try {
-      await call(db, actor);
+      value = await call(db, actor);
     } catch (error) {
       if (!(error instanceof ServiceError)) throw error;
       // A refusal often means the page is out of date (someone removed elsewhere, the caller no longer an admin), so
@@ -40,20 +50,28 @@ export function makeMemberActions(deps: MemberActionDeps) {
       return { error: error.message };
     }
     deps.revalidate();
-    return {};
+    return { value };
   }
 
   return {
-    // The role is checked by the service; any text is passed on as it came.
-    add: (spaceId: string, formData: FormData) =>
-      run(spaceId, (db, actor) => addMemberByEmail(db, actor, { email: field(formData, "email"), role: field(formData, "role") as Role })),
+    // The role is checked by the service; any text is passed on as it came. The link goes back to the dialog, which
+    // shows it for the admin to send.
+    async invite(spaceId: string, formData: FormData): Promise<InviteResult> {
+      const result = await run(spaceId, (db, actor) => inviteToTeam(db, actor, { email: field(formData, "email"), role: field(formData, "role") as Role }));
+      if (result.error !== undefined || result.value === undefined) return { error: result.error };
+      return { link: deps.inviteLink(result.value.id) };
+    },
+    async cancelInvite(spaceId: string, formData: FormData): Promise<ActionResult> {
+      const { error } = await run(spaceId, (db, actor) => cancelInviteById(db, actor, field(formData, "inviteId")));
+      return error === undefined ? {} : { error };
+    },
     setRole: (spaceId: string, formData: FormData) =>
-      run(spaceId, (db, actor) => setMemberRole(db, actor, { userId: field(formData, "userId"), role: field(formData, "role") as Role })),
-    remove: (spaceId: string, formData: FormData) => run(spaceId, (db, actor) => removeMember(db, actor, field(formData, "userId"))),
+      plain(run(spaceId, (db, actor) => setMemberRole(db, actor, { userId: field(formData, "userId"), role: field(formData, "role") as Role }))),
+    remove: (spaceId: string, formData: FormData) => plain(run(spaceId, (db, actor) => removeMember(db, actor, field(formData, "userId")))),
     // Gone from the team, the person goes on to the dashboard's old address, which picks where they land (lastSpace):
     // the team they left is no longer theirs, so another team, or their own space where those are offered.
     async leave(spaceId: string): Promise<ActionResult> {
-      const result = await run(spaceId, (db, actor) => leaveTeam(db, actor));
+      const result = await plain(run(spaceId, (db, actor) => leaveTeam(db, actor)));
       if (result.error !== undefined) return result;
       return deps.redirect("/dashboard");
     },
