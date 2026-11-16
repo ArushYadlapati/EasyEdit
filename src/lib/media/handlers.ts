@@ -188,8 +188,11 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
     open: mediaRoute(deps, inQueriedSpace, async (actor, req) => {
       const service = await media(actor);
       if (!service) return notSetUp();
-      await checkAppBudget(deps.db(), actor.userId, "upload");
-      const { asset, uploadUrl, offset } = await openUpload(service, actor, await bodyOf(req, openBody));
+      const { asset, uploadUrl, offset } = await openUpload(
+        { ...service, checkNew: () => checkAppBudget(service.db, actor.userId, "upload") },
+        actor,
+        await bodyOf(req, openBody),
+      );
       return Response.json({ asset, uploadUrl, offset }, { status: 201 });
     }),
 
