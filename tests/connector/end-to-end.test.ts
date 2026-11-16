@@ -65,7 +65,7 @@ describe("Claude and the website on one project", () => {
       }
       expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.format).toMatchObject({ enum: FormatId.options });
       expect(tools.find((t) => t.name === "create_project")?.description).toBe(
-        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks. It goes in your personal space unless you pass space: a space's slug as list_projects shows it, or \"personal\". To use a team's media, create the project in that team (pass its space).",
+        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks. Pass space: a space's slug as list_projects shows it, or \"personal\". If you leave out space and the person has more than one, you'll be asked to check with them. To use a team's media, create the project in that team (pass its space).",
       );
       const getProject = tools.find((t) => t.name === "get_project");
       expect(Object.keys(getProject?.inputSchema.properties ?? {}).sort()).toEqual(["cursor", "project_id", "version"]);
@@ -80,7 +80,7 @@ describe("Claude and the website on one project", () => {
   it("Claude creates and edits a project; the website lists the changes as Claude's and can undo one", async () => {
     const { c, client, call } = await converse("kid@gmail.com");
     try {
-      const created = await call("create_project", { name: "Qualifier recap", format: "short_9x16" });
+      const created = await call("create_project", { name: "Qualifier recap", format: "short_9x16", space: "personal" });
       const id = idIn(created.text);
       const added = await call("add_text", { project_id: id, expected_version: 0, items: [{ text: "GO SOLVERS" }] });
       const clipId = clipIn(added.text);
@@ -182,7 +182,7 @@ describe("Claude and the website on one project", () => {
 
   it("removal cuts off a client in the middle of a conversation, and nothing more is written", async () => {
     const { c, client, call } = await converse("katherine@gmail.com");
-    const id = idIn((await call("create_project", { name: "Cut off", format: "short_9x16" })).text);
+    const id = idIn((await call("create_project", { name: "Cut off", format: "short_9x16", space: "personal" })).text);
     await removeEntry(app.db, "katherine@gmail.com");
     await expect(client.callTool({ name: "edit_timeline", arguments: { project_id: id, expected_version: 0, ops: [addText(0)] } })).rejects.toThrow();
     await client.close().catch(() => {});

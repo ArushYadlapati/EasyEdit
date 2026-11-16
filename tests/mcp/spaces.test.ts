@@ -69,10 +69,10 @@ describe("agents across spaces", () => {
     expect(found).toEqual(['Home clip (Space: "Personal")', 'Team clip (Space: "Seattle Solvers")']);
   });
 
-  it("create_project defaults to personal and accepts space: 'seattle-solvers'", async () => {
+  it("create_project asks which space when none is named, and accepts space: 'personal' or 'seattle-solvers'", async () => {
     const db = await makeTestDb();
     const ctx = await toolContext(db);
-    const mine = await createProjectTool(ctx, { name: "Solo", format: "short_9x16" });
+    const mine = await createProjectTool(ctx, { name: "Solo", format: "short_9x16", space: "personal" });
     const team = await createProjectTool(ctx, { name: "Squad", format: "short_9x16", space: "seattle-solvers" });
     const alias = await createProjectTool(ctx, { name: "Alias", format: "short_9x16", space: "personal" });
     for (const r of [mine, team, alias]) expect(r.isError, r.text).toBe(false);
@@ -89,7 +89,7 @@ describe("agents across spaces", () => {
   it("a retried create looks for its twin only in the space asked for", async () => {
     const db = await makeTestDb();
     const ctx = await toolContext(db);
-    const a = await createProjectTool(ctx, { name: "Same", format: "short_9x16" });
+    const a = await createProjectTool(ctx, { name: "Same", format: "short_9x16", space: "personal" });
     const b = await createProjectTool(ctx, { name: "Same", format: "short_9x16", space: "seattle-solvers" });
     const again = await createProjectTool(ctx, { name: "Same", format: "short_9x16", space: "seattle-solvers" });
     expect(a.text).toMatch(/^Created/);
@@ -112,7 +112,7 @@ describe("agents across spaces", () => {
   it("a viewer in the team can create in their personal space and not in the team", async () => {
     const db = await makeTestDb();
     const ctx = await toolContext(db, { role: "viewer" });
-    expect((await createProjectTool(ctx, { name: "Mine", format: "short_9x16" })).isError).toBe(false);
+    expect((await createProjectTool(ctx, { name: "Mine", format: "short_9x16" })).isError).toBe(false); // the only space they can create in
     const refused = await createProjectTool(ctx, { name: "Theirs", format: "short_9x16", space: "seattle-solvers" });
     expect(refused.isError).toBe(true);
     expect(refused.text).toMatch(/viewer/);
@@ -177,7 +177,7 @@ describe("agents across spaces", () => {
     const ctx = await toolContext(db);
     const { asset: foreign } = await otherTeam(db);
     const team = await insertAsset(db, { name: "Team clip" });
-    const created = await createProjectTool(ctx, { name: "Home cut", format: "short_9x16" });
+    const created = await createProjectTool(ctx, { name: "Home cut", format: "short_9x16", space: "personal" });
     const id = /\(id ([^)]+)\)/.exec(created.text)![1];
     expect(created.text.split("\n")[0]).toBe(`Created project "Home cut" (id ${id}) in space "Personal", version 0.`);
 

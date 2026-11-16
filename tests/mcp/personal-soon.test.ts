@@ -59,16 +59,15 @@ describe("create_project while personal spaces are not offered", () => {
     });
   });
 
-  it("with several teams, the one opened last in EasyEdit is used", async () => {
+  it("asks when personal spaces are closed and the person has two teams", async () => {
     const db = await makeTestDb();
     const first = await toolContext(db);
-    const apex = await createTeam(db, { name: "Apex", byUserId: "u1" });
-    await rememberSpace(db, "u1", SEED_TEAM_ID);
+    await createTeam(db, { name: "Apex", byUserId: "u1" });
     const ctx = { ...first, spaces: await listMySpaces(db, "u1") };
-    await createProjectTool(ctx, { name: "One", format: "short_9x16" });
-    await rememberSpace(db, "u1", apex.id);
-    await createProjectTool(ctx, { name: "Two", format: "short_9x16" });
-    expect(await spacesOf(db)).toEqual([SEED_TEAM_ID, apex.id]);
+    const asked = await createProjectTool(ctx, { name: "One", format: "short_9x16" });
+    expect(asked.isError).toBe(true);
+    expect(asked.text).toMatch(/^Ask the person which space this project should go in, then call create_project again with space set\. Their spaces: "Apex" \(space: [^)]+\), "Seattle Solvers" \(space: seattle-solvers\)\.$/);
+    expect(await spacesOf(db)).toEqual([]);
   });
 
   it("a team where the person can only read is passed over for one they can edit", async () => {
@@ -108,14 +107,15 @@ describe("create_project while personal spaces are not offered", () => {
   it("the tool's description says where a project goes, and that personal takes none", async () => {
     const db = await makeTestDb();
     const description = await createDescription(await toolContext(db));
-    expect(description).toContain("It goes in the team you opened last in EasyEdit unless you pass space: a team's slug as list_projects shows it.");
+    expect(description).toContain("Pass space: a team's slug as list_projects shows it.");
+    expect(description).toContain("If you leave out space and the person has more than one, you'll be asked to check with them.");
     expect(description).toContain("Personal spaces are coming soon and take no new projects.");
     expect(description).not.toContain("It goes in your personal space");
   });
 
   it("the tool list, with its longer sentence, is still small enough to load into every conversation", async () => {
     const db = await makeTestDb();
-    expect(JSON.stringify(await toolList(await toolContext(db))).length).toBeLessThan(13_000);
+    expect(JSON.stringify(await toolList(await toolContext(db))).length).toBeLessThan(13_100);
   });
 
   it("someone in no team is told to make one", async () => {
@@ -138,17 +138,12 @@ describe("create_project while personal spaces are not offered", () => {
 });
 
 describe("create_project with personal spaces switched on", () => {
-  it("still defaults to the personal space", async () => {
-    const db = await makeTestDb();
-    const ctx = await toolContext(db);
-    await createProjectTool(ctx, { name: "Recap", format: "short_9x16" });
-    expect(await spacesOf(db)).toEqual([personalSpaceId("u1")]);
-  });
-
-  it("the tool's description is the one it always had", async () => {
+  it("the tool's description says the person is asked when they have more than one space", async () => {
     const db = await makeTestDb();
     const description = await createDescription(await toolContext(db));
-    expect(description).toContain('It goes in your personal space unless you pass space: a space\'s slug as list_projects shows it, or "personal". To use a team\'s media, create the project in that team (pass its space).');
+    expect(description).toContain('Pass space: a space\'s slug as list_projects shows it, or "personal". If you leave out space and the person has more than one, you\'ll be asked to check with them.');
+    expect(description).toContain("To use a team's media, create the project in that team (pass its space).");
     expect(description).not.toContain("coming soon");
+    expect(description).not.toContain("It goes in your personal space");
   });
 });

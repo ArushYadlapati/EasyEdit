@@ -136,7 +136,7 @@ describe("agents registering themselves", () => {
     expect(await resolveConnectorCaller(app.db, claimsOf(tokens.access_token))).toMatchObject({ ok: true, agent: "cursor" });
     expect((await app.authorize({ clientId, cookie, redirectUri: CURSOR_CALLBACK })).pathname).toBe("/consent");
 
-    const made = await app.callTool(tokens.access_token, "create_project", { name: "From Cursor", format: "short_9x16" });
+    const made = await app.callTool(tokens.access_token, "create_project", { name: "From Cursor", format: "short_9x16", space: "personal" });
     expect(made.isError, made.text).toBe(false);
     const [row] = rowsOf<{ created_by: string }>(await app.db.execute(sql`select created_by from projects where name = 'From Cursor'`));
     expect(row.created_by).toBe(`agent:cursor:${userId}`);

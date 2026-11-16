@@ -1,12 +1,13 @@
 import { sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { rowsOf, type DB } from "@/db";
 import { checkProjectBudget, checkWriteBudget } from "@/lib/mcp/budget";
-import { createProjectTool } from "@/lib/mcp/tools/create-project";
+import { createProjectTool as createProjectToolIn } from "@/lib/mcp/tools/create-project";
 import { displayActor } from "@/lib/projects/display-actor";
 import { applyProjectOps, createProject, listProjects } from "@/lib/projects/service";
 import { FRAME_SIZE_MESSAGE, type OpInput } from "@/lib/timeline";
-import { personalSpaceId } from "@/lib/spaces/types";
+import { createTeam, listMySpaces } from "@/lib/spaces/service";
+import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
 import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 import { addText, toolContext } from "./context";
@@ -15,6 +16,10 @@ const rows = async (db: DB) => rowsOf<{ id: string; name: string; created_by: st
 // Where create_project puts a project when no space is named.
 const personal = testActor({ userId: "u1", spaceId: personalSpaceId("u1") });
 const idIn = (text: string) => /\(id ([^)]+)\)/.exec(text)![1];
+
+// The person has Personal and a team, so a project needs its space named; these tests mean Personal.
+const createProjectTool = (ctx: Parameters<typeof createProjectToolIn>[0], input: Parameters<typeof createProjectToolIn>[1]) =>
+  createProjectToolIn(ctx, { space: "personal", ...input });
 
 describe("create_project", () => {
   it("creates a project recorded as Claude's, and answers with its id, version, link and tracks", async () => {
@@ -232,5 +237,72 @@ describe("the write budget", () => {
     await db.execute(sql`update projects set deleted_at = now() where id = ${id}`);
     expect(await checkProjectBudget(db, "claude:u1", { connectorProjectsPerDay: 1 })).toMatchObject({ ok: false });
     expect(await checkProjectBudget(db, "claude:u1", { connectorProjectsPerDay: 2 })).toEqual({ ok: true });
+  });
+});
+
+describe("create_project when no space is named", () => {
+  afterEach(() => void vi.unstubAllEnvs());
+  const projectSpaces = async (db: DB) => rowsOf<{ space_id: string }>(await db.execute(sql`select space_id from projects`)).map((r) => r.space_id);
+  const ASK = (list: string) => `Ask the person which space this project should go in, then call create_project again with space set. Their spaces: ${list}.`;
+
+  it("uses the only space without asking", async () => {
+    const db = await makeTestDb();
+    const base = await toolContext(db, { id: "u9" });
+    const ctx = { ...base, spaces: base.spaces.filter((s) => s.kind === "personal") };
+    const r = await createProjectToolIn(ctx, { name: "Solo", format: "short_9x16" });
+    expect(r.isError).toBe(false);
+    expect(await projectSpaces(db)).toEqual([personalSpaceId("u9")]);
+  });
+
+  it("asks when the person has Personal and a team", async () => {
+    const db = await makeTestDb();
+    const ctx = await toolContext(db);
+    expect(await createProjectToolIn(ctx, { name: "Recap", format: "short_9x16" })).toEqual({
+      isError: true, text: ASK('"Personal" (space: personal), "Seattle Solvers" (space: seattle-solvers)'),
+    });
+    expect(await projectSpaces(db)).toEqual([]);
+  });
+
+  it("asks when personal spaces are closed and the person has two teams", async () => {
+    vi.stubEnv("PERSONAL_SPACES", "");
+    const db = await makeTestDb();
+    const first = await toolContext(db);
+    const apex = await createTeam(db, { name: "Apex", byUserId: "u1" });
+    const ctx = { ...first, spaces: await listMySpaces(db, "u1") };
+    expect(await createProjectToolIn(ctx, { name: "Recap", format: "short_9x16" })).toEqual({
+      isError: true, text: ASK(`"Apex" (space: ${apex.slug}), "Seattle Solvers" (space: seattle-solvers)`),
+    });
+    expect(await projectSpaces(db)).toEqual([]);
+  });
+
+  it("uses the one team while personal spaces are closed", async () => {
+    vi.stubEnv("PERSONAL_SPACES", "");
+    const db = await makeTestDb();
+    const r = await createProjectToolIn(await toolContext(db), { name: "Recap", format: "short_9x16" });
+    expect(r.isError).toBe(false);
+    expect(await projectSpaces(db)).toEqual([SEED_TEAM_ID]);
+  });
+
+  it("a space where the person is a viewer is not offered, so the other one is used", async () => {
+    const db = await makeTestDb();
+    const first = await toolContext(db, { role: "viewer" });
+    const ctx = { ...first, spaces: await listMySpaces(db, "u1") };
+    expect((await createProjectToolIn(ctx, { name: "Mine", format: "short_9x16" })).isError).toBe(false);
+    expect(await projectSpaces(db)).toEqual([personalSpaceId("u1")]);
+  });
+
+  it("a named viewer space still answers the role message", async () => {
+    const db = await makeTestDb();
+    const viewer = await toolContext(db, { role: "viewer" });
+    expect(await createProjectToolIn(viewer, { name: "Mine", format: "short_9x16", space: "seattle-solvers" })).toEqual({
+      isError: true, text: "Your role is viewer. You can read projects but not change them. An admin can change your role on the Admin page.",
+    });
+  });
+
+  it("a named space still works", async () => {
+    const db = await makeTestDb();
+    const ctx = await toolContext(db);
+    expect((await createProjectToolIn(ctx, { name: "Squad", format: "short_9x16", space: "seattle-solvers" })).isError).toBe(false);
+    expect(await projectSpaces(db)).toEqual([SEED_TEAM_ID]);
   });
 });
