@@ -4,7 +4,7 @@ import { rowsOf, type DB } from "@/db";
 import { assets } from "@/db/schema";
 import { ServiceError } from "@/lib/service-error";
 import { roleIn } from "@/lib/spaces/service";
-import type { StorageConfig } from "./config";
+import { type StorageConfig, storageConfig } from "./config";
 import { revokeGrant } from "./google-oauth";
 import { open } from "./secret-box";
 import { forgetSources } from "./token-cache";
@@ -82,4 +82,11 @@ export function makeDisconnectStorage(deps: DisconnectDeps): DisconnectStorage {
       console.error("Revoking a disconnected Google account failed:", error instanceof Error ? error.message : "unknown");
     }
   };
+}
+
+// The app's own: the server's storage settings. Without them there is no Google account EasyEdit could have connected.
+export async function disconnectStorage(...[db, input]: Parameters<DisconnectStorage>): Promise<void> {
+  const config = storageConfig();
+  if (!config) throw new ServiceError("NO_STORAGE", 409, "This space has no Google account to disconnect.");
+  await makeDisconnectStorage({ config })(db, input);
 }

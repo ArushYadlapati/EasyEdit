@@ -1,18 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useId, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useId, useState, type ReactNode } from "react";
+import { useAction } from "@/app/(app)/action-ui";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { StorageNote } from "@/components/storage/storage-banner";
 import { Button } from "@/components/ui/button";
 import { linkButtonClass } from "@/components/ui/button-class";
-import { SETUP_CARD, STORAGE_MESSAGES, connectHref, settingsNote, usageLine } from "@/lib/storage/messages";
+import { SETUP_CARD, STORAGE_MESSAGES, connectHref, settingsNote, storageSettingsPath, usageLine } from "@/lib/storage/messages";
 import { spacePath } from "@/lib/spaces/paths";
 import type { StorageSettingsView } from "@/lib/storage/settings-view";
+import type { StorageFormState } from "@/lib/storage/storage-actions";
 
 export type StorageSettingsProps = {
   view: StorageSettingsView;
   note: string | null; // ?storage=… as the address has it; only the known ones say anything
   first: boolean; // just after creating the team (?first=1)
+  disconnect(): Promise<StorageFormState>; // Disconnect, with the space bound
 };
 
 const TEXT = "text-[13px] leading-5 text-ed-text";
@@ -31,9 +36,47 @@ function ConnectLink({ href, primary, children }: { href: string; primary?: bool
   );
 }
 
+// Disconnect, for the person who connected the space's Google account. While the space holds videos it stays put
+// (the same rule as moving to another account), and says why. Asks first; after it, the page shows the space with no
+// storage and a note that the folder is still in their Drive.
+function DisconnectControl({ email, hasUploads, slug, disconnect }: { email: string; hasUploads: boolean; slug: string; disconnect(): Promise<StorageFormState> }): ReactNode {
+  const router = useRouter();
+  const [asking, setAsking] = useState(false);
+  const run = useAction(async () => disconnect());
+  if (hasUploads) {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className={ROW}>
+          <Button disabled>{STORAGE_MESSAGES.disconnect}</Button>
+        </div>
+        <p className={MUTED}>{STORAGE_MESSAGES.disconnectLater}</p>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className={ROW}>
+        <Button variant="danger" onClick={() => setAsking(true)}>
+          {STORAGE_MESSAGES.disconnect}
+        </Button>
+      </div>
+      <ConfirmDialog
+        title={STORAGE_MESSAGES.disconnectTitle(email)}
+        question={STORAGE_MESSAGES.disconnectQuestion}
+        confirmLabel={STORAGE_MESSAGES.disconnect}
+        open={asking}
+        pending={run.pending}
+        error={run.error}
+        onConfirm={() => run.submit(new FormData(), { onSuccess: () => router.replace(`${storageSettingsPath(slug)}?storage=disconnected`) })}
+        onClose={() => setAsking(false)}
+      />
+    </>
+  );
+}
+
 // The storage tab of a space's settings, for its admins: where its videos are stored, and the ways to change that
 // this server can carry out. Nothing here sends anyone to Google when the server couldn't finish the connect.
-export function StorageSettings({ view, note, first }: StorageSettingsProps): ReactNode {
+export function StorageSettings({ view, note, first, disconnect }: StorageSettingsProps): ReactNode {
   const headingId = useId();
   const { space, storage, blocked } = view;
   const shown = settingsNote(note);
@@ -76,6 +119,7 @@ export function StorageSettings({ view, note, first }: StorageSettingsProps): Re
                 )}
               </div>
               {moveRefused !== null && <p className={MUTED}>{moveRefused}</p>}
+              {storage.ownedByViewer && <DisconnectControl email={storage.email} hasUploads={storage.hasUploads} slug={space.slug} disconnect={disconnect} />}
             </div>
           ) : (
             <p className={MUTED}>{blockedText}</p>
