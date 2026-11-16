@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -336,6 +336,8 @@ export const invitation = pgTable(
   (table) => [
     index("invitation_organizationId_idx").on(table.organizationId),
     index("invitation_email_idx").on(table.email),
+    // One waiting invite per email per team. Emails are stored normalized.
+    uniqueIndex("invitation_pending_unique").on(table.organizationId, table.email).where(sql`status = 'pending'`),
   ],
 );
 

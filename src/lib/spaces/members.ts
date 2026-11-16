@@ -14,7 +14,7 @@ import { SEED_TEAM_ID } from "./types";
 // A person in a team, as the Members screen shows them. `storageOwner`: the team's videos are in their Google Drive.
 export type TeamMember = { userId: string; name: string; email: string; image: string | null; role: Role; joinedAt: Date; storageOwner: boolean };
 
-const EMAIL_MAX_CHARS = 254;
+export const EMAIL_MAX_CHARS = 254;
 
 const spaceNotFound = () => new ServiceError("NOT_FOUND", 404, "Space not found");
 const notInTeam = () => new ServiceError("NOT_FOUND", 404, "They're not in this team.");
@@ -44,7 +44,7 @@ async function roleInTeam(db: DB, actor: Actor): Promise<Role> {
 
 // The checks before any change: a team the person is in, not Seattle Solvers (its members follow the allowlist), and,
 // unless anyone may make the change, an admin both by the actor and by their member row.
-async function changeableTeam(db: DB, actor: Actor, opts: { admin: boolean }): Promise<string> {
+export async function changeableTeam(db: DB, actor: Actor, opts: { admin: boolean }): Promise<string> {
   const role = await roleInTeam(db, actor);
   if (actor.spaceId === SEED_TEAM_ID) throw managedElsewhere();
   if (opts.admin) {
@@ -54,7 +54,7 @@ async function changeableTeam(db: DB, actor: Actor, opts: { admin: boolean }): P
   return actor.spaceId;
 }
 
-function checkedRole(role: unknown): Role {
+export function checkedRole(role: unknown): Role {
   if (typeof role !== "string" || !Object.hasOwn(ROLE_RANK, role)) throw new ServiceError("INVALID", 400, "Unknown role.");
   return role as Role;
 }
@@ -66,10 +66,10 @@ function checkedRole(role: unknown): Role {
 // that locked its target first and an admin's change waiting on it could otherwise deadlock. `team` makes sure the
 // statement only ever touches a team (never a personal space, never Seattle Solvers). `owner` is the person whose Google
 // Drive holds the team's videos, if anyone's does.
-const lockedAdmins = (spaceId: string, callerId: string) => sql`
+export const lockedAdmins = (spaceId: string, callerId: string) => sql`
   admins as (select user_id from member where organization_id = ${spaceId} and role = 'admin' order by id for update),
   gate as (select count(*)::int as admin_count, coalesce(bool_or(user_id = ${callerId}), false) as caller_admin from admins)`;
-const teamOnly = (spaceId: string) =>
+export const teamOnly = (spaceId: string) =>
   sql`team as (select id from organization where id = ${spaceId} and kind = 'team' and id <> ${SEED_TEAM_ID})`;
 const storageOwner = (spaceId: string) =>
   sql`owner as (select dc.user_id from space_storage ss join drive_connection dc on dc.id = ss.connection_id where ss.space_id = ${spaceId})`;
