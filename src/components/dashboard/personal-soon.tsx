@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useId, type ReactNode } from "react";
-import { SIDEBAR_BOX } from "@/components/dashboard/sidebar";
+import { InvitationsNav, SIDEBAR_BOX } from "@/components/dashboard/sidebar";
 import { SpaceSwitcher, useCreateTeam, useMySpaces } from "@/components/dashboard/space-switcher";
 import { linkButtonClass } from "@/components/ui/button-class";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
@@ -27,6 +27,7 @@ export function PersonalSoon({ projects }: PersonalSoonProps): ReactNode {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
       <div className={SIDEBAR_BOX}>
         {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={personal?.id ?? null} createTeam={createTeam} personalSoon />}
+        <InvitationsNav />
       </div>
       <main className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-md flex-col items-start gap-3 px-4 py-10">

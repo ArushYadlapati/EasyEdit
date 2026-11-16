@@ -11,6 +11,7 @@ import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { canCreateTeam } from "@/lib/spaces/create-team-access";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
+import { listMyInvites } from "@/lib/spaces/invites";
 import { listMySpaces } from "@/lib/spaces/service";
 import { openSignUp } from "@/lib/signup";
 
@@ -25,9 +26,11 @@ export const viewport: Viewport = { colorScheme: "dark" };
 export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
   const spaces = await listMySpaces(getDb(), user.id);
+  // Only what the sidebar shows of each invite: where it leads and the team's name.
+  const invites = (await listMyInvites(getDb(), user.email)).map(({ id, teamName }) => ({ id, teamName }));
 
   return (
-    <SpacesProvider spaces={spaces} createTeam={canCreateTeam(spaces) ? createTeamAction : undefined} personalSoon={!personalSpacesOpen()}>
+    <SpacesProvider spaces={spaces} createTeam={canCreateTeam(spaces) ? createTeamAction : undefined} personalSoon={!personalSpacesOpen()} invites={invites}>
       <div className="ed-theme flex h-dvh flex-col bg-ed-bg font-sans text-ed-text">
         <header className="flex h-11 shrink-0 items-center gap-4 border-b border-ed-line bg-ed-panel px-4">
           {/* The logo and name lead back to the projects, from Admin too. The negative margin keeps them where the plain text was. */}

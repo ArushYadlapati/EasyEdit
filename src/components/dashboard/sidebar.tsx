@@ -8,7 +8,7 @@ import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { ALL_VIEW, RECENT_VIEW, folderOf, viewQuery, type DashboardFolder, type DashboardView } from "@/lib/dashboard/view";
 import { CollapsedSectionsProvider, SidebarSection } from "@/components/dashboard/sidebar-section";
-import { SpaceSwitcher, useCreateTeam, useMySpaces, usePersonalSoon } from "@/components/dashboard/space-switcher";
+import { SpaceSwitcher, useCreateTeam, useMyInvites, useMySpaces, usePersonalSoon } from "@/components/dashboard/space-switcher";
 import { editorPath, slugFor, spacePath } from "@/lib/spaces/paths";
 import { settingsTabPath } from "@/lib/spaces/settings-tabs";
 import { storageSettingsPath } from "@/lib/storage/messages";
@@ -70,6 +70,32 @@ export const SIDEBAR_BOX = cx(
   "md:w-56 md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-b-0 md:px-2 md:py-3",
 );
 
+// The person's pending invites, one link each to its page (the invite page lets them join or decline). Not drawn with
+// none. Shared with the page that says personal spaces are coming soon, which has no Sidebar.
+export function InvitationsNav(): ReactNode {
+  const invites = useMyInvites();
+  if (invites.length === 0) return null;
+  return (
+    <nav aria-label="Invitations" className="flex shrink-0 flex-row items-center gap-1 md:flex-col md:items-stretch md:pt-3">
+      <SidebarSection id="invitations" label="Invitations">
+        {invites.map((invite) => (
+          <Link
+            key={invite.id}
+            href={`/invite/${invite.id}`}
+            className={cx(
+              "flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-medium whitespace-nowrap text-ed-text hover:bg-ed-hover",
+              FOCUS_RING_INSET,
+              FADE,
+            )}
+          >
+            <span className="min-w-0 truncate">{invite.teamName}</span>
+          </Link>
+        ))}
+      </SidebarSection>
+    </nav>
+  );
+}
+
 export function Sidebar({ folders, pinned = [], collapsed, view, canEdit, spaceSlug, onNewFolder, onDropProject }: SidebarProps): ReactNode {
   const spaces = useMySpaces();
   const createTeam = useCreateTeam();
@@ -83,6 +109,7 @@ export function Sidebar({ folders, pinned = [], collapsed, view, canEdit, spaceS
       <div className={SIDEBAR_BOX}>
         {/* The person's spaces (from the dashboard layout), above what is in this one. Not drawn without any, as in tests. */}
         {spaces.length > 0 && <SpaceSwitcher spaces={spaces} current={current?.id ?? null} createTeam={createTeam} personalSoon={personalSoon} />}
+        <InvitationsNav />
         {/* The space's brand kit, right under the spaces: its fonts, colors and logos. Not for a personal space while those are closed. */}
         {current && !(personalSoon && current.kind === "personal") && (
           <SidebarLink href={settingsTabPath(spaceSlug, "brand")} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>

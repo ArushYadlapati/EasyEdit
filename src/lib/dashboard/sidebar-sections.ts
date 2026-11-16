@@ -2,7 +2,7 @@
 // folded on the first paint (as the editor keeps its panel sizes). One list for every space: a section hidden in one is
 // hidden in all.
 
-export const SECTION_IDS = ["spaces", "projects", "pinned", "folders", "space"] as const;
+export const SECTION_IDS = ["spaces", "projects", "pinned", "folders", "space", "invitations"] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 
 // Under /s, so API requests do not carry it. Its value is the ids joined by dots, which a cookie carries as they are.

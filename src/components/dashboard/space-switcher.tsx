@@ -12,6 +12,9 @@ import type { MySpace } from "@/lib/spaces/types";
 
 // The person's spaces, loaded once by the dashboard layout so that the sidebar of any dashboard page can show them.
 const SpacesContext = createContext<MySpace[]>([]);
+// The person's pending invites to teams, as much as the sidebar shows: where each leads and the team's name.
+export type MyInvite = { id: string; teamName: string };
+const InvitesContext = createContext<MyInvite[]>([]);
 // The action that makes a team, handed down only when the server decided the person may (sign-up open, or a Seattle
 // Solvers admin); none means no Create a team item.
 type CreateTeam = (formData: FormData) => Promise<TeamFormState>;
@@ -24,9 +27,11 @@ export function SpacesProvider({
   spaces,
   createTeam,
   personalSoon = false,
+  invites = [],
   children,
 }: {
   spaces: MySpace[];
+  invites?: MyInvite[];
   createTeam?: CreateTeam;
   personalSoon?: boolean;
   children: ReactNode;
@@ -34,7 +39,9 @@ export function SpacesProvider({
   return (
     <SpacesContext value={spaces}>
       <PersonalSoonContext value={personalSoon}>
-        <CreateTeamContext value={createTeam}>{children}</CreateTeamContext>
+        <CreateTeamContext value={createTeam}>
+          <InvitesContext value={invites}>{children}</InvitesContext>
+        </CreateTeamContext>
       </PersonalSoonContext>
     </SpacesContext>
   );
@@ -46,6 +53,10 @@ export function usePersonalSoon(): boolean {
 
 export function useCreateTeam(): CreateTeam | undefined {
   return useContext(CreateTeamContext);
+}
+
+export function useMyInvites(): MyInvite[] {
+  return useContext(InvitesContext);
 }
 
 export function useMySpaces(): MySpace[] {

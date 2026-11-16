@@ -134,6 +134,16 @@ describe("a personal space while personal spaces are not offered", () => {
     expect(await target(() => DashboardRedirect({ params: Promise.resolve({}), searchParams: Promise.resolve({}) } as never))).toBe("/s/personal");
   });
 
+  it("shows the person's pending invites, so someone invited with no team can reach them", () => {
+    const personal: MySpace = { id: "personal_u9", slug: "personal_u9", name: "Personal", kind: "personal", role: "admin" };
+    render(
+      <SpacesProvider spaces={[personal]} personalSoon invites={[{ id: "inv1", teamName: "Robo Club" }]}>
+        <PersonalSoon projects={[]} />
+      </SpacesProvider>,
+    );
+    expect(screen.getByRole("link", { name: "Robo Club" }).getAttribute("href")).toBe("/invite/inv1");
+  });
+
   it("someone in no team who may make one is pointed at Create a team", () => {
     const personal: MySpace = { id: "personal_u9", slug: "personal_u9", name: "Personal", kind: "personal", role: "admin" };
     render(

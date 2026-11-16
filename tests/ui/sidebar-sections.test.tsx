@@ -116,3 +116,26 @@ describe("the sidebar's sections", () => {
     expect(toggle("Projects").getAttribute("aria-expanded")).toBe("true");
   });
 });
+
+describe("the sidebar's invitations", () => {
+  const withInvites = (invites: { id: string; teamName: string }[]) =>
+    render(
+      <SpacesProvider spaces={[TEAM]} invites={invites}>
+        <Sidebar folders={FOLDERS} view={{ kind: "all" }} canEdit spaceSlug="seattle-solvers" onNewFolder={() => {}} onDropProject={() => {}} />
+      </SpacesProvider>,
+    );
+
+  it("lists each pending invite under the switcher, linking to its page", () => {
+    withInvites([{ id: "inv1", teamName: "Robo Club" }, { id: "inv2", teamName: "Film Crew" }]);
+    expect(toggle("Invitations").getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "Robo Club" }).getAttribute("href")).toBe("/invite/inv1");
+    expect(screen.getByRole("link", { name: "Film Crew" }).getAttribute("href")).toBe("/invite/inv2");
+  });
+
+  it("draws no Invitations section without invites", () => {
+    withInvites([]);
+    expect(screen.queryByRole("button", { name: "Invitations" })).toBeNull();
+    sidebar();
+    expect(screen.queryByText("Invitations")).toBeNull();
+  });
+});
