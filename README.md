@@ -49,7 +49,7 @@ EasyEdit is moving from one team's invite-only editor to an editor anyone can si
 
 - [x] **Spaces.** Everyone gets a personal space alongside their teams, with a switcher between them. Every project, folder and upload belongs to one space, and only that space's members can see it. Pages move under `/s/<space>/`, and old links redirect. AI agents work across all of a person's spaces, with results labelled by space. Existing Seattle Solvers projects move into a Seattle Solvers team unchanged. Personal spaces are switched off for now and marked "coming soon": until they are offered, EasyEdit is for teams.
 - [ ] **Storage per space, and open sign-up.** Each space stores its media in a Google Drive account its owner connects. EasyEdit only asks for access to the files it creates itself, never your whole Drive. Each team gets its own read-only key, so one team can never read another's media. Once every new space can have storage, anyone with a Google account can sign up.
-- [ ] **Team invites.** Team admins add people by email, including people who don't have an account yet, with invite links first and email invites later.
+- [x] **Team invites.** Team admins invite people by email address with a link to send. The person signs in with that Google account and joins or declines; admins see, renew and cancel pending invites, and an invite lets someone in while sign-up is closed. An empty team can be deleted. Invites sent by email come later.
 - [ ] **A new sign-up flow.** Choose where your videos live and set up AI agents as you join. People invited to a team go straight into it.
 - [ ] **Moving projects between spaces.** A project's media is copied to the new space, so a project never ends up half-moved.
 

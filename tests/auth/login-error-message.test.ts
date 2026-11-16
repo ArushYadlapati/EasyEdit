@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { loginErrorMessage } from "@/lib/login-error-message";
 
-const NOT_ALLOWLISTED = "This Google account isn't on the Seattle Solvers allowlist. Ask an admin to add you.";
+const NOT_ALLOWLISTED = "This Google account doesn't have access to EasyEdit. If you were invited, sign in with the Google account the invite was sent to.";
 const DID_NOT_FINISH =
-  "Sign-in didn't finish. Try again. If it keeps happening, ask an admin to check that you're on the allowlist.";
+  "Sign-in didn't finish. Try again. If it keeps happening, ask a team admin for a new invite.";
 
 describe("loginErrorMessage", () => {
   it("shows nothing without an error", () => {

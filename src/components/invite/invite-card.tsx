@@ -26,7 +26,8 @@ const ERROR = "rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text
 
 const invitedLine = (o: Offer) => `${o.invitedBy} invited you to join ${o.teamName} as ${o.roleLabel}.`;
 
-export function InviteCard({ state, accept, decline }: { state: InviteCardState; accept: (inviteId: string) => Promise<Result>; decline: (inviteId: string) => Promise<Result> }) {
+// notice: why a sign-in from this page was refused, shown above the Google button.
+export function InviteCard({ state, notice = null, accept, decline }: { state: InviteCardState; notice?: string | null; accept: (inviteId: string) => Promise<Result>; decline: (inviteId: string) => Promise<Result> }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +48,12 @@ export function InviteCard({ state, accept, decline }: { state: InviteCardState;
         {state.kind === "signed-out" && (
           <>
             <p>{invitedLine(state)}</p>
-            <SignInButton callbackURL={`/invite/${state.inviteId}`} />
+            {notice !== null && (
+              <p role="alert" className={ERROR}>
+                {notice}
+              </p>
+            )}
+            <SignInButton callbackURL={`/invite/${state.inviteId}`} errorCallbackURL={`/invite/${state.inviteId}`} />
           </>
         )}
         {state.kind === "join" && (

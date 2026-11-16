@@ -131,7 +131,7 @@ describe("the passkey sign-in button", () => {
       error: { code: "NOT_ALLOWLISTED", message: "NOT_ALLOWLISTED", status: 403, statusText: "FORBIDDEN" },
     });
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "This account isn't on the Seattle Solvers allowlist. Ask an admin to add you.",
+      "This account doesn't have access to EasyEdit. If you were invited, sign in with the Google account the invite was sent to.",
     );
     expect(button().disabled).toBe(false);
     expect(assign).not.toHaveBeenCalled();

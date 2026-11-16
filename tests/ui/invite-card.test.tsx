@@ -15,7 +15,13 @@ describe("InviteCard", () => {
     render(<InviteCard state={{ kind: "signed-out", ...base }} accept={async () => ({})} decline={async () => ({})} />);
     expect(screen.getByText("Uma invited you to join Robotics Club as Editor.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
-    expect(signInSocial).toHaveBeenCalledWith({ provider: "google", callbackURL: "/invite/inv1", errorCallbackURL: "/login" });
+    expect(signInSocial).toHaveBeenCalledWith({ provider: "google", callbackURL: "/invite/inv1", errorCallbackURL: "/invite/inv1" });
+  });
+
+  it("signed out after a refused sign-in: shows the notice above the button", () => {
+    render(<InviteCard state={{ kind: "signed-out", ...base }} notice="Sign-in didn't finish. Try again." accept={async () => ({})} decline={async () => ({})} />);
+    expect(screen.getByRole("alert").textContent).toBe("Sign-in didn't finish. Try again.");
+    expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeTruthy();
   });
 
   it("matching email: Join and Decline call the actions", async () => {

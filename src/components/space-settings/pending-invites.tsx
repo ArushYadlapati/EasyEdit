@@ -7,7 +7,7 @@ import { useAction } from "@/app/(app)/action-ui";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import type { Role } from "@/lib/allowlist/service";
-import type { ActionResult } from "@/lib/spaces/member-actions";
+import type { ActionResult, InviteResult } from "@/lib/spaces/member-actions";
 import { CopyLinkButton } from "./copy-link-button";
 
 // A waiting invite as the server page hands it over: dates as ISO strings, and the finished link to send.
@@ -15,7 +15,17 @@ export type PendingInviteRow = { id: string; email: string; role: Role; invitedB
 
 // The team's waiting invites, for its admins: who, as what, when it runs out, with the link to send again and a way to
 // cancel. Nothing is drawn when there are none.
-export function PendingInvites({ invites, cancel }: { invites: PendingInviteRow[]; cancel: (formData: FormData) => Promise<ActionResult> }): ReactNode {
+// An expired invite has a Renew button in place of Copy link: renewing makes the same invite live again for another week,
+// so its link stays the same.
+export function PendingInvites({
+  invites,
+  cancel,
+  renew,
+}: {
+  invites: PendingInviteRow[];
+  cancel: (formData: FormData) => Promise<ActionResult>;
+  renew: (formData: FormData) => Promise<InviteResult>;
+}): ReactNode {
   if (invites.length === 0) return null;
   return (
     <section aria-labelledby="pending-invites-heading" className="flex flex-col gap-2">
@@ -42,13 +52,38 @@ export function PendingInvites({ invites, cancel }: { invites: PendingInviteRow[
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <CopyLinkButton link={invite.link} size="sm" />
+              {invite.expired ? <RenewInvite invite={invite} renew={renew} /> : <CopyLinkButton link={invite.link} size="sm" />}
               <CancelInvite invite={invite} cancel={cancel} />
             </div>
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+function RenewInvite({ invite, renew }: { invite: PendingInviteRow; renew: (formData: FormData) => Promise<InviteResult> }): ReactNode {
+  const { error, pending, submit } = useAction(renew);
+  return (
+    <>
+      {error !== null && (
+        <span role="alert" className="text-xs text-red-500">
+          {error}
+        </span>
+      )}
+      <Button
+        size="sm"
+        disabled={pending}
+        onClick={() => {
+          const formData = new FormData();
+          formData.set("email", invite.email);
+          formData.set("role", invite.role);
+          submit(formData);
+        }}
+      >
+        Renew
+      </Button>
+    </>
   );
 }
 

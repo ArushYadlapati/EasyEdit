@@ -230,7 +230,7 @@ describe("adding a passkey", () => {
   });
 
   it.each([
-    ["NOT_ALLOWLISTED", "That Google account isn't on the Seattle Solvers allowlist. Sign in again with the one you use for EasyEdit."],
+    ["NOT_ALLOWLISTED", "That Google account doesn't have access to EasyEdit. If you were invited, sign in with the Google account the invite was sent to."],
     ["access_denied", "Google sign-in didn't finish. Try again."],
   ])("back from a Google sign-in that failed (%s), it says why and offers Sign in again", async (code, message) => {
     render(<PasskeysDialog open signInError={code} onClose={onClose} />);

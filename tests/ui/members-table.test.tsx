@@ -217,6 +217,21 @@ describe("pending invites", () => {
     expect(within(lin).getByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
+  it("a live invite has Copy link and no Renew; an expired one has Renew and no Copy link", () => {
+    show("u1", "admin", ALL, { pendingInvites: [INV_LIN, INV_OLD] });
+    const lin = screen.getByText("lin@example.com").closest("li")!;
+    const old = screen.getByText("old@example.com").closest("li")!;
+    expect(within(lin).queryByRole("button", { name: "Renew" })).toBeNull();
+    expect(within(old).queryByRole("button", { name: "Copy link" })).toBeNull();
+    expect(within(old).getByRole("button", { name: "Cancel invite" })).toBeTruthy();
+  });
+
+  it("Renew submits the invite's email and role", async () => {
+    show("u1", "admin", ALL, { pendingInvites: [INV_OLD] });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Renew" })));
+    expect(Object.fromEntries(actions.invite.mock.calls[0]![0].entries())).toEqual({ email: "old@example.com", role: "viewer" });
+  });
+
   it("Cancel invite asks first, then sends the invite id", async () => {
     show("u1", "admin", ALL, { pendingInvites: [INV_LIN] });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Cancel invite" })));

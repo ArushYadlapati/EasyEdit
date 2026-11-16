@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { passkeySignInErrorMessage } from "@/lib/passkey-error-message";
 
-const NOT_ALLOWLISTED = "This account isn't on the Seattle Solvers allowlist. Ask an admin to add you.";
+const NOT_ALLOWLISTED = "This account doesn't have access to EasyEdit. If you were invited, sign in with the Google account the invite was sent to.";
 const NOT_SET_UP =
   "That passkey isn't set up for EasyEdit. Sign in with Google, then add a passkey from your account menu.";
 const DID_NOT_FINISH = "Passkey sign-in didn't finish. Try again, or sign in with Google.";

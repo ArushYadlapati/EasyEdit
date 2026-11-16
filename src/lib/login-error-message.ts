@@ -8,8 +8,8 @@ export const UNVERIFIED_EMAIL = "Google hasn't verified that email address, so E
 export function loginErrorMessage(error: string | undefined, openSignUp = false): string | null {
   if (!error) return null;
   if (error.toUpperCase() === "NOT_ALLOWLISTED") {
-    return openSignUp ? UNVERIFIED_EMAIL : "This Google account isn't on the Seattle Solvers allowlist. Ask an admin to add you.";
+    return openSignUp ? UNVERIFIED_EMAIL : "This Google account doesn't have access to EasyEdit. If you were invited, sign in with the Google account the invite was sent to.";
   }
   if (openSignUp) return "Sign-in didn't finish. Try again.";
-  return "Sign-in didn't finish. Try again. If it keeps happening, ask an admin to check that you're on the allowlist.";
+  return "Sign-in didn't finish. Try again. If it keeps happening, ask a team admin for a new invite.";
 }

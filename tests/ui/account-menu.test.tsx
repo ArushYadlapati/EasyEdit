@@ -115,7 +115,7 @@ describe("the account menu", () => {
     render(<AccountMenu name="Ada Lovelace" image={null} />);
     const dialog = await screen.findByRole("dialog", { name: "Passkeys" });
     expect(within(dialog).getByRole("alert").textContent).toBe(
-      "That Google account isn't on the Seattle Solvers allowlist. Sign in again with the one you use for EasyEdit.",
+      "That Google account doesn't have access to EasyEdit. If you were invited, sign in with the Google account the invite was sent to.",
     );
     expect(within(dialog).getByRole("button", { name: "Sign in again" })).toBeTruthy();
     expect(router.replace).toHaveBeenCalledTimes(1);

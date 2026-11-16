@@ -20,7 +20,7 @@ export function passkeySignInErrorMessage(error: PasskeySignInError | null, open
   if ((code !== undefined && CANCELLED.has(code)) || error.message?.includes("NotAllowedError")) return null;
   // The session hook refuses an account that isn't on the allowlist, whichever way it signs in.
   if (code === "NOT_ALLOWLISTED") {
-    return openSignUp ? UNVERIFIED_EMAIL : "This account isn't on the Seattle Solvers allowlist. Ask an admin to add you.";
+    return openSignUp ? UNVERIFIED_EMAIL : "This account doesn't have access to EasyEdit. If you were invited, sign in with the Google account the invite was sent to.";
   }
   if (code !== undefined && NOT_SET_UP.has(code)) {
     return "That passkey isn't set up for EasyEdit. Sign in with Google, then add a passkey from your account menu.";

@@ -38,7 +38,7 @@ export function makeInviteActions(deps: InviteActionDeps) {
       const outcome = await run((db, who) => declineInvite(db, who, inviteId));
       if ("error" in outcome) return outcome;
       deps.revalidate();
-      return deps.redirect("/dashboard");
+      return deps.redirect("/");
     },
   };
 }

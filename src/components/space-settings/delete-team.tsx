@@ -27,7 +27,7 @@ export function DeleteTeam({ teamName, deleteTeam }: { teamName: string; deleteT
         Delete team
       </h3>
       <p className="text-[13px] text-ed-muted">
-        This removes {teamName} and everyone&apos;s access to it. Delete its projects first. Its videos stay in the team&apos;s Google Drive folder.
+        This removes {teamName} and everyone&apos;s access to it. Delete its projects first.
       </p>
       <div>
         <Button
@@ -43,7 +43,7 @@ export function DeleteTeam({ teamName, deleteTeam }: { teamName: string; deleteT
       </div>
       <ConfirmDialog
         title={`Delete ${teamName}?`}
-        question="Everyone loses access to the team, and pending invites stop working. You can't undo this. Delete the team's projects first. Its videos stay in the Google Drive folder."
+        question="Pending invites stop working. You can't undo this. If this team stores videos in Google Drive, they stay in its folder there."
         confirmLabel="Delete team"
         open={asking}
         pending={pending}

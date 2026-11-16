@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/access";
 import { roleChoice } from "@/app/(dashboard)/admin/roles";
 import { InviteCard, type InviteCardState } from "@/components/invite/invite-card";
+import { loginErrorMessage } from "@/lib/login-error-message";
+import { openSignUp } from "@/lib/signup";
 import { findInvite } from "@/lib/spaces/invites";
 import { findMySpace } from "@/lib/spaces/service";
 import { acceptInviteAction, declineInviteAction } from "./actions";
@@ -11,8 +14,12 @@ const UNKNOWN = "This invite link doesn't work.";
 const EXPIRED = "This invite has expired. Ask a team admin for a new one.";
 const USED = "This invite has already been used or cancelled.";
 
-export default async function InvitePage({ params }: PageProps<"/invite/[id]">) {
+// A link with a private id on it: not for search engines.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
+
+export default async function InvitePage({ params, searchParams }: PageProps<"/invite/[id]">) {
   const { id } = await params;
+  const { error } = await searchParams;
   const db = getDb();
   const [invite, me] = await Promise.all([findInvite(db, id), getCurrentUser()]);
 
@@ -34,5 +41,5 @@ export default async function InvitePage({ params }: PageProps<"/invite/[id]">) 
     else state = { kind: "wrong-account", ...offer, signedInEmail: me.email };
   }
 
-  return <InviteCard state={state} accept={acceptInviteAction} decline={declineInviteAction} />;
+  return <InviteCard state={state} notice={loginErrorMessage(Array.isArray(error) ? error[0] : error, openSignUp())} accept={acceptInviteAction} decline={declineInviteAction} />;
 }

@@ -48,7 +48,7 @@ const MESSAGES = {
   tooOld: "For your safety, sign in again before adding a passkey.",
   passkeySignIn: "Passkey sign-in didn't finish. Try again, or sign in with Google.",
   googleSignIn: "Google sign-in didn't start. Try again.",
-  googleNotAllowed: "That Google account isn't on the Seattle Solvers allowlist. Sign in again with the one you use for EasyEdit.",
+  googleNotAllowed: "That Google account doesn't have access to EasyEdit. If you were invited, sign in with the Google account the invite was sent to.",
   googleDidNotFinish: "Google sign-in didn't finish. Try again.",
   rename: "The passkey wasn't renamed. Try again.",
   remove: "The passkey wasn't removed. Try again.",

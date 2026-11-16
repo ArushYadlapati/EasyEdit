@@ -135,7 +135,7 @@ export function MembersTable({ teamName, members, me, viewerRole, managedElsewhe
           </tbody>
         </table>
       </div>
-      {canManage && <PendingInvites invites={pendingInvites} cancel={actions.cancelInvite} />}
+      {canManage && <PendingInvites invites={pendingInvites} cancel={actions.cancelInvite} renew={actions.invite} />}
       {canManage && <DeleteTeam teamName={teamName} deleteTeam={actions.deleteTeam} />}
     </section>
   );

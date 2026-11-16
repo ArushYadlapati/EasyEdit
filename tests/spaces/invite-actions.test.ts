@@ -60,10 +60,10 @@ describe("invite actions", () => {
     expect(redirect).not.toHaveBeenCalled();
   });
 
-  it("decline redirects to /dashboard; a second try returns the used message", async () => {
+  it("decline redirects to /; a second try returns the used message", async () => {
     const { db, inviteId } = await setup();
     const { actions } = actionsAs(db, as("ada", "ada@example.com"));
-    await expect(actions.decline(inviteId)).rejects.toThrow(new Redirected("/dashboard"));
+    await expect(actions.decline(inviteId)).rejects.toThrow(new Redirected("/"));
     expect(await actions.decline(inviteId)).toEqual({ error: "This invite has already been used or cancelled." });
   });
 });
