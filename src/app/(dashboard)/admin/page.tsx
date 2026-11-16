@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { listEntries } from "@/lib/allowlist/service";
 import { connectedEmails } from "@/lib/connector/grants";
+import { openSignUp } from "@/lib/signup";
 import { AddMemberButton } from "./add-member-dialog";
 import { MEMBERS_HEADING_ID } from "./ids";
 import { MembersTable, type Member } from "./members-table";
@@ -38,7 +39,7 @@ export default async function AdminPage(): Promise<ReactNode> {
           </div>
           <AddMemberButton />
         </div>
-        <MembersTable members={members} me={me.email} />
+        <MembersTable members={members} me={me.email} signUpOpen={openSignUp()} />
       </div>
     </main>
   );

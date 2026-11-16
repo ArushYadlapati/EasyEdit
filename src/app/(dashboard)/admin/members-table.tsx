@@ -13,7 +13,7 @@ const CELL = "px-3 py-2.5 align-middle";
 
 // Everyone who can sign in: their role, whether Claude is connected for them, when they were added, and a menu
 // with the rest. The signed-in admin's own row has no Remove, so nobody locks themselves out from here.
-export function MembersTable({ members, me }: { members: Member[]; me: string }): ReactNode {
+export function MembersTable({ members, me, signUpOpen = false }: { members: Member[]; me: string; signUpOpen?: boolean }): ReactNode {
   return (
     <div className="overflow-x-auto rounded-md border border-ed-line bg-ed-panel">
       <table className="w-full text-left text-[13px]">
@@ -67,7 +67,7 @@ export function MembersTable({ members, me }: { members: Member[]; me: string })
               </td>
               <td className={CELL}>
                 <div className="flex justify-end">
-                  <MemberActions email={member.email} claudeConnected={member.claudeConnected} isSelf={member.email === me} />
+                  <MemberActions email={member.email} claudeConnected={member.claudeConnected} isSelf={member.email === me} signUpOpen={signUpOpen} />
                 </div>
               </td>
             </tr>

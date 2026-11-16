@@ -81,8 +81,9 @@ type Ask = "disconnect" | "remove";
 
 // What each dialog says. Kept true to what the actions do: removing deletes the membership, signs the person out
 // everywhere and ends their Claude connection, and sign-in checks membership, so they stay out until added again.
-// Disconnecting ends only the Claude connection; the website sign-in stays.
-function copy(ask: Ask, email: string, claudeConnected: boolean) {
+// Disconnecting ends only the Claude connection; the website sign-in stays. With sign-up open, the person can still
+// sign in to their own spaces, so the dialog says that instead.
+function copy(ask: Ask, email: string, claudeConnected: boolean, signUpOpen: boolean) {
   if (ask === "disconnect") {
     return {
       title: "Disconnect Claude",
@@ -92,7 +93,11 @@ function copy(ask: Ask, email: string, claudeConnected: boolean) {
   }
   return {
     title: "Remove member",
-    question: `Remove ${email}? They're signed out of EasyEdit right away and can't sign back in unless you add them again.${
+    question: `Remove ${email}? ${
+      signUpOpen
+        ? "They're removed from Seattle Solvers and signed out. Sign-up is open, so they can still sign in to their own spaces."
+        : "They're signed out of EasyEdit right away and can't sign back in unless you add them again."
+    }${
       claudeConnected ? " Their Claude connection ends too." : ""
     }`,
     confirmLabel: "Remove",
@@ -106,10 +111,12 @@ export function MemberActions({
   email,
   claudeConnected,
   isSelf,
+  signUpOpen = false,
 }: {
   email: string;
   claudeConnected: boolean;
   isSelf: boolean;
+  signUpOpen?: boolean;
 }): ReactNode {
   const [asking, setAsking] = useState<Ask | null>(null);
   // Tagged with its dialog, so a refusal that comes back after the person moved on is not shown in the other one.
@@ -161,7 +168,7 @@ export function MemberActions({
     <>
       <Menu label={`Actions for ${email}`} icon={<Ellipsis />} items={items} onSelect={choose} />
       <ConfirmDialog
-        {...copy(shown, email, claudeConnected)}
+        {...copy(shown, email, claudeConnected, signUpOpen)}
         open={asking !== null}
         pending={actions[shown].pending}
         error={failed !== null && failed.ask === asking ? failed.message : null}

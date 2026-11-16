@@ -95,6 +95,18 @@ describe("who is calling", () => {
     expect(await resolveConnectorCaller(app.db, { sub: c.userId })).toEqual({ ok: false, reason: "not-allowlisted" });
   });
 
+  it("with sign-up open, a refused account is told to sign in with Google and connect again", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    try {
+      const refused = refusalResponse("not-allowlisted");
+      expect(refused.status).toBe(403);
+      expect(refused.headers.get("www-authenticate")).toBeNull();
+      expect(await refused.json()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "This account doesn't have access to EasyEdit. Sign in to EasyEdit with Google, then connect again." } });
+    } finally {
+      vi.stubEnv("OPEN_SIGNUP", "");
+    }
+  });
+
   it("a removed member gets no sign-in challenge; a disconnected one does", async () => {
     const removed = refusalResponse("not-allowlisted");
     expect(removed.status).toBe(403);

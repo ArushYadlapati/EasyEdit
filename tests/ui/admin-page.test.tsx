@@ -249,6 +249,16 @@ describe("removing a member", () => {
     expect(removeMemberAction).not.toHaveBeenCalled();
   });
 
+  it("says what removal does when sign-up is closed, and when it is open", async () => {
+    const { unmount } = render(<MemberActions email="vic@gmail.com" claudeConnected={false} isSelf={false} />);
+    await pick("vic@gmail.com", "Remove member");
+    expect(question(dialog("Remove member"))).toBe("Remove vic@gmail.com? They're signed out of EasyEdit right away and can't sign back in unless you add them again.");
+    unmount();
+    render(<MemberActions email="vic@gmail.com" claudeConnected={false} isSelf={false} signUpOpen />);
+    await pick("vic@gmail.com", "Remove member");
+    expect(question(dialog("Remove member"))).toBe("Remove vic@gmail.com? They're removed from Seattle Solvers and signed out. Sign-up is open, so they can still sign in to their own spaces.");
+  });
+
   it("Remove sends the member's email and closes the dialog", async () => {
     render(<MemberActions email="ada@gmail.com" claudeConnected isSelf={false} />);
     await pick("ada@gmail.com", "Remove member");

@@ -45,10 +45,10 @@ EasyEdit is an AI-first video editor built for teams. Everyone on a team works i
 
 ## Roadmap
 
-EasyEdit is moving from one team's invite-only editor to an editor anyone can sign up for, in Canva-style personal and team spaces. The work ships in stages, in this order:
+Sign-up is open to anyone with a Google account. Everyone has a Personal space, with their own Google Drive storage, alongside the teams they join, and AI agents ask which space a new project goes in when you have more than one. EasyEdit moved from one team's invite-only editor to this in stages, in this order:
 
-- [x] **Spaces.** Everyone gets a personal space alongside their teams, with a switcher between them. Every project, folder and upload belongs to one space, and only that space's members can see it. Pages move under `/s/<space>/`, and old links redirect. AI agents work across all of a person's spaces, with results labelled by space. Existing Seattle Solvers projects move into a Seattle Solvers team unchanged. Personal spaces are switched off for now and marked "coming soon": until they are offered, EasyEdit is for teams.
-- [ ] **Storage per space, and open sign-up.** Each space stores its media in a Google Drive account its owner connects. EasyEdit only asks for access to the files it creates itself, never your whole Drive. Each team gets its own read-only key, so one team can never read another's media. Once every new space can have storage, anyone with a Google account can sign up.
+- [x] **Spaces.** Everyone gets a personal space alongside their teams, with a switcher between them. Every project, folder and upload belongs to one space, and only that space's members can see it. Pages move under `/s/<space>/`, and old links redirect. AI agents work across all of a person's spaces, with results labelled by space. Existing Seattle Solvers projects move into a Seattle Solvers team unchanged.
+- [x] **Storage per space, and open sign-up.** Each space stores its media in a Google Drive account its owner connects. EasyEdit only asks for access to the files it creates itself, never your whole Drive. Each team gets its own read-only key, so one team can never read another's media. Once every new space can have storage, anyone with a Google account can sign up.
 - [x] **Team invites.** Team admins invite people by email address with a link to send. The person signs in with that Google account and joins or declines; admins see, renew and cancel pending invites, and an invite lets someone in while sign-up is closed. An empty team can be deleted. Invites sent by email come later.
 - [ ] **A new sign-up flow.** Choose where your videos live and set up AI agents as you join. People invited to a team go straight into it.
 - [ ] **Moving projects between spaces.** A project's media is copied to the new space, so a project never ends up half-moved.
@@ -110,7 +110,7 @@ Also planned: thumbnails and waveforms on the timeline, captions, text animation
     | `GOOGLE_CLIENT_SECRET` | From your OAuth client |
     | `GOOGLE_SERVICE_ACCOUNT_KEY`, `DRIVE_FOLDER_ID` | Optional. Leave them empty to run without uploads. |
     | `STORAGE_TOKEN_KEY`, `GOOGLE_CLOUD_PROJECT` | Optional. For storage per space: see [Storage per space](docs/setup.md#storage-per-space). |
-    | `OPEN_SIGNUP` | Optional. Leave it unset, so only the allowlist can sign in. |
+    | `OPEN_SIGNUP` | Optional. Set to `true` so anyone with a Google account can sign up. Leave it unset and only the allowlist and team invites can sign in. |
     | `TUTORIAL_VIDEO_URL` | Optional. A link to the intro video: see [Tutorial video](docs/setup.md#tutorial-video). |
 
     Never commit `.env.local`. It holds secrets.

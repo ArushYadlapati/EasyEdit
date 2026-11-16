@@ -41,7 +41,7 @@ describe("choosing an account the person already connected", () => {
     try {
       const { actions } = actionsFor(w);
       expect(await actions.choose(team, form(ada.id))).toEqual({
-        error: "This team's storage couldn't be set up because EasyEdit has reached a Google limit. Try again later, or contact EasyEdit.",
+        error: "This team's storage couldn't be set up because EasyEdit has reached a Google limit. Try again later, or contact help@arush.dev.",
       });
       expect(await w.db.select().from(spaceStorage).where(eq(spaceStorage.spaceId, team))).toEqual([]);
     } finally {
@@ -112,6 +112,8 @@ describe("choosing an account the person already connected", () => {
       [new ServiceError("CONFLICT", 409, "x"), "Storage isn't set up on this server yet."],
       [new DriveError("files.create", 503, "backendError"), "That didn't work. Nothing was changed. Try again."],
       [new ConnectionBrokenError("revoked"), "Google ended EasyEdit's access to that account. Choose it again to reconnect it."],
+      [new ConnectionBrokenError("expired"), "Google ended EasyEdit's access to that account. Choose it again to reconnect it."],
+      [new ConnectionBrokenError("unknown"), "That account needs reconnecting. Choose it again to reconnect it."], // a key that changed
     ];
     vi.spyOn(console, "error").mockImplementation(() => {});
     try {

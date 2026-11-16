@@ -57,8 +57,8 @@ export async function holdsUploads(db: DB, spaceId: string): Promise<boolean> {
 
 // Setting up again with the same connection (a reconnect after it broke) keeps the storage as it is. A space whose
 // storage holds uploads keeps it: moving media between accounts comes later. A shared folder (Seattle Solvers' shared
-// drive) is never replaced, uploads or not. Everything that can be refused is refused before any call to Google, so a
-// refusal leaves nothing behind.
+// drive) is never replaced, uploads or not. Refusals are made before any call to Google, except READER_LIMIT: Google
+// refuses the team's reader after the top folder is made, so that refusal leaves an empty folder in the person's Drive.
 export function makeSetUpStorage(deps: SetUpDeps): SetUpStorage {
   return async (db, { spaceId, connectionId, byUserId }) => {
     const [space] = await db.select({ name: organization.name, kind: organization.kind }).from(organization).where(eq(organization.id, spaceId));

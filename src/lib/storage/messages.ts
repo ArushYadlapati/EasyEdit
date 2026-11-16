@@ -36,7 +36,9 @@ export const STORAGE_MESSAGES = {
   // A choice of account that didn't go through.
   failed: "That didn't work. Nothing was changed. Try again.",
   // Google's own cap on service accounts for EasyEdit's project, hit while making a team's reader.
-  readerLimit: "This team's storage couldn't be set up because EasyEdit has reached a Google limit. Try again later, or contact EasyEdit.",
+  readerLimit: "This team's storage couldn't be set up because EasyEdit has reached a Google limit. Try again later, or contact help@arush.dev.",
+  // A connection broken because the server's key changed, not because Google ended it.
+  connectionNeedsReconnect: "That account needs reconnecting. Choose it again to reconnect it.",
   connectionEnded: "Google ended EasyEdit's access to that account. Choose it again to reconnect it.",
 };
 

@@ -24,7 +24,8 @@ function refusalOf(error: unknown): string | null {
     if (error.code === "CONFLICT") return STORAGE_MESSAGES.serverNotSetUp;
     return STORAGE_MESSAGES.failed; // a space or connection that isn't theirs reads like any failure
   }
-  if (error instanceof ConnectionBrokenError) return STORAGE_MESSAGES.connectionEnded;
+  // "unknown" is how a connection broken by the server's key reads (connections.ts): Google did not end it.
+  if (error instanceof ConnectionBrokenError) return error.reason === "unknown" ? STORAGE_MESSAGES.connectionNeedsReconnect : STORAGE_MESSAGES.connectionEnded;
   if (error instanceof DriveError) return STORAGE_MESSAGES.failed;
   return null;
 }

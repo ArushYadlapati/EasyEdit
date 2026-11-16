@@ -4,6 +4,7 @@ import { oauthClient, oauthConsent, user } from "@/db/schema";
 import { resolveCurrentUser, type CurrentUser } from "@/lib/access-rules";
 import { guessAgentKind, type AgentKind } from "@/lib/connector/agents";
 import { appBaseUrl } from "@/lib/connector/config";
+import { openSignUp } from "@/lib/signup";
 
 export type ConnectorCaller =
   | { ok: true; user: CurrentUser; agent: AgentKind }
@@ -39,12 +40,14 @@ export async function resolveConnectorCaller(db: DB, claims: { sub?: unknown; az
 
 const REFUSALS = {
   "not-allowlisted": { status: 403, message: "This account doesn't have access to EasyEdit. Ask a team admin to invite you, or an admin to add you." },
+  // With sign-up open, anyone can have an account: this is a deleted account or a token that no longer fits one.
+  "not-allowlisted-open": { status: 403, message: "This account doesn't have access to EasyEdit. Sign in to EasyEdit with Google, then connect again." },
   revoked: { status: 401, message: "This AI agent was disconnected from your EasyEdit account. Connect it again." },
 } as const;
 
 // A removed member gets no sign-in challenge, since signing in again would not help; a disconnected one is asked to reconnect.
 export function refusalResponse(reason: "not-allowlisted" | "revoked"): Response {
-  const { status, message } = REFUSALS[reason];
+  const { status, message } = REFUSALS[reason === "not-allowlisted" && openSignUp() ? "not-allowlisted-open" : reason];
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (reason === "revoked") {
     headers["www-authenticate"] =
