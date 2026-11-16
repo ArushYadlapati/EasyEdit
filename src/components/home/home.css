@@ -168,10 +168,16 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  animation: h-out 300ms ease 1.6s both;
+  animation: h-out 300ms ease var(--busy, 1.6s) both;
 }
 .h-edWorking + .h-edSaved {
-  animation: h-in 300ms ease 1.7s both;
+  animation: h-in 300ms ease calc(var(--busy, 1.6s) + 100ms) both;
+}
+.h-edAvatarMika {
+  margin-left: -10px;
+  background: var(--ed-peer-2);
+  box-shadow: 0 0 0 2px var(--ed-panel);
+  animation-delay: 2s;
 }
 .h-edDot {
   width: 7px;
@@ -295,19 +301,83 @@
   white-space: nowrap;
 }
 .h-edTitleNew {
-  left: 64%;
-  top: 24%;
+  left: 50%;
+  top: 60%;
   outline: 2px solid var(--ed-accent);
-  animation: h-pop 500ms var(--h-ease) 1.2s both;
+  animation:
+    h-popCentered 500ms var(--h-ease) 1s both,
+    h-toSky 900ms var(--h-ease) 2.7s forwards;
+}
+@keyframes h-toSky {
+  to {
+    left: 24%;
+    top: 15%;
+  }
 }
 /* A teammate's selection on the title: their colour, their name tag, the handles, their pointer. */
 .h-edPeerTitle {
-  left: 64%;
-  top: 24%;
+  left: 26%;
+  top: 18%;
   font-size: clamp(18px, 3.6cqw, 44px);
   outline: 2px solid var(--ed-peer-1);
   outline-offset: 2px;
-  animation: h-popCentered 450ms var(--h-ease) 250ms both;
+  animation: h-popCentered 450ms var(--h-ease) 400ms both;
+}
+/* Sam lets go of the title when Mika takes the clip. */
+.h-edPeerTitle > .h-edPeerTag,
+.h-edPeerTitle > .h-edHandle {
+  animation: h-out 250ms ease 2.2s both;
+}
+.h-edPeerTitle {
+  transition: outline-color 250ms;
+}
+.h-edFrame[data-scene="team"] .h-edPeerTitle {
+  animation:
+    h-popCentered 450ms var(--h-ease) 400ms both,
+    h-letGo 250ms ease 2.2s forwards;
+}
+@keyframes h-letGo {
+  to {
+    outline-color: transparent;
+  }
+}
+.h-edMika {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  outline: 2px solid var(--ed-peer-2);
+  outline-offset: -2px;
+  --peer: var(--ed-peer-2);
+  animation:
+    h-in 250ms ease 2.3s both,
+    h-shrink 1.1s var(--h-ease) 2.8s forwards;
+}
+.h-edMika .h-edPeerTag {
+  left: 0;
+  bottom: auto;
+  top: 0;
+  border-radius: 0 0 3px 0;
+  background: var(--ed-peer-2);
+}
+.h-edMika .h-edHandle {
+  border-color: var(--ed-peer-2);
+}
+.h-edMika .h-edCursor {
+  right: -10px;
+  bottom: -14px;
+  fill: var(--ed-peer-2);
+  animation: h-drift 900ms var(--h-ease) 2.3s both;
+}
+.h-edFrame[data-scene="team"] .h-edVideo[data-on] {
+  animation: h-shrink 1.1s var(--h-ease) 2.8s forwards;
+}
+@keyframes h-shrink {
+  to {
+    transform: translate(19%, 17%) scale(0.62);
+  }
+}
+.h-edOverlay {
+  isolation: isolate;
 }
 .h-edPeerTag {
   position: absolute;
@@ -426,7 +496,19 @@
   border-bottom: 1px solid var(--ed-line);
 }
 .h-edFresh {
-  animation: h-arrive 500ms var(--h-ease) 1.3s both;
+  animation: h-grow 500ms var(--h-ease) both;
+  overflow: hidden;
+}
+@keyframes h-grow {
+  from {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+  }
+  to {
+    max-height: 90px;
+  }
 }
 .h-edWhen {
   display: flex;
@@ -522,6 +604,14 @@
   background: var(--ed-clip-audio);
   padding-left: 10px;
 }
+.h-edClip[data-mika] {
+  animation: h-mikaClip 250ms ease 2.3s both;
+}
+@keyframes h-mikaClip {
+  to {
+    box-shadow: inset 0 0 0 2px var(--ed-peer-2);
+  }
+}
 .h-edClip[data-peer] {
   box-shadow: inset 0 0 0 2px var(--ed-peer-1);
   padding-right: 28px;
@@ -561,9 +651,7 @@
     transform: scale(0.96);
   }
 }
-.h-edTitle.h-edTitleNew {
-  animation-name: h-popCentered;
-}
+
 @keyframes h-popCentered {
   from {
     opacity: 0;
@@ -1368,14 +1456,105 @@
 .h-line {
   display: block;
 }
-.h-driveShots {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+/* The Drive picture: the dashboard window on its Storage settings, the editor dimmed behind it. */
+.h-driveStage {
+  position: relative;
+  height: 560px;
 }
-.h-driveShots > .h-shot {
-  border-radius: 20px;
-  box-shadow: 0 0 0 1px var(--ed-line-strong); /* taste-skill-ignore: the app panel's own edge */
+.h-driveBack {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 58%;
+  height: 360px;
+  border-radius: 14px;
+  overflow: hidden;
+  opacity: 0.45;
+  box-shadow: 0 0 0 1px var(--ed-line-strong); /* taste-skill-ignore: the window's own edge */
+}
+.h-driveWin {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 76%;
+  height: 470px;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px var(--ed-line-strong),
+    0 40px 100px rgb(0 0 0 / 0.8); /* taste-skill-ignore: a window floating over another */
+  --logo-accent: var(--ed-accent);
+}
+.h-driveBody {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.h-driveSide {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding: 12px 10px;
+  background: var(--ed-panel);
+  border-right: 1px solid var(--ed-line);
+  color: var(--ed-text);
+}
+.h-driveSide > p {
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+.h-driveSide > p[data-on] {
+  background: var(--ed-accent-weak);
+  color: var(--ed-accent);
+}
+.h-driveHead {
+  margin-top: 10px;
+  color: var(--ed-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.h-driveMain {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 18px 28px;
+  font-size: 13px;
+}
+.h-driveTabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--ed-line);
+  padding-bottom: 8px;
+  color: var(--ed-muted);
+}
+.h-driveTabs > span {
+  padding: 5px 10px;
+  border-radius: 6px;
+}
+.h-driveTabs > [data-on] {
+  background: var(--ed-accent-weak);
+  color: var(--ed-accent);
+}
+.h-driveCard {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--ed-raised);
+}
+.h-driveButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.h-driveButtons > span {
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--ed-hover);
 }
 
 /* ---------- Make your first project ---------- */
@@ -1501,7 +1680,7 @@
   .h-points li,
   .h-teamCard,
   .h-statement,
-  .h-driveShots > *,
+  .h-driveStage,
   .h-np {
     animation: h-rise linear both;
     animation-timeline: view();
@@ -1575,7 +1754,26 @@
   .h-shotGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .h-driveShots,
+  .h-driveStage {
+    height: auto;
+  }
+  .h-driveBack {
+    display: none;
+  }
+  .h-driveWin {
+    position: relative;
+    width: 100%;
+    height: auto;
+  }
+  .h-driveBody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .h-driveSide {
+    display: none;
+  }
+  .h-driveMain {
+    padding: 16px;
+  }
   .h-sectionHead,
   .h-demo,
   .h-points,

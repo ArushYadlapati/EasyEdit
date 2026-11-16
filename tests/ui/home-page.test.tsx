@@ -49,7 +49,7 @@ describe("home page", () => {
     expect(phrase()).toBe("for AI agents.");
     for (const next of ["for teams.", "for creators.", "in your browser.", "for AI agents."]) {
       act(() => {
-        vi.advanceTimersByTime(4000);
+        vi.advanceTimersByTime(6000); // each scene lasts 4 to 5.5 seconds
       });
       expect(phrase()).toBe(next);
     }

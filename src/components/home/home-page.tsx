@@ -4,7 +4,7 @@ import { LogoMark } from "@/components/ui/logo";
 import { AgentDemo } from "./agent-demo";
 import { HeroScene } from "./hero-scene";
 import { NewProjectForm } from "./new-project-form";
-import { PresenceShot, ProjectsShot, StorageConnectedShot, StorageSetupShot } from "./team-shots";
+import { DriveShot, PresenceShot, ProjectsShot } from "./team-shots";
 import "./home.css";
 
 // The public home page, for anyone who lands on easyedit.arush.dev signed out. Always dark, in the app's own type.
@@ -155,10 +155,7 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
             makes in that Drive. They stay yours, and EasyEdit can&apos;t see your other files.
           </p>
         </div>
-        <div className="h-driveShots">
-          <StorageSetupShot />
-          <StorageConnectedShot />
-        </div>
+        <DriveShot />
       </section>
 
       <section id="start" className="h-section h-start" aria-labelledby="start-title">

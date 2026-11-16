@@ -11,13 +11,12 @@ import { LogoMark } from "@/components/ui/logo";
 // scene's overlay is keyed by the scene, so the only timer is the one that changes scenes.
 // The footage is from Pexels (free to use, no credit required).
 
-const SCENE_MS = 4000;
-
-type Scene = { key: string; phrase: string; line: string; video: string; poster: string };
+type Scene = { key: string; ms: number; phrase: string; line: string; video: string; poster: string };
 
 const SCENES: Scene[] = [
   {
     key: "ai",
+    ms: 5000,
     phrase: "for AI agents.",
     line: "Ask Claude, ChatGPT or Cursor in plain words, and watch the edit land in your project.",
     video: "/home/scene-friends.mp4",
@@ -25,6 +24,7 @@ const SCENES: Scene[] = [
   },
   {
     key: "team",
+    ms: 5500,
     phrase: "for teams.",
     line: "Everyone edits the same project at once, and sees who's working on what.",
     video: "/home/scene-city.mp4",
@@ -32,6 +32,7 @@ const SCENES: Scene[] = [
   },
   {
     key: "creators",
+    ms: 4000,
     phrase: "for creators.",
     line: "Vertical, square or wide: make it once and shape it for Reels, Shorts, TikTok or YouTube.",
     video: "/home/scene-mountain.mp4",
@@ -39,6 +40,7 @@ const SCENES: Scene[] = [
   },
   {
     key: "browser",
+    ms: 4000,
     phrase: "in your browser.",
     line: "Nothing to install. Your video renders to an MP4 right on your computer.",
     video: "/home/scene-wave.mp4",
@@ -55,11 +57,18 @@ const MEDIA = [
   { name: "surf.mp4", img: "/home/still-surf.jpg" },
 ];
 
-const ACTIVITY: Record<string, { who: string; what: string }> = {
-  ai: { who: "Claude (for you)", what: "Added text" },
-  team: { who: "Sam Okafor", what: "Changed text: font and size" },
-  creators: { who: "You", what: "Changed the format to Vertical 9:16" },
-  browser: { who: "You", what: "Trimmed a video clip" },
+// Each scene's new Activity lines (the app's wording, from summarizeOps), and when each arrives, in seconds.
+const ACTIVITY: Record<string, { who: string; what: string; at: number }[]> = {
+  ai: [
+    { who: "Claude (for you)", what: "Added text", at: 1.2 },
+    { who: "Claude (for you)", what: "Changed text: position", at: 3.4 },
+  ],
+  team: [
+    { who: "Sam Okafor", what: "Added text", at: 0.7 },
+    { who: "Mika Kato", what: "Changed a video clip: position and scale", at: 3.8 },
+  ],
+  creators: [{ who: "You", what: "Changed the format to Vertical 9:16", at: 0.6 }],
+  browser: [{ who: "You", what: "Trimmed a video clip", at: 0.3 }],
 };
 
 export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
@@ -79,7 +88,8 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
 
   useEffect(() => {
     if (paused) return;
-    const t = window.setTimeout(() => setActive((i) => (i + 1) % SCENES.length), still ? SCENE_MS * 2 : SCENE_MS);
+    const ms = SCENES[active].ms;
+    const t = window.setTimeout(() => setActive((i) => (i + 1) % SCENES.length), still ? ms * 2 : ms);
     return () => window.clearTimeout(t);
   }, [active, paused, still]);
 
@@ -96,7 +106,7 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
   }, [active, paused, still]);
 
   const scene = SCENES[active];
-  const activity = ACTIVITY[scene.key];
+  const fresh = [...ACTIVITY[scene.key]].reverse(); // newest first, as in the app
 
   return (
     <section className="h-hero" aria-labelledby="home-title" data-scene={scene.key}>
@@ -109,8 +119,13 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
           <span className="h-edMenu">View</span>
           <span className="h-edProject">Summer reel</span>
           <span className="h-edRight">
-            {scene.key === "team" && <span className="h-edAvatar">SO</span>}
-            <span key={scene.key} className="h-edStatus">
+            {scene.key === "team" && (
+              <>
+                <span className="h-edAvatar">SO</span>
+                <span className="h-edAvatar h-edAvatarMika">MK</span>
+              </>
+            )}
+            <span key={scene.key} className="h-edStatus" style={{ "--busy": scene.key === "team" ? "4.2s" : "3.6s" } as React.CSSProperties}>
               {scene.key === "ai" && (
                 <span className="h-edWorking">
                   <span className="h-edDot" /> Claude is editing…
@@ -146,7 +161,7 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
           </div>
 
           <div className="h-edStage">
-            <div className="h-edFrame" data-vertical={scene.key === "creators" || undefined}>
+            <div className="h-edFrame" data-scene={scene.key} data-vertical={scene.key === "creators" || undefined}>
               {SCENES.map((s, i) => (
                 <video
                   key={s.key}
@@ -164,20 +179,33 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                 />
               ))}
               <div key={scene.key} className="h-edOverlay">
-                {scene.key === "ai" && <span className="h-edTitle h-edTitleNew">Summer nights</span>}
+                {scene.key === "ai" && (
+                  // Claude adds the title over the group, then moves it up into the dark sky where it reads.
+                  <span className="h-edTitle h-edTitleNew">Summer nights</span>
+                )}
                 {scene.key === "team" && (
-                  // Sam has the title selected: their colour, their name, the handles, and their pointer on it.
-                  <span className="h-edTitle h-edPeerTitle">
-                    Shibuya, 2 a.m.
-                    <span className="h-edPeerTag">Sam</span>
-                    <span className="h-edHandle" data-at="tl" />
-                    <span className="h-edHandle" data-at="tr" />
-                    <span className="h-edHandle" data-at="bl" />
-                    <span className="h-edHandle" data-at="br" />
-                    <svg className="h-edCursor" viewBox="0 0 16 20" aria-hidden="true">
-                      <path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" />
-                    </svg>
-                  </span>
+                  <>
+                    {/* Sam adds a title; then Mika selects the whole clip, shrinks it and moves it down and right,
+                        so the white title sits on the black of the frame. */}
+                    <span className="h-edTitle h-edPeerTitle">
+                      Shibuya, 2 a.m.
+                      <span className="h-edPeerTag">Sam</span>
+                      <span className="h-edHandle" data-at="tl" />
+                      <span className="h-edHandle" data-at="tr" />
+                      <span className="h-edHandle" data-at="bl" />
+                      <span className="h-edHandle" data-at="br" />
+                    </span>
+                    <span className="h-edMika">
+                      <span className="h-edPeerTag">Mika</span>
+                      <span className="h-edHandle" data-at="tl" />
+                      <span className="h-edHandle" data-at="tr" />
+                      <span className="h-edHandle" data-at="bl" />
+                      <span className="h-edHandle" data-at="br" />
+                      <svg className="h-edCursor" viewBox="0 0 16 20" aria-hidden="true">
+                        <path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" />
+                      </svg>
+                    </span>
+                  </>
                 )}
                 {scene.key === "creators" && <span className="h-edTitle">Into the hills</span>}
               </div>
@@ -215,15 +243,17 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                 <p>0:24:00</p>
               </div>
             ) : (
-              <ol className="h-edActivity">
-                <li key={scene.key} className="h-edFresh">
-                  <span>
-                    {activity.who} · {activity.what}
-                  </span>
-                  <span className="h-edWhen">
-                    just now <span className="h-edUndo">Undo this change</span>
-                  </span>
-                </li>
+              <ol key={scene.key} className="h-edActivity">
+                {fresh.map((row) => (
+                  <li key={row.what} className="h-edFresh" style={{ animationDelay: `${row.at}s` }}>
+                    <span>
+                      {row.who} · {row.what}
+                    </span>
+                    <span className="h-edWhen">
+                      just now <span className="h-edUndo">Undo this change</span>
+                    </span>
+                  </li>
+                ))}
                 <li>
                   <span>You · Added 4 clips</span>
                   <span className="h-edWhen">2 minutes ago</span>
@@ -266,6 +296,7 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                   key={s.key}
                   className="h-edClip"
                   style={{ left: `${i * 25}%`, width: "24.6%" }}
+                  data-mika={(s.key === "team" && scene.key === "team") || undefined}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element -- a clip thumbnail in a drawn interface */}
                   <img src={s.poster} alt="" width={64} height={36} />
@@ -282,7 +313,11 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
               </span>
             </span>
           </div>
-          <span key={scene.key} className="h-edPlayhead" style={{ "--from": active * 25 + 1, "--to": active * 25 + 24 } as React.CSSProperties} />
+          <span
+            key={scene.key}
+            className="h-edPlayhead"
+            style={{ "--from": active * 25 + 1, "--to": active * 25 + 24, animationDuration: `${scene.ms}ms` } as React.CSSProperties}
+          />
         </div>
       </div>
       <div className="h-heroScrim" />

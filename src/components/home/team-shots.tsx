@@ -1,3 +1,5 @@
+import { LogoMark } from "@/components/ui/logo";
+
 // Two small drawn pieces of the app for the team cards, in its own colours and wording, with Pexels stills
 // (free to use) as the footage: the editor with teammates' selections, and a team space's All projects page.
 
@@ -64,32 +66,68 @@ export function ProjectsShot() {
   );
 }
 
-// Storage, as the app shows it (wording from lib/storage/messages.ts): the setup card a new team sees, and the
-// storage settings once a Google account is connected.
-export function StorageSetupShot() {
+// Storage, as the app shows it: the dashboard window of a team, open on its Storage settings (wording from
+// lib/storage/messages.ts and the settings tabs), with the editor dimmed behind it, so it reads as the app itself.
+export function DriveShot() {
   return (
-    <div className="h-shot h-shotPad" data-ui aria-hidden="true">
-      <p className="h-shotTitle">Set up this team&apos;s storage</p>
-      <p className="h-shotMuted">Choose where this team&apos;s videos are stored.</p>
-      <p className="h-shotMuted">EasyEdit keeps the videos in a folder of its own there, and can&apos;t see your other files.</p>
-      <span className="h-shotButton">Choose Google account</span>
-    </div>
-  );
-}
+    <div className="h-driveStage" aria-hidden="true">
+      <div className="h-shot h-driveBack" data-ui>
+        <div className="h-shotBar">
+          <span className="h-shotName">Summer reel</span>
+          <span className="h-shotMuted" style={{ marginLeft: "auto" }}>
+            Saved
+          </span>
+          <span className="h-shotNew">Export</span>
+        </div>
+        <div className="h-shotPreview">
+          {/* eslint-disable-next-line @next/next/no-img-element -- footage inside a drawn interface */}
+          <img src="/home/still-dog.jpg" alt="" width={960} height={540} />
+        </div>
+      </div>
 
-export function StorageConnectedShot() {
-  return (
-    <div className="h-shot h-shotPad" data-ui aria-hidden="true">
-      <p className="h-shotTitle">Storage</p>
-      <p>Stored in maya.lin@gmail.com&apos;s Google Drive</p>
-      <p className="h-shotMuted">Folder &quot;EasyEdit – Summer crew&quot;</p>
-      <p className="h-shotMuted">2.4 GB of 15 GB used</p>
-      <span className="h-shotMeter">
-        <span style={{ width: "16%" }} />
-      </span>
-      <div className="h-shotFiles">
-        <span>Originals</span>
-        <span>Previews</span>
+      <div className="h-shot h-driveWin" data-ui>
+        <div className="h-shotBar">
+          <LogoMark size={16} />
+          <span className="h-shotName">EasyEdit</span>
+          <span className="h-shotMuted" style={{ marginLeft: "auto" }}>
+            Maya Lin
+          </span>
+        </div>
+        <div className="h-driveBody">
+          <nav className="h-driveSide">
+            <p className="h-driveHead">My Spaces</p>
+            <p data-on>Summer crew</p>
+            <p>Personal</p>
+            <p className="h-driveHead">Projects</p>
+            <p>Recent</p>
+            <p>All projects</p>
+            <p className="h-driveHead">This space</p>
+            <p>Members</p>
+            <p data-on>Storage</p>
+          </nav>
+          <div className="h-driveMain">
+            <p className="h-shotMuted">Back to projects</p>
+            <p className="h-shotTitle">Summer crew</p>
+            <div className="h-driveTabs">
+              <span>Members</span>
+              <span data-on>Storage</span>
+              <span>Brand kit</span>
+            </div>
+            <div className="h-driveCard">
+              <p>Stored in maya.lin@gmail.com&apos;s Google Drive</p>
+              <p className="h-shotMuted">Folder &quot;EasyEdit – Summer crew&quot;</p>
+              <p className="h-shotMuted">2.4 GB of 15 GB used</p>
+              <span className="h-shotMeter">
+                <span style={{ width: "16%" }} />
+              </span>
+              <p className="h-shotMuted">EasyEdit keeps the videos in a folder of its own there, and can&apos;t see your other files.</p>
+              <div className="h-driveButtons">
+                <span>Reconnect</span>
+                <span>Use a different Google account</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
