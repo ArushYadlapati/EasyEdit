@@ -63,13 +63,41 @@ describe("invite actions", () => {
   it("accept sends an account that has not onboarded to the short welcome", async () => {
     const { db, team, inviteId } = await setup();
     const { actions } = actionsAs(db, as("ada", "ada@example.com"), false);
-    await expect(actions.accept(inviteId)).rejects.toThrow(new Redirected(`/welcome?team=${team.slug}`));
+    await expect(actions.accept(inviteId)).rejects.toThrow(new Redirected(`/welcome?team=${encodeURIComponent(team.slug)}`));
   });
 
   it("accept still joins when the onboarding read fails", async () => {
     const { db, team, inviteId } = await setup();
     const { actions } = actionsAs(db, as("ada", "ada@example.com"), "error");
     await expect(actions.accept(inviteId)).rejects.toThrow(new Redirected(`/s/${team.slug}`));
+  });
+
+  it("concurrent accepts on one instance each check their own person", async () => {
+    const { db, team, inviteId } = await setup();
+    const inv2 = await inviteToTeam(db, (await actorIn(db, testUser({ id: "u1" }), team.id)) as Actor, { email: "bob@example.com", role: "editor" });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const redirect = vi.fn((to: string): never => {
+      throw new Redirected(to);
+    });
+    let current = as("ada", "ada@example.com");
+    const actions = makeInviteActions({
+      db: () => db,
+      requireUser: async () => current,
+      revalidate: vi.fn(),
+      redirect,
+      hasOnboarded: async (_db, id) => {
+        if (id === "ada") await gate; // ada's read is slow, so bob's whole request lands in between
+        return id === "bob";
+      },
+    });
+    const first = actions.accept(inviteId).catch((e) => e);
+    await new Promise((r) => setTimeout(r, 50));
+    current = as("bob", "bob@example.com");
+    const second = await actions.accept(inv2.id).catch((e) => e);
+    release();
+    expect((await first).to).toBe(`/welcome?team=${encodeURIComponent(team.slug)}`);
+    expect(second.to).toBe(`/s/${team.slug}`);
   });
 
   it("accept by someone else returns the refusal and does not redirect", async () => {

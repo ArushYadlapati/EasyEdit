@@ -17,12 +17,10 @@ export type InviteActionDeps = {
 // The invite page's two buttons. The service checks the email, status and expiry in the statement that makes the
 // change; its refusals come back as the action's error.
 export function makeInviteActions(deps: InviteActionDeps) {
-  let signedIn: CurrentUser | null = null;
-  async function run<T>(call: (db: DB, who: CurrentUser) => Promise<T>): Promise<{ result: T } | { error: string }> {
+  async function run<T>(call: (db: DB, who: CurrentUser) => Promise<T>): Promise<{ result: T; who: CurrentUser } | { error: string }> {
     const who = await deps.requireUser();
-    signedIn = who;
     try {
-      return { result: await call(deps.db(), who) };
+      return { result: await call(deps.db(), who), who };
     } catch (error) {
       if (!(error instanceof ServiceError)) throw error;
       deps.revalidate();
@@ -37,7 +35,7 @@ export function makeInviteActions(deps: InviteActionDeps) {
       deps.revalidate();
       const slug = outcome.result.teamSlug;
       // A failed read must never block joining, so an error counts as onboarded.
-      const onboarded = await deps.hasOnboarded(deps.db(), signedIn!.id).catch(() => true);
+      const onboarded = await (async () => deps.hasOnboarded(deps.db(), outcome.who.id))().catch(() => true);
       return deps.redirect(onboarded ? spacePath(slug) : `/welcome?team=${encodeURIComponent(slug)}`);
     },
     async decline(inviteId: string): Promise<InviteActionResult> {
