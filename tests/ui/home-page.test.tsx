@@ -55,9 +55,9 @@ describe("home page", () => {
 });
 
 describe("privacy page", () => {
-  it("renders signed out with the draft line and the contact placeholder", () => {
+  it("renders signed out with no draft line, and the contact placeholder", () => {
     render(<PrivacyPage />);
-    expect(screen.getByText("Draft — not yet reviewed.")).toBeTruthy();
+    expect(screen.queryByText(/Draft/)).toBeNull();
     expect(screen.getByText(/privacy@<your-domain>/)).toBeTruthy();
     expect(document.body.textContent).toContain("drive.file");
   });

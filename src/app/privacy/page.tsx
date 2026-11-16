@@ -12,7 +12,6 @@ export default function PrivacyPage() {
           EasyEdit
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Privacy</h1>
-        <p className="rounded-md border border-foreground/20 px-4 py-3 text-sm font-medium">Draft — not yet reviewed.</p>
 
         <h2 className={H2}>What we collect</h2>
         <p>
