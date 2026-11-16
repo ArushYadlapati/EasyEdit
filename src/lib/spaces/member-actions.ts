@@ -9,6 +9,8 @@ import { deleteTeam as deleteTeamById, leaveTeam, removeMember, renameTeam, setM
 
 export type ActionResult = { error?: string };
 // An invite also hands back the link to send.
+// A rename also hands back the name as saved (the server tidies it).
+export type RenameResult = ActionResult & { name?: string };
 export type InviteResult = ActionResult & { link?: string };
 
 export type MemberActionDeps = {
@@ -76,7 +78,11 @@ export function makeMemberActions(deps: MemberActionDeps) {
       return deps.redirect("/dashboard");
     },
     // The new name shows everywhere once the layout is revalidated; the address stays.
-    rename: (spaceId: string, formData: FormData) => plain(run(spaceId, (db, actor) => renameTeam(db, actor, field(formData, "name")))),
+    async rename(spaceId: string, formData: FormData): Promise<RenameResult> {
+      const result = await run(spaceId, (db, actor) => renameTeam(db, actor, field(formData, "name")));
+      if (result.error !== undefined) return { error: result.error };
+      return { name: result.value?.name };
+    },
     // The team is gone for everyone once this returns.
     async deleteTeam(spaceId: string, formData: FormData): Promise<ActionResult> {
       const result = await run(spaceId, (db, actor) => deleteTeamById(db, actor, { confirmName: field(formData, "confirmName") }));

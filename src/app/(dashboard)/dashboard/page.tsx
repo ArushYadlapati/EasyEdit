@@ -5,6 +5,8 @@ import { hasOnboarded } from "@/lib/onboarding/state";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { ensurePersonalSpace, lastSpace, listMySpaces, spaceOfFolder } from "@/lib/spaces/service";
 
+const HANDLED_QUERY = ["storage", "passkeys", "folder"];
+
 // The old address of the dashboard: a new account goes to /welcome; otherwise on to the space the person used last, with the same query (?passkeys=1 survives
 // this way). A ?folder=<id> goes to the folder's own space when the person is a member of it; otherwise it is treated
 // like any other query in their last space, where an unknown folder is just the main view, so nothing leaks.
@@ -16,8 +18,11 @@ export default async function DashboardRedirect({ searchParams }: PageProps<"/da
     const first = Array.isArray(value) ? value[0] : value;
     if (first !== undefined) query[key] = first;
   }
-  // A new account is welcomed first. A table or read that fails counts as onboarded: this never blocks the app.
-  if (!(await hasOnboarded(db, user.id).catch(() => true))) redirect("/welcome");
+  // A new account is welcomed first, unless the request carries something this page handles (a Drive connect that came back
+  // with ?storage=, ?passkeys=1 reopening the dialog, ?folder=): then it goes on like any account, and the welcome comes on
+  // the next plain visit. A table or read that fails counts as onboarded: this never blocks the app.
+  const carriesQuery = HANDLED_QUERY.some((key) => query[key] !== undefined);
+  if (!carriesQuery && !(await hasOnboarded(db, user.id).catch(() => true))) redirect("/welcome");
   if (query.folder) {
     const folderSpace = await spaceOfFolder(db, query.folder);
     const there = folderSpace ? (await listMySpaces(db, user.id)).find((s) => s.id === folderSpace) : undefined;

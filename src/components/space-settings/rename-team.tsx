@@ -4,12 +4,20 @@ import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useAction } from "@/app/(app)/action-ui";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
-import type { ActionResult } from "@/lib/spaces/member-actions";
+import type { RenameResult } from "@/lib/spaces/member-actions";
 
 // An admin's Members tab, above Delete team: the team's name, editable. The address stays as it was.
-export function RenameTeam({ teamName, rename }: { teamName: string; rename: (formData: FormData) => Promise<ActionResult> }): ReactNode {
+export function RenameTeam({ teamName, rename }: { teamName: string; rename: (formData: FormData) => Promise<RenameResult> }): ReactNode {
   const [value, setValue] = useState(teamName);
   const [failed, setFailed] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [edited, setEdited] = useState(false);
+  const [seenName, setSeenName] = useState(teamName);
+  // The name changed under us (revalidated page): follow it unless the person is mid-edit.
+  if (seenName !== teamName) {
+    setSeenName(teamName);
+    if (!edited) setValue(teamName);
+  }
   const { pending, submit } = useAction(rename);
   const fieldId = useId();
   const errorId = useId();
@@ -19,7 +27,18 @@ export function RenameTeam({ teamName, rename }: { teamName: string; rename: (fo
     event.preventDefault();
     const formData = new FormData();
     formData.set("name", trimmed);
-    submit(formData, { onStart: () => setFailed(null), onSuccess: () => setValue(trimmed), onFailure: setFailed });
+    submit(formData, { onStart: () => {
+        setFailed(null);
+        setSaved(false);
+      },
+      onSuccess: (result) => {
+        // The server tidies the name (inner spaces, hidden characters), so the field shows what was saved.
+        setValue(result.name ?? trimmed);
+        setEdited(false);
+        setSaved(true);
+      },
+      onFailure: setFailed,
+    });
   }
 
   return (
@@ -35,15 +54,24 @@ export function RenameTeam({ teamName, rename }: { teamName: string; rename: (fo
           <TextInput
             id={fieldId}
             value={value}
-            onChange={(event) => setValue(event.target.value)}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setEdited(true);
+              setSaved(false);
+            }}
             autoComplete="off"
             aria-describedby={failed ? errorId : undefined}
             className="min-w-0 flex-1 sm:max-w-xs"
           />
-          <Button type="submit" size="sm" disabled={pending || trimmed === teamName}>
+          <Button type="submit" size="sm" disabled={pending || saved || trimmed === teamName}>
             Save
           </Button>
         </div>
+        {saved && (
+          <p role="status" className="text-[13px] text-ed-muted">
+            Saved
+          </p>
+        )}
         {failed && (
           <p id={errorId} role="alert" className="text-[13px] text-ed-danger">
             {failed}

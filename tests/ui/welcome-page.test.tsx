@@ -196,6 +196,17 @@ describe("/dashboard and onboarding", () => {
     expect(await dashboard()).toBe("/welcome");
   });
 
+  it("an account that has not onboarded keeps ?storage=, ?passkeys= and ?folder= instead of being bounced", async () => {
+    expect(await dashboard({ storage: "failed" })).toBe("/s/personal?storage=failed");
+    expect(await dashboard({ storage: "refused" })).toBe("/s/personal?storage=refused");
+    expect(await dashboard({ passkeys: "1" })).toBe("/s/personal?passkeys=1");
+    expect(await dashboard({ folder: "nope" })).toBe("/s/personal?folder=nope");
+  });
+
+  it("an unrelated query does not skip the welcome", async () => {
+    expect(await dashboard({ utm: "x" })).toBe("/welcome");
+  });
+
   it("sends an onboarded account straight to its space, with its query", async () => {
     await markOnboarded(testDb, ada.id);
     expect(await dashboard({ passkeys: "1" })).toBe("/s/personal?passkeys=1");

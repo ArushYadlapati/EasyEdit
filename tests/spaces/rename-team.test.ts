@@ -89,7 +89,7 @@ describe("the rename action", () => {
       data.set("name", name);
       return data;
     };
-    expect(await actions.rename(team, form(" Robots United "))).toEqual({});
+    expect(await actions.rename(team, form(" Robots   United "))).toEqual({ name: "Robots United" });
     expect((await row()).name).toBe("Robots United");
     expect(revalidate).toHaveBeenCalled();
     expect(await actions.rename(team, form("Personal"))).toEqual({ error: PERSONAL });

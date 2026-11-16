@@ -343,6 +343,27 @@ describe("team name", () => {
     expect(actions.rename.mock.calls[0]![0].get("name")).toBe("Robots United");
   });
 
+  it("after saving, shows the name the server kept, disables Save and says Saved until edited", async () => {
+    actions.rename.mockResolvedValue({ error: undefined, name: "A B" } as { error?: string });
+    show("u1", "admin");
+    const field = screen.getByRole("textbox", { name: "Team name" }) as HTMLInputElement;
+    fireEvent.change(field, { target: { value: "A   B" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    await waitFor(() => expect(field.value).toBe("A B"));
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("status").textContent).toBe("Saved");
+    fireEvent.change(field, { target: { value: "A B C" } });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("follows the team name prop when the field has not been edited", () => {
+    const view = show("u1", "admin");
+    view.rerender(
+      <MembersTable teamName="Renamed" members={ALL} me="u1" viewerRole="admin" managedElsewhere={false} adminPageLink={false} pendingInvites={[]} actions={actions} />,
+    );
+    expect((screen.getByRole("textbox", { name: "Team name" }) as HTMLInputElement).value).toBe("Renamed");
+  });
+
   it("shows a refusal under the field", async () => {
     actions.rename.mockResolvedValue({ error: 'Pick a different name. "Personal" is your own space.' });
     show("u1", "admin");
