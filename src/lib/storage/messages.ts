@@ -133,9 +133,9 @@ export function usageLine(usage: DriveUsage): string {
   return usage.limitBytes === null ? `${used} used` : `${used} of ${formatDriveBytes(usage.limitBytes)} used`;
 }
 
-// The address that starts connecting a Google account for the space; with `hint`, Google's screen offers that account.
-export function connectHref(spaceId: string, hint?: string): string {
-  const query = new URLSearchParams({ space: spaceId, ...(hint ? { hint } : {}) });
+// The address that starts connecting a Google account for the space; with `hint`, Google's screen offers that account; with `returnTo` (a path the connect allows), a successful connect comes back there.
+export function connectHref(spaceId: string, hint?: string, returnTo?: string): string {
+  const query = new URLSearchParams({ space: spaceId, ...(hint ? { hint } : {}), ...(returnTo ? { return: returnTo } : {}) });
   return `/api/storage/connect?${query.toString()}`;
 }
 

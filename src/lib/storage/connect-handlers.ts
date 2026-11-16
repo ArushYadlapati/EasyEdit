@@ -70,9 +70,12 @@ function cookieFrom(req: Request): string | null {
   return null;
 }
 
-// A path in this app under /s/, and nothing else: never another site, never a path that climbs out of /s/.
+// A path in this app under /s/, or the welcome page (with any query), and nothing else: never another site, never a
+// path that climbs out of /s/. The welcome page is where a new account's first connect comes back to.
 export function returnPath(value: string | null): string | null {
-  if (!value || value.length > 512 || !value.startsWith("/s/") || value.includes("\\")) return null;
+  if (!value || value.length > 512 || value.includes("\\")) return null;
+  const welcome = value === "/welcome" || value.startsWith("/welcome?");
+  if (!welcome && !value.startsWith("/s/")) return null;
   const probe = "https://return.invalid";
   let url: URL;
   try {
@@ -80,7 +83,8 @@ export function returnPath(value: string | null): string | null {
   } catch {
     return null;
   }
-  if (url.origin !== probe || !url.pathname.startsWith("/s/")) return null;
+  if (url.origin !== probe) return null;
+  if (welcome ? url.pathname !== "/welcome" : !url.pathname.startsWith("/s/")) return null;
   return url.pathname + url.search;
 }
 

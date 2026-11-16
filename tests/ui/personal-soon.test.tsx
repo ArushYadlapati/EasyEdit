@@ -51,6 +51,8 @@ vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => signedIn.user!),
   meetsRole: (await import("@/lib/access-rules")).meetsRole,
 }));
+// These accounts are past the first-visit flow (welcome-page.test.tsx covers /welcome).
+vi.mock("@/lib/onboarding/state", () => ({ hasOnboarded: async () => true, markOnboarded: async () => {} }));
 let testDb: DB;
 vi.mock("@/db", async (orig) => ({ ...(await orig<typeof import("@/db")>()), getDb: () => testDb }));
 

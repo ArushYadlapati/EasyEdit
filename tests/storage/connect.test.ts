@@ -193,6 +193,12 @@ describe("connect", () => {
     const ctx = await setup();
     const kept = async (ret: string) => (JSON.parse(open(valueOf((await start(ctx, `space=${SEED_TEAM_ID}&return=${encodeURIComponent(ret)}`)).setCookie), cfg.tokenKey)) as { return?: string }).return;
     expect(await kept("/s/seattle-solvers/editor/p1")).toBe("/s/seattle-solvers/editor/p1");
+    expect(await kept("/welcome")).toBe("/welcome");
+    expect(await kept("/welcome?step=agents")).toBe("/welcome?step=agents");
+    expect(await kept("/welcome?step=agents&team=robots")).toBe("/welcome?step=agents&team=robots");
+    for (const bad of ["/welcomex", "/welcome/x", "/welcome/../x", "//evil.test/welcome", "https://evil.test/welcome", "/welcome\\x", "/welcome#x/..", "welcome"]) {
+      expect(await kept(bad)).toBeUndefined();
+    }
     for (const bad of ["https://evil.test/s/x", "//evil.test/s/x", "/\\evil.test/s/x", "/s/../api/x", "/dashboard", "s/x", "/s"]) {
       expect(await kept(bad)).toBeUndefined();
     }
