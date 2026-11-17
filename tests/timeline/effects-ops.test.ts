@@ -118,6 +118,48 @@ describe("effects: update_clip undo survives JSON", () => {
   });
 });
 
+describe("effects: transitions and emphasis replace whole", () => {
+  it("replacing a transition with another kind leaves nothing of the old one, and undo restores it exactly", () => {
+    const dip = { kind: "dip", frames: 8, color: "#ff0000" };
+    const slide = { kind: "slide", frames: 9, direction: "up" };
+    const d = withClips([{ trackId: "v1", clip: clip("c1", 0, 60, { transitionIn: dip }) }]);
+    const { doc, inverse } = applyOps(d, [{ op: "update_clip", clipId: "c1", patch: { transitionIn: slide } }]);
+    expect((find(doc, "c1") as MediaClip).transitionIn).toStrictEqual(slide);
+    expect(roundTrip(inverse)).toEqual([
+      { op: "update_clip", clipId: "c1", patch: { transitionIn: dip }, expect: { transitionIn: slide } },
+    ]);
+    const undone = applyOps(doc, roundTrip(inverse)).doc;
+    expect((find(undone, "c1") as MediaClip).transitionIn).toStrictEqual(dip);
+    expect(undone).toEqual(d);
+  });
+
+  it("replacing emphasis with another preset leaves nothing of the old one, and undo restores it exactly", () => {
+    const highlight = { preset: "highlight_word", color: "#00ff00" };
+    const d = withClips([{ trackId: "t1", clip: textClip("t", 0, 60, { emphasis: highlight }) }]);
+    const { doc, inverse } = applyOps(d, [{ op: "update_clip", clipId: "t", patch: { emphasis: { preset: "pulse" } } }]);
+    expect((find(doc, "t") as TextClip).emphasis).toStrictEqual({ preset: "pulse" });
+    const undone = applyOps(doc, roundTrip(inverse)).doc;
+    expect((find(undone, "t") as TextClip).emphasis).toStrictEqual(highlight);
+    expect(undone).toEqual(d);
+  });
+
+  it("expect on a transition compares the whole value", () => {
+    const d = withClips([
+      { trackId: "v1", clip: clip("c1", 0, 60, { transitionIn: { kind: "slide", frames: 9, direction: "up" } }) },
+    ]);
+    expect(() =>
+      applyOps(d, [
+        {
+          op: "update_clip",
+          clipId: "c1",
+          patch: { transitionIn: null },
+          expect: { transitionIn: { kind: "slide", frames: 9 } },
+        },
+      ]),
+    ).toThrow(expect.objectContaining({ code: "STALE" }));
+  });
+});
+
 describe("effects: fields that do not fit the clip", () => {
   it("a transition on an audio clip is refused", () => {
     const d = withClips([{ trackId: "a1", clip: audioClip("s", 0, 60) }]);
@@ -162,6 +204,13 @@ describe("effects: fields that do not fit the clip", () => {
   it("an unknown key is still refused", () => {
     const d = withClips([{ trackId: "v1", clip: clip("c1", 0, 60) }]);
     refused(() => applyOps(d, [{ op: "update_clip", clipId: "c1", patch: { transitionn: null } }]), /patch is invalid/);
+  });
+
+  it("add_clip accepts a field the clip can't use when it is null", () => {
+    const { doc } = applyOps(doc0(), [
+      { op: "add_clip", trackId: "a1", clip: { ...audioClip("s", 0, 60), transitionIn: null } as Clip },
+    ]);
+    expect(find(doc, "s").type).toBe("audio");
   });
 
   it("add_clip refuses an audio clip with a transition and a video clip with emphasis", () => {
@@ -241,6 +290,17 @@ describe("effects: trim and split", () => {
     const undone = applyOps(doc, roundTrip(inverse)).doc;
     expect(find(undone, "c1")).toStrictEqual(find(d, "c1"));
     expect(undone).toEqual(d);
+  });
+
+  it("split then undo restores a clip with no out-transition, absent or null", () => {
+    for (const extra of [{ transitionIn: { kind: "fade", frames: 6 } }, { transitionIn: { kind: "fade", frames: 6 }, transitionOut: null }]) {
+      const d = withClips([{ trackId: "v1", clip: clip("c1", 0, 60, extra) }]);
+      const { doc, inverse } = applyOps(d, [{ op: "split_clip", clipId: "c1", at: 25, newClipId: "c2" }]);
+      expect(inverse).toHaveLength(2);
+      const undone = applyOps(doc, roundTrip(inverse)).doc;
+      expect(find(undone, "c1")).toStrictEqual(find(d, "c1"));
+      expect(undone).toEqual(d);
+    }
   });
 
   it("splitting a clip with no effects adds no effect fields", () => {

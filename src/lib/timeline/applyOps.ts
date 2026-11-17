@@ -20,6 +20,9 @@ import type { Clip, FormatId, FrameSize, Guide, TimelineDoc, Track } from "./typ
 const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).strict();
 const StrictTextClip = TextClip.extend({ transform: Transform.strict(), style: TextStyle.strict() }).strict();
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
+// The clip fields whose sub-keys are set, undone and expected one by one. Every other field, a transition or an
+// emphasis included, is one value: a new one replaces the old whole, so no sub-key of the old one is left behind.
+const MERGED_FIELDS: ReadonlySet<string> = new Set(["transform", "style", "keyframes"]);
 
 // Optional clip fields, each with its neutral value, filled the same way as TRANSFORM_FILL below. A keyframes patch
 // also fills each property it names with an empty list, since keyframes merge one level deep like transform.
@@ -92,12 +95,12 @@ function diffFields<T extends object>(before: T, after: T): { old: Partial<T>; n
 }
 
 // An op's `expect` guard: every listed field must still hold its listed value.
-// Plain objects (transform, style) compare only their listed sub-keys.
+// transform, style and keyframes compare only their listed sub-keys; any other field compares whole.
 function holds(current: Record<string, unknown>, expected: Record<string, unknown>): boolean {
   return Object.entries(expected).every(([key, value]) => {
     if (value === undefined) return true;
     const actual = current[key];
-    if (isPlainObject(value) && isPlainObject(actual)) {
+    if (MERGED_FIELDS.has(key) && isPlainObject(value) && isPlainObject(actual)) {
       return Object.entries(value).every(([sub, v]) => isEqual(actual[sub], v));
     }
     return isEqual(actual, value);
@@ -311,7 +314,9 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           throw new OpError("DUPLICATE_ID", `${name}: clip id "${op.clip.id}" already exists`, opIndex);
         }
         assertAccepts(track, op.clip, opIndex, name);
-        assertEffectsFit(op.clip.type, givenKeys(op.clip), opIndex, name);
+        // A null is the neutral value, so a clip that spells out "none" for a field it can't use is still fine.
+        const carried: Record<string, unknown> = op.clip;
+        assertEffectsFit(op.clip.type, givenKeys(op.clip).filter((key) => carried[key] !== null), opIndex, name);
         assertClipCount(track.id, track.clips.length + 1, opIndex, name);
         if (op.ripple) {
           for (const c of track.clips) if (c.start >= op.clip.start) c.start += op.clip.duration;
@@ -530,7 +535,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         for (const [key, value] of Object.entries(op.patch)) {
           const existing = merged[key];
           merged[key] =
-            isPlainObject(existing) && isPlainObject(value) ? { ...existing, ...value } : value;
+            MERGED_FIELDS.has(key) && isPlainObject(existing) && isPlainObject(value) ? { ...existing, ...value } : value;
         }
         const schema = current.type === "text" ? StrictTextClip : StrictMediaClip;
         const result = schema.safeParse(merged);
@@ -548,11 +553,11 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         const undo: Record<string, unknown> = {};
         const written: Record<string, unknown> = {};
         for (const key of Object.keys(op.patch)) {
-          // Plain objects (transform, style) are compared one level deep, so the
+          // transform, style and keyframes are compared one level deep, so the
           // undo only touches the sub-keys this op changed.
           const b = before[key];
           const a = after[key];
-          if (isPlainObject(b) && isPlainObject(a)) {
+          if (MERGED_FIELDS.has(key) && isPlainObject(b) && isPlainObject(a)) {
             const { old, now } = diffFields(b, a);
             if (Object.keys(old).length) {
               undo[key] = old;
