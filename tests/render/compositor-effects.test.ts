@@ -85,7 +85,8 @@ describe("a crossfade owns its cut", () => {
 
   it("a crossfade too short to hold a frame draws no tail and leaves the outgoing clip's own out-transition", () => {
     const a = video("A", 0, 30, { transitionOut: { kind: "fade", frames: 10 } });
-    const d = doc([a, video("B", 30, 1, crossfade)]); // a 10-frame crossfade on a 1-frame clip is cut to 0
+    // A one-frame clip with an effect at each end has room for neither, so its 10-frame crossfade is cut to 0.
+    const d = doc([a, video("B", 30, 1, { ...crossfade, transitionOut: { kind: "fade", frames: 10 } })]);
     expect(drawn(d, 30)).toEqual(["B"]);
     const { ctx, calls } = fakeCtx();
     drawFrame(ctx, d, 29);

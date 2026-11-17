@@ -126,6 +126,7 @@ function TransitionSide({ clip, side, canEdit, fps }: { clip: MediaClip; side: "
     <div className="flex flex-col gap-2">
       <Field label={title}>
         <Select
+          aria-label={`Transition ${side}`}
           data-edit-control
           disabled={!canEdit}
           value={current?.kind ?? ""}
@@ -192,6 +193,7 @@ function AnimationSide({ clip, side, canEdit, fps }: { clip: TextClip; side: "in
     <div className="flex flex-col gap-2">
       <Field label={title}>
         <Select
+          aria-label={`Animation ${side}`}
           data-edit-control
           disabled={!canEdit}
           value={current?.preset ?? ""}

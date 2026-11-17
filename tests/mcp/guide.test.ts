@@ -150,6 +150,7 @@ describe("the guide", () => {
       "Crossfade is in-only",
       "null removes it",
       "frames runs from 1 to 600",
+      "get_project shows each keyframed property's list as kf.<prop>=at:value~ease",
       '"left" enters from the right moving left',
       'Defaults: direction "left", dip color "#000000", highlight_word color "#FFD400"',
     ]) expect(buildEditingGuide(), phrase).toContain(phrase);

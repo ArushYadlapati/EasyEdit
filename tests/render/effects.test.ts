@@ -198,6 +198,21 @@ describe("clipLook", () => {
     expect(clipLook(c, 149, doc).ghosts).toEqual([]);
   });
 
+  it("keeps a lone effect up to the clip's length and cuts only the side that does not fit", () => {
+    const windows = (inF: number, outF: number, duration = 20) =>
+      effectWindows(media({ duration, transitionIn: inF ? { kind: "fade", frames: inF } : null, transitionOut: outF ? { kind: "fade", frames: outF } : null }));
+    expect(windows(30, 0)).toEqual({ inFrames: 20, outFrames: 0 });
+    expect(windows(0, 30)).toEqual({ inFrames: 0, outFrames: 20 });
+    expect(windows(5, 30)).toEqual({ inFrames: 5, outFrames: 15 });
+    expect(windows(30, 5)).toEqual({ inFrames: 15, outFrames: 5 });
+    expect(windows(30, 30)).toEqual({ inFrames: 10, outFrames: 10 });
+    expect(windows(12, 8)).toEqual({ inFrames: 12, outFrames: 8 });
+    expect(windows(30, 30, 1)).toEqual({ inFrames: 0, outFrames: 0 });
+    const lone = media({ duration: 20, transitionIn: { kind: "fade", frames: 30 } });
+    expect(clipLook(lone, 100, doc).alpha).toBeCloseTo(1 / 20);
+    expect(clipLook(lone, 119, doc).alpha).toBe(1);
+  });
+
   it("copes with a one-frame clip and frames outside the clip", () => {
     const c = media({ duration: 1, transitionIn: { kind: "fade", frames: 10 }, transitionOut: { kind: "fade", frames: 10 } });
     expect(effectWindows(c)).toEqual({ inFrames: 0, outFrames: 0 });

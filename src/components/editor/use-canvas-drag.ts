@@ -98,8 +98,8 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     return s.drag?.type === "resize" && (s.ctrl || state.cropArmed === s.clipId || state.tool === "crop");
   }
 
-  // The drag begins from the clip as it is drawn now, keyframes at the playhead included. Null when it cannot: the clip is gone, off the playhead, or on
-  // a locked track.
+  // The drag begins from the clip as it is drawn now, keyframes at the playhead included. Null when it cannot: the clip
+  // is gone, off the playhead, or on a locked track.
   function start(s: Session): boolean {
     const state = store.getState();
     const view = surface.view();
@@ -139,7 +139,6 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
               centre: s.alt,
               snapping: state.snapping,
               snapPx: SNAP_CSS_PX / view.k,
-              frame: state.playhead,
             });
     showCropping(crop ? s.clipId : null);
     s.label = result.label;

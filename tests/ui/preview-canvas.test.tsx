@@ -1441,6 +1441,26 @@ describe("typing text in place", () => {
     );
   });
 
+  it("on a keyframed clip the box opens where the text is drawn at the playhead", () => {
+    const doc = sampleDoc();
+    const x1 = doc.tracks[1].clips[0];
+    // At the playhead (frame 10) x is 0.25, y 0.75, scale 2 and rotation 30; the transform's own values are stale.
+    x1.keyframes = {
+      x: [{ at: 0, value: 0.1 }, { at: 20, value: 0.4 }],
+      y: [{ at: 0, value: 0.75 }],
+      scale: [{ at: 0, value: 1.5 }, { at: 20, value: 2.5 }],
+      rotation: [{ at: 10, value: 30 }],
+    };
+    const { store } = show({ over: { doc } });
+    act(() => editTextInPlace(store, "x1"));
+    const { style } = textBox()!;
+    // Project (270, 1440) at k = 0.5, 16 px in from the overlay's corner.
+    expect([style.left, style.top]).toEqual(["151px", "736px"]);
+    expect(style.transform).toBe("translate(-50%, -50%) rotate(30deg) scaleX(1)");
+    expect(style.fontSize).toBe("64px");
+    expect(style.width).toBe("972px");
+  });
+
   it("the box grows to fit its lines", () => {
     show();
     vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLTextAreaElement) {

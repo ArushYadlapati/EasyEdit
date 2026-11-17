@@ -90,7 +90,8 @@ describe("the media schedule", () => {
     const { clips } = mediaSchedule(d, { A: { fileId: "f" }, B: { fileId: "f" }, C: { fileId: "f" } });
     expect(clips.map((c) => [c.clipId, c.end, c.seconds.length])).toEqual([["A", 40, 40], ["B", 52, 22], ["C", 72, 30]]);
     const short = createEmptyDoc("short_9x16");
-    short.tracks[0].clips = [video("A", 0, 30), video("B", 30, 1, crossfade)]; // cut to 0 frames: no tail
+    // A one-frame clip with an effect at each end has room for neither: the crossfade is cut to 0 frames, so no tail.
+    short.tracks[0].clips = [video("A", 0, 30), video("B", 30, 1, { ...crossfade, transitionOut: { kind: "fade", frames: 10 } })];
     expect(mediaSchedule(short, { A: { fileId: "f" } }).clips[0].end).toBe(30);
   });
 

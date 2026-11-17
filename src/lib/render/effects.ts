@@ -35,15 +35,17 @@ function declared(clip: Clip): { inFrames: number; outFrames: number } {
   return { inFrames: clip.transitionIn?.frames ?? 0, outFrames: clip.transitionOut?.frames ?? 0 };
 }
 
-// When both effects together outrun the clip each gets half of it. This happens at draw time only, so trimming a clip
-// never has to rewrite its effects.
+// When the two effects together outrun the clip, one that fits in half the clip keeps its length and the other gets
+// the rest; when neither fits, each gets half. A lone effect can fill the whole clip. This happens at draw time only,
+// so trimming a clip never has to rewrite its effects.
 export function effectWindows(clip: Clip): { inFrames: number; outFrames: number } {
   const { inFrames, outFrames } = declared(clip);
-  if (inFrames + outFrames > clip.duration) {
-    const half = Math.floor(clip.duration / 2);
-    return { inFrames: Math.min(inFrames, half), outFrames: Math.min(outFrames, half) };
-  }
-  return { inFrames, outFrames };
+  const d = clip.duration;
+  if (inFrames + outFrames <= d) return { inFrames, outFrames };
+  const half = Math.floor(d / 2);
+  if (inFrames <= half) return { inFrames, outFrames: d - inFrames };
+  if (outFrames <= half) return { inFrames: d - outFrames, outFrames };
+  return { inFrames: half, outFrames: half };
 }
 
 // The first frame of an effect is already partly in and the last is fully in, so p never sits at 0.

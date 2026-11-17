@@ -1,7 +1,7 @@
 import { graphemes } from "@/lib/text";
 import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
 import { KEYFRAME_PROPS } from "./keyframes";
-import type { Clip, Track, TimelineDoc, Transform, Transition } from "./types";
+import type { Clip, KeyframeProp, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -36,7 +36,14 @@ function transitionToken(t: Transition): string {
   return `${t.kind}${detail}`;
 }
 
-function describeEffects(clip: Clip, fps: number): string {
+// One property's keyframes, at:value~ease each, so a list can be patched back whole with only one keyframe changed.
+// Linear, the default, is left out.
+function keyframeList(clip: Clip, prop: KeyframeProp): string {
+  const keys = clip.keyframes?.[prop] ?? [];
+  return keys.map((k) => `${k.at}:${Number(k.value.toFixed(4))}${k.ease && k.ease !== "linear" ? `~${k.ease}` : ""}`).join(",");
+}
+
+function describeEffects(clip: Clip, fps: number, detail: boolean): string {
   let out = "";
   if (clip.type === "text") {
     if (clip.animationIn) out += ` anim-in=${clip.animationIn.preset} ${framesToSeconds(clip.animationIn.frames, fps)}s`;
@@ -47,16 +54,17 @@ function describeEffects(clip: Clip, fps: number): string {
     if (clip.transitionOut) out += ` out=${transitionToken(clip.transitionOut)} ${framesToSeconds(clip.transitionOut.frames, fps)}s`;
   }
   const keyed = KEYFRAME_PROPS.filter((p) => (clip.keyframes?.[p]?.length ?? 0) > 0);
-  if (keyed.length > 0) out += ` kf=${keyed.join(",")}`;
+  if (detail) for (const p of keyed) out += ` kf.${p}=${keyframeList(clip, p)}`;
+  else if (keyed.length > 0) out += ` kf=${keyed.join(",")}`;
   return out;
 }
 
 function describeClip(clip: Clip, fps: number): string {
   const range = `${framesToSeconds(clip.start, fps)}–${framesToSeconds(clip.start + clip.duration, fps)}s`;
   if (clip.type === "text") {
-    return `  ${clip.id}  text  ${range}  "${describeText(clip.text)}"${describeEffects(clip, fps)}`;
+    return `  ${clip.id}  text  ${range}  "${describeText(clip.text)}"${describeEffects(clip, fps, false)}`;
   }
-  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${describeEffects(clip, fps)}`;
+  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${describeEffects(clip, fps, false)}`;
 }
 
 // Scale, stretch, rotation, opacity and crop are only worth a word when they are not the defaults. Audio draws nothing, so its
@@ -85,14 +93,14 @@ function describeClipInDetail(clip: Clip, fps: number): string {
       `${head}  "${escapeQuoted(clip.text)}"` +
       `  font="${escapeQuoted(s.fontFamily)}" size=${s.fontSize} weight=${s.fontWeight} color="${escapeQuoted(s.color)}" align=${s.align} x=${t.x} y=${t.y}` +
       describeTransformChanges(t, clip.type) +
-      describeEffects(clip, fps)
+      describeEffects(clip, fps, true)
     );
   }
   return (
     `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +
     describeTransformChanges(t, clip.type) +
-    describeEffects(clip, fps)
+    describeEffects(clip, fps, true)
   );
 }
 

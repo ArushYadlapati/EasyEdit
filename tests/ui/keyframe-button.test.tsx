@@ -27,29 +27,30 @@ const button = (name: string) => screen.getByRole("button", { name }) as HTMLBut
 
 it("each keyframed property has a diamond", () => {
   open("x1");
-  for (const name of ["Keyframe X", "Keyframe Y", "Keyframe Scale", "Keyframe Rotation", "Keyframe Opacity"]) {
+  for (const name of ["Add X keyframe", "Add Y keyframe", "Add Scale keyframe", "Add Rotation keyframe", "Add Opacity keyframe"]) {
     expect(button(name).getAttribute("aria-pressed")).toBe("false");
   }
 });
 
 it("clicking the X diamond adds a keyframe at the playhead with the current value, as one edit", () => {
   const store = open("x1");
-  fireEvent.click(button("Keyframe X"));
+  fireEvent.click(button("Add X keyframe"));
   expect(store.getState().queue).toMatchObject([
     { label: "keyframe", ops: [{ op: "update_clip", clipId: "x1", patch: { keyframes: { x: [{ at: 10, value: 0.5 }] } } }] },
   ]);
-  expect(button("Keyframe X").getAttribute("aria-pressed")).toBe("true");
+  // Keyed at the playhead, the diamond is pressed and its name says what a click does now.
+  expect(button("Remove X keyframe").getAttribute("aria-pressed")).toBe("true");
   // Clicked again it removes it, and the clip keeps its place.
-  fireEvent.click(button("Keyframe X"));
+  fireEvent.click(button("Remove X keyframe"));
   expect(findClip(viewDoc(store.getState()), "x1")!.clip).toMatchObject({ keyframes: { x: [] }, transform: { x: 0.5 } });
-  expect(button("Keyframe X").getAttribute("aria-pressed")).toBe("false");
+  expect(button("Add X keyframe").getAttribute("aria-pressed")).toBe("false");
 });
 
 it("a diamond keyframed elsewhere is not pressed and reads so", () => {
   open("x1", { keyframes: { y: [{ at: 0, value: 0.5 }] } });
-  expect(button("Keyframe Y").getAttribute("aria-pressed")).toBe("false");
-  expect(button("Keyframe Y").dataset.key).toBe("elsewhere");
-  expect(button("Keyframe X").dataset.key).toBe("none");
+  expect(button("Add Y keyframe").getAttribute("aria-pressed")).toBe("false");
+  expect(button("Add Y keyframe").dataset.key).toBe("elsewhere");
+  expect(button("Add X keyframe").dataset.key).toBe("none");
 });
 
 it("typing X on a keyframed clip writes a keyframe at the playhead", () => {
@@ -74,6 +75,7 @@ it("the arrows move the playhead to the clip's previous and next keyframe", () =
 
 it("Ken Burns is offered for images only and keys the scale in one edit", () => {
   const store = open("c1", { image: true });
+  expect(button("Ken Burns").title).toBe("Slow zoom in across the clip (replaces its scale keyframes)");
   fireEvent.click(button("Ken Burns"));
   expect(store.getState().queue).toMatchObject([
     { label: "keyframe", ops: [{ op: "update_clip", clipId: "c1", patch: { keyframes: { scale: [{ at: 0, value: 1 }, { at: 29, value: 1.15 }] } } }] },
@@ -86,9 +88,14 @@ it("a video or text clip has no Ken Burns", () => {
   expect(screen.queryByRole("button", { name: "Ken Burns" })).toBeNull();
 });
 
-it("a viewer's diamonds, arrows and Ken Burns are disabled", () => {
-  open("c1", { canEdit: false, image: true, keyframes: { x: [{ at: 20, value: 0.5 }] } });
-  expect(button("Keyframe X").disabled).toBe(true);
-  expect(button("Next keyframe").disabled).toBe(true);
+it("a viewer's diamonds and Ken Burns are disabled, and the arrows still seek", () => {
+  const store = open("c1", { canEdit: false, image: true, keyframes: { x: [{ at: 20, value: 0.5 }] } });
+  expect(button("Add X keyframe").disabled).toBe(true);
   expect(button("Ken Burns").disabled).toBe(true);
+  const next = button("Next keyframe");
+  expect(next.disabled).toBe(false);
+  expect(next.hasAttribute("data-edit-control")).toBe(false);
+  expect(button("Previous keyframe").hasAttribute("data-edit-control")).toBe(false);
+  fireEvent.click(next);
+  expect(store.getState().playhead).toBe(20);
 });

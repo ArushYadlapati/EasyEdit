@@ -11,7 +11,7 @@ import { cssFontFamily } from "@/lib/editor/fonts";
 import { ROW_HEIGHT, formatTimecode, frameToPx } from "@/lib/editor/geometry";
 import { SNAP_PX, clipEdges } from "@/lib/editor/snap";
 import { posterFileFor } from "@/lib/media/playback";
-import type { Clip, TextStyle } from "@/lib/timeline";
+import type { Clip, TextStyle, Track } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
 import { useLibrary } from "../media/media-context";
 import { usePosterUrl } from "../media/use-poster";
@@ -46,8 +46,9 @@ function clipName(clip: Clip, assetName: string | undefined, fps: number): strin
   return assetName === undefined ? `${KIND[clip.type]} clip, ${range}` : `${KIND[clip.type]} clip "${assetName}", ${range}`;
 }
 
-// still: whether the clip may show its still or text sample at all (not on a caption row).
-type ClipViewProps = { clip: Clip; zoom: number; fps: number; selected: boolean; hidden: boolean; locked: boolean; still: boolean };
+// still: whether the clip may show its still or text sample at all (not on a caption row). track: the clip's track,
+// which decides whether a crossfade after the clip hides its out-effect.
+type ClipViewProps = { clip: Clip; track: Track; zoom: number; fps: number; selected: boolean; hidden: boolean; locked: boolean; still: boolean };
 
 // One clip in its row. Selection happens on press, so a later drag can take the whole selection:
 // pressing a clip that is not selected selects only it (Shift, Cmd or Ctrl toggles it); pressing a
@@ -56,7 +57,7 @@ type ClipViewProps = { clip: Clip; zoom: number; fps: number; selected: boolean;
 // trims it from a handle at either end, and handles the release. A right-click opens the clip's menu;
 // on a Mac a Ctrl press is that right-click, so it neither selects nor drags. A clip wide enough shows a video's or
 // image's still, or a text's sample, before its name; a narrower one drops it first, so the name keeps the room.
-export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidden, locked, still }: ClipViewProps) {
+export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selected, hidden, locked, still }: ClipViewProps) {
   const store = useEditorStore();
   const drag = useClipDrag();
   const canEdit = useEditor((s) => s.canEdit);
@@ -69,7 +70,7 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
   const dragger = canEdit && !locked ? drag : null; // null for a viewer, a locked track, or outside a timeline
   const isMac = useIsMac();
   const openClipMenu = useClipMenu();
-  const marks = clipMarks(clip);
+  const marks = clipMarks(track, clip);
   const showLook = still && width >= MIN_STILL_PX;
   // With the Razor, a press cuts the clip where it lands and the pointer shows where that is; nothing selects or drags.
   const razor = useEditor((s) => s.canEdit && s.tool === "razor") && !locked;
@@ -245,13 +246,13 @@ function drawsTheSame(a: ClipViewProps, b: ClipViewProps): boolean {
     clipLabel(a.clip, undefined) === clipLabel(b.clip, undefined) &&
     (a.clip.type === "text" || b.clip.type === "text" || a.clip.assetId === b.clip.assetId) &&
     sameSample(a.clip, b.clip) &&
-    sameMarks(a.clip, b.clip)
+    sameMarks(a, b)
   );
 }
 
-function sameMarks(a: Clip, b: Clip): boolean {
-  const x = clipMarks(a);
-  const y = clipMarks(b);
+function sameMarks(a: ClipViewProps, b: ClipViewProps): boolean {
+  const x = clipMarks(a.track, a.clip);
+  const y = clipMarks(b.track, b.clip);
   return x.inFrames === y.inFrames && x.outFrames === y.outFrames && x.keyframes.join() === y.keyframes.join();
 }
 

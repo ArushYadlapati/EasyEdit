@@ -10,6 +10,7 @@ import { findClip, viewDoc } from "@/lib/editor/store";
 import { LIMITS } from "@/lib/limits";
 import { LINE_HEIGHT, TEXT_BOX_WIDTH } from "@/lib/render/text-layout";
 import { stretchOf } from "@/lib/timeline";
+import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { useEditor, useEditorStore } from "./context";
 import { useTextField } from "./use-field-gesture";
 
@@ -18,7 +19,7 @@ import { useTextField } from "./use-field-gesture";
 const MIN_FONT_PX = 13;
 
 // Where the box sits and how its text looks, in the overlay's pixels: its centre is the clip's centre, turned and
-// stretched as the clip is.
+// stretched as the clip is at the playhead, keyframes included.
 type Place = {
   left: number;
   top: number;
@@ -60,10 +61,11 @@ export function CanvasTextEditor({ clipId, surface }: { clipId: string; surface:
     const refresh = () => {
       const overlay = ref.current?.parentElement;
       const view = surface.view();
-      const doc = viewDoc(store.getState());
+      const state = store.getState();
+      const doc = viewDoc(state);
       const clip = findClip(doc, clipId)?.clip;
       if (!overlay || !view || clip?.type !== "text") return;
-      const t = clip.transform;
+      const t = effectiveTransform(clip, state.playhead);
       const at = toOverlay(view, overlay.getBoundingClientRect(), { x: t.x * doc.width, y: t.y * doc.height });
       const fontSize = clip.style.fontSize * view.k * t.scale;
       const shownSize = Math.max(fontSize, MIN_FONT_PX);
