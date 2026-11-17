@@ -107,17 +107,18 @@ function EditTemplate({ spaceId, template, onClose, onSaved }: { spaceId: string
   const formId = useId();
   const [name, setName] = useState(template.name);
   const [description, setDescription] = useState(template.description);
-  const [instructions, setInstructions] = useState<string | null>(null); // null while they load
+  const [instructions, setInstructions] = useState<string | null>(null); // null while they load, and if they did not
+  const [edited, setEdited] = useState(false); // the notes are sent only once the person changed them
+  const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   useEffect(() => {
     let live = true;
     getTemplate(spaceId, template.id).then(
       (full) => live && setInstructions(full.instructions),
-      (e: unknown) => {
+      () => {
         if (!live) return;
-        setInstructions("");
-        setError(message(e));
+        setLoadFailed(true);
       },
     );
     return () => {
@@ -127,14 +128,14 @@ function EditTemplate({ spaceId, template, onClose, onSaved }: { spaceId: string
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending || instructions === null) return;
+    if (pending || (instructions === null && !loadFailed)) return;
     setPending(true);
     setError(null);
     try {
       await updateTemplate(spaceId, template.id, {
         name,
         description,
-        instructions,
+        ...(edited && instructions !== null ? { instructions } : {}),
       });
       onSaved();
     } catch (e) {
@@ -150,13 +151,13 @@ function EditTemplate({ spaceId, template, onClose, onSaved }: { spaceId: string
       onClose={onClose}
       footer={
         <>
-          {error && (
+          {(error ?? (loadFailed ? "Couldn't load the notes for Claude. Try again." : null)) && (
             <p role="alert" className="mr-auto min-w-0 text-xs text-ed-danger">
-              {error}
+              {error ?? "Couldn't load the notes for Claude. Try again."}
             </p>
           )}
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit" form={formId} disabled={pending || instructions === null}>
+          <Button variant="primary" type="submit" form={formId} disabled={pending || (instructions === null && !loadFailed)}>
             Save
           </Button>
         </>
@@ -175,7 +176,10 @@ function EditTemplate({ spaceId, template, onClose, onSaved }: { spaceId: string
             maxLength={LIMITS.templateInstructionsChars}
             disabled={instructions === null}
             value={instructions ?? ""}
-            onChange={(event) => setInstructions(event.target.value)}
+            onChange={(event) => {
+              setInstructions(event.target.value);
+              setEdited(true);
+            }}
           />
         </Field>
       </form>

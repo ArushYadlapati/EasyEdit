@@ -90,11 +90,12 @@ it("Edit loads the notes and saves through updateTemplate", async () => {
   fireEvent.change(within(dialog).getByLabelText("Name"), {
     target: { value: "Recap v2" },
   });
+  fireEvent.change(within(dialog).getByLabelText("Notes for Claude"), { target: { value: "Keep it very short." } });
   await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Save" })));
   expect(client.updateTemplate).toHaveBeenCalledWith("sp1", "t1", {
     name: "Recap v2",
     description: "Our recap.",
-    instructions: "Keep it short.",
+    instructions: "Keep it very short.",
   });
   expect(router.refresh).toHaveBeenCalled();
 });
@@ -119,4 +120,17 @@ it("Delete asks first, then deletes and refreshes", async () => {
   await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Delete" })));
   expect(client.deleteTemplate).toHaveBeenCalledWith("sp1", "t1");
   expect(router.refresh).toHaveBeenCalled();
+});
+
+it("when the notes fail to load, saving leaves them out of the update", async () => {
+  client.getTemplate.mockRejectedValue(new TemplateApiError("UNKNOWN", "nope", 500));
+  page(true);
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  const dialog = screen.getByRole("dialog", { name: "Edit template" });
+  await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe("Couldn't load the notes for Claude. Try again."));
+  expect((within(dialog).getByLabelText("Notes for Claude") as HTMLTextAreaElement).disabled).toBe(true);
+  fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Recap v2" } });
+  await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Save" })));
+  expect(client.updateTemplate).toHaveBeenCalledWith("sp1", "t1", { name: "Recap v2", description: "Our recap." });
+  expect(Object.keys(client.updateTemplate.mock.calls[0][2])).not.toContain("instructions");
 });
