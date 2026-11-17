@@ -21,12 +21,15 @@ The **AI agents** page (account menu → **AI agents**, or `/agents`) shows the 
 | --- | --- |
 | `list_projects` | Lists the team's projects, newest change first, and says who you are signed in as. |
 | `get_project` | Reads one project's timeline as text: tracks, clips, times and the current version. |
-| `create_project` | Creates an empty project with a name and one of the five formats, or a custom width and height in pixels. |
+| `create_project` | Creates an empty project with a name and one of the five formats, or a custom width and height in pixels, or starts one from a template and lists the slots to fill. |
 | `edit_timeline` | Applies a list of changes to a project, all or nothing. |
 | `add_text` | Adds one or more text clips from a preset (title, subtitle or lower third). |
 | `undo_change` | Undoes one earlier change, an agent's or a person's, like **Undo this change** in the editor. |
 | `list_assets` | Lists the team's uploaded video, images and audio, newest first, with each one's id, kind, length and size. |
 | `add_media` | Puts one or more uploaded files on a project's timeline, laid end to end unless the agent gives start times. |
+| `list_templates` | Lists the templates of the member's spaces, the three starters and the saved ones, with each one's slots. |
+| `get_template` | Reads one template: its notes for the agent, its slots with hints and its timeline. |
+| `fill_template` | Fills a project's slots in one change: text for a text slot, an uploaded file for a video, image or audio slot. It says which slots are still empty and which footage is shorter than its slot. |
 | `get_editing_guide` | Reads the guide to how projects are built and what is possible today. |
 | `search` | Finds projects and media by name. ChatGPT's deep research uses it. |
 | `fetch` | Reads one search result in full. ChatGPT's deep research uses it. |

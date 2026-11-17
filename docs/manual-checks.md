@@ -24,6 +24,20 @@ The editor cannot be opened without a Google sign-in, so the tests cannot click 
 16. Make the window narrower than 1024 px. The editor is replaced by "The editor needs a wider window."
 17. Add a title. Once the status reads "Saved", wait ten seconds, then click **Projects**: the project's card shows the title on its picture.
 
+## What to click to check templates
+
+Do this once after a change to templates. It takes about ten minutes.
+
+1. On the dashboard, start a new project from each of the three starters. Each opens with its placeholders and titles in place.
+2. In one, select an empty slot. The details panel says to drop a file from Media onto it. Drag a video from the Media tab onto the slot on the timeline: the dashed box is the slot's own span, the slot fills and keeps its place. Undo once and it is empty again.
+3. Select another empty slot and click a video in Media: it fills. Drop a video shorter than the slot: a notice says there is a gap after it.
+4. Mark two clips of a project as slots, choose **Save as template**, and save. Save again with the same name: it says the name is taken and offers **Replace it**. Choose it.
+5. On the dashboard start a new project from that template. Its slots are empty and the other clips are in place.
+6. Connect Claude. Ask it to list the templates, start a project from yours and fill the slots with media. It reports a gap when the footage is shorter than the slot.
+7. Put an intro clip that is not a slot in a template, then try to delete that file in the Media tab. It is refused and names the template.
+8. Export a project that still has an empty slot. The dialog says how many slots are still empty and names them.
+9. Open the Templates page as a viewer. There is no Edit or Delete, and no sentence telling you to save one.
+
 ## What to click to check export
 
 Export cannot be tested without a real browser and a real sign-in. Do this once after a change to export. It takes about five minutes.
