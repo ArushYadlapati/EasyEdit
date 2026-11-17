@@ -4,6 +4,7 @@ export const TUTORIAL_WORDS = {
   learn: "Learn",
   learnIntro: "How EasyEdit works, on video. Pick a chapter to jump to it.",
   basics: "The basics",
+  voiceBy: "Voice by", // followed by the credit the recording names, such as elevenlabs.io
   title: "Welcome to EasyEdit",
   intro: "The basics, in a few minutes: spaces, the dashboard, making and editing a project, shortcuts, working with your team and with AI agents.",
   video: "EasyEdit intro tutorial",

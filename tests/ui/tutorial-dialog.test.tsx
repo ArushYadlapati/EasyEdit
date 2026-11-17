@@ -6,6 +6,15 @@ import { TUTORIAL_CAPTIONS, TUTORIAL_CHAPTERS } from "@/lib/tutorial/script";
 import { TUTORIAL_WORDS } from "@/lib/tutorial/words";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
+// What the recording says about its voice; a test sets it, and the dialog reads it as it would the real file.
+const voice = vi.hoisted(() => ({ credit: null as string | null }));
+vi.mock("@/lib/tutorial/script", async (orig) => ({
+  ...(await orig<typeof import("@/lib/tutorial/script")>()),
+  get TUTORIAL_VOICE_CREDIT() {
+    return voice.credit;
+  },
+}));
+
 const VIDEO = { url: "https://cdn.test/easyedit-intro.mp4", poster: "https://cdn.test/easyedit-intro.jpg" };
 
 let play: ReturnType<typeof vi.fn<() => Promise<void>>>;
@@ -13,6 +22,7 @@ let onClose: ReturnType<typeof vi.fn<() => void>>;
 let onWatched: ReturnType<typeof vi.fn<() => void>>;
 
 beforeEach(() => {
+  voice.credit = null;
   onClose = vi.fn<() => void>();
   onWatched = vi.fn<() => void>();
   // A real player starts, then says so. Here starting only says so.
@@ -36,6 +46,19 @@ const footerNames = () =>
   [TUTORIAL_WORDS.skip, TUTORIAL_WORDS.watch, TUTORIAL_WORDS.done].filter((name) => screen.queryByRole("button", { name }) !== null);
 
 describe("the tutorial dialog", () => {
+  it("titles the video and credits its voice there when the recording names one", () => {
+    voice.credit = "voice.example";
+    render(dialog());
+    expect(screen.getByRole("dialog", { name: "Welcome to EasyEdit" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: "The basics · Voice by voice.example" })).toBeTruthy();
+  });
+
+  it("titles the video plainly when the recording names no voice to credit", () => {
+    render(dialog());
+    expect(screen.getByRole("heading", { level: 3, name: "The basics" })).toBeTruthy();
+    expect(screen.queryByText(/Voice by/)).toBeNull();
+  });
+
   it("shows the video with its poster, and never starts by itself", () => {
     render(dialog());
     expect(screen.getByRole("dialog", { name: "Welcome to EasyEdit" })).toBeTruthy();

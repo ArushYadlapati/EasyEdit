@@ -12,6 +12,14 @@ import { makeTestDb } from "../helpers/db";
 import { act, render, screen, within } from "../helpers/dom";
 
 class NotFound extends Error {}
+// What the recording says about its voice; a test sets it, and the page reads it as it would the real file.
+const voice = vi.hoisted(() => ({ credit: null as string | null }));
+vi.mock("@/lib/tutorial/script", async (orig) => ({
+  ...(await orig<typeof import("@/lib/tutorial/script")>()),
+  get TUTORIAL_VOICE_CREDIT() {
+    return voice.credit;
+  },
+}));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new NotFound();
@@ -39,6 +47,7 @@ beforeEach(async () => {
   testDb = await makeTestDb();
   await testDb.insert(user).values([{ id: ada.id, name: ada.name, email: ada.email }]);
   vi.mocked(markTutorialSeenAction).mockClear();
+  voice.credit = null;
   vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) {
     this.dispatchEvent(new Event("play"));
     return Promise.resolve();
@@ -53,6 +62,20 @@ const page = async () => render(await LearnPage());
 const video = () => document.querySelector("video") as HTMLVideoElement;
 
 describe("the Learn page", () => {
+  it("credits the voice in the tutorial's title when the recording names one", async () => {
+    vi.stubEnv("TUTORIAL_VIDEO_URL", VIDEO);
+    voice.credit = "voice.example";
+    await page();
+    expect(screen.getByRole("heading", { level: 2, name: "The basics · Voice by voice.example" })).toBeTruthy();
+  });
+
+  it("titles the tutorial plainly when the recording names no voice to credit", async () => {
+    vi.stubEnv("TUTORIAL_VIDEO_URL", VIDEO);
+    await page();
+    expect(screen.getByRole("heading", { level: 2, name: "The basics" })).toBeTruthy();
+    expect(screen.queryByText(/Voice by/)).toBeNull();
+  });
+
   it("shows the tutorial on a page of its own: a heading, the player and its ten chapters, and a way back", async () => {
     vi.stubEnv("TUTORIAL_VIDEO_URL", VIDEO);
     await page();

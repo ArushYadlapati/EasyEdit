@@ -5,12 +5,11 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { markTutorialSeenAction } from "@/app/(dashboard)/tutorial/actions";
 import { LearnTutorial } from "@/components/dashboard/learn-tutorial";
+import { TutorialHeading } from "@/components/dashboard/tutorial-heading";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
-import { TUTORIAL_SECONDS } from "@/lib/tutorial/script";
 import { hasSeenTutorial } from "@/lib/tutorial/seen";
-import { clock } from "@/lib/tutorial/timing";
 import { tutorialVideo } from "@/lib/tutorial/video";
 import { TUTORIAL_WORDS } from "@/lib/tutorial/words";
 
@@ -46,10 +45,7 @@ export default async function LearnPage(): Promise<ReactNode> {
           <p className="text-[13px] leading-5 text-ed-muted">{TUTORIAL_WORDS.learnIntro}</p>
         </header>
         <section className="flex flex-col gap-3">
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-sm font-semibold">{TUTORIAL_WORDS.basics}</h2>
-            <span className="text-xs text-ed-muted tabular-nums">{clock(TUTORIAL_SECONDS)}</span>
-          </div>
+          <TutorialHeading level={2} />
           <LearnTutorial video={video} markSeen={seen ? undefined : markTutorialSeenAction} />
         </section>
       </div>

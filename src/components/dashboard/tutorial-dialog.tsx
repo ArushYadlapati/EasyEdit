@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { TutorialHeading } from "@/components/dashboard/tutorial-heading";
 import { TutorialPlayer, type TutorialPlayerHandle } from "@/components/dashboard/tutorial-player";
 import type { TutorialVideo } from "@/lib/tutorial/video";
 import { TUTORIAL_WORDS } from "@/lib/tutorial/words";
@@ -69,6 +70,7 @@ function Tutorial({ open, video, firstVisit, onClose, onWatched }: TutorialDialo
   return (
     <Dialog title={TUTORIAL_WORDS.title} open={open} onClose={onClose} size="lg" footer={footer}>
       <div className="flex flex-col gap-3">
+        <TutorialHeading level={3} />
         <p className="text-ed-muted">{TUTORIAL_WORDS.intro}</p>
         <TutorialPlayer
           ref={player}
