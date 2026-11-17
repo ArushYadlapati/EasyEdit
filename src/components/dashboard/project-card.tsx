@@ -9,6 +9,7 @@ import { BlankFrame } from "@/components/dashboard/blank-frame";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { PROJECT_DRAG_TYPE } from "@/components/dashboard/drag";
 import { MoveToFolderDialog } from "@/components/dashboard/move-dialog";
+import { MoveSpaceDialog } from "@/components/dashboard/move-space-dialog";
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { InlineEdit } from "@/components/ui/inline-edit";
@@ -17,6 +18,7 @@ import { PROJECT_GONE, pictureFits, thumbnailUrl, type DashboardFolder, type Das
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
 import { editorPath } from "@/lib/spaces/paths";
+import type { MySpace } from "@/lib/spaces/types";
 import { formatLabel } from "@/lib/timeline";
 import { timeAgo } from "@/lib/time-ago";
 
@@ -29,17 +31,20 @@ export type ProjectCardProps = {
   folders: readonly DashboardFolder[];
   actions: Pick<DashboardActions, "rename" | "duplicate" | "remove" | "move" | "pin" | "unpin">;
   spaceSlug: string;
+  fromSpace?: MySpace; // the space shown, and the spaces the person can move a project to from it (Move to…)
+  moveTargets?: readonly MySpace[];
   onGone(message: string): void; // the project was deleted elsewhere, so its card is leaving the page: the dashboard says why
 };
 
 const OPEN: MenuItem = { id: "open", label: "Open" };
 const VIEWER_ITEMS: MenuItem[] = [OPEN];
 // Pin or Unpin, after Move to folder…, as the project is in the space's Pinned list or not.
-const editorItems = (pinned: boolean): MenuItem[] => [
+const editorItems = (pinned: boolean, canMoveToSpace: boolean): MenuItem[] => [
   OPEN,
   { id: "rename", label: "Rename" },
   { id: "duplicate", label: "Duplicate" },
   { id: "move", label: "Move to folder…" },
+  ...(canMoveToSpace ? [{ id: "move-space", label: "Move to…" }] : []),
   pinned ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin" },
   { id: "delete", label: "Delete", danger: true, separatorBefore: true },
 ];
@@ -55,15 +60,16 @@ const withId = (id: string, more: Record<string, string> = {}) => {
 
 // A project on the dashboard: its picture in a frame of its shape (a blank frame until it has one) and its name, which
 // open it in the editor, then its format, who changed it last and when, and its folder. Its ⋯ button and a right-click
-// on it open the same menu: Open for everyone, and for editors Rename (in place), Duplicate, Move to folder…, Pin or
+// on it open the same menu: Open for everyone, and for editors Rename (in place), Duplicate, Move to folder…, Move to… (another of your spaces), Pin or
 // Unpin (the space's Pinned list in the sidebar) and Delete (after asking).
-export function ProjectCard({ project, folderName, now, canEdit, pinned, folders, actions, spaceSlug, onGone }: ProjectCardProps): ReactNode {
+export function ProjectCard({ project, folderName, now, canEdit, pinned, folders, actions, spaceSlug, fromSpace, moveTargets, onGone }: ProjectCardProps): ReactNode {
   const router = useRouter();
   const menu = useContextMenu();
   const box = useRef<HTMLLIElement>(null);
   const [renaming, setRenaming] = useState(false);
   const refocus = useRef(false); // a key ended the rename, so focus goes back to the ⋯ button
   const [moving, setMoving] = useState(false);
+  const [movingSpace, setMovingSpace] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null); // why a rename or duplicate was refused
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -75,7 +81,8 @@ export function ProjectCard({ project, folderName, now, canEdit, pinned, folders
   const unpin = useAction(actions.unpin);
   // the card's edits wait while one of them runs
   const busy = rename.pending || duplicate.pending || remove.pending || pin.pending || unpin.pending;
-  const editor = editorItems(pinned);
+  const canMoveToSpace = fromSpace !== undefined && moveTargets !== undefined && moveTargets.length > 0;
+  const editor = editorItems(pinned, canMoveToSpace);
   const items = !canEdit
     ? VIEWER_ITEMS
     : busy
@@ -103,6 +110,7 @@ export function ProjectCard({ project, folderName, now, canEdit, pinned, folders
     else if (id === "rename") setRenaming(true);
     else if (id === "duplicate") duplicate.submit(withId(project.id), onCard);
     else if (id === "move") setMoving(true);
+    else if (id === "move-space") setMovingSpace(true);
     else if (id === "pin") pin.submit(withId(project.id), onCard);
     else if (id === "unpin") unpin.submit(withId(project.id), onCard);
     else if (id === "delete") {
@@ -129,7 +137,7 @@ export function ProjectCard({ project, folderName, now, canEdit, pinned, folders
   // For editors the card drags into a folder in the sidebar, carrying only its id. Not while it is being renamed or
   // one of its dialogs is open, so text in those can be selected; and a drag that starts inside it (such as selected
   // text) is not the card's.
-  const draggable = canEdit && !renaming && !moving && !deleting;
+  const draggable = canEdit && !renaming && !moving && !movingSpace && !deleting;
   function onDragStart(event: DragEvent<HTMLLIElement>) {
     if (!draggable || event.target !== event.currentTarget) return;
     event.dataTransfer.setData(PROJECT_DRAG_TYPE, project.id);
@@ -224,6 +232,17 @@ export function ProjectCard({ project, folderName, now, canEdit, pinned, folders
             onClose={() => setMoving(false)}
             onGone={onGone}
           />
+          {canMoveToSpace && movingSpace && (
+            <MoveSpaceDialog
+              project={project}
+              fromSpace={fromSpace}
+              targets={[...moveTargets]}
+              onClose={() => {
+                setMovingSpace(false);
+                optionsButton()?.focus();
+              }}
+            />
+          )}
           <ConfirmDialog
             title="Delete project"
             question={`Delete "${project.name}"?`}

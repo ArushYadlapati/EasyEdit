@@ -127,6 +127,10 @@ function world(options: { sources?: Source[] } = {}) {
       if (missing.length > 0) return { ok: false, code: "COPIES_MISSING", message: MOVE_MESSAGES.copiesMissing, missing };
       return ok(MOVED);
     },
+    async projectSpace(projectId) {
+      log.push(`projectSpace ${projectId}`);
+      return next<{ spaceId: string; version: number }>("projectSpace") ?? ok({ spaceId: "s1", version: 3 });
+    },
     async abandon(moveId) {
       log.push(`abandon ${moveId}`);
     },
@@ -276,7 +280,7 @@ describe("moving a project from the browser", () => {
       w.scripted.openCopy = [{ ok: false, code: "NOT_FOUND", message: MOVE_MESSAGES.gone }];
       throw new PieceError("network");
     });
-    expect(await w.run()).toEqual({ ok: false, message: MOVE_MESSAGES.gone });
+    expect(await w.run()).toEqual({ ok: false, message: MOVE_MESSAGES.gone, code: "NOT_FOUND" });
     expect(w.log).toEqual(["start p1 s2", "openCopy b", "openCopy b"]);
   });
 
@@ -299,7 +303,7 @@ describe("moving a project from the browser", () => {
     const w = world();
     const missing = { ok: false as const, code: "COPIES_MISSING", message: MOVE_MESSAGES.copiesMissing, missing: ["x"] };
     w.scripted.finish = [missing, missing, missing, missing];
-    expect(await w.run()).toEqual({ ok: false, message: MOVE_MESSAGES.copiesMissing });
+    expect(await w.run()).toEqual({ ok: false, message: MOVE_MESSAGES.copiesMissing, code: "COPIES_MISSING" });
     expect(w.log.filter((line) => line.startsWith("start"))).toHaveLength(3);
     expect(w.log.filter((line) => line.startsWith("finish"))).toHaveLength(3);
     expect(w.log).not.toContain("abandon m1");
@@ -396,18 +400,37 @@ describe("moving a project from the browser", () => {
   it("a refusal from the server stops the move with the server's own sentence", async () => {
     const w = world();
     w.scripted.completeCopy = [{ ok: false, code: "CONFLICT", message: "The file is not all there yet." }];
-    expect(await w.run()).toEqual({ ok: false, message: "The file is not all there yet." });
+    expect(await w.run()).toEqual({ ok: false, message: "The file is not all there yet.", code: "CONFLICT" });
     expect(w.log).not.toContain("abandon m1");
     const quiet = world();
     quiet.scripted.openCopy = [{ ok: false, code: "NETWORK", message: "" }];
-    expect(await quiet.run()).toEqual({ ok: false, message: COPY_STOPPED });
+    expect(await quiet.run()).toEqual({ ok: false, message: COPY_STOPPED, code: "NETWORK" });
+  });
+
+  it("a finish whose answer was lost: the project is in the new space, so the move counts as done", async () => {
+    const w = world();
+    w.scripted.finish = [{ ok: false, code: "NETWORK", message: "" }];
+    w.scripted.projectSpace = [{ ok: true, value: { spaceId: "s2", version: 9 } }];
+    expect(await w.run()).toEqual({ ok: true, moved: { projectId: "p1", spaceId: "s2", slug: "team-two", version: 9 } });
+    expect(w.log.slice(-2)).toEqual(["finish m1", "projectSpace p1"]);
+  });
+
+  it("a finish whose answer was lost, with the project still in the old space, is a failure", async () => {
+    const w = world();
+    w.scripted.finish = [{ ok: false, code: "NETWORK", message: "" }];
+    expect(await w.run()).toEqual({ ok: false, message: COPY_STOPPED, code: "NETWORK" });
+    expect(w.log.slice(-2)).toEqual(["finish m1", "projectSpace p1"]);
+    const unknown = world();
+    unknown.scripted.finish = [{ ok: false, code: "NETWORK", message: "" }];
+    unknown.scripted.projectSpace = [{ ok: false, code: "NETWORK", message: "" }];
+    expect(await unknown.run()).toMatchObject({ ok: false, code: "NETWORK" });
   });
 
   it("a refused start says why and asks nothing more", async () => {
     const w = world();
     const message = MOVE_MESSAGES.noStorage("Team Two");
     w.scripted.start = [{ ok: false, code: "NO_STORAGE", message }];
-    expect(await w.run()).toEqual({ ok: false, message });
+    expect(await w.run()).toEqual({ ok: false, message, code: "NO_STORAGE" });
     expect(w.log).toEqual(["start p1 s2"]);
     expect(w.progress).toEqual([]);
   });
@@ -469,6 +492,12 @@ describe("the move routes, as the browser calls them", () => {
     expect(await api.finish("m1")).toEqual({ ok: false, code: "UNEXPECTED", message: "" });
     expect(await api.finish("m1")).toEqual({ ok: false, code: "UNEXPECTED", message: "" });
     expect(await api.finish("m1")).toEqual({ ok: false, code: "NETWORK", message: "" }); // the fetch threw
+  });
+
+  it("projectSpace reads the project's space and version", async () => {
+    const net = answering(json(200, { version: 4, spaceId: "s2" }));
+    expect(await createMoveApi(net.fetch).projectSpace("p/1")).toEqual({ ok: true, value: { version: 4, spaceId: "s2" } });
+    expect(net.sent).toEqual([{ url: "/api/projects/p%2F1/version", method: "GET", body: undefined }]);
   });
 
   it("abandoning never throws", async () => {

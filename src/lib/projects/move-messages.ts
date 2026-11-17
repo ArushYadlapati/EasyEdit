@@ -11,5 +11,7 @@ export const MOVE_MESSAGES = {
   copiesMissing: "Some media was added while the project was copying.",
   cantReadSource: (name: string) => `"${name}" can't be read from Google Drive, so it can't be copied. Remove it from the project or upload it again, then try the move again.`,
   moved: "This project was moved to another space. Open it there to keep editing.",
+  canceled: "The move was canceled.",
+  copyStopped: "Copying stopped. Check your connection and try again; what was copied is kept.",
   busy: "The project kept changing while it was being moved. Try again.",
 } as const;

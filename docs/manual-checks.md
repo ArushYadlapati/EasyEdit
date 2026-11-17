@@ -38,6 +38,21 @@ Export cannot be tested without a real browser and a real sign-in. Do this once 
 
 Before the team is told to use export, the owner runs this list once on a Windows laptop and once on a Chromebook the team uses.
 
+## What to click to check moving a project between spaces
+
+Moving copies media between two real Google Drives, so it needs a real browser and a real sign-in. Do this once after a change to moving. You need two spaces you can edit in that both have storage (your Personal space and a team will do), and about ten minutes.
+
+1. In the first space, make a project with a video (with its small preview), an image and a song, and put all three on the timeline. Make a change or two, so there is something to undo.
+2. On the dashboard, open the project's menu and choose **Move to…**. The dialog lists your other spaces. **Move** stays dimmed until you choose one.
+3. Choose the other space and click **Move**. It says "Copying 1 of 4 files" and counts up, with a bar. Press Escape and click the close button: nothing happens. Try to close the tab: the browser asks first.
+4. When it ends you land on the other space's dashboard. The project is there, opens, plays with its video, image and song, and shows its picture. It is gone from the first space.
+5. In the editor, undo: changes made before the move are not undone. The video plays from its preview.
+6. Move it back, the other way (team to personal, then personal to team). Do both directions once.
+7. Move it again, and close the tab halfway through the copy (use a large video). Open the dashboard: the project is still in the first space and works. Choose **Move to…** again: it carries on and finishes, copying only what is left.
+8. Start another move and click **Cancel** halfway. The dialog goes back to the choices, and the project is where it was.
+9. Open the project in the editor in a second tab, then move it from the dashboard. The second tab says the project was moved and does not let you keep editing.
+10. Pick a space with no storage: the dialog says so. As that space's admin it shows **Set up storage**; as an editor it says to ask an admin and has no link.
+
 ## Checking an exported file
 
 `pnpm check:export` reads a finished file with ffmpeg (`brew install ffmpeg`) and checks what a player needs: H.264, the right size, the exact frame rate and length, keyframes, the sound track. It can also compare frames of the video with frames the editor saved.

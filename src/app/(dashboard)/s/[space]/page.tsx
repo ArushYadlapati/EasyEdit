@@ -17,7 +17,7 @@ import { listProjects } from "@/lib/projects/service";
 import { getUserNames } from "@/lib/projects/user-names";
 import { actorIn } from "@/lib/spaces/access";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
-import { findMySpace, rememberSpace } from "@/lib/spaces/service";
+import { findMySpace, listMySpaces, rememberSpace } from "@/lib/spaces/service";
 import { slugFor } from "@/lib/spaces/paths";
 import { storageState } from "@/lib/spaces/storage";
 import { storageBlock } from "@/lib/storage/availability";
@@ -86,6 +86,10 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   const landing = recentProjects(projects, recentIds, "").length > 0 ? RECENT_VIEW : ALL_VIEW;
   const view = resolveView({ folder, view: named }, folders, landing);
   const slug = slugFor(space);
+  // Where a project here can be moved to: the person's other spaces where they edit, personal ones only once offered.
+  const moveTargets = canEdit
+    ? (await listMySpaces(db, user.id)).filter((other) => other.id !== space.id && other.role !== "viewer" && (other.kind === "team" || personalSpacesOpen()))
+    : [];
   const isAdmin = actor.role === "admin";
   // The space's storage, from its rows (no call to Google). A connection that broke: a banner for the people who
   // upload. No storage at all: the setup card for its admins, where this server can set storage up.
@@ -117,6 +121,8 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
       now={new Date()}
       actions={actionsFor(space.id)}
       spaceSlug={slug}
+      fromSpace={space}
+      moveTargets={moveTargets}
       notices={notices}
     />
   );

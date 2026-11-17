@@ -8,11 +8,11 @@ import { MOVE_MESSAGES } from "./move-messages";
 // (then its preview and poster) from the old space's Drive into the new one, a piece at a time, and the server
 // finishes the move in one write. Types only from ./move: it is server code.
 
-export const COPY_STOPPED = "Copying stopped. Check your connection and try again; what was copied is kept.";
-export const MOVE_CANCELED = "The move was canceled.";
+export const COPY_STOPPED = MOVE_MESSAGES.copyStopped;
+export const MOVE_CANCELED = MOVE_MESSAGES.canceled;
 
 export type MoveProgress = { filesDone: number; filesTotal: number; bytesDone: number; bytesTotal: number };
-export type MoveOutcome = { ok: true; moved: FinishedMove } | { ok: false; message: string; canceled?: boolean };
+export type MoveOutcome = { ok: true; moved: FinishedMove } | { ok: false; message: string; canceled?: boolean; code?: string }; // code: the server's, when it refused
 
 export type MoveRunInput = {
   projectId: string;
@@ -40,16 +40,17 @@ const PASSING = new Set(["NETWORK", "INTERNAL", "STORAGE_UNAVAILABLE"]);
 
 // Ends the copying with a sentence for the person. Canceled when the page's signal was aborted.
 class Stopped extends Error {
-  constructor(readonly sentence: string) {
+  constructor(readonly sentence: string, readonly code?: string) {
     super(sentence);
     this.name = "Stopped";
   }
 }
 
 const sentenceOf = (refused: { message: string }) => refused.message || COPY_STOPPED;
+const stoppedBy = (refused: { message: string; code: string }) => new Stopped(sentenceOf(refused), refused.code);
 
 function valueOf<T>(result: MoveResult<T>): T {
-  if (!result.ok) throw new Stopped(sentenceOf(result));
+  if (!result.ok) throw stoppedBy(result);
   return result.value;
 }
 
@@ -116,7 +117,7 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
         const sends = new AbortController();
         const cancel = () => sends.abort();
         signal.addEventListener("abort", cancel, { once: true });
-        let refused: { message: string } | null = null;
+        let refused: { message: string; code: string } | null = null;
         let renewed = false;
         const sent = await sendFile(source, { uploadUrl, offset: opened.offset }, {
           transport,
@@ -144,7 +145,7 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
         });
         signal.removeEventListener("abort", cancel);
         checkSignal();
-        if (refused) throw new Stopped(sentenceOf(refused));
+        if (refused) throw stoppedBy(refused);
         if (!sent.ok) {
           // Drive will not give the original: no try will copy it, so the person is told which one it is.
           if (unreadable()) throw new Stopped(MOVE_MESSAGES.cantReadSource(item.name));
@@ -162,7 +163,7 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
   // will not give the source's file: it is skipped, and the move goes on without it (finishing marks a video copy
   // with no preview as failed).
   async function copyFile(id: string, copyAssetId: string, role: "preview" | "poster", fileId: string): Promise<CopyState | null> {
-    let sentence = COPY_STOPPED;
+    let sentence: Stopped = new Stopped(COPY_STOPPED);
     for (let attempt = 0; attempt < FILE_TRIES; attempt++) {
       const size = await driveFileSize(fileId, { ...read, signal });
       checkSignal();
@@ -171,7 +172,7 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
       const opened = await api.openCopyFile(id, copyAssetId, role, size);
       checkSignal();
       if (!opened.ok) {
-        sentence = sentenceOf(opened);
+        sentence = stoppedBy(opened);
         continue;
       }
       const { source, unreadable } = watched(driveSource(fileId, size, read));
@@ -187,15 +188,15 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
       if (!sent.ok) {
         if (unreadable()) return null;
         if (sent.reason === "refused") throw new Stopped(COPY_STOPPED);
-        sentence = COPY_STOPPED;
+        sentence = new Stopped(COPY_STOPPED);
         continue;
       }
       const completed = await api.completeCopyFile(id, copyAssetId, role);
       checkSignal();
       if (completed.ok) return completed.value;
-      sentence = sentenceOf(completed);
+      sentence = stoppedBy(completed);
     }
-    throw new Stopped(sentence);
+    throw sentence;
   }
 
   // Every file of the plan that has no finished copy yet, one at a time, in the plan's order.
@@ -245,12 +246,19 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
       if (finished.ok) return { ok: true, moved: finished.value };
       checkSignal();
       // Media was added to the project while it was copying: plan again, and copy that too.
-      if (finished.code !== "COPIES_MISSING") return { ok: false, message: sentenceOf(finished) };
-      if (round === MAX_ROUNDS) return { ok: false, message: MOVE_MESSAGES.copiesMissing };
+      if (finished.code === "NETWORK") {
+        // The answer may have been lost after the move was done: ask where the project is.
+        const now = await api.projectSpace(input.projectId);
+        if (now.ok && now.value.spaceId === input.toSpaceId) {
+          return { ok: true, moved: { projectId: input.projectId, spaceId: now.value.spaceId, slug: plan.to.slug, version: now.value.version } };
+        }
+      }
+      if (finished.code !== "COPIES_MISSING") return { ok: false, message: sentenceOf(finished), code: finished.code };
+      if (round === MAX_ROUNDS) return { ok: false, message: MOVE_MESSAGES.copiesMissing, code: finished.code };
     }
   } catch (error) {
     if (!(error instanceof Stopped)) throw error;
     if (signal.aborted) return canceled();
-    return { ok: false, message: error.sentence };
+    return error.code === undefined ? { ok: false, message: error.sentence } : { ok: false, message: error.sentence, code: error.code };
   }
 }

@@ -14,6 +14,7 @@ export type MoveApi = {
   openCopyFile(moveId: string, copyAssetId: string, role: "preview" | "poster", sizeBytes: number): Promise<MoveResult<{ uploadUrl: string }>>;
   completeCopyFile(moveId: string, copyAssetId: string, role: "preview" | "poster"): Promise<MoveResult<CopyState>>;
   finish(moveId: string): Promise<MoveResult<FinishedMove>>;
+  projectSpace(projectId: string): Promise<MoveResult<{ spaceId: string; version: number }>>; // where the project is now
   abandon(moveId: string): Promise<void>; // never throws: a move left open is resumed or ends on its own
 };
 
@@ -41,6 +42,7 @@ const plan: z.ZodType<MovePlan> = z.object({
 const openedCopy: z.ZodType<OpenedCopy> = z.object({ copyAssetId: z.string(), uploadUrl: z.string().nullable(), offset: z.number(), done: z.boolean() });
 const fileOpened = z.object({ uploadUrl: z.string() });
 const finished: z.ZodType<FinishedMove> = z.object({ projectId: z.string(), spaceId: z.string(), slug: z.string(), version: z.number() });
+const projectAt = z.object({ spaceId: z.string(), version: z.number() });
 const refusal = z.object({ code: z.string(), message: z.string().optional(), missing: z.array(z.string()).optional() });
 
 const moves = (moveId: string, rest = "") => `/api/moves/${encodeURIComponent(moveId)}${rest}`;
@@ -50,7 +52,7 @@ export function createMoveApi(fetchFn?: typeof fetch): MoveApi {
   const doFetch: typeof fetch = fetchFn ?? ((input, init) => fetch(input, init));
 
   // One request to the page's own origin. No call throws: whatever goes wrong is a refusal.
-  async function request<T>(method: "POST" | "DELETE", path: string, shape: z.ZodType<T>, body?: unknown): Promise<MoveResult<T>> {
+  async function request<T>(method: "GET" | "POST" | "DELETE", path: string, shape: z.ZodType<T>, body?: unknown): Promise<MoveResult<T>> {
     let response: Response;
     let text: string;
     try {
@@ -83,6 +85,7 @@ export function createMoveApi(fetchFn?: typeof fetch): MoveApi {
     openCopyFile: (moveId, copyAssetId, role, sizeBytes) => request("POST", copies(moveId, copyAssetId, "/files"), fileOpened, { role, sizeBytes }),
     completeCopyFile: (moveId, copyAssetId, role) => request("POST", copies(moveId, copyAssetId, "/files/complete"), copyState, { role }),
     finish: (moveId) => request("POST", moves(moveId, "/finish"), finished),
+    projectSpace: (projectId) => request("GET", `/api/projects/${encodeURIComponent(projectId)}/version`, projectAt),
     abandon: async (moveId) => {
       await request("DELETE", moves(moveId), z.unknown());
     },

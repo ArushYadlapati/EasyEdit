@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { PROJECT_DRAG_TYPE } from "@/components/dashboard/drag";
 import { ProjectCard } from "@/components/dashboard/project-card";
+import type { MySpace } from "@/lib/spaces/types";
 import type { FormState } from "@/lib/projects/dashboard-actions";
 import { FOLDERS, NOW, PROJECTS, RECENT_IDS, dashProject, fakeActions, renderDashboard } from "../helpers/dashboard";
 import { act, fireEvent, screen, within } from "../helpers/dom";
@@ -58,6 +59,33 @@ async function click(element: HTMLElement) {
     fireEvent.click(element);
   });
 }
+
+const HOME: MySpace = { id: "s1", slug: "seattle-solvers", name: "Seattle Solvers", kind: "team", role: "editor" };
+const OTHER: MySpace = { id: "s2", slug: "robo-club", name: "Robo Club", kind: "team", role: "editor" };
+
+describe("a card's Move to… item", () => {
+  it("shows after Move to folder… for an editor with a target", () => {
+    renderDashboard({ fromSpace: HOME, moveTargets: [OTHER] });
+    fireEvent.click(options(card("Qual recap")));
+    expect(menuItems()).toEqual(["Open", "Rename", "Duplicate", "Move to folder…", "Move to…", "Pin", "Delete"]);
+  });
+
+  it("is hidden with no target, and for a viewer", () => {
+    const none = renderDashboard({ fromSpace: HOME, moveTargets: [] });
+    fireEvent.click(options(card("Qual recap")));
+    expect(menuItems()).toEqual(EDITOR_ITEMS);
+    none.unmount();
+    renderDashboard({ fromSpace: HOME, moveTargets: [OTHER], canEdit: false });
+    fireEvent.click(options(card("Qual recap")));
+    expect(menuItems()).toEqual(["Open"]);
+  });
+
+  it("opens the dialog with the targets", async () => {
+    renderDashboard({ fromSpace: HOME, moveTargets: [OTHER] });
+    await pick(card("Qual recap"), "Move to…");
+    expect(within(screen.getByRole("radiogroup", { name: "Space" })).getByRole("radio", { name: "Robo Club" })).toBeTruthy();
+  });
+});
 
 describe("a card's menu", () => {
   it("the ⋯ button and a right-click open the same menu", () => {
