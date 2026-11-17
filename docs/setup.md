@@ -149,6 +149,7 @@ EasyEdit can welcome each person with a short intro video the first time they op
 - Unset, or set to anything that is not such a link, there is no welcome dialog, no Learn page and no links to it.
 - The dialog opens once per account, on a space's page. Playing the video or closing the dialog marks it as seen, which needs the migration `0018_tutorial_views`.
 - The chapter list and the captions come from `src/lib/tutorial/script.ts`, which belongs to one recording of the video. Replace the file and the video together.
+- The video has a spoken voice, and its captions show by default. The same file names the credit the voice asks for (`TUTORIAL_VOICE_CREDIT`): the current voice was made on ElevenLabs' free plan, which requires the credit "elevenlabs.io" in the title, so the tutorial's title reads "The basics · Voice by elevenlabs.io" on the Learn page and in the welcome dialog. That plan is for non-commercial use only: if EasyEdit becomes commercial, the voice has to be made again on a paid plan (which also drops the credit).
 
 Plain `http` is accepted from `localhost` only, to try a new recording on your own computer.
 
