@@ -35,6 +35,10 @@ const ok = (r: ReturnType<typeof fillSlots>) => {
   if ("error" in r) throw new Error(r.error);
   return r.ops;
 };
+const shortOf = (r: ReturnType<typeof fillSlots>) => {
+  if ("error" in r) throw new Error(r.error);
+  return r.short;
+};
 const err = (r: ReturnType<typeof fillSlots>) => ("error" in r ? r.error : null);
 
 describe("fillSlots", () => {
@@ -72,6 +76,14 @@ describe("fillSlots", () => {
       "hero_clip: the footage has nothing left after the start point",
     );
     expect(err(fillSlots(template(), [{ slot: "hero_clip", assetId: "vid3", inFrames: 500 }], assets))).toContain("hero_clip");
+  });
+
+  it("reports a slot the footage does not cover, with where the footage ends", () => {
+    expect(shortOf(fillSlots(template(), [{ slot: "hero_clip", assetId: "vid3", inFrames: 30 }], assets))).toEqual([
+      { slot: "hero_clip", filledFrames: 60, slotFrames: 240, trackId: "v", endFrame: 70 },
+    ]);
+    expect(shortOf(fillSlots(template(), [{ slot: "hero_clip", assetId: "vid20" }], assets))).toEqual([]);
+    expect(shortOf(fillSlots(template(), [{ slot: "hero_clip", assetId: "img" }], assets))).toEqual([]);
   });
 
   it("uses the slot duration when the footage length is unknown, and for images", () => {

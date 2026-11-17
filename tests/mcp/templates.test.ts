@@ -103,6 +103,21 @@ describe("fill_template", () => {
     expect(JSON.stringify(back.doc.tracks)).toContain("MATCH RECAP");
   });
 
+  it("says when footage is shorter than its slot, with where to add more", async () => {
+    const { db, id, fill } = await setup();
+    const asset = await insertAsset(db, { durationMs: 5_000 });
+    const r = await fill(0, [{ slot: "hero_clip", asset_id: asset }]);
+    expect(r.isError).toBe(false);
+    expect(r.text).toMatch(/hero_clip: 5\.0 s of 8\.0 s filled\. Add more after it with add_media \(start_seconds 5, track t-footage\)\./);
+    expect(id).toBeTruthy();
+  });
+
+  it("says nothing about a gap when the footage covers the slot", async () => {
+    const { db, fill } = await setup();
+    const asset = await insertAsset(db, { durationMs: 600_000 });
+    expect((await fill(0, [{ slot: "hero_clip", asset_id: asset }])).text).not.toContain("filled. Add more");
+  });
+
   it("answers a repeat of the same call with the same change", async () => {
     const { db, ctx, id, fill } = await setup();
     await fill(0, [{ slot: "title_text", text: "WORLDS" }]);

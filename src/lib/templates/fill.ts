@@ -7,15 +7,19 @@ export type FillAsset = { id: string; kind: "video" | "image" | "audio"; duratio
 
 const TAKES = { text: "text", visual: "a video or image", audio: "audio" } as const;
 
+// A slot whose footage is shorter than the slot: the rest of it stays empty.
+export type ShortSlot = { slot: string; filledFrames: number; slotFrames: number; trackId: string; endFrame: number };
+
 // The ops that fill the named slots. Locked tracks are not checked here; applyOps refuses them.
 export function fillSlots(
   doc: TimelineDoc,
   fills: SlotFill[],
   assets: ReadonlyMap<string, FillAsset>,
-): { ops: OpInput[] } | { error: string } {
+): { ops: OpInput[]; short: ShortSlot[] } | { error: string } {
   const slots = slotsOf(doc);
   const seen = new Set<string>();
   const ops: OpInput[] = [];
+  const short: ShortSlot[] = [];
 
   for (const fill of fills) {
     const name = fill.slot;
@@ -51,6 +55,7 @@ export function fillSlots(
         duration = Math.min(clip.duration, asset.durationFrames - inFrames);
       }
       if (duration < 1) return { error: `${name}: the footage has nothing left after the start point` };
+      if (duration < clip.duration) short.push({ slot: name, filledFrames: duration, slotFrames: clip.duration, trackId, endFrame: clip.start + duration });
       ops.push({ op: "remove_clip", clipId: clip.id });
       ops.push({
         op: "add_clip",
@@ -70,5 +75,5 @@ export function fillSlots(
       });
     }
   }
-  return { ops };
+  return { ops, short };
 }

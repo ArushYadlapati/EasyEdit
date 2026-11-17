@@ -2,7 +2,7 @@ import { meetsRole } from "@/lib/access-rules";
 import { sourceFrames } from "@/lib/media/rules";
 import { loadAssetFacts } from "@/lib/media/service";
 import { getProject } from "@/lib/projects/service";
-import { fillSlots, type FillAsset, type SlotFill } from "@/lib/templates/fill";
+import { fillSlots, type FillAsset, type ShortSlot, type SlotFill } from "@/lib/templates/fill";
 import { getTemplate, listTemplates } from "@/lib/templates/service";
 import type { Template, TemplateSummary } from "@/lib/templates/types";
 import { escapeQuoted, formatLabel, slotsOf, describe, type SlotSummary } from "@/lib/timeline";
@@ -105,14 +105,19 @@ export async function fillTemplateTool(base: ToolContext, input: FillInput): Pro
   }));
   const planned = fillSlots(doc, fills, assets);
   if ("error" in planned) return fail(planned.error);
-  return answer(ctx, input, await runEdit(ctx, { ...edit, ops: planned.ops }));
+  return answer(ctx, input, await runEdit(ctx, { ...edit, ops: planned.ops }), planned.short);
 }
 
-function answer(ctx: ToolContext, input: FillInput, done: Awaited<ReturnType<typeof runEdit>>): ToolResult {
+function answer(ctx: ToolContext, input: FillInput, done: Awaited<ReturnType<typeof runEdit>>, short: ShortSlot[] = []): ToolResult {
   if (!done.ok) return done.result;
   const names = input.slots.map((s) => s.slot);
   const lines = [editedText(ctx, `Filled the template as version ${done.applied.version}.`, done), `Filled: ${names.join(", ")}.`];
   const empty = slotsOf(done.project.doc).filter((s) => !s.filled).map((s) => s.name);
   if (empty.length > 0) lines.push(`Still empty: ${empty.join(", ")}.`);
+  const fps = done.project.doc.fps;
+  const sec = (frames: number) => +(frames / fps).toFixed(1);
+  for (const s of short) {
+    lines.push(`${s.slot}: ${sec(s.filledFrames).toFixed(1)} s of ${sec(s.slotFrames).toFixed(1)} s filled. Add more after it with add_media (start_seconds ${sec(s.endFrame)}, track ${s.trackId}).`);
+  }
   return ok(lines.join("\n"));
 }

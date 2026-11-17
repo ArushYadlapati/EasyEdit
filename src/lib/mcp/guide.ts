@@ -116,6 +116,7 @@ export function buildEditingGuide(): string {
     "- Start with create_project and its template; the answer lists the slots. get_project shows each slot on its clip.",
     "- Fill with fill_template: text for a text slot, a media id from list_assets for a video, image or audio slot, and optionally in_seconds to start into the footage.",
     "- Fill what you can in one call, then read the project to check it. Slots left empty stay as placeholders.",
+    "- Footage shorter than its slot leaves a gap after it. The answer says so; fill the rest with add_media after it.",
     "",
     "## Media",
     "- Find media with list_assets. You cannot see or hear it yet: go by names, events and lengths, and ask the person which moments they want.",
