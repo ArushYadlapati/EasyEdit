@@ -142,3 +142,36 @@ it("shows the whole summary of a long entry, with 'Undo this change' under it", 
   // Under the text, not beside it: the button is in the line that follows the summary.
   expect(summary.nextElementSibling?.contains(undo)).toBe(true);
 });
+
+it("after a move, changes from before it say so in place of Undo, and the move reads as one", async () => {
+  // v1–v2 before the move, v3 the move itself (by Ada, u1), v4 after it.
+  const server = makeFakeServer(sampleDoc(), 0);
+  server.remote(rename(1));
+  server.remote(rename(2));
+  server.moveTo("s2", [{ op: "update_clip", clipId: "c1", patch: { assetId: "copy-a" } }]);
+  server.remote(rename(4));
+  const store = makeStore({ doc: server.doc(), version: 4, movedAtVersion: 3 });
+  render(
+    <EditorProvider store={store} api={server.api}>
+      <ActivityPanel />
+    </EditorProvider>,
+  );
+  await waitFor(() => expect(rows()).toHaveLength(4));
+  const [after, move, ...before] = rows();
+  expect(after.textContent).toContain("Undo this change");
+  expect(after.textContent).not.toContain("Made before the move");
+  expect(move.textContent).toContain("You · Moved here from another space");
+  expect(move.textContent).not.toContain("Undo this change");
+  expect(move.textContent).not.toContain("Made before the move");
+  for (const row of before) {
+    expect(row.textContent).toContain("Made before the move");
+    expect(row.textContent).not.toContain("Undo this change");
+  }
+  expect(screen.getAllByRole("button", { name: "Undo this change" })).toHaveLength(1);
+});
+
+it("Undo on a change from before the move does nothing", () => {
+  const store = makeStore({ movedAtVersion: 7 });
+  store.getState().undoChange({ ...entry(6, [{ op: "move_clip", clipId: "x2", start: 100 }]), inverse: [{ op: "move_clip", clipId: "x2", start: 90 }] });
+  expect(store.getState().queue).toEqual([]);
+});

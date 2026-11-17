@@ -71,6 +71,7 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
           me: { id: user.id, name: user.name },
           canEdit: meetsRole(actor.role, "editor"),
           thumbnailVersion: project.thumbnailVersion,
+          movedAtVersion: project.movedAtVersion,
         }}
         space={{ id: space.id, slug: slugFor(space), storageReady, storageProblem, kind: space.kind, isAdmin, storageBlock: block, ownsConnection: owner?.userId === user.id, ownerEmail: owner?.email ?? null }}
         layout={layout}

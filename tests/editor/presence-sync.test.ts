@@ -398,3 +398,45 @@ describe("leaving", () => {
     }
   });
 });
+
+describe("after the project moved to another space", () => {
+  function setupIn(spaceId = "s1") {
+    const server = makeFakeServer(sampleDoc(), 5);
+    const fake = makeFakePresence(server);
+    const store = makeStore();
+    const presence = createPresenceStore("u1");
+    const sync = createSync({
+      store, api: server.api, isVisible: () => true, spaceId,
+      presence: { api: fake.api, store: presence, makeTabId: () => "tab-1" },
+    });
+    sync.start();
+    return { server, fake, sync, st: () => store.getState(), list: () => presence.getState() };
+  }
+
+  it("a share answering another space shows the move, applies none of its change, and checks no more", async () => {
+    const { server, fake, st, list } = setupIn();
+    fake.answer([GRACE]);
+    await after(2000);
+    expect(list().peers).toHaveLength(1);
+    server.moveTo("s2", [{ op: "update_clip", clipId: "c1", patch: { assetId: "copy-a" } }]);
+    await after(2000);
+    expect(fake.count()).toBe(2);
+    expect(server.calls).toEqual([]); // no catch-up
+    expect(st()).toMatchObject({ moved: true, canEdit: false });
+    expect(st().server.version).toBe(5);
+    expect(list().peers).toEqual([]);
+    await after(POLL_IDLE_LIMIT_MS);
+    expect(fake.count()).toBe(2);
+    expect(server.calls).toEqual([]);
+  });
+
+  it("a share answering 404 NOT_FOUND asks where the project is: moved when it is in another space", async () => {
+    const { server, fake, st } = setupIn();
+    server.moveTo("s2");
+    fake.fail("not-found");
+    await after(2000);
+    expect(server.calls).toEqual(["version"]);
+    expect(st().moved).toBe(true);
+    expect(st().status).not.toBe("deleted");
+  });
+});

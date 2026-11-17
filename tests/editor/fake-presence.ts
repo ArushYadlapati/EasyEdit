@@ -22,7 +22,7 @@ export function makeFakePresence(server: ReturnType<typeof makeFakeServer>) {
       const kind = failures.shift();
       if (kind) return { ok: false, kind } as PresenceResult;
       const peers = typeof answer === "function" ? answer(n) : answer;
-      return { ok: true, version: server.version(), peers: peers === null ? null : structuredClone(peers) };
+      return { ok: true, version: server.version(), spaceId: server.spaceId(), peers: peers === null ? null : structuredClone(peers) };
     },
     leave(tabId) {
       presenceCalls.push(`leave ${tabId}`);

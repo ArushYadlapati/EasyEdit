@@ -624,3 +624,128 @@ describe("a save the website refuses over its limit", () => {
     expect(st()).toMatchObject({ status: "saved", queue: [] });
   });
 });
+
+describe("after the project moved to another space", () => {
+  // A tab open in space s1. The move's change points the clips at copies of their media in the new space.
+  const ONTO_COPY: OpInput[] = [{ op: "update_clip", clipId: "c1", patch: { assetId: "copy-a" } }];
+
+  function setupIn(spaceId = "s1") {
+    const server = makeFakeServer(sampleDoc(), 5);
+    const store = makeStore();
+    const sync = createSync({ store, api: server.api, isVisible: () => true, spaceId });
+    sync.start();
+    return { server, sync, st: () => store.getState() };
+  }
+
+  // Once moved, nothing is requested again, and the editor can no longer change anything.
+  async function expectStopped(server: ReturnType<typeof makeFakeServer>, st: () => ReturnType<ReturnType<typeof makeStore>["getState"]>) {
+    const calls = [...server.calls];
+    const queue = st().queue;
+    expect(st().edit(move(150), "move")).toMatchObject({ ok: false, code: "READ_ONLY" });
+    st().undo();
+    st().redo();
+    expect(st().queue).toBe(queue);
+    await after(POLL_IDLE_LIMIT_MS);
+    expect(server.calls).toEqual(calls);
+  }
+
+  it("a version check answering another space shows the move, applies none of its change and sends nothing more", async () => {
+    const { server, st } = setupIn();
+    server.moveTo("s2", ONTO_COPY);
+    await after(2000);
+    expect(server.calls).toEqual(["version"]); // no catch-up: the move's change is never read, let alone applied
+    expect(st()).toMatchObject({ moved: true, canEdit: false });
+    expect(st().server.version).toBe(5);
+    expect(findClip(st().doc, "c1")!.clip).toMatchObject({ assetId: "a" });
+    await expectStopped(server, st);
+  });
+
+  it("an edit made while that check was out stays in the queue, unsent", async () => {
+    const { server, st } = setupIn();
+    let answer!: () => void;
+    vi.spyOn(server.api, "getVersion").mockImplementation(
+      () => new Promise((resolve) => { answer = () => resolve({ ok: true, version: 6, spaceId: "s2" }); }),
+    );
+    server.moveTo("s2", ONTO_COPY);
+    await after(2000);
+    st().edit(move(120), "move");
+    await settle();
+    answer();
+    await settle();
+    expect(st().moved).toBe(true);
+    expect(st().queue).toMatchObject([{ label: "move", ops: [{ op: "move_clip", clipId: "x2", start: 120 }] }]);
+    expect(findClip(st().doc, "x2")!.clip.start).toBe(120); // still on screen
+    expect(count(server.calls, "post")).toBe(0);
+    await expectStopped(server, st);
+  });
+
+  it("an edit answered 409 MOVED shows the move and keeps the edit, unsent", async () => {
+    const { server, st } = setupIn();
+    server.moveTo("s2", ONTO_COPY);
+    st().edit(move(120), "move");
+    await settle();
+    expect(server.calls).toEqual(["post"]);
+    expect(st().moved).toBe(true);
+    expect(st().queue).toHaveLength(1);
+    expect(st().server.version).toBe(5);
+    expect(server.log).toHaveLength(1); // only the move
+    await expectStopped(server, st);
+  });
+
+  it("a catch-up after an offline spell that finds the move's change checks where the project is, and applies nothing", async () => {
+    const { server, st } = setupIn();
+    server.fail("network");
+    st().edit(move(120), "move");
+    await settle();
+    expect(st().status).toBe("offline");
+    server.moveTo("s2", ONTO_COPY);
+    await after(2000);
+    expect(server.calls).toEqual(["post", "ops", "version"]);
+    expect(st().moved).toBe(true);
+    expect(st().server.version).toBe(5);
+    expect(findClip(st().doc, "c1")!.clip).toMatchObject({ assetId: "a" });
+    expect(st().queue).toHaveLength(1);
+    await expectStopped(server, st);
+  });
+
+  it("a write answered 404 NOT_FOUND asks where the project is: moved when it is in another space", async () => {
+    const { server, st } = setupIn();
+    server.moveTo("s2", ONTO_COPY);
+    server.fail("not-found");
+    st().edit(move(120), "move");
+    await settle();
+    expect(server.calls).toEqual(["post", "version"]);
+    expect(st().moved).toBe(true);
+    expect(st().status).not.toBe("deleted");
+    expect(st().queue).toHaveLength(1);
+    await expectStopped(server, st);
+  });
+
+  it("a check answered 404 NOT_FOUND asks where the project is too", async () => {
+    const { server, st } = setupIn();
+    server.moveTo("s2", ONTO_COPY);
+    server.fail("not-found");
+    await after(2000);
+    expect(server.calls).toEqual(["version", "version"]);
+    expect(st().moved).toBe(true);
+    expect(st().status).not.toBe("deleted");
+  });
+
+  it("a 404 confirmed by the version check is still deleted", async () => {
+    const { server, st } = setupIn();
+    server.fail("not-found", 2);
+    st().edit(move(120), "move");
+    await settle();
+    expect(server.calls).toEqual(["post", "version"]);
+    expect(st()).toMatchObject({ status: "deleted", moved: false });
+  });
+
+  it("a check answering the tab's own space changes nothing", async () => {
+    const { server, st } = setupIn();
+    server.remote(retext("GO"));
+    await after(2000);
+    expect(server.calls).toEqual(["version", "ops"]);
+    expect(st()).toMatchObject({ moved: false, canEdit: true });
+    expect(st().server.version).toBe(6);
+  });
+});

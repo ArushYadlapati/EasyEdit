@@ -7,6 +7,7 @@ import { browserExportDeps } from "@/components/editor/export/browser-deps";
 import { createMediaServices, type MediaServices } from "@/components/editor/media/media-context";
 import { browserThumbnailDeps } from "@/components/editor/thumbnail-deps";
 import { formatTimecode } from "@/lib/editor/geometry";
+import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
 import { DEFAULT_KEYMAP, KEYMAP_KEY, formatKeymap, setKeys, setOff } from "@/lib/editor/keymap";
 import { DEFAULT_LAYOUT } from "@/lib/editor/layout";
 import { createMediaDrop, type MediaDrop } from "@/lib/editor/media-drop";
@@ -77,6 +78,8 @@ function stubServer() {
   const server = {
     requests,
     hold: false,
+    spaceId: "s1", // the space the checks say the project is in
+    moved: false, // posts of edits are answered 409 MOVED
     posts: () => requests.filter((r) => r.startsWith("POST") && r.endsWith("/ops")).length,
     versionChecks: () => requests.filter((r) => r.endsWith("/version") || (r.startsWith("POST") && r.endsWith("/presence"))).length,
     leaves: () => requests.filter((r) => r.startsWith("DELETE") && r.includes("/presence?tab=")).length,
@@ -88,13 +91,14 @@ function stubServer() {
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     requests.push(`${method} ${url}`);
-    if (url.endsWith("/presence") && method === "POST") return Response.json({ version, peers: [] });
+    if (url.endsWith("/presence") && method === "POST") return Response.json({ version, peers: [], spaceId: server.spaceId });
     if (url.includes("/presence?") && method === "DELETE") return new Response(null, { status: 204 });
+    if (method === "POST" && server.moved) return Response.json({ code: "MOVED", message: "moved", currentVersion: version }, { status: 409 });
     if (method === "POST") {
       const answer = () => Response.json({ version: ++version, ops: [], inverse: [] });
       return server.hold ? new Promise<Response>((resolve) => waiting.push(() => resolve(answer()))) : answer();
     }
-    if (url.endsWith("/version")) return Response.json({ version });
+    if (url.endsWith("/version")) return Response.json({ version, spaceId: server.spaceId });
     return Response.json({ version, entries: [], hasMore: false });
   });
   return server;
@@ -1063,4 +1067,38 @@ it("a picture waits for an upload, then follows once it is ready", async () => {
   await after(0);
   await flush();
   expect(puts(server)).toEqual(["PUT /api/projects/p1/thumbnail?v=6"]);
+});
+
+it("a project moved to another space says so, links there, and turns editing off as for a viewer", async () => {
+  const server = stubServer();
+  render(<EditorShell space={SPACE} initial={initial()} />);
+  await flush();
+  expect(screen.queryByText(MOVE_MESSAGES.moved)).toBeNull();
+  server.spaceId = "s2";
+  await after(2000);
+  expect(screen.getByText(MOVE_MESSAGES.moved)).toBeTruthy();
+  const link = screen.getByRole("link", { name: "Open it there" });
+  expect(link.getAttribute("href")).toBe("/editor/p1"); // the old address sends it on to the project's space
+  const controls = [...document.querySelectorAll<HTMLButtonElement>("[data-edit-control]")];
+  expect(controls.length).toBeGreaterThan(10);
+  for (const control of controls) expect(control.disabled, control.outerHTML.slice(0, 120)).toBe(true);
+  expect(server.posts()).toBe(0);
+  const checks = server.versionChecks();
+  await after(60_000);
+  expect(server.versionChecks()).toBe(checks);
+});
+
+it("an edit answered 409 MOVED shows the move too, and keeps the edit unsent", async () => {
+  const server = stubServer();
+  render(<EditorShell space={SPACE} initial={initial()} />);
+  await flush();
+  server.moved = true;
+  server.spaceId = "s2";
+  await addTitle();
+  await flush();
+  expect(server.posts()).toBe(1);
+  expect(screen.getByText(MOVE_MESSAGES.moved)).toBeTruthy();
+  expect(screen.getByText("Moved")).toBeTruthy(); // the save status, in place of "Saving…"
+  await after(60_000);
+  expect(server.posts()).toBe(1);
 });

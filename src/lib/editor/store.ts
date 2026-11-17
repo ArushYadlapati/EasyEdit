@@ -13,7 +13,7 @@ import {
   type TimelineDoc,
   type Track,
 } from "@/lib/timeline";
-import { canUndoChange } from "./activity";
+import { canUndoChange, isBeforeMove } from "./activity";
 import { clampZoom, fitZoom } from "./geometry";
 import { MESSAGES, explainOpError } from "./messages";
 import { shuttle as nextShuttle } from "./playback";
@@ -41,6 +41,10 @@ export type EditorState = {
   name: string;
   me: Me;
   canEdit: boolean;
+  // The project moved to another space while this tab was open. Nothing more is sent or fetched, and nothing can be
+  // changed here: the edits still waiting stay on screen, unsent.
+  moved: boolean;
+  movedAtVersion: number | null; // the version the project's last move made, as the page loaded it; null: never moved
   server: { doc: TimelineDoc; version: number }; // what the server is known to hold
   queue: PendingEdit[]; // local edits not yet confirmed, oldest first
   doc: TimelineDoc; // server.doc with every queued edit applied
@@ -103,6 +107,7 @@ export type EditorState = {
   limitMessage: string | null; // why saving waits, while the status is "limited"
   setStatus(status: SyncStatus, limitMessage?: string): void;
   revokeEditing(): void;
+  markMoved(): void; // the project moved to another space: editing ends here, and the waiting edits are kept, unsent
   // playback, open to viewers too
   play(): void; // from the start when the playhead is at the end; not in a project with no clips
   pause(): void;
@@ -309,6 +314,8 @@ export function createEditorStore(
       name: init.name,
       me: init.me,
       canEdit: init.canEdit,
+      moved: false,
+      movedAtVersion: init.movedAtVersion ?? null,
       server: { doc: init.doc, version: init.version },
       queue: [],
       doc: init.doc,
@@ -374,7 +381,7 @@ export function createEditorStore(
 
       undoChange(entry) {
         const state = get();
-        if (!state.canEdit || !canUndoChange(entry)) return;
+        if (!state.canEdit || !canUndoChange(entry) || isBeforeMove(entry, state.movedAtVersion)) return;
         try {
           applyOps(state.doc, entry.inverse);
         } catch (err) {
@@ -591,6 +598,11 @@ export function createEditorStore(
           guideId: null,
           notice: makeNotice("error", MESSAGES.lostAccess),
         });
+      },
+
+      markMoved() {
+        if (get().moved) return;
+        set({ moved: true, canEdit: false, gesture: null, cropArmed: null, textEditId: null, tool: "select", guideId: null });
       },
 
       play() {

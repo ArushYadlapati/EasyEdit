@@ -14,6 +14,7 @@ import { ExportDialog } from "./export/export-dialog";
 import { useExport, type Exporter } from "./export/use-export";
 import { LeaveLink } from "./leave-link";
 import { LeftPanel } from "./left-panel";
+import { MovedBanner } from "./moved-banner";
 import { ToolRail } from "./tool-rail";
 import { NoticeBar } from "./notice-bar";
 import { PanelGrid } from "./panel-grid";
@@ -117,7 +118,12 @@ export function EditorScreen({ spaceSlug, initialLayout = DEFAULT_LAYOUT, saveLa
           }
           right={<RightPanel />}
           bottom={<Timeline />}
-          overlay={<NoticeBar />}
+          overlay={
+            <>
+              <MovedBanner />
+              <NoticeBar />
+            </>
+          }
         />
         <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center lg:hidden">
           <p className="text-sm font-semibold">The editor needs a wider window.</p>

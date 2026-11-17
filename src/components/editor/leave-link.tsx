@@ -26,7 +26,8 @@ const PRIMARY_LINK = cx(
 // While a save is in flight the click waits for it, up to LEAVE_SETTLE_MS: a send that fails after the editor closed
 // would stop the sync and drop the edits with no word. Once the save worked the link is clicked again, inside the app;
 // when it failed, or is still going at the cap, the page is loaded for real instead.
-// Edits to a project that was deleted can never be saved, so leaving it asks nothing about them.
+// Edits to a project that was deleted, or moved to another space, can never be saved here, so leaving it asks nothing
+// about them.
 // Leaving stops the uploads that are running, so while one runs the page is loaded for real too.
 // Leaving stops a running export too, so while one runs it asks first, inside the app: Leave then
 // navigates inside the app, so the edits still queued are sent rather than cut off by a page load.
@@ -58,8 +59,8 @@ export function LeaveLink({ href, ...props }: LeaveLinkProps) {
   // Edits that cannot be sent now, or uploads that leaving stops: the page is loaded for real, so the browser asks.
   // Both the link and Leave apply it, Leave again at its own click, as the edits may have become at risk meanwhile.
   function loadsForReal(event: MouseEvent<HTMLAnchorElement>): boolean {
-    const { queue, status } = store.getState();
-    const editsAtRisk = queue.length > 0 && status !== "saving" && status !== "deleted";
+    const { queue, status, moved } = store.getState();
+    const editsAtRisk = queue.length > 0 && status !== "saving" && status !== "deleted" && !moved;
     if (!editsAtRisk && uploads.active() === 0) return false;
     event.preventDefault();
     window.location.assign(href);
@@ -73,7 +74,7 @@ export function LeaveLink({ href, ...props }: LeaveLinkProps) {
       event.preventDefault();
       return true;
     }
-    const sending = (s: { queue: unknown[]; status: string }) => s.queue.length > 0 && s.status === "saving";
+    const sending = (s: { queue: unknown[]; status: string; moved: boolean }) => s.queue.length > 0 && s.status === "saving" && !s.moved;
     if (!sending(store.getState())) return false;
     event.preventDefault();
     const clicked = event.currentTarget;

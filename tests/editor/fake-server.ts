@@ -19,6 +19,8 @@ export function makeFakeServer(initial: TimelineDoc, startVersion: number) {
   let loseAnswer = false;
   let remoteCount = 0;
   let name = "Qual recap";
+  let spaceId = "s1"; // the space the project is in
+  let movedAtVersion: number | null = null;
 
   function write(ops: Op[], actor: string, actorName: string, requestId: string | null = null) {
     const result = applyOps(doc, ops);
@@ -38,12 +40,14 @@ export function makeFakeServer(initial: TimelineDoc, startVersion: number) {
 
   const api: ProjectApi = {
     async postOps(input) {
-      const { ops, requestId } = wire(input);
+      const { ops, requestId, baseVersion } = wire(input);
       const failure = failed("post");
       if (failure) return failure;
       // A repeated request id gets the first write's answer again, and nothing is applied.
       const prior = requestId === undefined ? undefined : log.find((e) => e.requestId === requestId);
       if (prior) return { ok: true, version: prior.version, inverse: prior.inverse ?? [] };
+      // A change planned before the project moved is refused, as the real server does.
+      if (movedAtVersion !== null && baseVersion < movedAtVersion) return { ok: false, kind: "moved" };
       try {
         const inverse = write(ops, "u1", "Ada", requestId);
         if (loseAnswer) {
@@ -57,7 +61,7 @@ export function makeFakeServer(initial: TimelineDoc, startVersion: number) {
       }
     },
     async getVersion() {
-      return failed("version") ?? { ok: true, version };
+      return failed("version") ?? { ok: true, version, spaceId };
     },
     async getOpsSince(since, limit = 100) {
       const failure = failed("ops");
@@ -85,9 +89,21 @@ export function makeFakeServer(initial: TimelineDoc, startVersion: number) {
     doc: () => doc,
     version: () => version,
     name: () => name,
+    spaceId: () => spaceId,
     // A teammate's edit, sent with its own request id.
     remote(ops: OpInput[], actor = "u2", actorName = "Grace") { write(prepareOps(ops), actor, actorName, `remote-${String(++remoteCount).padStart(4, "0")}`); },
     fail(kind: Failure, times = 1) { failures = failures.concat(Array<Failure>(times).fill(kind)); },
     loseNextAnswer() { loseAnswer = true; }, // the next post is applied, then reported as a network failure
+    // The project moves to another space, as finishMove does: one entry with no undo, by the mover, and no change from
+    // before it can be undone any more.
+    moveTo(to: string, ops: OpInput[] = [], actor = "u1", actorName = "Ada") {
+      for (const e of log) e.inverse = null;
+      const prepared = prepareOps(ops);
+      doc = applyOps(doc, prepared).doc;
+      version += 1;
+      log.push({ version, ops: prepared, inverse: null, actor, actorName, requestId: null, createdAt: new Date(0).toISOString() });
+      spaceId = to;
+      movedAtVersion = version;
+    },
   };
 }

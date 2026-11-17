@@ -166,6 +166,20 @@ export function canUndoChange(entry: ActivityEntry): entry is ActivityEntry & { 
   return entry.inverse !== null && entry.inverse.length > 0;
 }
 
+// A change made before the project's last move to another space. Its undo could name media the old space kept, so it
+// has none, whatever the list loaded.
+export function isBeforeMove(entry: ActivityEntry, movedAtVersion: number | null): boolean {
+  return movedAtVersion !== null && entry.version < movedAtVersion;
+}
+
+// The move's own change: it points the clips at their copies in this space, and has no undo.
+function isMoveEntry(entry: ActivityEntry, movedAtVersion: number | null): boolean {
+  return entry.version === movedAtVersion && entry.inverse === null;
+}
+
+export const MOVED_HERE = "Moved here from another space";
+export const MADE_BEFORE_MOVE = "Made before the move";
+
 export function whoLabel(entry: ActivityEntry, meId: string): string {
   return entry.actor === meId ? "You" : entry.actorName;
 }
@@ -200,7 +214,8 @@ export function olderRange(oldestLoaded: number): { since: number; limit: number
   return { since, limit: end - since };
 }
 
-export type ActivityRow = { version: number; who: string; summary: string; when: string; canUndo: boolean };
+// beforeMove: made before the project's last move, so it says so in place of its Undo.
+export type ActivityRow = { version: number; who: string; summary: string; when: string; canUndo: boolean; beforeMove: boolean };
 
 // The kind of every clip a change adds or brings back (its own ops, or the stored undo of a delete).
 function kindsIn(ops: Op[] | null, into: Map<string, ClipKind>): void {
@@ -210,8 +225,15 @@ function kindsIn(ops: Op[] | null, into: Map<string, ClipKind>): void {
   }
 }
 
-// The loaded entries as list rows, newest first. With the project, a change to one clip names its kind.
-export function activityRows(entries: ActivityEntry[], meId: string, now: Date, doc?: TimelineDoc): ActivityRow[] {
+// The loaded entries as list rows, newest first. With the project, a change to one clip names its kind. With the
+// version of the project's last move, the move reads as one and the changes before it cannot be undone.
+export function activityRows(
+  entries: ActivityEntry[],
+  meId: string,
+  now: Date,
+  doc?: TimelineDoc,
+  movedAtVersion: number | null = null,
+): ActivityRow[] {
   const kinds = new Map<string, ClipKind>();
   for (const entry of entries) {
     kindsIn(entry.ops, kinds);
@@ -220,13 +242,17 @@ export function activityRows(entries: ActivityEntry[], meId: string, now: Date, 
   for (const track of doc?.tracks ?? []) for (const clip of track.clips) kinds.set(clip.id, clip.type);
   const kindOf: KindOf = (clipId) => kinds.get(clipId);
   return entries
-    .map((entry) => ({
-      version: entry.version,
-      who: whoLabel(entry, meId),
-      summary: summarizeOps(entry.ops, kindOf),
-      when: timeAgo(new Date(entry.createdAt), now),
-      canUndo: canUndoChange(entry),
-    }))
+    .map((entry) => {
+      const beforeMove = isBeforeMove(entry, movedAtVersion);
+      return {
+        version: entry.version,
+        who: whoLabel(entry, meId),
+        summary: isMoveEntry(entry, movedAtVersion) ? MOVED_HERE : summarizeOps(entry.ops, kindOf),
+        when: timeAgo(new Date(entry.createdAt), now),
+        canUndo: canUndoChange(entry) && !beforeMove,
+        beforeMove,
+      };
+    })
     .reverse();
 }
 

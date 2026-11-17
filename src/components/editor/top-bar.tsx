@@ -34,6 +34,7 @@ export function TopBar({ spaceSlug, onShowShortcuts, onShowSettings, onResetLayo
   const clipboard = useClipboard();
   const run = useCommandRunner(onShowShortcuts, onExport);
   const canEdit = useEditor((s) => s.canEdit);
+  const moved = useEditor((s) => s.moved);
   const status = useEditor((s) => s.status);
   const undoLabel = useEditor((s) => s.undoStack.at(-1)?.label);
   const redoLabel = useEditor((s) => s.redoStack.at(-1)?.label);
@@ -72,7 +73,8 @@ export function TopBar({ spaceSlug, onShowShortcuts, onShowSettings, onResetLayo
       </div>
       <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
       <ProjectName />
-      {!canEdit && (
+      {/* A moved project's editing is off too, and its banner says why. */}
+      {!canEdit && !moved && (
         <span className="shrink-0 rounded-[4px] border border-ed-line px-1.5 text-[11px] leading-4 font-medium text-ed-muted">
           View only
         </span>

@@ -246,15 +246,15 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       return new Response(null, { status: 204 });
     }),
 
-    // The editor's check for changes, carrying this tab's selection. The version is answered exactly as GET /version
-    // answers it, and nothing about the selection can make the check fail.
+    // The editor's check for changes, carrying this tab's selection. The version and the space are answered exactly as
+    // GET /version answers them, and nothing about the selection can make the check fail.
     presence: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
       const { id } = await ctx.params;
       const actor = await itemActor(deps, req, id);
       if (actor instanceof Response) return actor;
       const answer = await checkIn(deps.db(), actor, id, await readShare(req));
       if (!answer) return notFound(id);
-      return Response.json(answer);
+      return Response.json({ ...answer, spaceId: actor.spaceId });
     }),
 
     // A tab going away. An unknown tab or project still answers 204: there is nothing to tell a closing page.

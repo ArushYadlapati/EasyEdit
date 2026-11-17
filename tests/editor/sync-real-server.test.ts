@@ -1,6 +1,7 @@
 // The editor's client (api, sync and store) against the real route handlers on PGlite, so the
 // rules the fake server stands in for (base versions, request ids, roles, paging by size) are
 // checked against the server itself.
+import { sql } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 import type { DB } from "@/db";
 import { user } from "@/db/schema";
@@ -15,7 +16,7 @@ import { createSync } from "@/lib/editor/sync";
 import { makeOpsHandlers, makeProjectHandlers } from "@/lib/projects/handlers";
 import { applyProjectOps, createProject, deleteProject, getProject } from "@/lib/projects/service";
 import { roleIn } from "@/lib/spaces/service";
-import { SEED_TEAM_ID } from "@/lib/spaces/types";
+import { SEED_TEAM_ID, personalSpaceId } from "@/lib/spaces/types";
 import type { OpInput } from "@/lib/timeline";
 import { joinSpace, testActor } from "../helpers/actor";
 import { text } from "./fixtures";
@@ -26,7 +27,7 @@ const ORIGIN = "http://localhost:3000";
 // Both are editors in Seattle Solvers; a test that wants a viewer changes the member row.
 const ADA: CurrentUser = { id: "u1", email: "u1@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
 const GRACE: CurrentUser = { id: "u2", email: "u2@gmail.com", name: "Grace", image: null, allowlistRole: "editor" };
-const actor = (u: CurrentUser) => testActor({ userId: u.id, email: u.email, role: "editor" });
+const actor = (u: CurrentUser, spaceId = SEED_TEAM_ID) => testActor({ userId: u.id, email: u.email, role: "editor", spaceId });
 
 type Wire = {
   user: CurrentUser | (() => Response); // who the server's sign-in check finds, or the answer it gives instead (built anew each time: a Response can be read once)
@@ -98,7 +99,7 @@ async function project() {
 
 // An open editor for `who`, loaded from the stored project; `versionOffset` makes it think the
 // project is further along than it is. With `presence`, its checks share its selection, as the real editor's do.
-async function openEditor(db: DB, id: string, who: CurrentUser, wire: Partial<Wire> = {}, versionOffset = 0, opts: { presence?: boolean } = {}) {
+async function openEditor(db: DB, id: string, who: CurrentUser, wire: Partial<Wire> = {}, versionOffset = 0, opts: { presence?: boolean; spaceId?: string } = {}) {
   const w: Wire = { user: who, origin: ORIGIN, requests: [], loseNextPostAnswer: false, ...wire };
   const api = createProjectApi(id, routedFetch(db, w));
   const loaded = (await getProject(db, actor(ADA), id))!;
@@ -112,7 +113,7 @@ async function openEditor(db: DB, id: string, who: CurrentUser, wire: Partial<Wi
   });
   const presence = createPresenceStore(who.id);
   const sync = createSync({
-    store, api, isVisible: () => true,
+    store, api, isVisible: () => true, spaceId: opts.spaceId,
     ...(opts.presence && { presence: { api: createPresenceApi(id, routedFetch(db, w)), store: presence } }),
   });
   sync.start();
@@ -122,6 +123,21 @@ async function openEditor(db: DB, id: string, who: CurrentUser, wire: Partial<Wi
 }
 
 const moveX2 = (start: number): OpInput[] => [{ op: "move_clip", clipId: "x2", start }];
+
+// The project's move to Ada's personal space, written as finishMove writes it: the next version, moved_at_version, one
+// log row with no undo by the mover, and no undo left on the rows before it. (No media here, so the row has no ops.)
+async function moveToAdasSpace(db: DB, id: string): Promise<string> {
+  const to = personalSpaceId(ADA.id);
+  await joinSpace(db, ADA, "admin", to);
+  await db.execute(sql`
+    with upd as (
+      update projects set space_id = ${to}, version = version + 1, moved_at_version = version + 1 where id = ${id} returning version
+    ),
+    wipe as (update project_ops set inverse = null where project_id = ${id} and exists (select 1 from upd))
+    insert into project_ops (project_id, version, ops, inverse, actor) select ${id}, version, '[]'::jsonb, null, ${ADA.id} from upd
+  `);
+  return to;
+}
 
 describe("the editor against the real server", () => {
   it("an edit lands as the next version, and the client's copy equals the stored project", async () => {
@@ -225,7 +241,7 @@ describe("the editor against the real server", () => {
     const { db, id } = await project();
     await joinSpace(db, GRACE, "viewer");
     const viewer = await openEditor(db, id, GRACE);
-    expect(await viewer.api.getVersion()).toEqual({ ok: true, version: 1 });
+    expect(await viewer.api.getVersion()).toEqual({ ok: true, version: 1, spaceId: SEED_TEAM_ID });
     expect(await viewer.api.getOpsSince(0)).toMatchObject({ ok: true, version: 1, hasMore: false });
     expect(await viewer.api.getProject()).toMatchObject({ ok: true, version: 1, name: "P" });
     expect(viewer.st().edit(moveX2(200), "move")).toMatchObject({ ok: false, code: "READ_ONLY" });
@@ -348,4 +364,41 @@ describe("the editor against the real server", () => {
     expect(await loadRecentActivity(ada.api, ada.store)).toBe(true);
     expect(ada.st().activity.map((e) => e.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   }, 60_000);
+
+  describe("after the project moved to another space", () => {
+    it("a tab left in the old space learns it from its shared check, applies nothing of the move and sends nothing", async () => {
+      const { db, id } = await project();
+      const ada = await openEditor(db, id, ADA, {}, 0, { presence: true, spaceId: SEED_TEAM_ID });
+      const to = await moveToAdasSpace(db, id);
+      ada.wire.requests.length = 0;
+      ada.sync.visibilityChanged(); // check now
+      await until(() => ada.st().moved);
+      expect(ada.st()).toMatchObject({ canEdit: false, server: { version: 1 } });
+      expect(ada.wire.requests).toEqual(["POST /presence"]);
+      expect((await getProject(db, actor(ADA, to), id))!.version).toBe(2);
+    });
+
+    it("an edit sent from the old space is refused 409 MOVED, and stays in the queue", async () => {
+      const { db, id } = await project();
+      const ada = await openEditor(db, id, ADA, {}, 0, { spaceId: SEED_TEAM_ID });
+      const to = await moveToAdasSpace(db, id);
+      ada.st().edit(moveX2(200), "move");
+      await until(() => ada.st().moved);
+      expect(ada.st().queue).toHaveLength(1);
+      expect(ada.posts()).toBe(1);
+      const s = (await getProject(db, actor(ADA, to), id))!;
+      expect(s.version).toBe(2);
+      expect(findClip(s.doc, "x2")!.clip.start).toBe(90);
+    });
+
+    it("someone who is not in the new space is answered 404, and sees the project as gone", async () => {
+      const { db, id } = await project();
+      const grace = await openEditor(db, id, GRACE, {}, 0, { spaceId: SEED_TEAM_ID });
+      await moveToAdasSpace(db, id);
+      grace.st().edit(moveX2(200), "move");
+      await until(() => grace.st().status === "deleted");
+      expect(grace.st().moved).toBe(false);
+      expect(grace.wire.requests).toEqual(["POST /ops", "GET /version"]);
+    });
+  });
 });
