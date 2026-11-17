@@ -114,7 +114,7 @@ describe("finishMove", () => {
     await expect(finishMove(x.deps, "u1", x.moveId)).rejects.toMatchObject({ code: "COPIES_MISSING", missing: [c] });
     const copy = await copyFully(x, "u1", x.moveId, c);
     expect(await finishMove(x.deps, "u1", x.moveId)).toMatchObject({ version: 3 });
-    expect(clipsOf((await x.row()).doc).map((cl) => (cl.type === "text" ? null : cl.assetId))).toContain(copy);
+    expect(clipsOf((await x.row()).doc).map((cl) => (cl.type === "text" || cl.type === "placeholder" ? null : cl.assetId))).toContain(copy);
   });
 
   it("tries again when an ordinary edit lands between its read and its write", async () => {

@@ -51,10 +51,10 @@ export type MovePlan = { moveId: string; projectId: string; to: { id: string; na
 const notFound = () => new ServiceError("NOT_FOUND", 404, "Not found");
 const goneMove = () => new ServiceError("NOT_FOUND", 404, MOVE_MESSAGES.gone);
 
-// Every media clip's asset id, each once, in track and clip order.
+// Every media clip's asset id, each once, in track and clip order. Text clips and empty slots have none.
 export function usedAssetIds(doc: TimelineDoc): string[] {
   const ids = new Set<string>();
-  for (const track of doc.tracks) for (const clip of track.clips) if (clip.type !== "text") ids.add(clip.assetId);
+  for (const track of doc.tracks) for (const clip of track.clips) if (clip.type !== "text" && clip.type !== "placeholder") ids.add(clip.assetId);
   return [...ids];
 }
 
@@ -453,7 +453,7 @@ function ontoCopies(doc: TimelineDoc, copyOf: Map<string, string>): { doc: Timel
   const ops: Op[] = [];
   for (const track of moved.tracks) {
     for (const clip of track.clips) {
-      if (clip.type === "text") continue;
+      if (clip.type === "text" || clip.type === "placeholder") continue;
       clip.assetId = copyOf.get(clip.assetId)!;
       ops.push({ op: "update_clip", clipId: clip.id, patch: { assetId: clip.assetId } });
     }

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { assets, projectMove, projects } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
+import { DEFAULT_TRANSFORM, type Clip, type TimelineDoc } from "@/lib/timeline";
 import { completeUpload, openUpload, type MediaDeps } from "@/lib/media/service";
 import { abandonMove, moveOf, startMove, usedAssetIds } from "@/lib/projects/move";
 import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
@@ -41,6 +42,13 @@ describe("startMove", () => {
   it("usedAssetIds lists each media asset once, in order", async () => {
     const x = await world();
     expect(usedAssetIds(x.doc)).toEqual([x.a, x.b]);
+  });
+
+  it("usedAssetIds skips an empty slot, which has no media", async () => {
+    const x = await world();
+    const doc: TimelineDoc = structuredClone(x.doc);
+    doc.tracks[0].clips.push({ id: "slot1", type: "placeholder", accepts: "visual", start: 900, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "intro" } } as Clip);
+    expect(usedAssetIds(doc)).toEqual([x.a, x.b]);
   });
 
   it("plans the copies of the assets the project uses", async () => {
