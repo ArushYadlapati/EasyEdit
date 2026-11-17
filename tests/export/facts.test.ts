@@ -6,7 +6,7 @@ import { planExportMedia } from "@/lib/export/media-sources";
 import { videoSettings, type EncoderConfig } from "@/lib/export/presets";
 import { checkSupport, type SupportProbe } from "@/lib/export/support";
 import type { AssetView } from "@/lib/media/types";
-import { createEmptyDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, createEmptyDoc, type Clip } from "@/lib/timeline";
 import { sampleDoc, text, video } from "../editor/fixtures";
 import { assetView } from "../helpers/media-services";
 import { soundDoc, SONG, Z } from "./sound-fixtures";
@@ -104,6 +104,23 @@ describe("what the dialog says about the media", () => {
     const textOnly = createEmptyDoc("short_9x16");
     textOnly.tracks[1].clips = [text("x1", 0, 30)];
     expect(exportNotes(plan([], true, textOnly), FULL, true)).toEqual([]);
+  });
+
+  it("names the template slots that are still empty", () => {
+    const doc = createEmptyDoc("short_9x16");
+    const ph = (id: string, accepts: "visual" | "audio", name: string) =>
+      ({ id, type: "placeholder", accepts, start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name } }) as Clip;
+    doc.tracks[0].clips = [ph("p1", "visual", "hero_clip")];
+    const one = exportNotes(plan([], true, doc), DRAFT, true, doc);
+    expect(one).toEqual(["1 slot is still empty: hero_clip."]);
+    const audio = doc.tracks.find((t) => t.kind === "audio")!;
+    audio.clips = [ph("p2", "audio", "music")];
+    expect(exportNotes(plan([], true, doc), DRAFT, true, doc)).toEqual(["2 slots are still empty: hero_clip, music."]);
+    // A text slot is never empty, and no doc means no note.
+    const filled = createEmptyDoc("short_9x16");
+    filled.tracks[1].clips = [{ ...text("x1", 0, 30), slot: { name: "title" } } as Clip];
+    expect(exportNotes(plan([], true, filled), DRAFT, true, filled)).toEqual([]);
+    expect(exportNotes(plan([], true, doc), DRAFT, true)).toEqual([]);
   });
 
   it("counts the sound clips with no media that the placeholder line does not", () => {

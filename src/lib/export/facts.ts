@@ -1,5 +1,5 @@
 import { graphemes } from "@/lib/text";
-import type { TimelineDoc } from "@/lib/timeline";
+import { slotsOf, type TimelineDoc } from "@/lib/timeline";
 import type { ClipPlan, ExportMediaPlan } from "./media-sources";
 import { AUDIO, type ExportPresetId, type ExportSize, type VideoSettings } from "./presets";
 
@@ -69,9 +69,13 @@ const clipsEither = (plan: ExportMediaPlan, matches: Matches) => {
   return ids.size;
 };
 
-// What the person should know before exporting at this size. audio: this browser can encode AAC.
-export function exportNotes(plan: ExportMediaPlan, size: ExportSize, audio: boolean): string[] {
+// What the person should know before exporting at this size. audio: this browser can encode AAC. doc: the project, to
+// name the template slots that are still empty (they export as black and silent gaps).
+export function exportNotes(plan: ExportMediaPlan, size: ExportSize, audio: boolean, doc?: TimelineDoc): string[] {
   const notes: string[] = [];
+  const empty = doc ? slotsOf(doc).filter((slot) => slot.kind !== "text" && !slot.filled).map((slot) => slot.name) : [];
+  if (empty.length === 1) notes.push(`1 slot is still empty: ${empty[0]}.`);
+  else if (empty.length > 1) notes.push(`${empty.length} slots are still empty: ${empty.join(", ")}.`);
   const placeholders = countOf(plan, (clip) => clip.kind === "placeholder");
   if (placeholders === 1) notes.push("1 clip has no media to show, so it exports as the placeholder in the preview.");
   else if (placeholders > 1) notes.push(`${placeholders} clips have no media to show, so they export as the placeholders in the preview.`);

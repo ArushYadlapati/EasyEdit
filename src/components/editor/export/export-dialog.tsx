@@ -132,7 +132,7 @@ function Choices({ support, selected, onSelect, canceled }: ChoiceProps & { onSe
       )}
       {option && (
         <div className="flex flex-col gap-1">
-          {exportNotes(plan, option.size, support.audio).map((note) => (
+          {exportNotes(plan, option.size, support.audio, doc).map((note) => (
             <p key={note} className={MUTED}>
               {note}
             </p>
