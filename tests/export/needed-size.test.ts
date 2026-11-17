@@ -57,6 +57,25 @@ describe("clipSizes", () => {
     expect(sizeOf("small", UHD)).toEqual({ width: 854, height: 480 });
   });
 
+  it("a clip with keyframed scale is decoded at its largest keyframe, not its transform's scale", () => {
+    const doc = docWithCaptions("short_9x16"); // 1080 × 1920
+    const keyframes = { scale: [{ at: 0, value: 0.5 }, { at: 9, value: 1.5, ease: "ease_out" as const }] };
+    doc.tracks[0].clips = [video("kb", 0, 10, { transform: t({ scale: 0.5 }), keyframes })];
+    // Cover draws 2160 → 1920 tall; at 1.5 that is 2880 tall, so the whole 4K source.
+    expect(clipSizes(doc, TALL)("kb", UHD)).toEqual({ width: 3840, height: 2160 });
+  });
+
+  it("a zoom transition asks for its extra scale; a fade does not", () => {
+    const doc = docWithCaptions("short_9x16");
+    doc.tracks[0].clips = [
+      video("zoom", 0, 10, { transform: t({ scale: 0.5 }), transitionIn: { kind: "zoom", frames: 5 } }),
+      video("fade", 10, 10, { assetId: "b", transform: t({ scale: 0.5 }), transitionOut: { kind: "fade", frames: 5 } }),
+    ];
+    const sizeOf = clipSizes(doc, TALL);
+    expect(sizeOf("zoom", UHD)).toEqual({ width: 2134, height: 1200 }); // 1920 × 0.5 × 1.25 = 1200 tall
+    expect(sizeOf("fade", UHD)).toEqual({ width: 1707, height: 960 });
+  });
+
   it("a clip the doc does not have keeps the old rule: the output's long side", () => {
     const doc = docWithCaptions("short_9x16");
     expect(clipSizes(doc, TALL)("nope", UHD)).toEqual({ width: 1920, height: 1080 });

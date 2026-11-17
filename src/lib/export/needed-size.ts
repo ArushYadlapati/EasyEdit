@@ -1,6 +1,7 @@
 import { fitRect } from "@/lib/render/compositor";
 import { noLargerThan, type PictureSize } from "@/lib/render/decode-image";
-import type { TimelineDoc, Transform } from "@/lib/timeline";
+import { ZOOM_TRANSITION_SCALE } from "@/lib/render/effects";
+import type { MediaClip, TimelineDoc, Transform } from "@/lib/timeline";
 import { stretchOf } from "@/lib/timeline/presets";
 
 // The size each clip's picture is decoded at for an export: as large as the frame draws it, so no source pixel is
@@ -14,7 +15,7 @@ export const DECODE_SIDE_MAX = 4096;
 // A rounding error must not ask for one pixel more than the frame draws, or than the source has.
 const up = (value: number): number => Math.ceil(value - 1e-6);
 
-// Transforms are static per clip (no keyframes in the doc), so one size serves the whole clip. Rotation turns the
+// One size serves the whole clip, so it is taken at the clip's largest scale (peakTransform). Rotation turns the
 // picture without changing its size. A crop draws the kept share of the source into the same share of the box
 // (compositor.ts drawMedia), so it needs no more pixels. A stretch widens only the width, so the larger of the two
 // axes' needs sets the size; the decoded picture keeps the source's shape. The output's two scales are taken at the
@@ -37,12 +38,23 @@ export function neededSize(
   };
 }
 
+// The clip's transform at the largest scale it is drawn at. Keyframed scale replaces the transform's own, and the
+// eases never overshoot, so the curve's peak is its largest keyframe (one outside the clip only shapes the curve, so
+// counting it can only ask for more). A zoom transition draws the clip up to ZOOM_TRANSITION_SCALE larger on top.
+// Position, rotation and opacity keyframes don't change how large the picture is drawn.
+export function peakTransform(clip: MediaClip): Transform {
+  const keyed = clip.keyframes?.scale;
+  let scale = keyed && keyed.length > 0 ? Math.max(...keyed.map((k) => k.value)) : clip.transform.scale;
+  if (clip.transitionIn?.kind === "zoom" || clip.transitionOut?.kind === "zoom") scale *= ZOOM_TRANSITION_SCALE;
+  return scale === clip.transform.scale ? clip.transform : { ...clip.transform, scale };
+}
+
 // Each video or image clip of the doc by its id: the size to decode its source at. A clip the doc does not have
 // (never, for a schedule made from the same doc) keeps the old rule, the output's long side.
 export function clipSizes(doc: TimelineDoc, output: PictureSize): (clipId: string, source: PictureSize) => PictureSize {
   const transforms = new Map<string, Transform>();
   for (const track of doc.tracks) {
-    for (const clip of track.clips) if (clip.type === "video" || clip.type === "image") transforms.set(clip.id, clip.transform);
+    for (const clip of track.clips) if (clip.type === "video" || clip.type === "image") transforms.set(clip.id, peakTransform(clip));
   }
   const fallback = noLargerThan(Math.max(output.width, output.height));
   return (clipId, source) => {

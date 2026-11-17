@@ -10,6 +10,10 @@ export const DEFAULT_HIGHLIGHT_COLOR = "#FFD400";
 const GHOST_ALPHAS = [0.45, 0.25, 0.12];
 const GHOST_SPACING = 0.06;
 
+// A zoom transition draws the clip up to this much larger than its own scale, at the start of a zoom in and the end of
+// a zoom out.
+export const ZOOM_TRANSITION_SCALE = 1.25;
+
 type Dir = "left" | "right" | "up" | "down";
 
 export type Ghost = { dx: number; dy: number; alpha: number }; // project pixels, alpha multiplier
@@ -85,7 +89,7 @@ function mediaEffect(clip: MediaClip, isIn: boolean, p: number, doc: Doc): Pass 
       break;
     }
     case "zoom":
-      out.scale = isIn ? 1.25 - 0.25 * p : 1 + 0.25 * p;
+      out.scale = isIn ? ZOOM_TRANSITION_SCALE - (ZOOM_TRANSITION_SCALE - 1) * p : 1 + (ZOOM_TRANSITION_SCALE - 1) * p;
       out.alpha = isIn ? p : 1 - p;
       break;
     case "whip": {
