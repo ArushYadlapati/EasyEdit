@@ -25,6 +25,10 @@ export function newIdLines(ops: Op[]): string[] {
     if (op.op === "add_track") lines.push(`  track ${op.track.id} ("${escapeQuoted(op.track.name)}", ${op.track.kind})`);
     else if (op.op === "add_clip") lines.push(`  clip ${op.clip.id} on track ${op.trackId}`);
     else if (op.op === "split_clip") lines.push(`  clip ${op.newClipId} (second half of ${op.clipId})`);
+    else if (op.op === "add_guide") {
+      const { id, axis, at } = op.guide;
+      lines.push(`  guide ${id} (${axis === "x" ? "vertical" : "horizontal"} at ${Number((at * 100).toFixed(1))}%)`);
+    }
   }
   return lines;
 }

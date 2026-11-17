@@ -9,7 +9,7 @@ import type { EditorState, EditorStore } from "@/lib/editor/store";
 import { drawFrame } from "@/lib/render/compositor";
 import type { Tool } from "@/lib/editor/tools";
 import type { Guide, TimelineDoc } from "@/lib/timeline";
-import { makeStore, sampleDoc } from "../editor/fixtures";
+import { entry, makeStore, noticesOf, sampleDoc } from "../editor/fixtures";
 import { fakeCtx } from "../render/fake-ctx";
 import { act, fireEvent, render } from "../helpers/dom";
 import { rect } from "../helpers/layout";
@@ -105,7 +105,7 @@ function show(opts: { guides?: Guide[]; canEdit?: boolean; tool?: Tool } = {}) {
       </ContextMenuProvider>
     </EditorProvider>,
   );
-  return { st: () => store.getState() };
+  return { store, st: () => store.getState() };
 }
 
 const X = (f: number) => 216 + 540 * f;
@@ -212,5 +212,88 @@ describe("guides on the preview", () => {
     release(X(0.5), Y(0.2));
     expect(st().guideId).toBeNull();
     expect(st().selection.clipIds).toEqual(["c1"]);
+  });
+
+  it("a guide dragged past the frame's edge shows it will be removed, and stops once back inside", () => {
+    show({ guides: [MIDDLE] });
+    const line = () => overlay().querySelector('[data-project-guide="gm"]')!;
+    const label = () => overlay().querySelector("[data-guide-label]")?.textContent;
+    press(X(0.5), Y(0.2));
+    move(X(0.5) + 10, Y(0.2));
+    frame();
+    expect(line().hasAttribute("data-removing")).toBe(false);
+    move(X(-0.1), Y(0.2));
+    frame();
+    expect(line().getAttribute("data-removing")).toBe("true");
+    expect(line().getAttribute("class")).toMatch(/\bstroke-ed-danger\b/);
+    expect(label()).toBe("Remove guide");
+    move(X(0.6), Y(0.2));
+    frame();
+    expect(line().hasAttribute("data-removing")).toBe(false);
+    expect(label()).toBe("60%");
+  });
+
+  it("a guide a teammate removes mid-drag ends the drag with a guide message, once", () => {
+    const { store, st } = show({ guides: [MIDDLE] });
+    const notices = noticesOf(store);
+    press(X(0.5), Y(0.2));
+    move(X(0.5) + 10, Y(0.2));
+    frame();
+    act(() => void st().applyRemote([entry(6, [{ op: "remove_guide", guideId: "gm" }])]));
+    move(X(0.7), Y(0.2));
+    frame();
+    release(X(0.7), Y(0.2));
+    expect(st().queue).toEqual([]);
+    expect(st().gesture).toBeNull();
+    expect(notices).toEqual(["That guide was removed by someone else."]);
+  });
+
+  it("a guide removed before its drag set anything ends it with the guide message too", () => {
+    const { store, st } = show({ guides: [MIDDLE] });
+    const notices = noticesOf(store);
+    press(X(0.5), Y(0.2));
+    act(() => void st().applyRemote([entry(6, [{ op: "remove_guide", guideId: "gm" }])]));
+    move(X(0.7), Y(0.2));
+    frame();
+    release(X(0.7), Y(0.2));
+    expect(st().queue).toEqual([]);
+    expect(notices).toEqual(["That guide was removed by someone else."]);
+  });
+
+  it("a guide dragged back to where it started records nothing", () => {
+    const { st } = show({ guides: [{ id: "gq", axis: "x", at: 0.3 }] });
+    press(X(0.3), Y(0.2));
+    move(X(0.3) + 20, Y(0.2));
+    frame();
+    move(X(0.3), Y(0.2));
+    frame();
+    release(X(0.3), Y(0.2));
+    expect(st().queue).toEqual([]);
+    expect(st().undoStack).toEqual([]);
+    expect(st().gesture).toBeNull();
+    expect(st().guideId).toBe("gq");
+  });
+
+  it("the Guide tool on an existing guide moves it rather than adding another", () => {
+    const { st } = show({ guides: [MIDDLE], tool: "guide" });
+    press(X(0.5) + 1, Y(0.3));
+    move(X(0.5) + 1, Y(0.3) + 20); // an up-and-down start would place a horizontal guide if this added one
+    frame();
+    move(X(0.7), Y(0.3) + 20);
+    frame();
+    release(X(0.7), Y(0.3) + 20);
+    expect(labels(st())).toEqual(["move guide"]);
+    expect(st().doc.guides).toEqual([{ id: "gm", axis: "x", at: expect.closeTo(0.7, 4) }]);
+    expect(st().guideId).toBe("gm");
+    expect(st().tool).toBe("guide");
+  });
+
+  it("a double-click with the Guide tool doesn't open text for typing", () => {
+    const { st } = show({ tool: "guide" });
+    fireEvent.doubleClick(overlay(), { clientX: X(0.5), clientY: Y(0.5) });
+    expect(st().textEditId).toBeNull();
+    act(() => st().setTool("select"));
+    fireEvent.doubleClick(overlay(), { clientX: X(0.5), clientY: Y(0.5) });
+    expect(st().textEditId).toBe("x1");
   });
 });

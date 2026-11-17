@@ -59,6 +59,14 @@ describe("newIdLines", () => {
       { op: "move_clip", clipId: "C1", start: 0 },
     ])).toEqual(['  track T9 ("Text \\"2\\"", text)', "  clip C1 on track T9", "  clip C2 (second half of C1)"]);
   });
+
+  it("lists a new guide's id, so an agent can move or remove it next", () => {
+    expect(newIdLines([
+      { op: "add_guide", guide: { id: "G1", axis: "x", at: 0.5 } },
+      { op: "add_guide", guide: { id: "G2", axis: "y", at: 0.125 } },
+      { op: "move_guide", guideId: "G1", at: 0.4 },
+    ])).toEqual(["  guide G1 (vertical at 50%)", "  guide G2 (horizontal at 12.5%)"]);
+  });
 });
 
 describe("request ids", () => {

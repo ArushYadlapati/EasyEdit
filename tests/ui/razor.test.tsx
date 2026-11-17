@@ -53,3 +53,12 @@ it("with Selection a press still selects", () => {
   expect(st().queue).toEqual([]);
   expect(st().selection.clipIds).toEqual(["x9"]);
 });
+
+it("a double-click with the Razor doesn't open the text for typing", () => {
+  const { clip, st } = open();
+  fireEvent.doubleClick(clip("x9"), { clientX: x(25), clientY: T1 });
+  expect(st().textEditId).toBeNull();
+  act(() => st().setTool("select"));
+  fireEvent.doubleClick(clip("x9"), { clientX: x(25), clientY: T1 });
+  expect(st().textEditId).toBe("x9");
+});

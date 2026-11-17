@@ -64,6 +64,27 @@ it("a bad hex is not saved and says why", () => {
   expect(screen.getByText("Use a hex color like #ff5a1f.")).toBeTruthy();
 });
 
+it("a color already in the kit is not saved again and says so", () => {
+  const { save } = setup();
+  fireEvent.change(screen.getByLabelText("New color"), { target: { value: "#FF5A1F" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add color" }));
+  expect(save).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert").textContent).toBe("#ff5a1f is already in the kit.");
+});
+
+it("a remove badge also shows while its tile has focus, and on a touch screen", () => {
+  setup({ onUseColor: vi.fn(), onUseLogo: vi.fn() });
+  for (const name of ["Remove #ff5a1f", "Remove Solvers logo from the kit"]) {
+    const classes = screen.getByRole("button", { name }).className.split(/\s+/);
+    expect(classes, name).toEqual(expect.arrayContaining([
+      "group-focus-within:pointer-events-auto",
+      "group-focus-within:opacity-100",
+      "pointer-coarse:pointer-events-auto",
+      "pointer-coarse:opacity-100",
+    ]));
+  }
+});
+
 it("removing a color or a logo saves the kit without it", () => {
   const { save } = setup();
   fireEvent.click(screen.getByRole("button", { name: "Remove #111111" }));

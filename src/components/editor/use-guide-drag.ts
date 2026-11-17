@@ -2,9 +2,11 @@
 
 import { nanoid } from "nanoid";
 import { useEffect, useMemo, type PointerEvent as ReactPointerEvent } from "react";
+import { createStore, type StoreApi } from "zustand/vanilla";
 import { SNAP_CSS_PX } from "@/lib/editor/canvas-drag";
 import { fromScreen, type PreviewSurface } from "@/lib/editor/canvas-geometry";
 import { guideAxisOf, offFrame, snapGuide } from "@/lib/editor/guides";
+import { MESSAGES } from "@/lib/editor/messages";
 import { viewDoc, type EditorStore } from "@/lib/editor/store";
 import type { Guide, OpInput } from "@/lib/timeline";
 import { useEditorStore } from "./context";
@@ -13,8 +15,9 @@ import { CLICK_SLOP_PX } from "./timeline/use-clip-drag";
 // A press on the preview that places a new guide (the Guide tool) or moves one (a press on a guide). Nothing happens
 // until the pointer passes the click slop. A new guide then takes its direction from the way the pointer went, mostly
 // sideways for a vertical one; either kind follows the pointer, snapping to the frame's edges and centre lines, and is
-// shown through the store's gesture. The release saves it once; a moved guide let go past the frame's edge is removed
-// instead. Escape, a cancelled pointer or the loss of edit access drop it; a lost pointer capture counts as the release.
+// shown through the store's gesture. The release saves it once, unless it ends where it started; a moved guide let go
+// past the frame's edge is removed instead, and says so while it is out there. Escape, a cancelled pointer, the loss of
+// edit access or a teammate removing the guide drop it; a lost pointer capture counts as the release.
 type Session = {
   pointerId: number;
   target: HTMLElement;
@@ -25,9 +28,12 @@ type Session = {
   axis: Guide["axis"] | null; // a new guide's is decided once the pointer travels
   isNew: boolean;
   raw: number | null; // where the pointer is, as a share of the frame, unclamped
+  at: number | null; // where the guide is shown, snapped and inside the frame
 };
 
 export type GuideDragController = {
+  // The moved guide that would be removed if let go now: it is past the frame's edge.
+  removing: StoreApi<{ guideId: string | null }>;
   // guide: the one pressed, to move; null places a new one.
   press(e: ReactPointerEvent, guide: Guide | null): void;
   dispose(): void;
@@ -36,6 +42,10 @@ export type GuideDragController = {
 export function createGuideDrag(store: EditorStore, surface: PreviewSurface): GuideDragController {
   let session: Session | null = null;
   let unsubscribe: (() => void) | null = null;
+  const removing = createStore<{ guideId: string | null }>(() => ({ guideId: null }));
+  const showRemoving = (guideId: string | null) => {
+    if (removing.getState().guideId !== guideId) removing.setState({ guideId });
+  };
 
   function opsFor(s: Session, at: number): OpInput[] {
     if (s.isNew) return [{ op: "add_guide", guide: { id: s.guideId, axis: s.axis!, at } }];
@@ -58,7 +68,9 @@ export function createGuideDrag(store: EditorStore, surface: PreviewSurface): Gu
     s.raw = s.axis === "x" ? point.x / doc.width : point.y / doc.height;
     const inside = Math.min(1, Math.max(0, s.raw));
     const { at } = snapGuide(inside, s.axis, { width: doc.width, height: doc.height }, SNAP_CSS_PX / view.k, state.snapping);
-    state.setGesture(opsFor(s, round4(at)));
+    s.at = round4(at);
+    showRemoving(!s.isNew && offFrame(s.raw) ? s.guideId : null);
+    state.setGesture(opsFor(s, s.at));
   }
 
   function onUp(e: PointerEvent) {
@@ -97,6 +109,7 @@ export function createGuideDrag(store: EditorStore, surface: PreviewSurface): Gu
     s.target.removeEventListener("pointercancel", onCancel);
     s.target.removeEventListener("lostpointercapture", onLost);
     window.removeEventListener("keydown", onKey, true);
+    showRemoving(null);
     if (!s.travelled) return;
     const state = store.getState();
     if (!commit || s.raw === null) {
@@ -109,11 +122,17 @@ export function createGuideDrag(store: EditorStore, surface: PreviewSurface): Gu
       if (result.ok) state.selectGuide(null);
       return;
     }
+    // Back where it started: nothing to save, and nothing to undo.
+    if (!s.isNew && state.doc.guides?.find((g) => g.id === s.guideId)?.at === s.at) {
+      state.setGesture(null);
+      return;
+    }
     const result = state.commitGesture(s.isNew ? "add guide" : "move guide");
     if (result.ok) store.getState().selectGuide(s.guideId);
   }
 
   return {
+    removing,
     press(e, guide) {
       end(false);
       const state = store.getState();
@@ -129,6 +148,7 @@ export function createGuideDrag(store: EditorStore, surface: PreviewSurface): Gu
         axis: guide?.axis ?? null,
         isNew: guide === null,
         raw: null,
+        at: null,
       };
       session = s;
       try {
@@ -141,8 +161,13 @@ export function createGuideDrag(store: EditorStore, surface: PreviewSurface): Gu
       target.addEventListener("pointercancel", onCancel);
       target.addEventListener("lostpointercapture", onLost);
       window.addEventListener("keydown", onKey, true);
-      unsubscribe = store.subscribe((next) => {
-        if (!next.canEdit) end(false);
+      unsubscribe = store.subscribe((next, prev) => {
+        if (!next.canEdit) return end(false);
+        if (!s.isNew && next.doc !== prev.doc && !next.doc.guides?.some((g) => g.id === s.guideId)) {
+          // A gesture the store held was ended by it, with its message.
+          if (prev.gesture === null) next.notify("error", MESSAGES.guideGone);
+          end(false);
+        }
       });
     },
     dispose() {

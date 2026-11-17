@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { meetsRole } from "@/lib/access-rules";
 import { placeClips } from "@/lib/editor/placement";
-import { getBrandKit } from "@/lib/brand/service";
+import { getBrandFonts } from "@/lib/brand/service";
 import type { BrandFonts } from "@/lib/brand/types";
 import { DEFAULT_TEXT_SECONDS, TOOL_PRESETS, presetClip, type TextPresetId } from "@/lib/editor/text-presets";
 import { LIMITS } from "@/lib/limits";
@@ -45,7 +45,7 @@ export async function addTextTool(
   if (!project) return fail(notFoundText(input.project_id));
   if (project.version !== input.expected_version) return conflictResult(ctx, input.project_id, input.expected_version);
 
-  const { fonts } = await getBrandKit(ctx.db, ctx.actor);
+  const fonts = await getBrandFonts(ctx.db, ctx.actor);
   const placement = placeClips(
     project.doc,
     input.items.map((item) => ({ clip: textClip(project.doc, item, fonts), trackId: item.track_id ?? null })),
