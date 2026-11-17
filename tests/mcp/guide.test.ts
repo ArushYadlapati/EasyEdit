@@ -155,6 +155,7 @@ describe("the guide", () => {
       "A keyframed property ignores its transform value",
       "at counts frames from the clip's start",
       "Crossfade is in-only",
+      "a visual slot's placeholder: the clip that fills it keeps them and its keyframes",
       "null removes it",
       "frames runs from 1 to 600",
       "get_project shows each keyframed property's list as kf.<prop>=at:value~ease",
