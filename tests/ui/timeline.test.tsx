@@ -523,3 +523,25 @@ it("a double-click on text on a hidden track says so", () => {
   expect(st().notice?.text).toBe("That track is hidden.");
   expect(st().textEditId).toBeNull();
 });
+
+it("a clip draws a tick per keyframe and a wedge over each effect window, none of which take the pointer", () => {
+  const clip = video("c9", 0, 30, {
+    transitionIn: { kind: "fade", frames: 10 },
+    keyframes: { x: [{ at: 0, value: 0 }, { at: 12, value: 1 }], scale: [{ at: 12, value: 1 }, { at: 20, value: 2 }] },
+  });
+  const { container } = render(
+    <EditorProvider store={makeStore()}>
+      <ClipView clip={clip} zoom={4} fps={30} selected={false} hidden={false} locked={false} still={false} />
+    </EditorProvider>,
+  );
+  const ticks = container.querySelectorAll<HTMLElement>('[data-testid="keyframe-tick"]');
+  expect(ticks.length).toBe(3);
+  expect(ticks[1].style.left).toBe("48px");
+  expect(ticks[0].getAttribute("aria-hidden")).toBe("true");
+  expect(ticks[0].className).toContain("pointer-events-none");
+  const wedges = container.querySelectorAll<HTMLElement>("[data-effect-wedge]");
+  expect(wedges.length).toBe(1);
+  expect(wedges[0].dataset.effectWedge).toBe("in");
+  expect(wedges[0].style.width).toBe("40px");
+  expect(wedges[0].className).toContain("pointer-events-none");
+});

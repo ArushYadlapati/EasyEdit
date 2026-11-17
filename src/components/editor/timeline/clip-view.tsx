@@ -5,6 +5,7 @@ import { memo, useRef, useState, type KeyboardEvent, type MouseEvent, type Point
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { splitClipAt } from "@/lib/editor/actions";
 import { MIN_STILL_PX, sampleBackdrop } from "@/lib/editor/clip-look";
+import { clipMarks, type ClipMarks } from "@/lib/editor/clip-marks";
 import { razorFrame } from "@/lib/editor/commands";
 import { cssFontFamily } from "@/lib/editor/fonts";
 import { ROW_HEIGHT, formatTimecode, frameToPx } from "@/lib/editor/geometry";
@@ -68,6 +69,7 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
   const dragger = canEdit && !locked ? drag : null; // null for a viewer, a locked track, or outside a timeline
   const isMac = useIsMac();
   const openClipMenu = useClipMenu();
+  const marks = clipMarks(clip);
   const showLook = still && width >= MIN_STILL_PX;
   // With the Razor, a press cuts the clip where it lands and the pointer shows where that is; nothing selects or drags.
   const razor = useEditor((s) => s.canEdit && s.tool === "razor") && !locked;
@@ -156,6 +158,7 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
       {showLook && pictured && <ClipStill fileId={stillFileId} removed={removed} />}
       {showLook && clip.type === "text" && <TextSample style={clip.style} />}
       {width >= MIN_LABEL_PX && <span className="min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>}
+      <ClipMarkings marks={marks} zoom={zoom} />
       {dragger && width >= MIN_TRIM_PX && (
         <>
           <span aria-hidden data-trim-handle="start" className={cx(HANDLE, "left-0", handleLook(selected))} />
@@ -165,6 +168,30 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
     </div>
   );
 }, drawsTheSame);
+
+// Decoration only: wedges shade the in and out effect windows, ticks sit on the bottom edge at each keyframe.
+function ClipMarkings({ marks, zoom }: { marks: ClipMarks; zoom: number }) {
+  const wedge = "pointer-events-none absolute inset-y-0 from-ed-text/25 to-transparent";
+  return (
+    <>
+      {marks.inFrames > 0 && (
+        <span aria-hidden data-effect-wedge="in" className={cx(wedge, "left-0 bg-linear-to-r")} style={{ width: frameToPx(marks.inFrames, zoom) }} />
+      )}
+      {marks.outFrames > 0 && (
+        <span aria-hidden data-effect-wedge="out" className={cx(wedge, "right-0 bg-linear-to-l")} style={{ width: frameToPx(marks.outFrames, zoom) }} />
+      )}
+      {marks.keyframes.map((at) => (
+        <span
+          key={at}
+          aria-hidden
+          data-testid="keyframe-tick"
+          className="pointer-events-none absolute bottom-0.5 size-1.5 -translate-x-1/2 rotate-45 bg-ed-accent"
+          style={{ left: frameToPx(at, zoom) }}
+        />
+      ))}
+    </>
+  );
+}
 
 // A video's or image's still, in a box that shows before the picture is read, so the name never moves. While it is
 // shown it holds the still, which every clip and tile of that still shares. A removed asset is not read: its box
@@ -217,8 +244,15 @@ function drawsTheSame(a: ClipViewProps, b: ClipViewProps): boolean {
     a.clip.duration === b.clip.duration &&
     clipLabel(a.clip, undefined) === clipLabel(b.clip, undefined) &&
     (a.clip.type === "text" || b.clip.type === "text" || a.clip.assetId === b.clip.assetId) &&
-    sameSample(a.clip, b.clip)
+    sameSample(a.clip, b.clip) &&
+    sameMarks(a.clip, b.clip)
   );
+}
+
+function sameMarks(a: Clip, b: Clip): boolean {
+  const x = clipMarks(a);
+  const y = clipMarks(b);
+  return x.inFrames === y.inFrames && x.outFrames === y.outFrames && x.keyframes.join() === y.keyframes.join();
 }
 
 function sameSample(a: Clip, b: Clip): boolean {
