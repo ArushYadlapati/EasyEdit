@@ -92,6 +92,14 @@ export function ProjectCard({ project, folderName, now, canEdit, pinned, folders
   // The ⋯ button is found in the card rather than by a ref: a ref given to Menu would replace its own.
   const optionsButton = () => box.current?.querySelector<HTMLButtonElement>("[data-card-options]") ?? null;
 
+  // The ⋯ button takes focus back once the dialog has left the page: while it is open, the rest of the page is inert.
+  const refocusAfterMove = useRef(false);
+  useEffect(() => {
+    if (movingSpace || !refocusAfterMove.current) return;
+    refocusAfterMove.current = false;
+    optionsButton()?.focus();
+  }, [movingSpace]);
+
   useEffect(() => {
     if (renaming || !refocus.current) return;
     refocus.current = false;
@@ -238,8 +246,8 @@ export function ProjectCard({ project, folderName, now, canEdit, pinned, folders
               fromSpace={fromSpace}
               targets={[...moveTargets]}
               onClose={() => {
+                refocusAfterMove.current = true;
                 setMovingSpace(false);
-                optionsButton()?.focus();
               }}
             />
           )}

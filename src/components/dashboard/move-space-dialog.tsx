@@ -108,9 +108,8 @@ export function MoveSpaceDialog({ project, fromSpace, targets, onClose, run = ru
     <Dialog
       title="Move to…"
       open
-      onClose={() => {
-        if (!running) onClose();
-      }}
+      onClose={onClose}
+      closeDisabled={running}
       footer={
         <>
           {failure?.setup && (

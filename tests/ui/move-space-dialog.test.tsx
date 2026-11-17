@@ -72,6 +72,7 @@ describe("the Move to… dialog", () => {
     const onClose = open(run);
     await start();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(button("Close").disabled).toBe(true);
     fireEvent.click(button("Close"));
     expect(onClose).not.toHaveBeenCalled();
     expect(input().signal.aborted).toBe(false);
@@ -80,6 +81,7 @@ describe("the Move to… dialog", () => {
     await finish({ ok: false, message: "The move was canceled.", canceled: true });
     expect(onClose).not.toHaveBeenCalled();
     expect(button("Move").disabled).toBe(false); // back to choosing
+    expect(button("Close").disabled).toBe(false);
   });
 
   it("asks the browser to confirm leaving only while running", async () => {

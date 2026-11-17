@@ -80,6 +80,19 @@ describe("a card's Move to… item", () => {
     expect(menuItems()).toEqual(["Open"]);
   });
 
+  it("gives focus back to the ⋯ button once the dialog has left the page", async () => {
+    renderDashboard({ fromSpace: HOME, moveTargets: [OTHER] });
+    const li = card("Qual recap");
+    await pick(li, "Move to…");
+    const dialogEl = screen.getByRole("dialog");
+    // The page is inert while the dialog is open, so focus must not be moved inside the close handler.
+    const focus = vi.spyOn(options(li), "focus");
+    await click(within(dialogEl).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(focus).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(options(li));
+  });
+
   it("opens the dialog with the targets", async () => {
     renderDashboard({ fromSpace: HOME, moveTargets: [OTHER] });
     await pick(card("Qual recap"), "Move to…");
