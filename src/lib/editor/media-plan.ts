@@ -1,6 +1,7 @@
 import { playsInPreview, soundGain } from "@/lib/render/clip-sound";
+import { tailAt } from "@/lib/render/compositor";
 import { sourceSeconds } from "@/lib/render/source-time";
-import type { MediaClip, TimelineDoc } from "@/lib/timeline";
+import type { MediaClip, TimelineDoc, Track } from "@/lib/timeline";
 
 // What the preview's media should be doing at a frame: which clips show and sound, at what moment of their media,
 // how fast and how loud. Pure, so the pool that drives the browser's elements only has to follow it.
@@ -16,22 +17,28 @@ export const STILL_SECONDS = 0.02; // while paused
 const under = (clip: MediaClip, frame: number) => clip.start <= frame && frame < clip.start + clip.duration;
 
 // What should be showing and sounding at this frame. A clip that cannot play at the browser's rate stands still and
-// is moved to each frame instead, silent: backward, paused, or too slow or too fast for the element.
+// is moved to each frame instead, silent: backward, paused, or too slow or too fast for the element. Under a
+// crossfade the outgoing clip plays on past its out point, silent, listed right before the clip fading in over it.
 export function mediaWants(doc: TimelineDoc, frame: number, play: { playing: boolean; rate: number }): MediaWant[] {
   const wants: MediaWant[] = [];
+  const want = (track: Track, clip: MediaClip, silent: boolean): MediaWant => {
+    const product = play.rate * clip.speed;
+    const rate = play.playing && product >= MIN_ELEMENT_RATE && product <= MAX_ELEMENT_RATE ? product : 0;
+    return {
+      clipId: clip.id,
+      assetId: clip.assetId,
+      type: clip.type,
+      seconds: sourceSeconds(clip, frame, doc.fps),
+      rate,
+      volume: rate === 0 || silent ? 0 : soundGain(track, clip),
+    };
+  };
   for (const track of doc.tracks) {
     for (const clip of track.clips) {
       if (!playsInPreview(track, clip) || !under(clip, frame)) continue;
-      const product = play.rate * clip.speed;
-      const rate = play.playing && product >= MIN_ELEMENT_RATE && product <= MAX_ELEMENT_RATE ? product : 0;
-      wants.push({
-        clipId: clip.id,
-        assetId: clip.assetId,
-        type: clip.type,
-        seconds: sourceSeconds(clip, frame, doc.fps),
-        rate,
-        volume: rate === 0 ? 0 : soundGain(track, clip),
-      });
+      const tail = tailAt(track, clip, frame);
+      if (tail && (tail.type === "video" || tail.type === "image")) wants.push(want(track, tail, true));
+      wants.push(want(track, clip, false));
     }
   }
   return wants;

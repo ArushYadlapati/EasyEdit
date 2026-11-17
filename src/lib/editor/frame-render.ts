@@ -2,9 +2,10 @@ import { probeRequests, type FontRequest } from "@/lib/export/fonts";
 import { exportPlaceholderLabel } from "@/lib/export/media-schedule";
 import { jobClips, type ExportMediaPlan } from "@/lib/export/media-sources";
 import type { ExportSize } from "@/lib/export/presets";
-import { activeClips, drawFrame, type Ctx2D, type ResolvedSource } from "@/lib/render/compositor";
+import { drawFrame, drawnClips, type Ctx2D, type ResolvedSource } from "@/lib/render/compositor";
 import { sourceSeconds } from "@/lib/render/source-time";
 import type { MediaClip, TimelineDoc } from "@/lib/timeline";
+import { mayShow } from "@/lib/timeline/keyframes";
 
 // One frame of a doc drawn off-screen with real media: the dashboard picture, and Save frame as image.
 
@@ -152,9 +153,10 @@ export async function renderFrame(
 // is decoded at its moment; every other media clip draws its placeholder.
 export function saveFrameRequest(doc: TimelineDoc, frame: number, size: ExportSize, plan: ExportMediaPlan): FrameRequest {
   const sources: FrameSource[] = [];
-  for (const { clip } of activeClips(doc, frame)) {
+  // drawnClips includes a crossfade's outgoing clip, whose moment runs on past its out point.
+  for (const { clip } of drawnClips(doc, frame)) {
     if (clip.type !== "video" && clip.type !== "image") continue;
-    if (clip.transform.opacity <= 0) continue;
+    if (!mayShow(clip)) continue;
     const media = plan.clips[clip.id];
     if (media?.kind !== "use") continue;
     sources.push({ clipId: clip.id, kind: clip.type, fileId: media.fileId, seconds: sourceSeconds(clip, frame, doc.fps), stillId: null });

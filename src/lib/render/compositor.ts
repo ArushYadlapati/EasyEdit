@@ -48,18 +48,35 @@ export function crossfadeFrom(track: Track, clip: Clip): Clip | null {
   return track.clips.find((c) => c.type !== "audio" && c.start + c.duration === clip.start) ?? null;
 }
 
+// The outgoing clip drawn under this one at a frame, while its crossfade runs; null outside it.
+export function tailAt(track: Track, clip: Clip, frame: number): Clip | null {
+  if (frame < clip.start || frame - clip.start >= effectWindows(clip).inFrames) return null;
+  return crossfadeFrom(track, clip);
+}
+
+// The clip that crossfades in from this one: the one on the same track that starts where it ends, if it crossfades.
+export function crossfadeInto(track: Track, clip: Clip): Clip | null {
+  const end = clip.start + clip.duration;
+  return track.clips.find((c) => c.start === end && crossfadeFrom(track, c) === clip) ?? null;
+}
+
 // What is drawn at a frame, back to front: the clips under it, each crossfade's outgoing clip right before the clip
 // fading in over it.
 export function drawnClips(doc: TimelineDoc, frame: number): DrawnClip[] {
   const drawn: DrawnClip[] = [];
   for (const { track, clip } of activeClips(doc, frame)) {
-    if (frame - clip.start < effectWindows(clip).inFrames) {
-      const from = crossfadeFrom(track, clip);
-      if (from) drawn.push({ track, clip: from, tail: true });
-    }
+    const from = tailAt(track, clip, frame);
+    if (from) drawn.push({ track, clip: from, tail: true });
     drawn.push({ track, clip, tail: false });
   }
   return drawn;
+}
+
+// A crossfade owns its cut: the outgoing clip draws whole up to it and on under the incoming one. Its own
+// out-transition would fade or dip it to nothing and then have it pop back at full alpha in its tail.
+function ownLook(track: Track, clip: Clip): Clip {
+  if ((clip.type !== "video" && clip.type !== "image") || !clip.transitionOut) return clip;
+  return crossfadeInto(track, clip) ? { ...clip, transitionOut: null } : clip;
 }
 
 export function fitRect(srcW: number, srcH: number, dstW: number, dstH: number, fit: "cover" | "contain"): { width: number; height: number } {
@@ -100,7 +117,9 @@ type Placed = { g: string; at: number; word: number };
 
 // Each line's graphemes, with where each sits in the clip's text and which of its words it is in (−1 for a space).
 // Lines leave out only the spaces and breaks they wrap at, so each line grapheme is the next equal one in the text,
-// and a word cut across two lines stays one word.
+// and a word cut across two lines stays one word. A wrap can split a cluster (a space with a combining mark), leaving
+// a grapheme the text does not have on its own: it is drawn with the word around it, and the search stays put, so
+// the graphemes after it are still found.
 function placeGraphemes(text: string, lines: TextLine[]): Placed[][] {
   const all = graphemes(text);
   const wordOf: number[] = [];
@@ -113,11 +132,19 @@ function placeGraphemes(text: string, lines: TextLine[]): Placed[][] {
     wordOf.push(space ? -1 : word);
   }
   let i = 0;
+  let lastWord = -1; // the word of the last grapheme placed that was in one
   return lines.map((line) =>
     graphemes(line.text).map((g) => {
-      while (i < all.length && all[i] !== g) i++;
-      const at = i++;
-      return { g, at, word: wordOf[at] ?? -1 };
+      let j = i;
+      while (j < all.length && all[j] !== g) j++;
+      if (j === all.length) {
+        const at = Math.max(0, Math.min(i, all.length - 1));
+        const word = wordOf[at] !== undefined && wordOf[at] !== -1 ? wordOf[at] : lastWord;
+        return { g, at, word };
+      }
+      i = j + 1;
+      if (wordOf[j] !== -1) lastWord = wordOf[j];
+      return { g, at: j, word: wordOf[j] };
     }),
   );
 }
@@ -242,7 +269,7 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
   const resolveFont = options.resolveFont ?? defaultResolveFont;
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, doc.width, doc.height);
-  for (const { clip, tail } of drawnClips(doc, frame)) {
+  for (const { track, clip, tail } of drawnClips(doc, frame)) {
     if (clip.id === options.hideClipId) continue;
     if (tail) {
       // Under a crossfade the outgoing clip plays on as it is: its own out-transition belongs to the cut, not the blend.
@@ -250,7 +277,7 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
       drawClip(ctx, doc, clip, frame, { t, alpha: t.opacity, dx: 0, dy: 0, text: PLAIN_TEXT }, options, resolveFont);
       continue;
     }
-    const look = clipLook(clip, frame, doc);
+    const look = clipLook(ownLook(track, clip), frame, doc);
     const t = look.transform;
     const alpha = t.opacity * look.alpha;
     for (const ghost of look.ghosts) {

@@ -54,6 +54,17 @@ describe("which file each clip exports from", () => {
     expect(exportAssetIds(faded)).toEqual(["a"]);
   });
 
+  it("plans a clip that fades in from opacity 0 with its opacity keyframes", () => {
+    const d = sampleDoc();
+    const c1 = d.tracks[0].clips[0] as MediaClip;
+    c1.transform.opacity = 0;
+    c1.keyframes = { opacity: [{ at: 0, value: 0 }, { at: 10, value: 1 }] };
+    expect(Object.keys(planExportMedia(d, lib()).clips)).toEqual(["c1", "c2"]);
+    expect(exportAssetIds(d)).toEqual(["a"]);
+    c1.keyframes = { opacity: [{ at: 0, value: 0 }, { at: 10, value: 0 }] };
+    expect(Object.keys(planExportMedia(d, lib()).clips)).toEqual(["c2"]);
+  });
+
   it("lists each file and each asset once, in the order the timeline first uses it", () => {
     const d = sampleDoc();
     d.tracks.splice(1, 0, { id: "o1", kind: "overlay", name: "Overlay 1", muted: false, hidden: false, locked: false, clips: [video("c3", 0, 60)] });

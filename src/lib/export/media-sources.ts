@@ -2,6 +2,7 @@ import { PLACEHOLDER_LABELS, playbackFileFor } from "@/lib/media/playback";
 import type { LibraryState } from "@/lib/media/library-store";
 import { soundingClips } from "@/lib/render/clip-sound";
 import type { MediaClip, TimelineDoc } from "@/lib/timeline";
+import { mayShow } from "@/lib/timeline/keyframes";
 import type { ClipMedia } from "./media-schedule";
 
 // Which file each clip of an export draws from and sounds from: the one the editor plays, or why it must wait, or the
@@ -22,14 +23,14 @@ export type ExportMediaPlan = {
 };
 
 // The video and image clips that draw, in drawing order: tracks in order, each track's clips in order. A clip on a
-// hidden track or at opacity 0 draws nothing; audio is not drawn.
+// hidden track or invisible for its whole length draws nothing; audio is not drawn.
 function drawnMediaClips(doc: TimelineDoc): MediaClip[] {
   const clips: MediaClip[] = [];
   for (const track of doc.tracks) {
     if (track.hidden) continue;
     for (const clip of track.clips) {
       if (clip.type !== "video" && clip.type !== "image") continue;
-      if (clip.transform.opacity <= 0) continue;
+      if (!mayShow(clip)) continue;
       clips.push(clip);
     }
   }

@@ -52,6 +52,28 @@ describe("crossfade tails", () => {
   });
 });
 
+describe("a crossfade owns its cut", () => {
+  it("the outgoing clip's own out-transition is left out, so it does not fade away before its tail draws whole", () => {
+    const a = video("A", 0, 30, { transitionOut: { kind: "fade", frames: 10 } });
+    const alphaAt = (d: TimelineDoc, frame: number) => {
+      const { ctx, calls } = fakeCtx();
+      drawFrame(ctx, d, frame);
+      return only(calls, "set globalAlpha").map(([, v]) => v as number);
+    };
+    expect(alphaAt(doc([a, video("B", 30, 30, crossfade)]), 29)).toEqual([1]);
+    expect(alphaAt(doc([a, video("B", 30, 30, crossfade)]), 25)).toEqual([1]);
+    expect(alphaAt(doc([a, video("B", 30, 30, crossfade)]), 30)[0]).toBe(1); // the tail
+    expect(alphaAt(doc([a, video("B", 30, 30)]), 29)).toEqual([0]); // no crossfade: the fade-out plays
+  });
+
+  it("a dip out on the outgoing clip is left out too", () => {
+    const a = video("A", 0, 30, { transitionOut: { kind: "dip", frames: 10 } });
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, doc([a, video("B", 30, 30, crossfade)]), 29);
+    expect(only(calls, "fillRect")).toHaveLength(2); // the black frame and the placeholder, no dip
+  });
+});
+
 describe("drawFrame looks", () => {
   it("a fade-in's first frame draws at a tenth of the clip's opacity", () => {
     const c = video("c", 0, 30, { transform: { ...DEFAULT_TRANSFORM, opacity: 0.5 }, transitionIn: { kind: "fade", frames: 10 } });
@@ -157,5 +179,18 @@ describe("drawFrame looks", () => {
       if (name === "fillText" && style === "#00ff00") lit.push(value as string);
     }
     expect(lit).toEqual(["x".repeat(30), "x".repeat(10)]);
+  });
+
+  it("a grapheme a wrap leaves that is not in the text is drawn with its word, and the graphemes after it still draw", () => {
+    // " \u0301" is one grapheme (a space with a combining accent). Wrapping at the space leaves "\u0301" at the start
+    // of the second line, a grapheme the text does not have on its own. The box is 30 characters at 32 px.
+    const t = text("t", 0, 30, { text: `${"x".repeat(28)} \u0301cd`, emphasis: { preset: "highlight_word", color: "#00ff00" } });
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, doc([], [t]), 0);
+    expect(only(calls, "fillText").map(([, s]) => s)).toEqual(["x".repeat(28), "\u0301cd"]);
+    const typed = text("t", 0, 30, { text: `${"x".repeat(28)} \u0301cd`, animationIn: { preset: "typewriter", frames: 5 } });
+    const all = fakeCtx();
+    drawFrame(all.ctx, doc([], [typed]), 29); // fully typed
+    expect(only(all.calls, "fillText").map(([, s]) => s)).toEqual(["x".repeat(28), "\u0301cd"]);
   });
 });

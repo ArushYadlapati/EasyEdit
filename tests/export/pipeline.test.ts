@@ -3,7 +3,7 @@ import { runPipeline, type PipelineIO, type PipelineOutput } from "@/lib/export/
 import { videoSettings } from "@/lib/export/presets";
 import type { ExportJob } from "@/lib/export/protocol";
 import { text, video } from "../editor/fixtures";
-import { NO_MEDIA, fakeMediaIO, fakeSoundIO, file, tick, type FakeMediaOptions, type FakeSoundOptions } from "./fakes";
+import { NO_MEDIA, fakeMediaIO, fakeSoundIO, file, tick, type FakeMediaOptions, type FakePicture, type FakeSoundOptions } from "./fakes";
 import { docWithCaptions } from "../helpers/docs";
 
 const FACE = { family: "Geist", source: 'url("https://app.test/a.woff2")', descriptors: {}, required: true };
@@ -178,6 +178,32 @@ describe("media", () => {
       "sound 0+6400", "open a.mp4 1920", "pictures a.mp4 from 0", "frame 0 key", "frame 1",
       "stop a.mp4 from 0", "dispose a.mp4", "frame 2", "frame 3", "finish",
     ]);
+  });
+
+  it("asks the outgoing clip of a crossfade for the moments past its out point, and draws it from them", async () => {
+    // c1 uses all of a.mp4, a 2-frame file; c2 crossfades in over it for 2 frames, so c1 is asked for moments past the
+    // file's end. mediabunny's samplesAtTimestamps answers each moment with the last sample at or before it, so past
+    // the end the real file gives its last frame. The reader below does the same over the fake: it records what it is
+    // asked, then walks the fake to each moment's last sample at or before it.
+    const doc = docWithCaptions("short_9x16");
+    doc.tracks[0].clips = [video("c1", 0, 2), video("c2", 2, 2, { assetId: "b", transitionIn: { kind: "crossfade", frames: 2 } })];
+    const media = { files: { "prev-a": file("a.mp4"), "prev-b": file("b.mp4") }, clips: { c1: { fileId: "prev-a" }, c2: { fileId: "prev-b" } }, sounds: {} };
+    const asked: Record<string, number[]> = {};
+    const seen: string[] = [];
+    const { io, control } = setup({}, {
+      draw: (frame, sources) => {
+        seen.push(`${frame}:${[...sources].map(([id, p]) => `${id}@${(p as FakePicture).at}`).join(",")}`);
+      },
+    });
+    const openVideo = io.media.openVideo;
+    io.media.openVideo = async (blob, maxSide) => {
+      const video = await openVideo(blob, maxSide);
+      const last = (blob as File).name === "a.mp4" ? 1 / 30 : Infinity;
+      return { ...video, pictures: (seconds) => { asked[(blob as File).name] = seconds; return video.pictures(seconds.map((t) => Math.min(t, last))); } };
+    };
+    expect(await runPipeline(job(4, { doc, media }), io, control)).toMatchObject({ type: "done" });
+    expect(asked["a.mp4"]).toEqual([0, 1 / 30, 2 / 30, 3 / 30]);
+    expect(seen).toEqual(["0:c1@0", `1:c1@${1 / 30}`, `2:c1@${1 / 30},c2@0`, `3:c1@${1 / 30},c2@${1 / 30}`]); // c1 holds its last frame
   });
 
   it("releases the decoders after the file is finished when a clip runs to the last frame", async () => {
