@@ -1,5 +1,6 @@
 import { graphemes } from "@/lib/text";
-import { slotsOf, type TimelineDoc } from "@/lib/timeline";
+import { slotsOf } from "@/lib/timeline/slots";
+import type { TimelineDoc } from "@/lib/timeline";
 import type { ClipPlan, ExportMediaPlan } from "./media-sources";
 import { AUDIO, type ExportPresetId, type ExportSize, type VideoSettings } from "./presets";
 
