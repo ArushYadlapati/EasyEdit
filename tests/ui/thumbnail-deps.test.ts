@@ -56,7 +56,7 @@ describe("browserThumbnailDeps", () => {
     vi.stubGlobal("createImageBitmap", vi.fn(() => Promise.reject(new Error("not an image"))));
     const deps = browserThumbnailDeps(pretendMediaServices([]));
     expect(await deps.decodeImage(new Blob(["x"]))).toBeNull();
-    expect(await deps.decodeVideo(new Blob(["x"]), 0.5)).toBeNull();
+    expect(await deps.decodeVideo(new Blob(["x"]), 0.5, "c1")).toBeNull();
   });
 
   it("the canvas is detached and sized", () => {

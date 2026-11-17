@@ -85,7 +85,7 @@ const media: MediaIO = {
       input.dispose();
     }
   },
-  async openVideo(blob, maxSide) {
+  async openVideo(blob) {
     // A read-ahead that fails while nothing waits for it is dropped: the read that needs those bytes fails through its reader.
     const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob, { handleUnhandledError: () => {} }) });
     try {
@@ -93,11 +93,15 @@ const media: MediaIO = {
       if (!track) throw new Error("The file has no video track.");
       const width = await track.getDisplayWidth();
       const height = await track.getDisplayHeight();
-      const k = maxSide / Math.max(width, height);
-      const size = k < 1 ? { width: Math.max(1, Math.round(width * k)), height: Math.max(1, Math.round(height * k)), fit: "fill" as const } : {};
+      // A size smaller than the file's is drawn by the sink; the file's own size needs no resizing. Either way a moment
+      // past the file's end gives its last frame (canvasesAtTimestamps), which the pool passes on.
+      const sized = (size: { width: number; height: number }) =>
+        size.width < width || size.height < height ? { width: size.width, height: size.height, fit: "fill" as const } : {};
       return {
         firstTimestamp: await track.getFirstTimestamp(),
-        pictures: (seconds) => pictures(new CanvasSink(track, { ...size, poolSize: 2 }).canvasesAtTimestamps(seconds)),
+        width,
+        height,
+        pictures: (seconds, size) => pictures(new CanvasSink(track, { ...sized(size), poolSize: 2 }).canvasesAtTimestamps(seconds)),
         dispose: () => input.dispose(),
       };
     } catch (error) {
@@ -105,8 +109,8 @@ const media: MediaIO = {
       throw error;
     }
   },
-  async decodeImage(blob, maxSide) {
-    const decoded = await decodeImage(blob, maxSide);
+  async decodeImage(blob, size) {
+    const decoded = await decodeImage(blob, size);
     return { ...decoded, close: () => decoded.image.close() };
   },
 };

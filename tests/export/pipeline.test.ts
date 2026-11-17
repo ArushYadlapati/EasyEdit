@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { runPipeline, type PipelineIO, type PipelineOutput } from "@/lib/export/pipeline";
 import { videoSettings } from "@/lib/export/presets";
 import type { ExportJob } from "@/lib/export/protocol";
+import { DEFAULT_TRANSFORM } from "@/lib/timeline";
 import { text, video } from "../editor/fixtures";
-import { NO_MEDIA, fakeMediaIO, fakeSoundIO, file, tick, type FakeMediaOptions, type FakeSoundOptions } from "./fakes";
+import { NO_MEDIA, fakeMediaIO, fakeSoundIO, file, tick, type FakeMediaIO, type FakeMediaOptions, type FakeSoundOptions } from "./fakes";
 import { docWithCaptions } from "../helpers/docs";
 
 const FACE = { family: "Geist", source: 'url("https://app.test/a.woff2")', descriptors: {}, required: true };
@@ -175,9 +176,18 @@ describe("media", () => {
     expect(seen).toEqual(["0:c1", "1:c1", "2:-", "3:-"]);
     expect(log).toEqual([
       "face Geist", "face Geist Fallback", "can no-preference", "can-decode a.mp4", "open no-preference audio=true",
-      "sound 0+6400", "open a.mp4 1920", "pictures a.mp4 from 0", "frame 0 key", "frame 1",
+      "sound 0+6400", "open a.mp4", "pictures a.mp4 from 0", "frame 0 key", "frame 1",
       "stop a.mp4 from 0", "dispose a.mp4", "frame 2", "frame 3", "finish",
     ]);
+  });
+
+  it("decodes each clip at the size the export draws it, from its transform", async () => {
+    const doc = docWithCaptions("short_9x16"); // 1080 × 1920, exported at 1080 × 1920
+    doc.tracks[0].clips = [video("c1", 0, 2, { transform: { ...DEFAULT_TRANSFORM, fit: "cover", scale: 0.5 } })];
+    const { io, control } = setup({}, {}, { videoSize: { width: 3840, height: 2160 } });
+    await runPipeline(job(2, { doc, media: { files: { "prev-a": file("a.mp4") }, clips: { c1: { fileId: "prev-a" } }, sounds: {} } }), io, control);
+    // Cover draws 2160 → 1920 tall, at half scale 960: the 4K source decodes at 1707 × 960, not at the export's long side.
+    expect((io.media as FakeMediaIO).sizes).toEqual(["a.mp4 from 0 1707x960"]);
   });
 
   it("releases the decoders after the file is finished when a clip runs to the last frame", async () => {
@@ -235,7 +245,7 @@ describe("each step names its own failures", () => {
 
   it("calls a file that fails to let go between frames a decode failure", async () => {
     const media = fakeMediaIO();
-    const brittle = { ...media, openVideo: async (blob: Blob, maxSide: number) => ({ ...(await media.openVideo(blob, maxSide)), dispose: () => { throw new Error("dispose failed"); } }) };
+    const brittle = { ...media, openVideo: async (blob: Blob) => ({ ...(await media.openVideo(blob)), dispose: () => { throw new Error("dispose failed"); } }) };
     const { io, control } = setup({ media: brittle });
     const doc = docWithCaptions("short_9x16");
     doc.tracks[0].clips = [video("c1", 0, 2)];
@@ -322,7 +332,7 @@ describe("sound", () => {
     expect(await runPipeline(job(40, { doc, media }), io, control)).toMatchObject({ type: "done" });
     expect(soundLog).toEqual(["probe a.mp4", "open a.mp4", "packets a.mp4 0.000-1.383", "stop a.mp4", "dispose a.mp4"]); // let go after block 1
     expect(log.slice(log.indexOf("sound 48000+16000") + 1).filter((l) => l.startsWith("frame"))).toHaveLength(10); // frames 30–39 still drawn
-    expect(log.filter((l) => l === "open a.mp4 1920")).toHaveLength(1);
+    expect(log.filter((l) => l === "open a.mp4")).toHaveLength(1);
   });
 
   it("keeps a picture failure's name mid-file and lets the sound go", async () => {

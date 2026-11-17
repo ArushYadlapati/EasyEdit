@@ -28,10 +28,13 @@ function setup(assets: AssetView[] = [assetView()], over: Partial<SaveFrameIO> =
 }
 
 describe("saving a frame from the page", () => {
-  it("decodes each picture at the size asked for, and saves the PNG under the name given", async () => {
+  it("decodes each picture at the size the frame draws it, and saves the PNG under the name given", async () => {
     const { save, io } = setup();
     await save(sampleDoc(), 45, TALL, NAME);
-    expect(io.decodeVideoFrame).toHaveBeenCalledWith(expect.any(Blob), 0.5, 1920);
+    expect(io.decodeVideoFrame).toHaveBeenCalledWith(expect.any(Blob), 0.5, expect.any(Function));
+    // As the export decodes it: a 4K source under cover in a 1080 × 1920 frame is drawn 1920 tall.
+    const rule = vi.mocked(io.decodeVideoFrame).mock.calls[0][2];
+    expect(rule({ width: 3840, height: 2160 })).toEqual({ width: 3414, height: 1920 });
     expect(io.makeCanvas).toHaveBeenCalledWith(1080, 1920);
     expect(io.loadFonts).toHaveBeenCalledTimes(1);
     expect(io.download).toHaveBeenCalledWith(PNG, NAME);
@@ -40,6 +43,7 @@ describe("saving a frame from the page", () => {
   it.each([
     ["a picture that cannot be decoded", { decodeVideoFrame: vi.fn(async () => null) }, "decode"],
     ["a decoder that throws", { decodeVideoFrame: vi.fn(async () => { throw new Error("bad"); }) }, "decode"],
+    ["a file that goes away while it is decoded", { decodeVideoFrame: vi.fn(async () => { throw new DOMException("gone", "NotReadableError"); }) }, "media"],
     ["no canvas", { makeCanvas: vi.fn(() => { throw new Error("no canvas"); }) }, "unknown"],
     ["a font that does not load", { loadFonts: vi.fn(async () => { throw new Error("font"); }) }, "font"],
   ] as const)("names what stopped it: %s", async (_name, over, code) => {
@@ -59,7 +63,7 @@ describe("saving a frame from the page", () => {
 
 // Beyond the brief: rules the tests above do not catch when they are removed.
 describe("saving a frame from the page: what it draws with", () => {
-  it("decodes an image no larger than the frame's long side, and draws the text in the page's fonts", async () => {
+  it("decodes an image at the size the frame draws it, and draws the text in the page's fonts", async () => {
     const doc = sampleDoc();
     doc.tracks[0].clips = [video("c1", 0, 120, { type: "image", assetId: "i" }) as Clip];
     const { ctx, calls } = fakeCtx();
@@ -72,7 +76,10 @@ describe("saving a frame from the page: what it draws with", () => {
     } finally {
       document.documentElement.style.removeProperty("--font-geist-sans");
     }
-    expect(io.decodeImage).toHaveBeenCalledWith(expect.any(Blob), 1920);
+    expect(io.decodeImage).toHaveBeenCalledWith(expect.any(Blob), expect.any(Function));
+    // A 4000 × 3000 photo under cover is drawn 1920 tall, so 2560 × 1920: more than the frame's long side allowed.
+    const rule = vi.mocked(io.decodeImage).mock.calls[0][1];
+    expect(rule({ width: 4000, height: 3000 })).toEqual({ width: 2560, height: 1920 });
     expect(calls.some(([name, value]) => name === "set font" && String(value).includes("GeistLoaded"))).toBe(true);
     expect(io.download).toHaveBeenCalledWith(PNG, NAME);
   });

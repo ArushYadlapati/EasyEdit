@@ -6,6 +6,7 @@ import type { ByteSink, ExportTarget } from "@/lib/export/sinks";
 import type { SoundFile, SoundIO, SoundProbe } from "@/lib/export/sound-pool";
 import type { SoundPacket } from "@/lib/export/source-ring";
 import type { ResolvedSource } from "@/lib/render/compositor";
+import type { PictureSize } from "@/lib/render/decode-image";
 
 // One turn of the event loop: every promise that can settle now has settled.
 export const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -28,20 +29,28 @@ export type FakeMediaOptions = {
   hangs?(name: string, at: number): boolean; // the reader's next() never settles there
   unreadable?(name: string): boolean; // openVideo and decodeImage reject with Error("unreadable")
   gate?: Promise<void>; // every reader's next() waits for it
+  videoSize?: PictureSize; // every video's upright size; default 1280 × 720
+  imageSize?: PictureSize; // every image's full size; default 400 × 300
+  lastFrameAt?: number; // every video's last frame: a later moment gives that frame again, as mediabunny's sink does
 };
 
-export type FakeMediaIO = MediaIO & { log: string[] };
+// sizes: the size each reader and each image was decoded at, "a.mp4 from 0 640x360" or "logo.png 400x300".
+export type FakeMediaIO = MediaIO & { log: string[]; sizes: string[] };
 
 const nameOf = (blob: Blob): string => (blob as File).name;
 
 // MediaIO over named Blobs: it writes each request to its log, and its readers walk the moments they are given.
 export function fakeMediaIO(options: FakeMediaOptions = {}): FakeMediaIO {
   const log = options.log ?? [];
+  const sizes: string[] = [];
+  const video = options.videoSize ?? { width: 1280, height: 720 };
+  const still = options.imageSize ?? { width: 400, height: 300 };
 
   // A plain object, not a generator: return() answers at once even while a next() is still pending.
-  function reader(name: string, seconds: number[]): AsyncIterator<ResolvedSource | null> {
+  function reader(name: string, seconds: number[], size: PictureSize): AsyncIterator<ResolvedSource | null> {
     const first = seconds[0];
     log.push(`pictures ${name} from ${first}`);
+    sizes.push(`${name} from ${first} ${size.width}x${size.height}`);
     let index = 0;
     let finished = false;
     const done = { done: true as const, value: undefined };
@@ -49,7 +58,8 @@ export function fakeMediaIO(options: FakeMediaOptions = {}): FakeMediaIO {
       async next() {
         if (options.gate) await options.gate;
         if (finished || index >= seconds.length) return done;
-        const at = seconds[index++];
+        const asked = seconds[index++];
+        const at = options.lastFrameAt === undefined ? asked : Math.min(asked, options.lastFrameAt);
         if (options.hangs?.(name, at)) return new Promise<never>(() => {});
         if (options.breaks?.(name, at)) throw new Error("decoder closed");
         const error = options.rejectsWith?.(name, at) ?? null;
@@ -59,7 +69,7 @@ export function fakeMediaIO(options: FakeMediaOptions = {}): FakeMediaIO {
           return done;
         }
         if (options.missing?.(name, at)) return { done: false, value: null };
-        const picture: FakePicture = { image: {} as CanvasImageSource, width: 720, height: 1280, from: name, at };
+        const picture: FakePicture = { image: {} as CanvasImageSource, width: size.width, height: size.height, from: name, at };
         return { done: false, value: picture };
       },
       async return() {
@@ -72,31 +82,36 @@ export function fakeMediaIO(options: FakeMediaOptions = {}): FakeMediaIO {
 
   return {
     log,
+    sizes,
     async canDecode(blob) {
       const name = nameOf(blob);
       log.push(`can-decode ${name}`);
       return options.decodable?.(name) ?? true;
     },
-    async openVideo(blob, maxSide): Promise<VideoFile> {
+    async openVideo(blob): Promise<VideoFile> {
       const name = nameOf(blob);
-      log.push(`open ${name} ${maxSide}`);
+      log.push(`open ${name}`);
       if (options.unreadable?.(name)) throw new Error("unreadable");
       return {
         firstTimestamp: options.firstTimestamp ?? 0,
-        pictures: (seconds) => reader(name, seconds),
+        width: video.width,
+        height: video.height,
+        pictures: (seconds, size) => reader(name, seconds, size),
         dispose: () => {
           log.push(`dispose ${name}`);
         },
       };
     },
-    async decodeImage(blob, maxSide): Promise<DecodedImage> {
+    async decodeImage(blob, size): Promise<DecodedImage> {
       const name = nameOf(blob);
-      log.push(`image ${name} ${maxSide}`);
+      log.push(`image ${name}`);
       if (options.unreadable?.(name)) throw new Error("unreadable");
+      const { width, height } = size(still);
+      sizes.push(`${name} ${width}x${height}`);
       return {
         image: {} as CanvasImageSource,
-        width: 400,
-        height: 300,
+        width,
+        height,
         close: () => {
           log.push(`close ${name}`);
         },

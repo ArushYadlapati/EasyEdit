@@ -3,8 +3,10 @@ import type { FontRequest } from "@/lib/export/fonts";
 import { refuseWaiting, type ExportMediaDeps } from "@/lib/export/gather-media";
 import { exportAssetIds, planExportMedia } from "@/lib/export/media-sources";
 import { ExportError, failureOf } from "@/lib/export/messages";
+import { clipSizes } from "@/lib/export/needed-size";
 import type { ExportFailure } from "@/lib/export/protocol";
 import type { ResolvedSource } from "@/lib/render/compositor";
+import { noLargerThan, type SizeRule } from "@/lib/render/decode-image";
 import { decodeImage, decodeVideoFrame } from "../media/frame-decode";
 import { loadFontsStrict, pageFontResolver } from "../page-fonts";
 import type { ExportDeps } from "./deps";
@@ -16,8 +18,8 @@ import { downloadBlob } from "./download";
 
 // What saving a frame needs from the browser, so tests can pass fakes.
 export type SaveFrameIO = {
-  decodeVideoFrame(blob: Blob, seconds: number, maxSide: number): Promise<ResolvedSource | null>;
-  decodeImage(blob: Blob, maxSide: number): Promise<{ image: ImageBitmap; width: number; height: number }>;
+  decodeVideoFrame(blob: Blob, seconds: number, size: SizeRule): Promise<ResolvedSource | null>;
+  decodeImage(blob: Blob, size: SizeRule): Promise<{ image: ImageBitmap; width: number; height: number }>;
   loadFonts(requests: FontRequest[]): Promise<void>; // rejects when a face does not load: nothing is drawn in a substitute
   makeCanvas(width: number, height: number): FrameCanvas;
   download(blob: Blob, fileName: string): void;
@@ -50,13 +52,17 @@ export function savePageFrame(media: ExportMediaDeps, io: SaveFrameIO = pageIO):
     const plan = planExportMedia(doc, media.library());
     refuseWaiting(plan); // never a placeholder for media that is about to be ready
 
-    const maxSide = Math.max(size.width, size.height);
+    // Each picture at the size the frame draws it, as the export decodes it, so the frame and the video agree. A
+    // decode that rejects is named by renderFrame: a file gone is a read failure, anything else a decode failure.
+    const sizeOf = clipSizes(doc, size);
+    const ruleFor = (clipId: string | undefined): SizeRule =>
+      clipId === undefined ? noLargerThan(Math.max(size.width, size.height)) : (native) => sizeOf(clipId, native);
     let result: FrameResult;
     try {
       result = await renderFrame(doc, saveFrameRequest(doc, frame, size, plan), {
         readFile: media.readFile,
-        decodeVideo: (blob, seconds) => io.decodeVideoFrame(blob, seconds, maxSide).catch(() => null),
-        decodeImage: (blob) => io.decodeImage(blob, maxSide).catch(() => null),
+        decodeVideo: (blob, seconds, clipId) => io.decodeVideoFrame(blob, seconds, ruleFor(clipId)),
+        decodeImage: (blob, clipId) => io.decodeImage(blob, ruleFor(clipId)),
         loadFonts: async (requests) => {
           try {
             await io.loadFonts(requests);
