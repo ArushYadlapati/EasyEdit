@@ -81,12 +81,12 @@ it("clicking a swatch recolors the selected text but leaves out text on a locked
   expect(x9.type === "text" && x9.style.color).toBe("#ffffff");
 });
 
-it("clicking a swatch with only locked text selected says to select text", () => {
+it("clicking a swatch with only locked text selected says the track is locked", () => {
   const { store } = setup(true, withLockedText());
-  act(() => store.getState().select(["x9"]));
+  act(() => store.getState().select(["x9", "c1"]));
   fireEvent.click(screen.getByRole("button", { name: "#ff5a1f" }));
   expect(store.getState().queue).toEqual([]);
-  expect(store.getState().notice).toMatchObject({ tone: "info", text: "Select a text clip to recolor it." });
+  expect(store.getState().notice).toMatchObject({ tone: "error", text: "That track is locked." });
 });
 
 it("clicking a logo adds it at the playhead, on top of the video at a medium size", () => {

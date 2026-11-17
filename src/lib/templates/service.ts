@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 import type { DB } from "@/db";
 import { projects, templates } from "@/db/schema";
 import { requireRole, type Actor } from "@/lib/actor";
-import { getBrandKit } from "@/lib/brand/service";
+import { getBrandFonts } from "@/lib/brand/service";
 import { DEFAULT_BRAND_FONTS } from "@/lib/brand/types";
 import { LIMITS } from "@/lib/limits";
 import { failedOn } from "@/lib/projects/service";
@@ -80,8 +80,7 @@ export async function listTemplates(db: DB, actor: Actor): Promise<TemplateSumma
 export async function getTemplate(db: DB, actor: Actor, id: string): Promise<Template | null> {
   requireRole(actor, "viewer");
   if (isStarterId(id)) {
-    const { fonts } = await getBrandKit(db, actor);
-    return starterTemplates(fonts).find((t) => t.id === id) ?? null;
+    return starterTemplates(await getBrandFonts(db, actor)).find((t) => t.id === id) ?? null;
   }
   const [row] = await db.select(columns).from(templates).where(and(eq(templates.id, id), eq(templates.spaceId, actor.spaceId)));
   return row ? toTemplate(row) : null;

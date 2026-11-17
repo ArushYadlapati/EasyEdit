@@ -1,5 +1,5 @@
 import type { Role } from "@/lib/allowlist/service";
-import { summarizeOps } from "@/lib/editor/activity";
+import { isMoveEntry, MOVED_HERE, summarizeOps } from "@/lib/editor/activity";
 import { LIMITS } from "@/lib/limits";
 import type { AssetTrouble } from "@/lib/media/refs";
 import type { AssetKind } from "@/lib/media/types";
@@ -70,7 +70,7 @@ export async function conflictResult(ctx: SpaceToolContext, projectId: string, e
       ? [`Edit refused: expected_version ${expectedVersion} is ahead of the project, which is at version ${current}. ${NOTHING_APPLIED}`]
       : [
           `Edit refused: the project changed after version ${expectedVersion}. It is now at version ${current}. ${NOTHING_APPLIED}`,
-          ...(await unseenChanges(ctx, projectId, expectedVersion, current)),
+          ...(await unseenChanges(ctx, projectId, expectedVersion, current, project.movedAtVersion)),
         ];
   const page = projectPage(project, { maxChars: ctx.limits.connectorEchoChars });
   lines.push("Current project:");
@@ -84,7 +84,8 @@ export async function conflictResult(ctx: SpaceToolContext, projectId: string, e
 }
 
 // Up to `limits.connectorConflictEntries` log entries after `since`, and how many more there are, as of version `current`.
-async function unseenChanges(ctx: SpaceToolContext, projectId: string, since: number, current: number): Promise<string[]> {
+// The move's own entry reads as the move, not as the clip changes that point the project at its copies.
+async function unseenChanges(ctx: SpaceToolContext, projectId: string, since: number, current: number, movedAtVersion: number | null): Promise<string[]> {
   if (current <= since) return [];
   const page = await getOpsSince(ctx.db, ctx.actor, projectId, since, ctx.limits.connectorConflictEntries);
   // Only changes up to the version shown in the answer: one that lands between the two reads waits for the next attempt.
@@ -93,7 +94,8 @@ async function unseenChanges(ctx: SpaceToolContext, projectId: string, since: nu
   const lines = ["Changes you have not seen:"];
   for (const entry of entries) {
     const who = entry.actor === ctx.actor.userId ? "you" : oneLine(displayActor(entry.actor, names));
-    lines.push(`  version ${entry.version} · ${who} · ${summarizeOps(entry.ops)}`);
+    const what = isMoveEntry(entry, movedAtVersion) ? MOVED_HERE : summarizeOps(entry.ops);
+    lines.push(`  version ${entry.version} · ${who} · ${what}`);
   }
   const more = current - since - entries.length;
   if (more > 0) lines.push(`  … and ${more} more`);
@@ -109,7 +111,9 @@ export async function failureResult(
   if (!(error instanceof ServiceError)) throw error;
   if (error.code === "FORBIDDEN") return fail(roleMessage(ctx.actor.role));
   if (error.status === 404) return fail(notFoundText(input.projectId));
-  if (error.code === "CONFLICT") return conflictResult(ctx, input.projectId, input.expectedVersion);
+  // A change planned before the project moved here is refused as MOVED; for an agent that is a version conflict like
+  // any other: it reads the project as it is now and plans again.
+  if (error.code === "CONFLICT" || error.code === "MOVED") return conflictResult(ctx, input.projectId, input.expectedVersion);
   if (error.opIndex !== undefined) {
     const code = error.code as OpErrorCode;
     return fail(

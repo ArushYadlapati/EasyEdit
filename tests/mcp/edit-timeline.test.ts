@@ -174,6 +174,35 @@ describe("edit_timeline", () => {
     expect(await texts()).toEqual(["BY GRACE", "BY CLAUDE"]);
   });
 
+  it("a change planned before the project moved here is a version conflict, and the move reads as the move", async () => {
+    const { db, id, edit, texts } = await setup();
+    await applyProjectOps(db, grace, { projectId: id, baseVersion: 0, ops: [addText(0, "BY GRACE") as OpInput] });
+    const clipId = (await getProject(db, grace, id))!.doc.tracks[1].clips[0].id;
+    // The move's own log row, as finishing a move writes it: clips pointed at their copies, no undo.
+    const moveOps = [{ op: "update_clip", clipId, patch: { assetId: "copy1" } }];
+    await db.execute(sql`insert into project_ops (project_id, version, ops, inverse, actor) values (${id}, 2, ${JSON.stringify(moveOps)}::jsonb, null, 'u2')`);
+    await db.execute(sql`update projects set version = 2, moved_at_version = 2 where id = ${id}`);
+
+    const r = await edit(1, [addText(60, "BY CLAUDE")]);
+    expect(r.isError).toBe(true);
+    const lines = r.text.split("\n");
+    expect(lines.slice(0, 4)).toEqual([
+      "Edit refused: the project changed after version 1. It is now at version 2. Nothing was applied.",
+      "Changes you have not seen:",
+      "  version 2 · Grace Hopper · Moved here from another space",
+      "Current project:",
+    ]);
+    expect(r.text).not.toContain("Open it there");
+    expect(lines.at(-1)).toBe("Plan again from this, then send your change with expected_version 2.");
+    expect((await edit(0, [addText(60)])).text.split("\n").slice(2, 4)).toEqual([
+      "  version 1 · Grace Hopper · Added text",
+      "  version 2 · Grace Hopper · Moved here from another space",
+    ]);
+
+    expect((await edit(2, [addText(60, "BY CLAUDE")])).isError).toBe(false);
+    expect(await texts()).toEqual(["BY GRACE", "BY CLAUDE"]);
+  });
+
   it("names its own earlier change as yours, cuts a long list of changes, and catches a version from the future", async () => {
     const { db, id, edit } = await setup({ limits: { connectorConflictEntries: 2 } });
     await edit(0, [addText(0)]);

@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
@@ -174,6 +174,20 @@ describe("migrations", () => {
     const { entries } = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")) as { entries: { idx: number; when: number }[] };
     expect(entries.map((e) => e.idx)).toEqual(entries.map((_, i) => i));
     for (let i = 1; i < entries.length; i++) expect(entries[i].when).toBeGreaterThan(entries[i - 1].when);
+  });
+
+  it("there is one snapshot per journal entry, and each chains to the one before it", () => {
+    // drizzle-kit numbers a new migration by its journal position, not after the last number used, so a fresh one can
+    // overwrite an older snapshot (see "Writing a new migration" in docs/deploy.md). It pairs snapshots with entries
+    // in file-name order, as this does.
+    const { entries } = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")) as { entries: { tag: string }[] };
+    for (const entry of entries) expect(existsSync(`drizzle/${entry.tag}.sql`), entry.tag).toBe(true);
+    const files = readdirSync("drizzle/meta").filter((f) => f.endsWith("_snapshot.json")).sort();
+    expect(files).toHaveLength(entries.length);
+    const snapshots = files.map((f) => JSON.parse(readFileSync(`drizzle/meta/${f}`, "utf8")) as { id: string; prevId: string });
+    expect(snapshots[0].prevId).toBe("00000000-0000-0000-0000-000000000000");
+    for (let i = 1; i < snapshots.length; i++) expect(snapshots[i].prevId, files[i]).toBe(snapshots[i - 1].id);
+    expect(new Set(snapshots.map((s) => s.id)).size).toBe(snapshots.length);
   });
 
   it("the migration's last statement fills width and height from each doc", async () => {

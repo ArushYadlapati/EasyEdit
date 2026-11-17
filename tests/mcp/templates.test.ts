@@ -58,6 +58,14 @@ describe("get_template", () => {
     const missing = await getTemplateTool(ctx, { template: "nope" });
     expect(missing).toEqual({ text: "No template nope.", isError: true });
   });
+
+  it("someone in no space gets the usual sentence for a starter, never an error", async () => {
+    const { ctx } = await setup();
+    const none = { ...ctx, spaces: [] };
+    const sentence = "Personal spaces are coming soon, and you are not in a team yet. Create a team in EasyEdit first.";
+    expect(await getTemplateTool(none, { template: "starter-robot-reveal" })).toEqual({ isError: true, text: sentence });
+    expect(await getTemplateTool(none, { template: "nope" })).toEqual({ isError: true, text: "No template nope." });
+  });
 });
 
 describe("create_project from a template", () => {

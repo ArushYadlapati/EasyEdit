@@ -174,7 +174,7 @@ export function isBeforeMove(entry: ActivityEntry, movedAtVersion: number | null
 }
 
 // The move's own change: it points the clips at their copies in this space, and has no undo.
-function isMoveEntry(entry: ActivityEntry, movedAtVersion: number | null): boolean {
+export function isMoveEntry(entry: Pick<ActivityEntry, "version" | "inverse">, movedAtVersion: number | null): boolean {
   return entry.version === movedAtVersion && entry.inverse === null;
 }
 

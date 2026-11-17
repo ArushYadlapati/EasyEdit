@@ -52,7 +52,8 @@ export function savePageFrame(media: ExportMediaDeps, io: SaveFrameIO = pageIO):
     const plan = planExportMedia(doc, media.library());
     refuseWaiting(plan); // never a placeholder for media that is about to be ready
 
-    // Each picture at the size the frame draws it, as the export decodes it, so the frame and the video agree. A
+    // Each picture at the size this clip draws it, by the export's sizing rule. The export decodes a file shared by
+    // several clips once, at the largest of their sizes, so a saved frame can differ slightly from the video there. A
     // decode that rejects is named by renderFrame: a file gone is a read failure, anything else a decode failure.
     const sizeOf = clipSizes(doc, size);
     const ruleFor = (clipId: string | undefined): SizeRule =>

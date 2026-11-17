@@ -58,7 +58,9 @@ export async function getTemplateTool(ctx: ToolContext, input: { template: strin
   let found: Template | null = null;
   if (input.template.startsWith("starter-")) {
     // Starters exist everywhere; the space only decides the brand fonts.
+    // Someone in no space at all gets the sentence the other tools give them.
     const space = input.space !== undefined ? spaces[0] : ctx.spaces.length === 1 ? ctx.spaces[0] : (ctx.spaces.find((s) => s.kind === "team") ?? ctx.spaces[0]);
+    if (!space) return fail(noSuchSpace(ctx, PERSONAL_ALIAS));
     found = await getTemplate(ctx.db, actorInSpace(ctx, space.id)!, input.template);
   } else {
     for (const space of spaces) {

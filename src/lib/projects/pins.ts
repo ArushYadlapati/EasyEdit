@@ -49,9 +49,3 @@ export async function unpinProject(db: DB, actor: Actor, projectId: string): Pro
   await requireLiveProject(db, actor, projectId);
   await db.delete(projectPins).where(and(eq(projectPins.projectId, projectId), eq(projectPins.spaceId, actor.spaceId)));
 }
-
-// Drops a project's pin when the project is deleted, so a later restore from the trash wouldn't bring an old pin back.
-// Called by deleteProject after the delete; reads already leave deleted projects out, so a pin this misses is harmless.
-export async function dropPinOfDeleted(db: DB, projectId: string): Promise<void> {
-  await db.delete(projectPins).where(eq(projectPins.projectId, projectId));
-}

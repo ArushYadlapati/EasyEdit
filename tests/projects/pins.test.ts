@@ -77,15 +77,18 @@ describe("pins", () => {
     await expect(unpinProject(db, u1, a)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("deleting a project removes its pin row, so a later restore wouldn't bring the pin back", async () => {
-    const { db, u1 } = await setup();
+  it("deleting a project removes its pin row in the same write; a refused delete leaves pins alone", async () => {
+    const { db, u1, u1Personal } = await setup();
     const a = await newProject(db, u1, "A");
     const b = await newProject(db, u1, "B");
     await pinProject(db, u1, a);
     await pinProject(db, u1, b);
     await deleteProject(db, u1, a);
-    const rows = await db.select({ id: projectPins.projectId }).from(projectPins);
-    expect(rows.map((row) => row.id)).toEqual([b]);
+    const pinned = async () => (await db.select({ id: projectPins.projectId }).from(projectPins)).map((row) => row.id);
+    expect(await pinned()).toEqual([b]);
+    await expect(deleteProject(db, u1Personal, b)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(deleteProject(db, u1, a)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(await pinned()).toEqual([b]);
   });
 
   it("pins stay in their space: another space's project is not found there, and its pins aren't listed", async () => {
