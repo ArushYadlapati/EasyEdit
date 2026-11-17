@@ -1,5 +1,5 @@
 import { describe as suite, expect, it } from "vitest";
-import { DEFAULT_TRANSFORM, OpError, applyOps, describe, isPlaceholder, prepareOps, type OpInput, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, OpError, applyOps, describe, isPlaceholder, prepareOps, toTemplateDoc, type OpInput, type TimelineDoc } from "@/lib/timeline";
 import { createEmptyDoc } from "@/lib/timeline";
 
 const style = { fontFamily: "Inter", fontSize: 96, fontWeight: 800, color: "#FFFFFF", align: "center" } as const;
@@ -118,5 +118,84 @@ suite("slots", () => {
     expect(out).toContain('  p1  placeholder(visual)  0.00–3.00s  slot=hero_clip "the hero shot"');
     expect(out).toContain('  x  text  0.00–1.00s  "hi" slot=title_text');
     expect(describe(d, { detail: true })).toContain("slot=title_text");
+  });
+
+  it("a visual slot takes the video and image effects; an audio slot takes none", () => {
+    const d = base();
+    const fade = { kind: "fade", frames: 15 } as const;
+    const keyframes = { x: [{ at: 0, value: 0.2 }, { at: 30, value: 0.8 }] };
+    expect(() => run(d, { op: "add_clip", trackId: "v", clip: ph("p1", "visual", "hero_clip", { transitionIn: fade, transitionOut: fade, keyframes }) })).not.toThrow();
+    expect(codeOf(() => run(d, { op: "add_clip", trackId: "a", clip: ph("p1", "audio", "music", { transitionIn: fade }) }))).toBe("INVALID");
+    // A null is the neutral value, so an audio slot that spells out "none" is fine.
+    expect(() => run(d, { op: "add_clip", trackId: "a", clip: ph("p1", "audio", "music", { transitionIn: null }) })).not.toThrow();
+    expect(() => run(d, { op: "add_clip", trackId: "v", clip: ph("p1", "visual", "hero_clip", { transitionOut: { kind: "crossfade", frames: 5 } }) })).toThrow();
+
+    const audio = run(d, { op: "add_clip", trackId: "a", clip: ph("p2", "audio", "music") }).doc;
+    expect(() => run(audio, { op: "update_clip", clipId: "p2", patch: { keyframes } })).toThrow('"keyframes" is not allowed on an audio placeholder clip');
+    const visual = run(d, { op: "add_clip", trackId: "v", clip: ph("p1", "visual") }).doc;
+    expect(() => run(visual, { op: "update_clip", clipId: "p1", patch: { animationIn: { preset: "fade", frames: 5 } } })).toThrow(
+      '"animationIn" is not allowed on a visual placeholder clip',
+    );
+  });
+
+  it("update_clip sets a visual slot's transition and keyframes, and the undo puts back none", () => {
+    const d = run(base(), { op: "add_clip", trackId: "v", clip: ph("p1", "visual") }).doc;
+    const r = run(d, { op: "update_clip", clipId: "p1", patch: { transitionIn: { kind: "fade", frames: 15 }, keyframes: { scale: [{ at: 0, value: 1 }, { at: 60, value: 1.2 }] } } });
+    expect(r.doc.tracks[0].clips[0]).toMatchObject({ type: "placeholder", transitionIn: { kind: "fade", frames: 15 }, keyframes: { scale: [{ at: 0, value: 1 }, { at: 60, value: 1.2 }] } });
+    const undone = applyOps(r.doc, JSON.parse(JSON.stringify(r.inverse))).doc;
+    expect(undone.tracks[0].clips[0]).toMatchObject({ transitionIn: null, keyframes: { scale: [] } });
+    expect(describe(undone)).toBe(describe(d));
+  });
+
+  it("split and trim hand a slot's effects off like an image clip's", () => {
+    const fadeIn = { kind: "fade", frames: 10 } as const;
+    const dipOut = { kind: "dip", frames: 10, color: "#ffffff" } as const;
+    const keyframes = { x: [{ at: 0, value: 0 }, { at: 90, value: 1 }] };
+    const d = run(base(), { op: "add_clip", trackId: "v", clip: ph("p1", "visual", "hero_clip", { transitionIn: fadeIn, transitionOut: dipOut, keyframes }) }).doc;
+    const split = run(d, { op: "split_clip", clipId: "p1", at: 30, newClipId: "p2" });
+    const [l, r] = split.doc.tracks[0].clips;
+    expect(l).toMatchObject({ type: "placeholder", transitionIn: fadeIn, transitionOut: null, keyframes });
+    expect(r).toMatchObject({ type: "placeholder", transitionIn: null, transitionOut: dipOut, keyframes: { x: [{ at: -30, value: 0 }, { at: 60, value: 1 }] } });
+    expect("in" in r).toBe(false);
+    expect(applyOps(split.doc, JSON.parse(JSON.stringify(split.inverse))).doc.tracks[0].clips).toEqual(d.tracks[0].clips);
+
+    const trimmed = run(d, { op: "trim_clip", clipId: "p1", edge: "start", to: 10 });
+    expect(trimmed.doc.tracks[0].clips[0]).toMatchObject({ start: 10, keyframes: { x: [{ at: -10, value: 0 }, { at: 80, value: 1 }] }, transitionIn: fadeIn });
+    expect("in" in trimmed.doc.tracks[0].clips[0]).toBe(false);
+    expect(applyOps(trimmed.doc, trimmed.inverse).doc.tracks[0].clips[0]).toEqual(d.tracks[0].clips[0]);
+  });
+
+  it("describes a slot before its effects, on a placeholder and on a slotted clip", () => {
+    const fade = { kind: "fade", frames: 15 } as const;
+    let d = run(base(), { op: "add_clip", trackId: "v", clip: ph("p1", "visual", "hero_clip", { transitionIn: fade, keyframes: { x: [{ at: 0, value: 0.5 }] } }) }).doc;
+    d = run(d, {
+      op: "add_clip",
+      trackId: "o",
+      clip: { id: "m", type: "video", start: 0, duration: 90, transform: DEFAULT_TRANSFORM, assetId: "a1", in: 0, speed: 1, volume: 1, slot: { name: "broll" }, transitionOut: fade },
+    }).doc;
+    const out = describe(d);
+    expect(out).toContain('  p1  placeholder(visual)  0.00–3.00s  slot=hero_clip "the hero shot" in=fade 0.50s kf=x');
+    expect(out).toContain("vol=1 slot=broll out=fade 0.50s");
+    const detail = describe(d, { detail: true });
+    expect(detail).toContain('slot=hero_clip "the hero shot" in=fade 0.50s kf.x=0:0.5');
+    expect(detail).toContain("slot=broll out=fade 0.50s");
+  });
+
+  it("a template keeps a slotted clip's effects on its placeholder", () => {
+    const fade = { kind: "fade", frames: 15 } as const;
+    const keyframes = { opacity: [{ at: 0, value: 0 }, { at: 15, value: 1 }] };
+    let d = run(base(), {
+      op: "add_clip",
+      trackId: "v",
+      clip: { id: "m", type: "video", start: 0, duration: 90, transform: DEFAULT_TRANSFORM, assetId: "a1", in: 0, speed: 1, volume: 1, slot: { name: "main" }, transitionIn: fade, transitionOut: null, keyframes },
+    }).doc;
+    d = run(d, {
+      op: "add_clip",
+      trackId: "a",
+      clip: { id: "s", type: "audio", start: 0, duration: 90, transform: DEFAULT_TRANSFORM, assetId: "a2", in: 0, speed: 1, volume: 1, slot: { name: "music" } },
+    }).doc;
+    const t = toTemplateDoc(d);
+    expect(t.tracks[0].clips[0]).toEqual({ id: "m", type: "placeholder", start: 0, duration: 90, transform: DEFAULT_TRANSFORM, accepts: "visual", slot: { name: "main" }, transitionIn: fade, transitionOut: null, keyframes });
+    expect(t.tracks[3].clips[0]).toEqual({ id: "s", type: "placeholder", start: 0, duration: 90, transform: DEFAULT_TRANSFORM, accepts: "audio", slot: { name: "music" } });
   });
 });

@@ -37,3 +37,19 @@ it("shows no out window on a clip the next one crossfades in from, since the cro
   // With no crossfade after it, A's fade out shows.
   expect(clipMarks(track(a), a)).toMatchObject({ outFrames: 10 });
 });
+
+it("marks an empty slot's keyframes and transitions too, since the clip that fills it keeps them", () => {
+  const slot = {
+    id: "s",
+    type: "placeholder",
+    start: 0,
+    duration: 30,
+    transform: { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, fit: "cover" },
+    accepts: "visual",
+    slot: { name: "hero_clip" },
+    transitionIn: { kind: "fade", frames: 10 },
+    transitionOut: { kind: "dip", frames: 5 },
+    keyframes: { x: [{ at: 3, value: 0 }, { at: 12, value: 1 }] },
+  } as Clip;
+  expect(alone(slot)).toEqual({ keyframes: [3, 12], inFrames: 10, outFrames: 5 });
+});

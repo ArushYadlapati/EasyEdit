@@ -52,6 +52,40 @@ describe("crossfade tails", () => {
   });
 });
 
+describe("a crossfade after an empty slot", () => {
+  const slot = (id: string, start: number, duration: number, extra: Record<string, unknown> = {}): Clip =>
+    ({ id, type: "placeholder", start, duration, transform: { ...DEFAULT_TRANSFORM }, accepts: "visual", slot: { name: "hero_clip" }, ...extra }) as Clip;
+
+  it("has nothing to blend from, so it fades in like a clip with no clip before it, and the slot never draws", () => {
+    const withSlot = doc([slot("S", 0, 30, { transitionOut: { kind: "dip", frames: 10 } }), video("B", 30, 30, crossfade)]);
+    const alone = doc([video("B", 30, 30, crossfade)]);
+    expect(crossfadeFrom(withSlot.tracks[0], withSlot.tracks[0].clips[1])).toBeNull();
+    for (const frame of [25, 29, 30, 35, 39, 40]) {
+      expect(drawn(withSlot, frame), String(frame)).toEqual(drawn(alone, frame));
+      const a = fakeCtx();
+      const b = fakeCtx();
+      expect(() => drawFrame(a.ctx, withSlot, frame)).not.toThrow();
+      drawFrame(b.ctx, alone, frame);
+      expect(a.calls, String(frame)).toEqual(b.calls);
+    }
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, withSlot, 35);
+    expect(only(calls, "set globalAlpha").map(([, v]) => v)).toEqual([0.6]); // B alone, 6 of 10 frames in
+  });
+
+  it("a slot's own transitions and keyframes draw nothing while it is empty", () => {
+    const s = slot("S", 0, 30, { transitionIn: { kind: "dip", frames: 10 }, keyframes: { x: [{ at: 0, value: 0 }, { at: 29, value: 1 }] } });
+    for (const frame of [0, 5, 15, 29]) {
+      const a = fakeCtx();
+      const b = fakeCtx();
+      drawFrame(a.ctx, doc([s]), frame);
+      drawFrame(b.ctx, doc([]), frame);
+      expect(a.calls, String(frame)).toEqual(b.calls);
+      expect(drawnClips(doc([s]), frame)).toEqual([]);
+    }
+  });
+});
+
 describe("a crossfade owns its cut", () => {
   it("the outgoing clip's own out-transition is left out, so it does not fade away before its tail draws whole", () => {
     const a = video("A", 0, 30, { transitionOut: { kind: "fade", frames: 10 } });

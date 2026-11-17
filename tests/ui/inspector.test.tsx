@@ -947,6 +947,21 @@ describe("template slot section", () => {
     expect(store.getState().queue).toMatchObject([{ ops: [{ op: "update_clip", clipId: "x1", patch: { slot: null } }] }]);
   });
 
+  it("a visual slot has transitions that its fill keeps, an audio slot has none", () => {
+    const doc = sampleDoc();
+    doc.tracks[0].clips = [{ id: "ph", type: "placeholder", accepts: "visual", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "intro" } } as Clip];
+    doc.tracks[3].clips = [{ id: "pa", type: "placeholder", accepts: "audio", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "music" } } as Clip];
+    const store = makeStore({ doc });
+    store.getState().select(["ph"]);
+    const view = render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    fireEvent.change(screen.getByLabelText("Transition in"), { target: { value: "fade" } });
+    expect(findClip(store.getState().doc, "ph")!.clip).toMatchObject({ type: "placeholder", transitionIn: { kind: "fade", frames: 15 } });
+    expect(screen.getByLabelText("Transition out")).toBeTruthy();
+    act(() => store.getState().select(["pa"]));
+    expect(screen.queryByLabelText("Transition in")).toBeNull();
+    view.unmount();
+  });
+
   it("a placeholder has no Remove slot", () => {
     const doc = sampleDoc();
     doc.tracks[0].clips = [{ id: "ph", type: "placeholder", accepts: "visual", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "intro" } } as never];
