@@ -350,6 +350,33 @@ describe("the media pool, further", () => {
     expect(h.pool.resolveSource(clip("c1"), 0)).toBeNull();
   });
 
+  // A browser drops a seeking element's readyState to 1 (HAVE_METADATA) until the new frame is decoded, but drawing it
+  // still gives its last frame. Scrubbing seeks on every move, so a picture that needed readyState 2 showed Loading.
+  it("keeps showing the last frame while the element seeks, once it has shown one", async () => {
+    const h = await setup();
+    await h.syncSettled([want("c1")]);
+    const [el] = h.made;
+    Object.assign(el, { readyState: 2 }).fire("loadeddata");
+    el.readyState = 1; // seeking to a new moment
+    expect(h.pool.resolveSource(clip("c1"), 0)).toEqual({ image: el, width: 1280, height: 720 });
+    expect(h.pool.label(clip("c1"))).toBe("Loading"); // the label is only used when there is no picture
+  });
+
+  it("does not show a frame of the file a clip played before, while the new file loads", async () => {
+    const h = await setup({ assets: [videoAsset({ previewStatus: "failed", previewFileId: null })] });
+    await h.syncSettled([want("c1")]);
+    const [el] = h.made;
+    Object.assign(el, { readyState: 2 }).fire("loadeddata");
+    h.assets.set("a", videoAsset()); // the preview copy arrives: the element is pointed at it
+    await h.syncSettled([want("c1")]);
+    expect(el.src).toBe("blob:p1#2");
+    el.readyState = 1; // the new file's metadata, no frame yet
+    expect(h.pool.resolveSource(clip("c1"), 0)).toBeNull();
+    Object.assign(el, { readyState: 2 }).fire("loadeddata");
+    el.readyState = 1;
+    expect(h.pool.resolveSource(clip("c1"), 0)).not.toBeNull();
+  });
+
   it("keeps the elements used last, not the ones made last", async () => {
     const h = await setup();
     for (const id of ["c1", "c2", "c3", "c4", "c5", "c1", "c6"]) await h.syncSettled([want(id)]);

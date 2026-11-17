@@ -73,11 +73,16 @@ export function upcomingWants(doc: TimelineDoc, frame: number): MediaWant[] {
 // Something read from the browser's files, on its way or not.
 type Got<T> = { state: "loading" } | { state: "ready"; value: T } | { state: "failed"; at: number };
 type ElementKind = "video" | "audio";
-// An element, the clip it plays for and the file it plays. usedAt: the sync that last wanted it.
-type Held = { el: MediaElement; kind: ElementKind; clipId: string; fileId: string; usedAt: number; failed: boolean };
+// An element, the clip it plays for and the file it plays. usedAt: the sync that last wanted it. shown: it has had a
+// frame of this file, which a browser keeps drawing while it seeks.
+type Held = { el: MediaElement; kind: ElementKind; clipId: string; fileId: string; usedAt: number; failed: boolean; shown: boolean };
 
 const kindFor = (want: MediaWant): ElementKind => (want.type === "audio" ? "audio" : "video");
 const hasData = (held: Held) => !held.failed && held.el.readyState >= 2;
+// What can be drawn: data now, or the last frame it showed. A seeking element's readyState drops to HAVE_METADATA until
+// the new moment is decoded, yet drawing it gives the frame it had; scrubbing seeks on every move, so asking for data
+// alone showed the Loading placeholder for as long as the playhead moved.
+const drawable = (held: Held) => !held.failed && (held.el.readyState >= 2 || (held.shown && held.el.readyState >= 1));
 
 export function createMediaPool(deps: PoolDeps): MediaPool {
   const now = deps.now ?? Date.now;
@@ -180,16 +185,19 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
       if (known.fileId !== fileId) {
         known.fileId = fileId;
         known.failed = false;
+        known.shown = false; // a frame of the old file is not this file's
         known.el.src = url;
       }
       return known;
     }
     const kind = kindFor(want);
     const el = kind === "audio" ? deps.makeAudio() : deps.makeVideo();
-    const held: Held = { el, kind, clipId: want.clipId, fileId, usedAt: round, failed: false };
+    const held: Held = { el, kind, clipId: want.clipId, fileId, usedAt: round, failed: false, shown: false };
     const mine = () => elements.get(held.clipId) === held; // a released element's events say nothing
     const onData = () => {
-      if (mine()) changed();
+      if (!mine()) return;
+      if (el.readyState >= 2) held.shown = true;
+      changed();
     };
     el.addEventListener("loadeddata", onData);
     el.addEventListener("seeked", onData);
@@ -290,7 +298,8 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
       const own = elements.get(clip.id);
       const current = own?.fileId === fileId ? own : undefined; // an element still on the asset's old file shows nothing
       if (current?.failed) return null; // the placeholder says so
-      const held = current && hasData(current) ? current : standIn(fileId);
+      if (current && hasData(current)) current.shown = true; // data that came without an event still counts
+      const held = current && drawable(current) ? current : standIn(fileId);
       if (!held) return null;
       return { image: held.el as unknown as CanvasImageSource, width: held.el.videoWidth ?? 0, height: held.el.videoHeight ?? 0 };
     },
