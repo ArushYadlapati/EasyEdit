@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { OpError } from "./errors";
+import { KEYFRAME_PROPS, shiftKeyframes } from "./keyframes";
 import type { Op } from "./ops";
 import {
   CUSTOM_SIZE_ONLY,
@@ -20,6 +21,26 @@ const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).stri
 const StrictTextClip = TextClip.extend({ transform: Transform.strict(), style: TextStyle.strict() }).strict();
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
 
+// Optional clip fields, each with its neutral value, filled the same way as TRANSFORM_FILL below. A keyframes patch
+// also fills each property it names with an empty list, since keyframes merge one level deep like transform.
+const CLIP_FILL: Record<string, () => unknown> = {
+  keyframes: () => ({}),
+  transitionIn: () => null,
+  transitionOut: () => null,
+  animationIn: () => null,
+  animationOut: () => null,
+  emphasis: () => null,
+};
+
+// Which of those fields each kind of clip may carry. Sound has no picture to move or fade, and text animates
+// itself instead of transitioning.
+const CLIP_EFFECTS: Record<Clip["type"], readonly string[]> = {
+  video: ["keyframes", "transitionIn", "transitionOut"],
+  image: ["keyframes", "transitionIn", "transitionOut"],
+  audio: [],
+  text: ["keyframes", "animationIn", "animationOut", "emphasis"],
+};
+
 // Optional transform fields, each with its neutral value. update_clip fills a missing one before it is set or
 // expected, so the first change records an undo that goes back to the neutral value.
 const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CROP }), stretch: () => NO_STRETCH };
@@ -28,11 +49,21 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-// The transform keys an update_clip patch or expect gives a value for.
-function transformKeys(part: unknown): string[] {
-  if (!isPlainObject(part) || !isPlainObject(part.transform)) return [];
-  const transform = part.transform;
-  return Object.keys(transform).filter((key) => transform[key] !== undefined);
+// The keys an update_clip patch or expect gives a value for, at the top or inside one of its plain objects.
+function givenKeys(part: unknown, inside?: string): string[] {
+  if (!isPlainObject(part)) return [];
+  const obj = inside === undefined ? part : part[inside];
+  if (!isPlainObject(obj)) return [];
+  return Object.keys(obj).filter((key) => obj[key] !== undefined);
+}
+
+function assertEffectsFit(type: Clip["type"], keys: string[], opIndex: number, opName: string) {
+  for (const key of keys) {
+    if (Object.hasOwn(CLIP_FILL, key) && !CLIP_EFFECTS[type].includes(key)) {
+      const article = /^[aeiou]/.test(type) ? "an" : "a";
+      throw new OpError("INVALID", `${opName}: "${key}" is not allowed on ${article} ${type} clip`, opIndex);
+    }
+  }
 }
 
 function isEqual(a: unknown, b: unknown): boolean {
@@ -280,6 +311,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           throw new OpError("DUPLICATE_ID", `${name}: clip id "${op.clip.id}" already exists`, opIndex);
         }
         assertAccepts(track, op.clip, opIndex, name);
+        assertEffectsFit(op.clip.type, givenKeys(op.clip), opIndex, name);
         assertClipCount(track.id, track.clips.length + 1, opIndex, name);
         if (op.ripple) {
           for (const c of track.clips) if (c.start >= op.clip.start) c.start += op.clip.duration;
@@ -396,6 +428,9 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
             },
           ]);
         }
+        // Keyframes count from the clip's start, so they move against a start trim to stay on the same picture.
+        // The undo is a start trim back, which moves them back.
+        if (target.keyframes && start !== target.start) target.keyframes = shiftKeyframes(target.keyframes, target.start - start);
         target.start = start;
         target.duration = duration;
         if (target.type !== "text" && sourceIn !== undefined) target.in = sourceIn;
@@ -420,7 +455,15 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           throw new OpError("DUPLICATE_ID", `${name}: clip id "${op.newClipId}" already exists`, opIndex);
         }
         assertClipCount(track.id, track.clips.length + 1, opIndex, name);
-        groups.push([
+        // The cut is not an end or a start, so the left piece gives up its way out and the right its way in.
+        // The undo puts back the left piece's way out; the right piece goes away with whatever it had.
+        const leftOut: Record<string, unknown> = {};
+        const outKeys = ["transitionOut", "animationOut"] as const;
+        for (const key of outKeys) {
+          const value = (left as Record<string, unknown>)[key];
+          if (value !== undefined && value !== null) leftOut[key] = value;
+        }
+        const undo: Op[] = [
           { op: "remove_clip", clipId: op.newClipId, expect: { start: op.at, duration: end - op.at } },
           {
             op: "trim_clip",
@@ -429,11 +472,22 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
             to: end,
             expect: { start: left.start, duration: op.at - left.start },
           },
-        ]);
+        ];
+        if (Object.keys(leftOut).length) {
+          const cleared = Object.fromEntries(Object.keys(leftOut).map((key) => [key, null]));
+          undo.push({ op: "update_clip", clipId: op.clipId, patch: leftOut, expect: cleared });
+        }
+        groups.push(undo);
         const right = structuredClone(left);
         right.id = op.newClipId;
         right.start = op.at;
         right.duration = end - op.at;
+        // Both pieces keep the whole keyframe lists, so the right one carries on along the same curve.
+        if (right.keyframes) right.keyframes = shiftKeyframes(right.keyframes, left.start - op.at);
+        const l = left as Record<string, unknown>;
+        const r = right as Record<string, unknown>;
+        for (const key of outKeys) if (key in l) l[key] = null;
+        for (const key of ["transitionIn", "animationIn"]) if (key in r) r[key] = null;
         if ((right.type === "video" || right.type === "audio") && left.type !== "text") {
           // Counted back from where the clip ends in its source, so the right piece ends there too.
           const sourceEnd = left.in + Math.round(left.duration * left.speed);
@@ -451,9 +505,20 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         const { track, clipIndex } = findClip(doc, op.clipId, opIndex, name);
         assertUnlocked(track, opIndex, name);
         const current = track.clips[clipIndex];
+        assertEffectsFit(current.type, givenKeys(op.patch), opIndex, name);
         const transform: Record<string, unknown> = current.transform;
-        for (const key of [...transformKeys(op.patch), ...transformKeys(op.expect)]) {
+        for (const key of [...givenKeys(op.patch, "transform"), ...givenKeys(op.expect, "transform")]) {
           if (Object.hasOwn(TRANSFORM_FILL, key) && transform[key] === undefined) transform[key] = TRANSFORM_FILL[key]();
+        }
+        const fields: Record<string, unknown> = current;
+        for (const key of [...givenKeys(op.patch), ...givenKeys(op.expect)]) {
+          if (CLIP_EFFECTS[current.type].includes(key) && fields[key] === undefined) fields[key] = CLIP_FILL[key]();
+        }
+        const keyframes = fields.keyframes;
+        if (isPlainObject(keyframes)) {
+          for (const key of [...givenKeys(op.patch, "keyframes"), ...givenKeys(op.expect, "keyframes")]) {
+            if ((KEYFRAME_PROPS as readonly string[]).includes(key) && keyframes[key] === undefined) keyframes[key] = [];
+          }
         }
         if (op.expect && !holds(current, op.expect)) throw stale(`clip "${op.clipId}"`);
         for (const key of FROZEN_CLIP_KEYS) {
