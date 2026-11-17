@@ -20,6 +20,7 @@ import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace, rememberSpace } from "@/lib/spaces/service";
 import { slugFor } from "@/lib/spaces/paths";
 import { storageState } from "@/lib/spaces/storage";
+import { listTemplates } from "@/lib/templates/service";
 import { storageBlock } from "@/lib/storage/availability";
 import { connectionOwner } from "@/lib/storage/settings-view";
 import { dashboardNote, storageCard, storageSettingsPath } from "@/lib/storage/messages";
@@ -72,11 +73,12 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   }
   await rememberSpace(db, user.id, space.id);
   const canEdit = meetsRole(actor.role, "editor");
-  const [projects, folders, recentIds, pinnedIds] = await Promise.all([
+  const [projects, folders, recentIds, pinnedIds, templates] = await Promise.all([
     listProjects(db, actor),
     listFolders(db, actor),
     listRecentProjectIds(db, actor, LIMITS.dashboardRecent),
     listPinnedIds(db, actor),
+    listTemplates(db, actor),
   ]);
   const names = await getUserNames(db, projects.map((project) => actorUserId(project.updatedBy)));
   const { folder, view: named, storage: storageNote } = await searchParams;
@@ -109,6 +111,7 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
     <Dashboard
       projects={projects.map((project) => ({ ...project, changedBy: displayActor(project.updatedBy, names) }))}
       folders={folders}
+      templates={templates}
       recentIds={recentIds}
       pinnedIds={pinnedIds}
       sidebarCollapsed={sidebarCollapsed}

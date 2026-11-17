@@ -116,6 +116,11 @@ export function Sidebar({ folders, pinned = [], collapsed, view, canEdit, spaceS
             Brand kit
           </SidebarLink>
         )}
+        {current && !(personalSoon && current.kind === "personal") && (
+          <SidebarLink href={settingsTabPath(spaceSlug, "templates")} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+            Templates
+          </SidebarLink>
+        )}
         <nav aria-label="Projects" className="flex shrink-0 flex-row items-center gap-1 md:flex-col md:items-stretch">
           <SidebarSection id="projects" label="Projects">
             <SidebarLink href={spacePath(spaceSlug, viewQuery(RECENT_VIEW))} current={view.kind === "recent"} folderId={null} takesDrops={false} onDropProject={onDropProject}>

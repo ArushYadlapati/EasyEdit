@@ -20,9 +20,9 @@ function page(canEdit: boolean) {
 
 it("the settings tabs add Brand kit for every member", () => {
   const tabs = (kind: "team" | "personal", role: MySpace["role"]) => settingsTabsFor({ kind, role }).map((t) => t.id);
-  expect(tabs("team", "viewer")).toEqual(["members", "brand"]);
-  expect(tabs("team", "admin")).toEqual(["members", "storage", "brand"]);
-  expect(tabs("personal", "admin")).toEqual(["storage", "brand"]);
+  expect(tabs("team", "viewer")).toEqual(["members", "brand", "templates"]);
+  expect(tabs("team", "admin")).toEqual(["members", "storage", "brand", "templates"]);
+  expect(tabs("personal", "admin")).toEqual(["storage", "brand", "templates"]);
 });
 
 it("an editor changes the title font", async () => {

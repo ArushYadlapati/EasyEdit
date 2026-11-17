@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { IconButton } from "@/components/ui/icon-button";
+import { TemplatePicker, templateFormatLine } from "@/components/dashboard/template-picker";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { TextInput } from "@/components/ui/text-input";
@@ -17,6 +18,7 @@ import type { DashboardFolder } from "@/lib/dashboard/view";
 import { convertDraft, draftFor, draftPixels, pixelLine, sizeCaption, swapDraft, type SizeDraft } from "@/lib/dashboard/size-draft";
 import type { Units } from "@/lib/editor/settings";
 import { UNIT_SUFFIX } from "@/lib/editor/units";
+import type { TemplateSummary } from "@/lib/templates/types";
 import { LIMITS } from "@/lib/limits";
 import type { FormState } from "@/lib/projects/dashboard-actions";
 import { DEFAULT_FPS, FORMAT_PRESETS, FRAME_SIZE_MESSAGE, formatFor, isFrameSize, type FormatId, type FrameSize } from "@/lib/timeline";
@@ -25,10 +27,12 @@ export type NewProjectDialogProps = {
   open: boolean;
   onClose(): void;
   folders: readonly DashboardFolder[];
+  templates?: readonly TemplateSummary[]; // what a project can start from, besides blank
   folderId: string | null; // the folder in view, where the new project goes unless another is picked
   action(prev: FormState, formData: FormData): Promise<FormState>;
 };
 
+const NO_TEMPLATES: readonly TemplateSummary[] = [];
 const DEFAULT_FORMAT = "short_9x16";
 const DEFAULT_SIZE: FrameSize = FORMAT_PRESETS[DEFAULT_FORMAT];
 const DEFAULT_NAME = "Untitled project";
@@ -67,7 +71,7 @@ export function NewProjectDialog(props: NewProjectDialogProps): ReactNode {
   return <NewProject key={openings} {...props} />;
 }
 
-function NewProject({ open, onClose, folders, folderId, action }: NewProjectDialogProps): ReactNode {
+function NewProject({ open, onClose, folders, templates = NO_TEMPLATES, folderId, action }: NewProjectDialogProps): ReactNode {
   const formId = useId();
   const [state, dispatch, pending] = useActionState(async (prev: FormState, formData: FormData): Promise<FormState> => {
     try {
@@ -81,8 +85,10 @@ function NewProject({ open, onClose, folders, folderId, action }: NewProjectDial
   const [format, setFormat] = useState<FormatId>(DEFAULT_FORMAT);
   const [draft, setDraft] = useState(() => draftFor(DEFAULT_SIZE, readDialogUnits(localStore)));
   const [shown, setShown] = useState(DEFAULT_SIZE); // the last size inside the limits, drawn as the frame
+  const [templateId, setTemplateId] = useState<string | null>(null); // null is Blank; the format fields keep their values meanwhile
   const [folder, setFolder] = useState(folderId ?? "");
 
+  const template = templates.find((t) => t.id === templateId) ?? null;
   const size = fitting(draft);
   const pixels = draftPixels(draft);
 
@@ -111,11 +117,15 @@ function NewProject({ open, onClose, folders, folderId, action }: NewProjectDial
 
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!size || pending) return;
+    if ((!size && !template) || pending) return;
     const formData = new FormData();
     formData.set("name", name);
-    formData.set("format", format);
-    if (format === "custom") {
+    if (template) {
+      formData.set("templateId", template.id);
+    } else if (size) {
+      formData.set("format", format);
+    }
+    if (!template && size && format === "custom") {
       formData.set("width", String(size.width));
       formData.set("height", String(size.height));
     }
@@ -154,7 +164,7 @@ function NewProject({ open, onClose, folders, folderId, action }: NewProjectDial
             </p>
           )}
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit" form={formId} disabled={!size || pending}>
+          <Button variant="primary" type="submit" form={formId} disabled={(!size && !template) || pending}>
             Create project
           </Button>
         </>
@@ -166,31 +176,47 @@ function NewProject({ open, onClose, folders, folderId, action }: NewProjectDial
             <TextInput data-autofocus maxLength={LIMITS.projectNameChars} value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
 
-          <div className="flex flex-col gap-1">
-            <span className={CAPTION}>Format</span>
-            <FormatCards value={format} onChange={pickFormat} />
-          </div>
+          {templates.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className={CAPTION}>Start from</span>
+              <TemplatePicker templates={templates} value={templateId} onChange={setTemplateId} />
+            </div>
+          )}
 
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className={CAPTION}>Size</span>
-              <Segmented label="Units" value={draft.units} options={UNIT_OPTIONS} onChange={pickUnits} className="w-full sm:w-72" />
+          {template ? (
+            <div className="flex flex-col gap-1">
+              <span className={CAPTION}>Format</span>
+              <p className="text-[13px] text-ed-text tabular-nums">{templateFormatLine(template)}</p>
             </div>
-            <p className={`${SMALL} text-ed-muted`}>Centimeters and inches count 96 pixels to the inch.</p>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2">
-              {side("Width", "width")}
-              <IconButton label="Swap width and height" onClick={() => changeSize(swapDraft(draft))}>
-                <ArrowLeftRight />
-              </IconButton>
-              {side("Height", "height")}
-            </div>
-            {draft.units !== "px" && pixels && <p className={`${SMALL} text-ed-muted tabular-nums`}>{pixelLine(pixels)}</p>}
-            {!size && (
-              <p role="alert" className={`${SMALL} text-ed-danger`}>
-                {FRAME_SIZE_MESSAGE}
-              </p>
-            )}
-          </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1">
+                <span className={CAPTION}>Format</span>
+                <FormatCards value={format} onChange={pickFormat} />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={CAPTION}>Size</span>
+                  <Segmented label="Units" value={draft.units} options={UNIT_OPTIONS} onChange={pickUnits} className="w-full sm:w-72" />
+                </div>
+                <p className={`${SMALL} text-ed-muted`}>Centimeters and inches count 96 pixels to the inch.</p>
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2">
+                  {side("Width", "width")}
+                  <IconButton label="Swap width and height" onClick={() => changeSize(swapDraft(draft))}>
+                    <ArrowLeftRight />
+                  </IconButton>
+                  {side("Height", "height")}
+                </div>
+                {draft.units !== "px" && pixels && <p className={`${SMALL} text-ed-muted tabular-nums`}>{pixelLine(pixels)}</p>}
+                {!size && (
+                  <p role="alert" className={`${SMALL} text-ed-danger`}>
+                    {FRAME_SIZE_MESSAGE}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
 
           <Field label="Folder">
             <Select value={folder} onChange={(event) => setFolder(event.target.value)}>
@@ -210,8 +236,8 @@ function NewProject({ open, onClose, folders, folderId, action }: NewProjectDial
         </form>
 
         <div className="flex h-56 flex-col gap-3 rounded-md bg-ed-raised p-6 md:h-full md:min-h-0">
-          <BlankFrame width={shown.width} height={shown.height} className="min-h-0 flex-1" />
-          <p className="shrink-0 text-center text-xs text-ed-muted tabular-nums">{sizeCaption(shown, draft.units)}</p>
+          <BlankFrame width={template?.width ?? shown.width} height={template?.height ?? shown.height} className="min-h-0 flex-1" />
+          <p className="shrink-0 text-center text-xs text-ed-muted tabular-nums">{template ? templateFormatLine(template) : sizeCaption(shown, draft.units)}</p>
         </div>
       </div>
     </Dialog>

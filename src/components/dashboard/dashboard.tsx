@@ -8,6 +8,7 @@ import { useAction } from "@/app/(app)/action-ui";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { FolderNameDialog } from "@/components/dashboard/folder-name-dialog";
 import { FolderTile } from "@/components/dashboard/folder-tile";
+import type { TemplateSummary } from "@/lib/templates/types";
 import { NewProjectDialog } from "@/components/dashboard/new-project-dialog";
 import { ProjectCard } from "@/components/dashboard/project-card";
 import { Sidebar } from "@/components/dashboard/sidebar";
@@ -38,6 +39,7 @@ import { spacePath } from "@/lib/spaces/paths";
 export type DashboardProps = {
   projects: DashboardProject[];
   folders: DashboardFolder[];
+  templates?: TemplateSummary[]; // what a new project can start from, besides blank
   recentIds: string[];
   pinnedIds?: string[]; // the space's Pinned list, oldest pin first; none when left out
   sidebarCollapsed?: string; // the sidebar sections this browser folded, as the server read their cookie
@@ -95,7 +97,7 @@ function CardGrid({ projects, folderName, now, canEdit, pinned, folders, actions
 // its menu), the search, the sort and New project. Recent lists the projects you opened last, in that order (so it has
 // no sort); All projects lists a tile for each folder, then every project; a folder view lists that folder's projects.
 // A card dropped on a folder, in the sidebar or on its tile, moves there, and a refused move says why in the bar.
-export function Dashboard({ projects, folders, recentIds, pinnedIds = NO_PINS, sidebarCollapsed, view, canEdit, now, actions, spaceSlug, notices }: DashboardProps): ReactNode {
+export function Dashboard({ projects, folders, templates, recentIds, pinnedIds = NO_PINS, sidebarCollapsed, view, canEdit, now, actions, spaceSlug, notices }: DashboardProps): ReactNode {
   useRefreshOnReturn();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -313,6 +315,7 @@ export function Dashboard({ projects, folders, recentIds, pinnedIds = NO_PINS, s
             open={newOpen}
             onClose={() => setNewOpen(false)}
             folders={folders}
+            templates={templates}
             folderId={viewFolder}
             action={actions.create}
           />

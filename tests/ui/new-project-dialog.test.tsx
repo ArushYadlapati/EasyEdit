@@ -3,6 +3,7 @@ import { Component, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NewProjectDialog } from "@/components/dashboard/new-project-dialog";
 import type { DashboardFolder } from "@/lib/dashboard/view";
+import type { TemplateSummary } from "@/lib/templates/types";
 import type { FormState } from "@/lib/projects/dashboard-actions";
 import { FRAME_SIZE_MESSAGE } from "@/lib/timeline/presets";
 import { act, fireEvent, render, screen, waitFor } from "../helpers/dom";
@@ -22,12 +23,32 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
-function dialog({ open = true, folderId = null as string | null } = {}) {
-  return <NewProjectDialog open={open} onClose={onClose} folders={FOLDERS} folderId={folderId} action={action} />;
+const TEMPLATE: TemplateSummary = {
+  id: "tpl1",
+  name: "Quick promo",
+  description: "",
+  format: "long_16x9",
+  width: 1920,
+  height: 1080,
+  builtIn: true,
+  slots: [1, 2, 3].map((n) => ({
+    name: `slot_${n}`,
+    kind: "text" as const,
+    filled: false,
+    clipIds: [],
+  })),
+  updatedAt: null,
+};
+
+function dialog({ open = true, folderId = null as string | null, templates = [] as TemplateSummary[] } = {}) {
+  return <NewProjectDialog open={open} onClose={onClose} folders={FOLDERS} templates={templates} folderId={folderId} action={action} />;
 }
 
 const textbox = (name: string) => screen.getByRole("textbox", { name }) as HTMLInputElement;
-const radio = (name: string | RegExp) => screen.getByRole("radio", { name: typeof name === "string" ? new RegExp(`^${name}`) : name });
+const radio = (name: string | RegExp) =>
+  screen.getByRole("radio", {
+    name: typeof name === "string" ? new RegExp(`^${name}`) : name,
+  });
 const checked = (name: string | RegExp) => radio(name).getAttribute("aria-checked") === "true";
 const createButton = () => screen.getByRole("button", { name: "Create project" }) as HTMLButtonElement;
 const folderSelect = () => screen.getByRole("combobox", { name: "Folder" }) as HTMLSelectElement;
@@ -43,7 +64,11 @@ function refuse(method: "getItem" | "setItem", message: string) {
   const fail = vi.fn(() => {
     throw new Error(message);
   });
-  const storage = { getItem: (key: string) => real.getItem(key), setItem: (key: string, value: string) => real.setItem(key, value), [method]: fail };
+  const storage = {
+    getItem: (key: string) => real.getItem(key),
+    setItem: (key: string, value: string) => real.setItem(key, value),
+    [method]: fail,
+  };
   vi.spyOn(window, "localStorage", "get").mockReturnValue(storage as unknown as Storage);
   return fail;
 }
@@ -358,7 +383,9 @@ it("a named size sends no width or height", async () => {
 });
 
 it("the server's sentence shows in the dialog", async () => {
-  action = vi.fn<Action>(async () => ({ error: "Your role doesn't allow this." }));
+  action = vi.fn<Action>(async () => ({
+    error: "Your role doesn't allow this.",
+  }));
   const errors = vi.spyOn(console, "error");
   render(dialog());
   await clickCreate();
@@ -425,4 +452,39 @@ it("Cancel or Escape closes it", () => {
   expect(onClose).toHaveBeenCalledTimes(1);
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   expect(onClose).toHaveBeenCalledTimes(2);
+});
+
+it("shows no Start from row without templates", () => {
+  render(dialog());
+  expect(screen.queryByRole("radiogroup", { name: "Start from" })).toBeNull();
+});
+
+it("choosing a template hides the format fields, shows its format and sends templateId", async () => {
+  render(dialog({ templates: [TEMPLATE] }));
+  expect(radio("Blank").getAttribute("aria-checked")).toBe("true");
+  expect(radio("Quick promo").textContent).toContain("3 slots");
+  expect(radio("Quick promo").textContent).toContain("Starter");
+  fireEvent.click(radio("Quick promo"));
+  expect(screen.queryByRole("radiogroup", { name: "Format" })).toBeNull();
+  expect(screen.queryByRole("textbox", { name: "Width" })).toBeNull();
+  expect(screen.getAllByText("Landscape 16:9 \u00b7 1920\u00d71080").length).toBeGreaterThan(0);
+  await clickCreate();
+  expect(sent().get("templateId")).toBe("tpl1");
+  expect(sent().get("format")).toBeNull();
+  expect(sent().get("name")).toBe("Untitled project");
+});
+
+it("choosing Blank again brings the format fields back with the earlier choice", () => {
+  render(dialog({ templates: [TEMPLATE] }));
+  fireEvent.click(radio(/^Square 1:1/));
+  fireEvent.click(radio("Quick promo"));
+  fireEvent.click(radio("Blank"));
+  expect(checked(/^Square 1:1/)).toBe(true);
+  expect(textbox("Width").value).toBe("1080");
+});
+
+it("arrow keys move the Start from choice", () => {
+  render(dialog({ templates: [TEMPLATE] }));
+  fireEvent.keyDown(radio("Blank"), { key: "ArrowRight" });
+  expect(radio("Quick promo").getAttribute("aria-checked")).toBe("true");
 });
