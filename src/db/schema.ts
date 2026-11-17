@@ -79,6 +79,8 @@ export const projects = pgTable(
     thumbnail: bytea("thumbnail"),
     // The project version the picture was drawn from.
     thumbnailVersion: integer("thumbnail_version"),
+    // The version the last move to another space landed at.
+    movedAtVersion: integer("moved_at_version"),
   },
   (t) => [index("projects_space_id_idx").on(t.spaceId), index("projects_created_by_created_at_idx").on(t.createdBy, t.createdAt)],
 );
@@ -161,6 +163,29 @@ export const projectOps = pgTable(
   ],
 );
 
+// One move of a project from a space to another. It stays unfinished (no finishedAt, no abandonedAt) while its
+// copies of the project's media are being made.
+export const projectMove = pgTable(
+  "project_move",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    fromSpaceId: text("from_space_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    toSpaceId: text("to_space_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    startedBy: text("started_by").notNull(), // a user id
+    startedAt: timestamp("started_at").notNull().defaultNow(),
+    finishedAt: timestamp("finished_at"),
+    abandonedAt: timestamp("abandoned_at"),
+  },
+  (t) => [index("project_move_project_id_idx").on(t.projectId), index("project_move_started_by_idx").on(t.startedBy), index("project_move_to_space_id_started_at_idx").on(t.toSpaceId, t.startedAt)],
+);
+
 export const assets = pgTable(
   "assets",
   {
@@ -192,13 +217,17 @@ export const assets = pgTable(
     readyAt: timestamp("ready_at"),
     removedAt: timestamp("removed_at"),
     removedBy: text("removed_by"),
+    // Set while the asset is a copy made by an unfinished move; finishing the move clears it. Copies are not in the library.
+    moveId: text("move_id").references(() => projectMove.id, { onDelete: "set null" }),
+    // The asset this one was copied from. Kept after the move, as a record.
+    copiedFrom: text("copied_from"),
   },
   (t) => [
     check("assets_kind_check", sql`${t.kind} in ('video', 'image', 'audio')`),
     check("assets_status_check", sql`${t.status} in ('uploading', 'ready')`),
     check("assets_preview_status_check", sql`${t.previewStatus} in ('none', 'pending', 'ready', 'failed')`),
-    // One unfinished upload per member and file: choosing the same file again finds it.
-    uniqueIndex("assets_unfinished_upload_unique").on(t.spaceId, t.uploadedBy, t.fileName, t.sizeBytes, t.lastModifiedMs).where(sql`${t.status} = 'uploading'`),
+    // One unfinished upload per member and file: choosing the same file again finds it. A move's copies are not uploads a member chose.
+    uniqueIndex("assets_unfinished_upload_unique").on(t.spaceId, t.uploadedBy, t.fileName, t.sizeBytes, t.lastModifiedMs).where(sql`${t.status} = 'uploading' and ${t.moveId} is null`),
     index("assets_created_at_idx").on(t.createdAt),
     index("assets_space_id_idx").on(t.spaceId),
     index("assets_uploaded_by_created_at_idx").on(t.uploadedBy, t.createdAt),
