@@ -218,7 +218,7 @@ export function scrubBounds(doc: TimelineDoc, clipId: string, field: "start" | "
   const after = Math.min(Infinity, ...others.filter((c) => c.start > clip.start).map((c) => c.start));
   const { fps } = doc;
   if (field === "start") return { min: before / fps, max: (after - clip.duration) / fps };
-  const maxEnd = clip.type === "text" ? undefined : trimBounds(clip, lengthFrames)?.maxEnd;
+  const maxEnd = clip.type === "text" || clip.type === "placeholder" ? undefined : trimBounds(clip, lengthFrames)?.maxEnd;
   const end = Math.min(after, maxEnd ?? Infinity);
   return { min: 1 / fps, max: Math.max(1, end - clip.start) / fps };
 }
@@ -242,7 +242,7 @@ export function clipFieldOps(clip: Clip, field: ClipField, raw: string, ctx: Fie
       const seconds = parseNumber(raw);
       if (seconds === null) return null;
       const duration = Math.max(1, Math.round(seconds * fps));
-      const maxEnd = clip.type === "text" ? undefined : trimBounds(clip, lengthFrames)?.maxEnd;
+      const maxEnd = clip.type === "text" || clip.type === "placeholder" ? undefined : trimBounds(clip, lengthFrames)?.maxEnd;
       const to = maxEnd === undefined ? clip.start + duration : Math.max(clip.start + 1, Math.min(clip.start + duration, maxEnd));
       return to === clip.start + clip.duration ? [] : [{ op: "trim_clip", clipId: clip.id, edge: "end", to }];
     }

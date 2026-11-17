@@ -9,7 +9,7 @@ import { HEADER_WIDTH, MAX_CONTENT_PX, formatTimecode } from "@/lib/editor/geome
 import { createMediaDrop, type Incoming } from "@/lib/editor/media-drop";
 import type { MediaFiles } from "@/lib/media/media-files";
 import type { AssetView } from "@/lib/media/types";
-import { createEmptyDoc } from "@/lib/timeline";
+import { createEmptyDoc, type Clip } from "@/lib/timeline";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 import { makeStore, sampleDoc, text, video } from "../editor/fixtures";
@@ -522,4 +522,18 @@ it("a double-click on text on a hidden track says so", () => {
   fireEvent.doubleClick(clip("x2"), { clientX: 500, clientY: 60 });
   expect(st().notice?.text).toBe("That track is hidden.");
   expect(st().textEditId).toBeNull();
+});
+
+it("draws an empty slot as a hatched clip labelled with its slot name", () => {
+  const clip = { id: "s1", type: "placeholder", start: 0, duration: 30, accepts: "visual", slot: { name: "hero_clip" }, transform: { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, fit: "cover" } } as Clip;
+  const { container } = render(
+    <EditorProvider store={makeStore()}>
+      <ClipView clip={clip} zoom={4} fps={30} selected={false} hidden={false} locked={false} still />
+    </EditorProvider>,
+  );
+  const el = container.querySelector("[data-placeholder]") as HTMLElement;
+  expect(el).not.toBeNull();
+  expect(el.style.backgroundImage).toContain("repeating-linear-gradient");
+  expect(within(el).getByText("Slot: hero_clip")).toBeTruthy();
+  expect(el.getAttribute("aria-label")).toContain("Slot: hero_clip");
 });

@@ -23,9 +23,13 @@ const FILL: Record<Clip["type"], string> = {
   image: "bg-ed-clip-image",
   text: "bg-ed-clip-text",
   audio: "bg-ed-clip-audio",
+  placeholder: "bg-ed-raised",
 };
 
-const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio" };
+// An empty slot's body: diagonal hatching in the line colour, so it reads as a hole to fill.
+const HATCH = "repeating-linear-gradient(135deg, transparent 0 5px, var(--ed-line-strong) 5px 6px)";
+
+const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot" };
 
 const MIN_LABEL_PX = 24;
 export const CLIP_HEIGHT = 32; // the clip's box in its row; the timeline draws a refused drop's outline with the same
@@ -36,12 +40,14 @@ const HANDLE = cx("absolute inset-y-0 w-1.5 cursor-ew-resize", FADE); // 6 px, a
 // A text clip's first line; a media clip's asset name, or its kind before the library knows the asset.
 function clipLabel(clip: Clip, assetName: string | undefined): string {
   if (clip.type === "text") return clip.text.split("\n")[0];
+  if (clip.type === "placeholder") return `Slot: ${clip.slot.name}`;
   return assetName ?? KIND[clip.type];
 }
 
 function clipName(clip: Clip, assetName: string | undefined, fps: number): string {
   const range = `${formatTimecode(clip.start, fps)} to ${formatTimecode(clip.start + clip.duration, fps)}`;
   if (clip.type === "text") return `Text clip "${clipLabel(clip, undefined)}", ${range}`;
+  if (clip.type === "placeholder") return `${clipLabel(clip, undefined)}, ${range}`;
   return assetName === undefined ? `${KIND[clip.type]} clip, ${range}` : `${KIND[clip.type]} clip "${assetName}", ${range}`;
 }
 
@@ -59,7 +65,7 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
   const store = useEditorStore();
   const drag = useClipDrag();
   const canEdit = useEditor((s) => s.canEdit);
-  const assetName = useLibrary((s) => (clip.type === "text" ? undefined : s.assets[clip.assetId]?.name));
+  const assetName = useLibrary((s) => (clip.type === "text" || clip.type === "placeholder" ? undefined : s.assets[clip.assetId]?.name));
   const pictured = clip.type === "video" || clip.type === "image";
   const stillFileId = useLibrary((s) => (pictured ? posterFileFor(s.assets[clip.assetId]) : null));
   const removed = useLibrary((s) => pictured && s.assets[clip.assetId]?.removed === true);
@@ -126,6 +132,7 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
       aria-label={clipName(clip, assetName, fps)}
       aria-pressed={selected}
       data-clip-id={clip.id}
+      data-placeholder={clip.type === "placeholder" || undefined}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerMove={razor ? (e) => setRazorAt(razorFrameAt(e)) : undefined}
@@ -143,7 +150,7 @@ export const ClipView = memo(function ClipView({ clip, zoom, fps, selected, hidd
         FOCUS_RING_INSET,
         FADE,
       )}
-      style={{ left: frameToPx(clip.start, zoom), top: CLIP_TOP, width, height: CLIP_HEIGHT }}
+      style={{ left: frameToPx(clip.start, zoom), top: CLIP_TOP, width, height: CLIP_HEIGHT, ...(clip.type === "placeholder" && { backgroundImage: HATCH }) }}
     >
       {razor && razorAt !== null && razorAt > clip.start && razorAt < clip.start + clip.duration && (
         <span
@@ -216,7 +223,7 @@ function drawsTheSame(a: ClipViewProps, b: ClipViewProps): boolean {
     a.clip.start === b.clip.start &&
     a.clip.duration === b.clip.duration &&
     clipLabel(a.clip, undefined) === clipLabel(b.clip, undefined) &&
-    (a.clip.type === "text" || b.clip.type === "text" || a.clip.assetId === b.clip.assetId) &&
+    (!("assetId" in a.clip) || !("assetId" in b.clip) || a.clip.assetId === b.clip.assetId) &&
     sameSample(a.clip, b.clip)
   );
 }

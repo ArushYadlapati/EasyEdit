@@ -12,7 +12,8 @@ import { clipRects, type Sizer } from "./clip-box";
 export type CanvasItem = {
   clipId: string;
   trackId: string;
-  type: "video" | "image" | "text";
+  type: "video" | "image" | "text" | "placeholder";
+  slot?: string; // an empty slot's name
   locked: boolean;
   opacity: number;
   center: Point;
@@ -27,7 +28,7 @@ export type CanvasItem = {
 export function canvasItems(doc: TimelineDoc, frame: number, sizer: Sizer): CanvasItem[] {
   const items: CanvasItem[] = [];
   for (const { track, clip } of activeClips(doc, frame)) {
-    if (clip.type === "audio") continue;
+    if (clip.type === "audio" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
     const rects = clipRects(doc, clip, sizer);
     if (!rects) continue;
     const t = clip.transform;
@@ -35,6 +36,7 @@ export function canvasItems(doc: TimelineDoc, frame: number, sizer: Sizer): Canv
       clipId: clip.id,
       trackId: track.id,
       type: clip.type,
+      ...(clip.type === "placeholder" && { slot: clip.slot.name }),
       locked: track.locked,
       opacity: t.opacity,
       center: { x: t.x * doc.width, y: t.y * doc.height },

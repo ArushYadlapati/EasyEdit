@@ -28,7 +28,7 @@ export function activeClips(doc: TimelineDoc, frame: number): { track: Track; cl
   for (const track of doc.tracks) {
     if (track.hidden) continue;
     for (const clip of track.clips) {
-      if (clip.type === "audio") continue;
+      if (clip.type === "audio" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
       if (clip.start <= frame && frame < clip.start + clip.duration) active.push({ track, clip });
     }
   }
@@ -126,7 +126,7 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, doc.width, doc.height);
   for (const { clip } of activeClips(doc, frame)) {
-    if (clip.id === options.hideClipId) continue;
+    if (clip.id === options.hideClipId || clip.type === "placeholder") continue; // an empty slot draws nothing; the editor outlines it
     const t = clip.transform;
     ctx.save();
     ctx.globalAlpha = t.opacity;

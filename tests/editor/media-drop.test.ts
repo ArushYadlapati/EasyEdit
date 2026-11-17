@@ -132,7 +132,7 @@ describe("dropped files", () => {
     // Where each clip of this asset is: its track's name, start and length.
     const clipsOf = (assetId: string) =>
       st().doc.tracks.flatMap((t) =>
-        t.clips.flatMap((c) => (c.type !== "text" && c.assetId === assetId ? [{ track: t.name, trackId: t.id, start: c.start, duration: c.duration }] : [])),
+        t.clips.flatMap((c) => ("assetId" in c && c.assetId === assetId ? [{ track: t.name, trackId: t.id, start: c.start, duration: c.duration }] : [])),
       );
     const labels = () => st().queue.map((e) => e.label);
     const groups = () => drop.state.getState().groups;

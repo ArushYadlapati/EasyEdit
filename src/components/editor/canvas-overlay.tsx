@@ -100,8 +100,10 @@ const NO_PEER_MARKS: PeerMarks = { peerOutlines: [], peerLabels: [] };
 // full: the whole box of a clip being cropped, uncut, while a crop drag runs.
 // placed: the project's guides, each across the frame, with the one picked marked and its position as a label.
 type Placed = Guide & { id: string; selected: boolean; label: string };
-type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[]; placed: Placed[]; full: string | null } & PeerMarks;
-const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], placed: [], full: null, ...NO_PEER_MARKS };
+// slots: the empty template slots drawn now, each a dashed box (its polygon) and its name at the box's top-left corner.
+type SlotMark = { clipId: string; name: string; points: string; left: number; top: number };
+type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[]; placed: Placed[]; full: string | null; slots: SlotMark[] } & PeerMarks;
+const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], placed: [], full: null, slots: [], ...NO_PEER_MARKS };
 
 // A clamped handle being dragged is drawn at the pointer (client pixels, null until it moves), clamped the same way.
 type Follow = { pointerId: number; grip: Handle; client: Point | null };
@@ -156,6 +158,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const guides = useStore(drawn, (s) => s.guides);
   const placed = useStore(drawn, (s) => s.placed);
   const full = useStore(drawn, (s) => s.full);
+  const slots = useStore(drawn, (s) => s.slots);
   const peerOutlines = useStore(drawn, (s) => s.peerOutlines);
   const peerLabels = useStore(drawn, (s) => s.peerLabels);
   const handlesShown = handles.length > 0;
@@ -191,6 +194,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
           guides: guidesOf(drag.guides.getState(), viewDoc(state), view, box),
           placed: state.showGuides ? placedOf(viewDoc(state), state.guideId, view, box) : [],
           full: cut ? fullOf(cut, view, box) : null,
+          slots: slotsOf(items, view, box),
           ...(state.playing ? NO_PEER_MARKS : peerMarksOf(framed, presence.getState().peers, view, box, visible)),
         };
       }
@@ -201,6 +205,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       if (JSON.stringify(now.guides) !== JSON.stringify(next.guides)) patch.guides = next.guides;
       if (JSON.stringify(now.placed) !== JSON.stringify(next.placed)) patch.placed = next.placed;
       if (now.full !== next.full) patch.full = next.full;
+      if (JSON.stringify(now.slots) !== JSON.stringify(next.slots)) patch.slots = next.slots;
       // Playback refreshes every frame; an unchanged list must not render again.
       if (JSON.stringify(now.peerOutlines) !== JSON.stringify(next.peerOutlines)) patch.peerOutlines = next.peerOutlines;
       if (JSON.stringify(now.peerLabels) !== JSON.stringify(next.peerLabels)) patch.peerLabels = next.peerLabels;
@@ -508,6 +513,19 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
             className="stroke-ed-accent"
           />
         )}
+        {slots.map((s) => (
+          <polygon
+            key={s.clipId}
+            data-slot-box={s.clipId}
+            points={s.points}
+            fill="none"
+            strokeWidth={1.5}
+            strokeDasharray="6 4"
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+            className="stroke-ed-muted"
+          />
+        ))}
         {outlines.map((o) => (
           <polygon
             key={o.clipId}
@@ -549,6 +567,17 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
           />
         ))}
       </svg>
+      {slots.map((s) => (
+        <span
+          key={s.clipId}
+          aria-hidden
+          data-slot-label={s.clipId}
+          style={{ left: s.left + 4, top: s.top + 4 }}
+          className="pointer-events-none absolute max-w-40 truncate rounded-[3px] bg-ed-bg px-1 text-[11px] leading-4 font-medium text-ed-muted"
+        >
+          {s.name}
+        </span>
+      ))}
       {placed
         .filter((g) => g.selected)
         .map((g) => (
@@ -757,6 +786,15 @@ function fullOf(item: CanvasItem, view: View, overlay: { left: number; top: numb
     .map((p) => toOverlay(view, overlay, toWorld(item, p)))
     .map((p) => `${px(p.x)},${px(p.y)}`)
     .join(" ");
+}
+
+// The empty slots drawn now, in the overlay's pixels: the box and where its name sits, just inside its first corner.
+function slotsOf(items: CanvasItem[], view: View, overlay: { left: number; top: number }): SlotMark[] {
+  return items.flatMap((item) => {
+    if (item.type !== "placeholder") return [];
+    const at = corners(item).map((p) => toOverlay(view, overlay, p));
+    return [{ clipId: item.clipId, name: item.slot ?? "", points: at.map((p) => `${px(p.x)},${px(p.y)}`).join(" "), left: px(at[0].x), top: px(at[0].y) }];
+  });
 }
 
 // The outline of each selected clip drawn now, in the overlay's pixels.

@@ -1,5 +1,5 @@
 import { LIMITS } from "@/lib/limits";
-import { TRACK_ACCEPTS, type Clip, type OpInput, type TimelineDoc, type Track, type TrackKind } from "@/lib/timeline";
+import { trackTakes, type Clip, type OpInput, type TimelineDoc, type Track, type TrackKind } from "@/lib/timeline";
 import { displayRows } from "./geometry";
 
 export const TRACK_KIND_LABEL: Record<TrackKind, string> = {
@@ -33,6 +33,11 @@ export function homeKind(type: Clip["type"]): TrackKind {
   return "video";
 }
 
+// The kind of track an existing clip belongs on: an empty slot by what it accepts, any other clip by its type.
+export function homeKindOf(clip: Clip): TrackKind {
+  return homeKind(clip.type === "placeholder" ? (clip.accepts === "audio" ? "audio" : "video") : clip.type);
+}
+
 type Span = { start: number; duration: number };
 
 function isFreeAmong(clips: Span[], start: number, duration: number): boolean {
@@ -57,7 +62,7 @@ export function placeClips(doc: TimelineDoc, items: PlaceItem[], genId: () => st
   const groups = new Map<string, PlaceItem[]>();
   for (const item of items) {
     const wished = item.trackId !== null && byId.has(item.trackId) ? item.trackId : null;
-    const key = wished !== null ? `track:${wished}` : item.kind ? `only:${item.kind}` : `kind:${homeKind(item.clip.type)}`;
+    const key = wished !== null ? `track:${wished}` : item.kind ? `only:${item.kind}` : `kind:${homeKindOf(item.clip)}`;
     groups.set(key, [...(groups.get(key) ?? []), { clip: item.clip, trackId: wished, kind: item.kind }]);
   }
 
@@ -84,11 +89,11 @@ export function placeClips(doc: TimelineDoc, items: PlaceItem[], genId: () => st
   for (const group of layers) {
     const wished = group[0].trackId !== null ? byId.get(group[0].trackId) : undefined;
     const only = wished ? undefined : group[0].kind;
-    const kind = wished?.kind ?? only ?? homeKind(group[0].clip.type);
+    const kind = wished?.kind ?? only ?? homeKindOf(group[0].clip);
 
     const fits = (track: Track): boolean => {
       if (track.locked) return false;
-      if (!group.every((g) => TRACK_ACCEPTS[track.kind].includes(g.clip.type))) return false;
+      if (!group.every((g) => trackTakes(track.kind, g.clip))) return false;
       const taken: Span[] = [...track.clips, ...(placed.get(track.id) ?? [])];
       for (const { clip } of group) {
         if (!isFreeAmong(taken, clip.start, clip.duration)) return false;
@@ -109,7 +114,7 @@ export function placeClips(doc: TimelineDoc, items: PlaceItem[], genId: () => st
       trackId = target.id;
     } else {
       if (doc.tracks.length + newTracks + 1 > LIMITS.tracksPerProject) return { ok: false };
-      const newKind = only ?? homeKind(group[0].clip.type);
+      const newKind = only ?? homeKindOf(group[0].clip);
       const name = nextTrackName(doc, newKind, newNames);
       newNames.push(name);
       newTracks++;

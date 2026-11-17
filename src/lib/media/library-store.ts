@@ -186,6 +186,6 @@ export function visibleAssets(state: LibraryState): AssetView[] {
 
 // Each asset id once, in document order.
 export function docAssetIds(doc: TimelineDoc): string[] {
-  const ids = doc.tracks.flatMap((track) => track.clips.flatMap((clip) => (clip.type === "text" ? [] : [clip.assetId])));
+  const ids = doc.tracks.flatMap((track) => track.clips.flatMap((clip) => (clip.type === "text" || clip.type === "placeholder" ? [] : [clip.assetId])));
   return [...new Set(ids)];
 }

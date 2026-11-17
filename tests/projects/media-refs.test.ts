@@ -203,7 +203,7 @@ describe("a project's media must exist: more of each rule", () => {
     await made.send([add(clip("video", made.video.id, { duration: 375 }))], 0);
     await made.send([{ op: "trim_clip", clipId: "c1", edge: "end", to: duration }, { op: "update_clip", clipId: "c1", patch: { speed } }], 1); // the whole 375 frames, re-timed
     const clips = async () => (await getProject(made.ctx.db, made.ctx.ada, made.id))!.doc.tracks.flatMap((t) => t.clips);
-    const uses = async () => (await clips()).map((c) => (c.type === "text" ? 0 : c.in + Math.round(c.duration * c.speed)));
+    const uses = async () => (await clips()).map((c) => ("in" in c ? c.in + Math.round(c.duration * c.speed) : 0));
     return { ...made, clips, uses };
   };
 
@@ -254,7 +254,7 @@ describe("a project's media must exist: more of each rule", () => {
     expect((await send([{ op: "split_clip", clipId: "c1", at: 10, newClipId: "c2" }], 3)).version).toBe(4);
     const [, right] = await clips();
     expect(right).toMatchObject({ id: "c2", start: 10, duration: 35, in: 350 });
-    expect(right.type !== "text" && right.in + Math.round(right.duration * right.speed)).toBeLessThanOrEqual(375);
+    expect("in" in right && right.in + Math.round(right.duration * right.speed)).toBeLessThanOrEqual(375);
     const shorter = await send([{ op: "trim_clip", clipId: "c2", edge: "end", to: 35 }], 4); // in by 10 frames
     expect(shorter.version).toBe(5);
     expect((await send(shorter.inverse, 5)).version).toBe(6);

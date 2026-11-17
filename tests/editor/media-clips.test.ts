@@ -107,7 +107,7 @@ describe("adding media from the library", () => {
     const store = storeAt60();
     addMedia(store, asset());
     const { doc, selection, queue } = store.getState();
-    const added = doc.tracks.flatMap((t) => t.clips.filter((c) => c.type !== "text" && c.assetId === "a1").map((c) => ({ track: t.id, clip: c })));
+    const added = doc.tracks.flatMap((t) => t.clips.filter((c) => "assetId" in c && c.assetId === "a1").map((c) => ({ track: t.id, clip: c })));
     expect(added).toHaveLength(1);
     expect(added[0].track).toBe("v1");
     expect(added[0].clip).toMatchObject({ assetId: "a1", start: 60, duration: 375, in: 0, speed: 1, volume: 1 });

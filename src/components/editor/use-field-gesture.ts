@@ -21,7 +21,7 @@ export function fieldOps(store: EditorStore, clipId: string, field: ClipField, r
   const found = findClip(doc, clipId);
   if (!found) return null;
   const { clip } = found;
-  const lengthFrames = clip.type === "text" || !library ? undefined : mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps);
+  const lengthFrames = clip.type === "text" || clip.type === "placeholder" || !library ? undefined : mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps);
   return clipFieldOps(clip, field, raw, fieldContext(doc, clip, view?.prefs, view?.sizer), lengthFrames);
 }
 

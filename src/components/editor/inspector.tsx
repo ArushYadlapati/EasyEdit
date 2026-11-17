@@ -48,7 +48,7 @@ import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-f
 const TEXT = "text-[13px] leading-5";
 const CAPTION = "text-xs font-medium text-ed-muted";
 
-const MEDIA_TITLE: Record<Exclude<Clip["type"], "text">, string> = {
+const MEDIA_TITLE: Record<Exclude<Clip["type"], "text" | "placeholder">, string> = {
   video: "Video clip",
   image: "Image",
   audio: "Audio clip",
@@ -132,7 +132,7 @@ function NumberField(props: {
   // A video or image is measured by its picture's size as the library knows it; until then, the placeholder's frame.
   const assetId = useEditor((s) => {
     const clip = findClip(viewDoc(s), clipId)?.clip;
-    return clip && clip.type !== "text" ? clip.assetId : null;
+    return clip && clip.type !== "text" && clip.type !== "placeholder" ? clip.assetId : null;
   });
   const sourceWidth = useLibrary((s) => (assetId === null ? null : (s.assets[assetId]?.width ?? null)));
   const sourceHeight = useLibrary((s) => (assetId === null ? null : (s.assets[assetId]?.height ?? null)));
@@ -159,7 +159,7 @@ function NumberField(props: {
     scrubRange = () => {
       const { doc } = store.getState();
       const clip = findClip(doc, clipId)?.clip;
-      const lengthFrames = clip && clip.type !== "text" ? mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps) : undefined;
+      const lengthFrames = clip && clip.type !== "text" && clip.type !== "placeholder" ? mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps) : undefined;
       return scrubBounds(doc, clipId, field, lengthFrames);
     };
   } else if (field === "cropLeft" || field === "cropTop" || field === "cropRight" || field === "cropBottom") {
@@ -464,18 +464,21 @@ function MediaSection({ assetId, kind }: { assetId: string; kind: Exclude<Clip["
 
 function ClipInspector({ clip }: { clip: Clip }) {
   const canEdit = useEditor((s) => s.canEdit);
+  const drawsOnCanvas = clip.type !== "audio" && !(clip.type === "placeholder" && clip.accepts === "audio");
   return (
     <>
       {clip.type === "text" ? (
         <TextSection clip={clip} canEdit={canEdit} />
+      ) : clip.type === "placeholder" ? (
+        <h2 className="text-sm leading-5 font-semibold text-ed-text">Slot: {clip.slot.name}</h2>
       ) : (
         <>
           <h2 className="text-sm leading-5 font-semibold text-ed-text">{MEDIA_TITLE[clip.type]}</h2>
           <MediaSection assetId={clip.assetId} kind={clip.type} />
         </>
       )}
-      {clip.type !== "audio" && <PositionSection clipId={clip.id} />}
-      {clip.type !== "audio" && <CropSection clipId={clip.id} />}
+      {drawsOnCanvas && <PositionSection clipId={clip.id} />}
+      {drawsOnCanvas && clip.type !== "placeholder" && <CropSection clipId={clip.id} />}
       <TimingSection clipId={clip.id} />
     </>
   );

@@ -161,7 +161,7 @@ export function clipMenu(state: EditorState): MenuEntry[] {
     return { id: command, label, command, disabled: (edit && blocked) || unavailable, ...extra, ...(edit && { edit }) };
   };
   const single = selection.clipIds.length === 1 ? (findClip(doc, selection.clipIds[0])?.clip ?? null) : null;
-  const croppable = single !== null && single.type !== "audio";
+  const croppable = single !== null && single.type !== "audio" && !(single.type === "placeholder" && single.accepts === "audio");
   const typeable = single !== null && single.type === "text";
   return [
     entry("cut", "Cut", onLocked),

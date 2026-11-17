@@ -29,7 +29,7 @@ function clipsById(doc: TimelineDoc): Map<string, Clip> {
 
 // The asset an op points a clip at, or null: an add_clip of a media clip, or an update_clip that sets assetId.
 function namedAsset(op: Op): { assetId: string; clipId: string } | null {
-  if (op.op === "add_clip" && op.clip.type !== "text") return { assetId: op.clip.assetId, clipId: op.clip.id };
+  if (op.op === "add_clip" && op.clip.type !== "text" && op.clip.type !== "placeholder") return { assetId: op.clip.assetId, clipId: op.clip.id };
   if (op.op === "update_clip" && typeof op.patch.assetId === "string") return { assetId: op.patch.assetId, clipId: op.clipId };
   return null;
 }
@@ -70,7 +70,7 @@ export function assetIdsToCheck(after: TimelineDoc, ops: Op[]): string[] {
     const named = namedAsset(op);
     if (named) ids.add(named.assetId);
     const clip = touches[opIndex] === null ? undefined : clips.get(touches[opIndex]);
-    if (clip && clip.type !== "text") ids.add(clip.assetId);
+    if (clip && clip.type !== "text" && clip.type !== "placeholder") ids.add(clip.assetId);
   });
   return [...ids];
 }
@@ -100,7 +100,7 @@ export function findMediaProblem(after: TimelineDoc, ops: Op[], facts: Map<strin
       // An update_clip does not say what kind of clip it changes. The clip does, when the batch leaves it in place,
       // or else a piece split off it after this op, which carries the asset.
       const target = op.op === "add_clip" ? op.clip : (clips.get(named.clipId) ?? laterPiece(ops, opIndex, named.clipId, clips));
-      const clipType = target && target.type !== "text" ? target.type : undefined;
+      const clipType = target && target.type !== "text" && target.type !== "placeholder" ? target.type : undefined;
       const fact = facts.get(named.assetId);
       const code = assetTrouble(fact, clipType);
       if (code === "wrong_kind") return { code, ...named, opIndex, assetKind: fact?.kind, clipType };

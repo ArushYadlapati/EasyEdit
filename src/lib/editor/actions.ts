@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
-import { DEFAULT_TRANSFORM, NO_CROP, TRACK_ACCEPTS, isCropped, type OpInput, type TrackKind } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, NO_CROP, TRACK_ACCEPTS, isCropped, trackTakes, type OpInput, type TrackKind } from "@/lib/timeline";
 import { copyClips, pasteItems, type ClipboardStore } from "./clipboard";
 import {
   addTrackOps,
@@ -210,7 +210,7 @@ export function paste(store: EditorStore, clipboard: ClipboardStore, at?: Timeli
   const target = state.doc.tracks.find((t) => t.id === at?.trackId);
   const items = pasteItems(copied, at?.frame ?? state.playhead).map((item) => {
     if (at && at.trackId === null) return { ...item, trackId: null };
-    return target && TRACK_ACCEPTS[target.kind].includes(item.clip.type) ? { ...item, trackId: target.id } : item;
+    return target && trackTakes(target.kind, item.clip) ? { ...item, trackId: target.id } : item;
   });
   const placement = placeClips(state.doc, items, () => nanoid(10));
   if (!placement.ok) {
@@ -263,7 +263,7 @@ function focusClip(store: EditorStore, clipId: string): void {
 export function armCrop(store: EditorStore, clipId: string, isMac: boolean): void {
   const state = store.getState();
   const found = findClip(state.doc, clipId);
-  if (!state.canEdit || state.gesture !== null || !found || found.track.locked || found.clip.type === "audio") return;
+  if (!state.canEdit || state.gesture !== null || !found || found.track.locked || found.clip.type === "audio" || (found.clip.type === "placeholder" && found.clip.accepts === "audio")) return;
   if (found.track.hidden) {
     state.notify("error", MESSAGES.trackHidden);
     return;
