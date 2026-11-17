@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { projects } from "@/db/schema";
 import { meetsRole } from "@/lib/access-rules";
 import { projectFrame } from "@/lib/projects/schemas";
+import { getTemplate } from "@/lib/templates/service";
 import { createProject, getProject, storedHeight, storedWidth } from "@/lib/projects/service";
 import { ServiceError } from "@/lib/service-error";
 import { isStorableText } from "@/lib/text";
@@ -84,8 +85,17 @@ export async function createProjectTool(base: ToolContext, input: CreateInput): 
   const ctx: SpaceToolContext = { ...base, actor };
   if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
 
-  // A template's project has no twin check: the format and size are the template's.
-  const twinId = input.template === undefined && input.format !== undefined ? await findTwin(ctx, { ...input, format: input.format }) : null;
+  // The format and size are the template's, when there is one. A template that is not there is left to createProject to refuse.
+  let templateFormat: string | undefined;
+  let frame: { format: string; width: number; height: number } | { error: string } | null = null;
+  if (input.template !== undefined) {
+    const template = await getTemplate(ctx.db, ctx.actor, input.template);
+    templateFormat = template?.format;
+    if (template) frame = { format: template.format, width: template.width, height: template.height };
+  } else if (input.format !== undefined) {
+    frame = projectFrame({ format: input.format, width: input.width, height: input.height });
+  }
+  const twinId = frame && !("error" in frame) ? await findTwin(ctx, input.name, frame) : null;
   const twin = twinId ? await getProject(ctx.db, ctx.actor, twinId) : null;
   if (twin) return answer(ctx, twin, `This project was created a moment ago, so it is used again: "${escapeQuoted(twin.name)}" (id ${twin.id}).`);
 
@@ -94,7 +104,7 @@ export async function createProjectTool(base: ToolContext, input: CreateInput): 
 
   let id: string;
   try {
-    ({ id } = await createProject(ctx.db, ctx.actor, { name: input.name, format: input.format ?? "", templateId: input.template, width: input.width, height: input.height }));
+    ({ id } = await createProject(ctx.db, ctx.actor, { name: input.name, format: templateFormat ?? input.format ?? "", templateId: input.template, width: input.width, height: input.height }));
   } catch (error) {
     if (error instanceof ServiceError) return fail(error.message);
     throw error;
@@ -110,11 +120,9 @@ export async function createProjectTool(base: ToolContext, input: CreateInput): 
 // A live project this actor created in the last minute with the same trimmed name, format and size.
 // A name the database cannot store, or a format and size the service refuses, has no twin; skipping the lookup lets
 // the service refuse it with its sentence.
-async function findTwin(ctx: SpaceToolContext, input: CreateInput & { format: string }): Promise<string | null> {
-  const name = input.name.trim();
+async function findTwin(ctx: SpaceToolContext, rawName: string, frame: { format: string; width: number; height: number }): Promise<string | null> {
+  const name = rawName.trim();
   if (!isStorableText(name)) return null;
-  const frame = projectFrame(input);
-  if ("error" in frame) return null;
   const rows = await ctx.db
     .select({ id: projects.id })
     .from(projects)

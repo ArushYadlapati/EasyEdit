@@ -75,6 +75,17 @@ describe("create_project from a template", () => {
     expect(r.text).toContain("title_text (text)");
   });
 
+  it("a retried create from a template returns the same project", async () => {
+    const { ctx, team } = await setup();
+    const first = await createProjectTool(ctx, { name: "Worlds", template: "starter-match-recap", space: team.slug });
+    const again = await createProjectTool(ctx, { name: "Worlds", template: "starter-match-recap", space: team.slug });
+    const id = /\(id (\S+?)\)/.exec(first.text)![1];
+    expect(again.text.split("\n")[0]).toBe(`This project was created a moment ago, so it is used again: "Worlds" (id ${id}).`);
+    // A different name is a different project.
+    const other = await createProjectTool(ctx, { name: "Worlds 2", template: "starter-match-recap", space: team.slug });
+    expect(other.text).toContain("Created project");
+  });
+
   it("an unknown template is refused", async () => {
     const { ctx, team } = await setup();
     const r = await createProjectTool(ctx, { name: "Worlds", template: "nope", space: team.slug });
