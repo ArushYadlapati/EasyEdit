@@ -226,8 +226,9 @@ export const assets = pgTable(
     check("assets_kind_check", sql`${t.kind} in ('video', 'image', 'audio')`),
     check("assets_status_check", sql`${t.status} in ('uploading', 'ready')`),
     check("assets_preview_status_check", sql`${t.previewStatus} in ('none', 'pending', 'ready', 'failed')`),
-    // One unfinished upload per member and file: choosing the same file again finds it. A move's copies are not uploads a member chose.
-    uniqueIndex("assets_unfinished_upload_unique").on(t.spaceId, t.uploadedBy, t.fileName, t.sizeBytes, t.lastModifiedMs).where(sql`${t.status} = 'uploading' and ${t.moveId} is null`),
+    // One unfinished upload per member and file: choosing the same file again finds it. A move's unfinished copies are
+    // held to this too: the index stays as it was so older code keeps working against this database (docs/deploy.md).
+    uniqueIndex("assets_unfinished_upload_unique").on(t.spaceId, t.uploadedBy, t.fileName, t.sizeBytes, t.lastModifiedMs).where(sql`${t.status} = 'uploading'`),
     index("assets_created_at_idx").on(t.createdAt),
     index("assets_space_id_idx").on(t.spaceId),
     index("assets_uploaded_by_created_at_idx").on(t.uploadedBy, t.createdAt),

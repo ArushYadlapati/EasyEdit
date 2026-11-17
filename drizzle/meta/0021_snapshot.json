@@ -387,7 +387,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"assets\".\"status\" = 'uploading' and \"assets\".\"move_id\" is null",
+          "where": "\"assets\".\"status\" = 'uploading'",
           "concurrently": false,
           "method": "btree",
           "with": {}

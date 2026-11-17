@@ -65,6 +65,8 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     drop index assets_unfinished_upload_old;
     ```
 
+    **Before deploying the version that moves projects between spaces:** run the migration `0021_project_move` against the production database right before the push, with the command above. It only adds: one new table (`project_move`), three nullable columns (`assets.move_id`, `assets.copied_from`, `projects.moved_at_version`) and indexes on the new table. It leaves the rule for unfinished uploads as it was, so the earlier version keeps working against it, during the deploy and after going back. (After going back, copies made by a move that hasn't finished show up in the destination's library, since the earlier version doesn't know to hide them.)
+
     **Before deploying the version with the intro tutorial:** run the migration `0018_tutorial_views` against the production database right before the push, with the command above. It adds one table and changes nothing else, and the earlier version keeps working against it. Set `TUTORIAL_VIDEO_URL` only once the table is there.
 
     **Before deploying the version with one Google account per space:** first run these two checks in the Neon SQL editor for the production database. The first must return no rows; if it returns any, one Google account already holds two spaces' storage, so stop and sort that out by hand before going on:

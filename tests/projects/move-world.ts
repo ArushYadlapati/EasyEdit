@@ -26,7 +26,7 @@ export async function moveWorld() {
   const actor = testActor();
   const track = (kind: string, clips: unknown[]) => ({ id: `t-${kind}`, kind, name: kind, muted: false, hidden: false, locked: false, clips });
   const a = await insertAsset(w.db, { name: "Clip A", previewFileId: "prev-a", posterFileId: "poster-a", driveFileId: "orig-a" });
-  const b = await insertAsset(w.db, { name: "Photo B", kind: "image", driveFileId: "orig-b" });
+  const b = await insertAsset(w.db, { name: "Photo B", kind: "image", fileName: "IMG_4900.JPG", mimeType: "image/jpeg", driveFileId: "orig-b" });
   const doc = {
     schemaVersion: 1, format: "short_9x16", width: 1080, height: 1920, fps: 30,
     tracks: [

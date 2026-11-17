@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, getTableColumns, inArray, is, isNull, or, sql, SQL } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, is, isNotNull, isNull, or, sql, SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { rowsOf, type DB } from "@/db";
 import { assets, projects } from "@/db/schema";
@@ -230,7 +230,7 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
       .select(
         sql`select ${valuesOf(row)} where (select count(*) from assets where space_id = ${actor.spaceId}::text and uploaded_by = ${actor.userId}::text and status = 'uploading' and move_id is null) < ${LIMITS.mediaPendingPerMember}::integer`,
       )
-      .onConflictDoNothing({ target: [assets.spaceId, assets.uploadedBy, assets.fileName, assets.sizeBytes, assets.lastModifiedMs], where: sql`status = 'uploading' and move_id is null` })
+      .onConflictDoNothing({ target: [assets.spaceId, assets.uploadedBy, assets.fileName, assets.sizeBytes, assets.lastModifiedMs], where: sql`status = 'uploading'` })
       .returning();
   } catch (error) {
     throw notRecorded(error);
@@ -240,6 +240,10 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
   // The session opened above is left to expire: no file exists until the last byte.
   const after = await takeUpUnfinished(deps, actor, input);
   if (after) return after;
+  // A move this member started may be copying the same file into this space; its copy holds the file's place.
+  const same = and(eq(assets.spaceId, actor.spaceId), eq(assets.uploadedBy, actor.userId), unfinished, eq(assets.fileName, input.fileName), eq(assets.sizeBytes, input.sizeBytes), eq(assets.lastModifiedMs, input.lastModifiedMs));
+  const [copying] = await db.select({ id: assets.id }).from(assets).where(and(same, isNotNull(assets.moveId)));
+  if (copying) throw new ServiceError("CONFLICT", 409, MEDIA_MESSAGES.beingMovedHere(input.fileName));
   throw tooManyUnfinished();
 }
 

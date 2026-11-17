@@ -4,8 +4,10 @@ import { importsFrom, sources } from "../helpers/sources";
 const MEDIA_SERVER_FILES = ["src/lib/media/service.ts", "src/lib/media/handlers.ts"];
 // The spaces storage seam picks each space's Drive client; the storage code (server-only) reaches Google through the Drive helpers.
 const SPACES_STORAGE = "src/lib/spaces/storage.ts";
+// Moving a project copies its media between two spaces' Drives (server-only).
+const MOVE_SERVER_FILES = ["src/lib/projects/move.ts", "src/lib/projects/move-handlers.ts"];
 const mayImportDrive = (file: string) =>
-  file.startsWith("src/lib/drive/") || file.startsWith("src/lib/storage/") || MEDIA_SERVER_FILES.includes(file) || file === SPACES_STORAGE || file.startsWith("src/app/api/");
+  file.startsWith("src/lib/drive/") || file.startsWith("src/lib/storage/") || MEDIA_SERVER_FILES.includes(file) || file === SPACES_STORAGE || MOVE_SERVER_FILES.includes(file) || file.startsWith("src/app/api/");
 const DRIVE_IMPORT = importsFrom("@/lib/drive");
 const USE_CLIENT = /^["']use client["']/;
 const PRINTS = /\bconsole\s*\.\s*(?:log|info|debug|warn)\b/;
@@ -31,10 +33,10 @@ it("the Drive import check knows which files are which", () => {
   for (const line of ['import { LIMITS } from "@/lib/limits";', 'import { x } from "@/lib/driveway";', 'import { createSign } from "node:crypto";']) {
     expect(line).not.toMatch(DRIVE_IMPORT);
   }
-  for (const file of ["src/lib/drive/client.ts", "src/lib/drive/index.ts", "src/lib/media/service.ts", "src/lib/media/handlers.ts", "src/app/api/media/route.ts", "src/app/api/drive/read-token/route.ts", "src/lib/spaces/storage.ts", "src/lib/storage/google-oauth.ts"]) {
+  for (const file of ["src/lib/drive/client.ts", "src/lib/drive/index.ts", "src/lib/media/service.ts", "src/lib/media/handlers.ts", "src/app/api/media/route.ts", "src/app/api/drive/read-token/route.ts", "src/lib/spaces/storage.ts", "src/lib/storage/google-oauth.ts", "src/lib/projects/move.ts", "src/lib/projects/move-handlers.ts"]) {
     expect(mayImportDrive(file), file).toBe(true);
   }
-  for (const file of ["src/lib/media/rules.ts", "src/lib/media/upload.ts", "src/lib/driveway/x.ts", "src/lib/projects/service.ts", "src/lib/mcp/server.ts", "src/components/editor/media-tab.tsx", "src/app/projects/[id]/page.tsx", "src/app/apiary/route.ts", "src/proxy.ts"]) {
+  for (const file of ["src/lib/media/rules.ts", "src/lib/media/upload.ts", "src/lib/driveway/x.ts", "src/lib/projects/service.ts", "src/lib/projects/move-runner.ts", "src/lib/projects/move-api.ts", "src/lib/projects/move-messages.ts", "src/lib/mcp/server.ts", "src/components/editor/media-tab.tsx", "src/app/projects/[id]/page.tsx", "src/app/apiary/route.ts", "src/proxy.ts"]) {
     expect(mayImportDrive(file), file).toBe(false);
   }
   expect('"use client";\nimport { getDrive } from "@/lib/drive";').toMatch(USE_CLIENT);

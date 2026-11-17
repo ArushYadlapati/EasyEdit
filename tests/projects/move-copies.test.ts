@@ -71,16 +71,54 @@ describe("copies", () => {
     expect(rows[0].uploadUrl).toBe(fresh.uploadUrl);
   });
 
-  it("gives identical-looking sources their own copies", async () => {
+  it("gives identical-looking sources their own copies, one finished before the next opens", async () => {
     const x = await started();
     const twin = await insertAsset(x.w.db, { name: "Twin", driveFileId: "orig-twin", previewFileId: "p", posterFileId: "q" });
     const doc = structuredClone(x.doc) as { tracks: { clips: unknown[] }[] };
     doc.tracks[0].clips.push({ id: "c9", ...mediaClip(twin) });
     await x.w.db.update(projects).set({ doc: doc as never }).where(eq(projects.id, "p1"));
     const one = await openCopy(x.deps, "u1", x.moveId, x.a);
+    // Two unfinished uploads of one file can't sit side by side in a space: the twin waits for the first.
+    await fails(openCopy(x.deps, "u1", x.moveId, twin), "CONFLICT", 409, MOVE_MESSAGES.uploadInTheWay("Twin"));
+    await x.sendAll(one.uploadUrl!, 20_000_000);
+    await completeCopy(x.deps, "u1", x.moveId, one.copyAssetId);
     const two = await openCopy(x.deps, "u1", x.moveId, twin);
+    expect(two).toMatchObject({ offset: 0, done: false });
     expect(one.copyAssetId).not.toBe(two.copyAssetId);
     expect(await x.rows()).toHaveLength(2);
+    await x.sendAll(two.uploadUrl!, 20_000_000);
+    expect(await completeCopy(x.deps, "u1", x.moveId, two.copyAssetId)).toMatchObject({ assetId: two.copyAssetId, status: "ready" });
+  });
+
+  it("waits for the mover's own unfinished upload of the same file in the destination, and cancels its session", async () => {
+    const x = await started();
+    const [src] = await x.w.db.select().from(assets).where(eq(assets.id, x.a));
+    const mine = await insertAsset(x.w.db, {
+      spaceId: x.w.personal, fileName: src.fileName, sizeBytes: src.sizeBytes, lastModifiedMs: src.lastModifiedMs, uploadedBy: "u1",
+      status: "uploading", readyAt: null, driveFileId: null, uploadUrl: "https://upload.test/mine",
+    });
+    const drive = (await x.deps.driveFor(x.w.personal))!;
+    const sessions: string[] = [];
+    const canceled: string[] = [];
+    const deps: MoveDeps = { ...x.deps, driveFor: async () => ({
+      ...drive,
+      openUploadSession: async (...args: Parameters<typeof drive.openUploadSession>) => {
+        const url = await drive.openUploadSession(...args);
+        sessions.push(url);
+        return url;
+      },
+      cancelSession: async (url: string) => {
+        canceled.push(url);
+        await drive.cancelSession(url);
+      },
+    }) as never };
+    await fails(openCopy(deps, "u1", x.moveId, x.a), "CONFLICT", 409, MOVE_MESSAGES.uploadInTheWay(src.name));
+    expect(await x.rows()).toHaveLength(0);
+    expect(sessions).toHaveLength(1);
+    expect(canceled).toEqual(sessions);
+    // The upload in the way is left as it was.
+    const [still] = await x.w.db.select().from(assets).where(eq(assets.id, mine));
+    expect(still).toMatchObject({ status: "uploading", uploadUrl: "https://upload.test/mine", moveId: null });
   });
 
   it("reports a finished original as done", async () => {

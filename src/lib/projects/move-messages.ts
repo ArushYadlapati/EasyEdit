@@ -14,4 +14,7 @@ export const MOVE_MESSAGES = {
   canceled: "The move was canceled.",
   copyStopped: "Copying stopped. Check your connection and try again; what was copied is kept.",
   busy: "The project kept changing while it was being moved. Try again.",
+  uploadInTheWay: (name: string) => `Another upload of "${name}" hasn't finished in that space yet. Let it finish or cancel it, then try the move again.`,
+  movedAway: "This project was moved to a space you're not in, so it can't be edited here anymore.",
+  destinationRefused: (space: string) => `${space}'s Google Drive refused the copy. It may be full. Free up space or reconnect it, then try the move again.`,
 } as const;

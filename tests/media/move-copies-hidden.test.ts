@@ -1,7 +1,9 @@
+import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { describe, expect, it } from "vitest";
-import { organization, projectMove, projects } from "@/db/schema";
+import { assets, organization, projectMove, projects } from "@/db/schema";
 import { LIMITS } from "@/lib/limits";
+import { MEDIA_MESSAGES } from "@/lib/media/messages";
 import { failPreview, listAssets, loadAssetFacts, openAssetFile, openUpload, removeAsset, updateAsset } from "@/lib/media/service";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { VIDEO, insertAsset, mediaContext, readyAsset } from "./context";
@@ -38,12 +40,20 @@ describe("copies made by an unfinished move are hidden", () => {
     }
   });
 
-  it("openUpload of the same file opens a new upload, not the copy's session", async () => {
-    const { ctx, real, uploadingCopy } = await setup();
-    // The real one is ready, so choosing the file again opens a fresh upload beside the copy.
+  it("openUpload of the same file never hands out the copy's session: it waits for the move", async () => {
+    const { ctx, uploadingCopy } = await setup();
+    // The copy is an unfinished upload of this file, so it holds the file's place until the move finishes it.
+    const refused: unknown = await openUpload(ctx.deps, ctx.ada, VIDEO).then(() => null, (error: unknown) => error);
+    expect(refused).toMatchObject({ code: "CONFLICT", status: 409, message: MEDIA_MESSAGES.beingMovedHere(VIDEO.fileName) });
+    expect(JSON.stringify(refused)).not.toContain("copy-session");
+    expect((await listAssets(ctx.db, ctx.ada)).map((a) => a.id)).not.toContain(uploadingCopy);
+  });
+
+  it("openUpload of the same file opens a new upload once the copy is finished", async () => {
+    const { ctx, real, readyCopy, uploadingCopy } = await setup();
+    await ctx.db.update(assets).set({ status: "ready", uploadUrl: null, driveFileId: "copy-file" }).where(eq(assets.id, uploadingCopy));
     const opened = await openUpload(ctx.deps, ctx.ada, VIDEO);
-    expect(opened.asset.id).not.toBe(uploadingCopy);
-    expect(opened.asset.id).not.toBe(real.id);
+    expect([real.id, readyCopy, uploadingCopy]).not.toContain(opened.asset.id);
     expect(opened.uploadUrl).not.toBe("https://upload.test/copy-session");
   });
 

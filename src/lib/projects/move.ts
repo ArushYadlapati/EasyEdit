@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import "server-only";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { rowsOf, type DB } from "@/db";
 import { assets, organization, projectMove, projects } from "@/db/schema";
@@ -108,6 +109,21 @@ async function abandonWhere(deps: MoveDeps, where: ReturnType<typeof and>, quiet
     }
   }
   return ended.length;
+}
+
+// Whether a project that `userId` can't reach was moved away from a space they are in: it is still there (not deleted),
+// in a space they are not a member of, and its latest finished move left from one they are. Then the editor can say it
+// moved rather than that it was deleted.
+export async function movedElsewhere(db: DB, userId: string, projectId: string): Promise<boolean> {
+  const [project] = await db.select({ spaceId: projects.spaceId }).from(projects).where(and(eq(projects.id, projectId), isNull(projects.deletedAt)));
+  if (!project || (await roleIn(db, userId, project.spaceId))) return false;
+  const [last] = await db
+    .select({ fromSpaceId: projectMove.fromSpaceId })
+    .from(projectMove)
+    .where(and(eq(projectMove.projectId, projectId), isNotNull(projectMove.finishedAt)))
+    .orderBy(desc(projectMove.finishedAt))
+    .limit(1);
+  return last !== undefined && last.fromSpaceId !== project.spaceId && (await roleIn(db, userId, last.fromSpaceId)) !== null;
 }
 
 export async function abandonMove(deps: MoveDeps, userId: string, moveId: string): Promise<void> {
@@ -273,12 +289,14 @@ export async function openCopy(deps: MoveDeps & { checkNew?: () => Promise<void>
     moveId: move.id,
     copiedFrom: source.id,
   };
-  // One statement: the move must still be open, and no other request may have made this source's copy first.
+  // One statement: the move must still be open, and no other request may have made this source's copy first. A copy
+  // is an unfinished upload like any other, so it yields to the mover's own unfinished upload of the same file there.
   let inserted: { id: string }[];
   try {
     inserted = await db
       .insert(assets)
       .select(sql`select ${valuesOf(row)} where ${moveIsOpen(move.id)} and not exists (select 1 from assets where move_id = ${move.id}::text and copied_from = ${source.id}::text)`)
+      .onConflictDoNothing({ target: [assets.spaceId, assets.uploadedBy, assets.fileName, assets.sizeBytes, assets.lastModifiedMs], where: sql`status = 'uploading'` })
       .returning({ id: assets.id });
   } catch (error) {
     await dropSession(deps, drive, uploadUrl);
@@ -286,11 +304,12 @@ export async function openCopy(deps: MoveDeps & { checkNew?: () => Promise<void>
   }
   if (inserted.length > 0) return { copyAssetId: id, uploadUrl, offset: 0, done: false };
 
-  // Nothing went in: the move ended meanwhile, or a simultaneous request made this copy first.
+  // Nothing went in: the move ended meanwhile, a simultaneous request made this copy first, or an unfinished upload of
+  // the same file is in the way.
   await dropSession(deps, drive, uploadUrl);
   await moveOf(db, userId, moveId);
   const [winner] = await db.select().from(assets).where(and(eq(assets.moveId, move.id), eq(assets.copiedFrom, source.id)));
-  if (!winner) throw goneMove();
+  if (!winner) throw new ServiceError("CONFLICT", 409, MOVE_MESSAGES.uploadInTheWay(source.name));
   return takeUpCopy(deps, drive, move, winner);
 }
 
@@ -506,8 +525,13 @@ export async function finishMove(deps: MoveDeps, userId: string, moveId: string)
     const rows = rowsOf<{ version: number }>(result);
     if (rows.length === 0) continue; // changed meanwhile: read again, which may find new media or the move gone
 
-    // Anyone else's move of this project can no longer land; its copies are dropped, and trouble there is only reported.
-    await abandonWhere(deps, and(eq(projectMove.projectId, move.projectId), ne(projectMove.id, move.id)), true);
+    // Anyone else's move of this project from the space it left can no longer land; its copies are dropped. The move has
+    // happened, so nothing here may say otherwise: trouble is only reported, and the clean-up gets the rest.
+    try {
+      await abandonWhere(deps, and(eq(projectMove.projectId, move.projectId), eq(projectMove.fromSpaceId, move.fromSpaceId), ne(projectMove.id, move.id)), true);
+    } catch (error) {
+      console.error("Move clean-up failed", move.id, error instanceof Error ? error.name : typeof error);
+    }
     return { projectId: move.projectId, spaceId: to.id, slug: to.slug, version: Number(rows[0].version) };
   }
   throw new ServiceError("CONFLICT", 409, MOVE_MESSAGES.busy);
