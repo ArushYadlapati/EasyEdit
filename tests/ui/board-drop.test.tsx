@@ -4,6 +4,7 @@ import { EditorProvider } from "@/components/editor/context";
 import { watchDrags } from "@/components/editor/drag-watch";
 import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
 import { Preview } from "@/components/editor/preview";
+import { DEFAULT_TRANSFORM, type Clip } from "@/lib/timeline";
 import { ASSET_DRAG_TYPE, createMediaDrop, type MediaDrop } from "@/lib/editor/media-drop";
 import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
 import { findClip, type EditorStore } from "@/lib/editor/store";
@@ -337,4 +338,18 @@ it("without a drop the board takes nothing", () => {
   expect(wrapper.dataset.drop).toBe("idle");
   window.removeEventListener("error", errors);
   expect(errors).not.toHaveBeenCalled();
+});
+
+it("an item dropped on the board with an empty slot selected fills the slot, in one undo", () => {
+  const doc = store.getState().doc;
+  const ph = { id: "ph", type: "placeholder", accepts: "visual", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "intro" } } as Clip;
+  const filled = makeStore({ doc: { ...doc, tracks: doc.tracks.map((t, i) => (i === 0 ? { ...t, clips: [ph] } : t)) } });
+  filled.getState().select(["ph"]);
+  const { board } = open({ store: filled });
+  dragging(VIDEO);
+  expect(itemDrop(board, "a")).toBe(true);
+  expect(findClip(filled.getState().doc, "ph")!.clip).toMatchObject({ type: "video", assetId: "a", slot: { name: "intro" } });
+  expect(filled.getState().queue.map((e) => e.label)).toEqual(["fill slot"]);
+  act(() => filled.getState().undo());
+  expect(findClip(filled.getState().doc, "ph")!.clip.type).toBe("placeholder");
 });

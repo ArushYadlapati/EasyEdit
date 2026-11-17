@@ -15,6 +15,7 @@ export const MESSAGES = {
   nothingToPaste: "Nothing to paste.",
   noRoom: "No room here, and the project can't take more tracks.",
   selectTextToRecolor: "Select a text clip to recolor it.",
+  slotShort: (slot: string) => `${slot}: the clip is shorter than the slot, so there's a gap after it.`,
   mediaNotReady: "This file isn't ready yet.",
   renameFailed: "Couldn't rename the project. Try again.",
   cropHint: "Drag a handle to crop. Next time, you can hold Ctrl while you drag.",

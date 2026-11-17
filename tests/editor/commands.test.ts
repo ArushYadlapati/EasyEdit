@@ -22,6 +22,15 @@ const ids = (doc: TimelineDoc) => doc.tracks.map((t) => t.id);
 const rowIds = (doc: TimelineDoc) => displayRows(doc).map((t) => t.id);
 const emptyTrack = (id: string, kind: Track["kind"]): Track => ({ id, kind, name: id, muted: false, hidden: false, locked: false, clips: [] });
 
+// A store whose first (video) track starts with an empty slot "intro" over frames 0-<length>, selected.
+function withSelectedPlaceholder(accepts: "visual" | "audio" = "visual", length = 30) {
+  const doc = sampleDoc();
+  doc.tracks[0].clips = [{ id: "ph", type: "placeholder", accepts, start: 0, duration: length, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "intro" } } as Clip];
+  const store = makeStore({ doc });
+  store.getState().select(["ph"]);
+  return store;
+}
+
 describe("clip commands", () => {
   it("orders moves so clips travelling together never collide, and stops at frame 0", () => {
     const pair = [{ clipId: "c1", start: 0 }, { clipId: "c2", start: 30 }];
@@ -427,6 +436,26 @@ describe("runners", () => {
     plain.getState().seek(300);
     addMedia(plain, image);
     expect(added(plain)).toMatchObject({ type: "image", duration: 90 });
+  });
+
+  it("a click on media with an empty slot selected fills the slot as one change that keeps its id", () => {
+    const store = withSelectedPlaceholder("visual", 90);
+    const notices = noticesOf(store);
+    expect(addMedia(store, assetView({ durationMs: 2_000 }), { stillSeconds: 5 })).toBe(true);
+    expect(findClip(store.getState().doc, "ph")!.clip).toMatchObject({ type: "video", start: 0, duration: 60, slot: { name: "intro" } });
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["fill slot"]);
+    expect(notices).toEqual(["intro: the clip is shorter than the slot, so there's a gap after it."]);
+    store.getState().undo();
+    expect(findClip(store.getState().doc, "ph")!.clip.type).toBe("placeholder");
+  });
+
+  it("media of the wrong kind for the selected slot is added as usual, with no error", () => {
+    const store = withSelectedPlaceholder("visual");
+    const notices = noticesOf(store);
+    expect(addMedia(store, assetView({ id: "m", kind: "audio", durationMs: 2_000, width: null, height: null, fps: null }), { frame: 200 })).toBe(true);
+    expect(findClip(store.getState().doc, "ph")!.clip.type).toBe("placeholder");
+    expect(store.getState().queue.map((e) => e.label)).toEqual(["add media"]);
+    expect(notices).toEqual([]);
   });
 
   it("addMedia says whether it worked and can leave the selection alone", () => {

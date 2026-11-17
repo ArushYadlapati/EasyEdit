@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
-import { DEFAULT_TRANSFORM, NO_CROP, TRACK_ACCEPTS, isCropped, isPlaceholder, trackTakes, type OpInput, type TrackKind } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, NO_CROP, TRACK_ACCEPTS, isCropped, isPlaceholder, trackTakes, type Clip, type OpInput, type TrackKind } from "@/lib/timeline";
 import { fillSlots } from "@/lib/templates/fill";
 import { copyClips, pasteItems, type ClipboardStore } from "./clipboard";
 import {
@@ -54,6 +54,11 @@ export function addText(
   return placement.clipIds[0] ?? null;
 }
 
+// Whether the clip is an empty slot that takes this asset: visual for a video or image, audio for audio.
+export function placeholderTakes(clip: Clip | undefined, asset: AssetView): boolean {
+  return !!clip && isPlaceholder(clip) && (clip.accepts === "audio") === (asset.kind === "audio");
+}
+
 // Puts a clip of a library asset at the frame given, else the playhead, and selects it unless select is false. The
 // clip would like the track given (null: none), else the selected track when that track takes it; placeClips finds
 // where it goes. A still image lasts stillSeconds (Settings), else the default; a video or audio clip runs to the end
@@ -65,6 +70,11 @@ export function addMedia(
 ): boolean {
   const state = store.getState();
   if (!state.canEdit) return false;
+  // A click or a drop on the preview (no frame, no track) fills the selected slot when the asset fits it.
+  if (opts.frame === undefined && opts.trackId === undefined && state.selection.clipIds.length === 1) {
+    const picked = findClip(state.doc, state.selection.clipIds[0])?.clip;
+    if (placeholderTakes(picked, asset)) return fillPlaceholder(store, picked!.id, asset);
+  }
   // For video and audio durationSeconds would cap the length, so only an image is given one.
   const length = { durationSeconds: asset.kind === "image" ? opts.stillSeconds : undefined };
   const clip = asset.status === "ready" && !asset.removed ? mediaClipFor(asset, opts.frame ?? state.playhead, state.doc.fps, length) : null;
@@ -109,6 +119,7 @@ export function fillPlaceholder(store: EditorStore, clipId: string, asset: Asset
     return false;
   }
   state.select([clipId]);
+  if (filled.short.length > 0) state.notify("info", MESSAGES.slotShort(clip.slot.name));
   return true;
 }
 

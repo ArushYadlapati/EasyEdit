@@ -727,3 +727,32 @@ it("dropping on a clip that is not a placeholder adds the item as before", () =>
   expect(filled.getState().doc.tracks.flatMap((t) => t.clips).length).toBe(5);
   expect(findClip(filled.getState().doc, "ph")!.clip.type).toBe("placeholder");
 });
+
+it("while dragging over an empty slot that takes it, the box is the slot's own span", () => {
+  const filled = withPlaceholder();
+  const view = open({ store: filled });
+  dragging(VIDEO);
+  view.dragOver(view.lane(2), x(10), y(2));
+  const box = view.ghost()!;
+  expect(parseFloat(box.style.left)).toBe(LANE_LEFT + 0 * ZOOM);
+  expect(parseFloat(box.style.width)).toBe(30 * ZOOM); // the slot's 30 frames, not the video's 60
+  expect(parseFloat(box.style.top)).toBe(2 * ROW_HEIGHT + CLIP_TOP);
+});
+
+it("over an empty slot that does not take it, the box is where it would be added", () => {
+  const filled = withPlaceholder();
+  const view = open({ store: filled });
+  dragging(AUDIO);
+  view.dragOver(view.lane(2), x(10), y(2), { [ASSET_DRAG_TYPE]: "m" });
+  expect(parseFloat(view.ghost()!.style.width)).toBe(60 * ZOOM); // the audio's own 2 s, not the slot's 30 frames
+});
+
+it("a drop that fills a slot with footage shorter than it says there is a gap", () => {
+  const filled = withPlaceholder(); // 30 frames
+  const view = open({ store: filled });
+  const notices = noticesOf(filled);
+  dragging(assetView({ id: "s", durationMs: 500 })); // 15 frames
+  media.library.getState().put(assetView({ id: "s", durationMs: 500 }));
+  view.dropOn(view.lane(2), x(10), y(2), "s");
+  expect(notices).toEqual(["intro: the clip is shorter than the slot, so there's a gap after it."]);
+});

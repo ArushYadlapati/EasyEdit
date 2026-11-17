@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type DOMAttributes } from "react";
 import { createStore, type StoreApi } from "zustand/vanilla";
-import { addMedia, fillPlaceholder } from "@/lib/editor/actions";
+import { addMedia, fillPlaceholder, placeholderTakes } from "@/lib/editor/actions";
 import type { TimelinePoint } from "@/lib/editor/geometry";
 import { mediaClipFor } from "@/lib/editor/media-clips";
 import { ASSET_DRAG_TYPE, carriesFiles, dragKind, dropTrack } from "@/lib/editor/media-drop";
@@ -39,6 +39,9 @@ function landingFrame(state: EditorState, at: TimelinePoint, length: number | nu
 // would make a new track.
 function hoverFor(state: EditorState, at: TimelinePoint, asset: AssetView, stillSeconds: number): DropHover {
   const { doc } = state;
+  // Over an empty slot that takes it, the item would fill the slot: the box is the slot's own span on its row.
+  const slot = at.trackId === null ? undefined : doc.tracks.find((t) => t.id === at.trackId)?.clips.find((c) => at.frame >= c.start && at.frame < c.start + c.duration);
+  if (slot && placeholderTakes(slot, asset)) return { trackId: at.trackId, start: slot.start, duration: slot.duration, guide: null };
   const clip = clipOf(asset, at.frame, doc.fps, stillSeconds);
   const { frame, guide } = landingFrame(state, at, clip?.duration ?? null);
   if (!clip) return { trackId: at.trackId, start: frame, duration: null, guide };

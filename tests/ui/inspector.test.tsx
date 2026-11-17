@@ -10,7 +10,7 @@ import { MESSAGES, explainOpError } from "@/lib/editor/messages";
 import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
 import { findClip, viewDoc } from "@/lib/editor/store";
 import { LIMITS } from "@/lib/limits";
-import { DEFAULT_TRANSFORM, isCropped } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, isCropped, type Clip } from "@/lib/timeline";
 import { entry, makeStore, sampleDoc, text, video } from "../editor/fixtures";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
@@ -868,6 +868,21 @@ describe("template slot section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Make this a slot" }));
     expect(store.getState().queue).toMatchObject([{ ops: [{ op: "update_clip", clipId: "x1", patch: { slot: { name: "slot_1" } } }] }]);
     expect(screen.getByLabelText("Name")).toBeTruthy();
+  });
+
+  it("a placeholder says how to fill it, a plain slot does not", () => {
+    const doc = sampleDoc();
+    doc.tracks[0].clips = [{ id: "ph", type: "placeholder", accepts: "visual", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "intro" } } as Clip];
+    doc.tracks[3].clips = [{ id: "pa", type: "placeholder", accepts: "audio", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "music" } } as Clip];
+    const store = makeStore({ doc });
+    store.getState().select(["ph"]);
+    const view = render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    expect(screen.getByText("Drop a video or image from Media onto this slot, or select it and click one in Media.")).toBeTruthy();
+    act(() => store.getState().select(["pa"]));
+    expect(screen.getByText("Drop an audio file from Media onto this slot, or select it and click one in Media.")).toBeTruthy();
+    act(() => store.getState().select(["x1"]));
+    expect(screen.queryByText(/onto this slot/)).toBeNull();
+    view.unmount();
   });
 
   it("skips names that other clips use", () => {

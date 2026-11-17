@@ -75,6 +75,11 @@ export function SlotSection({ clip }: { clip: Clip }) {
     <div className="flex flex-col gap-2">
       <h2 className="text-sm leading-5 font-semibold text-ed-text">Template slot</h2>
       <p className="text-[13px] leading-5 text-ed-muted">A slot is a part of the template that gets filled in later.</p>
+      {clip.type === "placeholder" && (
+        <p className="text-[13px] leading-5 text-ed-muted">
+          Drop {clip.accepts === "audio" ? "an audio file" : "a video or image"} from Media onto this slot, or select it and click one in Media.
+        </p>
+      )}
       {!slot ? (
         <div className="flex flex-col items-start">
           <Button data-edit-control disabled={off} onClick={() => write({ name: nextSlotName(store.getState().doc) }, "make slot")}>
