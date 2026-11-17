@@ -1,7 +1,7 @@
 import type { PresenceApi, PresenceResult, PresenceShare } from "@/lib/editor/api";
 import type { makeFakeServer } from "./fake-server";
 
-type Failure = "network" | "signed-out" | "not-found" | "share-refused";
+type Failure = "network" | "signed-out" | "not-found" | "moved-elsewhere" | "share-refused";
 type Answer = unknown[] | null | ((share: number) => unknown[] | null); // a function gets the share's number, from 1
 
 // An in-memory stand-in for POST and DELETE /presence, answering with the fake server's version. It keeps its own

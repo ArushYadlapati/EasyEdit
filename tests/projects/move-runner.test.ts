@@ -329,14 +329,27 @@ describe("moving a project from the browser", () => {
     expect(w.log).toEqual(["start p1 s2", "abandon m1"]);
   });
 
-  it("a piece Drive refuses stops the move without abandoning it, so a retry resumes", async () => {
+  it("a piece the destination's Drive refuses stops the move without abandoning it, and says that Drive may be full", async () => {
     const w = world();
     w.pieceHooks.push(() => {
       throw new PieceError("refused");
     });
+    expect(await w.run()).toEqual({ ok: false, message: MOVE_MESSAGES.destinationRefused("Team Two") });
+    expect(MOVE_MESSAGES.destinationRefused("Team Two")).toBe("Team Two's Google Drive refused the copy. It may be full. Free up space or reconnect it, then try the move again.");
+    expect(w.log).toEqual(["start p1 s2", "openCopy a"]);
+  });
+
+  it("pieces that keep failing on the way stop the move with the connection sentence", async () => {
+    const w = world({ sources: [B] });
+    w.pieceHooks.push(() => {
+      throw new PieceError("network");
+    });
+    // The server can't be reached to ask where the copy is, either.
+    const openCopy = w.api.openCopy;
+    let opens = 0;
+    w.api.openCopy = async (...args) => (++opens === 1 ? openCopy(...args) : { ok: false, code: "NETWORK", message: "" });
     expect(await w.run()).toEqual({ ok: false, message: COPY_STOPPED });
     expect(COPY_STOPPED).toBe("Copying stopped. Check your connection and try again; what was copied is kept.");
-    expect(w.log).toEqual(["start p1 s2", "openCopy a"]);
   });
 
   it("an original Drive will not give stops the move, names it, and keeps what was copied", async () => {
@@ -393,7 +406,7 @@ describe("moving a project from the browser", () => {
       });
       return openFile(...args);
     };
-    expect(await w.run()).toEqual({ ok: false, message: COPY_STOPPED });
+    expect(await w.run()).toEqual({ ok: false, message: MOVE_MESSAGES.destinationRefused("Team Two") });
     expect(w.log).toEqual(["start p1 s2", "openCopy a", "completeCopy copy-a", "openCopyFile copy-a preview 6"]);
   });
 
@@ -424,6 +437,45 @@ describe("moving a project from the browser", () => {
     unknown.scripted.finish = [{ ok: false, code: "NETWORK", message: "" }];
     unknown.scripted.projectSpace = [{ ok: false, code: "NETWORK", message: "" }];
     expect(await unknown.run()).toMatchObject({ ok: false, code: "NETWORK" });
+  });
+
+  it("a finish the server failed after the move landed counts as done", async () => {
+    const w = world();
+    w.scripted.finish = [{ ok: false, code: "INTERNAL", message: "Something went wrong." }];
+    w.scripted.projectSpace = [{ ok: true, value: { spaceId: "s2", version: 9 } }];
+    expect(await w.run()).toEqual({ ok: true, moved: { projectId: "p1", spaceId: "s2", slug: "team-two", version: 9 } });
+    expect(w.log.slice(-2)).toEqual(["finish m1", "projectSpace p1"]);
+  });
+
+  it("a refused finish with the project still where it was says the server's sentence", async () => {
+    const w = world();
+    w.scripted.finish = [{ ok: false, code: "CONFLICT", message: MOVE_MESSAGES.busy }];
+    expect(await w.run()).toEqual({ ok: false, message: MOVE_MESSAGES.busy, code: "CONFLICT" });
+    expect(w.log.slice(-2)).toEqual(["finish m1", "projectSpace p1"]);
+    expect(w.log).not.toContain("abandon m1");
+  });
+
+  it("Cancel pressed while a finish that landed was on its way: the move is done, not canceled", async () => {
+    const w = world();
+    const finish = w.api.finish;
+    w.api.finish = async (moveId) => {
+      await finish(moveId);
+      w.abort.abort();
+      return { ok: false, code: "NETWORK", message: "" }; // the answer was lost too
+    };
+    w.scripted.projectSpace = [{ ok: true, value: { spaceId: "s2", version: 9 } }];
+    expect(await w.run()).toEqual({ ok: true, moved: { projectId: "p1", spaceId: "s2", slug: "team-two", version: 9 } });
+    expect(w.log).not.toContain("abandon m1");
+  });
+
+  it("Cancel pressed while a finish that did not land was on its way: canceled", async () => {
+    const w = world();
+    w.api.finish = async () => {
+      w.abort.abort();
+      return { ok: false, code: "NETWORK", message: "" };
+    };
+    expect(await w.run()).toMatchObject({ ok: false, canceled: true });
+    expect(w.log.slice(-2)).toEqual(["projectSpace p1", "abandon m1"]);
   });
 
   it("a refused start says why and asks nothing more", async () => {

@@ -1,10 +1,11 @@
+import "server-only";
 import { z } from "zod";
 import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
 import { apiRoute } from "@/lib/api-route";
 import { checkAppBudget } from "@/lib/app-budget";
 import type { DriveClient } from "@/lib/drive/client";
-import { withDriveErrors } from "@/lib/media/handlers";
+import { logDriveError, withDriveErrors } from "@/lib/media/handlers";
 import { ServiceError } from "@/lib/service-error";
 import { projectActor } from "@/lib/spaces/access";
 import { abandonMove, completeCopy, completeCopyFile, finishMove, openCopy, openCopyFile, startMove, type MoveDeps } from "./move";
@@ -47,7 +48,7 @@ async function bodyOf<T>(req: Request, shape: z.ZodType<T>): Promise<T> {
 export function makeMoveHandlers(deps: MoveHandlerDeps) {
   const moveDeps = (): MoveDeps => {
     const db = deps.db();
-    return { db, driveFor: (spaceId) => deps.driveFor(db, spaceId), origin: deps.origin(), storage: deps.storage };
+    return { db, driveFor: (spaceId) => deps.driveFor(db, spaceId), origin: deps.origin(), onDriveError: logDriveError, storage: deps.storage };
   };
 
   // Every route: refuse a cross-site write, sign-in, then the work with Drive failures answered as the media routes do.

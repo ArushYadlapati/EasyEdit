@@ -82,6 +82,7 @@ describe("project api", () => {
     [401, { code: "UNAUTHENTICATED", message: "m" }, { ok: false, kind: "signed-out" }],
     [403, { code: "FORBIDDEN", message: "m" }, { ok: false, kind: "forbidden" }],
     [404, { code: "NOT_FOUND", message: "m" }, { ok: false, kind: "not-found" }],
+    [404, { code: "MOVED_ELSEWHERE", message: "m" }, { ok: false, kind: "moved-elsewhere" }],
     [429, { code: "LIMIT_EXCEEDED", message: "Too many changes at once. Wait a minute, then keep going." }, { ok: false, kind: "limited", message: "Too many changes at once. Wait a minute, then keep going." }],
     [429, { code: "RATE", message: "m" }, { ok: false, kind: "network" }],
     [500, { code: "INTERNAL", message: "m" }, { ok: false, kind: "network" }],
@@ -156,6 +157,7 @@ describe("presence api", () => {
   it("keeps the usual kinds for the server's own signed-out and not-found", async () => {
     expect(await presenceWith(() => json(401, { code: "UNAUTHENTICATED", message: "m" })).api.share(share)).toEqual({ ok: false, kind: "signed-out" });
     expect(await presenceWith(() => json(404, { code: "NOT_FOUND", message: "m" })).api.share(share)).toEqual({ ok: false, kind: "not-found" });
+    expect(await presenceWith(() => json(404, { code: "MOVED_ELSEWHERE", message: "m" })).api.share(share)).toEqual({ ok: false, kind: "moved-elsewhere" });
   });
 
   it.each([

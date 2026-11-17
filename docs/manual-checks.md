@@ -44,7 +44,7 @@ Moving copies media between two real Google Drives, so it needs a real browser a
 
 1. In the first space, make a project with a video (with its small preview), an image and a song, and put all three on the timeline. Make a change or two, so there is something to undo.
 2. On the dashboard, open the project's menu and choose **Move to…**. The dialog lists your other spaces. **Move** stays dimmed until you choose one.
-3. Choose the other space and click **Move**. It says "Copying 1 of 4 files" and counts up, with a bar. Press Escape and click the close button: nothing happens. Try to close the tab: the browser asks first.
+3. Choose the other space and click **Move**. It says "Copying 0 of 6 files" (up to 6: the video, its preview and its picture, the image and its picture, and the song; fewer when some of those don't exist yet) and counts up, with a bar. Press Escape and click the close button: nothing happens. Try to close the tab: the browser asks first.
 4. When it ends you land on the other space's dashboard. The project is there, opens, plays with its video, image and song, and shows its picture. It is gone from the first space.
 5. In the editor, undo: changes made before the move are not undone. The video plays from its preview.
 6. Move it back, the other way (team to personal, then personal to team). Do both directions once.

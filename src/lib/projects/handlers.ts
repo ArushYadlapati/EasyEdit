@@ -6,6 +6,8 @@ import { apiRoute } from "@/lib/api-route";
 import { checkAppBudget } from "@/lib/app-budget";
 import { LIMITS } from "@/lib/limits";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
+import { movedElsewhere } from "@/lib/projects/move";
+import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
 import { recordOpen } from "@/lib/projects/opens";
 import { checkIn, leavePresence, type Share } from "@/lib/projects/presence";
 import {
@@ -75,12 +77,18 @@ async function collectionActor(deps: HandlerDeps, req: Request): Promise<Actor |
 }
 
 // A person acting in the space the project belongs to. A project they cannot see (unknown, deleted, or in a space
-// they are not a member of) answers exactly as an unknown project does. `whenGone` replaces that answer for the
-// routes that answer 204 for an unknown project.
-async function itemActor(deps: HandlerDeps, req: Request, id: string, whenGone: () => Response = () => notFound(id)): Promise<Actor | Response> {
+// they are not a member of) answers exactly as an unknown project does, except one moved away from a space they are
+// in: that answers 404 MOVED_ELSEWHERE, so their open editor says it moved rather than that it was deleted.
+// `whenGone` replaces that answer for the routes that answer 204 for an unknown project.
+async function itemActor(deps: HandlerDeps, req: Request, id: string, whenGone?: () => Response): Promise<Actor | Response> {
   const user = await deps.auth(req);
   if (user instanceof Response) return user;
-  return (await projectActor(deps.db(), user, id)) ?? whenGone();
+  const db = deps.db();
+  const actor = await projectActor(db, user, id);
+  if (actor) return actor;
+  if (whenGone) return whenGone();
+  if (await movedElsewhere(db, user.id, id)) return errorResponse(404, { code: "MOVED_ELSEWHERE", message: MOVE_MESSAGES.movedAway });
+  return notFound(id);
 }
 
 function describeIssue(error: z.ZodError): string {

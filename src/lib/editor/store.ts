@@ -44,6 +44,7 @@ export type EditorState = {
   // The project moved to another space while this tab was open. Nothing more is sent or fetched, and nothing can be
   // changed here: the edits still waiting stay on screen, unsent.
   moved: boolean;
+  movedElsewhere: boolean; // moved, to a space this person is not in: there is nowhere to open it
   movedAtVersion: number | null; // the version the project's last move made, as the page loaded it; null: never moved
   server: { doc: TimelineDoc; version: number }; // what the server is known to hold
   queue: PendingEdit[]; // local edits not yet confirmed, oldest first
@@ -107,7 +108,7 @@ export type EditorState = {
   limitMessage: string | null; // why saving waits, while the status is "limited"
   setStatus(status: SyncStatus, limitMessage?: string): void;
   revokeEditing(): void;
-  markMoved(): void; // the project moved to another space: editing ends here, and the waiting edits are kept, unsent
+  markMoved(elsewhere?: boolean): void; // the project moved to another space (elsewhere: one this person is not in): editing ends here, and the waiting edits are kept, unsent
   // playback, open to viewers too
   play(): void; // from the start when the playhead is at the end; not in a project with no clips
   pause(): void;
@@ -315,6 +316,7 @@ export function createEditorStore(
       me: init.me,
       canEdit: init.canEdit,
       moved: false,
+      movedElsewhere: false,
       movedAtVersion: init.movedAtVersion ?? null,
       server: { doc: init.doc, version: init.version },
       queue: [],
@@ -600,9 +602,9 @@ export function createEditorStore(
         });
       },
 
-      markMoved() {
+      markMoved(elsewhere = false) {
         if (get().moved) return;
-        set({ moved: true, canEdit: false, gesture: null, cropArmed: null, textEditId: null, tool: "select", guideId: null });
+        set({ moved: true, movedElsewhere: elsewhere, canEdit: false, gesture: null, cropArmed: null, textEditId: null, tool: "select", guideId: null });
       },
 
       play() {

@@ -83,6 +83,7 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
   const { signal } = input;
   const read = { tokens, fetch: deps.fetch };
   let moveId: string | null = null;
+  let destination = ""; // the name of the space the project goes to, once the plan is in
 
   const canceled = async (): Promise<MoveOutcome> => {
     if (moveId !== null) await api.abandon(moveId);
@@ -150,6 +151,8 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
           // Drive will not give the original: no try will copy it, so the person is told which one it is.
           if (unreadable()) throw new Stopped(MOVE_MESSAGES.cantReadSource(item.name));
           if ((renewed || sent.reason === "expired") && tries < SESSION_TRIES) continue;
+          // The source was readable, so it was the destination's Drive that would not take the piece.
+          if (sent.reason === "refused") throw new Stopped(MOVE_MESSAGES.destinationRefused(destination));
           throw new Stopped(COPY_STOPPED);
         }
       }
@@ -187,7 +190,7 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
       checkSignal();
       if (!sent.ok) {
         if (unreadable()) return null;
-        if (sent.reason === "refused") throw new Stopped(COPY_STOPPED);
+        if (sent.reason === "refused") throw new Stopped(MOVE_MESSAGES.destinationRefused(destination));
         sentence = new Stopped(COPY_STOPPED);
         continue;
       }
@@ -239,21 +242,24 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
       if (planned.ok) moveId = planned.value.moveId;
       checkSignal();
       const plan = valueOf(planned);
+      destination = plan.to.name;
       input.onPlan?.(plan);
       await copyAll(plan);
       checkSignal();
       const finished = await api.finish(plan.moveId);
       if (finished.ok) return { ok: true, moved: finished.value };
-      checkSignal();
-      // Media was added to the project while it was copying: plan again, and copy that too.
-      if (finished.code === "NETWORK") {
-        // The answer may have been lost after the move was done: ask where the project is.
+      if (finished.code !== "COPIES_MISSING") {
+        // The move may have happened all the same: the answer lost, or the server failing after the write. Where the
+        // project is says so, and is asked before a Cancel pressed meanwhile counts, so a move that happened is never
+        // reported as canceled.
         const now = await api.projectSpace(input.projectId);
         if (now.ok && now.value.spaceId === input.toSpaceId) {
           return { ok: true, moved: { projectId: input.projectId, spaceId: now.value.spaceId, slug: plan.to.slug, version: now.value.version } };
         }
       }
+      checkSignal();
       if (finished.code !== "COPIES_MISSING") return { ok: false, message: sentenceOf(finished), code: finished.code };
+      // Media was added to the project while it was copying: plan again, and copy that too.
       if (round === MAX_ROUNDS) return { ok: false, message: MOVE_MESSAGES.copiesMissing, code: finished.code };
     }
   } catch (error) {

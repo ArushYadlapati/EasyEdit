@@ -4,7 +4,7 @@
 import { sql } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 import type { DB } from "@/db";
-import { user } from "@/db/schema";
+import { projectMove, user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { UNAUTHENTICATED_BODY } from "@/lib/api-errors";
 import { loadRecentActivity } from "@/lib/editor/activity";
@@ -136,6 +136,7 @@ async function moveToAdasSpace(db: DB, id: string): Promise<string> {
     wipe as (update project_ops set inverse = null where project_id = ${id} and exists (select 1 from upd))
     insert into project_ops (project_id, version, ops, inverse, actor) select ${id}, version, '[]'::jsonb, null, ${ADA.id} from upd
   `);
+  await db.insert(projectMove).values({ id: `move-${id}`, projectId: id, fromSpaceId: SEED_TEAM_ID, toSpaceId: to, startedBy: ADA.id, finishedAt: new Date() });
   return to;
 }
 
@@ -374,7 +375,7 @@ describe("the editor against the real server", () => {
       ada.sync.visibilityChanged(); // check now
       await until(() => ada.st().moved);
       expect(ada.st()).toMatchObject({ canEdit: false, server: { version: 1 } });
-      expect(ada.wire.requests).toEqual(["POST /presence"]);
+      expect(ada.wire.requests).toEqual(["POST /presence", expect.stringMatching(/^DELETE \/presence\?tab=/)]); // and it leaves
       expect((await getProject(db, actor(ADA, to), id))!.version).toBe(2);
     });
 
@@ -391,14 +392,16 @@ describe("the editor against the real server", () => {
       expect(findClip(s.doc, "x2")!.clip.start).toBe(90);
     });
 
-    it("someone who is not in the new space is answered 404, and sees the project as gone", async () => {
+    it("someone who is not in the new space is answered 404 MOVED_ELSEWHERE, and is told it moved, not that it was deleted", async () => {
       const { db, id } = await project();
       const grace = await openEditor(db, id, GRACE, {}, 0, { spaceId: SEED_TEAM_ID });
       await moveToAdasSpace(db, id);
       grace.st().edit(moveX2(200), "move");
-      await until(() => grace.st().status === "deleted");
-      expect(grace.st().moved).toBe(false);
-      expect(grace.wire.requests).toEqual(["POST /ops", "GET /version"]);
+      await until(() => grace.st().moved);
+      expect(grace.st()).toMatchObject({ movedElsewhere: true, canEdit: false });
+      expect(grace.st().status).not.toBe("deleted");
+      expect(grace.st().queue).toHaveLength(1);
+      expect(grace.wire.requests).toEqual(["POST /ops"]);
     });
   });
 });

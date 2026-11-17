@@ -2,7 +2,7 @@ import type { ProjectApi } from "@/lib/editor/api";
 import type { ActivityEntry } from "@/lib/editor/types";
 import { OpError, applyOps, prepareOps, type Op, type OpInput, type TimelineDoc } from "@/lib/timeline";
 
-type Failure = "network" | "signed-out" | "forbidden" | "not-found" | "conflict" | "limited";
+type Failure = "network" | "signed-out" | "forbidden" | "not-found" | "moved-elsewhere" | "conflict" | "limited";
 
 export const LIMIT_MESSAGE = "Today's limit for saved changes is used up (20 MB a day). It frees up over the next 24 hours.";
 

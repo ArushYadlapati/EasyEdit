@@ -439,4 +439,29 @@ describe("after the project moved to another space", () => {
     expect(st().moved).toBe(true);
     expect(st().status).not.toBe("deleted");
   });
+
+  it("the tab leaves the project once it finds the move, so no selection of it lingers in the new space", async () => {
+    const { server, fake, st, list } = setupIn();
+    fake.answer([GRACE]);
+    await after(2000);
+    expect(fake.left()).toEqual([]);
+    server.moveTo("s2");
+    await after(2000);
+    expect(st().moved).toBe(true);
+    expect(fake.left()).toEqual(["tab-1"]);
+    expect(list().peers).toEqual([]);
+  });
+
+  it("a share answering 404 MOVED_ELSEWHERE shows the move elsewhere, leaves, and checks no more", async () => {
+    const { server, fake, st } = setupIn();
+    await after(2000);
+    fake.fail("moved-elsewhere");
+    await after(2000);
+    expect(server.calls).toEqual([]);
+    expect(st()).toMatchObject({ moved: true, movedElsewhere: true, canEdit: false });
+    expect(fake.left()).toEqual(["tab-1"]);
+    const shares = fake.count();
+    await after(POLL_IDLE_LIMIT_MS);
+    expect(fake.count()).toBe(shares);
+  });
 });

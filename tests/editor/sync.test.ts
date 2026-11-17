@@ -731,6 +731,36 @@ describe("after the project moved to another space", () => {
     expect(st().status).not.toBe("deleted");
   });
 
+  it("a write answered 404 MOVED_ELSEWHERE shows the move, not a deletion, and keeps the edit unsent", async () => {
+    const { server, st } = setupIn();
+    server.fail("moved-elsewhere");
+    st().edit(move(120), "move");
+    await settle();
+    expect(server.calls).toEqual(["post"]);
+    expect(st()).toMatchObject({ moved: true, movedElsewhere: true, canEdit: false });
+    expect(st().status).not.toBe("deleted");
+    expect(st().queue).toHaveLength(1);
+    await expectStopped(server, st);
+  });
+
+  it("a 404 NOT_FOUND whose version check answers MOVED_ELSEWHERE is moved elsewhere too", async () => {
+    const { server, st } = setupIn();
+    server.fail("not-found");
+    server.fail("moved-elsewhere");
+    await after(2000);
+    expect(server.calls).toEqual(["version", "version"]);
+    expect(st()).toMatchObject({ moved: true, movedElsewhere: true });
+    expect(st().status).not.toBe("deleted");
+    await expectStopped(server, st);
+  });
+
+  it("a move to a space the person is in is not elsewhere", async () => {
+    const { server, st } = setupIn();
+    server.moveTo("s2", ONTO_COPY);
+    await after(2000);
+    expect(st()).toMatchObject({ moved: true, movedElsewhere: false });
+  });
+
   it("a 404 confirmed by the version check is still deleted", async () => {
     const { server, st } = setupIn();
     server.fail("not-found", 2);

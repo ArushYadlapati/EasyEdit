@@ -109,7 +109,7 @@ function idsOf(req: Request): string[] | undefined {
 const notSetUp = () => Response.json(NOT_SET_UP_BODY, { status: 409 });
 
 // The one line a failed Drive call leaves: which call, the status and Google's short code, which is all a DriveError holds.
-const logDriveError = (error: DriveError) => console.error("Drive call failed", error.call, error.status, error.reason);
+export const logDriveError = (error: DriveError) => console.error("Drive call failed", error.call, error.status, error.reason);
 
 // Who is acting, and in which space. A collection route names its space in `?space=`; an item route is in the space
 // its asset belongs to. Someone who is not a member of it gets the answer a space or an asset that does not exist gets.

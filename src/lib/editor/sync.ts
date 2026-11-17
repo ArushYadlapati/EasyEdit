@@ -46,8 +46,9 @@ export type SyncPresence = { api: PresenceApi; store: PresenceStore; makeTabId?:
 type Step = () => Promise<unknown>;
 
 // Why nothing more is requested. Signed out lasts until the tab is shown again or a retry is asked
-// for (the person may have signed in again elsewhere); deleted and moved last for good.
-type Halt = "signed-out" | "deleted" | "moved";
+// for (the person may have signed in again elsewhere); deleted and moved last for good. Moved elsewhere: to a space
+// this person is not in.
+type Halt = "signed-out" | "deleted" | "moved" | "moved-elsewhere";
 
 const NETWORK_FAILURE: ApiFailure = { ok: false, kind: "network" };
 
@@ -165,8 +166,10 @@ export function createSync(deps: {
     halted = reason;
     clearTimers();
     teammates()?.forget();
-    if (reason === "moved") state().markMoved();
-    else state().setStatus(reason);
+    if (reason === "moved" || reason === "moved-elsewhere") {
+      state().markMoved(reason === "moved-elsewhere");
+      leave(); // this tab is no longer in the project: teammates stop seeing its selection at once
+    } else state().setStatus(reason);
   }
 
   // The project moved to another space. Its log from the move on names that space's media, and the server refuses
@@ -212,7 +215,8 @@ export function createSync(deps: {
         return;
       }
       case "moved":
-        halt("moved");
+      case "moved-elsewhere":
+        halt(failure.kind);
         return;
       case "forbidden":
         reached();

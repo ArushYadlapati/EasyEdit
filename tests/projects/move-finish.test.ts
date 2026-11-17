@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assets, folders, projectMove, projectOps, projectPins, projects } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
@@ -258,5 +258,45 @@ describe("two people moving one project", () => {
     for (const id of theirCopies.values()) expect(await x.w.db.select().from(assets).where(eq(assets.id, id))).toEqual([]);
     expect(seen).toHaveLength(1);
     expect(seen[0]).toBeInstanceOf(DriveError);
+  });
+
+  it("answers a move that landed as done even when ending the other moves fails", async () => {
+    const { x, club, mine, theirs } = await rivals();
+    // Ending a move now fails in the database; finishing still may.
+    await x.w.db.execute(sql`alter table project_move add constraint no_abandon check (abandoned_at is null)`);
+    const printed = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await finishMove(x.deps, "u1", mine)).toMatchObject({ projectId: "p1", spaceId: club });
+    expect((await x.w.db.select().from(projects).where(eq(projects.id, "p1")))[0].spaceId).toBe(club);
+    expect((await x.w.db.select().from(projectMove).where(eq(projectMove.id, theirs)))[0].abandonedAt).toBeNull();
+    expect(printed).toHaveBeenCalledTimes(1);
+    expect(printed.mock.calls[0][0]).toBe("Move clean-up failed");
+  });
+
+  it("leaves alone a move of the project out of the space it has just reached", async () => {
+    const { x, club, mine, theirs } = await rivals();
+    // Someone in the new space started moving it on in the moment after it landed.
+    await x.w.db.insert(projectMove).values({ id: "onward", projectId: "p1", fromSpaceId: club, toSpaceId: x.w.personal, startedBy: "u2" });
+    expect(await finishMove(x.deps, "u1", mine)).toMatchObject({ spaceId: club });
+    const [onward] = await x.w.db.select().from(projectMove).where(eq(projectMove.id, "onward"));
+    expect(onward).toMatchObject({ abandonedAt: null, finishedAt: null });
+    expect((await x.w.db.select().from(projectMove).where(eq(projectMove.id, theirs)))[0].abandonedAt).not.toBeNull();
+  });
+});
+
+describe("finishing a project with no media", () => {
+  it("moves it with an empty change in the log", async () => {
+    const x = await moveWorld();
+    const textOnly = { ...(x.doc as TimelineDoc), tracks: (x.doc as TimelineDoc).tracks.filter((t) => t.kind === "text") };
+    await x.w.db.update(projects).set({ doc: textOnly as never }).where(eq(projects.id, "p1"));
+    const plan = await startMove(x.deps, x.actor, { projectId: "p1", toSpaceId: x.w.personal });
+    expect(plan.items).toEqual([]);
+    expect(await finishMove(x.deps, "u1", plan.moveId)).toEqual({ projectId: "p1", spaceId: x.w.personal, slug: "personal", version: 1 });
+    const [row] = await x.w.db.select().from(projects).where(eq(projects.id, "p1"));
+    expect(row).toMatchObject({ spaceId: x.w.personal, version: 1, movedAtVersion: 1 });
+    expect(row.doc).toEqual(textOnly);
+    const log = await x.w.db.select().from(projectOps).where(eq(projectOps.projectId, "p1"));
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ version: 1, ops: [], inverse: null, actor: "u1" });
+    expect((await x.w.db.select().from(projectMove).where(eq(projectMove.id, plan.moveId)))[0].finishedAt).not.toBeNull();
   });
 });

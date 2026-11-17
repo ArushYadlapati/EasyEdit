@@ -42,7 +42,9 @@ When a route refuses a request, the answer has this shape:
 | 401 | `UNAUTHENTICATED` | Not signed in. |
 | 403 | `FORBIDDEN` | Your role does not allow this, or the request came from another site. |
 | 404 | `NOT_FOUND` | No project with that id. |
+| 404 | `MOVED_ELSEWHERE` | The project was moved from a space you are in to one you are not in, so it can't be edited here anymore. |
 | 409 | `CONFLICT` | The base version is ahead of the project, a strict write was not at the current version, or the project kept changing. Reload and retry. |
+| 409 | `MOVED` | Writing ops: the project moved to another space after the base version, so changes planned before the move are refused. Open it in its new space. |
 
 ## Moving a project
 
@@ -56,6 +58,6 @@ A project can be moved to another space you are an editor or admin of. The brows
 | `POST /api/moves/:moveId/copies/:assetId/complete` | none | `200` with `{ assetId, status, hasPreview, hasPoster }`, once the original's bytes are sent. |
 | `POST /api/moves/:moveId/copies/:assetId/files` | `{ "role": "preview" \| "poster", "sizeBytes" }` | `200` with `{ uploadUrl }` for that file of the copy. |
 | `POST /api/moves/:moveId/copies/:assetId/files/complete` | `{ "role" }` | `200` with `{ assetId, status, hasPreview, hasPoster }`. |
-| `POST /api/moves/:moveId/finish` | none | `200` with `{ projectId, spaceId, slug, version }`. Answers `409` `COPIES_MISSING` with `missing` while a used original has no finished copy. |
+| `POST /api/moves/:moveId/finish` | none | `200` with `{ projectId, spaceId, slug, version }`. Answers `409` `COPIES_MISSING` with `missing` while a used original has no finished copy, and `409` `CONFLICT` when the project kept changing while it was being moved (try again). |
 
-Other answers: `404` for a project or move that is not yours to see, `409` `NO_STORAGE` when the new space has no working storage, `409` `MOVED` when the project was moved or edited out from under the move, `409` `STORAGE_BROKEN` and `502` when Drive fails, as the media routes answer.
+Other answers: `404` for a project or move that is not yours to see, `409` `NO_STORAGE` when the new space has no working storage, `409` `CONFLICT` when the mover has an unfinished upload of the same file in the new space (let it finish or cancel it, then try again), `409` `STORAGE_BROKEN` and `502` when Drive fails, as the media routes answer.

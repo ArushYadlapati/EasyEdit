@@ -5,6 +5,7 @@ export type ApiFailure =
   | { ok: false; kind: "op"; code: OpErrorCode; message: string; opIndex?: number } // any 400
   | { ok: false; kind: "conflict"; currentVersion: number } // 409
   | { ok: false; kind: "moved" } // 409 with the code MOVED: the project moved to another space after this edit was planned
+  | { ok: false; kind: "moved-elsewhere" } // 404 with the code MOVED_ELSEWHERE: the project moved to a space this person is not in
   | { ok: false; kind: "signed-out" } // 401 with the code UNAUTHENTICATED
   | { ok: false; kind: "forbidden" } // 403
   | { ok: false; kind: "limited"; message: string } // 429 with the code LIMIT_EXCEEDED: the website refuses this save for now
@@ -70,6 +71,7 @@ function failureFor(status: number, body: Body | null): ApiFailure {
     case 403:
       return { ok: false, kind: "forbidden" };
     case 404:
+      if (body?.code === "MOVED_ELSEWHERE") return { ok: false, kind: "moved-elsewhere" };
       return body?.code === "NOT_FOUND" ? { ok: false, kind: "not-found" } : NETWORK;
     case 409:
       if (body?.code === "MOVED") return { ok: false, kind: "moved" };
@@ -161,7 +163,7 @@ export function createProjectApi(projectId: string, fetchFn?: typeof fetch): Pro
 
 export type PresenceShare = { tabId: string; clipIds: string[]; trackId: string | null; changedAgoMs: number };
 // "share-refused": the server answered, and the answer says the presence route itself is broken or refused this
-// request (a 400, 403, 405, 413, or a 404 without the NOT_FOUND code). Other failures keep their usual kinds.
+// request (a 400, 403, 405, 413, or a 404 without the NOT_FOUND or MOVED_ELSEWHERE code). Other failures keep their usual kinds.
 export type PresenceResult = ApiResult<{ version: number; peers: unknown[] | null } & SpaceOf> | { ok: false; kind: "share-refused" };
 export type PresenceApi = {
   share(input: PresenceShare): Promise<PresenceResult>; // the check for changes with this tab's selection
@@ -174,7 +176,7 @@ const SHARE_REFUSED = { ok: false, kind: "share-refused" } as const;
 // revoke editing or stop the editor: the caller falls back to the plain check. A 403 here is never "forbidden".
 function shareFailureFor(status: number, body: Body | null): ApiFailure | typeof SHARE_REFUSED {
   if (status === 400 || status === 403 || status === 405 || status === 413) return SHARE_REFUSED;
-  if (status === 404 && body?.code !== "NOT_FOUND") return SHARE_REFUSED;
+  if (status === 404 && body?.code !== "NOT_FOUND" && body?.code !== "MOVED_ELSEWHERE") return SHARE_REFUSED;
   return failureFor(status, body);
 }
 

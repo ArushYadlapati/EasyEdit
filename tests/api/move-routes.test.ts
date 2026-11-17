@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/access-rules";
 import { LIMITS } from "@/lib/limits";
 import { makeMoveHandlers } from "@/lib/projects/move-handlers";
@@ -35,6 +35,7 @@ async function setup(signedIn: CurrentUser | null = testUser()) {
 
 const original = LIMITS.appUploadsPerDay;
 afterEach(() => {
+  vi.restoreAllMocks();
   (LIMITS as { appUploadsPerDay: number }).appUploadsPerDay = original;
   forgetAllSources();
 });
@@ -125,5 +126,20 @@ describe("move routes", () => {
     const res = await t.api.abandon(new Request("http://x/m", { method: "DELETE" }), moveCtx(moveId));
     expect(res.status).toBe(204);
     expect((await t.api.finish(post("http://x/f"), moveCtx(moveId))).status).toBe(404);
+  });
+
+  it("logs one line, with no address, when Drive won't clean up an abandoned move's copy", async () => {
+    const t = await setup();
+    const moveId = await t.start();
+    const opened = await t.json(await t.api.openCopy(post("http://x/c", { sourceAssetId: t.x.a }), moveCtx(moveId)));
+    expect(opened.status).toBe(200);
+    const printed = vi.spyOn(console, "error").mockImplementation(() => {});
+    t.x.w.fake.failNext(/^DELETE /, 500);
+    const res = await t.api.abandon(new Request("http://x/m", { method: "DELETE" }), moveCtx(moveId));
+    expect(res.status).toBe(204);
+    expect(printed).toHaveBeenCalledTimes(1);
+    expect(printed.mock.calls[0]).toEqual(["Drive call failed", "cancel", 500, expect.any(String)]);
+    expect(JSON.stringify(printed.mock.calls)).not.toContain(opened.body.uploadUrl);
+    expect(JSON.stringify(printed.mock.calls)).not.toContain("upload_id");
   });
 });

@@ -80,6 +80,7 @@ function stubServer() {
     hold: false,
     spaceId: "s1", // the space the checks say the project is in
     moved: false, // posts of edits are answered 409 MOVED
+    elsewhere: false, // every request about the project is answered 404 MOVED_ELSEWHERE
     posts: () => requests.filter((r) => r.startsWith("POST") && r.endsWith("/ops")).length,
     versionChecks: () => requests.filter((r) => r.endsWith("/version") || (r.startsWith("POST") && r.endsWith("/presence"))).length,
     leaves: () => requests.filter((r) => r.startsWith("DELETE") && r.includes("/presence?tab=")).length,
@@ -91,6 +92,7 @@ function stubServer() {
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     requests.push(`${method} ${url}`);
+    if (server.elsewhere && !url.includes("/presence?")) return Response.json({ code: "MOVED_ELSEWHERE", message: "moved away" }, { status: 404 });
     if (url.endsWith("/presence") && method === "POST") return Response.json({ version, peers: [], spaceId: server.spaceId });
     if (url.includes("/presence?") && method === "DELETE") return new Response(null, { status: 204 });
     if (method === "POST" && server.moved) return Response.json({ code: "MOVED", message: "moved", currentVersion: version }, { status: 409 });
@@ -1086,6 +1088,26 @@ it("a project moved to another space says so, links there, and turns editing off
   const checks = server.versionChecks();
   await after(60_000);
   expect(server.versionChecks()).toBe(checks);
+});
+
+it("a project moved to a space the person is not in says so, links nowhere, and turns editing off", async () => {
+  const server = stubServer();
+  render(<EditorShell space={SPACE} initial={initial()} />);
+  await flush();
+  server.elsewhere = true;
+  await after(2000);
+  expect(screen.getByText(MOVE_MESSAGES.movedAway)).toBeTruthy();
+  expect(screen.queryByText(MOVE_MESSAGES.moved)).toBeNull();
+  expect(screen.queryByRole("link", { name: "Open it there" })).toBeNull();
+  expect(screen.queryByText(/deleted/i)).toBeNull();
+  expect(screen.getByText("Moved")).toBeTruthy();
+  const controls = [...document.querySelectorAll<HTMLButtonElement>("[data-edit-control]")];
+  expect(controls.length).toBeGreaterThan(10);
+  for (const control of controls) expect(control.disabled, control.outerHTML.slice(0, 120)).toBe(true);
+  const checks = server.versionChecks();
+  await after(60_000);
+  expect(server.versionChecks()).toBe(checks);
+  expect(server.posts()).toBe(0);
 });
 
 it("an edit answered 409 MOVED shows the move too, and keeps the edit unsent", async () => {
