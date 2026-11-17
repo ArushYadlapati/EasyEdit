@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { OpError } from "./errors";
-import { Clip, FormatId, Guide, MediaClip, SafeArea, TextClip, TextStyle, Track, TrackKind, TrackName, Transform } from "./types";
+import { Clip, FormatId, Guide, MediaClip, PlaceholderClip, SafeArea, Slot, TextClip, TextStyle, Track, TrackKind, TrackName, Transform } from "./types";
 
 const id = z.string().min(1);
 const optionalId = { id: id.optional() };
@@ -21,6 +21,7 @@ const ClipExpect = z
     speed: MediaClip.shape.speed,
     volume: MediaClip.shape.volume,
     text: TextClip.shape.text,
+    slot: Slot.nullable(),
     transform: Transform.partial().strict(),
     style: TextStyle.partial().strict(),
   })
@@ -30,6 +31,7 @@ const ClipExpect = z
 const ClipInput = z.discriminatedUnion("type", [
   MediaClip.extend(optionalId),
   TextClip.extend(optionalId),
+  PlaceholderClip.extend(optionalId),
 ]);
 
 const newTrack = { kind: TrackKind, name: TrackName };

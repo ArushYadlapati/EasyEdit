@@ -33,6 +33,13 @@ export const Transform = z.object({
 });
 export type Transform = z.infer<typeof Transform>;
 
+// A name on a clip that marks it as a place a person or Claude fills later (a template's slot).
+export const Slot = z.strictObject({
+  name: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
+  hint: z.string().max(LIMITS.slotHintChars).refine(isStorableText, UNSTORABLE_TEXT).optional(),
+});
+export type Slot = z.infer<typeof Slot>;
+
 const ClipBase = {
   id: z.string().min(1),
   start: z.number().int().min(0),
@@ -47,6 +54,7 @@ export const MediaClip = z.object({
   in: z.number().int().min(0),
   speed: z.number().positive(),
   volume: z.number().min(0).max(2),
+  slot: Slot.optional(),
 });
 export type MediaClip = z.infer<typeof MediaClip>;
 
@@ -64,11 +72,25 @@ export const TextClip = z.object({
   type: z.literal("text"),
   text: z.string().max(LIMITS.textClipChars).refine(isStorableText, UNSTORABLE_TEXT),
   style: TextStyle,
+  slot: Slot.optional(),
 });
 export type TextClip = z.infer<typeof TextClip>;
 
-export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip]);
+// An empty slot: it holds a place on a track, takes no media yet, and draws nothing. Always has its slot.
+export const PlaceholderClip = z.object({
+  ...ClipBase,
+  type: z.literal("placeholder"),
+  accepts: z.enum(["visual", "audio"]),
+  slot: Slot,
+});
+export type PlaceholderClip = z.infer<typeof PlaceholderClip>;
+
+export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip]);
 export type Clip = z.infer<typeof Clip>;
+
+export function isPlaceholder(clip: Clip): clip is PlaceholderClip {
+  return clip.type === "placeholder";
+}
 
 export const Track = z.object({
   id: z.string().min(1),

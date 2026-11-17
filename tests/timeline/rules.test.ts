@@ -15,7 +15,7 @@ describe("limits", () => {
   it("holds the agreed values", () => {
     expect(LIMITS).toEqual({ projectNameChars: 100, textClipChars: 2000, tracksPerProject: 20, guidesPerProject: 50, clipsPerTrack: 1000,
       docBytes: 2_097_152, opsPerRequest: 500, opsPageDefault: 100, opsPageMax: 500, opLogRowBytes: 1_048_576,
-      opsPageBytes: 2_097_152, trackNameChars: 100, connectorReadChars: 16_000, connectorEchoChars: 6_000,
+      opsPageBytes: 2_097_152, trackNameChars: 100, slotHintChars: 200, connectorReadChars: 16_000, connectorEchoChars: 6_000,
       connectorListPage: 50, connectorConflictEntries: 10, connectorTextItems: 20, connectorWritesPerMinute: 30,
       connectorBytesPerDay: 10_485_760, connectorProjectsPerDay: 50, appEditBytesPerDay: 20_971_520, appEditsPerMinute: 600,
       appProjectsPerDay: 25, appUploadsPerDay: 500, foldersPerSpace: 200, connectorNewIdLines: 50,

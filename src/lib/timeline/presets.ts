@@ -110,6 +110,12 @@ export const TRACK_ACCEPTS: Record<TrackKind, Clip["type"][]> = {
   audio: ["audio"],
 };
 
+// Whether a track of this kind takes this clip. A placeholder goes by what it accepts: visual on video and overlay, audio on audio.
+export function trackTakes(kind: TrackKind, clip: Clip): boolean {
+  if (clip.type !== "placeholder") return TRACK_ACCEPTS[kind].includes(clip.type);
+  return clip.accepts === "audio" ? kind === "audio" : kind === "video" || kind === "overlay";
+}
+
 function emptyTrack(id: string, kind: TrackKind, name: string): Track {
   return { id, kind, name, muted: false, hidden: false, locked: false, clips: [] };
 }

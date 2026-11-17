@@ -8,16 +8,17 @@ import {
   FRAME_SIZE_MESSAGE,
   NO_CROP,
   NO_STRETCH,
-  TRACK_ACCEPTS,
   isFrameSize,
   maxSafeAreaHeight,
+  trackTakes,
 } from "./presets";
-import { MediaClip, TextClip, Transform, TextStyle } from "./types";
+import { MediaClip, PlaceholderClip, TextClip, Transform, TextStyle } from "./types";
 import type { Clip, FormatId, FrameSize, Guide, TimelineDoc, Track } from "./types";
 
 // update_clip re-validates strictly so a typo'd or foreign key is rejected, not dropped.
 const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).strict();
 const StrictTextClip = TextClip.extend({ transform: Transform.strict(), style: TextStyle.strict() }).strict();
+const StrictPlaceholderClip = PlaceholderClip.extend({ transform: Transform.strict() }).strict();
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
 
 // Optional transform fields, each with its neutral value. update_clip fills a missing one before it is set or
@@ -112,7 +113,7 @@ function assertUnlocked(track: Track, opIndex: number, opName: string) {
 }
 
 function assertAccepts(track: Track, clip: Clip, opIndex: number, opName: string) {
-  if (!TRACK_ACCEPTS[track.kind].includes(clip.type)) {
+  if (!trackTakes(track.kind, clip)) {
     throw new OpError(
       "WRONG_TRACK_KIND",
       `${opName}: ${clip.type} clip "${clip.id}" cannot go on ${track.kind} track "${track.id}"`,
@@ -347,7 +348,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         assertUnlocked(track, opIndex, name);
         const target = track.clips[clipIndex];
         if (op.expect && !holds(target, op.expect)) throw stale(`clip "${op.clipId}"`);
-        if (op.in !== undefined && (op.edge !== "start" || target.type === "text")) {
+        if (op.in !== undefined && (op.edge !== "start" || target.type === "text" || target.type === "placeholder")) {
           throw new OpError(
             "INVALID",
             `${name}: "in" is only allowed when trimming the start of a media clip`,
@@ -382,7 +383,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (op.edge === "end") {
           const to = target.start + target.duration;
           groups.push([{ op: "trim_clip", clipId: op.clipId, edge: "end", to, expect: { start, duration } }]);
-        } else if (target.type === "text" || sourceIn === undefined) {
+        } else if (sourceIn === undefined || target.type === "text" || target.type === "placeholder") {
           groups.push([{ op: "trim_clip", clipId: op.clipId, edge: "start", to: target.start, expect: { start } }]);
         } else {
           groups.push([
@@ -398,7 +399,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         }
         target.start = start;
         target.duration = duration;
-        if (target.type !== "text" && sourceIn !== undefined) target.in = sourceIn;
+        if ((target.type === "video" || target.type === "audio" || target.type === "image") && sourceIn !== undefined) target.in = sourceIn;
         sortTrack(track);
         assertNoOverlap(track, opIndex, name);
         break;
@@ -434,11 +435,11 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         right.id = op.newClipId;
         right.start = op.at;
         right.duration = end - op.at;
-        if ((right.type === "video" || right.type === "audio") && left.type !== "text") {
+        if (right.type === "video" && left.type === "video" || right.type === "audio" && left.type === "audio") {
           // Counted back from where the clip ends in its source, so the right piece ends there too.
           const sourceEnd = left.in + Math.round(left.duration * left.speed);
           right.in = sourceEnd - Math.round(right.duration * left.speed);
-        } else if (right.type !== "text" && left.type !== "text") {
+        } else if (right.type === "image" && left.type === "image") {
           right.in = left.in + Math.floor((op.at - left.start) * left.speed);
         }
         left.duration = op.at - left.start;
@@ -455,7 +456,12 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         for (const key of [...transformKeys(op.patch), ...transformKeys(op.expect)]) {
           if (Object.hasOwn(TRANSFORM_FILL, key) && transform[key] === undefined) transform[key] = TRANSFORM_FILL[key]();
         }
-        if (op.expect && !holds(current, op.expect)) throw stale(`clip "${op.clipId}"`);
+        if (op.expect) {
+          // slot: null means "has no slot", which holds when the key is absent.
+          const { slot: expectSlot, ...otherExpect } = op.expect;
+          const slotHolds = expectSlot === undefined || (expectSlot === null ? current.slot === undefined : holds(current, { slot: expectSlot }));
+          if (!slotHolds || !holds(current, otherExpect)) throw stale(`clip "${op.clipId}"`);
+        }
         for (const key of FROZEN_CLIP_KEYS) {
           if (key in op.patch) {
             throw new OpError("INVALID", `${name}: "${key}" cannot be changed with update_clip`, opIndex);
@@ -464,10 +470,16 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         const merged: Record<string, unknown> = { ...current };
         for (const [key, value] of Object.entries(op.patch)) {
           const existing = merged[key];
+          if (key === "slot") {
+            // A slot is replaced whole, and null takes it off.
+            if (value === null) delete merged.slot;
+            else merged.slot = value;
+            continue;
+          }
           merged[key] =
             isPlainObject(existing) && isPlainObject(value) ? { ...existing, ...value } : value;
         }
-        const schema = current.type === "text" ? StrictTextClip : StrictMediaClip;
+        const schema = current.type === "text" ? StrictTextClip : current.type === "placeholder" ? StrictPlaceholderClip : StrictMediaClip;
         const result = schema.safeParse(merged);
         if (!result.success) {
           const issue = result.error.issues[0];
@@ -478,6 +490,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
             opIndex,
           );
         }
+        assertAccepts(track, result.data, opIndex, name);
         const before: Record<string, unknown> = current;
         const after: Record<string, unknown> = result.data;
         const undo: Record<string, unknown> = {};
@@ -487,7 +500,13 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           // undo only touches the sub-keys this op changed.
           const b = before[key];
           const a = after[key];
-          if (isPlainObject(b) && isPlainObject(a)) {
+          if (key === "slot") {
+            // Atomic: whole slot in the undo, null when there was none or is none.
+            if (!isEqual(b, a)) {
+              undo.slot = b ?? null;
+              written.slot = a ?? null;
+            }
+          } else if (isPlainObject(b) && isPlainObject(a)) {
             const { old, now } = diffFields(b, a);
             if (Object.keys(old).length) {
               undo[key] = old;

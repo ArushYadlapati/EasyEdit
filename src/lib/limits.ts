@@ -2,6 +2,7 @@ export const LIMITS = {
   projectNameChars: 100,
   textClipChars: 2000,
   trackNameChars: 100,
+  slotHintChars: 200,
   tracksPerProject: 20,
   guidesPerProject: 50,
   clipsPerTrack: 1000,

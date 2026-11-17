@@ -1,6 +1,6 @@
 import { graphemes } from "@/lib/text";
 import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
-import type { Clip, Track, TimelineDoc, Transform } from "./types";
+import type { Clip, Slot, Track, TimelineDoc, Transform } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -29,12 +29,21 @@ function describeText(text: string): string {
   return escapeQuoted(shown);
 }
 
+// " slot=name" and, when there is one, the hint in quotes. Empty for a clip with no slot, so older docs read the same.
+function slotSuffix(slot: Slot | undefined): string {
+  if (!slot) return "";
+  return ` slot=${slot.name}${slot.hint ? ` "${describeText(slot.hint)}"` : ""}`;
+}
+
 function describeClip(clip: Clip, fps: number): string {
   const range = `${framesToSeconds(clip.start, fps)}–${framesToSeconds(clip.start + clip.duration, fps)}s`;
-  if (clip.type === "text") {
-    return `  ${clip.id}  text  ${range}  "${describeText(clip.text)}"`;
+  if (clip.type === "placeholder") {
+    return `  ${clip.id}  placeholder(${clip.accepts})  ${range}  ${slotSuffix(clip.slot).trimStart()}`;
   }
-  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}`;
+  if (clip.type === "text") {
+    return `  ${clip.id}  text  ${range}  "${describeText(clip.text)}"${slotSuffix(clip.slot)}`;
+  }
+  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${slotSuffix(clip.slot)}`;
 }
 
 // Scale, stretch, rotation, opacity and crop are only worth a word when they are not the defaults. Audio draws nothing, so its
@@ -57,18 +66,23 @@ function describeClipInDetail(clip: Clip, fps: number): string {
   const frames = `frames ${clip.start}–${clip.start + clip.duration}`;
   const head = `  ${clip.id}  ${clip.type}  ${range}  ${frames}`;
   const t = clip.transform;
+  if (clip.type === "placeholder") {
+    return `  ${clip.id}  placeholder(${clip.accepts})  ${range}  ${frames}  ${slotSuffix(clip.slot).trimStart()}`;
+  }
   if (clip.type === "text") {
     const s = clip.style;
     return (
       `${head}  "${escapeQuoted(clip.text)}"` +
       `  font="${escapeQuoted(s.fontFamily)}" size=${s.fontSize} weight=${s.fontWeight} color="${escapeQuoted(s.color)}" align=${s.align} x=${t.x} y=${t.y}` +
-      describeTransformChanges(t, clip.type)
+      describeTransformChanges(t, clip.type) +
+      slotSuffix(clip.slot)
     );
   }
   return (
     `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +
-    describeTransformChanges(t, clip.type)
+    describeTransformChanges(t, clip.type) +
+    slotSuffix(clip.slot)
   );
 }
 
