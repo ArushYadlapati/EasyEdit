@@ -189,8 +189,10 @@ export function Timeline() {
   }
 
   // A double-click on a text clip opens it for typing on the preview. Pointer capture sends the click to the scroller,
-  // so the clip is also looked for under the pointer.
+  // so the clip is also looked for under the pointer. The Razor's presses cut, so with it a double-click opens nothing.
   function onDoubleClick(e: MouseEvent<HTMLDivElement>) {
+    const state = store.getState();
+    if (state.canEdit && state.tool === "razor") return;
     const at = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-clip-id]") : null;
     const el = at ?? document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-clip-id]");
     const clipId = el?.dataset.clipId;

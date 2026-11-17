@@ -72,7 +72,7 @@ describe("drawing one frame", () => {
     expect(await renderFrame(sampleDoc(), request, deps)).toEqual({ kind: "picture", blob: PNG });
     expect(deps.makeCanvas).toHaveBeenCalledWith(720, 1280);
     expect(deps.readFile).toHaveBeenCalledWith("prev-a");
-    expect(deps.decodeVideo).toHaveBeenCalledWith(expect.any(Blob), 0.5);
+    expect(deps.decodeVideo).toHaveBeenCalledWith(expect.any(Blob), 0.5, "c2"); // the clip, so the caller can size its picture
     expect(deps.loadFonts).toHaveBeenCalledWith([{ font: '700 100px "Geist"', text: `${PROBE_BASE}h` }]);
     expect(calls.filter(([name]) => name === "setTransform")).toEqual([["setTransform", 720 / 1080, 0, 0, 1280 / 1920, 0, 0]]);
     expect(calls.some(([name, first]) => name === "drawImage" && first === VIDEO_FRAME)).toBe(true);
@@ -90,6 +90,9 @@ describe("drawing one frame", () => {
     const request = saveFrameRequest(sampleDoc(), 45, TALL, planExportMedia(sampleDoc(), lib()));
     expect(await renderFrame(sampleDoc(), request, setup({ readFile: vi.fn(async () => null) }).deps)).toEqual({ kind: "failed", why: "read" });
     expect(await renderFrame(sampleDoc(), request, setup({ decodeVideo: vi.fn(async () => null) }).deps)).toEqual({ kind: "failed", why: "decode" });
+    // A file that goes away while it is decoded (another tab's cache removed it) is a file that could not be read.
+    const gone = vi.fn(async () => { throw new DOMException("gone", "NotReadableError"); });
+    expect(await renderFrame(sampleDoc(), request, setup({ decodeVideo: gone }).deps)).toEqual({ kind: "failed", why: "read" });
     const broken = setup({ makeCanvas: vi.fn(() => { throw new Error("no canvas"); }) });
     expect(await renderFrame(sampleDoc(), request, broken.deps)).toEqual({ kind: "failed", why: "canvas" });
     expect(broken.deps.readFile).not.toHaveBeenCalled();

@@ -850,6 +850,22 @@ describe("the Font menu", () => {
     expect([...(screen.getByLabelText("Weight") as HTMLSelectElement).options].map((o) => o.textContent)).toEqual(["Regular"]);
   });
 
+  it("the menu shows the clip's font by its name, not as a kit role it may not have come from", () => {
+    setup(); // Geist, which is also the kit's Subtitle font
+    expect(fontMenu().selectedOptions[0].textContent).toBe("Geist");
+    expect(fontMenu().selectedOptions[0].parentElement?.getAttribute("label")).toBe("All fonts");
+  });
+
+  it("choosing a kit role's font sets that font", () => {
+    const store = setup();
+    const title = [...fontMenu().querySelectorAll("option")].find((o) => o.textContent === "Title · Orbitron")!;
+    fireEvent.change(fontMenu(), { target: { value: title.value } });
+    expect(store.getState().queue).toMatchObject([
+      { label: "style change", ops: [{ op: "update_clip", clipId: "x1", patch: { style: { fontFamily: "Orbitron" } } }] },
+    ]);
+    expect(fontMenu().selectedOptions[0].textContent).toBe("Orbitron");
+  });
+
   it("an unlisted font shows as the selected entry", () => {
     setup(text("x1", 0, 60, { style: { fontFamily: "Comic Sans MS", fontSize: 64, fontWeight: 700, color: "#ffffff", align: "center" } }));
     expect(fontMenu().value).toBe("Comic Sans MS");

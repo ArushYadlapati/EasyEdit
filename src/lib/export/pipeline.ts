@@ -1,6 +1,7 @@
 import { createDecodePool, type DecodePool, type MediaIO } from "@/lib/export/decode-pool";
 import { mismatchedProbe, type FontFaceSpec } from "@/lib/export/fonts";
 import { mediaSchedule } from "@/lib/export/media-schedule";
+import { clipSizes } from "@/lib/export/needed-size";
 import { ExportError, failureOf } from "@/lib/export/messages";
 import { AUDIO, type Acceleration, type VideoSettings } from "@/lib/export/presets";
 import type { ExportFailure, ExportJob, FromWorker } from "@/lib/export/protocol";
@@ -92,10 +93,12 @@ async function steps(job: ExportJob, io: PipelineIO, control: PipelineControl, h
   // 5. This computer can encode this size.
   if (!(await io.canEncode(video, acceleration))) return failed("size");
 
-  // 6. Every video file can be decoded here, before the encoder opens.
+  // 6. Every video file can be decoded here, before the encoder opens. Each clip's picture is decoded at the size this
+  // export draws it.
   let pool: DecodePool;
   try {
-    pool = createDecodePool(mediaSchedule(job.doc, job.media.clips), job.media.files, io.media, Math.max(video.width, video.height));
+    const sizeOf = clipSizes(job.doc, { width: video.width, height: video.height });
+    pool = createDecodePool(mediaSchedule(job.doc, job.media.clips), job.media.files, io.media, sizeOf);
     await pool.open();
   } catch (error) {
     const { code, detail } = failureOf(error, "decode");

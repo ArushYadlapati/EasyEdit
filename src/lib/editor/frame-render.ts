@@ -1,6 +1,7 @@
 import { probeRequests, type FontRequest } from "@/lib/export/fonts";
 import { exportPlaceholderLabel } from "@/lib/export/media-schedule";
 import { jobClips, type ExportMediaPlan } from "@/lib/export/media-sources";
+import { fileGone } from "@/lib/export/messages";
 import type { ExportSize } from "@/lib/export/presets";
 import { drawFrame, drawnClips, type Ctx2D, type ResolvedSource } from "@/lib/render/compositor";
 import { sourceSeconds } from "@/lib/render/source-time";
@@ -22,8 +23,10 @@ export type FrameCanvas = {
 // What drawing the picture needs from the page: its files, the browser's decoders and fonts, and a canvas.
 export type FrameDeps = {
   readFile(fileId: string): Promise<Blob | null>; // null: it could not be read
-  decodeVideo(blob: Blob, seconds: number): Promise<ResolvedSource | null>;
-  decodeImage(blob: Blob): Promise<ResolvedSource | null>;
+  // clipId: the clip the picture is drawn for, so its size can be chosen; none for a library still. A rejection whose
+  // cause is a file that went away (fileGone) counts as a file that could not be read.
+  decodeVideo(blob: Blob, seconds: number, clipId: string): Promise<ResolvedSource | null>;
+  decodeImage(blob: Blob, clipId?: string): Promise<ResolvedSource | null>;
   loadFonts(requests: FontRequest[]): Promise<void>;
   resolveFont(family: string): string;
   makeCanvas(width: number, height: number): FrameCanvas;
@@ -46,13 +49,13 @@ export type FrameResult = { kind: "picture"; blob: Blob } | { kind: "failed"; wh
 const STOPPED = Symbol("stopped");
 type SourceFailure = { failed: "read" | "decode" };
 
-// A decode that throws, answers nothing or has no size counts as a failure.
-async function tryDecode(decode: () => Promise<ResolvedSource | null>, toClose: ResolvedSource[]): Promise<ResolvedSource | null> {
+// A decode that throws, answers nothing or has no size counts as a failure; "read" when the file went away under it.
+async function tryDecode(decode: () => Promise<ResolvedSource | null>, toClose: ResolvedSource[]): Promise<ResolvedSource | null | "read"> {
   let value: ResolvedSource | null;
   try {
     value = await decode();
-  } catch {
-    return null;
+  } catch (error) {
+    return fileGone(error) ? "read" : null;
   }
   if (!value) return null;
   toClose.push(value);
@@ -74,9 +77,12 @@ async function decodeSource(
     const blob = await deps.readFile(fileId);
     if (blob) {
       if (!isCurrent()) return STOPPED;
-      const value = await tryDecode(() => (source.kind === "video" ? deps.decodeVideo(blob, source.seconds) : deps.decodeImage(blob)), toClose);
-      if (value) return value;
-      failure = { failed: "decode" };
+      const value = await tryDecode(
+        () => (source.kind === "video" ? deps.decodeVideo(blob, source.seconds, source.clipId) : deps.decodeImage(blob, source.clipId)),
+        toClose,
+      );
+      if (value && value !== "read") return value;
+      failure = { failed: value ?? "decode" };
     }
   }
   if (stillId === null) return failure;
@@ -84,7 +90,8 @@ async function decodeSource(
   const still = await deps.readFile(stillId);
   if (!still) return { failed: "read" };
   if (!isCurrent()) return STOPPED;
-  return (await tryDecode(() => deps.decodeImage(still), toClose)) ?? { failed: "decode" };
+  const value = await tryDecode(() => deps.decodeImage(still), toClose);
+  return value && value !== "read" ? value : { failed: value ?? "decode" };
 }
 
 function closeImage(value: ResolvedSource): void {

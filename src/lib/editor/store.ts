@@ -217,7 +217,7 @@ export function createEditorStore(
 
   return createStore<EditorState>()((set, get) => {
     // What follows a change to doc: the selection keeps only what still exists, and a live
-    // gesture is re-applied. A gesture whose clip is gone ends; one that no longer fits waits.
+    // gesture is re-applied. A gesture whose clip (or guide) is gone ends; one that no longer fits waits.
     function settle(state: EditorState, doc: TimelineDoc): Partial<EditorState> {
       const patch: Partial<EditorState> = { doc, selection: pruneSelection(doc, state.selection) };
       if (state.cropArmed !== null && !findClip(doc, state.cropArmed)) patch.cropArmed = null;
@@ -230,7 +230,8 @@ export function createEditorStore(
         } catch (err) {
           if (err instanceof OpError && err.code === "NOT_FOUND") {
             patch.gesture = null;
-            patch.notice = makeNotice("error", MESSAGES.clipGone);
+            const guide = gesture.ops.every((op) => op.op === "add_guide" || op.op === "move_guide" || op.op === "remove_guide");
+            patch.notice = makeNotice("error", guide ? MESSAGES.guideGone : MESSAGES.clipGone);
           } else {
             patch.gesture = { ops: gesture.ops, doc: null };
           }

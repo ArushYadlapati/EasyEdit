@@ -49,6 +49,13 @@ describe("the sidebar's sections", () => {
     expect(classes(toggle("Folders"))).toEqual(expect.arrayContaining(["hidden", "md:flex"]));
   });
 
+  it("the chevron's hit target is 24px, its negative margins keeping the row as it was", () => {
+    sidebar();
+    const chevron = classes(toggle("Folders"));
+    expect(chevron).toEqual(expect.arrayContaining(["size-6", "-my-1", "-ml-1"]));
+    expect(chevron).not.toContain("size-4");
+  });
+
   it("the server draws a section the cookie folded already folded, and hydrating keeps it so", () => {
     const html = renderToString(element("folders"));
     const box = document.createElement("div");

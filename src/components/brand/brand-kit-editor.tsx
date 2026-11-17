@@ -46,7 +46,8 @@ function Part({ title, children }: { title: string; children: ReactNode }) {
 }
 
 // The X on a swatch's or logo's corner. A 20 px badge mostly outside the tile, and only clickable while it shows (the
-// tile hovered, or the badge focused by keyboard): a hidden one over the tile would take the click meant for the tile.
+// tile hovered, the tile or badge focused, or always on a touch screen, which has no hover): a hidden one over the tile
+// would take the click meant for the tile.
 function RemoveBadge({ label, onClick }: { label: string; onClick(): void }) {
   return (
     <button
@@ -56,6 +57,7 @@ function RemoveBadge({ label, onClick }: { label: string; onClick(): void }) {
       className={cx(
         "absolute -top-2.5 -right-2.5 flex size-5 items-center justify-center rounded-full border border-ed-line bg-ed-panel text-ed-muted",
         "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
+        "group-focus-within:pointer-events-auto group-focus-within:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100",
         "hover:text-ed-text [&>svg]:size-3",
         FOCUS_RING,
         FADE,
@@ -127,9 +129,14 @@ function Colors({ kit, canEdit, save, onUseColor }: BrandKitEditorProps) {
       setProblem("Use a hex color like #ff5a1f.");
       return;
     }
+    const color = hex.toLowerCase();
+    if (kit.colors.includes(color)) {
+      setProblem(`${color} is already in the kit.`);
+      return;
+    }
     setProblem(null);
     setDraft("");
-    void save({ colors: [...kit.colors, hex.toLowerCase()] });
+    void save({ colors: [...kit.colors, color] });
   }
 
   return (

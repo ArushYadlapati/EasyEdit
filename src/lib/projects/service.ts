@@ -6,6 +6,7 @@ import { requireRole, type Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
 import { assetIdsToCheck, findMediaProblem, mediaProblemMessage } from "@/lib/media/refs";
 import { loadAssetFacts } from "@/lib/media/service";
+import { dropPinOfDeleted } from "@/lib/projects/pins";
 import { copyName, projectFrame, projectName } from "@/lib/projects/schemas";
 import { ServiceError } from "@/lib/service-error";
 import { getTemplate } from "@/lib/templates/service";
@@ -380,8 +381,8 @@ export async function renameProject(db: DB, actor: Actor, id: string, name: stri
   return { id, name: rows[0].name };
 }
 
-// A soft delete: the row and its op log are kept, and the row records who deleted it. Its picture is dropped: no path
-// brings a deleted project back.
+// A soft delete: the row and its op log are kept, and the row records who deleted it. Its picture and its pin are
+// dropped: no path brings a deleted project back.
 export async function deleteProject(db: DB, actor: Actor, id: string): Promise<void> {
   requireRole(actor, "editor");
   const rows = await db
@@ -390,6 +391,7 @@ export async function deleteProject(db: DB, actor: Actor, id: string): Promise<v
     .where(liveProject(actor, id))
     .returning({ id: projects.id });
   if (!rows[0]) throw notFound(id);
+  await dropPinOfDeleted(db, id);
 }
 
 // The doc is copied inside the insert itself, so the copy is always the version current at that moment. The copy

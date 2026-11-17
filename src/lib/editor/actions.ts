@@ -160,13 +160,14 @@ export function addLogo(store: EditorStore, asset: AssetView, opts: { stillSecon
   return result.ok;
 }
 
-// Sets every selected text clip to the color, as one change. With no text clip selected it says how to use it.
+// Sets every selected text clip to the color, as one change. Text on a locked track is left out, so the rest is not
+// refused with it. With no such text clip selected it says how to use it.
 export function recolorSelection(store: EditorStore, color: string): void {
   const state = store.getState();
   if (!state.canEdit) return;
   const texts = state.selection.clipIds.flatMap((id) => {
-    const clip = findClip(state.doc, id)?.clip;
-    return clip?.type === "text" ? [clip] : [];
+    const found = findClip(state.doc, id);
+    return found?.clip.type === "text" && !found.track.locked ? [found.clip] : [];
   });
   if (texts.length === 0) {
     state.notify("info", MESSAGES.selectTextToRecolor);

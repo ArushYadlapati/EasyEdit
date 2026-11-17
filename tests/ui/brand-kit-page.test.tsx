@@ -68,3 +68,15 @@ it("no Brand kit link in a personal space while personal spaces are closed", () 
   sidebarIn([personal, team("admin")], "personal", true);
   expect(screen.queryByRole("link", { name: "Brand kit" })).toBeNull();
 });
+
+it("a later save that works clears the error line of one that failed", async () => {
+  const save = vi
+    .fn(async (_space: string, patch: object) => ({ ...KIT, ...patch }) as BrandKit)
+    .mockRejectedValueOnce(new Error("The brand kit could not be saved."));
+  render(<BrandKitPage spaceId={SEED_TEAM_ID} canEdit initial={KIT} storageReady services={pretendMediaServices([photo])} api={{ fetch: vi.fn(), save }} />);
+  await act(async () => fireEvent.change(screen.getByLabelText("Title font"), { target: { value: "Bebas Neue" } }));
+  expect(screen.getByRole("alert").textContent).toBe("The brand kit could not be saved.");
+  await act(async () => fireEvent.change(screen.getByLabelText("Body text font"), { target: { value: "Geist" } }));
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("alert")).toBeNull();
+});

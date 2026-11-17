@@ -5,8 +5,9 @@ import { slugFor } from "@/lib/spaces/paths";
 import { findMySpace } from "@/lib/spaces/service";
 import { settingsTabPath, settingsTabsFor } from "@/lib/spaces/settings-tabs";
 
-// /s/<space>/settings opens the first tab the viewer may open: Members in a team, Storage in a personal space. Someone
-// not in the space gets a plain 404. The tab's page checks again for itself.
+// /s/<space>/settings opens the first tab the viewer may open (settingsTabsFor): Members in a team, Storage in a
+// personal space; Brand kit, open to everyone, comes after them. Someone not in the space gets a plain 404. The tab's
+// page checks again for itself.
 export default async function SpaceSettingsIndex({ params }: PageProps<"/s/[space]/settings">): Promise<never> {
   const user = await requireUser();
   const space = await findMySpace(getDb(), user.id, (await params).space);

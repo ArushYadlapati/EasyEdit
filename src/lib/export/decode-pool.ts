@@ -1,16 +1,22 @@
 import type { MediaSchedule } from "@/lib/export/media-schedule";
 import { ExportError, errorMessage, readFailure } from "@/lib/export/messages";
 import type { ResolvedSource } from "@/lib/render/compositor";
+import type { PictureSize, SizeRule } from "@/lib/render/decode-image";
 
 export { fileGone } from "./messages";
 
 // The worker's decoders, behind MediaIO: each video file is checked once before the first frame, opened as its first
 // clip starts and released after its last use; each clip walks its own moments with its own reader; each image file is
-// decoded once and shared. The pool waits only on the IO's promises, never on a timer.
+// decoded once and shared. Each picture is decoded at the size its clips are drawn at (sizeOf, needed-size.ts). The
+// pool waits only on the IO's promises, never on a timer.
 
 export type VideoFile = {
   firstTimestamp: number; // seconds: the file's first video frame
-  pictures(seconds: number[]): AsyncIterator<ResolvedSource | null>; // a new decoder walking these moments in order; null: no picture there
+  width: number; // the pictures' full upright size, with the file's rotation applied
+  height: number;
+  // A new decoder walking these moments in order, its pictures at this size (no larger than width × height); null: no
+  // picture there. A moment past the file's end gives its last frame.
+  pictures(seconds: number[], size: PictureSize): AsyncIterator<ResolvedSource | null>;
   dispose(): void;
 };
 
@@ -18,9 +24,12 @@ export type DecodedImage = ResolvedSource & { close(): void };
 
 export type MediaIO = {
   canDecode(blob: Blob): Promise<boolean>; // the file has a video track this browser can decode
-  openVideo(blob: Blob, maxSide: number): Promise<VideoFile>; // pictures no larger than maxSide on their long side
-  decodeImage(blob: Blob, maxSide: number): Promise<DecodedImage>;
+  openVideo(blob: Blob): Promise<VideoFile>;
+  decodeImage(blob: Blob, size: SizeRule): Promise<DecodedImage>; // at the size the rule gives for its full size
 };
+
+// The size to decode one clip's picture at, from its source's full upright size.
+export type ClipSize = (clipId: string, source: PictureSize) => PictureSize;
 
 export type DecodePool = {
   open(): Promise<void>; // checks every video file once, before the first frame
@@ -39,7 +48,7 @@ function letGo(reader: Reader): void {
   }
 }
 
-export function createDecodePool(schedule: MediaSchedule, files: Record<string, Blob>, io: MediaIO, maxSide: number): DecodePool {
+export function createDecodePool(schedule: MediaSchedule, files: Record<string, Blob>, io: MediaIO, sizeOf: ClipSize): DecodePool {
   const videos = new Map<string, VideoFile>(); // fileId → the open file
   const images = new Map<string, DecodedImage>(); // fileId → the decoded picture
   const readers = new Map<string, Reader>(); // clipId → its reader
@@ -54,18 +63,31 @@ export function createDecodePool(schedule: MediaSchedule, files: Record<string, 
     const open = videos.get(fileId);
     if (open) return open;
     const blob = blobOf(fileId);
-    const opened = await io.openVideo(blob, maxSide).catch((error: unknown) => {
+    const opened = await io.openVideo(blob).catch((error: unknown) => {
       throw new ExportError("media", errorMessage(error));
     });
     videos.set(fileId, opened);
     return opened;
   }
 
+  // An image file is decoded once and its picture shared by every clip of it until its last use, so it is decoded at the
+  // largest size any of them needs, a clip that starts later included. A video file needs no such rule: the opened file
+  // is shared, but each clip has its own reader at its own size.
+  const imageSize = (fileId: string): SizeRule => (native) => {
+    let size = { width: 1, height: 1 };
+    for (const clip of schedule.clips) {
+      if (clip.kind !== "image" || clip.fileId !== fileId) continue;
+      const need = sizeOf(clip.clipId, native);
+      size = { width: Math.max(size.width, need.width), height: Math.max(size.height, need.height) };
+    }
+    return size;
+  };
+
   async function image(fileId: string): Promise<DecodedImage> {
     const decoded = images.get(fileId);
     if (decoded) return decoded;
     const blob = blobOf(fileId);
-    const made = await io.decodeImage(blob, maxSide).catch((error: unknown) => {
+    const made = await io.decodeImage(blob, imageSize(fileId)).catch((error: unknown) => {
       throw new ExportError("media", errorMessage(error));
     });
     images.set(fileId, made);
@@ -115,7 +137,8 @@ export function createDecodePool(schedule: MediaSchedule, files: Record<string, 
           stills.set(clip.clipId, await image(clip.fileId));
         } else if (!readers.has(clip.clipId)) {
           const video = await videoFile(clip.fileId);
-          readers.set(clip.clipId, video.pictures(clip.seconds.map((s) => Math.max(video.firstTimestamp, s))));
+          const size = sizeOf(clip.clipId, { width: video.width, height: video.height });
+          readers.set(clip.clipId, video.pictures(clip.seconds.map((s) => Math.max(video.firstTimestamp, s)), size));
         }
       }
 
