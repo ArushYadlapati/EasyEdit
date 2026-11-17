@@ -96,3 +96,43 @@ it("says the changes are not saved when they cannot be", async () => {
   expect(fetchMock).not.toHaveBeenCalled();
   expect(onClose).not.toHaveBeenCalled();
 });
+
+it("Cancel during the pending-save wait stops the save: nothing is sent, no notice", async () => {
+  const store = makeStore();
+  store.getState().edit([{ op: "update_clip", clipId: "x1", patch: { text: "new" } }], "text edit");
+  store.getState().setStatus("saving");
+  const { onClose } = open(store);
+  save();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+  act(() => {
+    store.setState({ queue: [] });
+    store.getState().setStatus("saved");
+  });
+  await act(async () => { await Promise.resolve(); });
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(store.getState().notice).toBeNull();
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("Cancel while the request is out shows no success notice", async () => {
+  let finish!: (r: Response) => void;
+  fetchMock.mockReturnValue(new Promise<Response>((resolve) => (finish = resolve)));
+  const { onClose, store } = open();
+  save();
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await act(async () => finish(reply(200, { id: "t1", replaced: false })));
+  expect(store.getState().notice).toBeNull();
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("changing the name clears the clash and its message", async () => {
+  fetchMock.mockResolvedValue(reply(409, { code: "CONFLICT", message: "A template called Qual recap already exists." }));
+  open();
+  save();
+  await screen.findByText("A template called Qual recap already exists.");
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Another" } });
+  expect(screen.queryByText("A template called Qual recap already exists.")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Replace it" })).toBeNull();
+});

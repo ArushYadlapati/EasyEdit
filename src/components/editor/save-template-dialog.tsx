@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
@@ -60,6 +60,18 @@ function SaveTemplateForm({ open, onClose, spaceId, spaceSlug }: Props): ReactNo
   const [error, setError] = useState<string | null>(null);
   const [clash, setClash] = useState(false);
   const [pending, setPending] = useState(false);
+  // Set once the person cancels or the form goes away: a save still waiting is not sent, and one already sent says nothing.
+  const cancelled = useRef(false);
+  useEffect(() => {
+    cancelled.current = false;
+    return () => {
+      cancelled.current = true;
+    };
+  }, []);
+  const close = () => {
+    cancelled.current = true;
+    onClose();
+  };
 
   async function send(replace: boolean) {
     if (pending) return;
@@ -67,7 +79,9 @@ function SaveTemplateForm({ open, onClose, spaceId, spaceSlug }: Props): ReactNo
     setError(null);
     setClash(false);
     try {
-      if (!(await whenSaved(store))) {
+      const saved = await whenSaved(store);
+      if (cancelled.current) return;
+      if (!saved) {
         setError(NOT_SAVED);
         return;
       }
@@ -79,9 +93,11 @@ function SaveTemplateForm({ open, onClose, spaceId, spaceSlug }: Props): ReactNo
         ...(replace && { replace: true }),
       };
       await saveTemplate(spaceId, input);
+      if (cancelled.current) return;
       onClose();
       store.getState().notify("info", `Saved “${input.name}” as a template.`, { label: "See templates", href: settingsTabPath(spaceSlug, "templates") });
     } catch (err) {
+      if (cancelled.current) return;
       if (err instanceof TemplateApiError) {
         setError(err.message);
         setClash(err.code === "CONFLICT");
@@ -100,7 +116,7 @@ function SaveTemplateForm({ open, onClose, spaceId, spaceSlug }: Props): ReactNo
     <Dialog
       title="Save as template"
       open={open}
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
           {error && (
@@ -113,7 +129,7 @@ function SaveTemplateForm({ open, onClose, spaceId, spaceSlug }: Props): ReactNo
               Replace it
             </Button>
           )}
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={close}>Cancel</Button>
           <Button variant="primary" type="submit" form={formId} disabled={pending || name.trim() === ""}>
             Save
           </Button>
@@ -122,7 +138,12 @@ function SaveTemplateForm({ open, onClose, spaceId, spaceSlug }: Props): ReactNo
     >
       <form id={formId} onSubmit={submit} className="flex flex-col gap-3">
         <Field label="Name">
-          <TextInput data-autofocus maxLength={LIMITS.projectNameChars} value={name} onChange={(event) => setName(event.target.value)} />
+          <TextInput data-autofocus maxLength={LIMITS.projectNameChars} value={name} onChange={(event) => {
+              setName(event.target.value);
+              setError(null);
+              setClash(false);
+            }}
+          />
         </Field>
         <Field label="Description">
           <TextInput maxLength={LIMITS.templateDescriptionChars} value={description} onChange={(event) => setDescription(event.target.value)} />
