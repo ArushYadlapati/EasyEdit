@@ -1,6 +1,17 @@
 import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
-import { DEFAULT_TRANSFORM, NO_CROP, TRACK_ACCEPTS, isCropped, isPlaceholder, trackTakes, type Clip, type OpInput, type TrackKind } from "@/lib/timeline";
+import {
+  DEFAULT_TRANSFORM,
+  NO_CROP,
+  TRACK_ACCEPTS,
+  isCropped,
+  isPlaceholder,
+  trackTakes,
+  type Clip,
+  type KeyframeProp,
+  type OpInput,
+  type TrackKind,
+} from "@/lib/timeline";
 import { fillSlots } from "@/lib/templates/fill";
 import { copyClips, pasteItems, type ClipboardStore } from "./clipboard";
 import {
@@ -20,6 +31,7 @@ import {
   type TrackSwitch,
 } from "./commands";
 import type { TimelinePoint } from "./geometry";
+import { clipFrame, kenBurnsOps, toggleKeyframeOps } from "./keyframe-edit";
 import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
@@ -284,6 +296,23 @@ export function resetCrop(store: EditorStore, clipId: string): void {
   const clip = findClip(state.doc, clipId)?.clip;
   if (!state.canEdit || state.gesture !== null || !clip || !isCropped(clip.transform.crop)) return;
   state.edit([{ op: "update_clip", clipId, patch: { transform: { crop: { ...NO_CROP } } } }], "crop");
+}
+
+// The inspector's diamond: adds a keyframe of the property at the playhead (inside the clip), or removes the one there,
+// in one change. Nothing for a viewer or while a drag or a typed value is live.
+export function toggleKeyframe(store: EditorStore, clipId: string, prop: KeyframeProp): void {
+  const state = store.getState();
+  const clip = findClip(state.doc, clipId)?.clip;
+  if (!state.canEdit || state.gesture !== null || !clip || clip.type === "audio") return;
+  state.edit(toggleKeyframeOps(clip, prop, clipFrame(clip, state.playhead)), "keyframe");
+}
+
+// Keys an image's scale for a slow push in across the clip, in one change.
+export function kenBurns(store: EditorStore, clipId: string): void {
+  const state = store.getState();
+  const clip = findClip(state.doc, clipId)?.clip;
+  if (!state.canEdit || state.gesture !== null || clip?.type !== "image") return;
+  state.edit(kenBurnsOps(clip), "keyframe");
 }
 
 // Pauses, moves the playhead to the clip's start when it is outside the clip, and makes the clip the selection.

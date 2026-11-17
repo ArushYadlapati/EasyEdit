@@ -1,7 +1,9 @@
 import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
 import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
+import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
 import { CROP_MIN_SHOWN, clipRects, type Sizer } from "./clip-box";
+import { clipFrame, writeTransformOps } from "./keyframe-edit";
 import { trimBounds } from "./media-clips";
 import type { Units } from "./settings";
 import { fromUnit, showUnit } from "./units";
@@ -96,13 +98,16 @@ export function parseNumber(raw: string): number | null {
 }
 
 // What a field is shown and changed against: the project's rate and frame, this browser's unit and lock, and
-// the clip's kept box before scale and stretch (null when it is not measured, or for audio).
+// the clip's kept box before scale and stretch (null when it is not measured, or for audio). playhead: the timeline
+// frame the fields show and edit; keyframed properties read their value there and a change keys it there. Without
+// it, fields read and write the transform alone.
 export type FieldContext = {
   fps: number;
   frame: { width: number; height: number };
   units: Units;
   box: { width: number; height: number } | null;
   lockAspect: boolean;
+  playhead?: number;
 };
 
 export type FieldPrefs = { units: Units; lockAspect: boolean };
@@ -110,7 +115,7 @@ export type FieldPrefs = { units: Units; lockAspect: boolean };
 const PX_LOCKED: FieldPrefs = { units: "px", lockAspect: true };
 
 // The context of a clip in this document. Without prefs, pixels and locked; without a sizer, no box.
-export function fieldContext(doc: TimelineDoc, clip: Clip, prefs: FieldPrefs = PX_LOCKED, sizer: Sizer | null = null): FieldContext {
+export function fieldContext(doc: TimelineDoc, clip: Clip, prefs: FieldPrefs = PX_LOCKED, sizer: Sizer | null = null, playhead?: number): FieldContext {
   const kept = sizer ? clipRects(doc, clip, sizer)?.kept : undefined;
   return {
     fps: doc.fps,
@@ -118,7 +123,15 @@ export function fieldContext(doc: TimelineDoc, clip: Clip, prefs: FieldPrefs = P
     units: prefs.units,
     box: kept ? { width: kept.right - kept.left, height: kept.bottom - kept.top } : null,
     lockAspect: prefs.lockAspect,
+    ...(playhead === undefined ? {} : { playhead }),
   };
+}
+
+// The clip as the fields show it: its keyframed properties at the playhead, inside the clip.
+function shownAt(clip: Clip, ctx: FieldContext): Clip {
+  if (ctx.playhead === undefined) return clip;
+  const transform = effectiveTransform(clip, clipFrame(clip, ctx.playhead));
+  return transform === clip.transform ? clip : ({ ...clip, transform } as Clip);
 }
 
 const round = (n: number, places: number) => Number(n.toFixed(places));
@@ -151,8 +164,9 @@ function lengthPx(clip: Clip, field: "x" | "y" | "width" | "height", ctx: FieldC
   return field === "width" ? ctx.box.width * t.scale * stretchOf(t) : ctx.box.height * t.scale;
 }
 
-export function clipFieldValue(clip: Clip, field: ClipField, ctx: FieldContext): string {
+export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext): string {
   const { fps } = ctx;
+  const clip = shownAt(saved, ctx);
   switch (field) {
     case "x":
     case "y":
@@ -227,9 +241,13 @@ export function scrubBounds(doc: TimelineDoc, clipId: string, field: "start" | "
 // changes nothing. The rules of the change itself (overlaps, locked tracks, what text may hold)
 // stay with applyOps. lengthFrames is the length of a media clip's asset in frames, when it is known: a typed
 // length then stops at the end of the media, as a trim on the timeline does.
-export function clipFieldOps(clip: Clip, field: ClipField, raw: string, ctx: FieldContext, lengthFrames?: number): OpInput[] | null {
-  const { fps } = ctx;
+export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: FieldContext, lengthFrames?: number): OpInput[] | null {
+  const { fps, playhead } = ctx;
+  const clip = shownAt(saved, ctx);
   const update = (patch: Record<string, unknown>): OpInput[] => [{ op: "update_clip", clipId: clip.id, patch }];
+  // Position, size, turn and opacity key a keyframed property at the playhead instead of setting the transform.
+  const place = (transform: Record<string, unknown>): OpInput[] =>
+    playhead === undefined ? update({ transform }) : writeTransformOps(saved, clipFrame(saved, playhead), transform);
 
   switch (field) {
     case "start": {
@@ -258,21 +276,21 @@ export function clipFieldOps(clip: Clip, field: ClipField, raw: string, ctx: Fie
       const typed = fromUnit(n, ctx.units);
       // A value typed as it is shown (the rounded number) never nudges the clip.
       if (showUnit(typed, ctx.units) === showUnit(now, ctx.units)) return [];
-      if (sizing) return update({ transform: resize(clip, field, typed / now, ctx.lockAspect) });
-      return update({ transform: { [field]: round(typed / (field === "x" ? ctx.frame.width : ctx.frame.height), 6) } });
+      if (sizing) return place(resize(clip, field, typed / now, ctx.lockAspect));
+      return place({ [field]: round(typed / (field === "x" ? ctx.frame.width : ctx.frame.height), 6) });
     }
     case "scale": {
       const n = parseNumber(raw);
       const scale = n === null ? 0 : round(n / 100, 4);
-      return scale <= 0 ? null : update({ transform: { scale } });
+      return scale <= 0 ? null : place({ scale });
     }
     case "rotation": {
       const n = parseNumber(raw);
-      return n === null ? null : update({ transform: { rotation: n } });
+      return n === null ? null : place({ rotation: n });
     }
     case "opacity": {
       const n = parseNumber(raw);
-      return n === null ? null : update({ transform: { opacity: clamp(round(n / 100, 4), 0, 1) } });
+      return n === null ? null : place({ opacity: clamp(round(n / 100, 4), 0, 1) });
     }
     case "cropLeft":
     case "cropTop":

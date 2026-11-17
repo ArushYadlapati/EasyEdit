@@ -1,6 +1,7 @@
 import { graphemes } from "@/lib/text";
 import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
-import type { Clip, Slot, Track, TimelineDoc, Transform } from "./types";
+import { KEYFRAME_PROPS } from "./keyframes";
+import type { Clip, KeyframeProp, Slot, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -35,15 +36,45 @@ function slotSuffix(slot: Slot | undefined): string {
   return ` slot=${slot.name}${slot.hint ? ` "${describeText(slot.hint)}"` : ""}`;
 }
 
+// The words inside these tokens are enum values and hex colours, never user text, so they need no escaping.
+function transitionToken(t: Transition): string {
+  const detail = t.kind === "slide" || t.kind === "whip" ? `-${t.direction ?? "left"}` : t.kind === "dip" ? `-${t.color ?? "#000000"}` : "";
+  return `${t.kind}${detail}`;
+}
+
+// One property's keyframes, at:value~ease each, so a list can be patched back whole with only one keyframe changed.
+// Linear, the default, is left out.
+function keyframeList(clip: Clip, prop: KeyframeProp): string {
+  const keys = clip.keyframes?.[prop] ?? [];
+  return keys.map((k) => `${k.at}:${Number(k.value.toFixed(4))}${k.ease && k.ease !== "linear" ? `~${k.ease}` : ""}`).join(",");
+}
+
+function describeEffects(clip: Clip, fps: number, detail: boolean): string {
+  let out = "";
+  if (clip.type === "text") {
+    if (clip.animationIn) out += ` anim-in=${clip.animationIn.preset} ${framesToSeconds(clip.animationIn.frames, fps)}s`;
+    if (clip.animationOut) out += ` anim-out=${clip.animationOut.preset} ${framesToSeconds(clip.animationOut.frames, fps)}s`;
+    if (clip.emphasis) out += ` emphasis=${clip.emphasis.preset}${clip.emphasis.preset === "highlight_word" ? ` ${clip.emphasis.color ?? "#FFD400"}` : ""}`;
+  } else {
+    if (clip.transitionIn) out += ` in=${transitionToken(clip.transitionIn)} ${framesToSeconds(clip.transitionIn.frames, fps)}s`;
+    if (clip.transitionOut) out += ` out=${transitionToken(clip.transitionOut)} ${framesToSeconds(clip.transitionOut.frames, fps)}s`;
+  }
+  const keyed = KEYFRAME_PROPS.filter((p) => (clip.keyframes?.[p]?.length ?? 0) > 0);
+  if (detail) for (const p of keyed) out += ` kf.${p}=${keyframeList(clip, p)}`;
+  else if (keyed.length > 0) out += ` kf=${keyed.join(",")}`;
+  return out;
+}
+
 function describeClip(clip: Clip, fps: number): string {
   const range = `${framesToSeconds(clip.start, fps)}–${framesToSeconds(clip.start + clip.duration, fps)}s`;
+  // The slot comes before the effects, on every kind of clip.
   if (clip.type === "placeholder") {
-    return `  ${clip.id}  placeholder(${clip.accepts})  ${range}  ${slotSuffix(clip.slot).trimStart()}`;
+    return `  ${clip.id}  placeholder(${clip.accepts})  ${range}  ${slotSuffix(clip.slot).trimStart()}${describeEffects(clip, fps, false)}`;
   }
   if (clip.type === "text") {
-    return `  ${clip.id}  text  ${range}  "${describeText(clip.text)}"${slotSuffix(clip.slot)}`;
+    return `  ${clip.id}  text  ${range}  "${describeText(clip.text)}"${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
   }
-  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${slotSuffix(clip.slot)}`;
+  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
 }
 
 // Scale, stretch, rotation, opacity and crop are only worth a word when they are not the defaults. Audio draws nothing, so its
@@ -67,7 +98,7 @@ function describeClipInDetail(clip: Clip, fps: number): string {
   const head = `  ${clip.id}  ${clip.type}  ${range}  ${frames}`;
   const t = clip.transform;
   if (clip.type === "placeholder") {
-    return `  ${clip.id}  placeholder(${clip.accepts})  ${range}  ${frames}  ${slotSuffix(clip.slot).trimStart()}`;
+    return `  ${clip.id}  placeholder(${clip.accepts})  ${range}  ${frames}  ${slotSuffix(clip.slot).trimStart()}${describeEffects(clip, fps, true)}`;
   }
   if (clip.type === "text") {
     const s = clip.style;
@@ -75,14 +106,16 @@ function describeClipInDetail(clip: Clip, fps: number): string {
       `${head}  "${escapeQuoted(clip.text)}"` +
       `  font="${escapeQuoted(s.fontFamily)}" size=${s.fontSize} weight=${s.fontWeight} color="${escapeQuoted(s.color)}" align=${s.align} x=${t.x} y=${t.y}` +
       describeTransformChanges(t, clip.type) +
-      slotSuffix(clip.slot)
+      slotSuffix(clip.slot) +
+      describeEffects(clip, fps, true)
     );
   }
   return (
     `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +
     describeTransformChanges(t, clip.type) +
-    slotSuffix(clip.slot)
+    slotSuffix(clip.slot) +
+    describeEffects(clip, fps, true)
   );
 }
 

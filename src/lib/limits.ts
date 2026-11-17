@@ -6,6 +6,8 @@ export const LIMITS = {
   tracksPerProject: 20,
   guidesPerProject: 50,
   clipsPerTrack: 1000,
+  keyframesPerProperty: 100,
+  effectFramesMax: 600, // one transition or text animation, in frames
   docBytes: 2 * 1024 * 1024,
   opsPerRequest: 500,
   opsPageDefault: 100,

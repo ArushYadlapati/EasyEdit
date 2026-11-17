@@ -2,9 +2,10 @@ import { renderFrame, type FrameCanvas, type FrameDeps, type FrameRequest, type 
 import { mediaWants } from "@/lib/editor/media-plan";
 import type { LibraryState } from "@/lib/media/library-store";
 import { playbackFileFor, posterFileFor } from "@/lib/media/playback";
-import { activeClips } from "@/lib/render/compositor";
+import { drawnClips } from "@/lib/render/compositor";
 import { thumbnailFrame } from "@/lib/render/thumbnail-frame";
 import type { TimelineDoc } from "@/lib/timeline";
+import { mayShow } from "@/lib/timeline/keyframes";
 
 export const THUMBNAIL_LONG_SIDE = 640;
 export const THUMBNAIL_QUALITY = 0.8;
@@ -31,9 +32,10 @@ export function planThumbnail(doc: TimelineDoc, library: Pick<LibraryState, "ass
   const sources: ThumbnailSource[] = [];
   let wait = false;
   let skip = false;
-  for (const { clip } of activeClips(doc, frame)) {
+  // A crossfade's outgoing clip drawn under the frame is a picture too; mediaWants gives its moment past its out point.
+  for (const { clip } of drawnClips(doc, frame)) {
     if (clip.type !== "video" && clip.type !== "image") continue;
-    if (clip.transform.opacity === 0) continue; // shows nothing, so it is neither waited for nor a reason to skip
+    if (!mayShow(clip)) continue; // shows nothing, so it is neither waited for nor a reason to skip
     const asset = library.assets[clip.assetId];
     if (asset === undefined && !library.loaded) {
       wait = true;

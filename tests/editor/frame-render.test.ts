@@ -4,7 +4,7 @@ import { PROBE_BASE } from "@/lib/export/fonts";
 import { planExportMedia } from "@/lib/export/media-sources";
 import type { AssetView } from "@/lib/media/types";
 import { PLACEHOLDER_FILL } from "@/lib/render/compositor";
-import type { MediaClip } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, type MediaClip } from "@/lib/timeline";
 import { assetView } from "../helpers/media-services";
 import { fakeCtx } from "../render/fake-ctx";
 import { sampleDoc, video } from "./fixtures";
@@ -37,6 +37,21 @@ describe("which pictures a saved frame needs", () => {
       frame: 45, size: TALL, type: "image/png",
       sources: [{ clipId: "c2", kind: "video", fileId: "prev-a", seconds: 0.5, stillId: null }], // (0 + 15) / 30
     });
+  });
+
+  it("a crossfade's outgoing clip past its out point, at the moment it has run on to, and a clip fading in from 0", () => {
+    const d = sampleDoc();
+    d.tracks[0].clips = [
+      video("c1", 0, 30, { in: 15, transform: { ...DEFAULT_TRANSFORM, opacity: 0 }, keyframes: { opacity: [{ at: 0, value: 0 }, { at: 10, value: 1 }] } }),
+      video("c2", 30, 30, { transitionIn: { kind: "crossfade", frames: 10 } }),
+    ];
+    const plan = planExportMedia(d, lib());
+    expect(saveFrameRequest(d, 35, TALL, plan).sources).toEqual([
+      { clipId: "c1", kind: "video", fileId: "prev-a", seconds: (15 + 35) / 30, stillId: null },
+      { clipId: "c2", kind: "video", fileId: "prev-a", seconds: 5 / 30, stillId: null },
+    ]);
+    expect(saveFrameRequest(d, 5, TALL, plan).sources.map((s) => s.clipId)).toEqual(["c1"]);
+    expect(saveFrameRequest(d, 40, TALL, plan).sources.map((s) => s.clipId)).toEqual(["c2"]);
   });
 
   it("a clip whose media was removed draws the preview's placeholder, with its label", async () => {

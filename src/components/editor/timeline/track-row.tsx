@@ -98,6 +98,7 @@ export const TrackRow = memo(function TrackRow(props: TrackRowProps) {
           <ClipView
             key={clip.id}
             clip={clip}
+            track={track}
             zoom={zoom}
             fps={fps}
             selected={selectedIds.includes(clip.id)}

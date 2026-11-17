@@ -1,8 +1,10 @@
 import type { Clip, TimelineDoc } from "@/lib/timeline";
+import { mayShow } from "@/lib/timeline/keyframes";
 
-// A clip that puts something in the picture: a video, image or text clip with opacity above 0, and text that is not blank.
+// A clip that puts something in the picture: a video, image or text clip visible at some point (a fade in from
+// opacity 0 counts), and text that is not blank.
 function shows(clip: Clip): boolean {
-  if (clip.type === "audio" || clip.type === "placeholder" || clip.transform.opacity === 0) return false;
+  if (clip.type === "audio" || clip.type === "placeholder" || !mayShow(clip)) return false;
   return clip.type !== "text" || clip.text.trim() !== "";
 }
 

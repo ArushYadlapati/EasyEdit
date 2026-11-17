@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { OpError } from "./errors";
+import { KEYFRAME_PROPS, shiftKeyframes } from "./keyframes";
 import type { Op } from "./ops";
 import {
   CUSTOM_SIZE_ONLY,
@@ -20,6 +21,38 @@ const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).stri
 const StrictTextClip = TextClip.extend({ transform: Transform.strict(), style: TextStyle.strict() }).strict();
 const StrictPlaceholderClip = PlaceholderClip.extend({ transform: Transform.strict() }).strict();
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
+// The clip fields whose sub-keys are set, undone and expected one by one. Every other field, a transition or an
+// emphasis included, is one value: a new one replaces the old whole, so no sub-key of the old one is left behind.
+const MERGED_FIELDS: ReadonlySet<string> = new Set(["transform", "style", "keyframes"]);
+
+// Optional clip fields, each with its neutral value, filled the same way as TRANSFORM_FILL below. A keyframes patch
+// also fills each property it names with an empty list, since keyframes merge one level deep like transform.
+const CLIP_FILL: Record<string, () => unknown> = {
+  keyframes: () => ({}),
+  transitionIn: () => null,
+  transitionOut: () => null,
+  animationIn: () => null,
+  animationOut: () => null,
+  emphasis: () => null,
+};
+
+// Which of those fields each kind of clip may carry. Sound has no picture to move or fade, and text animates
+// itself instead of transitioning. A placeholder carries what the clip that fills it would: a visual slot the
+// video and image effects (so a template's fade or move survives the fill), an audio slot none.
+const VISUAL_EFFECTS = ["keyframes", "transitionIn", "transitionOut"] as const;
+const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string[]> = {
+  video: VISUAL_EFFECTS,
+  image: VISUAL_EFFECTS,
+  audio: [],
+  text: ["keyframes", "animationIn", "animationOut", "emphasis"],
+};
+
+type EffectsHolder = Pick<Clip, "type"> & { accepts?: "visual" | "audio" };
+
+function clipEffects(clip: EffectsHolder): readonly string[] {
+  if (clip.type === "placeholder") return clip.accepts === "visual" ? VISUAL_EFFECTS : [];
+  return CLIP_EFFECTS[clip.type];
+}
 
 // Optional transform fields, each with its neutral value. update_clip fills a missing one before it is set or
 // expected, so the first change records an undo that goes back to the neutral value.
@@ -29,11 +62,23 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-// The transform keys an update_clip patch or expect gives a value for.
-function transformKeys(part: unknown): string[] {
-  if (!isPlainObject(part) || !isPlainObject(part.transform)) return [];
-  const transform = part.transform;
-  return Object.keys(transform).filter((key) => transform[key] !== undefined);
+// The keys an update_clip patch or expect gives a value for, at the top or inside one of its plain objects.
+function givenKeys(part: unknown, inside?: string): string[] {
+  if (!isPlainObject(part)) return [];
+  const obj = inside === undefined ? part : part[inside];
+  if (!isPlainObject(obj)) return [];
+  return Object.keys(obj).filter((key) => obj[key] !== undefined);
+}
+
+function assertEffectsFit(clip: EffectsHolder, keys: string[], opIndex: number, opName: string) {
+  const allowed = clipEffects(clip);
+  for (const key of keys) {
+    if (Object.hasOwn(CLIP_FILL, key) && !allowed.includes(key)) {
+      const kind = clip.type === "placeholder" ? `${clip.accepts} placeholder` : clip.type;
+      const article = /^[aeiou]/.test(kind) ? "an" : "a";
+      throw new OpError("INVALID", `${opName}: "${key}" is not allowed on ${article} ${kind} clip`, opIndex);
+    }
+  }
 }
 
 function isEqual(a: unknown, b: unknown): boolean {
@@ -62,12 +107,12 @@ function diffFields<T extends object>(before: T, after: T): { old: Partial<T>; n
 }
 
 // An op's `expect` guard: every listed field must still hold its listed value.
-// Plain objects (transform, style) compare only their listed sub-keys.
+// transform, style and keyframes compare only their listed sub-keys; any other field compares whole.
 function holds(current: Record<string, unknown>, expected: Record<string, unknown>): boolean {
   return Object.entries(expected).every(([key, value]) => {
     if (value === undefined) return true;
     const actual = current[key];
-    if (isPlainObject(value) && isPlainObject(actual)) {
+    if (MERGED_FIELDS.has(key) && isPlainObject(value) && isPlainObject(actual)) {
       return Object.entries(value).every(([sub, v]) => isEqual(actual[sub], v));
     }
     return isEqual(actual, value);
@@ -281,6 +326,9 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           throw new OpError("DUPLICATE_ID", `${name}: clip id "${op.clip.id}" already exists`, opIndex);
         }
         assertAccepts(track, op.clip, opIndex, name);
+        // A null is the neutral value, so a clip that spells out "none" for a field it can't use is still fine.
+        const carried: Record<string, unknown> = op.clip;
+        assertEffectsFit(op.clip, givenKeys(op.clip).filter((key) => carried[key] !== null), opIndex, name);
         assertClipCount(track.id, track.clips.length + 1, opIndex, name);
         if (op.ripple) {
           for (const c of track.clips) if (c.start >= op.clip.start) c.start += op.clip.duration;
@@ -397,6 +445,9 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
             },
           ]);
         }
+        // Keyframes count from the clip's start, so they move against a start trim to stay on the same picture.
+        // The undo is a start trim back, which moves them back.
+        if (target.keyframes && start !== target.start) target.keyframes = shiftKeyframes(target.keyframes, target.start - start);
         target.start = start;
         target.duration = duration;
         if ((target.type === "video" || target.type === "audio" || target.type === "image") && sourceIn !== undefined) target.in = sourceIn;
@@ -421,7 +472,15 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           throw new OpError("DUPLICATE_ID", `${name}: clip id "${op.newClipId}" already exists`, opIndex);
         }
         assertClipCount(track.id, track.clips.length + 1, opIndex, name);
-        groups.push([
+        // The cut is not an end or a start, so the left piece gives up its way out and the right its way in.
+        // The undo puts back the left piece's way out; the right piece goes away with whatever it had.
+        const leftOut: Record<string, unknown> = {};
+        const outKeys = ["transitionOut", "animationOut"] as const;
+        for (const key of outKeys) {
+          const value = (left as Record<string, unknown>)[key];
+          if (value !== undefined && value !== null) leftOut[key] = value;
+        }
+        const undo: Op[] = [
           { op: "remove_clip", clipId: op.newClipId, expect: { start: op.at, duration: end - op.at } },
           {
             op: "trim_clip",
@@ -430,12 +489,23 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
             to: end,
             expect: { start: left.start, duration: op.at - left.start },
           },
-        ]);
+        ];
+        if (Object.keys(leftOut).length) {
+          const cleared = Object.fromEntries(Object.keys(leftOut).map((key) => [key, null]));
+          undo.push({ op: "update_clip", clipId: op.clipId, patch: leftOut, expect: cleared });
+        }
+        groups.push(undo);
         const right = structuredClone(left);
         right.id = op.newClipId;
         right.start = op.at;
         right.duration = end - op.at;
-        if (right.type === "video" && left.type === "video" || right.type === "audio" && left.type === "audio") {
+        // Both pieces keep the whole keyframe lists, so the right one carries on along the same curve.
+        if (right.keyframes) right.keyframes = shiftKeyframes(right.keyframes, left.start - op.at);
+        const l = left as Record<string, unknown>;
+        const r = right as Record<string, unknown>;
+        for (const key of outKeys) if (key in l) l[key] = null;
+        for (const key of ["transitionIn", "animationIn"]) if (key in r) r[key] = null;
+        if ((right.type === "video" && left.type === "video") || (right.type === "audio" && left.type === "audio")) {
           // Counted back from where the clip ends in its source, so the right piece ends there too.
           const sourceEnd = left.in + Math.round(left.duration * left.speed);
           right.in = sourceEnd - Math.round(right.duration * left.speed);
@@ -452,12 +522,23 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         const { track, clipIndex } = findClip(doc, op.clipId, opIndex, name);
         assertUnlocked(track, opIndex, name);
         const current = track.clips[clipIndex];
+        assertEffectsFit(current, givenKeys(op.patch), opIndex, name);
         const transform: Record<string, unknown> = current.transform;
-        for (const key of [...transformKeys(op.patch), ...transformKeys(op.expect)]) {
+        for (const key of [...givenKeys(op.patch, "transform"), ...givenKeys(op.expect, "transform")]) {
           if (Object.hasOwn(TRANSFORM_FILL, key) && transform[key] === undefined) transform[key] = TRANSFORM_FILL[key]();
         }
+        const fields: Record<string, unknown> = current;
+        for (const key of [...givenKeys(op.patch), ...givenKeys(op.expect)]) {
+          if (clipEffects(current).includes(key) && fields[key] === undefined) fields[key] = CLIP_FILL[key]();
+        }
+        const keyframes = fields.keyframes;
+        if (isPlainObject(keyframes)) {
+          for (const key of [...givenKeys(op.patch, "keyframes"), ...givenKeys(op.expect, "keyframes")]) {
+            if ((KEYFRAME_PROPS as readonly string[]).includes(key) && keyframes[key] === undefined) keyframes[key] = [];
+          }
+        }
         if (op.expect) {
-          // slot: null means "has no slot", which holds when the key is absent.
+          // slot: null means "has no slot", which holds when the key is absent (its neutral value, never stored).
           const { slot: expectSlot, ...otherExpect } = op.expect;
           const slotHolds = expectSlot === undefined || (expectSlot === null ? current.slot === undefined : holds(current, { slot: expectSlot }));
           if (!slotHolds || !holds(current, otherExpect)) throw stale(`clip "${op.clipId}"`);
@@ -477,7 +558,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
             continue;
           }
           merged[key] =
-            isPlainObject(existing) && isPlainObject(value) ? { ...existing, ...value } : value;
+            MERGED_FIELDS.has(key) && isPlainObject(existing) && isPlainObject(value) ? { ...existing, ...value } : value;
         }
         const schema = current.type === "text" ? StrictTextClip : current.type === "placeholder" ? StrictPlaceholderClip : StrictMediaClip;
         const result = schema.safeParse(merged);
@@ -496,7 +577,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         const undo: Record<string, unknown> = {};
         const written: Record<string, unknown> = {};
         for (const key of Object.keys(op.patch)) {
-          // Plain objects (transform, style) are compared one level deep, so the
+          // transform, style and keyframes are compared one level deep, so the
           // undo only touches the sub-keys this op changed.
           const b = before[key];
           const a = after[key];
@@ -506,7 +587,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
               undo.slot = b ?? null;
               written.slot = a ?? null;
             }
-          } else if (isPlainObject(b) && isPlainObject(a)) {
+          } else if (MERGED_FIELDS.has(key) && isPlainObject(b) && isPlainObject(a)) {
             const { old, now } = diffFields(b, a);
             if (Object.keys(old).length) {
               undo[key] = old;

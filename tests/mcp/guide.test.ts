@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EDIT_DESCRIPTION, EXAMPLE_CROP, EXAMPLE_MEDIA_CLIP, EXAMPLE_STRETCH, EXAMPLE_TEXT_CLIP, OP_REFERENCE, SERVER_INSTRUCTIONS, TEAM_STYLE_RULES, buildEditingGuide } from "@/lib/mcp/guide";
+import { EDIT_DESCRIPTION, EXAMPLE_CROP, EXAMPLE_KEYFRAMES, EXAMPLE_MEDIA_CLIP, EXAMPLE_TEXT_ANIMATION, EXAMPLE_TRANSITION, EFFECTS_REFERENCE, EXAMPLE_STRETCH, EXAMPLE_TEXT_CLIP, OP_REFERENCE, SERVER_INSTRUCTIONS, TEAM_STYLE_RULES, buildEditingGuide } from "@/lib/mcp/guide";
 import { checkAllowedOps } from "@/lib/mcp/op-rules";
 import { editTimelineTool } from "@/lib/mcp/tools/edit-timeline";
 import { createProject } from "@/lib/projects/service";
@@ -93,7 +93,7 @@ describe("the guide", () => {
     ].join("\n"));
     expect(OP_REFERENCE).toContain('{"op":"update_clip","clipId":C,"patch":{...}}               text, style{...}, transform{...}, volume, speed; never start or duration');
     expect(OP_REFERENCE).toContain('{"op":"set_safe_area","format":FORMAT,"size":{"width":W,"height":H}}   shares of the frame; "size":null goes back to the default');
-    expect(OP_REFERENCE.endsWith([
+    expect(OP_REFERENCE.includes([
       `"style":${JSON.stringify(EXAMPLE_TEXT_CLIP.style)}}`,
       'A media CLIP: {"type":"video"|"image"|"audio","assetId":A,"start":F,"duration":F,"in":F,"speed":1,"volume":1,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"}}',
       "assetId comes from list_assets, and type must be the asset's kind. in is the first frame of the footage the clip shows. Video and audio must stay inside the footage: in + duration × speed is at most the asset's length in frames. Video and image clips go on video or overlay tracks, audio clips on audio tracks.",
@@ -127,6 +127,41 @@ describe("the guide", () => {
     const ops = prepareOps(["v", "t"].map((clipId) => ({ op: "update_clip" as const, clipId, patch: { transform: { stretch: EXAMPLE_STRETCH } } })));
     const { doc } = applyOps(added, ops);
     expect([doc.tracks[0].clips[0].transform.stretch, doc.tracks[1].clips[0].transform.stretch]).toEqual([EXAMPLE_STRETCH, EXAMPLE_STRETCH]);
+  });
+
+  it("shows keyframes, a transition and text animation the engine accepts as written", () => {
+    const added = applyOps(createEmptyDoc("short_9x16"), prepareOps([
+      { op: "add_clip", trackId: "v1", clip: { ...EXAMPLE_MEDIA_CLIP, id: "v" } },
+      { op: "add_clip", trackId: "t1", clip: { ...EXAMPLE_TEXT_CLIP, id: "t" } },
+    ])).doc;
+    expect(EFFECTS_REFERENCE).toContain(JSON.stringify({ op: "update_clip", clipId: "C", patch: { keyframes: EXAMPLE_KEYFRAMES } }));
+    expect(EFFECTS_REFERENCE).toContain(JSON.stringify({ op: "update_clip", clipId: "C", patch: { transitionIn: EXAMPLE_TRANSITION } }));
+    expect(EFFECTS_REFERENCE).toContain(JSON.stringify({ op: "update_clip", clipId: "C", patch: { animationIn: EXAMPLE_TEXT_ANIMATION } }));
+    const apply = (clipId: string, patch: Record<string, unknown>) => applyOps(added, prepareOps([{ op: "update_clip", clipId, patch }])).doc;
+    expect(apply("v", { keyframes: EXAMPLE_KEYFRAMES }).tracks[0].clips[0]).toMatchObject({ keyframes: EXAMPLE_KEYFRAMES });
+    expect(apply("t", { keyframes: EXAMPLE_KEYFRAMES }).tracks[1].clips[0]).toMatchObject({ keyframes: EXAMPLE_KEYFRAMES });
+    expect(apply("v", { transitionIn: EXAMPLE_TRANSITION }).tracks[0].clips[0]).toMatchObject({ transitionIn: EXAMPLE_TRANSITION });
+    expect(apply("t", { animationIn: EXAMPLE_TEXT_ANIMATION }).tracks[1].clips[0]).toMatchObject({ animationIn: EXAMPLE_TEXT_ANIMATION });
+    // The guide says null removes a transition and [] removes a property's keyframes.
+    const withBoth = applyOps(added, prepareOps([{ op: "update_clip", clipId: "v", patch: { keyframes: EXAMPLE_KEYFRAMES, transitionIn: EXAMPLE_TRANSITION } }])).doc;
+    const cleared = applyOps(withBoth, prepareOps([{ op: "update_clip", clipId: "v", patch: { keyframes: { x: [] }, transitionIn: null } }])).doc.tracks[0].clips[0];
+    expect(cleared).not.toHaveProperty("transitionIn", EXAMPLE_TRANSITION);
+    expect(cleared).toMatchObject({ keyframes: { opacity: EXAMPLE_KEYFRAMES.opacity } });
+  });
+
+  it("states the rules for effects", () => {
+    for (const phrase of [
+      "keyframes merges per property",
+      "A keyframed property ignores its transform value",
+      "at counts frames from the clip's start",
+      "Crossfade is in-only",
+      "null removes it",
+      "frames runs from 1 to 600",
+      "get_project shows each keyframed property's list as kf.<prop>=at:value~ease",
+      '"left" enters from the right moving left',
+      'Defaults: direction "left", dip color "#000000", highlight_word color "#FFD400"',
+    ]) expect(buildEditingGuide(), phrase).toContain(phrase);
+    for (const value of ["fade", "crossfade", "slide", "zoom", "whip", "dip", "ease_in_out", "hold", "typewriter", "scale_punch", "shake", "pulse", "highlight_word"]) expect(EFFECTS_REFERENCE, value).toContain(value);
   });
 
   it("says crop and stretch are possible", () => {

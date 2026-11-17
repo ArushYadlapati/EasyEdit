@@ -112,3 +112,29 @@ describe("the edges of what should be playing", () => {
     expect(upcomingAssetIds(doc, 90)).toEqual(["a1", "a2"]);
   });
 });
+
+describe("a crossfade's outgoing clip", () => {
+  // A: asset a1, frames 0 to 30, in 15, speed 2. B: asset a2, frames 30 to 60, crossfading in over 10 frames.
+  function crossfadeDoc(): TimelineDoc {
+    const d = docWithCaptions("short_9x16");
+    d.tracks[0].clips = [
+      video("A", 0, 30, { assetId: "a1", in: 15, speed: 2 }),
+      video("B", 30, 30, { assetId: "a2", transitionIn: { kind: "crossfade", frames: 10 } }),
+    ];
+    return d;
+  }
+
+  it("plays on past its out point, silent, under the clip crossfading in", () => {
+    const wants = mediaWants(crossfadeDoc(), 35, { playing: true, rate: 1 });
+    expect(wants.map((w) => w.clipId)).toEqual(["A", "B"]);
+    expect(wants[0]).toEqual({ clipId: "A", assetId: "a1", type: "video", seconds: (15 + 35 * 2) / 30, rate: 2, volume: 0 });
+    expect(wants[1]).toMatchObject({ clipId: "B", seconds: 5 / 30, rate: 1, volume: 1 });
+  });
+
+  it("stops when the crossfade ends, and never plays under a plain fade", () => {
+    expect(mediaWants(crossfadeDoc(), 39, { playing: true, rate: 1 }).map((w) => w.clipId)).toEqual(["A", "B"]);
+    expect(mediaWants(crossfadeDoc(), 40, { playing: true, rate: 1 }).map((w) => w.clipId)).toEqual(["B"]);
+    const faded = withClip(crossfadeDoc(), "B", { transitionIn: { kind: "fade", frames: 10 } } as Partial<Clip>);
+    expect(mediaWants(faded, 35, { playing: true, rate: 1 }).map((w) => w.clipId)).toEqual(["B"]);
+  });
+});

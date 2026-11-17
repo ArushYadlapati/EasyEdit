@@ -74,6 +74,15 @@ describe("what the preview draws, as boxes", () => {
     expectPoint(se, 604, 998.4);
   });
 
+  it("a keyframed clip's box follows its keyframes", () => {
+    const doc = patch(sampleDoc(), "c2", {});
+    const c2 = doc.tracks[0].clips[1];
+    doc.tracks[0].clips[1] = { ...c2, keyframes: { x: [{ at: 0, value: 0 }, { at: 10, value: 1 }] } } as Clip;
+    const at = (frame: number) => canvasItems(doc, frame, sizer).find((i) => i.clipId === "c2")!.center;
+    expectPoint(at(c2.start + 5), 0.5 * FRAME.width, 0.5 * FRAME.height);
+    expectPoint(at(c2.start + 2), 0.2 * FRAME.width, 0.5 * FRAME.height); // the rest x is 0.5, so this one shows it moved
+  });
+
   it("toLocal and toWorld undo each other on a turned, stretched clip", () => {
     const doc = patch(sampleDoc(), "x1", { rotation: 37, scale: 1.5, stretch: 0.6, x: 0.3 });
     const x1 = canvasItems(doc, 10, sizer)[1];

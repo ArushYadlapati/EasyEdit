@@ -302,6 +302,28 @@ describe("the media pool, further", () => {
     expect(h.made.map((el) => [el.kind, el.src, el.plays])).toEqual([["audio", "blob:aud#1", 1]]);
   });
 
+  it("holds a video's last frame when it is wanted at or past the end of its file, as a crossfade's tail is", async () => {
+    // A browser's play() on an ended element starts it over from 0, so the pool must not ask an ended one to play.
+    const h = await setup();
+    const tail = want("c1", "a", { rate: 1, volume: 0, seconds: 1.9 });
+    await h.syncSettled([tail]);
+    const [el] = h.made;
+    expect(el).toMatchObject({ plays: 1, currentTime: 1.9 });
+    Object.assign(el, { duration: 2, ended: true, paused: true, currentTime: 2 }); // it played to the end and stopped
+    h.pool.sync([{ ...tail, seconds: 2.1 }]);
+    h.pool.sync([{ ...tail, seconds: 2.3 }]);
+    expect(el).toMatchObject({ plays: 1, currentTime: 2, muted: true });
+    // Not yet ended, with its length known: moved to the end and kept there, paused.
+    Object.assign(el, { ended: false, paused: false, currentTime: 1.5 });
+    h.pool.sync([{ ...tail, seconds: 2.5 }]);
+    expect(el).toMatchObject({ plays: 1, pauses: 1, paused: true, currentTime: 2 });
+    h.pool.sync([{ ...tail, seconds: 2.6 }]);
+    expect(el).toMatchObject({ plays: 1, pauses: 1, currentTime: 2 });
+    // Wanted before its end again (scrubbed back): it plays.
+    h.pool.sync([{ ...tail, seconds: 1 }]);
+    expect(el).toMatchObject({ plays: 2, currentTime: 1 });
+  });
+
   it("does not ask a playing element to play again", async () => {
     const h = await setup();
     const playing = want("c1", "a", { rate: 1, volume: 1 });

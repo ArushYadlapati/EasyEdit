@@ -9,10 +9,12 @@ import { HEADER_WIDTH, MAX_CONTENT_PX, formatTimecode } from "@/lib/editor/geome
 import { createMediaDrop, type Incoming } from "@/lib/editor/media-drop";
 import type { MediaFiles } from "@/lib/media/media-files";
 import type { AssetView } from "@/lib/media/types";
-import { createEmptyDoc, type Clip } from "@/lib/timeline";
+import { createEmptyDoc, type Clip, type Track } from "@/lib/timeline";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 import { makeStore, sampleDoc, text, video } from "../editor/fixtures";
+
+const trackOf = (...clips: Clip[]): Track => ({ id: "v9", kind: "video", name: "Video 9", muted: false, hidden: false, locked: false, clips });
 
 // happy-dom does no layout: every element is 1400 px wide, so the lanes measure 1400 − HEADER_WIDTH px. The scroller's
 // left edge is at 0 on screen, so the ruler's lane starts at HEADER_WIDTH − scrollLeft.
@@ -383,10 +385,11 @@ it("a drag across the timeline selects no page text, while a track's rename fiel
 it("a clip told to show no still shows none, and a caption row's clips are told so", async () => {
   const { media, get } = stillMedia();
   const store = makeStore();
+  const c9 = video("c9", 0, 30);
   const view = (still: boolean) => (
     <EditorProvider store={store}>
       <MediaProvider services={media}>
-        <ClipView clip={video("c9", 0, 30)} zoom={4} fps={30} selected={false} hidden={false} locked={false} still={still} />
+        <ClipView clip={c9} track={trackOf(c9)} zoom={4} fps={30} selected={false} hidden={false} locked={false} still={still} />
       </MediaProvider>
     </EditorProvider>
   );
@@ -528,7 +531,7 @@ it("draws an empty slot as a hatched clip labelled with its slot name", () => {
   const clip = { id: "s1", type: "placeholder", start: 0, duration: 30, accepts: "visual", slot: { name: "hero_clip" }, transform: { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, fit: "cover" } } as Clip;
   const { container } = render(
     <EditorProvider store={makeStore()}>
-      <ClipView clip={clip} zoom={4} fps={30} selected={false} hidden={false} locked={false} still />
+      <ClipView clip={clip} track={trackOf(clip)} zoom={4} fps={30} selected={false} hidden={false} locked={false} still />
     </EditorProvider>,
   );
   const el = container.querySelector("[data-placeholder]") as HTMLElement;
@@ -536,4 +539,43 @@ it("draws an empty slot as a hatched clip labelled with its slot name", () => {
   expect(el.style.backgroundImage).toContain("repeating-linear-gradient");
   expect(within(el).getByText("Slot: hero_clip")).toBeTruthy();
   expect(el.getAttribute("aria-label")).toContain("Slot: hero_clip");
+});
+
+it("a clip draws a tick per keyframe and a wedge over each effect window, none of which take the pointer", () => {
+  const clip = video("c9", 0, 30, {
+    transitionIn: { kind: "fade", frames: 10 },
+    keyframes: { x: [{ at: 0, value: 0 }, { at: 12, value: 1 }], scale: [{ at: 12, value: 1 }, { at: 20, value: 2 }] },
+  });
+  const { container } = render(
+    <EditorProvider store={makeStore()}>
+      <ClipView clip={clip} track={trackOf(clip)} zoom={4} fps={30} selected={false} hidden={false} locked={false} still={false} />
+    </EditorProvider>,
+  );
+  const ticks = container.querySelectorAll<HTMLElement>('[data-testid="keyframe-tick"]');
+  expect(ticks.length).toBe(3);
+  expect(ticks[1].style.left).toBe("48px");
+  expect(ticks[0].getAttribute("aria-hidden")).toBe("true");
+  expect(ticks[0].className).toContain("pointer-events-none");
+  const wedges = container.querySelectorAll<HTMLElement>("[data-effect-wedge]");
+  expect(wedges.length).toBe(1);
+  expect(wedges[0].dataset.effectWedge).toBe("in");
+  expect(wedges[0].style.width).toBe("40px");
+  expect(wedges[0].className).toContain("pointer-events-none");
+});
+
+it("a clip the next one crossfades in from draws no out wedge", () => {
+  const a = video("A", 0, 30, { transitionOut: { kind: "fade", frames: 10 } });
+  const b = video("B", 30, 30, { transitionIn: { kind: "crossfade", frames: 10 } });
+  const wedges = (track: Track) => {
+    const { container, unmount } = render(
+      <EditorProvider store={makeStore()}>
+        <ClipView clip={a} track={track} zoom={4} fps={30} selected={false} hidden={false} locked={false} still={false} />
+      </EditorProvider>,
+    );
+    const sides = [...container.querySelectorAll<HTMLElement>("[data-effect-wedge]")].map((w) => w.dataset.effectWedge);
+    unmount();
+    return sides;
+  };
+  expect(wedges(trackOf(a))).toEqual(["out"]);
+  expect(wedges(trackOf(a, b))).toEqual([]);
 });

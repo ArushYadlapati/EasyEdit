@@ -462,3 +462,70 @@ describe("the image resized and cropped", () => {
     expect(transformOf(se(inward, { shift: true }))).toEqual({ x: 0.475, y: 0.4859, scale: 0.9, stretch: 1.0556 });
   });
 });
+
+describe("keyframed clips", () => {
+  const keyed = (doc: TimelineDoc, clipId: string, keyframes: Record<string, unknown>): TimelineDoc => {
+    for (const track of doc.tracks) track.clips = track.clips.map((c) => (c.id === clipId ? ({ ...c, keyframes } as Clip) : c));
+    return doc;
+  };
+
+  it("a move starts from the keyframed place at the playhead and writes keyframes there for x and y", () => {
+    // x runs 0.25 → 0.75 over frames 0 to 20, so it is 0.5 at frame 10; the transform's own x is stale.
+    const doc = keyed(patch(sampleDoc(), "x1", { x: 0.1 }), "x1", { x: [{ at: 0, value: 0.25 }, { at: 20, value: 0.75 }], y: [{ at: 0, value: 0.5 }] });
+    const drag = beginCanvasDrag(doc, itemOf(doc, "x1", 10), "body", P(540, 960), undefined, [], [], 10)!;
+    expect(drag).toMatchObject({ type: "move", from: { x: 0.5, y: 0.5 } });
+    const r = resolveCanvasDrag(drag, input(P(594, 1152)));
+    expect(r.ops).toEqual([
+      {
+        op: "update_clip",
+        clipId: "x1",
+        patch: { keyframes: { x: [{ at: 0, value: 0.25 }, { at: 10, value: 0.55 }, { at: 20, value: 0.75 }], y: [{ at: 0, value: 0.5 }, { at: 10, value: 0.6 }] } },
+      },
+    ]);
+  });
+
+  it("a turn starts from the keyframed rotation", () => {
+    const doc = keyed(sampleDoc(), "x1", { rotation: [{ at: 0, value: 0 }, { at: 20, value: 40 }] });
+    const drag = beginCanvasDrag(doc, itemOf(doc, "x1", 10), "rotate", around(0), undefined, [], [], 10)!;
+    expect(drag).toMatchObject({ type: "rotate", from: 20 });
+    expect(resolveCanvasDrag(drag, input(around(30))).ops).toEqual([
+      { op: "update_clip", clipId: "x1", patch: { keyframes: { rotation: [{ at: 0, value: 0 }, { at: 10, value: 50 }, { at: 20, value: 40 }] } } },
+    ]);
+  });
+
+  it("a resize keys the scale and puts the rest on the transform; a crop stays on the transform", () => {
+    const doc = keyed(imageDoc(), "i1", { scale: [{ at: 0, value: 1 }] });
+    const drag = beginCanvasDrag(doc, itemOf(doc, "i1", 10), "e", P(1080, 960), undefined, [], [], 10)!;
+    expect(resolveCanvasDrag(drag, input(P(1188, 960))).ops).toEqual([
+      { op: "update_clip", clipId: "i1", patch: { transform: { x: 0.55 }, keyframes: { scale: [{ at: 0, value: 1 }, { at: 10, value: 1.1 }] } } },
+    ]);
+    const crop = resolveCanvasDrag(drag, input(P(972, 960), { crop: true }));
+    expect(crop.label).toBe("crop");
+    expect(transformOf(crop)).toEqual({ crop: { left: 0, top: 0, right: 0.1, bottom: 0 } });
+  });
+
+  it("a drag keys the frame it was pressed at, whatever the playhead does after", () => {
+    const doc = keyed(sampleDoc(), "x1", { x: [{ at: 0, value: 0.25 }, { at: 20, value: 0.75 }] });
+    const drag = beginCanvasDrag(doc, itemOf(doc, "x1", 10), "body", P(540, 960), undefined, [], [], 10)!;
+    // Playback moved the playhead on to frame 30 mid-drag; the keyframe still lands at the press.
+    const later = { ...input(P(594, 960)), frame: 30 } as CanvasDragInput;
+    expect(resolveCanvasDrag(drag, later).ops).toEqual([
+      { op: "update_clip", clipId: "x1", patch: { keyframes: { x: [{ at: 0, value: 0.25 }, { at: 10, value: 0.55 }, { at: 20, value: 0.75 }] } } },
+    ]);
+  });
+
+  it("a press past the clip's end keys its last frame", () => {
+    // x1 runs frames 0 to 60; x holds 0.75 after frame 20.
+    const doc = keyed(sampleDoc(), "x1", { x: [{ at: 0, value: 0.25 }, { at: 20, value: 0.75 }] });
+    const drag = beginCanvasDrag(doc, itemOf(doc, "x1", 10), "body", P(540, 960), undefined, [], [], 75)!;
+    expect(resolveCanvasDrag(drag, input(P(594, 960))).ops).toEqual([
+      { op: "update_clip", clipId: "x1", patch: { keyframes: { x: [{ at: 0, value: 0.25 }, { at: 20, value: 0.75 }, { at: 59, value: 0.8 }] } } },
+    ]);
+  });
+
+  it("without a frame a drag patches the transform, as before", () => {
+    const doc = keyed(sampleDoc(), "x1", { x: [{ at: 0, value: 0.5 }] });
+    const r = resolveCanvasDrag(beginCanvasDrag(doc, itemOf(doc, "x1", 10), "body", P(540, 960))!, input(P(594, 960)));
+    expect(transformOf(r)).toEqual({ x: 0.55 });
+  });
+});

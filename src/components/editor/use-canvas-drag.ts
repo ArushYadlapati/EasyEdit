@@ -98,15 +98,15 @@ export function createCanvasDrag(store: EditorStore, surface: PreviewSurface, pa
     return s.drag?.type === "resize" && (s.ctrl || state.cropArmed === s.clipId || state.tool === "crop");
   }
 
-  // The drag begins from the clip as it is drawn now. Null when it cannot: the clip is gone, off the playhead, or on
-  // a locked track.
+  // The drag begins from the clip as it is drawn now, keyframes at the playhead included. Null when it cannot: the clip
+  // is gone, off the playhead, or on a locked track.
   function start(s: Session): boolean {
     const state = store.getState();
     const view = surface.view();
     const items = surface.items();
     const item = items.find((i) => i.clipId === s.clipId);
     const doc = viewDoc(state);
-    const drag = view && item ? beginCanvasDrag(doc, item, s.grip, fromScreen(view, s.x0, s.y0), s.drawn, items, state.showGuides ? (doc.guides ?? []) : []) : null;
+    const drag = view && item ? beginCanvasDrag(doc, item, s.grip, fromScreen(view, s.x0, s.y0), s.drawn, items, state.showGuides ? (doc.guides ?? []) : [], state.playhead) : null;
     if (!drag) {
       if (!findClip(doc, s.clipId)) state.notify("error", MESSAGES.clipGone);
       end(false);

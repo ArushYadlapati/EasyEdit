@@ -85,8 +85,10 @@ const STATES: [string, (store: EditorStore) => void, string[]][] = [
     (store) => store.getState().select(["x1"]),
     [
       "textarea Text", "select Font", "input Size", "select Weight", "input Color", "input Hex color", "button Left", "button Center", "button Right",
-      "input X", "input Y", "input Width", "button Lock aspect ratio", "input Height", "input Scale", "input Rotation", "input Opacity",
+      "input X", "button Add X keyframe", "input Y", "button Add Y keyframe", "input Width", "button Lock aspect ratio", "input Height",
+      "input Scale", "button Add Scale keyframe", "input Rotation", "button Add Rotation keyframe", "input Opacity", "button Add Opacity keyframe",
       "input Crop left", "input Crop top", "input Crop right", "input Crop bottom", "button Reset crop",
+      "select Animation in", "select Animation out", "select Emphasis",
       "input Start", "input Length", "button Make this a slot",
     ],
   ],

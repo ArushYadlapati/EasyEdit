@@ -122,6 +122,22 @@ describe("planThumbnail", () => {
     expect(planThumbnail(clipUnderText(0.5), lib({ a: assetView({ removed: true }) }))).toEqual({ kind: "skip" });
   });
 
+  it("a clip fading in from opacity 0 counts as one that shows", () => {
+    const d = clipUnderText(0);
+    d.tracks[0].clips[0] = { ...d.tracks[0].clips[0], keyframes: { opacity: [{ at: 0, value: 0 }, { at: 10, value: 1 }] } } as typeof d.tracks[0]["clips"][0];
+    expect(planThumbnail(d, lib({ a: assetView() }))).toMatchObject({ kind: "draw", frame: 30, sources: [{ clipId: "c1", seconds: 1 }] });
+    expect(planThumbnail(d, lib({ a: assetView({ removed: true }) }))).toEqual({ kind: "skip" });
+  });
+
+  it("a crossfade's outgoing clip is a source past its out point, at the moment it has run on to", () => {
+    // Text from frame 0 picks frame 30, while B still crossfades in over A. A starts at 1, after the text.
+    const d = createEmptyDoc("short_9x16");
+    d.tracks[0].clips = [video("A", 1, 19, { assetId: "a", in: 30 }), video("B", 20, 40, { assetId: "b", transitionIn: { kind: "crossfade", frames: 20 } })];
+    d.tracks[1].clips = [text("x1", 0, 90)];
+    const plan = planThumbnail(d, lib({ a: assetView(), b: assetView({ id: "b", previewFileId: "prev-b" }) }));
+    expect(plan).toMatchObject({ kind: "draw", frame: 30, sources: [{ clipId: "A", fileId: "prev-a", seconds: (30 + 29) / 30 }, { clipId: "B", fileId: "prev-b", seconds: 10 / 30 }] });
+  });
+
   it("text alone needs no file", () => {
     const d = createEmptyDoc("short_9x16");
     d.tracks[1].clips = [text("x1", 0, 60)];

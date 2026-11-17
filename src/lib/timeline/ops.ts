@@ -1,7 +1,22 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { OpError } from "./errors";
-import { Clip, FormatId, Guide, MediaClip, PlaceholderClip, SafeArea, Slot, TextClip, TextStyle, Track, TrackKind, TrackName, Transform } from "./types";
+import {
+  Clip,
+  FormatId,
+  Guide,
+  Keyframes,
+  MediaClip,
+  PlaceholderClip,
+  SafeArea,
+  Slot,
+  TextClip,
+  TextStyle,
+  Track,
+  TrackKind,
+  TrackName,
+  Transform,
+} from "./types";
 
 const id = z.string().min(1);
 const optionalId = { id: id.optional() };
@@ -13,7 +28,8 @@ const TrackPatch = z.object({
   locked: z.boolean().optional(),
 });
 
-// The fields update_clip can change, each optional. transform and style list only the sub-keys they compare.
+// The fields update_clip can change, each optional. transform, style and keyframes list only the sub-keys they
+// compare; an empty keyframe list, or null for the others, means the clip has none.
 const ClipExpect = z
   .object({
     assetId: MediaClip.shape.assetId,
@@ -24,6 +40,12 @@ const ClipExpect = z
     slot: Slot.nullable(),
     transform: Transform.partial().strict(),
     style: TextStyle.partial().strict(),
+    keyframes: z.strictObject(Keyframes.shape),
+    transitionIn: MediaClip.shape.transitionIn,
+    transitionOut: MediaClip.shape.transitionOut,
+    animationIn: TextClip.shape.animationIn,
+    animationOut: TextClip.shape.animationOut,
+    emphasis: TextClip.shape.emphasis,
   })
   .partial()
   .strict();

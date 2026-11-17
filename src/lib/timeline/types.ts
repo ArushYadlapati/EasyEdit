@@ -40,6 +40,80 @@ export const Slot = z.strictObject({
 });
 export type Slot = z.infer<typeof Slot>;
 
+const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "a colour is #rrggbb");
+
+// How a value travels from one keyframe to the next. "hold" stays put until the next keyframe, then jumps.
+export const Ease = z.enum(["linear", "ease_in", "ease_out", "ease_in_out", "hold"]);
+export type Ease = z.infer<typeof Ease>;
+
+export const KeyframeProp = z.enum(["x", "y", "scale", "rotation", "opacity"]);
+export type KeyframeProp = z.infer<typeof KeyframeProp>;
+
+// `at` counts frames from the clip's start. It may be negative or past the end: a keyframe outside the clip only
+// shapes the curve, so trimming a clip never has to throw one away. `ease` is the travel to the next keyframe.
+export const Keyframe = z.strictObject({ at: z.number().int(), value: z.number(), ease: Ease.optional() });
+export type Keyframe = z.infer<typeof Keyframe>;
+
+const KeyframeList = z
+  .array(Keyframe)
+  .max(LIMITS.keyframesPerProperty)
+  .refine((list) => list.every((k, i) => i === 0 || k.at > list[i - 1].at), "keyframes must be in time order, one per frame");
+
+// A property with no list, or an empty one, is not keyframed and uses the clip's transform value.
+export const Keyframes = z
+  .strictObject({
+    x: KeyframeList.optional(),
+    y: KeyframeList.optional(),
+    scale: KeyframeList.optional(),
+    rotation: KeyframeList.optional(),
+    opacity: KeyframeList.optional(),
+  })
+  .superRefine((k, ctx) => {
+    if (k.opacity?.some((f) => f.value < 0 || f.value > 1)) {
+      ctx.addIssue({ code: "custom", path: ["opacity"], message: "opacity keyframes must be between 0 and 1" });
+    }
+    if (k.scale?.some((f) => f.value <= 0)) {
+      ctx.addIssue({ code: "custom", path: ["scale"], message: "scale keyframes must be above 0" });
+    }
+  });
+export type Keyframes = z.infer<typeof Keyframes>;
+
+const EffectFrames = z.number().int().min(1).max(LIMITS.effectFramesMax);
+
+export const TransitionKind = z.enum(["fade", "crossfade", "slide", "zoom", "whip", "dip"]);
+export type TransitionKind = z.infer<typeof TransitionKind>;
+
+// direction is used by slide and whip (default left), color by dip (default black).
+export const Transition = z.strictObject({
+  kind: TransitionKind,
+  frames: EffectFrames,
+  direction: z.enum(["left", "right", "up", "down"]).optional(),
+  color: HexColor.optional(),
+});
+export type Transition = z.infer<typeof Transition>;
+
+// A crossfade blends with the clip before this one, so it only makes sense at a clip's start.
+const TransitionOut = Transition.refine((t) => t.kind !== "crossfade", "crossfade is only an in-transition");
+
+export const TextAnimationIn = z.strictObject({
+  preset: z.enum(["fade", "pop", "slide_up", "slide_down", "slide_left", "slide_right", "typewriter", "scale_punch"]),
+  frames: EffectFrames,
+});
+export type TextAnimationIn = z.infer<typeof TextAnimationIn>;
+
+export const TextAnimationOut = z.strictObject({
+  preset: z.enum(["fade", "pop", "slide_up", "slide_down", "slide_left", "slide_right"]),
+  frames: EffectFrames,
+});
+export type TextAnimationOut = z.infer<typeof TextAnimationOut>;
+
+// Runs for the whole clip; highlight_word lights the words in `color` (default #FFD400).
+export const Emphasis = z.strictObject({
+  preset: z.enum(["shake", "pulse", "highlight_word"]),
+  color: HexColor.optional(),
+});
+export type Emphasis = z.infer<typeof Emphasis>;
+
 const ClipBase = {
   id: z.string().min(1),
   start: z.number().int().min(0),
@@ -55,6 +129,10 @@ export const MediaClip = z.object({
   speed: z.number().positive(),
   volume: z.number().min(0).max(2),
   slot: Slot.optional(),
+  // Video and image only; Audio clips are checked where clips are added and changed.
+  keyframes: Keyframes.optional(),
+  transitionIn: Transition.nullable().optional(),
+  transitionOut: TransitionOut.nullable().optional(),
 });
 export type MediaClip = z.infer<typeof MediaClip>;
 
@@ -73,15 +151,24 @@ export const TextClip = z.object({
   text: z.string().max(LIMITS.textClipChars).refine(isStorableText, UNSTORABLE_TEXT),
   style: TextStyle,
   slot: Slot.optional(),
+  keyframes: Keyframes.optional(),
+  animationIn: TextAnimationIn.nullable().optional(),
+  animationOut: TextAnimationOut.nullable().optional(),
+  emphasis: Emphasis.nullable().optional(),
 });
 export type TextClip = z.infer<typeof TextClip>;
 
 // An empty slot: it holds a place on a track, takes no media yet, and draws nothing. Always has its slot.
+// A visual slot can carry the effects a video or image clip takes, so the clip that fills it keeps them;
+// an audio slot takes none (checked where clips are added and changed, as for audio clips).
 export const PlaceholderClip = z.object({
   ...ClipBase,
   type: z.literal("placeholder"),
   accepts: z.enum(["visual", "audio"]),
   slot: Slot,
+  keyframes: Keyframes.optional(),
+  transitionIn: Transition.nullable().optional(),
+  transitionOut: TransitionOut.nullable().optional(),
 });
 export type PlaceholderClip = z.infer<typeof PlaceholderClip>;
 

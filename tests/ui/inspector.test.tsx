@@ -103,7 +103,11 @@ it("a viewer sees the values with every edit control disabled", () => {
   const { container } = render(<EditorProvider store={store}><Inspector /></EditorProvider>);
   expect((screen.getByLabelText("Text") as HTMLTextAreaElement).value).toBe("hi");
   expect((screen.getByLabelText("Size") as HTMLInputElement).value).toBe("64");
-  const controls = [...container.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button, input, select, textarea")];
+  // The keyframe arrows only move the playhead, so they are not edit controls.
+  const seeks = ["Previous keyframe", "Next keyframe"];
+  const all = [...container.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button, input, select, textarea")];
+  const controls = all.filter((c) => !seeks.includes(c.getAttribute("aria-label") ?? ""));
+  expect(all.length - controls.length).toBe(2);
   expect(controls.length).toBeGreaterThan(10);
   for (const control of controls) {
     expect(control.hasAttribute("data-edit-control")).toBe(true);
@@ -480,9 +484,14 @@ describe("position and size in your units", () => {
 
   it("the lock is between Width and Height", () => {
     setup();
-    const section = screen.getByRole("heading", { name: "Position" }).parentElement!;
+    // The heading shares a row with the keyframe arrows.
+    const section = screen.getByRole("heading", { name: "Position" }).parentElement!.parentElement!;
     const names = [...section.querySelectorAll("input, button")].map((c) => c.getAttribute("aria-label"));
-    expect(names).toEqual(["X", "Y", "Width", "Lock aspect ratio", "Height", "Scale", "Rotation", "Opacity"]);
+    expect(names).toEqual([
+      "Previous keyframe", "Next keyframe",
+      "X", "Add X keyframe", "Y", "Add Y keyframe", "Width", "Lock aspect ratio", "Height",
+      "Scale", "Add Scale keyframe", "Rotation", "Add Rotation keyframe", "Opacity", "Add Opacity keyframe",
+    ]);
   });
 });
 

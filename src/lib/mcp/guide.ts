@@ -2,7 +2,7 @@ import { FONT_LIST } from "@/lib/brand/fonts";
 import { DEFAULT_TEXT_SECONDS, TEXT_FONT, TOOL_PRESETS } from "@/lib/editor/text-presets";
 import { LIMITS } from "@/lib/limits";
 import { safeAreaMargins } from "@/lib/render/safe-zones";
-import { NO_CROP, type Crop, type TextStyle, type Transform } from "@/lib/timeline";
+import { NO_CROP, type Crop, type Keyframes, type TextAnimationIn, type TextStyle, type Transform, type Transition } from "@/lib/timeline";
 
 // The clip shown in the op reference. The test adds it to a project, so the example cannot go stale.
 export const EXAMPLE_TEXT_CLIP: { type: "text"; start: number; duration: number; text: string; transform: Transform; style: TextStyle } = {
@@ -32,6 +32,11 @@ export const EXAMPLE_CROP: Crop = { left: 0.1, top: 0, right: 0.1, bottom: 0 };
 // The stretch shown in the op reference. The test applies it to a video clip and a text clip.
 export const EXAMPLE_STRETCH = 1.5;
 
+// The keyframes, transition and text animation shown in the op reference. The test applies each to the clip types it is for.
+export const EXAMPLE_KEYFRAMES: Keyframes = { opacity: [{ at: 0, value: 0 }, { at: 15, value: 1, ease: "ease_out" }] };
+export const EXAMPLE_TRANSITION: Transition = { kind: "slide", frames: 12, direction: "left" };
+export const EXAMPLE_TEXT_ANIMATION: TextAnimationIn = { preset: "pop", frames: 12 };
+
 // The ops edit_timeline accepts, as Claude reads them. replace_track stays out: it is kept for stored undo data.
 export const OP_REFERENCE = `Ops:
 {"op":"add_clip","trackId":T,"clip":CLIP,"ripple":true}      ripple is optional: it pushes later clips right
@@ -56,6 +61,17 @@ assetId comes from list_assets, and type must be the asset's kind. in is the fir
 x and y place the clip's center as a fraction of the frame: 0.5, 0.5 is the middle. For plain text, add_text is simpler; for media, add_media is.
 A video, image or text transform may also have "crop":${JSON.stringify(EXAMPLE_CROP)}: the share cut from each side of the clip, 0 to 1. The rest stays where it was. update_clip replaces the whole crop, so give all four; ${JSON.stringify(NO_CROP)} removes it.
 A video, image or text transform may also have "stretch":${EXAMPLE_STRETCH}: the clip is drawn ${EXAMPLE_STRETCH} times as wide for its height (below 1 is narrower). scale still sizes the whole clip; 1, or no stretch, keeps its own shape.`;
+
+// Effects are explained in the editing guide, not here: this reference is part of the tool list every conversation loads,
+// and the list has a size cap.
+export const EFFECTS_REFERENCE = `Effects all go through update_clip: ${JSON.stringify({ op: "update_clip", clipId: "C", patch: { keyframes: EXAMPLE_KEYFRAMES } })}
+keyframes (video, image, text) is {"x"|"y"|"scale"|"rotation"|"opacity":[{"at":F,"value":N,"ease":E}]}; keyframes merges per property: patching keyframes.x leaves the others alone, and [] removes a property's keyframes. A keyframed property ignores its transform value. at counts frames from the clip's start, in time order. ease is optional (linear when left out) and is how the value travels to the next keyframe: "linear"|"ease_in"|"ease_out"|"ease_in_out"|"hold". Opacity stays 0 to 1, scale above 0.
+get_project shows each keyframed property's list as kf.<prop>=at:value~ease,... (~ease left out when linear), e.g. kf.scale=0:1,89:1.15~ease_out. To change one keyframe, send that property's whole list back with the one changed.
+transitionIn / transitionOut (video and image only) is {"kind":K,"frames":F,"direction":D,"color":HEX}; K is "fade"|"crossfade"|"slide"|"zoom"|"whip"|"dip". ${JSON.stringify({ op: "update_clip", clipId: "C", patch: { transitionIn: EXAMPLE_TRANSITION } })}
+Give the full transition; null removes it. frames runs from 1 to ${LIMITS.effectFramesMax}. direction ("left"|"right"|"up"|"down", slide and whip) names the way the clip moves: "left" enters from the right moving left. color (dip) is hex. Defaults: direction "left", dip color "#000000", highlight_word color "#FFD400".
+Crossfade is in-only (transitionIn). It blends from the clip that ends exactly where this one starts, on the same track. A crossfade owns its cut: the outgoing clip's own transitionOut is ignored.
+animationIn / animationOut / emphasis (text only) are replaced whole too; null removes it. ${JSON.stringify({ op: "update_clip", clipId: "C", patch: { animationIn: EXAMPLE_TEXT_ANIMATION } })}
+animationIn is {"preset":P,"frames":F}, P is "fade"|"pop"|"slide_up"|"slide_down"|"slide_left"|"slide_right"|"typewriter"|"scale_punch". animationOut is the same without "typewriter" and "scale_punch". slide_up rises into place. emphasis is {"preset":"shake"|"pulse"|"highlight_word","color":HEX} for the whole clip; color is for highlight_word.`;
 
 export const EDIT_DESCRIPTION = `Change a project's timeline with a batch of ops. The whole batch is applied, or none of it.
 
@@ -124,6 +140,7 @@ export function buildEditingGuide(): string {
     "- A video's own sound plays with it, unless its track is hidden or muted. Volume runs from 0 (silent) to 1 (as recorded); above 1 plays at 1 for now. A clip at another speed keeps its pitch.",
     "- A clip cannot run past the end of its footage. A trim that would is refused.",
   ];
+  lines.push("", "## Effects: transitions, keyframes and text animation", ...EFFECTS_REFERENCE.split("\n"));
   if (TEAM_STYLE_RULES.length > 0) lines.push("", "## Team style", ...TEAM_STYLE_RULES.map((rule) => `- ${rule}`));
   return lines.join("\n");
 }

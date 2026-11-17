@@ -44,6 +44,13 @@ describe("thumbnailFrame", () => {
     expect(thumbnailFrame(d)).toBe(230);
   });
 
+  it("a clip that fades in from opacity 0 counts as one that shows", () => {
+    const d = empty();
+    d.tracks[0].clips = [video("c2", 200, 60)];
+    d.tracks[1].clips = [text("x2", 10, 300, { transform: { ...DEFAULT_TRANSFORM, opacity: 0 }, keyframes: { opacity: [{ at: 0, value: 0 }, { at: 15, value: 1 }] } })];
+    expect(thumbnailFrame(d)).toBe(40);
+  });
+
   it("an earlier text clip wins over a later video", () => {
     const d = empty();
     d.tracks[0].clips = [video("c1", 60, 300)];

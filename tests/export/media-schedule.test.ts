@@ -60,6 +60,49 @@ describe("the media schedule", () => {
     expect(mediaSchedule(faded, SAMPLE).clips.map((c) => c.clipId)).toEqual(["c2"]);
   });
 
+  it("keeps a crossfade's outgoing clip drawing past its out point for the crossfade's length", () => {
+    const crossfade = { transitionIn: { kind: "crossfade", frames: 10 } };
+    const d = createEmptyDoc("short_9x16");
+    d.tracks[0].clips = [video("A", 0, 30, { in: 15 }), video("B", 30, 30, { assetId: "b", ...crossfade })];
+    const { clips, lastUse } = mediaSchedule(d, { A: { fileId: "f" }, B: { fileId: "g" } });
+    expect(clips.map((c) => [c.clipId, c.start, c.end, c.seconds.length])).toEqual([["A", 0, 40, 40], ["B", 30, 60, 30]]);
+    expect(clips[0].seconds[39]).toBe((15 + 39) / 30); // the moments run on past the out point
+    expect(lastUse).toEqual({ f: 39, g: 59 });
+
+    const plain = createEmptyDoc("short_9x16");
+    plain.tracks[0].clips = [video("A", 0, 30, { in: 15 }), video("B", 30, 30, { assetId: "b" })];
+    expect(mediaSchedule(plain, { A: { fileId: "f" }, B: { fileId: "g" } }).clips.map((c) => [c.clipId, c.end, c.seconds.length])).toEqual([["A", 30, 30], ["B", 60, 30]]);
+
+    // A crossfade longer than half a clip that also fades out is cut to half of it, and the outgoing clip with it.
+    const cut = createEmptyDoc("short_9x16");
+    cut.tracks[0].clips = [video("A", 0, 30), video("B", 30, 12, { transitionIn: { kind: "crossfade", frames: 10 }, transitionOut: { kind: "fade", frames: 10 } })];
+    expect(mediaSchedule(cut, { A: { fileId: "f" } }).clips[0].end).toBe(36);
+  });
+
+  it("times the tail by the incoming clip's crossfade as it draws, whole when that clip is itself crossfaded out of", () => {
+    const crossfade = { transitionIn: { kind: "crossfade", frames: 10 } };
+    const d = createEmptyDoc("short_9x16");
+    d.tracks[0].clips = [
+      video("A", 0, 30),
+      video("B", 30, 12, { ...crossfade, transitionOut: { kind: "fade", frames: 10 } }),
+      video("C", 42, 30, crossfade),
+    ];
+    const { clips } = mediaSchedule(d, { A: { fileId: "f" }, B: { fileId: "f" }, C: { fileId: "f" } });
+    expect(clips.map((c) => [c.clipId, c.end, c.seconds.length])).toEqual([["A", 40, 40], ["B", 52, 22], ["C", 72, 30]]);
+    const short = createEmptyDoc("short_9x16");
+    // A one-frame clip with an effect at each end has room for neither: the crossfade is cut to 0 frames, so no tail.
+    short.tracks[0].clips = [video("A", 0, 30), video("B", 30, 1, { ...crossfade, transitionOut: { kind: "fade", frames: 10 } })];
+    expect(mediaSchedule(short, { A: { fileId: "f" } }).clips[0].end).toBe(30);
+  });
+
+  it("schedules a clip that fades in from opacity 0 with its opacity keyframes", () => {
+    const d = sampleDoc();
+    const c1 = d.tracks[0].clips[0] as MediaClip;
+    c1.transform.opacity = 0;
+    c1.keyframes = { opacity: [{ at: 0, value: 0 }, { at: 10, value: 1 }] };
+    expect(mediaSchedule(d, SAMPLE).clips.map((c) => c.clipId)).toEqual(["c1", "c2"]);
+  });
+
   it("names a clip's placeholder by its label, or by its kind", () => {
     const label = exportPlaceholderLabel({ c1: { label: "Media removed" }, c2: { fileId: "prev-a" } });
     expect(label(video("c1", 0, 30) as MediaClip)).toBe("Media removed");
