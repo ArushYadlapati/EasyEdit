@@ -124,7 +124,7 @@ export function valuesOf(row: NewAsset): SQL {
 // The error of a statement that failed holds every value the statement was given, and the database's own account
 // of it can quote the row. One of the new row's values is the session address, which no error may hold. So what is
 // thrown instead keeps the database's five-character error code and nothing else: not the error, not as its cause.
-function notRecorded(error: unknown): Error {
+export function notRecorded(error: unknown): Error {
   const codes = [error, (error as { cause?: unknown } | null)?.cause].map((from) => (from as { code?: unknown } | null)?.code);
   const code = codes.find((value) => typeof value === "string" && /^[0-9A-Z]{5}$/.test(value));
   return new Error(code ? `The upload could not be recorded (database error ${code}).` : "The upload could not be recorded.");

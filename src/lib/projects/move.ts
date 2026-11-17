@@ -9,7 +9,7 @@ import { DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { MEDIA_MESSAGES } from "@/lib/media/messages";
 import { driveName } from "@/lib/media/rules";
-import { ASSET_FILES, cancelQuietly, trashQuietly, valuesOf, type AssetFileRole, type AssetRow, type MediaDeps, type NewAsset } from "@/lib/media/service";
+import { ASSET_FILES, cancelQuietly, notRecorded, trashQuietly, valuesOf, type AssetFileRole, type AssetRow, type MediaDeps, type NewAsset } from "@/lib/media/service";
 import type { AssetKind } from "@/lib/media/types";
 import { ServiceError } from "@/lib/service-error";
 import { roleIn } from "@/lib/spaces/service";
@@ -217,21 +217,7 @@ export async function openCopy(deps: MoveDeps & { checkNew?: () => Promise<void>
   const drive = await destinationDrive(deps, move);
 
   const [existing] = await db.select().from(assets).where(and(eq(assets.moveId, move.id), eq(assets.copiedFrom, source.id)));
-  if (existing) {
-    if (existing.status === "ready") return { copyAssetId: existing.id, uploadUrl: null, offset: existing.sizeBytes, done: true };
-    if (existing.uploadUrl !== null) {
-      try {
-        const { done, offset } = await drive.uploadOffset(existing.uploadUrl, existing.sizeBytes);
-        return { copyAssetId: existing.id, uploadUrl: existing.uploadUrl, offset, done };
-      } catch (error) {
-        if (!(error instanceof DriveError && error.reason === "expired")) throw error;
-      }
-    }
-    // The session expired: a fresh one for the same row, so the copy keeps its id.
-    const { driveFileId, uploadUrl } = await openOriginal(drive, deps.origin, existing);
-    await db.update(assets).set({ driveFileId, uploadUrl }).where(and(eq(assets.id, existing.id), eq(assets.status, "uploading")));
-    return { copyAssetId: existing.id, uploadUrl, offset: 0, done: false };
-  }
+  if (existing) return takeUpCopy(deps, drive, move, existing);
 
   await deps.checkNew?.();
   const id = nanoid(12);
@@ -268,13 +254,70 @@ export async function openCopy(deps: MoveDeps & { checkNew?: () => Promise<void>
     moveId: move.id,
     copiedFrom: source.id,
   };
+  // One statement: the move must still be open, and no other request may have made this source's copy first.
+  let inserted: { id: string }[];
   try {
-    await db.insert(assets).select(sql`select ${valuesOf(row)}`);
+    inserted = await db
+      .insert(assets)
+      .select(sql`select ${valuesOf(row)} where ${moveIsOpen(move.id)} and not exists (select 1 from assets where move_id = ${move.id}::text and copied_from = ${source.id}::text)`)
+      .returning({ id: assets.id });
   } catch (error) {
-    await cancelQuietly({ db, drive, origin: deps.origin, onDriveError: deps.onDriveError }, uploadUrl);
-    throw error;
+    await dropSession(deps, drive, uploadUrl);
+    throw notRecorded(error);
   }
-  return { copyAssetId: id, uploadUrl, offset: 0, done: false };
+  if (inserted.length > 0) return { copyAssetId: id, uploadUrl, offset: 0, done: false };
+
+  // Nothing went in: the move ended meanwhile, or a simultaneous request made this copy first.
+  await dropSession(deps, drive, uploadUrl);
+  await moveOf(db, userId, moveId);
+  const [winner] = await db.select().from(assets).where(and(eq(assets.moveId, move.id), eq(assets.copiedFrom, source.id)));
+  if (!winner) throw goneMove();
+  return takeUpCopy(deps, drive, move, winner);
+}
+
+const moveIsOpen = (moveId: string) => sql`exists (select 1 from project_move where id = ${moveId}::text and finished_at is null and abandoned_at is null)`;
+
+// A session that is no longer wanted. Whatever goes wrong cancelling it must not hide why it is no longer wanted.
+async function dropSession(deps: MoveDeps, drive: DriveClient, uploadUrl: string): Promise<void> {
+  try {
+    await cancelQuietly({ db: deps.db, drive, origin: deps.origin, onDriveError: deps.onDriveError }, uploadUrl);
+  } catch {
+    // the session expires on its own
+  }
+}
+
+// An existing copy as a re-open answers it: done, taken up where it stopped, or given a fresh session on the same row.
+async function takeUpCopy(deps: MoveDeps, drive: DriveClient, move: MoveRow, existing: AssetRow): Promise<OpenedCopy> {
+  const { db } = deps;
+  if (existing.status === "ready") return { copyAssetId: existing.id, uploadUrl: null, offset: existing.sizeBytes, done: true };
+  if (existing.uploadUrl !== null) {
+    try {
+      const { done, offset } = await drive.uploadOffset(existing.uploadUrl, existing.sizeBytes);
+      return { copyAssetId: existing.id, uploadUrl: existing.uploadUrl, offset, done };
+    } catch (error) {
+      if (!(error instanceof DriveError && error.reason === "expired")) throw error;
+    }
+  }
+  // The session expired: a fresh one for the same row, so the copy keeps its id.
+  const { driveFileId, uploadUrl } = await openOriginal(drive, deps.origin, existing);
+  let updated: { id: string }[];
+  try {
+    updated = await db
+      .update(assets)
+      .set({ driveFileId, uploadUrl })
+      .where(and(eq(assets.id, existing.id), eq(assets.moveId, move.id), eq(assets.status, "uploading"), moveIsOpen(move.id)))
+      .returning({ id: assets.id });
+  } catch (error) {
+    await dropSession(deps, drive, uploadUrl);
+    throw notRecorded(error);
+  }
+  if (updated.length === 0) {
+    await dropSession(deps, drive, uploadUrl);
+    const [now] = await db.select().from(assets).where(and(eq(assets.id, existing.id), eq(assets.moveId, move.id)));
+    if (now?.status === "ready") return { copyAssetId: now.id, uploadUrl: null, offset: now.sizeBytes, done: true };
+    throw goneMove();
+  }
+  return { copyAssetId: existing.id, uploadUrl, offset: 0, done: false };
 }
 
 async function openOriginal(drive: DriveClient, origin: string, row: Pick<AssetRow, "id" | "fileName" | "mimeType" | "sizeBytes">): Promise<{ driveFileId: string; uploadUrl: string }> {

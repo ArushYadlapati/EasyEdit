@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assets, projects } from "@/db/schema";
+import { assets, projectMove, projects } from "@/db/schema";
 import { sharedFolderClient } from "@/lib/drive/client";
 import { abandonMove, completeCopy, completeCopyFile, openCopy, openCopyFile, startMove, type MoveDeps } from "@/lib/projects/move";
 import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
@@ -190,5 +190,74 @@ describe("copies", () => {
     await fails(completeCopy(x.deps, "u1", x.moveId, opened.copyAssetId), "NOT_FOUND", 404, gone);
     await fails(openCopyFile(x.deps, "u1", x.moveId, opened.copyAssetId, { role: "poster", sizeBytes: 10 }), "NOT_FOUND", 404, gone);
     await fails(completeCopyFile(x.deps, "u1", x.moveId, opened.copyAssetId, "poster"), "NOT_FOUND", 404, gone);
+  });
+
+  it("keeps the session address out of the error when the copy cannot be written", async () => {
+    const x = await started();
+    await x.w.db.execute(sql`alter table assets add constraint refuses_new_rows check (upload_url is null)`);
+    const failure: unknown = await openCopy(x.deps, "u1", x.moveId, x.a).then(() => null, (error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({ name: "Error", message: "The upload could not be recorded (database error 23514)." });
+    expect(Object.getOwnPropertyNames(failure).sort()).toEqual(["message", "stack"]);
+    expect(JSON.stringify([(failure as Error).message, (failure as Error).stack])).not.toContain("upload_id");
+    expect(await x.rows()).toHaveLength(0);
+  });
+
+  it("leaves no copy and cancels the session when the move ends during the open", async () => {
+    const x = await started();
+    const drive = (await x.deps.driveFor(x.w.personal))!;
+    const deps: MoveDeps = { ...x.deps, driveFor: async () => ({ ...drive, openUploadSession: async (...args: Parameters<typeof drive.openUploadSession>) => {
+      const url = await drive.openUploadSession(...args);
+      await x.w.db.update(projectMove).set({ abandonedAt: new Date() }).where(eq(projectMove.id, x.moveId));
+      return url;
+    } }) as never };
+    await fails(openCopy(deps, "u1", x.moveId, x.a), "NOT_FOUND", 404, MOVE_MESSAGES.gone);
+    expect(await x.rows()).toHaveLength(0);
+  });
+
+  it("answers a simultaneous open of one source with a single copy", async () => {
+    const x = await started();
+    const [one, two] = await Promise.all([openCopy(x.deps, "u1", x.moveId, x.a), openCopy(x.deps, "u1", x.moveId, x.a)]);
+    expect(one.copyAssetId).toBe(two.copyAssetId);
+    expect(await x.rows()).toHaveLength(1);
+  });
+
+  it("answers a finished move as gone", async () => {
+    const x = await started();
+    const opened = await openCopy(x.deps, "u1", x.moveId, x.a);
+    await x.w.db.update(projectMove).set({ finishedAt: new Date() }).where(eq(projectMove.id, x.moveId));
+    const gone = MOVE_MESSAGES.gone;
+    await fails(openCopy(x.deps, "u1", x.moveId, x.a), "NOT_FOUND", 404, gone);
+    await fails(completeCopy(x.deps, "u1", x.moveId, opened.copyAssetId), "NOT_FOUND", 404, gone);
+    await fails(openCopyFile(x.deps, "u1", x.moveId, opened.copyAssetId, { role: "poster", sizeBytes: 10 }), "NOT_FOUND", 404, gone);
+    await fails(completeCopyFile(x.deps, "u1", x.moveId, opened.copyAssetId, "poster"), "NOT_FOUND", 404, gone);
+  });
+
+  it("trashes only the copy's own earlier preview when a preview is sent again, never the source's", async () => {
+    const x = await started();
+    await x.w.db.update(assets).set({ previewStatus: "ready" }).where(eq(assets.id, x.a));
+    const opened = await openCopy(x.deps, "u1", x.moveId, x.a);
+    await x.sendAll(opened.uploadUrl!, 20_000_000);
+    await completeCopy(x.deps, "u1", x.moveId, opened.copyAssetId);
+    const send = async () => {
+      const { uploadUrl } = await openCopyFile(x.deps, "u1", x.moveId, opened.copyAssetId, { role: "preview", sizeBytes: 1000 });
+      await piece(x.w.fake, uploadUrl, 0, 1000, 1000);
+      await completeCopyFile(x.deps, "u1", x.moveId, opened.copyAssetId, "preview");
+    };
+    await send();
+    const [first] = await x.rows();
+    const drive = (await x.deps.driveFor(x.w.personal))!;
+    const trash = vi.spyOn(drive, "trashFile");
+    const deps: MoveDeps = { ...x.deps, driveFor: async () => drive };
+    const again = async () => {
+      const { uploadUrl } = await openCopyFile(deps, "u1", x.moveId, opened.copyAssetId, { role: "preview", sizeBytes: 1000 });
+      await piece(x.w.fake, uploadUrl, 0, 1000, 1000);
+      await completeCopyFile(deps, "u1", x.moveId, opened.copyAssetId, "preview");
+    };
+    await again();
+    expect(trash.mock.calls.map((c) => c[0])).toEqual([first.previewFileId]);
+    expect(trash).not.toHaveBeenCalledWith("prev-a");
+    const [source] = await x.w.db.select().from(assets).where(eq(assets.id, x.a));
+    expect(source.previewFileId).toBe("prev-a");
   });
 });
