@@ -169,6 +169,24 @@ describe("startMove", () => {
   });
 });
 
+describe("other people's moves", () => {
+  it("leaves another person's fresh move alone, for the same project or another into the same space", async () => {
+    const x = await world();
+    await x.w.db.insert(projects).values({ id: "p2", spaceId: x.actor.spaceId, name: "Q", format: "short_9x16", doc: { tracks: [] } as never, createdBy: "u2", updatedBy: "u2" });
+    const same = nanoid(12);
+    const other = nanoid(12);
+    await x.w.db.insert(projectMove).values({ id: same, projectId: "p1", fromSpaceId: x.actor.spaceId, toSpaceId: x.w.personal, startedBy: "u2" });
+    await x.w.db.insert(projectMove).values({ id: other, projectId: "p2", fromSpaceId: x.actor.spaceId, toSpaceId: x.w.personal, startedBy: "u2" });
+    const sameCopy = await copyOf(x, same, x.a, false);
+    const otherCopy = await copyOf(x, other, x.b, false);
+    const club = await x.w.team("Club");
+    await x.setUp(club);
+    for (const to of [club, x.w.personal]) await startMove(x.deps, x.actor, { projectId: "p1", toSpaceId: to });
+    for (const id of [same, other]) expect((await x.w.db.select().from(projectMove).where(eq(projectMove.id, id)))[0].abandonedAt).toBeNull();
+    for (const id of [sameCopy, otherCopy]) expect(await x.w.db.select().from(assets).where(eq(assets.id, id))).toHaveLength(1);
+  });
+});
+
 describe("abandonMove and moveOf", () => {
   it("only the starter may abandon, and only once", async () => {
     const x = await world();

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { DB } from "@/db";
 import { assets, organization, projectMove, projects } from "@/db/schema";
@@ -140,14 +140,16 @@ export async function startMove(deps: MoveDeps, actor: Actor, input: { projectId
     if (!row || row.status !== "ready" || row.driveFileId === null) throw new ServiceError("INVALID", 400, MOVE_MESSAGES.notReady(row?.name ?? id));
   }
 
-  // One open move per project, and a move into a space that sat unfinished for a day is dropped.
-  await abandonWhere(deps, and(eq(projectMove.projectId, project.id), or(ne(projectMove.toSpaceId, to.id), ne(projectMove.startedBy, actor.userId))));
+  // One open move per person and project (other people's fresh moves are left alone), and a move into a space that sat unfinished for a day is dropped.
+  await abandonWhere(deps, and(eq(projectMove.projectId, project.id), eq(projectMove.startedBy, actor.userId), ne(projectMove.toSpaceId, to.id)));
   await abandonWhere(deps, and(eq(projectMove.toSpaceId, to.id), lt(projectMove.startedAt, new Date(Date.now() - LIMITS.moveAbandonAfterMs))));
 
   const [open] = await db
     .select()
     .from(projectMove)
-    .where(and(eq(projectMove.projectId, project.id), eq(projectMove.toSpaceId, to.id), eq(projectMove.startedBy, actor.userId), isNull(projectMove.finishedAt), isNull(projectMove.abandonedAt)));
+    .where(and(eq(projectMove.projectId, project.id), eq(projectMove.toSpaceId, to.id), eq(projectMove.startedBy, actor.userId), isNull(projectMove.finishedAt), isNull(projectMove.abandonedAt)))
+    .orderBy(desc(projectMove.startedAt))
+    .limit(1);
   const move = open ?? (await db.insert(projectMove).values({ id: nanoid(12), projectId: project.id, fromSpaceId: actor.spaceId, toSpaceId: to.id, startedBy: actor.userId }).returning())[0];
 
   const copies = ids.length === 0 ? [] : await db.select().from(assets).where(and(eq(assets.moveId, move.id), inArray(assets.copiedFrom, ids)));
