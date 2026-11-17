@@ -36,6 +36,12 @@ describe("project api", () => {
     expect(fetchFn.mock.calls.map((call) => call[0])).toEqual(["/api/projects/p1/version", "/api/projects/p1/ops?since=5&limit=500", "/api/projects/p1"]);
   });
 
+  it("getVersion reads the space the project is in, when the answer names one", async () => {
+    expect(await apiWith(() => json(200, { version: 5, spaceId: "s2" })).api.getVersion()).toEqual({ ok: true, version: 5, spaceId: "s2" });
+    expect(await apiWith(() => json(200, { version: 5 })).api.getVersion()).toEqual({ ok: true, version: 5 });
+    expect(await apiWith(() => json(200, { version: 5, spaceId: 7 })).api.getVersion()).toEqual({ ok: true, version: 5 });
+  });
+
   it("rename sends PATCH with the name and reads the answer", async () => {
     const { api, fetchFn } = apiWith(() => json(200, { id: "p1", name: "Finals" }));
     expect(await api.rename("Finals")).toEqual({ ok: true, name: "Finals" });
@@ -72,9 +78,11 @@ describe("project api", () => {
   it.each([
     [400, { code: "OVERLAP", message: "m", opIndex: 0 },{ ok: false, kind: "op", code: "OVERLAP", message: "m", opIndex: 0 }],
     [409, { code: "CONFLICT", message: "m", currentVersion: 9 }, { ok: false, kind: "conflict", currentVersion: 9 }],
+    [409, { code: "MOVED", message: "m", currentVersion: 9 }, { ok: false, kind: "moved" }],
     [401, { code: "UNAUTHENTICATED", message: "m" }, { ok: false, kind: "signed-out" }],
     [403, { code: "FORBIDDEN", message: "m" }, { ok: false, kind: "forbidden" }],
     [404, { code: "NOT_FOUND", message: "m" }, { ok: false, kind: "not-found" }],
+    [404, { code: "MOVED_ELSEWHERE", message: "m" }, { ok: false, kind: "moved-elsewhere" }],
     [429, { code: "LIMIT_EXCEEDED", message: "Too many changes at once. Wait a minute, then keep going." }, { ok: false, kind: "limited", message: "Too many changes at once. Wait a minute, then keep going." }],
     [429, { code: "RATE", message: "m" }, { ok: false, kind: "network" }],
     [500, { code: "INTERNAL", message: "m" }, { ok: false, kind: "network" }],
@@ -130,6 +138,11 @@ describe("presence api", () => {
     expect(await presenceWith(() => json(200, { peers: [] })).api.share(share)).toEqual({ ok: false, kind: "network" });
   });
 
+  it("a share reads the space the project is in, when the answer names one", async () => {
+    expect(await presenceWith(() => json(200, { version: 7, peers: [], spaceId: "s2" })).api.share(share)).toEqual({ ok: true, version: 7, peers: [], spaceId: "s2" });
+    expect(await presenceWith(() => json(200, { version: 7, spaceId: null })).api.share(share)).toEqual({ ok: true, version: 7, peers: null });
+  });
+
   it.each([
     ["a 400", () => json(400, { code: "INVALID", message: "m" })],
     ["a 403", () => json(403, { code: "FORBIDDEN", message: "m" })],
@@ -144,6 +157,7 @@ describe("presence api", () => {
   it("keeps the usual kinds for the server's own signed-out and not-found", async () => {
     expect(await presenceWith(() => json(401, { code: "UNAUTHENTICATED", message: "m" })).api.share(share)).toEqual({ ok: false, kind: "signed-out" });
     expect(await presenceWith(() => json(404, { code: "NOT_FOUND", message: "m" })).api.share(share)).toEqual({ ok: false, kind: "not-found" });
+    expect(await presenceWith(() => json(404, { code: "MOVED_ELSEWHERE", message: "m" })).api.share(share)).toEqual({ ok: false, kind: "moved-elsewhere" });
   });
 
   it.each([

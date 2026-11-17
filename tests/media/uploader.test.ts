@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { openUpload, uploadOffset } from "@/lib/media/service";
-import { PieceError, PIECE_RETRY_DELAYS_MS, contentRange, createDriveTransport, sendFile, type SendDeps, type UploadTransport } from "@/lib/media/uploader";
+import { PieceError, PIECE_RETRY_DELAYS_MS, SourceReadError, blobSource, contentRange, createDriveTransport, sendFile, type PieceSource, type SendDeps, type UploadTransport } from "@/lib/media/uploader";
 import { VIDEO, mediaContext } from "./context";
 
 const MiB = 1024 * 1024;
@@ -33,7 +33,7 @@ describe("sending a file to Drive in pieces", () => {
 
   it("sends 8 MiB pieces in order and reports progress after each", async () => {
     const { ctx, opened, deps, progress, sleeps } = await setup();
-    const result = await sendFile(file(), opened, deps);
+    const result = await sendFile(blobSource(file()), opened, deps);
     expect(result.ok).toBe(true);
     expect(progress).toEqual([8 * MiB, 16 * MiB, SIZE]);
     expect(sleeps).toEqual([]);
@@ -50,7 +50,7 @@ describe("sending a file to Drive in pieces", () => {
         return deps.transport.sendPiece(input);
       },
     };
-    const result = await sendFile(file(), opened, { ...deps, transport: flaky });
+    const result = await sendFile(blobSource(file()), opened, { ...deps, transport: flaky });
     expect(result.ok).toBe(true);
     expect(sleeps).toEqual([1000]);
     expect(progress).toEqual([8 * MiB, 19 * MiB, SIZE]); // resumed at 11 MiB, not at 8 and not at 0
@@ -63,7 +63,7 @@ describe("sending a file to Drive in pieces", () => {
     await ctx.fake.fetch(opened.uploadUrl, { method: "PUT", headers: { "Content-Range": contentRange(0, 8 * MiB, SIZE) }, body: new Uint8Array(8 * MiB) });
     const again = await openUpload(ctx.deps, ctx.ada, VIDEO);
     expect(again.offset).toBe(8 * MiB);
-    expect((await sendFile(file(), again, deps)).ok).toBe(true);
+    expect((await sendFile(blobSource(file()), again, deps)).ok).toBe(true);
     expect(progress).toEqual([16 * MiB, SIZE]);
   });
 
@@ -71,7 +71,7 @@ describe("sending a file to Drive in pieces", () => {
     const { opened, deps, pieces } = await setup();
     let asked = 0;
     const askOffset = async () => { asked += 1; return { offset: SIZE, done: true }; };
-    expect(await sendFile(file(), { uploadUrl: opened.uploadUrl, offset: SIZE }, { ...deps, askOffset })).toEqual({ ok: true });
+    expect(await sendFile(blobSource(file()), { uploadUrl: opened.uploadUrl, offset: SIZE }, { ...deps, askOffset })).toEqual({ ok: true });
     expect(asked).toBe(1);
     expect(pieces()).toHaveLength(0);
   });
@@ -79,25 +79,25 @@ describe("sending a file to Drive in pieces", () => {
   it("gives up after five waits without progress", async () => {
     const down: UploadTransport = { sendPiece: async () => { throw new PieceError("network"); } };
     const { opened, deps, sleeps } = await setup({ transport: down, askOffset: async () => null });
-    expect(await sendFile(file(), opened, deps)).toEqual({ ok: false, reason: "gave-up" });
+    expect(await sendFile(blobSource(file()), opened, deps)).toEqual({ ok: false, reason: "gave-up" });
     expect(sleeps).toEqual([...PIECE_RETRY_DELAYS_MS]);
   });
 
   it("stops at once when the session has expired, and when Drive refuses", async () => {
     const { ctx, opened, deps, sleeps } = await setup();
     ctx.fake.failNext(/^PUT \/upload\//, 499);
-    expect(await sendFile(file(), opened, deps)).toEqual({ ok: false, reason: "expired" });
+    expect(await sendFile(blobSource(file()), opened, deps)).toEqual({ ok: false, reason: "expired" });
     ctx.fake.expireSessions();
-    expect(await sendFile(file(), opened, deps)).toEqual({ ok: false, reason: "expired" });
+    expect(await sendFile(blobSource(file()), opened, deps)).toEqual({ ok: false, reason: "expired" });
     const refusing: UploadTransport = { sendPiece: async () => { throw new PieceError("refused"); } };
-    expect(await sendFile(file(), opened, { ...deps, transport: refusing })).toEqual({ ok: false, reason: "refused" });
+    expect(await sendFile(blobSource(file()), opened, { ...deps, transport: refusing })).toEqual({ ok: false, reason: "refused" });
     expect(sleeps).toEqual([]);
   });
 
   it("stops when it is canceled, and sends nothing more", async () => {
     const abort = new AbortController();
     const { opened, deps, pieces } = await setup({ signal: abort.signal });
-    const result = await sendFile(file(), opened, { ...deps, onProgress: () => abort.abort() });
+    const result = await sendFile(blobSource(file()), opened, { ...deps, onProgress: () => abort.abort() });
     expect(result).toEqual({ ok: false, reason: "canceled" });
     expect(pieces()).toHaveLength(1);
   });
@@ -107,7 +107,7 @@ describe("sending a file to Drive in pieces", () => {
     const statuses = [308, 308, 200];
     const blind = (async () => new Response(null, { status: statuses.shift()! })) as unknown as typeof fetch;
     const { opened, deps, progress } = await setup({ transport: createDriveTransport(blind) });
-    expect(await sendFile(file(), opened, deps)).toEqual({ ok: true });
+    expect(await sendFile(blobSource(file()), opened, deps)).toEqual({ ok: true });
     expect(progress).toEqual([8 * MiB, 16 * MiB, SIZE]);
   });
 });
@@ -227,7 +227,7 @@ function pretend(script: Step[] = [], over: Partial<SendDeps> = {}) {
     onProgress: (sent) => void state.progress.push(sent),
     ...over,
   };
-  const send = (offset = 0) => sendFile(bytes, { uploadUrl: "https://session.test/upload", offset }, deps);
+  const send = (offset = 0) => sendFile(blobSource(bytes), { uploadUrl: "https://session.test/upload", offset }, deps);
   return { state, deps, bytes, total, send };
 }
 
@@ -535,7 +535,7 @@ describe("sending a file, rule by rule", () => {
     for (const status of [503, 429]) {
       const { ctx, opened, deps, sleeps, progress } = await setup();
       ctx.fake.failNext(/^PUT \/upload\//, status);
-      expect(await sendFile(file(), opened, deps)).toEqual({ ok: true });
+      expect(await sendFile(blobSource(file()), opened, deps)).toEqual({ ok: true });
       expect(sleeps).toEqual([1000]);
       expect(progress).toEqual([8 * MiB, 16 * MiB, SIZE]);
     }
@@ -547,7 +547,7 @@ describe("sending a file, rule by rule", () => {
         return deps.transport.sendPiece(input);
       },
     };
-    expect(await sendFile(file(), opened, { ...deps, transport: losing })).toEqual({ ok: true });
+    expect(await sendFile(blobSource(file()), opened, { ...deps, transport: losing })).toEqual({ ok: true });
     expect(sleeps).toEqual([1000]);
     expect(progress).toEqual([8 * MiB, 16 * MiB]);
     expect(pieces()).toHaveLength(4); // three pieces and the server's question
@@ -564,9 +564,67 @@ describe("sending a file, rule by rule", () => {
         return deps.transport.sendPiece(input);
       },
     };
-    expect(await sendFile(file(), opened, { ...deps, transport: dropping })).toEqual({ ok: true });
+    expect(await sendFile(blobSource(file()), opened, { ...deps, transport: dropping })).toEqual({ ok: true });
     expect(sent).toBe(7); // six pieces that left 3 MiB each, and the rest
     expect(sleeps).toEqual([1000, 1000, 1000, 1000, 1000, 1000, 1000]);
     expect(ctx.fake.sessions.get(opened.uploadUrl)!.received).toBe(SIZE);
+  });
+});
+
+describe("reading the pieces from a source", () => {
+  // A source over `bytes` that fails as `script` says, one entry per read, then reads as a blob does.
+  function failing(bytes: Blob, script: SourceReadError["kind"][], log: string[]): PieceSource {
+    const blob = blobSource(bytes);
+    return {
+      size: blob.size,
+      piece: async (start, end, signal) => {
+        log.push(`read ${start}-${end}`);
+        const kind = script.shift();
+        if (kind) throw new SourceReadError(kind);
+        return blob.piece(start, end, signal);
+      },
+    };
+  }
+
+  it("a blob source gives the file's own bytes, and its size", async () => {
+    const source = blobSource(new Blob([new Uint8Array([5, 6, 7, 8])]));
+    expect(source.size).toBe(4);
+    expect([...new Uint8Array(await (await source.piece(1, 3, new AbortController().signal)).arrayBuffer())]).toEqual([6, 7]);
+  });
+
+  it("asks the source for each piece by its range, the last one ending at the size", async () => {
+    const { state, deps, bytes } = pretend();
+    const log: string[] = [];
+    expect(await sendFile(failing(bytes, [], log), { uploadUrl: "https://session.test/upload", offset: 0 }, deps)).toEqual({ ok: true });
+    expect(log).toEqual(["read 0-4", "read 4-8", "read 8-10"]);
+    expect(state.held).toBe(10);
+  });
+
+  it("a source that is offline is waited out like a failed piece, and the whole file gets through", async () => {
+    const { state, deps, bytes } = pretend();
+    const log: string[] = [];
+    expect(await sendFile(failing(bytes, ["offline", "offline"], log), { uploadUrl: "https://session.test/upload", offset: 0 }, deps)).toEqual({ ok: true });
+    expect(state.held).toBe(10);
+    expect(state.log).toEqual(["wait 1000", "ask", "wait 2000", "ask", "piece 0+4", "piece 4+4", "piece 8+2"]);
+    expect(log).toEqual(["read 0-4", "read 0-4", "read 0-4", "read 4-8", "read 8-10"]);
+  });
+
+  it("a source that is missing or refused ends the send as refused, and nothing is sent", async () => {
+    for (const kind of ["missing", "refused"] as const) {
+      const { state, deps, bytes } = pretend();
+      expect(await sendFile(failing(bytes, [kind], []), { uploadUrl: "https://session.test/upload", offset: 0 }, deps)).toEqual({ ok: false, reason: "refused" });
+      expect(state.log).toEqual([]);
+    }
+  });
+
+  it("a source read that is called off is a cancel, and an error that is not the source's own is not swallowed", async () => {
+    const abort = new AbortController();
+    const { state, deps, bytes } = pretend([], { signal: abort.signal });
+    const stopping: PieceSource = { size: bytes.size, piece: async () => (abort.abort(), Promise.reject(new SourceReadError("offline"))) };
+    expect(await sendFile(stopping, { uploadUrl: "https://session.test/upload", offset: 0 }, deps)).toEqual({ ok: false, reason: "canceled" });
+    expect(state.log).toEqual([]);
+    const bug = new RangeError("a bug in a source");
+    const broken: PieceSource = { size: bytes.size, piece: async () => Promise.reject(bug) };
+    await expect(sendFile(broken, { uploadUrl: "https://session.test/upload", offset: 0 }, pretend().deps)).rejects.toBe(bug);
   });
 });

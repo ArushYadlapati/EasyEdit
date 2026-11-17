@@ -1,5 +1,5 @@
 import { LIMITS } from "@/lib/limits";
-import type { ApiFailure, ApiResult, PresenceApi, ProjectApi } from "./api";
+import type { ApiFailure, ApiResult, PresenceApi, ProjectApi, SpaceOf } from "./api";
 import { MESSAGES } from "./messages";
 import {
   PEER_POLL_MAX_MS, PRESENCE_LIST_MAX_AGE_MS, PRESENCE_RETRY_MS, newTabId, outgoingShare, readPeers, sameSelection,
@@ -46,15 +46,24 @@ export type SyncPresence = { api: PresenceApi; store: PresenceStore; makeTabId?:
 type Step = () => Promise<unknown>;
 
 // Why nothing more is requested. Signed out lasts until the tab is shown again or a retry is asked
-// for (the person may have signed in again elsewhere); deleted lasts for good.
-type Halt = "signed-out" | "deleted";
+// for (the person may have signed in again elsewhere); deleted and moved last for good. Moved elsewhere: to a space
+// this person is not in.
+type Halt = "signed-out" | "deleted" | "moved" | "moved-elsewhere";
 
 const NETWORK_FAILURE: ApiFailure = { ok: false, kind: "network" };
 
 // Keeps the store's server copy in step with the project's op log: sends queued edits one at a
 // time, polls for other people's edits, catches up, and retries after network failures.
-export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisible: () => boolean; presence?: SyncPresence }): Sync {
-  const { store, api, isVisible, presence } = deps;
+// spaceId: the space this tab opened the project in. With it, a check that finds the project in another space stops
+// the tab for good (see movedAway); without it, the space is never compared.
+export function createSync(deps: {
+  store: EditorStore;
+  api: ProjectApi;
+  isVisible: () => boolean;
+  presence?: SyncPresence;
+  spaceId?: string;
+}): Sync {
+  const { store, api, isVisible, presence, spaceId } = deps;
   const state = () => store.getState();
 
   let running = false;
@@ -153,11 +162,23 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
     refreshStatus();
   }
 
-  function halt(status: Halt) {
-    halted = status;
+  function halt(reason: Halt) {
+    halted = reason;
     clearTimers();
     teammates()?.forget();
-    state().setStatus(status);
+    if (reason === "moved" || reason === "moved-elsewhere") {
+      state().markMoved(reason === "moved-elsewhere");
+      leave(); // this tab is no longer in the project: teammates stop seeing its selection at once
+    } else state().setStatus(reason);
+  }
+
+  // The project moved to another space. Its log from the move on names that space's media, and the server refuses
+  // edits planned before it, so this tab applies nothing more, sends nothing more and checks no more. The edits
+  // still waiting stay on screen. True when the answer says so.
+  function movedAway(answer: SpaceOf): boolean {
+    if (spaceId === undefined || answer.spaceId === undefined || answer.spaceId === spaceId) return false;
+    halt("moved");
+    return true;
   }
 
   // After a sign-out, tries again as at the end of an offline spell: a catch-up first when edits
@@ -171,7 +192,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
   }
 
   // Handles a failure that ends the current step. `sendingId` is the edit being sent, if any.
-  function failed(failure: ApiFailure, sendingId?: string) {
+  async function failed(failure: ApiFailure, sendingId?: string): Promise<void> {
     switch (failure.kind) {
       case "signed-out": {
         // Told once: a 401 while trying again finds the status already "Signed out".
@@ -180,8 +201,22 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
         if (first) state().notify("error", MESSAGES.signedOut);
         return;
       }
-      case "not-found":
+      case "not-found": {
+        // A request that crossed the project's move to another space is answered 404 from the space it left. Where the
+        // project is now decides: moved, or deleted (or out of reach) as before. A check that fails otherwise is
+        // handled as that failure, so a network blip never decides it.
+        if (spaceId !== undefined) {
+          const where = await api.getVersion();
+          if (!running || halted) return;
+          if (where.ok && movedAway(where)) return;
+          if (!where.ok && where.kind !== "not-found") return failed(where, sendingId);
+        }
         halt("deleted");
+        return;
+      }
+      case "moved":
+      case "moved-elsewhere":
+        halt(failure.kind);
         return;
       case "forbidden":
         reached();
@@ -230,7 +265,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
       const page = await api.getOpsSince(since, PULL_PAGE);
       if (!running) return false;
       if (!page.ok) {
-        failed(page);
+        await failed(page);
         return false;
       }
       entries.push(...page.entries);
@@ -238,13 +273,25 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
       if (!page.hasMore || page.version <= since) break;
       since = page.version;
     }
+    // A move's own change has no undo, and neither has any change before it once it landed. Before such a change is
+    // applied, this tab makes sure the project is still in its space: a catch-up that no check came before (after an
+    // offline spell, or after a send) must not take the move's change into a tab left in the space it moved from.
+    if (spaceId !== undefined && entries.some((e) => e.version > state().server.version && e.inverse === null)) {
+      const where = await api.getVersion();
+      if (!running) return false;
+      if (!where.ok) {
+        await failed(where);
+        return false;
+      }
+      if (movedAway(where)) return false;
+    }
     const me = state().me.id;
     if (entries.some((e) => e.version > state().server.version && e.actor !== me)) activity();
     if (!state().applyRemote(entries)) {
       const project = await api.getProject();
       if (!running) return false;
       if (!project.ok) {
-        failed(project);
+        await failed(project);
         return false;
       }
       state().replaceServer(project.doc, project.version);
@@ -287,7 +334,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
 
   // The check for changes. With presence it shares this tab's selection and reads the teammates' list on the way;
   // null when the sync stopped meanwhile.
-  async function check(): Promise<ApiResult<{ version: number }> | null> {
+  async function check(): Promise<ApiResult<{ version: number } & SpaceOf> | null> {
     if (!presence || Date.now() < shareRetryAt) return api.getVersion();
     const gen = generation;
     const answer = await presence.api.share({
@@ -323,8 +370,10 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
     const answer = await check();
     if (!running || !answer) return;
     if (!answer.ok) {
-      failed(answer);
+      await failed(answer);
       if (answer.kind !== "forbidden") return;
+    } else if (movedAway(answer)) {
+      return; // before any of the move's change is read
     }
     quietPolls += 1;
     armPoll(Date.now() + pollDelay());
@@ -373,7 +422,7 @@ export function createSync(deps: { store: EditorStore; api: ProjectApi; isVisibl
           await step();
         } catch (error) {
           console.error(error);
-          if (running && !halted) failed(NETWORK_FAILURE);
+          if (running && !halted) void failed(NETWORK_FAILURE);
         }
       }
     } finally {

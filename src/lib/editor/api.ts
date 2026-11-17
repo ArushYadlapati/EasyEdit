@@ -4,6 +4,8 @@ import type { ActivityEntry } from "./types";
 export type ApiFailure =
   | { ok: false; kind: "op"; code: OpErrorCode; message: string; opIndex?: number } // any 400
   | { ok: false; kind: "conflict"; currentVersion: number } // 409
+  | { ok: false; kind: "moved" } // 409 with the code MOVED: the project moved to another space after this edit was planned
+  | { ok: false; kind: "moved-elsewhere" } // 404 with the code MOVED_ELSEWHERE: the project moved to a space this person is not in
   | { ok: false; kind: "signed-out" } // 401 with the code UNAUTHENTICATED
   | { ok: false; kind: "forbidden" } // 403
   | { ok: false; kind: "limited"; message: string } // 429 with the code LIMIT_EXCEEDED: the website refuses this save for now
@@ -14,12 +16,15 @@ export type ApiResult<T> = ({ ok: true } & T) | ApiFailure;
 
 export type ProjectApi = {
   postOps(input: { baseVersion: number; ops: Op[]; requestId?: string }): Promise<ApiResult<{ version: number; inverse: Op[] }>>;
-  getVersion(): Promise<ApiResult<{ version: number }>>;
+  getVersion(): Promise<ApiResult<{ version: number } & SpaceOf>>;
   getOpsSince(since: number, limit?: number): Promise<ApiResult<{ version: number; entries: ActivityEntry[]; hasMore: boolean }>>;
   getProject(): Promise<ApiResult<{ doc: TimelineDoc; version: number; name: string }>>;
   rename(name: string): Promise<ApiResult<{ name: string }>>; // not an op: no version, no undo
   putThumbnail(version: number, jpeg: Blob): Promise<ApiResult<{ saved: boolean }>>; // the dashboard picture; not an op: no version, no undo
 };
+
+// The space the project is in now, when the answer names it: a tab open in another one learns the project moved.
+export type SpaceOf = { spaceId?: string };
 
 export const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -44,6 +49,10 @@ function isBody(v: unknown): v is Body {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+function spaceOf(body: Body): SpaceOf {
+  return typeof body.spaceId === "string" ? { spaceId: body.spaceId } : {};
+}
+
 function opFailure(body: Body | null): ApiFailure {
   const code = typeof body?.code === "string" && Object.hasOwn(OP_ERROR_CODES, body.code) ? (body.code as OpErrorCode) : "INVALID";
   const failure: ApiFailure = { ok: false, kind: "op", code, message: typeof body?.message === "string" ? body.message : "" };
@@ -62,8 +71,10 @@ function failureFor(status: number, body: Body | null): ApiFailure {
     case 403:
       return { ok: false, kind: "forbidden" };
     case 404:
+      if (body?.code === "MOVED_ELSEWHERE") return { ok: false, kind: "moved-elsewhere" };
       return body?.code === "NOT_FOUND" ? { ok: false, kind: "not-found" } : NETWORK;
     case 409:
+      if (body?.code === "MOVED") return { ok: false, kind: "moved" };
       return typeof body?.currentVersion === "number" ? { ok: false, kind: "conflict", currentVersion: body.currentVersion } : NETWORK;
     case 429:
       return body?.code === "LIMIT_EXCEEDED" && typeof body.message === "string" ? { ok: false, kind: "limited", message: body.message } : NETWORK;
@@ -116,7 +127,7 @@ export function createProjectApi(projectId: string, fetchFn?: typeof fetch): Pro
       );
     },
     getVersion() {
-      return get("/version", (b) => (typeof b.version === "number" ? { version: b.version } : null));
+      return get("/version", (b) => (typeof b.version === "number" ? { version: b.version, ...spaceOf(b) } : null));
     },
     getOpsSince(since, limit) {
       const query = limit === undefined ? `since=${since}` : `since=${since}&limit=${limit}`;
@@ -152,8 +163,8 @@ export function createProjectApi(projectId: string, fetchFn?: typeof fetch): Pro
 
 export type PresenceShare = { tabId: string; clipIds: string[]; trackId: string | null; changedAgoMs: number };
 // "share-refused": the server answered, and the answer says the presence route itself is broken or refused this
-// request (a 400, 403, 405, 413, or a 404 without the NOT_FOUND code). Other failures keep their usual kinds.
-export type PresenceResult = ApiResult<{ version: number; peers: unknown[] | null }> | { ok: false; kind: "share-refused" };
+// request (a 400, 403, 405, 413, or a 404 without the NOT_FOUND or MOVED_ELSEWHERE code). Other failures keep their usual kinds.
+export type PresenceResult = ApiResult<{ version: number; peers: unknown[] | null } & SpaceOf> | { ok: false; kind: "share-refused" };
 export type PresenceApi = {
   share(input: PresenceShare): Promise<PresenceResult>; // the check for changes with this tab's selection
   leave(tabId: string): void; // fire and forget, with keepalive; never throws
@@ -165,7 +176,7 @@ const SHARE_REFUSED = { ok: false, kind: "share-refused" } as const;
 // revoke editing or stop the editor: the caller falls back to the plain check. A 403 here is never "forbidden".
 function shareFailureFor(status: number, body: Body | null): ApiFailure | typeof SHARE_REFUSED {
   if (status === 400 || status === 403 || status === 405 || status === 413) return SHARE_REFUSED;
-  if (status === 404 && body?.code !== "NOT_FOUND") return SHARE_REFUSED;
+  if (status === 404 && body?.code !== "NOT_FOUND" && body?.code !== "MOVED_ELSEWHERE") return SHARE_REFUSED;
   return failureFor(status, body);
 }
 
@@ -179,7 +190,10 @@ export function createPresenceApi(projectId: string, fetchFn?: typeof fetch): Pr
         doFetch,
         base,
         { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tabId, clipIds, trackId, changedAgoMs }) },
-        (b) => (typeof b.version === "number" ? { version: b.version, peers: Array.isArray(b.peers) ? (b.peers as unknown[]) : null } : null),
+        (b) =>
+          typeof b.version === "number"
+            ? { version: b.version, peers: Array.isArray(b.peers) ? (b.peers as unknown[]) : null, ...spaceOf(b) }
+            : null,
         shareFailureFor,
       );
     },

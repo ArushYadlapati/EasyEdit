@@ -19,6 +19,7 @@ export const MEDIA_MESSAGES = {
   eventTooLong: `An event name can be up to ${LIMITS.mediaEventChars} characters.`,
   tooManyUnfinished: `You have ${LIMITS.mediaPendingPerMember} unfinished uploads. Finish or cancel one first.`,
   gone: "That file is no longer in the library.",
+  beingMovedHere: (name: string) => `A move is copying "${name}" into this space right now. Try again once the move is done.`,
   sessionExpired: "This upload expired. Choose the file again.",
   notFinished: "The upload is not finished.",
   wrongFolder: "That file is not in the library's folder.",

@@ -10,6 +10,7 @@ export type EditorInit = {
   me: Me;
   canEdit: boolean;
   thumbnailVersion?: number | null; // the stored picture's version when the page loaded; null or left out: none
+  movedAtVersion?: number | null; // the version the project's last move to another space made; null or left out: never moved
 };
 
 export type EditKind = "edit" | "undo" | "redo";

@@ -6,6 +6,8 @@ import { apiRoute } from "@/lib/api-route";
 import { checkAppBudget } from "@/lib/app-budget";
 import { LIMITS } from "@/lib/limits";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
+import { movedElsewhere } from "@/lib/projects/move";
+import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
 import { recordOpen } from "@/lib/projects/opens";
 import { checkIn, leavePresence, type Share } from "@/lib/projects/presence";
 import {
@@ -76,12 +78,18 @@ async function collectionActor(deps: HandlerDeps, req: Request): Promise<Actor |
 }
 
 // A person acting in the space the project belongs to. A project they cannot see (unknown, deleted, or in a space
-// they are not a member of) answers exactly as an unknown project does. `whenGone` replaces that answer for the
-// routes that answer 204 for an unknown project.
-async function itemActor(deps: HandlerDeps, req: Request, id: string, whenGone: () => Response = () => notFound(id)): Promise<Actor | Response> {
+// they are not a member of) answers exactly as an unknown project does, except one moved away from a space they are
+// in: that answers 404 MOVED_ELSEWHERE, so their open editor says it moved rather than that it was deleted.
+// `whenGone` replaces that answer for the routes that answer 204 for an unknown project.
+async function itemActor(deps: HandlerDeps, req: Request, id: string, whenGone?: () => Response): Promise<Actor | Response> {
   const user = await deps.auth(req);
   if (user instanceof Response) return user;
-  return (await projectActor(deps.db(), user, id)) ?? whenGone();
+  const db = deps.db();
+  const actor = await projectActor(db, user, id);
+  if (actor) return actor;
+  if (whenGone) return whenGone();
+  if (await movedElsewhere(db, user.id, id)) return errorResponse(404, { code: "MOVED_ELSEWHERE", message: MOVE_MESSAGES.movedAway });
+  return notFound(id);
 }
 
 function describeIssue(error: z.ZodError): string {
@@ -208,7 +216,8 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       if (actor instanceof Response) return actor;
       const version = await getProjectVersion(deps.db(), actor, id);
       if (version === null) return notFound(id);
-      return Response.json({ version });
+      // The space too, so an open editor learns the project has moved.
+      return Response.json({ version, spaceId: actor.spaceId });
     }),
 
     rename: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
@@ -248,15 +257,15 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       return new Response(null, { status: 204 });
     }),
 
-    // The editor's check for changes, carrying this tab's selection. The version is answered exactly as GET /version
-    // answers it, and nothing about the selection can make the check fail.
+    // The editor's check for changes, carrying this tab's selection. The version and the space are answered exactly as
+    // GET /version answers them, and nothing about the selection can make the check fail.
     presence: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
       const { id } = await ctx.params;
       const actor = await itemActor(deps, req, id);
       if (actor instanceof Response) return actor;
       const answer = await checkIn(deps.db(), actor, id, await readShare(req));
       if (!answer) return notFound(id);
-      return Response.json(answer);
+      return Response.json({ ...answer, spaceId: actor.spaceId });
     }),
 
     // A tab going away. An unknown tab or project still answers 204: there is nothing to tell a closing page.

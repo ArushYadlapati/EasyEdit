@@ -53,6 +53,25 @@ export function createDriveTransport(fetchFn?: typeof fetch): UploadTransport {
   };
 }
 
+// Where the bytes of a file come from, a piece at a time: a file on this computer, or one in Drive.
+export type PieceSource = { size: number; piece(start: number, end: number, signal: AbortSignal): Promise<Blob> };
+
+// A file the page holds: its pieces are slices of it.
+export function blobSource(blob: Blob): PieceSource {
+  return { size: blob.size, piece: async (start, end) => blob.slice(start, end) };
+}
+
+// Why a source could not give a piece. offline: try again later. missing or refused: it never will.
+export class SourceReadError extends Error {
+  kind: "offline" | "missing" | "refused";
+
+  constructor(kind: SourceReadError["kind"]) {
+    super(`The piece could not be read (${kind}).`);
+    this.name = "SourceReadError";
+    this.kind = kind;
+  }
+}
+
 // The wait before asking again, by the number of failures since bytes last reached storage.
 export const PIECE_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000] as const; // not the editor's RETRY_DELAYS_MS in src/lib/editor/sync.ts
 
@@ -71,10 +90,12 @@ const SENT: SendResult = { ok: true };
 const CANCELED: SendResult = { ok: false, reason: "canceled" };
 const GAVE_UP: SendResult = { ok: false, reason: "gave-up" };
 
-// Sends the bytes of `file` that storage does not hold yet, from `opened.offset` on, in pieces of `chunkBytes`.
-export async function sendFile(file: Blob, opened: { uploadUrl: string; offset: number }, deps: SendDeps): Promise<SendResult> {
+// Sends the bytes of `source` that storage does not hold yet, from `opened.offset` on, in pieces of `chunkBytes`.
+// A piece the source could not read for now is a failure like one that did not reach storage; one it never will
+// read ends the send as refused.
+export async function sendFile(source: PieceSource, opened: { uploadUrl: string; offset: number }, deps: SendDeps): Promise<SendResult> {
   const { transport, askOffset, sleep, chunkBytes, signal, onProgress } = deps;
-  const total = file.size;
+  const total = source.size;
   let offset = opened.offset; // the first byte storage does not hold
   let failures = 0; // since bytes last reached storage
 
@@ -103,9 +124,21 @@ export async function sendFile(file: Blob, opened: { uploadUrl: string; offset: 
       offset = held.offset;
     }
 
+    let piece: Blob;
+    try {
+      piece = await source.piece(offset, Math.min(offset + chunkBytes, total), signal);
+    } catch (error) {
+      if (signal.aborted) return CANCELED;
+      if (!(error instanceof SourceReadError)) throw error;
+      if (error.kind !== "offline") return { ok: false, reason: "refused" };
+      failures += 1;
+      continue;
+    }
+    if (signal.aborted) return CANCELED;
+
     let result: PieceResult;
     try {
-      result = await transport.sendPiece({ uploadUrl: opened.uploadUrl, piece: file.slice(offset, offset + chunkBytes), start: offset, total, signal });
+      result = await transport.sendPiece({ uploadUrl: opened.uploadUrl, piece, start: offset, total, signal });
     } catch (error) {
       if (signal.aborted) return CANCELED;
       if (!(error instanceof PieceError)) throw error;

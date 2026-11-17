@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ACTIVITY_LIMIT } from "@/lib/editor/store";
-import { activityRows, hasOlderActivity, loadOlderActivity, loadRecentActivity } from "@/lib/editor/activity";
+import { MADE_BEFORE_MOVE, activityRows, hasOlderActivity, loadOlderActivity, loadRecentActivity } from "@/lib/editor/activity";
 import { useEditor, useEditorApi, useEditorStore } from "./context";
 
 type Load = "loading" | "failed" | "ready";
@@ -17,6 +17,7 @@ export function ActivityPanel() {
   const me = useEditor((s) => s.me);
   const doc = useEditor((s) => s.server.doc);
   const canEdit = useEditor((s) => s.canEdit);
+  const movedAtVersion = useEditor((s) => s.movedAtVersion);
   const serverVersion = useEditor((s) => s.server.version);
   const undoChange = useEditor((s) => s.undoChange);
 
@@ -67,7 +68,7 @@ export function ActivityPanel() {
     });
   }
 
-  const rows = useMemo(() => activityRows(activity, me.id, now, doc), [activity, me.id, now, doc]);
+  const rows = useMemo(() => activityRows(activity, me.id, now, doc, movedAtVersion), [activity, me.id, now, doc, movedAtVersion]);
   const byVersion = useMemo(() => new Map(activity.map((entry) => [entry.version, entry])), [activity]);
 
   if (rows.length === 0) {
@@ -106,10 +107,16 @@ export function ActivityPanel() {
               </p>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] leading-4 text-ed-muted">{row.when}</p>
-                {row.canUndo && canEdit && entry && (
-                  <Button data-edit-control variant="ghost" size="sm" onClick={() => undoChange(entry)}>
-                    Undo this change
-                  </Button>
+                {row.beforeMove ? (
+                  <p className="text-[11px] leading-4 text-ed-muted">{MADE_BEFORE_MOVE}</p>
+                ) : (
+                  row.canUndo &&
+                  canEdit &&
+                  entry && (
+                    <Button data-edit-control variant="ghost" size="sm" onClick={() => undoChange(entry)}>
+                      Undo this change
+                    </Button>
+                  )
                 )}
               </div>
             </li>

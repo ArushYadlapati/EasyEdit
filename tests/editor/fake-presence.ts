@@ -1,7 +1,7 @@
 import type { PresenceApi, PresenceResult, PresenceShare } from "@/lib/editor/api";
 import type { makeFakeServer } from "./fake-server";
 
-type Failure = "network" | "signed-out" | "not-found" | "share-refused";
+type Failure = "network" | "signed-out" | "not-found" | "moved-elsewhere" | "share-refused";
 type Answer = unknown[] | null | ((share: number) => unknown[] | null); // a function gets the share's number, from 1
 
 // An in-memory stand-in for POST and DELETE /presence, answering with the fake server's version. It keeps its own
@@ -22,7 +22,7 @@ export function makeFakePresence(server: ReturnType<typeof makeFakeServer>) {
       const kind = failures.shift();
       if (kind) return { ok: false, kind } as PresenceResult;
       const peers = typeof answer === "function" ? answer(n) : answer;
-      return { ok: true, version: server.version(), peers: peers === null ? null : structuredClone(peers) };
+      return { ok: true, version: server.version(), spaceId: server.spaceId(), peers: peers === null ? null : structuredClone(peers) };
     },
     leave(tabId) {
       presenceCalls.push(`leave ${tabId}`);

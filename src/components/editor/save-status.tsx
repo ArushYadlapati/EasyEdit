@@ -10,8 +10,11 @@ export function SaveStatus() {
   const pending = useEditor((s) => s.queue.length);
   const limitMessage = useEditor((s) => s.limitMessage);
   const canEdit = useEditor((s) => s.canEdit);
-  const label = saveStatusLabel(status, pending, canEdit, limitMessage);
-  const tone = status === "offline" || status === "limited" ? "text-ed-warn" : status === "signed-out" ? "text-ed-danger" : "text-ed-muted";
+  const moved = useEditor((s) => s.moved);
+  // Moved: nothing more is saved here, whatever the status was when it stopped. The banner says where to go.
+  const label = moved ? "Moved" : saveStatusLabel(status, pending, canEdit, limitMessage);
+  const tone =
+    moved || status === "offline" || status === "limited" ? "text-ed-warn" : status === "signed-out" ? "text-ed-danger" : "text-ed-muted";
 
   return (
     <div className="flex min-w-0 items-center gap-2 text-xs">
@@ -19,7 +22,7 @@ export function SaveStatus() {
         {label}
       </span>
       {/* A new tab, so this one keeps the edits that wait to be sent once the person is back. */}
-      {status === "signed-out" && (
+      {status === "signed-out" && !moved && (
         <Link
           href="/login"
           target="_blank"

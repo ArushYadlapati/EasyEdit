@@ -7,6 +7,7 @@ import type { Actor } from "@/lib/actor";
 import { makeProjectHandlers } from "@/lib/projects/handlers";
 import { checkIn, createPresenceBreaker } from "@/lib/projects/presence";
 import { createProject, deleteProject } from "@/lib/projects/service";
+import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
 import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
@@ -57,14 +58,24 @@ async function rowsFor(db: DB, userId: string) {
 }
 
 describe("the presence route", () => {
-  it("POST answers { version, peers }, for a viewer too", async () => {
+  it("POST answers { version, spaceId, peers }, for a viewer too", async () => {
     const { db, id, auth, projects } = await setup("viewer");
     await checkIn(db, grace, id, { tabId: "tab-u2-0001", clipIds: ["c1"], trackId: "t1", changedAgoMs: 0 }, { breaker: createPresenceBreaker() });
     const res = await projects.presence(postJson(id, { tabId: TAB, clipIds: ["c9"], trackId: null, changedAgoMs: 0 }), ctx(id));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ version: 0, peers: [{ userId: "u2", name: "Grace", clipIds: ["c1"], trackId: "t1" }] });
+    expect(await res.json()).toEqual({ version: 0, spaceId: SEED_TEAM_ID, peers: [{ userId: "u2", name: "Grace", clipIds: ["c1"], trackId: "t1" }] });
     expect(auth).toHaveBeenCalledWith(expect.any(Request));
     expect(await seenByGrace(db, id)).toEqual([{ userId: "u1", name: "U1", clipIds: ["c9"], trackId: null }]);
+  });
+
+  it("after a move, a tab still open in the old space is answered with the space the project is in now", async () => {
+    const { db, id, projects } = await setup("editor");
+    const mine = personalSpaceId("u1");
+    await joinSpace(db, { id: "u1" }, "admin", mine);
+    await db.execute(sql`update projects set space_id = ${mine} where id = ${id}`);
+    const res = await projects.presence(postJson(id, { tabId: TAB, clipIds: [], trackId: null, changedAgoMs: 0 }), ctx(id));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ version: 0, spaceId: mine });
   });
 
   it("an unknown or deleted project answers 404 NOT_FOUND", async () => {
@@ -101,7 +112,7 @@ describe("the presence route", () => {
     for (const req of requests) {
       const res = await projects.presence(req, ctx(id));
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ version: 0 });
+      expect(await res.json()).toEqual({ version: 0, spaceId: SEED_TEAM_ID });
     }
     expect(await rowsFor(db, "u1")).toEqual([]);
   });
@@ -125,7 +136,7 @@ describe("the presence route", () => {
     expect(req.headers.get("content-length")).toBeNull();
     const res = await projects.presence(req, ctx(id));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ version: 0 });
+    expect(await res.json()).toEqual({ version: 0, spaceId: SEED_TEAM_ID });
     expect(cancelled).toBe(true);
     expect(sent).toBeLessThan(20);
     expect(await rowsFor(db, "u1")).toEqual([]);
@@ -134,7 +145,7 @@ describe("the presence route", () => {
   it("a valid tabId with a malformed rest is listed with nothing selected", async () => {
     const { db, id, projects } = await setup("editor");
     const res = await projects.presence(postJson(id, { tabId: TAB, clipIds: "c1", trackId: 5, changedAgoMs: "soon" }), ctx(id));
-    expect(await res.json()).toEqual({ version: 0, peers: [] });
+    expect(await res.json()).toEqual({ version: 0, spaceId: SEED_TEAM_ID, peers: [] });
     expect(await seenByGrace(db, id)).toEqual([{ userId: "u1", name: "U1", clipIds: [], trackId: null }]);
 
     // An age from the far future or past is clamped, so the statement never fails on it.

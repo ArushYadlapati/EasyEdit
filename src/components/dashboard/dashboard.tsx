@@ -35,6 +35,7 @@ import {
 } from "@/lib/dashboard/view";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
 import { spacePath } from "@/lib/spaces/paths";
+import type { MySpace } from "@/lib/spaces/types";
 
 export type DashboardProps = {
   projects: DashboardProject[];
@@ -48,6 +49,8 @@ export type DashboardProps = {
   now: Date;
   actions: DashboardActions;
   spaceSlug: string; // the space shown, for the links inside it
+  fromSpace?: MySpace; // the space shown, and the person's other spaces they can edit in: a card's Move to… (hidden with none)
+  moveTargets?: MySpace[];
   notices?: ReactNode; // what the page puts at the top of the main area: storage to set up or reconnect, a connect's outcome
 };
 
@@ -61,7 +64,7 @@ const NO_PINS: string[] = [];
 const HEADING = "mb-3 text-sm font-semibold text-ed-text";
 const EMPTY = "text-[13px] text-ed-muted";
 
-function CardGrid({ projects, folderName, now, canEdit, pinned, folders, actions, spaceSlug, onGone }: {
+function CardGrid({ projects, folderName, now, canEdit, pinned, folders, actions, spaceSlug, fromSpace, moveTargets, onGone }: {
   projects: readonly DashboardProject[];
   folderName(project: DashboardProject): string | null;
   now: Date;
@@ -70,6 +73,8 @@ function CardGrid({ projects, folderName, now, canEdit, pinned, folders, actions
   folders: readonly DashboardFolder[];
   actions: DashboardActions;
   spaceSlug: string;
+  fromSpace?: MySpace;
+  moveTargets?: MySpace[];
   onGone(message: string): void;
 }) {
   // Each card is its own <li>, which takes the card's right-click.
@@ -86,6 +91,8 @@ function CardGrid({ projects, folderName, now, canEdit, pinned, folders, actions
           folders={folders}
           actions={actions}
           spaceSlug={spaceSlug}
+          fromSpace={fromSpace}
+          moveTargets={moveTargets}
           onGone={onGone}
         />
       ))}
@@ -97,7 +104,7 @@ function CardGrid({ projects, folderName, now, canEdit, pinned, folders, actions
 // its menu), the search, the sort and New project. Recent lists the projects you opened last, in that order (so it has
 // no sort); All projects lists a tile for each folder, then every project; a folder view lists that folder's projects.
 // A card dropped on a folder, in the sidebar or on its tile, moves there, and a refused move says why in the bar.
-export function Dashboard({ projects, folders, templates, recentIds, pinnedIds = NO_PINS, sidebarCollapsed, view, canEdit, now, actions, spaceSlug, notices }: DashboardProps): ReactNode {
+export function Dashboard({ projects, folders, templates, recentIds, pinnedIds = NO_PINS, sidebarCollapsed, view, canEdit, now, actions, spaceSlug, fromSpace, moveTargets, notices }: DashboardProps): ReactNode {
   useRefreshOnReturn();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -222,6 +229,8 @@ export function Dashboard({ projects, folders, templates, recentIds, pinnedIds =
         actions={actions}
         onGone={setNotice}
         spaceSlug={spaceSlug}
+        fromSpace={fromSpace}
+        moveTargets={moveTargets}
       />
     ) : (
       empty()

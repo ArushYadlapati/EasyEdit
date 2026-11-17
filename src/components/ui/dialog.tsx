@@ -13,6 +13,7 @@ export type DialogProps = {
   className?: string;
   bar?: ReactNode; // between the header and the body, and does not scroll with the body, such as a row of tabs
   size?: "md" | "lg"; // lg takes most of the window, at a fixed height, so a footer sits at its bottom
+  closeDisabled?: boolean; // the Close button is dimmed and Escape (or any other close request) does nothing, as while work runs
   footer?: ReactNode; // after the body, and does not scroll with it, such as the dialog's buttons
 };
 
@@ -27,7 +28,7 @@ const SIZES = {
 // the first element marked data-autofocus, a field's text selected so typing replaces it; with none
 // marked, the browser's choice stands. React's autoFocus cannot do this: the contents mount while the
 // dialog is still closed.
-export function Dialog({ title, open, onClose, children, className, bar, size = "md", footer }: DialogProps) {
+export function Dialog({ title, open, onClose, children, className, bar, size = "md", footer, closeDisabled }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -55,12 +56,12 @@ export function Dialog({ title, open, onClose, children, className, bar, size = 
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented) return;
         event.preventDefault();
-        onClose();
+        if (!closeDisabled) onClose();
       }}
       onCancel={(event) => {
         // Any other close request (such as a back gesture) also goes through the caller.
         event.preventDefault();
-        onClose();
+        if (!closeDisabled) onClose();
       }}
     >
       {open && (
@@ -69,7 +70,7 @@ export function Dialog({ title, open, onClose, children, className, bar, size = 
             <h2 id={titleId} className="min-w-0 flex-1 truncate text-sm font-semibold">
               {title}
             </h2>
-            <IconButton label="Close" onClick={onClose}>
+            <IconButton label="Close" disabled={closeDisabled} onClick={onClose}>
               <X />
             </IconButton>
           </header>

@@ -51,7 +51,7 @@ Sign-up is open to anyone with a Google account. Everyone has a Personal space, 
 - [x] **Storage per space, and open sign-up.** Each space stores its media in a Google Drive account its owner connects. EasyEdit only asks for access to the files it creates itself, never your whole Drive. Each team gets its own read-only key, so one team can never read another's media. Once every new space can have storage, anyone with a Google account can sign up.
 - [x] **Team invites.** Team admins invite people by email address with a link to send. The person signs in with that Google account and joins or declines; admins see, renew and cancel pending invites, and an invite lets someone in while sign-up is closed. An empty team can be deleted. Invites sent by email come later.
 - [x] **A new sign-up flow.** Choose where your videos live and set up AI agents as you join. People invited to a team skip the storage step and land in the team.
-- [ ] **Moving projects between spaces.** A project's media is copied to the new space, so a project never ends up half-moved.
+- [x] **Moving projects between spaces.** A project's media is copied to the new space, so a project never ends up half-moved.
 
 Also planned: thumbnails and waveforms on the timeline, captions, text animation and effects, transcripts and footage search for AI agents, and full-quality video in exports. See [Project status](docs/status.md) for what works today.
 

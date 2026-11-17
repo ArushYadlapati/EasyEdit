@@ -38,6 +38,8 @@ No agent can see inside footage yet.
 
 **Roles:** everyone in a space can edit, so their agents can create and change projects there. Every change an agent makes is listed in the editor's **Activity** with the agent's name, for example "Claude (for <name>)" or "ChatGPT (for <name>)", and can be undone there. A change from an agent is refused if the project changed since it last read it, and it is told what changed, so it never overwrites an edit it has not seen.
 
+**Moving projects:** agents can't move a project to another space; a person does it from the project's menu. Changes made before a move can't be undone afterwards, by people or by `undo_change`.
+
 **Limits:** through agents, each member gets 30 changes a minute, 10 MB of change data a day and 50 new projects a day. One page of a read is 16,000 characters; longer projects come in several pages.
 
 **Ending a connection:** on the **AI agents** page a member disconnects one agent or revokes one token, and the others keep working. The Admin page shows "Connected" next to each member with any agent or token; an admin's **Disconnect** there ends all of that member's agents and tokens at once, and removing a member ends them too. Removing the connector inside an agent stops it from using it, but it stays listed until it is disconnected here. Signing out of the website does not end a connection.

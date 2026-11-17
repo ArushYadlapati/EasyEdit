@@ -1,0 +1,20 @@
+// What a person is told about moving a project between spaces. No imports: browser code uses this file too.
+export const MOVE_MESSAGES = {
+  sameSpace: "This project is already in that space.",
+  cantEditThere: (space: string) => `You can only move a project to a space where you can edit. You can't edit in ${space}.`,
+  noStorage: (space: string) => `${space} has no storage yet. Set it up, then move the project.`,
+  noStorageAskAdmin: (space: string) => `${space} has no storage yet. Ask an admin of ${space} to set it up.`,
+  storageBroken: (space: string) => `${space}'s Google Drive needs reconnecting before anything can be copied into it.`,
+  notReady: (name: string) => `"${name}" hasn't finished uploading yet. Try again once it has.`,
+  notInProject: "That media is not used by this project.",
+  gone: "This move was canceled or has already finished.",
+  copiesMissing: "Some media was added while the project was copying.",
+  cantReadSource: (name: string) => `"${name}" can't be read from Google Drive, so it can't be copied. Remove it from the project or upload it again, then try the move again.`,
+  moved: "This project was moved to another space. Open it there to keep editing.",
+  canceled: "The move was canceled.",
+  copyStopped: "Copying stopped. Check your connection and try again; what was copied is kept.",
+  busy: "The project kept changing while it was being moved. Try again.",
+  uploadInTheWay: (name: string) => `Another upload of "${name}" hasn't finished in that space yet. Let it finish or cancel it, then try the move again.`,
+  movedAway: "This project was moved to a space you're not in, so it can't be edited here anymore.",
+  destinationRefused: (space: string) => `${space}'s Google Drive refused the copy. It may be full. Free up space or reconnect it, then try the move again.`,
+} as const;

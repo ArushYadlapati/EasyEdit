@@ -398,3 +398,70 @@ describe("leaving", () => {
     }
   });
 });
+
+describe("after the project moved to another space", () => {
+  function setupIn(spaceId = "s1") {
+    const server = makeFakeServer(sampleDoc(), 5);
+    const fake = makeFakePresence(server);
+    const store = makeStore();
+    const presence = createPresenceStore("u1");
+    const sync = createSync({
+      store, api: server.api, isVisible: () => true, spaceId,
+      presence: { api: fake.api, store: presence, makeTabId: () => "tab-1" },
+    });
+    sync.start();
+    return { server, fake, sync, st: () => store.getState(), list: () => presence.getState() };
+  }
+
+  it("a share answering another space shows the move, applies none of its change, and checks no more", async () => {
+    const { server, fake, st, list } = setupIn();
+    fake.answer([GRACE]);
+    await after(2000);
+    expect(list().peers).toHaveLength(1);
+    server.moveTo("s2", [{ op: "update_clip", clipId: "c1", patch: { assetId: "copy-a" } }]);
+    await after(2000);
+    expect(fake.count()).toBe(2);
+    expect(server.calls).toEqual([]); // no catch-up
+    expect(st()).toMatchObject({ moved: true, canEdit: false });
+    expect(st().server.version).toBe(5);
+    expect(list().peers).toEqual([]);
+    await after(POLL_IDLE_LIMIT_MS);
+    expect(fake.count()).toBe(2);
+    expect(server.calls).toEqual([]);
+  });
+
+  it("a share answering 404 NOT_FOUND asks where the project is: moved when it is in another space", async () => {
+    const { server, fake, st } = setupIn();
+    server.moveTo("s2");
+    fake.fail("not-found");
+    await after(2000);
+    expect(server.calls).toEqual(["version"]);
+    expect(st().moved).toBe(true);
+    expect(st().status).not.toBe("deleted");
+  });
+
+  it("the tab leaves the project once it finds the move, so no selection of it lingers in the new space", async () => {
+    const { server, fake, st, list } = setupIn();
+    fake.answer([GRACE]);
+    await after(2000);
+    expect(fake.left()).toEqual([]);
+    server.moveTo("s2");
+    await after(2000);
+    expect(st().moved).toBe(true);
+    expect(fake.left()).toEqual(["tab-1"]);
+    expect(list().peers).toEqual([]);
+  });
+
+  it("a share answering 404 MOVED_ELSEWHERE shows the move elsewhere, leaves, and checks no more", async () => {
+    const { server, fake, st } = setupIn();
+    await after(2000);
+    fake.fail("moved-elsewhere");
+    await after(2000);
+    expect(server.calls).toEqual([]);
+    expect(st()).toMatchObject({ moved: true, movedElsewhere: true, canEdit: false });
+    expect(fake.left()).toEqual(["tab-1"]);
+    const shares = fake.count();
+    await after(POLL_IDLE_LIMIT_MS);
+    expect(fake.count()).toBe(shares);
+  });
+});

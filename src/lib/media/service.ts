@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, getTableColumns, inArray, is, isNull, or, sql, SQL } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, is, isNotNull, isNull, or, sql, SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { rowsOf, type DB } from "@/db";
 import { assets, projects, templates } from "@/db/schema";
@@ -22,7 +22,7 @@ export type MediaDeps = { db: DB; drive: DriveClient; origin: string; onDriveErr
 };
 export type OpenedUpload = { asset: AssetView; uploadUrl: string; offset: number };
 
-type AssetRow = typeof assets.$inferSelect;
+export type AssetRow = typeof assets.$inferSelect;
 
 const refusedFile = (reason: keyof typeof FILE_REFUSALS) => new ServiceError("INVALID", 400, FILE_REFUSALS[reason]);
 const gone = () => new ServiceError("NOT_FOUND", 404, MEDIA_MESSAGES.gone);
@@ -32,7 +32,8 @@ const tooManyUnfinished = () => new ServiceError("LIMIT_EXCEEDED", 400, MEDIA_ME
 const notFinished = () => new ServiceError("CONFLICT", 409, MEDIA_MESSAGES.notFinished);
 
 const unfinished = eq(assets.status, "uploading");
-const inSpace = (actor: Actor) => eq(assets.spaceId, actor.spaceId);
+// A copy made by an unfinished move (moveId set) is in no library until the move finishes.
+const inSpace = (actor: Actor) => and(eq(assets.spaceId, actor.spaceId), isNull(assets.moveId));
 const unfinishedOf = (actor: Actor) => and(inSpace(actor), eq(assets.uploadedBy, actor.userId), unfinished);
 // What a member is shown: every finished asset of the space, and of the unfinished uploads only their own.
 const shownTo = (actor: Actor) => and(inSpace(actor), or(eq(assets.status, "ready"), unfinishedOf(actor)));
@@ -108,10 +109,10 @@ function canBeStored(kind: AssetKind, input: OpenUploadInput): boolean {
 
 // The whole of a new row. An `insert … select` has no `default`, so every column is named here, and a column
 // added to the table must be given a value before this compiles.
-type NewAsset = { [K in keyof AssetRow]: AssetRow[K] | SQL };
+export type NewAsset = { [K in keyof AssetRow]: AssetRow[K] | SQL };
 
 // The values of a new row in the table's own column order, each cast to its column's type.
-function valuesOf(row: NewAsset): SQL {
+export function valuesOf(row: NewAsset): SQL {
   const columns = getTableColumns(assets);
   const values = (Object.keys(columns) as (keyof AssetRow)[]).map((key) => {
     const value = row[key];
@@ -123,14 +124,14 @@ function valuesOf(row: NewAsset): SQL {
 // The error of a statement that failed holds every value the statement was given, and the database's own account
 // of it can quote the row. One of the new row's values is the session address, which no error may hold. So what is
 // thrown instead keeps the database's five-character error code and nothing else: not the error, not as its cause.
-function notRecorded(error: unknown): Error {
+export function notRecorded(error: unknown): Error {
   const codes = [error, (error as { cause?: unknown } | null)?.cause].map((from) => (from as { code?: unknown } | null)?.code);
   const code = codes.find((value) => typeof value === "string" && /^[0-9A-Z]{5}$/.test(value));
   return new Error(code ? `The upload could not be recorded (database error ${code}).` : "The upload could not be recorded.");
 }
 
 // How much of an unfinished upload Drive holds. Null when its session is gone: the row is deleted then.
-async function heldByDrive(deps: MediaDeps, row: AssetRow): Promise<{ offset: number; done: boolean } | null> {
+export async function heldByDrive(deps: MediaDeps, row: AssetRow): Promise<{ offset: number; done: boolean } | null> {
   if (row.uploadUrl !== null) {
     try {
       const { done, offset } = await deps.drive.uploadOffset(row.uploadUrl, row.sizeBytes);
@@ -218,6 +219,8 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
     readyAt: null,
     removedAt: null,
     removedBy: null,
+    moveId: null,
+    copiedFrom: null,
   };
   // One statement holds the limit and yields to a row for the same file that got there first.
   let inserted: AssetRow | undefined;
@@ -225,7 +228,7 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
     [inserted] = await db
       .insert(assets)
       .select(
-        sql`select ${valuesOf(row)} where (select count(*) from assets where space_id = ${actor.spaceId}::text and uploaded_by = ${actor.userId}::text and status = 'uploading') < ${LIMITS.mediaPendingPerMember}::integer`,
+        sql`select ${valuesOf(row)} where (select count(*) from assets where space_id = ${actor.spaceId}::text and uploaded_by = ${actor.userId}::text and status = 'uploading' and move_id is null) < ${LIMITS.mediaPendingPerMember}::integer`,
       )
       .onConflictDoNothing({ target: [assets.spaceId, assets.uploadedBy, assets.fileName, assets.sizeBytes, assets.lastModifiedMs], where: sql`status = 'uploading'` })
       .returning();
@@ -237,6 +240,10 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
   // The session opened above is left to expire: no file exists until the last byte.
   const after = await takeUpUnfinished(deps, actor, input);
   if (after) return after;
+  // A move this member started may be copying the same file into this space; its copy holds the file's place.
+  const same = and(eq(assets.spaceId, actor.spaceId), eq(assets.uploadedBy, actor.userId), unfinished, eq(assets.fileName, input.fileName), eq(assets.sizeBytes, input.sizeBytes), eq(assets.lastModifiedMs, input.lastModifiedMs));
+  const [copying] = await db.select({ id: assets.id }).from(assets).where(and(same, isNotNull(assets.moveId)));
+  if (copying) throw new ServiceError("CONFLICT", 409, MEDIA_MESSAGES.beingMovedHere(input.fileName));
   throw tooManyUnfinished();
 }
 
@@ -357,7 +364,7 @@ const quietFailure = (error: unknown): DriveError | null =>
 // Moves files to the trash, each on its own. What the member asked for is done by then, so a Drive failure here
 // is not shown to them. It is reported instead: that report is the only record that the file is still in Drive.
 // A failure that is not Drive's answer is not hidden: it is thrown once every file has been tried.
-async function trashQuietly(deps: MediaDeps, fileIds: (string | null)[]): Promise<void> {
+export async function trashQuietly(deps: MediaDeps, fileIds: (string | null)[]): Promise<void> {
   const tried = await Promise.allSettled(fileIds.filter((id) => id !== null).map((id) => deps.drive.trashFile(id)));
   const failures = tried.flatMap((result) => (result.status === "rejected" ? [result.reason as unknown] : []));
   const others: unknown[] = [];
@@ -371,7 +378,7 @@ async function trashQuietly(deps: MediaDeps, fileIds: (string | null)[]): Promis
 
 // Cancels an upload session whose row is gone, so no more of its file can be sent. As in trashQuietly, a Drive
 // failure is reported and not shown, and any other failure is thrown.
-async function cancelQuietly(deps: MediaDeps, sessionUrl: string | null): Promise<void> {
+export async function cancelQuietly(deps: MediaDeps, sessionUrl: string | null): Promise<void> {
   if (sessionUrl === null) return;
   try {
     await deps.drive.cancelSession(sessionUrl);
@@ -398,7 +405,7 @@ export async function removeAsset(deps: MediaDeps, actor: Actor, assetId: string
   const marked = rowsOf<Record<string, string | null>>(
     await db.execute(sql`
       update assets set removed_at = now(), removed_by = ${actor.userId}::text
-      where id = ${assetId}::text and space_id = ${actor.spaceId}::text and status = 'ready' and removed_at is null
+      where id = ${assetId}::text and space_id = ${actor.spaceId}::text and status = 'ready' and removed_at is null and move_id is null
         and not exists (select 1 from ${projects} where ${usedBy(assetId, actor.spaceId)})
         and not exists (select 1 from ${templates} where ${usedByTemplate(assetId, actor.spaceId)})
       returning drive_file_id, preview_file_id, poster_file_id
@@ -433,7 +440,7 @@ export async function removeAsset(deps: MediaDeps, actor: Actor, assetId: string
 export type AssetFileRole = "preview" | "poster";
 
 // What is made from an original in the browser and kept in `Previews`.
-type AssetFile = {
+export type AssetFile = {
   kinds: AssetKind[]; // the assets that have one
   maxBytes: number;
   suffix: string; // its name in Drive is `<assetId>.<suffix>`
@@ -444,7 +451,7 @@ type AssetFile = {
   moveOver: Partial<NewAsset>; // makes the one that was on its way the one that is in
 };
 
-const ASSET_FILES: Record<AssetFileRole, AssetFile> = {
+export const ASSET_FILES: Record<AssetFileRole, AssetFile> = {
   preview: {
     kinds: ["video"],
     maxBytes: LIMITS.mediaFileBytes,
@@ -547,6 +554,6 @@ export async function loadAssetFacts(db: DB, spaceId: string, ids: string[]): Pr
   const rows = await db
     .select({ id: assets.id, kind: assets.kind, status: assets.status, removedAt: assets.removedAt, durationMs: assets.durationMs })
     .from(assets)
-    .where(and(eq(assets.spaceId, spaceId), inArray(assets.id, unique)));
+    .where(and(eq(assets.spaceId, spaceId), isNull(assets.moveId), inArray(assets.id, unique)));
   return new Map(rows.map((row) => [row.id, { id: row.id, kind: row.kind, ready: row.status === "ready", removed: row.removedAt !== null, durationMs: row.durationMs }]));
 }

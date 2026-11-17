@@ -4,6 +4,7 @@ import {
   canUndoChange,
   editingLabel,
   hasOlderActivity,
+  isBeforeMove,
   loadOlderActivity,
   loadRecentActivity,
   olderRange,
@@ -137,9 +138,25 @@ describe("the activity list", () => {
       entry(7, [{ op: "set_format", format: "long_16x9" }], "claude:u2", "Claude (for Grace)"),
     ], "u1", new Date("2026-11-11T10:05:00.000Z"));
     expect(rows).toEqual([
-      { version: 7, who: "Claude (for Grace)", summary: "Changed the format to Landscape 16:9", when: "5 minutes ago", canUndo: false },
-      { version: 6, who: "You", summary: "Deleted a clip", when: "5 minutes ago", canUndo: true },
+      { version: 7, who: "Claude (for Grace)", summary: "Changed the format to Landscape 16:9", when: "5 minutes ago", canUndo: false, beforeMove: false },
+      { version: 6, who: "You", summary: "Deleted a clip", when: "5 minutes ago", canUndo: true, beforeMove: false },
     ]);
+  });
+
+  it("after a move, the move reads as one and changes from before it cannot be undone, even with an undo in hand", () => {
+    const rows = activityRows([
+      { ...entry(5, [rm("a")], "u1", "Ada"), inverse: [rm("b")] },
+      entry(6, [{ op: "update_clip", clipId: "c1", patch: { assetId: "copy-a" } }], "u2", "Grace"),
+      { ...entry(7, [rm("c")], "u1", "Ada"), inverse: [rm("d")] },
+    ], "u1", new Date("2026-11-11T10:05:00.000Z"), undefined, 6);
+    expect(rows.map(({ version, who, summary, canUndo, beforeMove }) => ({ version, who, summary, canUndo, beforeMove }))).toEqual([
+      { version: 7, who: "You", summary: "Deleted a clip", canUndo: true, beforeMove: false },
+      { version: 6, who: "Grace", summary: "Moved here from another space", canUndo: false, beforeMove: false },
+      { version: 5, who: "You", summary: "Deleted a clip", canUndo: false, beforeMove: true },
+    ]);
+    expect(isBeforeMove(entry(5, []), 6)).toBe(true);
+    expect(isBeforeMove(entry(6, []), 6)).toBe(false);
+    expect(isBeforeMove(entry(1, []), null)).toBe(false);
   });
 
   it("names the kind of clip from the project, and from the change itself when the clip is gone", () => {

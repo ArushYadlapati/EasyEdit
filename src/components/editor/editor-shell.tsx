@@ -66,7 +66,8 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
     const api = createProjectApi(initial.projectId);
     const presenceStore = createPresenceStore(initial.me.id);
     const presence = { api: createPresenceApi(initial.projectId), store: presenceStore };
-    const sync = createSync({ store, api, isVisible: () => document.visibilityState === "visible", presence });
+    // With the space, a check that finds the project moved to another one stops this tab (see createSync).
+    const sync = createSync({ store, api, isVisible: () => document.visibilityState === "visible", presence, spaceId: space.id });
     // Snapping and the safe area and guide switches live in the editor store; the cookie holds them with the rest.
     const savePrefs: SettingsSave["prefs"] = (chosen) => {
       const { snapping, showSafeZones, showGuides } = store.getState();
