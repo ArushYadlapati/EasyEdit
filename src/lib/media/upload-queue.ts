@@ -5,7 +5,7 @@ import type { Derived, Ingest } from "./ingest-protocol";
 import { FILE_REFUSALS, MEDIA_MESSAGES } from "./messages";
 import { checkFile, probeFits } from "./rules";
 import type { AssetKind, AssetProbe, AssetView, UploadItem } from "./types";
-import { sendFile, type UploadTransport } from "./uploader";
+import { blobSource, sendFile, type UploadTransport } from "./uploader";
 
 export type QueueDeps = {
   api: MediaApi;
@@ -166,7 +166,7 @@ export function createUploadQueue(deps: QueueDeps): UploadQueue {
       const opened = await api.openFile(assetId, role, blob.size);
       if (entry.left) return false;
       if (!opened.ok) continue;
-      const sent = await sendFile(blob, { uploadUrl: opened.uploadUrl, offset: 0 }, { transport, sleep, chunkBytes, signal, askOffset: async () => null, onProgress: () => {} });
+      const sent = await sendFile(blobSource(blob), { uploadUrl: opened.uploadUrl, offset: 0 }, { transport, sleep, chunkBytes, signal, askOffset: async () => null, onProgress: () => {} });
       if (entry.left) return false;
       if (!sent.ok) continue;
       const completed = await api.completeFile(assetId, role);
@@ -220,7 +220,7 @@ export function createUploadQueue(deps: QueueDeps): UploadQueue {
 
     // An answer of our server to the offset question that is not about the network ends the upload at once.
     const end: { answer: MediaFailure | null } = { answer: null };
-    const sent = await sendFile(file, opened, {
+    const sent = await sendFile(blobSource(file), opened, {
       transport,
       sleep,
       chunkBytes,

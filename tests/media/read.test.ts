@@ -6,8 +6,9 @@ import { createMediaApi, type MediaApi, type MediaFailure } from "@/lib/media/ap
 import { pickEvictions } from "@/lib/media/cache-plan";
 import { createMediaFiles, createMemoryStore, type FileStore } from "@/lib/media/media-files";
 import { PLACEHOLDER_LABELS, playbackFileFor, posterFileFor } from "@/lib/media/playback";
-import { REFUSED_WAIT_MS, TOKEN_MARGIN_MS, createReadTokens, driveFileUrl, readDriveFile, type ReadTokens } from "@/lib/media/read-tokens";
+import { REFUSED_WAIT_MS, TOKEN_MARGIN_MS, createReadTokens, driveFileSize, driveFileUrl, driveSource, readDriveFile, type ReadTokens } from "@/lib/media/read-tokens";
 import type { AssetView } from "@/lib/media/types";
+import { SourceReadError } from "@/lib/media/uploader";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { makeFakeDrive } from "../helpers/fake-drive";
 import { sources } from "../helpers/sources";
@@ -1190,5 +1191,95 @@ describe("the files this browser keeps", () => {
     expect((await files.get("f1")).ok).toBe(true);
     expect((await files.get("f1")).ok).toBe(true);
     expect(h.reads).toEqual(["f1"]);
+  });
+});
+
+// A fetch that answers each request with the next of `answers`, and writes down what it was asked.
+function serving(...answers: (() => Response)[]) {
+  const sent: { url: string; headers: Headers; signal: AbortSignal | null | undefined }[] = [];
+  const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    sent.push({ url: String(input), headers: new Headers(init?.headers), signal: init?.signal });
+    const answer = answers[sent.length - 1];
+    if (!answer) throw new TypeError("no answer");
+    return answer();
+  }) as typeof fetch;
+  return { fetch: fetchFn, sent };
+}
+
+describe("reading part of a file from Drive", () => {
+  it("a range is sent as Range: bytes=start-(end - 1), and a 206 is ok", async () => {
+    const net = serving(() => new Response("0123456789", { status: 206 }));
+    const read = await readDriveFile("f1", { tokens: fixedTokens().tokens, fetch: net.fetch, range: { start: 10, end: 20 } });
+    expect(read.ok && read.response.status).toBe(206);
+    expect([...net.sent[0].headers]).toEqual([["authorization", "Bearer tok-1"], ["range", "bytes=10-19"]]);
+  });
+
+  it("a read with no range sends no Range header", async () => {
+    const net = serving(() => new Response("x"));
+    await readDriveFile("f1", { tokens: fixedTokens().tokens, fetch: net.fetch });
+    expect(net.sent[0].headers.has("range")).toBe(false);
+  });
+
+  it("a file's size comes from the total of a one-byte read's Content-Range", async () => {
+    const signal = new AbortController().signal;
+    const net = serving(() => new Response("x", { status: 206, headers: { "Content-Range": "bytes 0-0/12345" } }));
+    expect(await driveFileSize("f1", { tokens: fixedTokens().tokens, fetch: net.fetch, signal })).toBe(12345);
+    expect(net.sent).toHaveLength(1);
+    expect(net.sent[0].headers.get("range")).toBe("bytes=0-0");
+    expect(net.sent[0].signal).toBe(signal);
+  });
+
+  it("a page that cannot read Content-Range takes the size from a whole read's Content-Length, and reads none of its body", async () => {
+    let pulled = 0;
+    const body = new ReadableStream({ pull: (c) => void (pulled += 1, c.enqueue(new Uint8Array(4))) }, { highWaterMark: 0 });
+    const net = serving(
+      () => new Response("x", { status: 206 }), // Drive does not name Content-Range among the headers a page may read
+      () => new Response(body, { status: 200, headers: { "Content-Length": "12345" } }),
+    );
+    expect(await driveFileSize("f1", { tokens: fixedTokens().tokens, fetch: net.fetch })).toBe(12345);
+    expect(net.sent.map((one) => one.headers.get("range"))).toEqual(["bytes=0-0", null]);
+    expect(pulled).toBeLessThanOrEqual(1);
+  });
+
+  it("a file that is not there is missing, and other problems are passed on", async () => {
+    expect(await driveFileSize("f1", { tokens: fixedTokens().tokens, fetch: serving(() => new Response(null, { status: 404 })).fetch })).toBe("missing");
+    expect(await driveFileSize("f1", { tokens: fixedTokens().tokens, fetch: serving(() => new Response(null, { status: 403 })).fetch })).toBe("refused");
+    expect(await driveFileSize("f1", { tokens: fixedTokens(null).tokens, fetch: serving().fetch })).toBe("offline");
+    const noSize = serving(() => new Response("x", { status: 206 }), () => new Response("x", { status: 200, headers: { "Content-Length": "" } }));
+    expect(await driveFileSize("f1", { tokens: fixedTokens().tokens, fetch: noSize.fetch })).toBe("offline");
+  });
+
+  it("a Drive source reads each piece by its range", async () => {
+    const net = serving(() => new Response(new Uint8Array([4, 5, 6, 7]), { status: 206 }));
+    const source = driveSource("f1", 10, { tokens: fixedTokens().tokens, fetch: net.fetch });
+    expect(source.size).toBe(10);
+    const signal = new AbortController().signal;
+    const piece = await source.piece(4, 8, signal);
+    expect([...new Uint8Array(await piece.arrayBuffer())]).toEqual([4, 5, 6, 7]);
+    expect(net.sent[0].url).toBe(driveFileUrl("f1"));
+    expect(net.sent[0].headers.get("range")).toBe("bytes=4-7");
+    expect(net.sent[0].signal).toBe(signal);
+  });
+
+  it("a Drive source that cannot read a piece says why, as a SourceReadError", async () => {
+    const kindOf = async (answer: () => Response, start = 0, end = 4) => {
+      const source = driveSource("f1", 10, { tokens: fixedTokens().tokens, fetch: serving(answer).fetch });
+      const error = await source.piece(start, end, new AbortController().signal).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      return error instanceof SourceReadError ? error.kind : error;
+    };
+    expect(await kindOf(() => new Response(null, { status: 404 }))).toBe("missing");
+    expect(await kindOf(() => new Response(null, { status: 403 }))).toBe("refused");
+    expect(await kindOf(() => new Response(null, { status: 503 }))).toBe("offline");
+    expect(await kindOf(() => new Response(new Uint8Array(3), { status: 206 }))).toBe("offline"); // short
+    expect(await kindOf(() => new Response(new Uint8Array(10), { status: 200 }), 4, 8)).toBe("offline"); // Range not honoured
+    expect(await kindOf(() => new Response(new ReadableStream({ start: (c) => c.error(new TypeError("dropped")) }), { status: 206 }))).toBe("offline");
+  });
+
+  it("a whole-file range answered 200 is fine", async () => {
+    const source = driveSource("f1", 4, { tokens: fixedTokens().tokens, fetch: serving(() => new Response(new Uint8Array(4), { status: 200 })).fetch });
+    expect((await source.piece(0, 4, new AbortController().signal)).size).toBe(4);
   });
 });
