@@ -1,4 +1,5 @@
 import { activeClips, type LocalRect } from "@/lib/render/compositor";
+import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { stretchOf } from "@/lib/timeline/presets";
 import type { TimelineDoc } from "@/lib/timeline";
 import type { Point, Size } from "./board";
@@ -30,7 +31,8 @@ export function canvasItems(doc: TimelineDoc, frame: number, sizer: Sizer): Canv
     if (clip.type === "audio") continue;
     const rects = clipRects(doc, clip, sizer);
     if (!rects) continue;
-    const t = clip.transform;
+    // Keyframes move the box with the picture. Transitions do not: they play for a moment and the box stays at rest.
+    const t = effectiveTransform(clip, frame);
     items.push({
       clipId: clip.id,
       trackId: track.id,
