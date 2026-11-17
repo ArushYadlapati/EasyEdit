@@ -19,7 +19,9 @@ export type ServiceErrorCode =
   | "HAS_UPLOADS"
   | "WRONG_ACCOUNT"
   | "EXPIRED"
-  | "INVITE_USED";
+  | "INVITE_USED"
+  | "MOVED"
+  | "COPIES_MISSING";
 
 export class ServiceError extends Error {
   code: ServiceErrorCode;

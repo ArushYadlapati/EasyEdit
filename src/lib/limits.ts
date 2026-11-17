@@ -59,6 +59,7 @@ export const LIMITS = {
   presenceRefreshMs: 15_000, // an unchanged selection is written again at most this often
   presenceTtlMs: 50_000, // a tab not heard from for this long is no longer shown
   presenceKeepMs: 10 * 60_000, // rows this old are deleted by the next check from anyone
+  moveAbandonAfterMs: 24 * 60 * 60 * 1000, // an unfinished move this old is dropped by the next move into the same space
   presenceSweepRows: 50, // rows one check deletes at most
 } as const;
 
