@@ -48,16 +48,34 @@ export function crossfadeFrom(track: Track, clip: Clip): Clip | null {
   return track.clips.find((c) => c.type !== "audio" && c.start + c.duration === clip.start) ?? null;
 }
 
+// A crossfade owns its cut: the outgoing clip draws whole up to it and on under the incoming one. Its own
+// out-transition would fade or dip it to nothing and then have it pop back at full alpha in its tail. So a clip that
+// the next one crossfades in from draws as if it had no out-transition. Everything that times a crossfade or draws a
+// clip reads the clip as drawn, so the incoming clip's window and its outgoing clip's tail always match.
+export function asDrawn(track: Track, clip: Clip): Clip {
+  if ((clip.type !== "video" && clip.type !== "image") || !clip.transitionOut) return clip;
+  return crossfadeInto(track, clip) ? { ...clip, transitionOut: null } : clip;
+}
+
+// How many frames this clip crossfades in over its outgoing clip, as it draws: 0 with no crossfade, no clip to blend
+// from, or a clip too short to hold any of it.
+export function crossfadeFrames(track: Track, clip: Clip): number {
+  if (!crossfadeFrom(track, clip)) return 0;
+  return effectWindows(asDrawn(track, clip)).inFrames;
+}
+
 // The outgoing clip drawn under this one at a frame, while its crossfade runs; null outside it.
 export function tailAt(track: Track, clip: Clip, frame: number): Clip | null {
-  if (frame < clip.start || frame - clip.start >= effectWindows(clip).inFrames) return null;
+  if (frame < clip.start || frame - clip.start >= crossfadeFrames(track, clip)) return null;
   return crossfadeFrom(track, clip);
 }
 
-// The clip that crossfades in from this one: the one on the same track that starts where it ends, if it crossfades.
+// The clip that crossfades in from this one: the one on the same track that starts where it ends, if its crossfade has
+// any frames. A crossfade with none leaves the cut, and this clip's own out-transition, as they are.
 export function crossfadeInto(track: Track, clip: Clip): Clip | null {
   const end = clip.start + clip.duration;
-  return track.clips.find((c) => c.start === end && crossfadeFrom(track, c) === clip) ?? null;
+  const next = track.clips.find((c) => c.start === end && crossfadeFrom(track, c) === clip);
+  return next && crossfadeFrames(track, next) > 0 ? next : null;
 }
 
 // What is drawn at a frame, back to front: the clips under it, each crossfade's outgoing clip right before the clip
@@ -70,13 +88,6 @@ export function drawnClips(doc: TimelineDoc, frame: number): DrawnClip[] {
     drawn.push({ track, clip, tail: false });
   }
   return drawn;
-}
-
-// A crossfade owns its cut: the outgoing clip draws whole up to it and on under the incoming one. Its own
-// out-transition would fade or dip it to nothing and then have it pop back at full alpha in its tail.
-function ownLook(track: Track, clip: Clip): Clip {
-  if ((clip.type !== "video" && clip.type !== "image") || !clip.transitionOut) return clip;
-  return crossfadeInto(track, clip) ? { ...clip, transitionOut: null } : clip;
 }
 
 export function fitRect(srcW: number, srcH: number, dstW: number, dstH: number, fit: "cover" | "contain"): { width: number; height: number } {
@@ -277,7 +288,7 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
       drawClip(ctx, doc, clip, frame, { t, alpha: t.opacity, dx: 0, dy: 0, text: PLAIN_TEXT }, options, resolveFont);
       continue;
     }
-    const look = clipLook(ownLook(track, clip), frame, doc);
+    const look = clipLook(asDrawn(track, clip), frame, doc);
     const t = look.transform;
     const alpha = t.opacity * look.alpha;
     for (const ghost of look.ghosts) {

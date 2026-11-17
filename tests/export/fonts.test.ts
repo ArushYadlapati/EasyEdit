@@ -139,6 +139,15 @@ describe("what a project's text needs", () => {
     expect(bundle.faces.map((f) => f.family)).toEqual(["Geist", "Geist", "Geist Fallback"]);
   });
 
+  it("keeps the font and characters of text that fades in from opacity 0", () => {
+    const d = docWith(text("a", 0, 30, { text: "Ž", style: { ...medium, fontFamily: "Geist Mono" } }));
+    const a = d.tracks[1].clips[0];
+    a.transform.opacity = 0;
+    a.keyframes = { opacity: [{ at: 0, value: 0 }, { at: 10, value: 1 }] };
+    expect(probeRequests(d, pageFont).map((r) => r.text)).toEqual([`${PROBE_BASE}Ž`]);
+    expect(Object.keys(buildFontBundle(d, pageFont, RULES, measure).families)).toEqual(["Geist Mono"]);
+  });
+
   it("a font the app does not provide travels by name only", () => {
     const inter = { ...medium, fontFamily: "Inter" };
     const bundle = buildFontBundle(docWith(text("a", 0, 30, { style: inter })), pageFont, RULES, measure);

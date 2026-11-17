@@ -20,6 +20,8 @@ export type MediaElement = {
   readonly readyState: number;
   readonly videoWidth?: number;
   readonly videoHeight?: number;
+  readonly duration?: number; // NaN until the element knows its length
+  readonly ended?: boolean;
   play(): Promise<void>;
   pause(): void;
   addEventListener(type: string, listener: () => void): void;
@@ -202,7 +204,17 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
   }
 
   // Makes an element do what is wanted of it. What the browser refuses is left as it is, and the rest is still done.
+  // A moment at or past the end of the file (a crossfade's tail runs on past its out point) holds the last frame:
+  // play() on an ended element starts it over from 0, and seeking past the end again would only loop it there.
   function follow(el: MediaElement, want: MediaWant): void {
+    const end = el.duration !== undefined && Number.isFinite(el.duration) ? el.duration : el.ended ? el.currentTime : null;
+    if (end !== null && want.seconds >= end) {
+      if (!el.paused) el.pause();
+      el.volume = want.volume;
+      el.muted = want.volume === 0;
+      if (!el.ended && el.currentTime < end) el.currentTime = end;
+      return;
+    }
     if (want.rate > 0) {
       try {
         if (el.playbackRate !== want.rate) el.playbackRate = want.rate;

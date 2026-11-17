@@ -1,5 +1,4 @@
-import { crossfadeInto } from "@/lib/render/compositor";
-import { effectWindows } from "@/lib/render/effects";
+import { crossfadeFrames, crossfadeInto } from "@/lib/render/compositor";
 import { sourceSeconds } from "@/lib/render/source-time";
 import type { MediaClip, TimelineDoc } from "@/lib/timeline";
 import { mayShow } from "@/lib/timeline/keyframes";
@@ -36,7 +35,7 @@ export function mediaSchedule(doc: TimelineDoc, clips: Record<string, ClipMedia>
       if (!media || !("fileId" in media)) continue;
       const into = crossfadeInto(track, clip);
       const start = clip.start;
-      const end = clip.start + clip.duration + (into ? effectWindows(into).inFrames : 0);
+      const end = clip.start + clip.duration + (into ? crossfadeFrames(track, into) : 0);
       const seconds = clip.type === "video" ? Array.from({ length: end - start }, (_, i) => sourceSeconds(clip, start + i, doc.fps)) : [];
       scheduled.push({ clipId: clip.id, kind: clip.type, fileId: media.fileId, start, end, seconds });
       lastUse[media.fileId] = Math.max(lastUse[media.fileId] ?? -1, end - 1);

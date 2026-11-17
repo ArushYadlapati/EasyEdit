@@ -130,14 +130,12 @@ describe("planThumbnail", () => {
   });
 
   it("a crossfade's outgoing clip is a source past its out point, at the moment it has run on to", () => {
-    // A fades in from 0, so the frame is picked from B: 15 frames into it, while B still crossfades in over A.
+    // Text from frame 0 picks frame 30, while B still crossfades in over A. A starts at 1, after the text.
     const d = createEmptyDoc("short_9x16");
-    d.tracks[0].clips = [
-      video("A", 0, 30, { assetId: "a", in: 30, transform: { ...DEFAULT_TRANSFORM, opacity: 0 }, keyframes: { opacity: [{ at: 0, value: 0 }, { at: 10, value: 1 }] } }),
-      video("B", 30, 30, { assetId: "b", transitionIn: { kind: "crossfade", frames: 20 } }),
-    ];
+    d.tracks[0].clips = [video("A", 1, 19, { assetId: "a", in: 30 }), video("B", 20, 40, { assetId: "b", transitionIn: { kind: "crossfade", frames: 20 } })];
+    d.tracks[1].clips = [text("x1", 0, 90)];
     const plan = planThumbnail(d, lib({ a: assetView(), b: assetView({ id: "b", previewFileId: "prev-b" }) }));
-    expect(plan).toMatchObject({ kind: "draw", frame: 45, sources: [{ clipId: "A", fileId: "prev-a", seconds: (30 + 45) / 30 }, { clipId: "B", fileId: "prev-b", seconds: 0.5 }] });
+    expect(plan).toMatchObject({ kind: "draw", frame: 30, sources: [{ clipId: "A", fileId: "prev-a", seconds: (30 + 29) / 30 }, { clipId: "B", fileId: "prev-b", seconds: 10 / 30 }] });
   });
 
   it("text alone needs no file", () => {

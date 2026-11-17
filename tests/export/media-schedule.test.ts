@@ -79,6 +79,21 @@ describe("the media schedule", () => {
     expect(mediaSchedule(cut, { A: { fileId: "f" } }).clips[0].end).toBe(36);
   });
 
+  it("times the tail by the incoming clip's crossfade as it draws, whole when that clip is itself crossfaded out of", () => {
+    const crossfade = { transitionIn: { kind: "crossfade", frames: 10 } };
+    const d = createEmptyDoc("short_9x16");
+    d.tracks[0].clips = [
+      video("A", 0, 30),
+      video("B", 30, 12, { ...crossfade, transitionOut: { kind: "fade", frames: 10 } }),
+      video("C", 42, 30, crossfade),
+    ];
+    const { clips } = mediaSchedule(d, { A: { fileId: "f" }, B: { fileId: "f" }, C: { fileId: "f" } });
+    expect(clips.map((c) => [c.clipId, c.end, c.seconds.length])).toEqual([["A", 40, 40], ["B", 52, 22], ["C", 72, 30]]);
+    const short = createEmptyDoc("short_9x16");
+    short.tracks[0].clips = [video("A", 0, 30), video("B", 30, 1, crossfade)]; // cut to 0 frames: no tail
+    expect(mediaSchedule(short, { A: { fileId: "f" } }).clips[0].end).toBe(30);
+  });
+
   it("schedules a clip that fades in from opacity 0 with its opacity keyframes", () => {
     const d = sampleDoc();
     const c1 = d.tracks[0].clips[0] as MediaClip;

@@ -66,6 +66,32 @@ describe("a crossfade owns its cut", () => {
     expect(alphaAt(doc([a, video("B", 30, 30)]), 29)).toEqual([0]); // no crossfade: the fade-out plays
   });
 
+  it("an incoming clip that is also crossfaded out of keeps its full crossfade, and its outgoing clip's tail matches it", () => {
+    // B is 12 frames with a crossfade in of 10 and a fade out of 10. C crossfades in from B, so B's fade out is left
+    // out and its crossfade is not cut to half of B: A's tail runs the whole 10 frames.
+    const d = doc([
+      video("A", 0, 30),
+      video("B", 30, 12, { ...crossfade, transitionOut: { kind: "fade", frames: 10 } }),
+      video("C", 42, 30, crossfade),
+    ]);
+    for (const frame of [30, 35, 36, 37, 39]) expect(drawn(d, frame)).toEqual(["A tail", "B"]);
+    expect(drawn(d, 40)).toEqual(["B"]);
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, d, 36);
+    const alphas = only(calls, "set globalAlpha").map(([, v]) => v as number);
+    expect(alphas[0]).toBe(1); // A's tail
+    expect(alphas[1]).toBeCloseTo(0.7); // B, 7 of 10 frames in
+  });
+
+  it("a crossfade too short to hold a frame draws no tail and leaves the outgoing clip's own out-transition", () => {
+    const a = video("A", 0, 30, { transitionOut: { kind: "fade", frames: 10 } });
+    const d = doc([a, video("B", 30, 1, crossfade)]); // a 10-frame crossfade on a 1-frame clip is cut to 0
+    expect(drawn(d, 30)).toEqual(["B"]);
+    const { ctx, calls } = fakeCtx();
+    drawFrame(ctx, d, 29);
+    expect(only(calls, "set globalAlpha").map(([, v]) => v as number)).toEqual([0]); // A's fade out plays
+  });
+
   it("a dip out on the outgoing clip is left out too", () => {
     const a = video("A", 0, 30, { transitionOut: { kind: "dip", frames: 10 } });
     const { ctx, calls } = fakeCtx();
