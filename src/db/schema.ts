@@ -320,3 +320,27 @@ export const agentToken = pgTable(
     index("agent_token_user_id_idx").on(t.userId),
   ],
 );
+
+// A template: a project's doc with its slot clips emptied, kept by a space so new projects can start from it. The
+// built-in starters are not rows (src/lib/templates/starters.ts).
+export const templates = pgTable(
+  "templates",
+  {
+    id: text("id").primaryKey(),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    instructions: text("instructions").notNull().default(""),
+    format: text("format").$type<FormatId>().notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    doc: jsonb("doc").$type<TimelineDoc>().notNull(),
+    createdBy: text("created_by").notNull(),
+    updatedBy: text("updated_by").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("templates_space_name_idx").on(t.spaceId, sql`lower(${t.name})`)],
+);

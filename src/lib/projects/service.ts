@@ -8,6 +8,7 @@ import { assetIdsToCheck, findMediaProblem, mediaProblemMessage } from "@/lib/me
 import { loadAssetFacts } from "@/lib/media/service";
 import { copyName, projectFrame, projectName } from "@/lib/projects/schemas";
 import { ServiceError } from "@/lib/service-error";
+import { getTemplate } from "@/lib/templates/service";
 import {
   OpError,
   applyOps,
@@ -101,12 +102,17 @@ export function isFolderGone(error: unknown): boolean {
 export async function createProject(
   db: DB,
   actor: Actor,
-  input: { name: string; format: string; width?: number; height?: number; folderId?: string | null },
+  input: { name: string; format: string; width?: number; height?: number; folderId?: string | null; templateId?: string },
 ): Promise<{ id: string; version: 0 }> {
   requireRole(actor, "editor");
   const name = projectName.safeParse(input.name);
   if (!name.success) throw invalidName();
-  const frame = projectFrame(input);
+  // A template gives the format, size and doc; the format and size in the input are ignored.
+  const template = input.templateId === undefined ? null : await getTemplate(db, actor, input.templateId);
+  if (input.templateId !== undefined && !template) throw new ServiceError("NOT_FOUND", 404, "Template not found");
+  const frame = template
+    ? { format: template.format, width: template.width, height: template.height }
+    : projectFrame(input);
   if ("error" in frame) throw new ServiceError("INVALID", 400, frame.error);
 
   const id = newId();
@@ -119,7 +125,7 @@ export async function createProject(
       format: frame.format,
       width: frame.width,
       height: frame.height,
-      doc: createEmptyDoc(frame.format, frame),
+      doc: template ? structuredClone(template.doc) : createEmptyDoc(frame.format, frame),
       folderId,
       version: 0,
       createdBy: actor.userId,

@@ -24,6 +24,9 @@ export const LIMITS = {
   appEditsPerMinute: 600, // changes one person may save through the app in a minute
   appProjectsPerDay: 25, // projects one person may create in a day
   appUploadsPerDay: 500, // uploads one person may start in a day
+  templatesPerSpace: 100, // saved templates in one space; the built-in starters do not count
+  templateDescriptionChars: 300,
+  templateInstructionsChars: 2000,
   foldersPerSpace: 200, // folders in one space, in total
   connectorNewIdLines: 50, // new ids listed after a write; the rest are in the project
   mediaFileBytes: 2 * 1024 * 1024 * 1024, // one uploaded file

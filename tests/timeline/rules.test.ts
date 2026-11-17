@@ -18,7 +18,7 @@ describe("limits", () => {
       opsPageBytes: 2_097_152, trackNameChars: 100, slotHintChars: 200, connectorReadChars: 16_000, connectorEchoChars: 6_000,
       connectorListPage: 50, connectorConflictEntries: 10, connectorTextItems: 20, connectorWritesPerMinute: 30,
       connectorBytesPerDay: 10_485_760, connectorProjectsPerDay: 50, appEditBytesPerDay: 20_971_520, appEditsPerMinute: 600,
-      appProjectsPerDay: 25, appUploadsPerDay: 500, foldersPerSpace: 200, connectorNewIdLines: 50,
+      appProjectsPerDay: 25, appUploadsPerDay: 500, foldersPerSpace: 200, templatesPerSpace: 100, templateDescriptionChars: 300, templateInstructionsChars: 2000, connectorNewIdLines: 50,
       mediaFileBytes: 2_147_483_648, mediaChunkBytes: 8_388_608, mediaParallelUploads: 2, mediaPendingPerMember: 20,
       mediaPendingMaxAgeMs: 604_800_000, mediaNameChars: 120, mediaEventChars: 80, mediaListMax: 2000,
       mediaIdsPerRequest: 200, mediaPosterBytes: 1_048_576, mediaDirectPlayBytes: 209_715_200,
