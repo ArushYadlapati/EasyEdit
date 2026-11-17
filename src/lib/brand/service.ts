@@ -36,6 +36,16 @@ export async function getBrandKit(db: DB, actor: Actor): Promise<BrandKit> {
   };
 }
 
+// Just the kit's fonts, for text made in them: no logos to look up.
+export async function getBrandFonts(db: DB, actor: Actor): Promise<BrandFonts> {
+  requireRole(actor, "viewer");
+  const [row] = await db
+    .select({ title: brandKit.titleFont, subtitle: brandKit.subtitleFont, body: brandKit.bodyFont })
+    .from(brandKit)
+    .where(eq(brandKit.spaceId, actor.spaceId));
+  return row ?? DEFAULT_BRAND_FONTS;
+}
+
 function checkFont(family: string | undefined): void {
   if (family !== undefined && !isListedFont(family)) throw invalid(BRAND_MESSAGES.unknownFont(family));
 }

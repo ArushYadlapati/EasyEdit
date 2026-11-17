@@ -7,7 +7,7 @@ import { MediaProvider } from "@/components/editor/media/media-context";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { DEFAULT_BRAND_KIT, type BrandKit } from "@/lib/brand/types";
 import { findClip } from "@/lib/editor/store";
-import { makeStore } from "../editor/fixtures";
+import { makeStore, sampleDoc, text } from "../editor/fixtures";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 
@@ -16,8 +16,8 @@ const logo = image("l1", "Solvers logo");
 const photo = image("l2", "Field photo");
 const KIT: BrandKit = { ...DEFAULT_BRAND_KIT, fonts: { title: "Orbitron", subtitle: "Geist", body: "Inter" }, colors: ["#ff5a1f"], logos: [logo] };
 
-function setup(canEdit = true) {
-  const store = makeStore({ canEdit });
+function setup(canEdit = true, doc = sampleDoc()) {
+  const store = makeStore({ canEdit, doc });
   const save = vi.fn(async (_space: string, patch: { logoAssetIds?: string[] }) => ({ ...KIT, logos: (patch.logoAssetIds ?? []).map((id) => (id === "l1" ? logo : photo)) }));
   render(
     <EditorProvider store={store}>
@@ -60,6 +60,30 @@ it("clicking a swatch recolors the selected text clip", () => {
 it("clicking a swatch with no text selected says so", () => {
   const { store } = setup();
   act(() => store.getState().select(["c1"]));
+  fireEvent.click(screen.getByRole("button", { name: "#ff5a1f" }));
+  expect(store.getState().queue).toEqual([]);
+  expect(store.getState().notice).toMatchObject({ tone: "info", text: "Select a text clip to recolor it." });
+});
+
+// sampleDoc with a locked text track t9 holding x9.
+function withLockedText() {
+  const doc = sampleDoc();
+  doc.tracks.splice(2, 0, { ...doc.tracks[1], id: "t9", name: "Text 2", locked: true, clips: [text("x9", 0, 30)] });
+  return doc;
+}
+
+it("clicking a swatch recolors the selected text but leaves out text on a locked track", () => {
+  const { store } = setup(true, withLockedText());
+  act(() => store.getState().select(["x1", "x9"]));
+  fireEvent.click(screen.getByRole("button", { name: "#ff5a1f" }));
+  expect(store.getState().queue).toMatchObject([{ label: "style change", ops: [{ op: "update_clip", clipId: "x1", patch: { style: { color: "#ff5a1f" } } }] }]);
+  const x9 = clipOf(store, "x9");
+  expect(x9.type === "text" && x9.style.color).toBe("#ffffff");
+});
+
+it("clicking a swatch with only locked text selected says to select text", () => {
+  const { store } = setup(true, withLockedText());
+  act(() => store.getState().select(["x9"]));
   fireEvent.click(screen.getByRole("button", { name: "#ff5a1f" }));
   expect(store.getState().queue).toEqual([]);
   expect(store.getState().notice).toMatchObject({ tone: "info", text: "Select a text clip to recolor it." });

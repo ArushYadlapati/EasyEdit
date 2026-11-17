@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { assets } from "@/db/schema";
-import { BRAND_LIMITS, getBrandKit, updateBrandKit } from "@/lib/brand/service";
+import { BRAND_LIMITS, getBrandFonts, getBrandKit, updateBrandKit } from "@/lib/brand/service";
 import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
 import { joinSpace, testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
@@ -23,6 +23,13 @@ describe("brand kit service", () => {
   it("a space without a row gets the default kit", async () => {
     const { db } = await setup();
     expect(await getBrandKit(db, ada)).toEqual({ fonts: { title: "Geist", subtitle: "Geist", body: "Geist" }, colors: [], logos: [], updatedAt: null });
+  });
+
+  it("the fonts alone can be read, the default ones without a row", async () => {
+    const { db } = await setup();
+    expect(await getBrandFonts(db, viewer)).toEqual({ title: "Geist", subtitle: "Geist", body: "Geist" });
+    await updateBrandKit(db, ada, { titleFont: "Orbitron", bodyFont: "Inter" });
+    expect(await getBrandFonts(db, viewer)).toEqual({ title: "Orbitron", subtitle: "Geist", body: "Inter" });
   });
 
   it("an editor saves fonts, colors and logos", async () => {

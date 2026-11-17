@@ -7,6 +7,7 @@ export const MESSAGES = {
   rebaseDropped: "A change of yours no longer fits and was removed.",
   clipGone: "That clip was removed by someone else.",
   trackGone: "That track was removed by someone else.",
+  guideGone: "That guide was removed by someone else.",
   tooManyOps: "That's too many changes at once.",
   readOnly: "You have view-only access.",
   lostAccess: "You no longer have edit access.",

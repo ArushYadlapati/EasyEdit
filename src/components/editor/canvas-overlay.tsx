@@ -98,8 +98,9 @@ type PeerLabel = { key: string; userId: string | null; text: string; colour: num
 type PeerMarks = { peerOutlines: PeerOutline[]; peerLabels: PeerLabel[] };
 const NO_PEER_MARKS: PeerMarks = { peerOutlines: [], peerLabels: [] };
 // full: the whole box of a clip being cropped, uncut, while a crop drag runs.
-// placed: the project's guides, each across the frame, with the one picked marked and its position as a label.
-type Placed = Guide & { id: string; selected: boolean; label: string };
+// placed: the project's guides, each across the frame, with the one picked marked and its position as a label. One
+// dragged past the frame's edge is marked removing, and its label says so.
+type Placed = Guide & { id: string; selected: boolean; removing: boolean; label: string };
 type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[]; placed: Placed[]; full: string | null } & PeerMarks;
 const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], placed: [], full: null, ...NO_PEER_MARKS };
 
@@ -189,7 +190,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
           outlines: outlinesOf(framed, state.selection.clipIds, view, box),
           handles: handlesOf(state, framed, view, box, visible, followed, marks),
           guides: guidesOf(drag.guides.getState(), viewDoc(state), view, box),
-          placed: state.showGuides ? placedOf(viewDoc(state), state.guideId, view, box) : [],
+          placed: state.showGuides ? placedOf(viewDoc(state), state.guideId, guideDrag.removing.getState().guideId, view, box) : [],
           full: cut ? fullOf(cut, view, box) : null,
           ...(state.playing ? NO_PEER_MARKS : peerMarksOf(framed, presence.getState().peers, view, box, visible)),
         };
@@ -224,6 +225,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       }
     });
     const stopGuides = drag.guides.subscribe(refresh);
+    const stopRemoving = guideDrag.removing.subscribe(refresh);
     const stopCropping = drag.cropping.subscribe(refresh);
     const stopPresence = presence.subscribe((s, prev) => {
       if (s.peers !== prev.peers) refresh();
@@ -232,11 +234,12 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       stopSurface();
       stopStore();
       stopGuides();
+      stopRemoving();
       stopCropping();
       stopPresence();
       refreshRef.current = () => {};
     };
-  }, [surface, store, drawn, drag, presence]);
+  }, [surface, store, drawn, drag, guideDrag, presence]);
 
   // While handles show, Ctrl is followed from the keys, and a lone Alt press or release is kept from the browser, which
   // would otherwise focus its menu (Firefox opens it on the release). Alt with another key is left alone.
@@ -314,24 +317,22 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     const view = surface.view();
     if (!view) return;
     const state = store.getState();
-    // The Guide tool places a new guide wherever the press is. Otherwise a press on a shown guide picks it and can
-    // move it, ahead of any clip under it: a guide over a video that fills the frame could never be picked otherwise.
-    if (state.canEdit && state.tool === "guide") {
-      guideDrag.press(e, null);
-      return;
-    }
     if (state.canEdit && state.tool === "text") {
       textPress.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       return;
     }
+    // A press on a shown guide picks it and can move it, with the Guide tool too, ahead of any clip under it: a guide
+    // over a video that fills the frame could never be picked otherwise. The Guide tool places a new guide anywhere else.
     const doc = viewDoc(state);
     const onGuide =
-      state.canEdit && state.showGuides && state.tool !== "text"
-        ? guideAt(doc.guides ?? [], fromScreen(view, e.clientX, e.clientY), doc, HIT_SLOP_PX / view.k)
-        : null;
+      state.canEdit && state.showGuides ? guideAt(doc.guides ?? [], fromScreen(view, e.clientX, e.clientY), doc, HIT_SLOP_PX / view.k) : null;
     if (onGuide) {
       state.selectGuide(onGuide.id);
       guideDrag.press(e, onGuide);
+      return;
+    }
+    if (state.canEdit && state.tool === "guide") {
+      guideDrag.press(e, null);
       return;
     }
     const hit = hitAt(state, view, e.clientX, e.clientY, false);
@@ -403,12 +404,14 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   }
 
   // A double-click on text, locked or not, opens it for typing; a video or image starts nothing. The press before it
-  // has already selected what a press takes.
+  // has already selected what a press takes. With the Guide tool its presses place guides, so it opens nothing.
   function onDoubleClick(e: MouseEvent<HTMLDivElement>) {
     if (inTextEditor(e.target)) return;
+    const state = store.getState();
+    if (state.canEdit && state.tool === "guide") return;
     const view = surface.view();
     if (!view) return;
-    const hit = hitAt(store.getState(), view, e.clientX, e.clientY, true);
+    const hit = hitAt(state, view, e.clientX, e.clientY, true);
     if (hit) editTextInPlace(store, hit.clipId);
   }
 
@@ -524,14 +527,16 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
             key={g.id}
             data-project-guide={g.id}
             data-selected={g.selected || undefined}
+            data-removing={g.removing || undefined}
             x1={g.x1}
             y1={g.y1}
             x2={g.x2}
             y2={g.y2}
             strokeWidth={g.selected ? 2 : 1}
+            strokeDasharray={g.removing ? "4 3" : undefined}
             vectorEffect="non-scaling-stroke"
             pointerEvents="none"
-            className="stroke-ed-guide"
+            className={g.removing ? "stroke-ed-danger" : "stroke-ed-guide"}
           />
         ))}
         {guides.map((g) => (
@@ -558,7 +563,10 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
             aria-hidden
             data-guide-label
             style={{ left: g.x1 + 4, top: g.y1 + 4 }}
-            className="pointer-events-none absolute rounded-[3px] bg-ed-guide px-1 text-[11px] leading-4 font-medium text-ed-bg tabular-nums"
+            className={cx(
+              "pointer-events-none absolute rounded-[3px] px-1 text-[11px] leading-4 font-medium text-ed-bg tabular-nums",
+              g.removing ? "bg-ed-danger" : "bg-ed-guide",
+            )}
           >
             {g.label}
           </span>
@@ -734,14 +742,16 @@ function guidesOf(
 }
 
 // The project's guides across the frame, in the overlay's pixels.
-function placedOf(doc: TimelineDoc, selectedId: string | null, view: View, overlay: { left: number; top: number }): Placed[] {
+function placedOf(doc: TimelineDoc, selectedId: string | null, removingId: string | null, view: View, overlay: { left: number; top: number }): Placed[] {
   return (doc.guides ?? []).map((g) => {
     const from = g.axis === "x" ? { x: g.at * doc.width, y: 0 } : { x: 0, y: g.at * doc.height };
     const to = g.axis === "x" ? { x: g.at * doc.width, y: doc.height } : { x: doc.width, y: g.at * doc.height };
     const a = toOverlay(view, overlay, from);
     const b = toOverlay(view, overlay, to);
     const selected = g.id === selectedId;
-    return { id: g.id, axis: g.axis, x1: px(a.x), y1: px(a.y), x2: px(b.x), y2: px(b.y), selected, label: `${Number((g.at * 100).toFixed(1))}%` };
+    const removing = g.id === removingId;
+    const label = removing ? "Remove guide" : `${Number((g.at * 100).toFixed(1))}%`;
+    return { id: g.id, axis: g.axis, x1: px(a.x), y1: px(a.y), x2: px(b.x), y2: px(b.y), selected, removing, label };
   });
 }
 
