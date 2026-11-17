@@ -37,6 +37,7 @@ import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { docDuration, isCropped, type Clip, type Track } from "@/lib/timeline";
 import { FONT_LIST, isListedFont } from "@/lib/brand/fonts";
+import { AnimationSection, TransitionsSection } from "./effects-section";
 import { useBrand } from "./brand/brand-context";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatFields } from "./format-select";
@@ -476,6 +477,8 @@ function ClipInspector({ clip }: { clip: Clip }) {
       )}
       {clip.type !== "audio" && <PositionSection clipId={clip.id} />}
       {clip.type !== "audio" && <CropSection clipId={clip.id} />}
+      {(clip.type === "video" || clip.type === "image") && <TransitionsSection clip={clip} />}
+      {clip.type === "text" && <AnimationSection clip={clip} />}
       <TimingSection clipId={clip.id} />
     </>
   );
