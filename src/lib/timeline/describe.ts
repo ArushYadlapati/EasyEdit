@@ -1,6 +1,7 @@
 import { graphemes } from "@/lib/text";
 import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
-import type { Clip, Track, TimelineDoc, Transform } from "./types";
+import { KEYFRAME_PROPS } from "./keyframes";
+import type { Clip, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -29,12 +30,33 @@ function describeText(text: string): string {
   return escapeQuoted(shown);
 }
 
+// The words inside these tokens are enum values and hex colours, never user text, so they need no escaping.
+function transitionToken(t: Transition): string {
+  const detail = t.kind === "slide" || t.kind === "whip" ? `-${t.direction ?? "left"}` : t.kind === "dip" ? `-${t.color ?? "#000000"}` : "";
+  return `${t.kind}${detail}`;
+}
+
+function describeEffects(clip: Clip, fps: number): string {
+  let out = "";
+  if (clip.type === "text") {
+    if (clip.animationIn) out += ` anim-in=${clip.animationIn.preset} ${framesToSeconds(clip.animationIn.frames, fps)}s`;
+    if (clip.animationOut) out += ` anim-out=${clip.animationOut.preset} ${framesToSeconds(clip.animationOut.frames, fps)}s`;
+    if (clip.emphasis) out += ` emphasis=${clip.emphasis.preset}${clip.emphasis.preset === "highlight_word" ? ` ${clip.emphasis.color ?? "#FFD400"}` : ""}`;
+  } else {
+    if (clip.transitionIn) out += ` in=${transitionToken(clip.transitionIn)} ${framesToSeconds(clip.transitionIn.frames, fps)}s`;
+    if (clip.transitionOut) out += ` out=${transitionToken(clip.transitionOut)} ${framesToSeconds(clip.transitionOut.frames, fps)}s`;
+  }
+  const keyed = KEYFRAME_PROPS.filter((p) => (clip.keyframes?.[p]?.length ?? 0) > 0);
+  if (keyed.length > 0) out += ` kf=${keyed.join(",")}`;
+  return out;
+}
+
 function describeClip(clip: Clip, fps: number): string {
   const range = `${framesToSeconds(clip.start, fps)}–${framesToSeconds(clip.start + clip.duration, fps)}s`;
   if (clip.type === "text") {
-    return `  ${clip.id}  text  ${range}  "${describeText(clip.text)}"`;
+    return `  ${clip.id}  text  ${range}  "${describeText(clip.text)}"${describeEffects(clip, fps)}`;
   }
-  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}`;
+  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${describeEffects(clip, fps)}`;
 }
 
 // Scale, stretch, rotation, opacity and crop are only worth a word when they are not the defaults. Audio draws nothing, so its
@@ -62,13 +84,15 @@ function describeClipInDetail(clip: Clip, fps: number): string {
     return (
       `${head}  "${escapeQuoted(clip.text)}"` +
       `  font="${escapeQuoted(s.fontFamily)}" size=${s.fontSize} weight=${s.fontWeight} color="${escapeQuoted(s.color)}" align=${s.align} x=${t.x} y=${t.y}` +
-      describeTransformChanges(t, clip.type)
+      describeTransformChanges(t, clip.type) +
+      describeEffects(clip, fps)
     );
   }
   return (
     `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +
-    describeTransformChanges(t, clip.type)
+    describeTransformChanges(t, clip.type) +
+    describeEffects(clip, fps)
   );
 }
 

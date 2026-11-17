@@ -45,6 +45,50 @@ suite("describe", () => {
     expect(describe(guided).split("\n")[1]).toBe("Guides: g1 vertical at 50%, g2 horizontal at 25%");
   });
 
+  it("names a clip's transitions, text animation and keyframes after its other fields", () => {
+    const d = applyOps(docWithCaptions("short_9x16"), [
+      {
+        op: "add_clip",
+        trackId: "v1",
+        clip: {
+          id: "c1", type: "video", assetId: "as1", start: 0, duration: 120, in: 0, speed: 1, volume: 1, transform: DEFAULT_TRANSFORM,
+          transitionIn: { kind: "fade", frames: 15 },
+          transitionOut: { kind: "slide", frames: 10 },
+          keyframes: { opacity: [{ at: 0, value: 0 }, { at: 30, value: 1 }], x: [{ at: 0, value: 0.2 }], scale: [] },
+        },
+      },
+      {
+        op: "add_clip",
+        trackId: "v1",
+        clip: { id: "c2", type: "video", assetId: "as1", start: 120, duration: 60, in: 0, speed: 1, volume: 1, transform: DEFAULT_TRANSFORM, transitionIn: { kind: "crossfade", frames: 15 }, transitionOut: { kind: "dip", frames: 15 } },
+      },
+      {
+        op: "add_clip",
+        trackId: "t1",
+        clip: {
+          id: "x1", type: "text", start: 0, duration: 60, text: "HI", transform: DEFAULT_TRANSFORM, style,
+          animationIn: { preset: "pop", frames: 12 },
+          animationOut: { preset: "slide_up", frames: 15 },
+          emphasis: { preset: "highlight_word" },
+        },
+      },
+    ]).doc;
+    for (const detail of [false, true]) {
+      const lines = describe(d, { detail }).split("\n");
+      const line = (id: string) => lines.find((l) => l.startsWith(`  ${id}  `)) ?? "";
+      expect(line("c1").endsWith(" in=fade 0.50s out=slide-left 0.33s kf=x,opacity"), line("c1")).toBe(true);
+      expect(line("c2").endsWith(" in=crossfade 0.50s out=dip-#000000 0.50s"), line("c2")).toBe(true);
+      expect(line("x1").endsWith(' anim-in=pop 0.40s anim-out=slide_up 0.50s emphasis=highlight_word #FFD400'), line("x1")).toBe(true);
+    }
+  });
+
+  it("adds nothing for a clip without effects", () => {
+    const d = applyOps(docWithCaptions("short_9x16"), [
+      { op: "add_clip", trackId: "v1", clip: { id: "c1", type: "video", assetId: "as1", start: 0, duration: 30, in: 0, speed: 1, volume: 1, transform: DEFAULT_TRANSFORM, keyframes: { x: [] } } },
+    ]).doc;
+    expect(describe(d)).toContain("  c1  video  0.00–1.00s  asset=as1 in=0.00s speed=1 vol=1\n");
+  });
+
   it("describes a small doc", () => {
     let d = docWithCaptions("short_9x16");
     d = applyOps(d, [
