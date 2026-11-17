@@ -7,7 +7,9 @@ import { requireRole, type Actor } from "@/lib/actor";
 import type { DriveClient } from "@/lib/drive/client";
 import { DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
-import { cancelQuietly, trashQuietly, type MediaDeps } from "@/lib/media/service";
+import { MEDIA_MESSAGES } from "@/lib/media/messages";
+import { driveName } from "@/lib/media/rules";
+import { ASSET_FILES, cancelQuietly, trashQuietly, valuesOf, type AssetFileRole, type AssetRow, type MediaDeps, type NewAsset } from "@/lib/media/service";
 import type { AssetKind } from "@/lib/media/types";
 import { ServiceError } from "@/lib/service-error";
 import { roleIn } from "@/lib/spaces/service";
@@ -169,4 +171,193 @@ export async function startMove(deps: MoveDeps, actor: Actor, input: { projectId
     };
   });
   return { moveId: move.id, projectId: project.id, to, items };
+}
+
+// ---- Copies: each asset a project uses is copied into the destination's storage, held back from every library until the move finishes.
+
+export type OpenedCopy = { copyAssetId: string; uploadUrl: string | null; offset: number; done: boolean };
+
+const notFinished = () => new ServiceError("CONFLICT", 409, MEDIA_MESSAGES.notFinished);
+
+// The destination's Drive; a space with no storage can't be copied into.
+async function destinationDrive(deps: MoveDeps, move: MoveRow): Promise<DriveClient> {
+  let drive: DriveClient | null;
+  try {
+    drive = await deps.driveFor(move.toSpaceId);
+  } catch (error) {
+    if (!(error instanceof ConnectionBrokenError)) throw error;
+    deps.onDriveError?.(new DriveError("token", 400, "invalid_grant"));
+    throw new ServiceError("NO_STORAGE", 409, MOVE_MESSAGES.storageBroken(await spaceName(deps.db, move.toSpaceId)));
+  }
+  if (!drive) throw new ServiceError("NO_STORAGE", 409, MOVE_MESSAGES.noStorage(await spaceName(deps.db, move.toSpaceId)));
+  return drive;
+}
+
+async function spaceName(db: DB, spaceId: string): Promise<string> {
+  const [space] = await db.select({ name: organization.name }).from(organization).where(eq(organization.id, spaceId));
+  return space?.name ?? "That space";
+}
+
+const stateOf = (row: AssetRow): CopyState => ({ assetId: row.id, status: row.status === "ready" ? "ready" : "uploading", hasPreview: row.previewFileId !== null, hasPoster: row.posterFileId !== null });
+
+// A copy row of this move, still there.
+async function copyRowOf(db: DB, moveId: string, copyAssetId: string): Promise<AssetRow> {
+  const [row] = await db.select().from(assets).where(and(eq(assets.id, copyAssetId), eq(assets.moveId, moveId)));
+  if (!row) throw goneMove();
+  return row;
+}
+
+export async function openCopy(deps: MoveDeps & { checkNew?: () => Promise<void> }, userId: string, moveId: string, sourceAssetId: string): Promise<OpenedCopy> {
+  const { db } = deps;
+  const move = await moveOf(db, userId, moveId);
+  const [project] = await db.select({ doc: projects.doc }).from(projects).where(eq(projects.id, move.projectId));
+  if (!project || !usedAssetIds(project.doc).includes(sourceAssetId)) throw new ServiceError("INVALID", 400, MOVE_MESSAGES.notInProject);
+  const [source] = await db.select().from(assets).where(and(eq(assets.id, sourceAssetId), eq(assets.spaceId, move.fromSpaceId), isNull(assets.moveId)));
+  if (!source || source.status !== "ready") throw new ServiceError("INVALID", 400, MOVE_MESSAGES.notReady(source?.name ?? sourceAssetId));
+  const drive = await destinationDrive(deps, move);
+
+  const [existing] = await db.select().from(assets).where(and(eq(assets.moveId, move.id), eq(assets.copiedFrom, source.id)));
+  if (existing) {
+    if (existing.status === "ready") return { copyAssetId: existing.id, uploadUrl: null, offset: existing.sizeBytes, done: true };
+    if (existing.uploadUrl !== null) {
+      try {
+        const { done, offset } = await drive.uploadOffset(existing.uploadUrl, existing.sizeBytes);
+        return { copyAssetId: existing.id, uploadUrl: existing.uploadUrl, offset, done };
+      } catch (error) {
+        if (!(error instanceof DriveError && error.reason === "expired")) throw error;
+      }
+    }
+    // The session expired: a fresh one for the same row, so the copy keeps its id.
+    const { driveFileId, uploadUrl } = await openOriginal(drive, deps.origin, existing);
+    await db.update(assets).set({ driveFileId, uploadUrl }).where(and(eq(assets.id, existing.id), eq(assets.status, "uploading")));
+    return { copyAssetId: existing.id, uploadUrl, offset: 0, done: false };
+  }
+
+  await deps.checkNew?.();
+  const id = nanoid(12);
+  const { driveFileId, uploadUrl } = await openOriginal(drive, deps.origin, { id, fileName: source.fileName, mimeType: source.mimeType, sizeBytes: source.sizeBytes });
+  const row: NewAsset = {
+    id,
+    spaceId: move.toSpaceId,
+    kind: source.kind,
+    name: source.name,
+    fileName: source.fileName,
+    mimeType: source.mimeType,
+    sizeBytes: source.sizeBytes,
+    lastModifiedMs: source.lastModifiedMs,
+    status: "uploading",
+    driveFileId,
+    uploadUrl,
+    durationMs: source.durationMs,
+    width: source.width,
+    height: source.height,
+    fps: source.fps,
+    hasAudio: source.hasAudio,
+    videoCodec: source.videoCodec,
+    previewStatus: source.kind !== "video" ? "none" : source.previewStatus === "ready" ? "pending" : "failed",
+    previewFileId: null,
+    posterFileId: null,
+    pendingPreviewFileId: null,
+    pendingPosterFileId: null,
+    event: source.event,
+    uploadedBy: userId,
+    createdAt: sql`now()`,
+    readyAt: null,
+    removedAt: null,
+    removedBy: null,
+    moveId: move.id,
+    copiedFrom: source.id,
+  };
+  try {
+    await db.insert(assets).select(sql`select ${valuesOf(row)}`);
+  } catch (error) {
+    await cancelQuietly({ db, drive, origin: deps.origin, onDriveError: deps.onDriveError }, uploadUrl);
+    throw error;
+  }
+  return { copyAssetId: id, uploadUrl, offset: 0, done: false };
+}
+
+async function openOriginal(drive: DriveClient, origin: string, row: Pick<AssetRow, "id" | "fileName" | "mimeType" | "sizeBytes">): Promise<{ driveFileId: string; uploadUrl: string }> {
+  const driveFileId = await drive.newFileId();
+  const uploadUrl = await drive.openUploadSession({
+    id: driveFileId,
+    name: driveName(row.id, row.fileName),
+    parentId: await drive.folderId("Originals"),
+    mimeType: row.mimeType === "" ? "application/octet-stream" : row.mimeType,
+    sizeBytes: row.sizeBytes,
+    origin,
+  });
+  return { driveFileId, uploadUrl };
+}
+
+export async function completeCopy(deps: MoveDeps, userId: string, moveId: string, copyAssetId: string): Promise<CopyState> {
+  const { db } = deps;
+  const move = await moveOf(db, userId, moveId);
+  const row = await copyRowOf(db, move.id, copyAssetId);
+  if (row.status === "ready") return stateOf(row);
+  const drive = await destinationDrive(deps, move);
+
+  const file = await drive.getFile(row.driveFileId ?? "");
+  if (!file || file.trashed || file.sizeBytes !== row.sizeBytes) throw notFinished();
+  if (!file.parents.includes(await drive.folderId("Originals"))) throw new ServiceError("INVALID", 400, MEDIA_MESSAGES.wrongFolder);
+
+  const [ready] = await db
+    .update(assets)
+    .set({ status: "ready", readyAt: sql`now()`, uploadUrl: null, driveFileId: file.id })
+    .where(and(eq(assets.id, row.id), eq(assets.moveId, move.id), eq(assets.status, "uploading")))
+    .returning();
+  return stateOf(ready ?? (await copyRowOf(db, move.id, row.id)));
+}
+
+export async function openCopyFile(deps: MoveDeps, userId: string, moveId: string, copyAssetId: string, input: { role: AssetFileRole; sizeBytes: number }): Promise<{ uploadUrl: string }> {
+  const { db } = deps;
+  const move = await moveOf(db, userId, moveId);
+  const row = await copyRowOf(db, move.id, copyAssetId);
+  if (row.status !== "ready") throw notFinished();
+  const file = ASSET_FILES[input.role];
+  if (!file.kinds.includes(row.kind)) throw new ServiceError("INVALID", 400, MEDIA_MESSAGES.wrongFileRole);
+  const { sizeBytes } = input;
+  if (!Number.isInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > file.maxBytes) throw new ServiceError("INVALID", 400, MEDIA_MESSAGES.badFileSize);
+  const drive = await destinationDrive(deps, move);
+
+  const fileId = await drive.newFileId();
+  const uploadUrl = await drive.openUploadSession({
+    id: fileId,
+    name: `${row.id}.${file.suffix}`,
+    parentId: await drive.folderId("Previews"),
+    mimeType: file.mimeType,
+    sizeBytes,
+    origin: deps.origin,
+  });
+  const recorded = await db.update(assets).set(file.waitFor(fileId)).where(and(eq(assets.id, row.id), eq(assets.moveId, move.id))).returning({ id: assets.id });
+  if (recorded.length === 0) throw goneMove();
+  return { uploadUrl };
+}
+
+export async function completeCopyFile(deps: MoveDeps, userId: string, moveId: string, copyAssetId: string, role: AssetFileRole): Promise<CopyState> {
+  const { db } = deps;
+  const move = await moveOf(db, userId, moveId);
+  const file = ASSET_FILES[role];
+  const row = await copyRowOf(db, move.id, copyAssetId);
+  const fileId = row[file.pendingColumn];
+  if (fileId === null) {
+    if (row[file.column] !== null) return stateOf(row);
+    throw notFinished();
+  }
+  const drive = await destinationDrive(deps, move);
+  const inDrive = await drive.getFile(fileId);
+  const whole = inDrive !== null && !inDrive.trashed && inDrive.sizeBytes > 0;
+  if (!whole || !inDrive.parents.includes(await drive.folderId("Previews"))) throw notFinished();
+
+  const [moved] = await db
+    .update(assets)
+    .set(file.moveOver)
+    .where(and(eq(assets.id, row.id), eq(assets.moveId, move.id), eq(assets[file.pendingColumn], fileId)))
+    .returning();
+  if (!moved) {
+    await copyRowOf(db, move.id, row.id);
+    throw notFinished();
+  }
+  await trashQuietly({ db, drive, origin: deps.origin, onDriveError: deps.onDriveError }, [row[file.column]]); // a copy's own earlier file, never the source's
+  return stateOf(moved);
 }
