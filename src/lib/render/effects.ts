@@ -65,10 +65,12 @@ function mediaEffect(clip: MediaClip, isIn: boolean, p: number, doc: Doc): Pass 
   const t = isIn ? clip.transitionIn : clip.transitionOut;
   const out = neutral();
   if (!t) return out;
-  // An in-effect runs from "away" to rest; an out-effect from rest to "away". `a` is how far from rest it is.
-  const a = (e: number) => (isIn ? 1 - e : e);
+  // The direction names the way the clip moves. An in-effect starts away on the opposite side and travels to rest; an
+  // out-effect travels from rest away along the direction. `a` is the signed distance from rest, in frame sizes.
   const dir = t.direction ?? DEFAULT_DIRECTION;
   const [vx, vy] = VECTORS[dir];
+  const sign = isIn ? -1 : 1;
+  const a = (e: number) => sign * (isIn ? 1 - e : e);
   switch (t.kind) {
     case "fade":
     case "crossfade":
@@ -88,12 +90,11 @@ function mediaEffect(clip: MediaClip, isIn: boolean, p: number, doc: Doc): Pass 
       const o = a(ease("ease_in_out", p));
       out.dx = vx * o;
       out.dy = vy * o;
-      // At rest there is nothing to trail. The trail sits behind the motion: back toward where an in-clip came from,
-      // back toward where an out-clip left.
+      // At rest there is nothing to trail. The clip always moves along the direction, so the trail sits behind it.
       if (!isIn || p < 1) {
         out.ghosts = GHOST_ALPHAS.map((alpha, i) => {
           const gap = GHOST_SPACING * (i + 1);
-          return { dx: (isIn ? 1 : -1) * vx * gap * doc.width, dy: (isIn ? 1 : -1) * vy * gap * doc.height, alpha };
+          return { dx: -vx * gap * doc.width, dy: -vy * gap * doc.height, alpha };
         });
       }
       break;
@@ -126,7 +127,9 @@ function textEffect(clip: TextClip, isIn: boolean, p: number): Pass {
     out.alpha = Math.min(1, 2 * q);
   } else if (preset in SLIDE_PRESETS) {
     const [vx, vy] = VECTORS[SLIDE_PRESETS[preset]];
-    const o = 0.08 * (isIn ? 1 - ease("ease_out", p) : ease("ease_in", p));
+    // 8% of the frame width for left and right, 8% of its height for up and down (offsets are in frame sizes).
+    // The preset names the way the text moves, so an in-slide starts on the opposite side.
+    const o = 0.08 * (isIn ? -(1 - ease("ease_out", p)) : ease("ease_in", p));
     out.dx = vx * o;
     out.dy = vy * o;
     out.alpha = isIn ? p : 1 - p;
