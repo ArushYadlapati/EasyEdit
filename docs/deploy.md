@@ -28,6 +28,8 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
 
     `.env.local` must still exist, because `pnpm db:seed` reads it.
 
+    **Writing a new migration:** `pnpm db:generate` numbers its files by position in `drizzle/meta/_journal.json`, not after the last number used (some were skipped), so today it would write `0022_…` and overwrite `drizzle/meta/0022_snapshot.json`. Claim the next number (0024) first, rename the new SQL file, its snapshot and its journal `tag` to it by hand, and put `0022_snapshot.json` back with `git checkout`. A test in `tests/db/migrations.test.ts` checks that the snapshots still chain.
+
     **Before deploying a version with media:** run the migration against the production database first, with the command above, then deploy. The version that is live now ignores the new table.
 
     **Before deploying the version with folders and custom sizes:** run the migration against the production database first, with the command above, then deploy. Run it at a quiet time: while it fills in each project's size, opening and saving projects waits for it. After the deploy, run this once in the Neon SQL editor for the production database. It fills in each project's width and height from its timeline wherever the version that was live during the deploy left them empty or out of date, and it is safe to run again:
@@ -64,6 +66,15 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     create unique index assets_unfinished_upload_old on assets (uploaded_by, file_name, size_bytes, last_modified_ms) where status = 'uploading';
     drop index assets_unfinished_upload_old;
     ```
+
+    **Before deploying the version with templates:** run the migration `0022_templates` against the production database right before the push, with the command above. It only adds one table (`templates`), so the version that is live now keeps working against it. Going back to the version that is live now (099b4ad) after it has run is not clean, though. The earlier version doesn't know templates, so it lets people delete media that a template keeps. And its stricter checks on clips reject empty slots (`placeholder`) and the effect fields (transitions, keyframes, text animation), so projects that have either will most likely fail to open or save in its editor. Don't go back past this release unless you have to.
+
+    **Release steps for templates, effects and moving projects:**
+
+    - First check a production build (`pnpm build`, then `pnpm start`) in the browser against a throwaway Neon branch migrated to 0023. Include one real move of a project between two spaces with their own Google Drives.
+    - No new settings are needed in Vercel.
+    - Run `pnpm db:migrate` once against the production database, right before the push. It applies `0022_templates`, then `0023_project_move`.
+    - After the deploy, reload any editor tab that was open before it.
 
     **Before deploying the version that moves projects between spaces:** run the migration `0023_project_move` against the production database right before the push, with the command above. It comes after `0022_templates`; if that hasn't run yet, the same command runs both. It only adds: one new table (`project_move`), three nullable columns (`assets.move_id`, `assets.copied_from`, `projects.moved_at_version`) and indexes on the new table. It leaves the rule for unfinished uploads as it was, so the earlier version keeps working against it, during the deploy and after going back. (After going back, copies made by a move that hasn't finished show up in the destination's library, since the earlier version doesn't know to hide them.)
 

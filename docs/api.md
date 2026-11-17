@@ -5,7 +5,7 @@ All routes need you to be signed in (they use the same cookie as the website). B
 | Route | Who may call it | What it does |
 | --- | --- | --- |
 | `GET /api/projects` | any member | List projects: `{ "projects": [...] }` |
-| `POST /api/projects` | editor and up | Create a project from `{ "name", "format" }`, with `"width"` and `"height"` in pixels when `"format"` is `"custom"`. Answers `201` with `{ "id" }`. |
+| `POST /api/projects` | editor and up | Create a project from `{ "name", "format" }`, with `"width"` and `"height"` in pixels when `"format"` is `"custom"`. Or send `{ "name", "templateId" }` to start it from a template (see [Templates](#templates)), which gives the format, size and timeline; `404` when the space has no such template. Answers `201` with `{ "id" }`. |
 | `GET /api/projects/:id` | any member | Get `{ id, name, format, doc, version }`. |
 | `GET /api/projects/:id/version` | any member | Get just the current version: `{ version }`. |
 | `POST /api/projects/:id/presence` | any member | The editor's check for changes. Send `{ tabId, clipIds, trackId, changedAgoMs }` for what this tab has selected. Answers `{ version, peers }`, where each peer is `{ userId, name, clipIds, trackId }`, or just `{ version }` when selections cannot be read. |
@@ -45,6 +45,18 @@ When a route refuses a request, the answer has this shape:
 | 404 | `MOVED_ELSEWHERE` | The project was moved from a space you are in to one you are not in, so it can't be edited here anymore. |
 | 409 | `CONFLICT` | The base version is ahead of the project, a strict write was not at the current version, or the project kept changing. Reload and retry. |
 | 409 | `MOVED` | Writing ops: the project moved to another space after the base version, so changes planned before the move are refused. Open it in its new space. |
+
+## Templates
+
+Templates belong to a space, so each route names it with `?space=<space id>`. A space you are not a member of answers `404`, as an unknown one does. Any member reads them; an editor or admin saves, changes and deletes them. Each template is `{ id, name, description, format, width, height, builtIn, slots, updatedAt }`, where `slots` lists its slots. The three starters come first, have ids starting `starter-`, are `builtIn: true` and can't be changed or deleted.
+
+| Route | Who may call it | What it does |
+| --- | --- | --- |
+| `GET /api/templates?space=…` | any member | List the starters, then the space's own templates by name: `{ "templates": [...] }`. |
+| `POST /api/templates?space=…` | editor and up | Save a project of the space as a template: send `{ "projectId", "name" }`, with optional `"description"` (up to 300 characters), `"instructions"` for AI agents (up to 2,000) and `"replace": true` to overwrite the template with that name. The project needs at least one slot. Answers `201` with `{ id, replaced: false }`, or `200` with `{ id, replaced: true }` when it replaced one. `409` `CONFLICT` when the name is taken and `replace` was not sent; `400` `INVALID` for a starter's name, no slots, a slot used for both text and footage, or a space already holding 100 templates. |
+| `GET /api/templates/:id?space=…` | any member | Get `{ "template" }`: the summary above plus `instructions` and `doc`, the timeline a new project starts from. A starter comes in the space's brand kit fonts. |
+| `PATCH /api/templates/:id?space=…` | editor and up | Change any of `{ "name", "description", "instructions" }`. Answers `204`. |
+| `DELETE /api/templates/:id?space=…` | editor and up | Delete a saved template. Media it kept can be deleted again once no template keeps it. Answers `204`. |
 
 ## Moving a project
 

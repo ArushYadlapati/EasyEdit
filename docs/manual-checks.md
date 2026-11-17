@@ -66,6 +66,7 @@ Moving copies media between two real Google Drives, so it needs a real browser a
 8. Start another move and click **Cancel** halfway. The dialog goes back to the choices, and the project is where it was.
 9. Open the project in the editor in a second tab, then move it from the dashboard. The second tab says the project was moved and does not let you keep editing.
 10. Pick a space with no storage: the dialog says so. As that space's admin it shows **Set up storage**; as an editor it says to ask an admin and has no link.
+11. Start a project from a template and leave one of its slots empty. Give a video clip a **Zoom** transition in, then move the project to your other space. It moves, opens there with the slot still empty and the zoom in place, and exports: the empty slot is a black or silent gap, and the zoom plays as it does in the preview.
 
 ## Checking an exported file
 

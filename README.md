@@ -35,6 +35,8 @@ EasyEdit is an AI-first video editor built for teams. Everyone on a team works i
 
 - **Multi-track timeline.** Text, video, image and audio clips on separate tracks, with trimming, splitting, ripple delete, copy and paste, snapping, and track lock, hide and mute.
 - **Real-time collaboration.** Every change saves as you make it. Teammates' edits appear within about two seconds, their selections are highlighted on the timeline and preview, and anyone can undo any change from the Activity list, including a teammate's.
+- **Transitions, keyframes and text animation.** Fades, crossfades, slides, zooms, whips and dips on video and image clips; keyframed position, scale, rotation and opacity, with a one-click Ken Burns move; and text that animates in, out or with emphasis. All of it exports as the preview shows it.
+- **Templates.** Save a project with slots as a template of its space, start new projects from it, and fill the slots with your own footage and text. Three starters come built in, and AI agents can fill templates too.
 - **Export in the browser.** Renders an H.264/AAC MP4 on your own machine with WebCodecs. Nothing is uploaded, and you can keep editing while it runs.
 - **Shared media library.** Uploads of up to 2 GB go straight from the browser to a Google shared drive and resume after an interruption. Each video gets a 720p preview copy, so phone footage plays smoothly on any laptop.
 - **Formats for every platform.** Short 9:16, Feed 4:5, Square 1:1, Long 16:9, Long 4K, or a custom size, all at 30 fps, with safe-zone guides.
@@ -53,7 +55,7 @@ Sign-up is open to anyone with a Google account. Everyone has a Personal space, 
 - [x] **A new sign-up flow.** Choose where your videos live and set up AI agents as you join. People invited to a team skip the storage step and land in the team.
 - [x] **Moving projects between spaces.** A project's media is copied to the new space, so a project never ends up half-moved.
 
-Also planned: thumbnails and waveforms on the timeline, captions, text animation and effects, transcripts and footage search for AI agents, and full-quality video in exports. See [Project status](docs/status.md) for what works today.
+Also planned: thumbnails and waveforms on the timeline, captions, filters, transcripts and footage search for AI agents, and full-quality video in exports. See [Project status](docs/status.md) for what works today.
 
 ## Tech stack
 
