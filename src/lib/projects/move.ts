@@ -525,9 +525,11 @@ export async function finishMove(deps: MoveDeps, userId: string, moveId: string)
     const rows = rowsOf<{ version: number }>(result);
     if (rows.length === 0) continue; // changed meanwhile: read again, which may find new media or the move gone
 
-    // Anyone else's move of this project from the space it left can no longer land; its copies are dropped. The move has
-    // happened, so nothing here may say otherwise: trouble is only reported, and the clean-up gets the rest.
+    // Anyone else's move of this project from the space it left can no longer land; its copies are dropped. So are this
+    // move's own unused copies (after the adopt above, only those still carry its id), or they would hold their files'
+    // places for ever. The move has happened, so nothing here may say otherwise: trouble is only reported.
     try {
+      await dropCopies(deps, move);
       await abandonWhere(deps, and(eq(projectMove.projectId, move.projectId), eq(projectMove.fromSpaceId, move.fromSpaceId), ne(projectMove.id, move.id)), true);
     } catch (error) {
       console.error("Move clean-up failed", move.id, error instanceof Error ? error.name : typeof error);

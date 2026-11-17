@@ -3,15 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { assets, folders, projectMove, projectOps, projectPins, projects } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
 import { DriveError } from "@/lib/drive/token";
-import { listAssets } from "@/lib/media/service";
-import { completeCopyFile, finishMove, openCopyFile, startMove, type MoveDeps } from "@/lib/projects/move";
+import { listAssets, openUpload } from "@/lib/media/service";
+import { completeCopyFile, finishMove, openCopy, openCopyFile, startMove, type MoveDeps } from "@/lib/projects/move";
 import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
 import { applyProjectOps, getProject } from "@/lib/projects/service";
 import type { ServiceError } from "@/lib/service-error";
 import type { OpInput, TimelineDoc } from "@/lib/timeline";
 import { joinSpace, testActor } from "../helpers/actor";
 import { piece } from "../helpers/fake-drive";
-import { insertAsset, mediaClip } from "../media/context";
+import { insertAsset, mediaClip, VIDEO } from "../media/context";
 import { copyAll, copyFully, moveWorld, type MoveWorld } from "./move-world";
 
 afterEach(() => vi.restoreAllMocks());
@@ -166,16 +166,63 @@ describe("finishMove", () => {
     expect((await x.w.db.select().from(projects).where(eq(projects.id, "p1")))[0].spaceId).toBe(x.actor.spaceId);
   });
 
-  it("brings in only the copies the project uses; the rest stay hidden for the clean-up", async () => {
+  it("brings in only the copies the project uses; the rest are dropped", async () => {
     const x = await started();
     const copies = await copyAll(x, "u1", x.moveId);
     await applyProjectOps(x.w.db, x.actor, { projectId: "p1", baseVersion: 1, ops: [{ op: "remove_clip", clipId: "c3" } as OpInput] });
     await finishMove(x.deps, "u1", x.moveId);
     const [used] = await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.a)!));
-    const [unused] = await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.b)!));
+    const unused = (await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.b)!)))[0];
     expect(used.moveId).toBeNull();
-    expect(unused.moveId).toBe(x.moveId);
+    expect(unused).toBeUndefined();
     expect((await listAssets(x.w.db, x.personal)).map((a) => a.id)).toEqual([copies.get(x.a)]);
+  });
+});
+
+describe("finishing with copies the project no longer uses", () => {
+  const removeA: OpInput[] = [{ op: "remove_clip", clipId: "c1" } as OpInput, { op: "remove_clip", clipId: "c2" } as OpInput];
+
+  it("drops an unfinished one, cancels its upload, and frees the file's place", async () => {
+    const x = await started();
+    const b = await copyFully(x, "u1", x.moveId, x.b);
+    const opened = await openCopy(x.deps, "u1", x.moveId, x.a); // never finished
+    expect(opened.done).toBe(false);
+    await applyProjectOps(x.w.db, x.actor, { projectId: "p1", baseVersion: 1, ops: removeA });
+    await finishMove(x.deps, "u1", x.moveId);
+    expect(await x.w.db.select().from(assets).where(eq(assets.id, opened.copyAssetId))).toEqual([]);
+    const response = await x.w.fake.fetch(opened.uploadUrl!, { method: "PUT", headers: { "content-range": "bytes */20000000" } });
+    expect(response.status).toBe(499);
+    expect((await listAssets(x.w.db, x.personal)).map((a) => a.id)).toEqual([b]);
+    const drive = (await x.deps.driveFor(x.w.personal))!;
+    const next = await openUpload({ db: x.w.db, drive, origin: x.deps.origin }, x.personal, VIDEO);
+    expect(next.asset.id).not.toBe(opened.copyAssetId);
+  });
+
+  it("drops a ready one and trashes its file, and keeps the used ones", async () => {
+    const x = await started();
+    const copies = await copyAll(x, "u1", x.moveId);
+    const [gone] = await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.a)!));
+    await applyProjectOps(x.w.db, x.actor, { projectId: "p1", baseVersion: 1, ops: removeA });
+    await finishMove(x.deps, "u1", x.moveId);
+    expect(await x.w.db.select().from(assets).where(eq(assets.id, gone.id))).toEqual([]);
+    expect(x.w.fake.files.get(gone.driveFileId!)?.trashed).toBe(true);
+    const [kept] = await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.b)!));
+    expect(kept.moveId).toBeNull();
+    expect(x.w.fake.files.get(kept.driveFileId!)?.trashed).toBe(false);
+    expect((await listAssets(x.w.db, x.personal)).map((a) => a.id)).toEqual([kept.id]);
+  });
+
+  it("still finishes when the Drive fails during that clean-up", async () => {
+    const x = await started();
+    await copyAll(x, "u1", x.moveId);
+    await applyProjectOps(x.w.db, x.actor, { projectId: "p1", baseVersion: 1, ops: removeA });
+    const seen: unknown[] = [];
+    x.w.fake.failNext(/^PATCH /, 500);
+    const deps: MoveDeps = { ...x.deps, onDriveError: (e) => seen.push(e) };
+    expect(await finishMove(deps, "u1", x.moveId)).toMatchObject({ projectId: "p1", spaceId: x.w.personal });
+    expect((await x.w.db.select().from(projects).where(eq(projects.id, "p1")))[0].spaceId).toBe(x.w.personal);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeInstanceOf(DriveError);
   });
 });
 
@@ -207,14 +254,13 @@ describe("finishing with a preview that was never copied", () => {
     expect(video.previewFileId).not.toBeNull();
   });
 
-  it("leaves the copies it does not adopt as they are", async () => {
+  it("drops the copies it does not adopt", async () => {
     const x = await started();
     await x.w.db.update(assets).set({ previewStatus: "ready" }).where(eq(assets.id, x.a));
     const copies = await copyAll(x, "u1", x.moveId);
     await applyProjectOps(x.w.db, x.actor, { projectId: "p1", baseVersion: 1, ops: [{ op: "remove_clip", clipId: "c1" } as OpInput, { op: "remove_clip", clipId: "c2" } as OpInput] });
     await finishMove(x.deps, "u1", x.moveId);
-    const [unused] = await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.a)!));
-    expect(unused).toMatchObject({ moveId: x.moveId, previewStatus: "pending" });
+    expect(await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.a)!))).toEqual([]);
   });
 });
 
