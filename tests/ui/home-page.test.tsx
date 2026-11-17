@@ -49,10 +49,25 @@ describe("home page", () => {
     expect(phrase()).toBe("for AI agents.");
     for (const next of ["for teams.", "for creators.", "in your browser.", "for AI agents."]) {
       act(() => {
-        vi.advanceTimersByTime(7500); // each scene lasts 4 to 7 seconds
+        vi.advanceTimersByTime(9000); // each scene lasts 4 to 8.5 seconds
       });
       expect(phrase()).toBe(next);
     }
+    vi.useRealTimers();
+  });
+
+  it("shows the editor's own View as: YouTube Shorts overlay in the creators scene", async () => {
+    vi.useFakeTimers();
+    render(await Home());
+    expect(document.querySelector('[data-platform-view="youtube-shorts"]')).toBeNull();
+    for (let i = 0; i < 2; i++) {
+      act(() => {
+        vi.advanceTimersByTime(9000);
+      });
+    }
+    expect(document.querySelector(".h-heroPhrase [data-on]")?.textContent).toBe("for creators.");
+    expect(document.querySelector('[data-platform-view="youtube-shorts"]')).toBeTruthy();
+    expect(document.querySelector(".h-edViewAs")?.textContent).toContain("YouTube Shorts");
     vi.useRealTimers();
   });
 

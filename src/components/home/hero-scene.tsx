@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { PlatformOverlay } from "@/components/editor/platform-overlay";
 import { LogoMark } from "@/components/ui/logo";
+import { platformViewsFor, type PlatformView } from "@/lib/editor/platform-views";
 
 // The first screen: a full-screen model of the editor, in the editor's own colours, with a headline over it.
 // Every few seconds it moves to the next scene and the headline's ending changes with it: Claude adding a title
@@ -13,7 +15,7 @@ import { LogoMark } from "@/components/ui/logo";
 
 type Scene = { key: string; ms: number; phrase: string; line: string; video: string; poster: string };
 
-// Each clip is longer than its scene (the city one is slowed to 80% to make 7.5 s), and none loops, so a scene never
+// Each clip is longer than its scene (the city one is slowed to two-thirds speed to make 9 s), and none loops, so a scene never
 // shows its clip jumping back to the start.
 const SCENES: Scene[] = [
   {
@@ -26,7 +28,7 @@ const SCENES: Scene[] = [
   },
   {
     key: "team",
-    ms: 7000,
+    ms: 8500,
     phrase: "for teams.",
     line: "Everyone edits the same project at once, and sees who's working on what.",
     video: "/home/scene-city.mp4",
@@ -34,7 +36,7 @@ const SCENES: Scene[] = [
   },
   {
     key: "creators",
-    ms: 4000,
+    ms: 5000,
     phrase: "for creators.",
     line: "Vertical, square or wide: make it once and shape it for Reels, Shorts, TikTok or YouTube.",
     video: "/home/scene-mountain.mp4",
@@ -69,6 +71,7 @@ const ACTIVITY: Record<string, { who: string; what: string; at: number }[]> = {
     { who: "Sam Okafor", what: "Added text", at: 0.7 },
     { who: "Mika Kato", what: "Changed a video clip: position and scale", at: 3.6 },
     { who: "Priya Shah", what: "Changed text: font", at: 4.9 },
+    { who: "Leo Park", what: "Changed text: position", at: 7 },
   ],
   creators: [{ who: "You", what: "Changed the format to Vertical 9:16", at: 0.6 }],
   browser: [{ who: "You", what: "Trimmed a video clip", at: 0.3 }],
@@ -139,9 +142,10 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                 <span className="h-edAvatar">SO</span>
                 <span className="h-edAvatar h-edAvatarMika">MK</span>
                 <span className="h-edAvatar h-edAvatarPriya">PS</span>
+                <span className="h-edAvatar h-edAvatarLeo">LP</span>
               </>
             )}
-            <span key={scene.key} className="h-edStatus" style={{ "--busy": scene.key === "team" ? "5.4s" : "3.6s" } as React.CSSProperties}>
+            <span key={scene.key} className="h-edStatus" style={{ "--busy": scene.key === "team" ? "7.2s" : "3.6s" } as React.CSSProperties}>
               {scene.key === "ai" && (
                 <span className="h-edWorking">
                   <span className="h-edDot" /> Claude is editing…
@@ -261,6 +265,13 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
         </div>
 
         <div className="h-edTimeline">
+          <span key={`viewas-${scene.key}`} className="h-edViewAs" data-shorts={scene.key === "creators" || undefined}>
+            View as:{" "}
+            <span className="h-edViewVal">
+              <span className="h-edViewOff">Off</span>
+              {scene.key === "creators" && <span className="h-edViewOn">YouTube Shorts</span>}
+            </span>
+          </span>
           <div className="h-edRuler">
             {Array.from({ length: 13 }, (_, s) => (
               <span key={s}>{`0:${String(s * 2).padStart(2, "0")}`}</span>
@@ -370,6 +381,28 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
   );
 }
 
+// The editor's own YouTube Shorts view (lib/editor/platform-views.ts), drawn by its own overlay component.
+const SHORTS_VIEW = platformViewsFor({ width: 1080, height: 1920 }).find((v) => v.id === "youtube-shorts") as PlatformView;
+
+// One person's selection: their colour (set by the class), name tag and handles, and their pointer when they are
+// the one moving it.
+function Selection({ who, className, pointer = false }: { who: string; className: string; pointer?: boolean }) {
+  return (
+    <span className={className}>
+      <span className="h-edPeerTag">{who}</span>
+      <span className="h-edHandle" data-at="tl" />
+      <span className="h-edHandle" data-at="tr" />
+      <span className="h-edHandle" data-at="bl" />
+      <span className="h-edHandle" data-at="br" />
+      {pointer && (
+        <svg className="h-edCursor" viewBox="0 0 16 20" aria-hidden="true">
+          <path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" />
+        </svg>
+      )}
+    </span>
+  );
+}
+
 // What lies over the preview in each scene: titles and the selections of whoever is editing them.
 function Overlay({ scene }: { scene: string }) {
   return (
@@ -378,50 +411,34 @@ function Overlay({ scene }: { scene: string }) {
         // Claude adds the title over the group, then moves it up into the dark sky where it reads.
         <span className="h-edTitle h-edTitleNew">
           Summer nights
-          <span className="h-edClaude">
-            <span className="h-edPeerTag">Claude</span>
-            <span className="h-edHandle" data-at="tl" />
-            <span className="h-edHandle" data-at="tr" />
-            <span className="h-edHandle" data-at="bl" />
-            <span className="h-edHandle" data-at="br" />
-          </span>
+          <Selection who="Claude" className="h-edClaude" />
         </span>
       )}
       {scene === "team" && (
         <>
           {/* Sam puts the city and the time over the busy middle of the shot. Mika takes the whole clip,
-              enlarges it and moves it so the dark sky sits behind the words. Then Priya changes the font. */}
-          <span className="h-edMika">
-            <span className="h-edPeerTag">Mika</span>
-            <span className="h-edHandle" data-at="tl" />
-            <span className="h-edHandle" data-at="tr" />
-            <span className="h-edHandle" data-at="bl" />
-            <span className="h-edHandle" data-at="br" />
-          </span>
+              enlarges it and moves it so the dark sky sits behind the words. Priya changes the font, and Leo
+              lifts the title up the sky, clear of the headline. */}
+          <Selection who="Mika" className="h-edMika" />
           <span className="h-edTitle h-edPeerTitle">
             <span className="h-edFontA">Shibuya, 2 a.m.</span>
             <span className="h-edFontB">Shibuya, 2 a.m.</span>
-            <span className="h-edSam">
-              <span className="h-edPeerTag">Sam</span>
-              <span className="h-edHandle" data-at="tl" />
-              <span className="h-edHandle" data-at="tr" />
-              <span className="h-edHandle" data-at="bl" />
-              <span className="h-edHandle" data-at="br" />
-            </span>
-            <span className="h-edPriya">
-              <span className="h-edPeerTag">Priya</span>
-              <span className="h-edHandle" data-at="tl" />
-              <span className="h-edHandle" data-at="tr" />
-              <span className="h-edHandle" data-at="bl" />
-              <span className="h-edHandle" data-at="br" />
-              <svg className="h-edCursor" viewBox="0 0 16 20" aria-hidden="true">
-                <path d="M1 1 L1 16 L5 12 L8 19 L11 18 L8 11 L14 11 Z" />
-              </svg>
-            </span>
+            <Selection who="Sam" className="h-edSam" />
+            <Selection who="Priya" className="h-edPriya" pointer />
+            <Selection who="Leo" className="h-edLeo" pointer />
           </span>
         </>
       )}
-      {scene === "creators" && <span className="h-edTitle">Into the hills</span>}
+      {scene === "creators" && (
+        // Gone vertical, the title wraps to fit, then View as: YouTube Shorts shows what the app will cover; the
+        // title already sits in the part it leaves clear.
+        <>
+          <span className="h-edTitle h-edShortsTitle">Into the hills</span>
+          <span className="h-edShorts">
+            <PlatformOverlay view={SHORTS_VIEW} frameShape={9 / 16} />
+          </span>
+        </>
+      )}
     </>
   );
 }

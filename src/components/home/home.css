@@ -267,11 +267,16 @@
   aspect-ratio: 16 / 9;
   background: #000;
   overflow: hidden;
-  transition: width 600ms var(--h-ease);
+  /* Waits for the outgoing scene's overlay to fade (350 ms) before changing shape, so nothing is squeezed. */
+  transition:
+    width 600ms var(--h-ease) 350ms,
+    translate 600ms var(--h-ease) 350ms;
 }
+/* Tall, it moves to the right of the preview, clear of the page's headline. */
 .h-edFrame[data-vertical] {
   width: min(100cqw, 100cqh * 9 / 16);
   aspect-ratio: 9 / 16;
+  translate: calc((100cqw - min(100cqw, 100cqh * 9 / 16)) / 2 - 24px) 0;
 }
 .h-edVideo {
   position: absolute;
@@ -311,8 +316,9 @@
 }
 @keyframes h-toSky {
   to {
-    left: 23%;
+    left: 5%;
     top: 10%;
+    transform: translate(0, -50%); /* anchored by its left edge, so the box and tag never leave the frame */
   }
 }
 /* The team scene, 7 seconds: Sam adds the title (pink), Mika enlarges and moves the clip (teal) so the dark sky sits
@@ -322,7 +328,15 @@
   top: 42%;
   display: grid;
   font-size: clamp(22px, 5.2cqw, 60px);
-  animation: h-popCentered 450ms var(--h-ease) 400ms both;
+  animation:
+    h-popCentered 450ms var(--h-ease) 400ms both,
+    h-lift 800ms var(--h-ease) 6.2s forwards;
+}
+/* Leo lifts the title up the dark sky, clear of the page's headline. */
+@keyframes h-lift {
+  to {
+    top: 23%;
+  }
 }
 .h-edPeerTitle > .h-edFontA,
 .h-edPeerTitle > .h-edFontB {
@@ -343,7 +357,8 @@
 }
 .h-edClaude,
 .h-edSam,
-.h-edPriya {
+.h-edPriya,
+.h-edLeo {
   position: absolute;
   inset: -4px;
   outline: 2px solid var(--peer);
@@ -363,7 +378,16 @@
 }
 .h-edPriya {
   --peer: var(--ed-peer-4);
-  animation: h-in 250ms ease 3.9s both;
+  animation:
+    h-in 250ms ease 3.9s both,
+    h-out 250ms ease 5.5s forwards;
+}
+.h-edLeo {
+  --peer: var(--ed-peer-5);
+  animation: h-in 250ms ease 5.7s both;
+}
+.h-edLeo .h-edCursor {
+  animation-delay: 5.7s;
 }
 .h-edPeerTag {
   position: absolute;
@@ -440,12 +464,69 @@
   opacity: 0;
   transition: opacity 350ms ease;
 }
+.h-edAvatarLeo {
+  margin-left: -10px;
+  background: var(--ed-peer-5);
+  box-shadow: 0 0 0 2px var(--ed-panel);
+  animation-delay: 5.6s;
+}
 .h-edAvatarPriya {
   margin-left: -10px;
   background: var(--ed-peer-4);
   box-shadow: 0 0 0 2px var(--ed-panel);
   animation-delay: 3.8s;
 }
+/* Vertical: the title wraps inside the frame, in the part YouTube Shorts leaves clear (left 4%, right 18%). */
+.h-edShortsTitle {
+  left: 43%;
+  top: 40%;
+  width: 66%;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.05;
+  font-size: clamp(14px, 5.4cqh, 30px);
+}
+.h-edShorts {
+  position: absolute;
+  inset: 0;
+  animation: h-in 400ms ease 1.5s both;
+}
+.h-edViewAs {
+  position: absolute;
+  top: 5px;
+  right: 16px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: var(--ed-raised);
+  color: var(--ed-muted);
+  font-size: 11px;
+}
+.h-edViewVal {
+  display: inline-grid;
+}
+.h-edViewVal > * {
+  grid-area: 1 / 1;
+}
+.h-edViewAs[data-shorts] {
+  animation: h-viewOn 300ms ease 1.5s forwards;
+}
+.h-edViewAs[data-shorts] .h-edViewOff {
+  animation: h-out 150ms ease 1.45s both;
+}
+.h-edViewOn {
+  animation: h-in 250ms ease 1.5s both;
+}
+@keyframes h-viewOn {
+  to {
+    background: var(--ed-accent-weak);
+    color: var(--ed-accent);
+  }
+}
+
 .h-edDialog {
   position: absolute;
   left: 50%;
@@ -578,7 +659,7 @@
   height: 30px;
   align-items: center;
   margin-left: var(--names);
-  padding-right: 16px;
+  padding-right: 190px; /* room for View as at the end of the row */
   color: var(--ed-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
