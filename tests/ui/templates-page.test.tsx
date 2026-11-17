@@ -75,6 +75,12 @@ it("shows how to make a template when none is saved", () => {
   expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
 });
 
+it("a viewer is not told to save a template, only that there are none", () => {
+  page(false, [STARTER]);
+  expect(screen.queryByText(/mark clips as slots/)).toBeNull();
+  expect(screen.getByText("No saved templates yet.")).toBeTruthy();
+});
+
 it("a viewer sees no actions", () => {
   page(false);
   expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();

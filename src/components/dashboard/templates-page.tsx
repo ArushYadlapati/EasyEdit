@@ -74,7 +74,7 @@ export function TemplatesPage({ spaceId, canEdit, templates }: { spaceId: string
       </ul>
       {!saved && (
         <p className="text-[13px] leading-5 text-ed-muted">
-          You have not saved a template yet. Open a project, mark clips as slots in the inspector, then choose Save as template.
+          {canEdit ? "You have not saved a template yet. Open a project, mark clips as slots in the inspector, then choose Save as template." : "No saved templates yet."}
         </p>
       )}
       {editing && (

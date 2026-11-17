@@ -50,7 +50,8 @@ suite("slots", () => {
 
   it("requires a valid slot", () => {
     const d = base();
-    const { slot: _s, ...noSlot } = ph("p1", "visual");
+    const noSlot: Record<string, unknown> = { ...ph("p1", "visual") };
+    delete noSlot.slot;
     expect(codeOf(() => run(d, { op: "add_clip", trackId: "v", clip: noSlot as never }))).toBe("INVALID");
     expect(codeOf(() => run(d, { op: "add_clip", trackId: "v", clip: ph("p1", "visual", "Hero") }))).toBe("INVALID");
     expect(codeOf(() => run(d, { op: "add_clip", trackId: "v", clip: ph("p1", "visual", "1hero") }))).toBe("INVALID");
