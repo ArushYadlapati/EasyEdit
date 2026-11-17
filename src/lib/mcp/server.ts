@@ -15,6 +15,7 @@ import { getProjectTool } from "./tools/get-project";
 import { listAssetsTool } from "./tools/list-assets";
 import { listProjectsTool } from "./tools/list-projects";
 import { SEARCH_RESULTS_MAX, SearchOutput, searchTool } from "./tools/search";
+import { fillTemplateTool, getTemplateTool, listTemplatesTool } from "./tools/templates";
 import { undoChangeTool } from "./tools/undo-change";
 import { ok, type ToolContext, type ToolResult } from "./types";
 
@@ -110,11 +111,12 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           ? "Pass space: a space's slug as list_projects shows it, or \"personal\". "
           : "Pass space: a team's slug as list_projects shows it. Personal spaces are coming soon and take no new projects. ") +
         "If you leave out space and the person has more than one, you'll be asked to check with them. " +
-        "To use a team's media, create the project in that team (pass its space).",
+        "To use a team's media, create the project in that team (pass its space). To start from a template (an id from list_templates), pass template instead of a format; its slots come back for fill_template.",
       // The range tells Claude the limits; evenness and the area are answered by the service's sentence.
       inputSchema: z.object({
         name: z.string(),
-        format: FormatId,
+        format: FormatId.optional(),
+        template: z.string().max(100).optional(),
         width: z.number().int().min(LIMITS.frameSideMin).max(LIMITS.frameSideMax).optional(),
         height: z.number().int().min(LIMITS.frameSideMin).max(LIMITS.frameSideMax).optional(),
         space: z.string().max(100).optional(),
@@ -122,6 +124,56 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     answer("create_project", (input) => createProjectTool(ctx, input)),
+  );
+
+  server.registerTool(
+    "list_templates",
+    {
+      title: "List templates",
+      description:
+        "List project templates (built-in starters and each space's saved ones) with id, format and slots to fill. Pass space for one space; otherwise all the person's spaces. Start from one with create_project's template.",
+      inputSchema: z.object({ space: z.string().max(100).optional() }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    answer("list_templates", (input) => listTemplatesTool(ctx, input)),
+  );
+
+  server.registerTool(
+    "get_template",
+    {
+      title: "Read a template",
+      description:
+        "Read one template by id from list_templates: notes for you, each slot with its hint, and its timeline as text. space picks the brand fonts a starter uses.",
+      inputSchema: z.object({ template: z.string().min(1).max(100), space: z.string().max(100).optional() }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    answer("get_template", (input) => getTemplateTool(ctx, input)),
+  );
+
+  server.registerTool(
+    "fill_template",
+    {
+      title: "Fill template slots",
+      description:
+        "Fill slots of a project made from a template, as one change that can be undone. Each item names a slot and gives text (text slot) or asset_id from list_assets (video, image or audio slot), and optionally in_seconds to start into the footage. Needs expected_version, like edit_timeline.",
+      inputSchema: z.object({
+        project_id: z.string().min(1),
+        expected_version: z.number().int().min(0),
+        slots: z
+          .array(
+            z.object({
+              slot: z.string().min(1).max(100),
+              text: z.string().max(LIMITS.textClipChars).optional(),
+              asset_id: z.string().min(1).optional(),
+              in_seconds: z.number().min(0).optional(),
+            }),
+          )
+          .min(1)
+          .max(50),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    answer("fill_template", (input) => fillTemplateTool(ctx, input)),
   );
 
   server.registerTool(

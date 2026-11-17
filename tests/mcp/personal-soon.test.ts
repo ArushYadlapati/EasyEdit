@@ -115,7 +115,7 @@ describe("create_project while personal spaces are not offered", () => {
 
   it("the tool list, with its longer sentence, is still small enough to load into every conversation", async () => {
     const db = await makeTestDb();
-    expect(JSON.stringify(await toolList(await toolContext(db))).length).toBeLessThan(13_100);
+    expect(JSON.stringify(await toolList(await toolContext(db))).length).toBeLessThan(15_300);
   });
 
   it("someone in no team is told to make one", async () => {

@@ -21,7 +21,7 @@ beforeAll(async () => {
 });
 afterAll(() => app.stop());
 
-const TOOLS = ["add_media", "add_text", "create_project", "edit_timeline", "fetch", "get_editing_guide", "get_project", "list_assets", "list_projects", "search", "undo_change"];
+const TOOLS = ["add_media", "add_text", "create_project", "edit_timeline", "fetch", "fill_template", "get_editing_guide", "get_project", "get_template", "list_assets", "list_projects", "list_templates", "search", "undo_change"];
 
 // A conversation: one connected client, and a helper that calls a tool and returns its text.
 async function converse(email: string) {
@@ -48,24 +48,24 @@ const clipIn = (text: string) => /clip (\S+) on track/.exec(text)![1];
 const logRows = async (id: string) => rowsOf<{ version: number; actor: string }>(await app.db.execute(sql`select version, actor from project_ops where project_id = ${id} order by version`));
 
 describe("Claude and the website on one project", () => {
-  it("offers exactly the eleven tools, in a list small enough to load into every conversation", async () => {
+  it("offers exactly the fourteen tools, in a list small enough to load into every conversation", async () => {
     const { client } = await converse("ada@gmail.com");
     try {
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name).sort()).toEqual(TOOLS);
       // search and fetch carry output schemas, the shape ChatGPT documents for them.
-      expect(JSON.stringify(tools).length).toBeLessThan(13_000);
-      for (const t of tools) expect(t.annotations?.readOnlyHint, t.name).toBe(["fetch", "get_editing_guide", "get_project", "list_assets", "list_projects", "search"].includes(t.name));
+      expect(JSON.stringify(tools).length).toBeLessThan(15_200);
+      for (const t of tools) expect(t.annotations?.readOnlyHint, t.name).toBe(["fetch", "get_editing_guide", "get_project", "get_template", "list_assets", "list_projects", "list_templates", "search"].includes(t.name));
       const keysOf = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {}).sort();
       expect(keysOf("list_assets")).toEqual(["cursor", "kind", "search"]);
       expect(keysOf("add_media")).toEqual(["expected_version", "items", "project_id"]);
-      expect(keysOf("create_project")).toEqual(["format", "height", "name", "space", "width"]);
+      expect(keysOf("create_project")).toEqual(["format", "height", "name", "space", "template", "width"]);
       for (const side of ["width", "height"]) {
         expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.[side], side).toMatchObject({ type: "integer", minimum: 16, maximum: 4096 });
       }
       expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.format).toMatchObject({ enum: FormatId.options });
       expect(tools.find((t) => t.name === "create_project")?.description).toBe(
-        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks. Pass space: a space's slug as list_projects shows it, or \"personal\". If you leave out space and the person has more than one, you'll be asked to check with them. To use a team's media, create the project in that team (pass its space).",
+        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks. Pass space: a space's slug as list_projects shows it, or \"personal\". If you leave out space and the person has more than one, you'll be asked to check with them. To use a team's media, create the project in that team (pass its space). To start from a template (an id from list_templates), pass template instead of a format; its slots come back for fill_template.",
       );
       const getProject = tools.find((t) => t.name === "get_project");
       expect(Object.keys(getProject?.inputSchema.properties ?? {}).sort()).toEqual(["cursor", "project_id", "version"]);

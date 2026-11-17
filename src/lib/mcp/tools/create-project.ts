@@ -7,19 +7,20 @@ import { ServiceError } from "@/lib/service-error";
 import { isStorableText } from "@/lib/text";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { PERSONAL_ALIAS, type MySpace } from "@/lib/spaces/types";
-import { escapeQuoted } from "@/lib/timeline";
+import { escapeQuoted, slotsOf } from "@/lib/timeline";
 import { actorInSpace } from "../actors";
 import { checkProjectBudget } from "../budget";
 import { roleMessage } from "../errors";
 import { oneLine } from "../one-line";
 import { projectPage } from "../project-text";
 import { quotedSpace } from "../space-label";
+import { slotLine } from "../slot-text";
 import { fail, ok, type SpaceToolContext, type ToolContext, type ToolResult } from "../types";
 
 // A repeat of the same create within this window is taken as a retry, and answers with the project it already made.
 const TWIN_WINDOW = sql`interval '60 seconds'`;
 
-type CreateInput = { name: string; format: string; width?: number; height?: number; space?: string };
+type CreateInput = { name: string; format?: string; template?: string; width?: number; height?: number; space?: string };
 
 type Chosen = { space: MySpace } | { error: string };
 
@@ -74,6 +75,7 @@ export function noSuchSpace(ctx: ToolContext, slug: string): string {
 
 // Claude's projects land in no folder: no folder is passed, and no tool mentions folders.
 export async function createProjectTool(base: ToolContext, input: CreateInput): Promise<ToolResult> {
+  if (input.format === undefined && input.template === undefined) return fail("Give a format, or a template from list_templates.");
   const chosen = await chosenSpace(base, input.space);
   if ("error" in chosen) return fail(chosen.error);
   const { space } = chosen;
@@ -82,7 +84,8 @@ export async function createProjectTool(base: ToolContext, input: CreateInput): 
   const ctx: SpaceToolContext = { ...base, actor };
   if (!meetsRole(ctx.actor.role, "editor")) return fail(roleMessage(ctx.actor.role));
 
-  const twinId = await findTwin(ctx, input);
+  // A template's project has no twin check: the format and size are the template's.
+  const twinId = input.template === undefined && input.format !== undefined ? await findTwin(ctx, { ...input, format: input.format }) : null;
   const twin = twinId ? await getProject(ctx.db, ctx.actor, twinId) : null;
   if (twin) return answer(ctx, twin, `This project was created a moment ago, so it is used again: "${escapeQuoted(twin.name)}" (id ${twin.id}).`);
 
@@ -91,20 +94,23 @@ export async function createProjectTool(base: ToolContext, input: CreateInput): 
 
   let id: string;
   try {
-    ({ id } = await createProject(ctx.db, ctx.actor, { name: input.name, format: input.format, width: input.width, height: input.height }));
+    ({ id } = await createProject(ctx.db, ctx.actor, { name: input.name, format: input.format ?? "", templateId: input.template, width: input.width, height: input.height }));
   } catch (error) {
     if (error instanceof ServiceError) return fail(error.message);
     throw error;
   }
   const project = await getProject(ctx.db, ctx.actor, id);
   if (!project) throw new Error("A project just created could not be read");
-  return answer(ctx, project, `Created project "${escapeQuoted(project.name)}" (id ${project.id}) in space ${quotedSpace(space.name)}, version 0.`);
+  const slots = input.template === undefined ? [] : slotsOf(project.doc);
+  const made = answer(ctx, project, `Created project "${escapeQuoted(project.name)}" (id ${project.id}) in space ${quotedSpace(space.name)}, version 0.`);
+  if (slots.length === 0) return made;
+  return ok(`${made.text}\nSlots to fill with fill_template: ${slotLine(slots)}.`);
 }
 
 // A live project this actor created in the last minute with the same trimmed name, format and size.
 // A name the database cannot store, or a format and size the service refuses, has no twin; skipping the lookup lets
 // the service refuse it with its sentence.
-async function findTwin(ctx: SpaceToolContext, input: CreateInput): Promise<string | null> {
+async function findTwin(ctx: SpaceToolContext, input: CreateInput & { format: string }): Promise<string | null> {
   const name = input.name.trim();
   if (!isStorableText(name)) return null;
   const frame = projectFrame(input);

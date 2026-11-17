@@ -78,6 +78,12 @@ describe("the guide", () => {
     expect(guide).toContain([
       "- A clip's text can be up to 2000 characters. Long text wraps at 90% of the frame width.",
       "",
+      "## Templates",
+      "- A template is a project with slots: empty places for text, video, images or audio. list_templates shows them, get_template reads one.",
+      "- Start with create_project and its template; the answer lists the slots. get_project shows each slot on its clip.",
+      "- Fill with fill_template: text for a text slot, a media id from list_assets for a video, image or audio slot, and optionally in_seconds to start into the footage.",
+      "- Fill what you can in one call, then read the project to check it. Slots left empty stay as placeholders.",
+      "",
       "## Media",
       "- Find media with list_assets. You cannot see or hear it yet: go by names, events and lengths, and ask the person which moments they want.",
       "- add_media lays clips end to end in the order you give them. To use part of a video, give in_seconds and duration_seconds.",
@@ -124,6 +130,12 @@ describe("the guide", () => {
 
   it("says crop and stretch are possible", () => {
     expect(buildEditingGuide()).toContain("Change the format. Crop and stretch video, images and text.");
+  });
+
+  it("explains templates in a short section", () => {
+    const section = guide.split("## Templates\n")[1].split("\n\n")[0];
+    expect(section.split("\n").length).toBeLessThanOrEqual(8);
+    for (const tool of ["list_templates", "get_template", "create_project", "fill_template"]) expect(section).toContain(tool);
   });
 
   it("has no team section until the team has rules", () => {
