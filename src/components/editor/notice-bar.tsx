@@ -2,12 +2,14 @@
 
 import { X } from "lucide-react";
 import { useEffect } from "react";
-import Link from "next/link";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { useEditor } from "./context";
+import { LeaveLink } from "./leave-link";
 
 const NOTICE_MS = 5000;
+
+const isInternalPath = (href: string) => href.startsWith("/") && !href.startsWith("//");
 
 // The latest notice, centered over the preview just above the timeline. It goes away after five
 // seconds, counted again for every new notice.
@@ -41,10 +43,11 @@ export function NoticeBar() {
         <p role="status" className="min-w-0">
           {notice && !error ? notice.text : ""}
         </p>
-        {notice?.link && (
-          <Link href={notice.link.href} className={cx("ml-2 shrink-0 rounded-[4px] font-medium underline underline-offset-2", FOCUS_RING)}>
+        {/* A way out of the editor, so it goes through LeaveLink like the others; only a path of this app is taken. */}
+        {notice?.link && isInternalPath(notice.link.href) && (
+          <LeaveLink href={notice.link.href} className={cx("ml-2 shrink-0 rounded-[4px] font-medium underline underline-offset-2", FOCUS_RING)}>
             {notice.link.label}
-          </Link>
+          </LeaveLink>
         )}
         {notice && (
           <IconButton label="Dismiss" className="ml-2" onClick={() => dismiss()}>
