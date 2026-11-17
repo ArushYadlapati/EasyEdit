@@ -63,10 +63,6 @@ export function useMySpaces(): MySpace[] {
   return useContext(SpacesContext);
 }
 
-// A heading of the dashboard's sidebar: small capitals beside the list on a wide window, and kept for screen readers
-// only on a narrow one, where the sidebar is a single row.
-export const SIDEBAR_HEADING = "sr-only text-[11px] font-semibold tracking-wide text-ed-muted uppercase md:not-sr-only md:pb-1 md:pl-2";
-
 // A space's name in the switcher: a personal space reads "Personal", a team its own name.
 const labelOf = (space: MySpace) => (space.kind === "personal" ? "Personal" : space.name);
 

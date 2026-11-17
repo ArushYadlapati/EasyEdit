@@ -11,8 +11,9 @@ import { findMySpace } from "@/lib/spaces/service";
 import { settingsTabsFor } from "@/lib/spaces/settings-tabs";
 
 // A space's settings, for its members: the space's name, the way back to its projects, and a row of the tabs they may
-// open (Members in a team, for everyone; Storage, for its admins). Someone not in the space gets a plain 404. Each page
-// checks again for itself, as a layout is not run again on a client navigation.
+// open (settingsTabsFor: Members in a team, for everyone; Storage, for its admins; Brand kit, for everyone). Someone
+// not in the space gets a plain 404. Each page checks again for itself, as a layout is not run again on a client
+// navigation.
 export default async function SpaceSettingsLayout({ params, children }: LayoutProps<"/s/[space]/settings">): Promise<ReactNode> {
   const user = await requireUser();
   const space = await findMySpace(getDb(), user.id, (await params).space);

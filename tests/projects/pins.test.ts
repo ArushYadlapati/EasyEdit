@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DB } from "@/db";
+import { projectPins } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
 import { listPinnedIds, pinProject, unpinProject } from "@/lib/projects/pins";
 import { createProject, deleteProject } from "@/lib/projects/service";
@@ -74,6 +75,17 @@ describe("pins", () => {
     expect(await listPinnedIds(db, u1)).toEqual([b]);
     await expect(pinProject(db, u1, a)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(unpinProject(db, u1, a)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("deleting a project removes its pin row, so a later restore wouldn't bring the pin back", async () => {
+    const { db, u1 } = await setup();
+    const a = await newProject(db, u1, "A");
+    const b = await newProject(db, u1, "B");
+    await pinProject(db, u1, a);
+    await pinProject(db, u1, b);
+    await deleteProject(db, u1, a);
+    const rows = await db.select({ id: projectPins.projectId }).from(projectPins);
+    expect(rows.map((row) => row.id)).toEqual([b]);
   });
 
   it("pins stay in their space: another space's project is not found there, and its pins aren't listed", async () => {

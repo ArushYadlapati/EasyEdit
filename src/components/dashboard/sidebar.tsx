@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Pin, Plus } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-drop";
@@ -135,7 +135,11 @@ export function Sidebar({ folders, pinned = [], collapsed, view, canEdit, spaceS
             <SidebarSection id="pinned" label="Pinned" className="md:mt-4">
               {pinned.map((project) => (
                 <SidebarLink key={project.id} href={editorPath(spaceSlug, project.id)} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
-                  <span className="min-w-0 truncate">{project.name}</span>
+                  {/* On a narrow window the Pinned heading is for screen readers only, so a pin icon marks these in the row. */}
+                  <span className="flex min-w-0 items-center gap-1">
+                    <Pin role="img" aria-label="Pinned" className="size-3 shrink-0 text-ed-muted md:hidden" />
+                    <span className="min-w-0 truncate">{project.name}</span>
+                  </span>
                 </SidebarLink>
               ))}
             </SidebarSection>

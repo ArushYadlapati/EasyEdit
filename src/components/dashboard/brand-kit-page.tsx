@@ -6,6 +6,7 @@ import { BrandProvider, useBrand, withLibrary, type BrandApi } from "@/component
 import { LogoPicker } from "@/components/editor/brand/logo-picker";
 import { MediaProvider, createMediaServices, gateStorage, useLibrary, type MediaServices } from "@/components/editor/media/media-context";
 import { cx } from "@/components/ui/cx";
+import { fetchBrandKit, saveBrandKit } from "@/lib/brand/client";
 import type { BrandKit } from "@/lib/brand/types";
 
 const TEXT = "text-[13px] leading-5";
@@ -60,6 +61,18 @@ export function BrandKitPage({
 }): ReactNode {
   const media = useMemo(() => services ?? gateStorage(createMediaServices(spaceId), storageReady), [services, spaceId, storageReady]);
   const [problem, setProblem] = useState<string | null>(null);
+  // A save the server takes clears the line a failed one left, so it doesn't stay after the kit is saved again.
+  const brandApi = useMemo<BrandApi>(() => {
+    const base = api ?? { fetch: fetchBrandKit, save: saveBrandKit };
+    return {
+      fetch: base.fetch,
+      save: async (id, patch) => {
+        const kit = await base.save(id, patch);
+        setProblem(null);
+        return kit;
+      },
+    };
+  }, [api]);
   useEffect(() => {
     media.library.getState().refresh("open").catch(() => {});
     return () => media.dispose();
@@ -67,7 +80,7 @@ export function BrandKitPage({
 
   return (
     <MediaProvider services={media} spaceId={spaceId} storageReady={storageReady}>
-      <BrandProvider spaceId={spaceId} canEdit={canEdit} initial={initial} api={api} onError={setProblem}>
+      <BrandProvider spaceId={spaceId} canEdit={canEdit} initial={initial} api={brandApi} onError={setProblem}>
         <Kit problem={problem} />
       </BrandProvider>
     </MediaProvider>
