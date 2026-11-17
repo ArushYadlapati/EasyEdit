@@ -118,6 +118,27 @@ describe("fillSlots", () => {
     expect(err(fillSlots(createEmptyDoc("short_9x16"), [{ slot: "nope", text: "a" }], assets))).toBe("This project has no slots");
   });
 
+  it("a slot's transitions and keyframes carry over to the video that fills it, and one undo takes them back", () => {
+    const fade = { kind: "fade", frames: 15 } as const;
+    const keyframes = { scale: [{ at: 0, value: 1 }, { at: 240, value: 1.2 }] };
+    const doc = applyOps(template(), [{ op: "update_clip", clipId: "c1", patch: { transitionIn: fade, keyframes } }]).doc;
+    expect(doc.tracks[0].clips[0]).toMatchObject({ type: "placeholder", transitionIn: fade });
+    const ops = ok(fillSlots(doc, [{ slot: "hero_clip", assetId: "vid20" }], assets));
+    expect(ops[1]).toMatchObject({ clip: { type: "video", transitionIn: fade, keyframes } });
+    const r = applyOps(doc, prepareOps(ops));
+    expect(r.doc.tracks[0].clips[0]).toMatchObject({ id: "c1", type: "video", assetId: "vid20", transitionIn: { kind: "fade", frames: 15 }, keyframes });
+    expect(applyOps(r.doc, r.inverse).doc).toEqual(doc);
+    // An image takes them too.
+    expect(ok(fillSlots(doc, [{ slot: "hero_clip", assetId: "img" }], assets))[1]).toMatchObject({ clip: { type: "image", transitionIn: fade, keyframes } });
+  });
+
+  it("a slot with no effects fills a clip with none, and an audio slot never carries any", () => {
+    const video = ok(fillSlots(template(), [{ slot: "hero_clip", assetId: "vid20" }], assets))[1] as { clip: Record<string, unknown> };
+    for (const key of ["keyframes", "transitionIn", "transitionOut"]) expect(key in video.clip, key).toBe(false);
+    const audio = ok(fillSlots(template(), [{ slot: "music", assetId: "aud" }], assets))[1] as { clip: Record<string, unknown> };
+    for (const key of ["keyframes", "transitionIn", "transitionOut"]) expect(key in audio.clip, key).toBe(false);
+  });
+
   it("fills on a hidden track, and applyOps throws TRACK_LOCKED on a locked one", () => {
     const hidden = applyOps(template(), [{ op: "update_track", trackId: "v", patch: { hidden: true } }]).doc;
     const ops = ok(fillSlots(hidden, [{ slot: "hero_clip", assetId: "img" }], assets));

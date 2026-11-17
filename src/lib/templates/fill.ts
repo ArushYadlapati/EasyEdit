@@ -1,4 +1,4 @@
-import type { OpInput, TimelineDoc } from "@/lib/timeline";
+import type { Clip, MediaClip, OpInput, TimelineDoc } from "@/lib/timeline";
 import { slotsOf } from "@/lib/timeline";
 
 export type SlotFill = { slot: string; text?: string; assetId?: string; inFrames?: number };
@@ -9,6 +9,19 @@ const TAKES = { text: "text", visual: "a video or image", audio: "audio" } as co
 
 // A slot whose footage is shorter than the slot: the rest of it stays empty.
 export type ShortSlot = { slot: string; filledFrames: number; slotFrames: number; trackId: string; endFrame: number };
+
+// The effects a slot's clip carries over to the video or image that fills it: its keyframes and transitions. Sound
+// takes none, so an audio fill drops them (an audio slot never has any).
+type VisualEffects = Pick<MediaClip, "keyframes" | "transitionIn" | "transitionOut">;
+
+function visualEffects(clip: Clip): VisualEffects {
+  if (clip.type === "text" || clip.type === "audio") return {};
+  const out: VisualEffects = {};
+  if (clip.keyframes !== undefined) out.keyframes = clip.keyframes;
+  if (clip.transitionIn !== undefined) out.transitionIn = clip.transitionIn;
+  if (clip.transitionOut !== undefined) out.transitionOut = clip.transitionOut;
+  return out;
+}
 
 // The ops that fill the named slots. Locked tracks are not checked here; applyOps refuses them.
 export function fillSlots(
@@ -71,6 +84,7 @@ export function fillSlots(
           volume: 1,
           transform: clip.transform,
           slot: clip.slot!,
+          ...(asset.kind !== "audio" && visualEffects(clip)),
         },
       });
     }

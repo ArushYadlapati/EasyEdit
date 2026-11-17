@@ -61,6 +61,10 @@ export function toTemplateDoc(doc: TimelineDoc): TimelineDoc {
           transform: structuredClone(clip.transform),
           accepts: clip.type === "audio" ? "audio" : "visual",
           slot: structuredClone(clip.slot),
+          // A visual slot keeps its keyframes and transitions, so the clip that fills it moves and fades the same way.
+          ...(clip.type !== "audio" && clip.keyframes !== undefined && { keyframes: structuredClone(clip.keyframes) }),
+          ...(clip.type !== "audio" && clip.transitionIn !== undefined && { transitionIn: structuredClone(clip.transitionIn) }),
+          ...(clip.type !== "audio" && clip.transitionOut !== undefined && { transitionOut: structuredClone(clip.transitionOut) }),
         };
       }),
     })),
