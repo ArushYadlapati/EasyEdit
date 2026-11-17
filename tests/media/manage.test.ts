@@ -1,4 +1,5 @@
-import { sql, type SQL } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
+import { templates } from "@/db/schema";
 import { describe, expect, it } from "vitest";
 import { rowsOf, type DB } from "@/db";
 import type { Actor } from "@/lib/actor";
@@ -216,6 +217,32 @@ describe("removing an asset", () => {
     await emptyProject(ctx, reveal);
     await expect(removeAsset(ctx.deps, ctx.ada, asset.id)).resolves.toBeUndefined();
     expect(isTrashed(ctx, asset.originalFileId)).toBe(true);
+  });
+
+  it("refuses to remove an asset a template of the space keeps, and names the template", async () => {
+    const ctx = await mediaContext();
+    const asset = await readyAsset(ctx);
+    const id = await projectUsing(ctx, "Source", asset.id);
+    const project = (await getProject(ctx.db, ctx.ada, id))!;
+    await ctx.db.insert(templates).values({
+      id: "tpl1", spaceId: ctx.ada.spaceId, name: "Intro sting", format: project.doc.format, width: project.doc.width, height: project.doc.height,
+      doc: project.doc, createdBy: ctx.ada.userId, updatedBy: ctx.ada.userId,
+    });
+    await emptyProject(ctx, id); // only the template keeps it now
+    await expect(removeAsset(ctx.deps, ctx.ada, asset.id)).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      message: 'Used in template "Intro sting". Delete that template first.',
+    });
+    expect(trashCalls(ctx)).toBe(0);
+    expect(await rowOf(ctx, asset.id)).toMatchObject({ removed_at: null });
+    const another = await projectUsing(ctx, "Another", asset.id);
+    await expect(removeAsset(ctx.deps, ctx.ada, asset.id)).rejects.toMatchObject({
+      message: 'Used in 1 project: "Another". Remove it from that project first. Used in template "Intro sting". Delete that template first.',
+    });
+    await ctx.db.delete(templates).where(eq(templates.id, "tpl1"));
+    await emptyProject(ctx, another);
+    await expect(removeAsset(ctx.deps, ctx.ada, asset.id)).resolves.toBeUndefined();
   });
 
   it("names at most three projects", async () => {

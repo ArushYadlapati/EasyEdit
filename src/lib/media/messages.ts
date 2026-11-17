@@ -33,6 +33,14 @@ export const MEDIA_MESSAGES = {
     const more = total > named.length ? ` and ${total - named.length} more` : "";
     return `Used in ${total} projects: ${list}${more}. Remove it from those projects first.`;
   },
+  // The same for the templates of the space that keep it (a sting or logo that is not a slot).
+  usedInTemplates(names: string[], total: number): string {
+    const named = names.slice(0, NAMED_PROJECTS);
+    const list = named.map((name) => `"${name}"`).join(", ");
+    if (total === 1) return `Used in template ${list}. Delete that template first.`;
+    const more = total > named.length ? ` and ${total - named.length} more` : "";
+    return `Used in ${total} templates: ${list}${more}. Delete those templates first.`;
+  },
   usedAMomentAgo: "A project was using that file a moment ago. Try again.",
   wrongFileRole: "A preview copy is for a video, and a still picture for a video or an image.",
   badFileSize: "That file is empty or too large.",

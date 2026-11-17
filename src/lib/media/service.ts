@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, getTableColumns, inArray, is, isNull, or, sql, SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { rowsOf, type DB } from "@/db";
-import { assets, projects } from "@/db/schema";
+import { assets, projects, templates } from "@/db/schema";
 import { meetsRole } from "@/lib/access-rules";
 import { requireRole, type Actor } from "@/lib/actor";
 import type { DriveClient } from "@/lib/drive/client";
@@ -343,6 +343,13 @@ const usedBy = (assetId: string, spaceId: string) =>
     sql`jsonb_path_exists(${projects.doc}, '$.tracks[*].clips[*] ? (@.assetId == $id)', jsonb_build_object('id', ${assetId}::text))`,
   );
 
+// A template of the asset's space with a clip of this asset (an intro sting or logo that is not a slot).
+const usedByTemplate = (assetId: string, spaceId: string) =>
+  and(
+    eq(templates.spaceId, spaceId),
+    sql`jsonb_path_exists(${templates.doc}, '$.tracks[*].clips[*] ? (@.assetId == $id)', jsonb_build_object('id', ${assetId}::text))`,
+  );
+
 // A connection Google no longer honours counts as Drive's answer here too (the routes say so on the next request).
 const quietFailure = (error: unknown): DriveError | null =>
   error instanceof DriveError ? error : error instanceof ConnectionBrokenError ? new DriveError("token", 400, "invalid_grant") : null;
@@ -393,6 +400,7 @@ export async function removeAsset(deps: MediaDeps, actor: Actor, assetId: string
       update assets set removed_at = now(), removed_by = ${actor.userId}::text
       where id = ${assetId}::text and space_id = ${actor.spaceId}::text and status = 'ready' and removed_at is null
         and not exists (select 1 from ${projects} where ${usedBy(assetId, actor.spaceId)})
+        and not exists (select 1 from ${templates} where ${usedByTemplate(assetId, actor.spaceId)})
       returning drive_file_id, preview_file_id, poster_file_id
     `),
   );
@@ -408,10 +416,18 @@ export async function removeAsset(deps: MediaDeps, actor: Actor, assetId: string
     .where(usedBy(assetId, actor.spaceId))
     .orderBy(sql`lower(${projects.name})`, asc(projects.name), asc(projects.id))
     .limit(NAMED_PROJECTS);
-  // The last project let go of it between the two looks.
-  if (users.length === 0) throw new ServiceError("CONFLICT", 409, MEDIA_MESSAGES.usedAMomentAgo);
-  const names = users.map((project) => project.name);
-  throw new ServiceError("CONFLICT", 409, MEDIA_MESSAGES.usedIn(names, users[0].total));
+  const kept = await db
+    .select({ name: templates.name, total: sql<number>`count(*) over ()`.mapWith(Number) })
+    .from(templates)
+    .where(usedByTemplate(assetId, actor.spaceId))
+    .orderBy(sql`lower(${templates.name})`, asc(templates.name), asc(templates.id))
+    .limit(NAMED_PROJECTS);
+  // The last project or template let go of it between the two looks.
+  if (users.length === 0 && kept.length === 0) throw new ServiceError("CONFLICT", 409, MEDIA_MESSAGES.usedAMomentAgo);
+  const parts: string[] = [];
+  if (users.length > 0) parts.push(MEDIA_MESSAGES.usedIn(users.map((project) => project.name), users[0].total));
+  if (kept.length > 0) parts.push(MEDIA_MESSAGES.usedInTemplates(kept.map((t) => t.name), kept[0].total));
+  throw new ServiceError("CONFLICT", 409, parts.join(" "));
 }
 
 export type AssetFileRole = "preview" | "poster";
