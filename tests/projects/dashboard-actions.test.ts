@@ -38,6 +38,14 @@ describe("dashboard actions", () => {
     await expect(actions.create(SEED_TEAM_ID, {}, form({ name: "Qual", format: "short_9x16" }))).rejects.toThrow(/^REDIRECT \/s\/seattle-solvers\/editor\/\S+$/);
   });
 
+  it("create from a template ignores the format and starts from the template", async () => {
+    const { db, owner, actions } = await setup();
+    await expect(actions.create(SEED_TEAM_ID, {}, form({ name: "Recap", templateId: "starter-match-recap", format: "nope" }))).rejects.toThrow(/^REDIRECT /);
+    const [created] = await listProjects(db, owner);
+    expect(created.name).toBe("Recap");
+    expect(await actions.create(SEED_TEAM_ID, {}, form({ name: "X", templateId: "missing" }))).toEqual({ error: "Template not found" });
+  });
+
   it("rename, duplicate and delete change the project and refresh the dashboard", async () => {
     const { db, owner, revalidate, actions } = await setup();
     const { id } = await createProject(db, owner, { name: "Qual", format: "short_9x16" });

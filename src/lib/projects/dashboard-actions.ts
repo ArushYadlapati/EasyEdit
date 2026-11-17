@@ -17,6 +17,9 @@ export type FormState = { error?: string };
 // Not a member of the space (any more).
 const SPACE_GONE = "You're not a member of this space.";
 
+// A template picked in the create form that is gone by the time it is used.
+const TEMPLATE_GONE = "Template not found";
+
 // Every space's dashboard is this one route; revalidate takes it as a page pattern.
 export const SPACE_PAGE = "/s/[space]";
 
@@ -54,7 +57,7 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
       return { value: await call(deps.db(), actor) };
     } catch (error) {
       if (!(error instanceof ServiceError)) throw error;
-      if (error.code !== "NOT_FOUND") return { error: error.message };
+      if (error.code !== "NOT_FOUND" || error.message === TEMPLATE_GONE) return { error: error.message };
       // Deleted elsewhere: refresh the list so its card or folder goes away.
       deps.revalidate(SPACE_PAGE);
       return { error: error.message === FOLDER_GONE ? FOLDER_GONE : PROJECT_GONE };
@@ -72,13 +75,21 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
     async create(spaceId: string, _prev: FormState, formData: FormData): Promise<FormState> {
       const result = await run(spaceId, async (db, actor) => {
         await checkAppBudget(db, actor.userId, "project");
-        const project = await createProject(db, actor, {
-          name: field(formData, "name"),
-          format: field(formData, "format"),
-          width: side(formData, "width"),
-          height: side(formData, "height"),
-          folderId: folder(formData),
-        });
+        // A template brings its own format and size.
+        const templateId = field(formData, "templateId");
+        const project = await createProject(
+          db,
+          actor,
+          templateId
+            ? { name: field(formData, "name"), format: "", folderId: folder(formData), templateId }
+            : {
+                name: field(formData, "name"),
+                format: field(formData, "format"),
+                width: side(formData, "width"),
+                height: side(formData, "height"),
+                folderId: folder(formData),
+              },
+        );
         const space = (await listMySpaces(db, actor.userId)).find((s) => s.id === spaceId);
         return { id: project.id, slug: space ? slugFor(space) : "personal" };
       });

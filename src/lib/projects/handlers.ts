@@ -44,9 +44,10 @@ const opsBody = z.object({
 // Only the shape; the service checks the name, format and size themselves. A project made here goes in no folder.
 const createBody = z.object({
   name: z.string(),
-  format: z.string(),
+  format: z.string().optional(), // may be left out when a template gives it
   width: z.number().optional(),
   height: z.number().optional(),
+  templateId: z.string().min(1).optional(),
 });
 
 const renameBody = z.object({ name: z.string() });
@@ -179,8 +180,10 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       if (!json.ok) return invalid("Body must be valid JSON");
       const parsed = createBody.safeParse(json.value);
       if (!parsed.success) return invalid(describeIssue(parsed.error));
+      const { format, ...rest } = parsed.data;
+      if (format === undefined && rest.templateId === undefined) return invalid("Give a format or a template");
       await checkAppBudget(deps.db(), actor.userId, "project");
-      const { id } = await createProject(deps.db(), actor, parsed.data);
+      const { id } = await createProject(deps.db(), actor, { ...rest, format: format ?? "" });
       return Response.json({ id }, { status: 201 });
     }),
 

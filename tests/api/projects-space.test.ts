@@ -49,6 +49,17 @@ describe("project routes and spaces", () => {
     expect((await mine.json()).projects.map((p: { name: string }) => p.name)).toEqual(["Mine"]);
   });
 
+  it("POST /api/projects takes a template instead of a format, and needs one or the other", async () => {
+    const { as, projects } = await setup();
+    as("u2");
+    const post = (body: unknown) => projects.create(new Request(`http://x/api/projects?space=${SEED_TEAM_ID}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+    expect((await post({ name: "N", templateId: "starter-match-recap" })).status).toBe(201);
+    const neither = await post({ name: "N" });
+    expect(neither.status).toBe(400);
+    expect(await neither.json()).toEqual({ code: "INVALID", message: "Give a format or a template" });
+    expect((await post({ name: "N", templateId: "nope" })).status).toBe(404);
+  });
+
   it("POST /api/projects creates in the named space only for a member", async () => {
     const { as, projects } = await setup();
     as("u2");
