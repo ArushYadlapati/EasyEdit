@@ -128,6 +128,20 @@ const inAssetSpace: Resolve<[AssetRouteContext]> = async (deps, user, _req, ctx)
   return actor;
 };
 
+// Runs a handler's work and answers a failed Drive call as the media routes do: 502 with that one line logged, and a
+// connection Google no longer honours as 409 STORAGE_BROKEN. A 401 from Google drops the kept sources.
+export async function withDriveErrors(work: () => Promise<Response>): Promise<Response> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof ConnectionBrokenError) return Response.json(BROKEN_BODY, { status: 409 });
+    if (!(error instanceof DriveError)) throw error;
+    logDriveError(error);
+    if (error.status === 401) forgetAllSources();
+    return Response.json(STORAGE_DOWN_BODY, { status: 502 });
+  }
+}
+
 // What every route does around its own work. `apiRoute` refuses a write from another site and answers what the
 // service refuses. Then the member and their role in the space are looked up, before anything else is read. A failed
 // Drive call is answered 502 with that one line logged, and a connection Google no longer honours, 409 STORAGE_BROKEN.
@@ -143,15 +157,7 @@ function mediaRoute<Rest extends unknown[]>(
     if (user instanceof Response) return user;
     const actor = await resolve(deps, user, req, ...rest);
     if (actor instanceof Response) return actor;
-    try {
-      return await handler(actor, req, ...rest);
-    } catch (error) {
-      if (error instanceof ConnectionBrokenError) return Response.json(BROKEN_BODY, { status: 409 });
-      if (!(error instanceof DriveError)) throw error;
-      logDriveError(error);
-      if (error.status === 401) forgetAllSources();
-      return Response.json(STORAGE_DOWN_BODY, { status: 502 });
-    }
+    return withDriveErrors(() => handler(actor, req, ...rest));
   });
 }
 
