@@ -480,9 +480,14 @@ describe("position and size in your units", () => {
 
   it("the lock is between Width and Height", () => {
     setup();
-    const section = screen.getByRole("heading", { name: "Position" }).parentElement!;
+    // The heading shares a row with the keyframe arrows.
+    const section = screen.getByRole("heading", { name: "Position" }).parentElement!.parentElement!;
     const names = [...section.querySelectorAll("input, button")].map((c) => c.getAttribute("aria-label"));
-    expect(names).toEqual(["X", "Y", "Width", "Lock aspect ratio", "Height", "Scale", "Rotation", "Opacity"]);
+    expect(names).toEqual([
+      "Previous keyframe", "Next keyframe",
+      "X", "Keyframe X", "Y", "Keyframe Y", "Width", "Lock aspect ratio", "Height",
+      "Scale", "Keyframe Scale", "Rotation", "Keyframe Rotation", "Opacity", "Keyframe Opacity",
+    ]);
   });
 });
 

@@ -324,3 +324,49 @@ describe("the font field", () => {
     expect(weightOptions("Bebas Neue", 700).map((w) => w.value)).toEqual([400, 700]); // the clip's own weight stays shown
   });
 });
+
+describe("keyframed fields", () => {
+  // x1 runs from frame 0; x keyframed from 0.25 at frame 0 to 0.75 at frame 20, so 0.5 at frame 10.
+  const keyed = () => ({ ...clip("x1"), keyframes: { x: [{ at: 0, value: 0.25 }, { at: 20, value: 0.75 }] } }) as Clip;
+  const at = (playhead: number): FieldContext => ({ ...ctx, playhead });
+
+  it("show the value at the playhead", () => {
+    expect(clipFieldValue(keyed(), "x", at(10))).toBe("540");
+    expect(clipFieldValue(keyed(), "x", at(20))).toBe("810");
+    // Without a playhead the field reads the transform, as before.
+    expect(clipFieldValue(keyed(), "x", ctx)).toBe("540");
+    expect(clipFieldValue(withTransform(keyed(), { x: 0.1 }), "x", ctx)).toBe("108");
+  });
+
+  it("a typed X on a keyframed clip writes a keyframe at the playhead, not transform.x", () => {
+    expect(clipFieldOps(keyed(), "x", "324", at(10))).toEqual(
+      patch({ keyframes: { x: [{ at: 0, value: 0.25 }, { at: 10, value: 0.3 }, { at: 20, value: 0.75 }] } }),
+    );
+    // Y is not keyframed and still goes to the transform.
+    expect(clipFieldOps(keyed(), "y", "1440", at(10))).toEqual(patch({ transform: { y: 0.75 } }));
+  });
+
+  it("scale, rotation and opacity keyframe alike, and Width reads the keyframed scale", () => {
+    const c = { ...clip("x1"), keyframes: { scale: [{ at: 0, value: 2 }], rotation: [{ at: 0, value: 0 }], opacity: [{ at: 0, value: 1 }] } } as Clip;
+    expect(clipFieldOps(c, "scale", "50", at(5))).toEqual(patch({ keyframes: { scale: [{ at: 0, value: 2 }, { at: 5, value: 0.5 }] } }));
+    expect(clipFieldOps(c, "rotation", "45", at(5))).toEqual(patch({ keyframes: { rotation: [{ at: 0, value: 0 }, { at: 5, value: 45 }] } }));
+    expect(clipFieldOps(c, "opacity", "40", at(0))).toEqual(patch({ keyframes: { opacity: [{ at: 0, value: 0.4 }] } }));
+    expect(clipFieldValue(c, "scale", at(5))).toBe("200");
+    expect(clipFieldValue(c, "width", at(5))).toBe("128");
+    // Locked, Width changes the scale, so it keyframes too.
+    expect(clipFieldOps(c, "width", "64", at(5))).toEqual(patch({ keyframes: { scale: [{ at: 0, value: 2 }, { at: 5, value: 1 }] } }));
+  });
+
+  it("a playhead outside the clip edits at its nearest frame", () => {
+    const x2 = { ...clip("x2"), keyframes: { x: [{ at: 0, value: 0.5 }] } } as Clip; // 90 to 120
+    expect(clipFieldOps(x2, "x", "108", at(200))).toEqual([
+      { op: "update_clip", clipId: "x2", patch: { keyframes: { x: [{ at: 0, value: 0.5 }, { at: 29, value: 0.1 }] } } },
+    ]);
+  });
+
+  it("fieldContext takes the playhead", () => {
+    const doc = sampleDoc();
+    expect(fieldContext(doc, findClip(doc, "x1")!.clip, undefined, null, 12).playhead).toBe(12);
+    expect(fieldContext(doc, findClip(doc, "x1")!.clip)).not.toHaveProperty("playhead");
+  });
+});

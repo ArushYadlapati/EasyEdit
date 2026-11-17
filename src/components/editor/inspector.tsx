@@ -35,12 +35,13 @@ import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { docDuration, isCropped, type Clip, type Track } from "@/lib/timeline";
+import { docDuration, isCropped, type Clip, type KeyframeProp, type Track } from "@/lib/timeline";
 import { FONT_LIST, isListedFont } from "@/lib/brand/fonts";
 import { AnimationSection, TransitionsSection } from "./effects-section";
 import { useBrand } from "./brand/brand-context";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatFields } from "./format-select";
+import { KenBurnsButton, KeyframeButton, KeyframeSteps } from "./keyframe-button";
 import { useLibrary, useMedia } from "./media/media-context";
 import { useTextMeasure } from "./text-measure";
 import { Timecode } from "./timecode";
@@ -71,10 +72,19 @@ function editField(store: EditorStore, clipId: string, field: ClipField, raw: st
   if (ops && ops.length > 0) store.getState().edit(ops, FIELD_LABEL[field]);
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+// actions: controls at the right of the heading.
+function Section({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+  const heading = <h2 className="text-sm leading-5 font-semibold text-ed-text">{title}</h2>;
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-sm leading-5 font-semibold text-ed-text">{title}</h2>
+      {actions ? (
+        <div className="flex items-center justify-between gap-2">
+          {heading}
+          {actions}
+        </div>
+      ) : (
+        heading
+      )}
       {children}
     </div>
   );
@@ -149,7 +159,7 @@ function NumberField(props: {
   const shown = useEditor((s) => {
     const doc = live !== null && s.gesture?.ops === live ? s.doc : viewDoc(s);
     const found = findClip(doc, clipId);
-    return found ? clipFieldValue(found.clip, field, fieldContext(doc, found.clip, view.prefs, view.sizer)) : "";
+    return found ? clipFieldValue(found.clip, field, fieldContext(doc, found.clip, view.prefs, view.sizer, s.playhead)) : "";
   });
 
   const drag = scrubOf(field, units, fps);
@@ -367,19 +377,34 @@ function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   );
 }
 
+// A field with its keyframe diamond beside it.
+function Keyed({ clipId, prop, children }: { clipId: string; prop: KeyframeProp; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-end gap-1">
+      <div className="min-w-0 flex-1">{children}</div>
+      <KeyframeButton clipId={clipId} prop={prop} />
+    </div>
+  );
+}
+
 // X and Y place the clip's centre, and Width and Height give its drawn size, in the unit chosen in Settings. An arrow
-// moves them a pixel, or a tenth of a centimetre or inch.
-function PositionSection({ clipId }: { clipId: string }) {
+// moves them a pixel, or a tenth of a centimetre or inch. The fields show the clip at the playhead; a keyframed one is
+// changed by keying it there.
+function PositionSection({ clipId, image }: { clipId: string; image: boolean }) {
   const settings = useSettingsStore();
   const units = useSettings((s) => s.units);
   const lockAspect = useSettings((s) => s.lockAspect);
   const canEdit = useEditor((s) => s.canEdit);
   const length = { suffix: UNIT_SUFFIX[units], step: units === "px" ? 1 : 0.1 };
   return (
-    <Section title="Position">
+    <Section title="Position" actions={<KeyframeSteps clipId={clipId} />}>
       <div className="grid grid-cols-2 gap-2">
-        <NumberField clipId={clipId} field="x" label="X" {...length} />
-        <NumberField clipId={clipId} field="y" label="Y" {...length} />
+        <Keyed clipId={clipId} prop="x">
+          <NumberField clipId={clipId} field="x" label="X" {...length} />
+        </Keyed>
+        <Keyed clipId={clipId} prop="y">
+          <NumberField clipId={clipId} field="y" label="Y" {...length} />
+        </Keyed>
       </div>
       <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-1">
         <NumberField clipId={clipId} field="width" label="Width" {...length} />
@@ -395,10 +420,21 @@ function PositionSection({ clipId }: { clipId: string }) {
         <NumberField clipId={clipId} field="height" label="Height" {...length} />
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <NumberField clipId={clipId} field="scale" label="Scale" suffix="%" min={1} />
-        <NumberField clipId={clipId} field="rotation" label="Rotation" suffix="°" />
-        <NumberField clipId={clipId} field="opacity" label="Opacity" suffix="%" min={0} max={100} />
+        <Keyed clipId={clipId} prop="scale">
+          <NumberField clipId={clipId} field="scale" label="Scale" suffix="%" min={1} />
+        </Keyed>
+        <Keyed clipId={clipId} prop="rotation">
+          <NumberField clipId={clipId} field="rotation" label="Rotation" suffix="°" />
+        </Keyed>
+        <Keyed clipId={clipId} prop="opacity">
+          <NumberField clipId={clipId} field="opacity" label="Opacity" suffix="%" min={0} max={100} />
+        </Keyed>
       </div>
+      {image && (
+        <div className="flex flex-col items-start">
+          <KenBurnsButton clipId={clipId} />
+        </div>
+      )}
     </Section>
   );
 }
@@ -475,7 +511,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
           <MediaSection assetId={clip.assetId} kind={clip.type} />
         </>
       )}
-      {clip.type !== "audio" && <PositionSection clipId={clip.id} />}
+      {clip.type !== "audio" && <PositionSection clipId={clip.id} image={clip.type === "image"} />}
       {clip.type !== "audio" && <CropSection clipId={clip.id} />}
       {(clip.type === "video" || clip.type === "image") && <TransitionsSection clip={clip} />}
       {clip.type === "text" && <AnimationSection clip={clip} />}

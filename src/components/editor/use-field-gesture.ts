@@ -15,14 +15,15 @@ export type FieldView = { prefs: FieldPrefs; sizer: Sizer };
 
 // The ops that set a field of the clip as the store holds it now (not as a live gesture shows it):
 // null when the input is not valid, [] when it changes nothing. A media clip's length stops where its media ends,
-// as far as the library knows it now. Without a view, the field is read in pixels with no box.
+// as far as the library knows it now. Without a view, the field is read in pixels with no box. A keyframed property is
+// keyed at the playhead.
 export function fieldOps(store: EditorStore, clipId: string, field: ClipField, raw: string, library?: LibraryStore, view?: FieldView) {
-  const { doc } = store.getState();
+  const { doc, playhead } = store.getState();
   const found = findClip(doc, clipId);
   if (!found) return null;
   const { clip } = found;
   const lengthFrames = clip.type === "text" || !library ? undefined : mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps);
-  return clipFieldOps(clip, field, raw, fieldContext(doc, clip, view?.prefs, view?.sizer), lengthFrames);
+  return clipFieldOps(clip, field, raw, fieldContext(doc, clip, view?.prefs, view?.sizer, playhead), lengthFrames);
 }
 
 // Ends a field's edit the way leaving it does. The field's own live gesture is saved as one change;

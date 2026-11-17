@@ -1,10 +1,12 @@
 import { cropRect } from "@/lib/render/compositor";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
-import type { Crop, Guide, OpInput, TimelineDoc } from "@/lib/timeline";
+import type { Clip, Crop, Guide, OpInput, TimelineDoc } from "@/lib/timeline";
+import { effectiveTransform } from "@/lib/timeline/keyframes";
 import type { Point, Size } from "./board";
 import { HANDLE_SIGNS, corners, rectPoint, toLocal, toWorld, type CanvasItem, type Handle } from "./canvas-geometry";
 import { CROP_MIN_SHOWN } from "./clip-box";
 import { guideLines } from "./guides";
+import { writeTransformOps } from "./keyframe-edit";
 import { findClip } from "./store";
 
 // Moving, turning, resizing and cropping a clip on the preview by hand. A drag records the clip as it was at the press;
@@ -19,10 +21,12 @@ export const SCALE_MIN = 0.01, SCALE_MAX = 10, ROTATE_STEP = 15, ROTATE_SNAP_DEG
 
 export type Grip = Handle | "rotate" | "body";
 
-export type CanvasDrag =
+// keyed: the clip at the press, when the drag began at a playhead frame, so its keyframes can be written to.
+export type CanvasDrag = (
   | { type: "move"; clipId: string; grab: Point; from: { x: number; y: number }; frame: Size; box: Box; lines: Lines }
   | { type: "rotate"; clipId: string; grab: Point; center: Point; from: number }
-  | { type: "resize"; clipId: string; handle: Handle; grab: Point; item: CanvasItem; frame: Size; from: { scale: number; stretch: number; crop: Crop }; drawn: Point | null };
+  | { type: "resize"; clipId: string; handle: Handle; grab: Point; item: CanvasItem; frame: Size; from: { scale: number; stretch: number; crop: Crop }; drawn: Point | null }
+) & { keyed?: Clip };
 
 // What of a moved clip snaps, on each axis, as offsets in project pixels from its centre: the sides of the box its kept
 // part fills on screen (turned, that box holds the corners), and its middles (the box's middle and the centre itself).
@@ -71,6 +75,7 @@ function linesOf(item: CanvasItem, frame: Size, others: readonly CanvasItem[], g
 
 // Null when the clip is gone or its track is locked. drawn: where a handle clamped into the pane was drawn, if it was.
 // others: the clips drawn now, whose sides and middles a moved clip snaps onto. guides: the project's guides shown now.
+// at: the playhead's frame; given, the drag starts from the clip's keyframed values there.
 export function beginCanvasDrag(
   doc: TimelineDoc,
   item: CanvasItem,
@@ -79,16 +84,19 @@ export function beginCanvasDrag(
   drawn?: Point,
   others: readonly CanvasItem[] = [],
   guides: readonly Guide[] = [],
+  at?: number,
 ): CanvasDrag | null {
   const found = findClip(doc, item.clipId);
   if (!found || found.track.locked) return null;
-  const t = found.clip.transform;
+  const t = at === undefined ? found.clip.transform : effectiveTransform(found.clip, at);
+  const keyed = at === undefined ? {} : { keyed: found.clip };
   const frame = { width: doc.width, height: doc.height };
   if (grip === "body") {
-    return { type: "move", clipId: item.clipId, grab, from: { x: t.x, y: t.y }, frame, box: boxOf(item), lines: linesOf(item, frame, others, guides) };
+    return { type: "move", clipId: item.clipId, grab, from: { x: t.x, y: t.y }, frame, box: boxOf(item), lines: linesOf(item, frame, others, guides), ...keyed };
   }
-  if (grip === "rotate") return { type: "rotate", clipId: item.clipId, grab, center: item.center, from: t.rotation };
+  if (grip === "rotate") return { type: "rotate", clipId: item.clipId, grab, center: item.center, from: t.rotation, ...keyed };
   return {
+    ...keyed,
     type: "resize",
     clipId: item.clipId,
     handle: grip,
@@ -103,8 +111,9 @@ export function beginCanvasDrag(
 // pointer in project pixels. shift: a move keeps to one axis, a turn steps by 15°, a handle drag squashes or stretches,
 // and a crop keeps the kept part's shape. crop: a handle drag crops instead of resizing (Ctrl, or the clip menu's
 // Crop). centre: a handle drag resizes about the box's middle, so the opposite side moves too (Alt, or Option on a
-// Mac). snapPx: how near a line a moved clip's side or middle snaps, in project pixels.
-export type CanvasDragInput = { pointer: Point; shift: boolean; crop: boolean; centre: boolean; snapping: boolean; snapPx: number };
+// Mac). snapPx: how near a line a moved clip's side or middle snaps, in project pixels. frame: the playhead's frame;
+// given, with a drag begun at one, a keyframed property is keyed there instead of set on the transform.
+export type CanvasDragInput = { pointer: Point; shift: boolean; crop: boolean; centre: boolean; snapping: boolean; snapPx: number; frame?: number };
 
 // guides: the lines a moved clip snapped onto, one across and one down at most, in project pixels.
 export type CanvasDragResult = { ops: OpInput[]; label: "position change" | "size change" | "crop"; guides: { x: number | null; y: number | null } };
@@ -112,9 +121,11 @@ export type CanvasDragResult = { ops: OpInput[]; label: "position change" | "siz
 const NO_GUIDES = { x: null, y: null };
 
 export function resolveCanvasDrag(drag: CanvasDrag, input: CanvasDragInput): CanvasDragResult {
-  if (drag.type === "move") return resolveMove(drag, input);
-  if (drag.type === "rotate") return resolveRotate(drag, input);
-  return input.crop ? resolveCrop(drag, input) : resolveResize(drag, input);
+  const result = drag.type === "move" ? resolveMove(drag, input) : drag.type === "rotate" ? resolveRotate(drag, input) : input.crop ? resolveCrop(drag, input) : resolveResize(drag, input);
+  if (!drag.keyed || input.frame === undefined || result.ops.length === 0) return result;
+  // The same change, with each keyframed property keyed at the frame instead.
+  const op = result.ops[0] as Extract<OpInput, { op: "update_clip" }>;
+  return { ...result, ops: writeTransformOps(drag.keyed, input.frame, op.patch.transform ?? {}) };
 }
 
 const round4 = (n: number) => Number(n.toFixed(4)) + 0; // + 0 turns −0 into 0
