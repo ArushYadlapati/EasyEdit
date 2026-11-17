@@ -267,7 +267,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
       >
         <EditorBrand spaceId={space.id}>
           <PresenceProvider store={presenceStore}>
-            <EditorScreen spaceSlug={space.slug} initialLayout={layout} />
+            <EditorScreen spaceSlug={space.slug} spaceId={space.id} initialLayout={layout} />
           </PresenceProvider>
         </EditorBrand>
       </MediaProvider>

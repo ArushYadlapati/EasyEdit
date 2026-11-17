@@ -41,6 +41,7 @@ import { useBrand } from "./brand/brand-context";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatFields } from "./format-select";
 import { useLibrary, useMedia } from "./media/media-context";
+import { SlotSection } from "./slot-section";
 import { useTextMeasure } from "./text-measure";
 import { Timecode } from "./timecode";
 import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-field-gesture";
@@ -480,6 +481,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       {drawsOnCanvas && <PositionSection clipId={clip.id} />}
       {drawsOnCanvas && clip.type !== "placeholder" && <CropSection clipId={clip.id} />}
       <TimingSection clipId={clip.id} />
+      <SlotSection clip={clip} />
     </>
   );
 }

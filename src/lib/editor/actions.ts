@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
-import { DEFAULT_TRANSFORM, NO_CROP, TRACK_ACCEPTS, isCropped, trackTakes, type OpInput, type TrackKind } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, NO_CROP, TRACK_ACCEPTS, isCropped, isPlaceholder, trackTakes, type OpInput, type TrackKind } from "@/lib/timeline";
+import { fillSlots } from "@/lib/templates/fill";
 import { copyClips, pasteItems, type ClipboardStore } from "./clipboard";
 import {
   addTrackOps,
@@ -19,7 +20,7 @@ import {
   type TrackSwitch,
 } from "./commands";
 import type { TimelinePoint } from "./geometry";
-import { mediaClipFor } from "./media-clips";
+import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { findClip, type EditorStore } from "./store";
@@ -82,6 +83,33 @@ export function addMedia(
   const result = state.edit(placement.ops, "add media");
   if (result.ok && opts.select !== false) state.select(placement.clipIds);
   return result.ok;
+}
+
+// Fills the slot of the placeholder clip with a library asset, from the start of its footage, as one undoable change
+// that keeps the clip's id. A kind the slot does not take shows fillSlots' message as a notice and changes nothing.
+// Returns whether the slot was filled.
+export function fillPlaceholder(store: EditorStore, clipId: string, asset: AssetView): boolean {
+  const state = store.getState();
+  if (!state.canEdit) return false;
+  const clip = findClip(state.doc, clipId)?.clip;
+  if (!clip || !isPlaceholder(clip)) return false;
+  if (asset.status !== "ready" || asset.removed) {
+    state.notify("info", MESSAGES.mediaNotReady);
+    return false;
+  }
+  const durationFrames = mediaLengthFrames(asset, state.doc.fps) ?? null;
+  const filled = fillSlots(state.doc, [{ slot: clip.slot.name, assetId: asset.id, inFrames: 0 }], new Map([[asset.id, { id: asset.id, kind: asset.kind, durationFrames }]]));
+  if ("error" in filled) {
+    state.notify("error", filled.error);
+    return false;
+  }
+  const result = state.edit(filled.ops, "fill slot");
+  if (!result.ok) {
+    state.notify("error", result.message);
+    return false;
+  }
+  state.select([clipId]);
+  return true;
 }
 
 // A brand kit logo's size: fitted inside the frame, then 40% of that, so a square logo is 432 px wide in a 1080-wide

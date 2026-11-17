@@ -22,7 +22,7 @@ export type UndoEntry = { editId: string; label: string; ops: Op[] };
 
 export type Selection = { clipIds: string[]; trackId: string | null };
 
-export type Notice = { id: number; tone: "info" | "error"; text: string };
+export type Notice = { id: number; tone: "info" | "error"; text: string; link?: { label: string; href: string } };
 
 export type SyncStatus = "saved" | "saving" | "offline" | "limited" | "signed-out" | "deleted";
 

@@ -2,7 +2,8 @@
 
 import { X } from "lucide-react";
 import { useEffect } from "react";
-import { cx } from "@/components/ui/cx";
+import Link from "next/link";
+import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { useEditor } from "./context";
 
@@ -40,6 +41,11 @@ export function NoticeBar() {
         <p role="status" className="min-w-0">
           {notice && !error ? notice.text : ""}
         </p>
+        {notice?.link && (
+          <Link href={notice.link.href} className={cx("ml-2 shrink-0 rounded-[4px] font-medium underline underline-offset-2", FOCUS_RING)}>
+            {notice.link.label}
+          </Link>
+        )}
         {notice && (
           <IconButton label="Dismiss" className="ml-2" onClick={() => dismiss()}>
             <X />

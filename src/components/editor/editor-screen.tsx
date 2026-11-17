@@ -17,6 +17,7 @@ import { LeftPanel } from "./left-panel";
 import { ToolRail } from "./tool-rail";
 import { NoticeBar } from "./notice-bar";
 import { PanelGrid } from "./panel-grid";
+import { SaveTemplateDialog } from "./save-template-dialog";
 import { Preview } from "./preview";
 import { RightPanel } from "./right-panel";
 import { spacePath } from "@/lib/spaces/paths";
@@ -27,6 +28,7 @@ import { useShortcuts } from "./use-shortcuts";
 
 type EditorScreenProps = {
   spaceSlug: string; // the space the project is in, for the way back to its dashboard
+  spaceId?: string; // the same space, for Save as template; without it the dialog is not there
   initialLayout?: Layout; // the panel sizes this browser kept
   saveLayout?(layout: Layout): void; // keeps the sizes once a resize ends
 };
@@ -35,7 +37,7 @@ type EditorScreenProps = {
 // top bar, then the add panel, preview and details side by side, then the timeline across the bottom.
 // The keyboard shortcuts work anywhere in the window, and any part can open a right-click menu. The panel
 // grid alone follows the panel sizes, so resizing a panel does not draw the panels again.
-export function EditorScreen({ spaceSlug, initialLayout = DEFAULT_LAYOUT, saveLayout = writeLayoutCookie }: EditorScreenProps) {
+export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOUT, saveLayout = writeLayoutCookie }: EditorScreenProps) {
   const store = useEditorStore();
   const deleted = useEditor((s) => s.status === "deleted");
   const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
@@ -55,6 +57,7 @@ export function EditorScreen({ spaceSlug, initialLayout = DEFAULT_LAYOUT, saveLa
   }, []);
   const openShortcuts = useCallback(() => showSettingsAt("shortcuts"), [showSettingsAt]);
   const [exportOpen, setExportOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
   // An export that ends while its dialog is closed says so in a notice; an open dialog says it all itself. A held file
   // keeps the export's state at done, so Export opens again at its Download.
   const exporter = useExport({
@@ -89,6 +92,7 @@ export function EditorScreen({ spaceSlug, initialLayout = DEFAULT_LAYOUT, saveLa
               onShowSettings={() => showSettingsAt(lastSection)}
               onResetLayout={() => layout.getState().reset()}
               onExport={openExport}
+              onSaveTemplate={spaceId ? () => setTemplateOpen(true) : undefined}
             />
           }
           left={
@@ -124,6 +128,7 @@ export function EditorScreen({ spaceSlug, initialLayout = DEFAULT_LAYOUT, saveLa
           <p className="text-[13px] leading-5 text-ed-muted">Open this project on a laptop or desktop.</p>
         </div>
         <SettingsDialog at={settingsAt} onSection={showSettingsAt} onClose={() => setSettingsAt(null)} />
+        {spaceId && <SaveTemplateDialog open={templateOpen} onClose={() => setTemplateOpen(false)} spaceId={spaceId} spaceSlug={spaceSlug} />}
         <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} exporter={exporter} />
       </ContextMenuProvider>
     </div>

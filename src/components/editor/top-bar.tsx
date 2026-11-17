@@ -23,13 +23,14 @@ type TopBarProps = {
   onShowSettings?(): void;
   onResetLayout?(): void; // View → Reset panel sizes
   onExport?(): void; // opens the Export dialog
+  onSaveTemplate?(): void; // Edit → Save as template…, opens its dialog
   exportPercent?: number | null; // how far a running export is; null or absent when none runs
 };
 
 // The row across the top: the logo with Projects (back to the space), the Edit and View menus, the project's name, then the save
 // status, the undo, redo, settings and shortcuts buttons, and Export. The menus read the editor as they open, so what
 // cannot run right then is greyed.
-export function TopBar({ spaceSlug, onShowShortcuts, onShowSettings, onResetLayout, onExport, exportPercent = null }: TopBarProps) {
+export function TopBar({ spaceSlug, onShowShortcuts, onShowSettings, onResetLayout, onExport, onSaveTemplate, exportPercent = null }: TopBarProps) {
   const store = useEditorStore();
   const clipboard = useClipboard();
   const run = useCommandRunner(onShowShortcuts, onExport);
@@ -49,6 +50,7 @@ export function TopBar({ spaceSlug, onShowShortcuts, onShowSettings, onResetLayo
   function pick(id: string) {
     if (id === "safe-zones") store.getState().toggleSafeZones();
     else if (id === "reset-layout") onResetLayout?.();
+    else if (id === "save-template") onSaveTemplate?.();
     else run(id as CommandId);
   }
 

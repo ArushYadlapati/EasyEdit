@@ -10,7 +10,7 @@ import { MESSAGES } from "@/lib/editor/messages";
 import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
 import { findClip, type EditorStore } from "@/lib/editor/store";
 import type { AssetView, UploadItem } from "@/lib/media/types";
-import type { Clip } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, type Clip } from "@/lib/timeline";
 import { makeStore, noticesOf, text, video } from "../editor/fixtures";
 import { act, fireEvent, within } from "../helpers/dom";
 import { dragEvent } from "../helpers/drag-events";
@@ -682,4 +682,48 @@ it("without the window's watcher a file drop still clears the line", () => {
   fileDrop(lane(2), x(90), y(2), [file("a.mov")]);
   expect(line()).toBeNull();
   expect(wrapper.dataset.drop).toBe("idle");
+});
+
+// A placeholder for a visual slot on the video track, over frames 0-30; the second clip stays a video.
+function withPlaceholder(accepts: "visual" | "audio" = "visual") {
+  const doc = store.getState().doc;
+  const clips = [
+    { id: "ph", type: "placeholder", accepts, start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "intro" } } as Clip,
+    video("c2", 30, 30),
+  ];
+  const next = { ...doc, tracks: doc.tracks.map((t) => (t.id === doc.tracks[0].id ? { ...t, clips } : t)) };
+  return makeStore({ doc: next });
+}
+
+it("dropping a video on a placeholder fills the slot as one undoable change that keeps the clip id", () => {
+  const filled = withPlaceholder();
+  const view = open({ store: filled });
+  dragging(VIDEO);
+  const before = filled.getState().queue.length;
+  view.dropOn(view.lane(2), x(10), y(2), "a");
+  expect(filled.getState().queue.length).toBe(before + 1);
+  expect(findClip(filled.getState().doc, "ph")!.clip).toMatchObject({ type: "video", assetId: "a", start: 0, duration: 30, slot: { name: "intro" } });
+  expect(filled.getState().undoStack.at(-1)!.label).toBe("fill slot");
+  act(() => filled.getState().undo());
+  expect(findClip(filled.getState().doc, "ph")!.clip).toMatchObject({ type: "placeholder", accepts: "visual" });
+});
+
+it("dropping audio on a visual placeholder says it does not fit and changes nothing", () => {
+  const filled = withPlaceholder();
+  const view = open({ store: filled });
+  const notices = noticesOf(filled);
+  dragging(AUDIO);
+  view.dropOn(view.lane(2), x(10), y(2), "m");
+  expect(filled.getState().queue).toEqual([]);
+  expect(notices).toEqual(["intro takes a video or image"]);
+  expect(findClip(filled.getState().doc, "ph")!.clip.type).toBe("placeholder");
+});
+
+it("dropping on a clip that is not a placeholder adds the item as before", () => {
+  const filled = withPlaceholder();
+  const view = open({ store: filled });
+  dragging(VIDEO);
+  view.dropOn(view.lane(2), x(40), y(2), "a");
+  expect(filled.getState().doc.tracks.flatMap((t) => t.clips).length).toBe(5);
+  expect(findClip(filled.getState().doc, "ph")!.clip.type).toBe("placeholder");
 });

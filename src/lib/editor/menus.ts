@@ -84,7 +84,12 @@ export function editMenu(input: TopMenuInput): MenuEntry[] {
     { command: "select-all", label: "Select all", separatorBefore: true },
     { command: "clear-selection", label: "Deselect all" },
   ];
-  return entries.map((entry) => commandEntry(input, entry));
+  const items = entries.map((entry) => commandEntry(input, entry));
+  // Not a command: the top bar opens the Save as template dialog by id. Left out for anyone who cannot edit.
+  if (input.canEdit && !input.deleted) {
+    items.push({ id: "save-template", label: "Save as template…", separatorBefore: true, edit: true, disabled: input.busy });
+  }
+  return items;
 }
 
 // The zoom entries name the timeline, so neither reads as the preview's zoom. Safe area and Reset

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type DOMAttributes } from "react";
 import { createStore, type StoreApi } from "zustand/vanilla";
-import { addMedia } from "@/lib/editor/actions";
+import { addMedia, fillPlaceholder } from "@/lib/editor/actions";
 import type { TimelinePoint } from "@/lib/editor/geometry";
 import { mediaClipFor } from "@/lib/editor/media-clips";
 import { ASSET_DRAG_TYPE, carriesFiles, dragKind, dropTrack } from "@/lib/editor/media-drop";
@@ -147,6 +147,12 @@ export function useTimelineDrop(drag: TimelineDrag | null): { hover: StoreApi<Dr
         const state = store.getState();
         const stillSeconds = settings.getState().stillSeconds;
         const at = drag.pointAt(e.clientX, e.clientY);
+        // On an empty slot the item fills it; anywhere else it is added as before.
+        const slotClip = state.doc.tracks.find((t) => t.id === at.trackId)?.clips.find((c) => c.type === "placeholder" && at.frame >= c.start && at.frame < c.start + c.duration);
+        if (slotClip) {
+          fillPlaceholder(store, slotClip.id, asset);
+          return;
+        }
         const { frame } = landingFrame(state, at, clipOf(asset, at.frame, state.doc.fps, stillSeconds)?.duration ?? null);
         addMedia(store, asset, { frame, trackId: dropTrack(state.doc, at.trackId, asset.kind), stillSeconds });
       },

@@ -29,15 +29,22 @@ const byId = (entries: MenuEntry[], id: string) => entries.find((e) => e.id === 
 it("the Edit menu lists its items in order", () => {
   const entries = editMenu(BASE);
   expect(entries.map((e) => e.id)).toEqual([
-    "undo", "redo", "cut", "copy", "paste", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection",
+    "undo", "redo", "cut", "copy", "paste", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection", "save-template",
   ]);
   expect(entries.map((e) => e.label)).toEqual([
-    "Undo", "Redo", "Cut", "Copy", "Paste", "Duplicate", "Split", "Delete", "Ripple delete", "Select all", "Deselect all",
+    "Undo", "Redo", "Cut", "Copy", "Paste", "Duplicate", "Split", "Delete", "Ripple delete", "Select all", "Deselect all", "Save as template…",
   ]);
-  expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["cut", "split", "select-all"]);
-  for (const entry of entries) expect(entry.command).toBe(entry.id);
+  expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["cut", "split", "select-all", "save-template"]);
+  for (const entry of entries.filter((e) => e.id !== "save-template")) expect(entry.command).toBe(entry.id);
+  expect(byId(entries, "save-template").command).toBeUndefined();
   // edit follows the shortcut table: copy, select all and deselect change nothing.
-  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["undo", "redo", "cut", "paste", "duplicate", "split", "delete", "ripple-delete"]);
+  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["undo", "redo", "cut", "paste", "duplicate", "split", "delete", "ripple-delete", "save-template"]);
+});
+
+it("Save as template is there for an editor and gone for a viewer or a deleted project", () => {
+  expect(editMenu(BASE).map((e) => e.id)).toContain("save-template");
+  expect(editMenu({ ...BASE, canEdit: false }).map((e) => e.id)).not.toContain("save-template");
+  expect(editMenu({ ...BASE, deleted: true }).map((e) => e.id)).not.toContain("save-template");
 });
 
 it("a viewer may only copy and select", () => {
@@ -52,20 +59,20 @@ it("nothing edits while a gesture is live or the project is deleted", () => {
   for (const input of [{ ...all, busy: true }, { ...all, deleted: true }]) {
     const entries = editMenu(input);
     const edits = entries.filter((e) => e.edit);
-    expect(edits).toHaveLength(8);
+    expect(edits).toHaveLength(input.deleted ? 8 : 9);
     for (const entry of edits) expect(entry.disabled, entry.id).toBe(true);
     expect(enabled(entries)).toEqual(["copy", "select-all", "clear-selection"]);
   }
 });
 
 it("undo and redo follow their stacks; cut and delete need a selection; paste needs something copied", () => {
-  expect(enabled(editMenu(BASE))).toEqual(["split", "select-all", "clear-selection"]);
-  expect(enabled(editMenu({ ...BASE, canUndo: true }))).toEqual(["undo", "split", "select-all", "clear-selection"]);
-  expect(enabled(editMenu({ ...BASE, canRedo: true }))).toEqual(["redo", "split", "select-all", "clear-selection"]);
+  expect(enabled(editMenu(BASE))).toEqual(["split", "select-all", "clear-selection", "save-template"]);
+  expect(enabled(editMenu({ ...BASE, canUndo: true }))).toEqual(["undo", "split", "select-all", "clear-selection", "save-template"]);
+  expect(enabled(editMenu({ ...BASE, canRedo: true }))).toEqual(["redo", "split", "select-all", "clear-selection", "save-template"]);
   expect(enabled(editMenu({ ...BASE, hasSelection: true }))).toEqual([
-    "cut", "copy", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection",
+    "cut", "copy", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection", "save-template",
   ]);
-  expect(enabled(editMenu({ ...BASE, canPaste: true }))).toEqual(["paste", "split", "select-all", "clear-selection"]);
+  expect(enabled(editMenu({ ...BASE, canPaste: true }))).toEqual(["paste", "split", "select-all", "clear-selection", "save-template"]);
 });
 
 it("the View menu shows the two switches and the zoom limits", () => {

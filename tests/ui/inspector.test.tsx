@@ -852,3 +852,94 @@ describe("the Font menu", () => {
     expect(fontMenu().disabled).toBe(true);
   });
 });
+
+describe("template slot section", () => {
+  const slotted = (extra: Record<string, unknown> = {}) => {
+    const doc = sampleDoc();
+    doc.tracks[1].clips = [text("x1", 0, 60, extra), text("x2", 90, 30)];
+    return doc;
+  };
+
+  it("makes a clip a slot with the next free name, as one update_clip", () => {
+    const store = makeStore();
+    store.getState().select(["x1"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    expect(screen.getByText("A slot is a part of the template that gets filled in later.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Make this a slot" }));
+    expect(store.getState().queue).toMatchObject([{ ops: [{ op: "update_clip", clipId: "x1", patch: { slot: { name: "slot_1" } } }] }]);
+    expect(screen.getByLabelText("Name")).toBeTruthy();
+  });
+
+  it("skips names that other clips use", () => {
+    const doc = sampleDoc();
+    doc.tracks[1].clips = [text("x1", 0, 60), text("x2", 90, 30, { slot: { name: "slot_1" } })];
+    const store = makeStore({ doc });
+    store.getState().select(["x1"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Make this a slot" }));
+    expect(store.getState().queue[0].ops).toMatchObject([{ patch: { slot: { name: "slot_2" } } }]);
+  });
+
+  it("shows an inline error for an invalid name and sends nothing", () => {
+    const store = makeStore({ doc: slotted({ slot: { name: "title" } }) });
+    store.getState().select(["x1"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    const name = screen.getAllByLabelText("Name").at(-1)!;
+    fireEvent.change(name, { target: { value: "Bad Name" } });
+    fireEvent.blur(name);
+    expect(screen.getByText("Use lowercase letters, numbers and _, starting with a letter")).toBeTruthy();
+    expect(store.getState().queue).toEqual([]);
+  });
+
+  it("renames on Enter and keeps the hint", () => {
+    const store = makeStore({ doc: slotted({ slot: { name: "title", hint: "short" } }) });
+    store.getState().select(["x1"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    const name = screen.getAllByLabelText("Name").at(-1)!;
+    fireEvent.change(name, { target: { value: "headline" } });
+    fireEvent.keyDown(name, { key: "Enter" });
+    expect(store.getState().queue).toMatchObject([{ ops: [{ patch: { slot: { name: "headline", hint: "short" } } }] }]);
+  });
+
+  it("sets and clears the hint", () => {
+    const store = makeStore({ doc: slotted({ slot: { name: "title" } }) });
+    store.getState().select(["x1"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    const hint = screen.getByLabelText("Hint") as HTMLInputElement;
+    expect(hint.maxLength).toBe(LIMITS.slotHintChars);
+    fireEvent.change(hint, { target: { value: "the headline" } });
+    fireEvent.blur(hint);
+    expect(findClip(store.getState().doc, "x1")!.clip.slot).toEqual({ name: "title", hint: "the headline" });
+    fireEvent.change(hint, { target: { value: "" } });
+    fireEvent.blur(hint);
+    expect(findClip(store.getState().doc, "x1")!.clip.slot).toEqual({ name: "title" });
+  });
+
+  it("removes the slot with null", () => {
+    const store = makeStore({ doc: slotted({ slot: { name: "title" } }) });
+    store.getState().select(["x1"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Remove slot" }));
+    expect(store.getState().queue).toMatchObject([{ ops: [{ op: "update_clip", clipId: "x1", patch: { slot: null } }] }]);
+  });
+
+  it("a placeholder has no Remove slot", () => {
+    const doc = sampleDoc();
+    doc.tracks[0].clips = [{ id: "ph", type: "placeholder", accepts: "visual", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "intro" } } as never];
+    const store = makeStore({ doc });
+    store.getState().select(["ph"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    expect(screen.queryByRole("button", { name: "Remove slot" })).toBeNull();
+    expect((screen.getAllByLabelText("Name").at(-1) as HTMLInputElement).value).toBe("intro");
+  });
+
+  it("is disabled on a locked track and for a viewer", () => {
+    const doc = slotted({ slot: { name: "title" } });
+    doc.tracks[1].locked = true;
+    const store = makeStore({ doc });
+    store.getState().select(["x1"]);
+    render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    expect((screen.getByRole("button", { name: "Remove slot" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Hint") as HTMLInputElement).disabled).toBe(true);
+  });
+});

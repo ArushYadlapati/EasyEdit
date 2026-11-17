@@ -92,7 +92,7 @@ export type EditorState = {
   zoomBy(factor: number): void; // zoom × factor, through clampZoom
   zoomToFit(): void; // the whole project in the viewport
   setSnapping(on: boolean): void;
-  notify(tone: Notice["tone"], text: string): void;
+  notify(tone: Notice["tone"], text: string, link?: Notice["link"]): void;
   dismissNotice(): void;
   // called by the sync engine
   markSent(editId: string, sent: boolean): void;
@@ -213,7 +213,7 @@ export function createEditorStore(
   const genId = deps.genId ?? (() => nanoid(10));
   const now = deps.now ?? Date.now;
   let lastNoticeId = 0;
-  const makeNotice = (tone: Notice["tone"], text: string): Notice => ({ id: ++lastNoticeId, tone, text });
+  const makeNotice = (tone: Notice["tone"], text: string, link?: Notice["link"]): Notice => ({ id: ++lastNoticeId, tone, text, ...(link && { link }) });
 
   return createStore<EditorState>()((set, get) => {
     // What follows a change to doc: the selection keeps only what still exists, and a live
@@ -469,8 +469,8 @@ export function createEditorStore(
         set({ snapping: on });
       },
 
-      notify(tone, text) {
-        set({ notice: makeNotice(tone, text) });
+      notify(tone, text, link) {
+        set({ notice: makeNotice(tone, text, link) });
       },
 
       dismissNotice() {
