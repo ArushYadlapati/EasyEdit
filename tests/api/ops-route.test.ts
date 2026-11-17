@@ -281,11 +281,11 @@ describe("project routes", () => {
     expect(await res.json()).toMatchObject({ id, name: "P", version: 0 });
   });
 
-  it("GET version answers { version }, 404 when unknown; GET ops validates limit and reports hasMore", async () => {
+  it("GET version answers { version, spaceId }, 404 when unknown; GET ops validates limit and reports hasMore", async () => {
     const { db, ops, projects } = await setup("viewer");
     const { id } = await createProject(db, testActor({ role: "editor" }), { name: "P", format: "short_9x16" });
     await applyProjectOps(db, testActor({ role: "editor" }), { projectId: id, baseVersion: 0, ops: [addClip] });
-    expect(await (await projects.version(new Request(`http://x/api/projects/${id}/version`), ctx(id))).json()).toEqual({ version: 1 });
+    expect(await (await projects.version(new Request(`http://x/api/projects/${id}/version`), ctx(id))).json()).toEqual({ version: 1, spaceId: SEED_TEAM_ID });
     expect((await projects.version(new Request("http://x/api/projects/nope/version"), ctx("nope"))).status).toBe(404);
     for (const limit of ["0", "501", "x", "1.5"]) {
       const res = await ops.getSince(new Request(`http://x/api/projects/${id}/ops?since=0&limit=${limit}`), ctx(id));

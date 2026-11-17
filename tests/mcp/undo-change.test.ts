@@ -143,6 +143,20 @@ describe("undo_change", () => {
     expect((await project()).version).toBe(3);
   });
 
+  it("refuses a change made before the project moved to another space", async () => {
+    const { db, id, edit, undo, project, retext } = await setup();
+    await edit(1, retext("SECOND")); // version 2
+    // As a finished move leaves it: the move landed as version 3, and nothing before it keeps undo data.
+    await db.execute(sql`update project_ops set inverse = null where project_id = ${id}`);
+    await applyProjectOps(db, grace, { projectId: id, baseVersion: 2, ops: retext("MOVED") as OpInput[] }); // version 3
+    await db.execute(sql`update project_ops set inverse = null where project_id = ${id} and version = 3`);
+    await db.execute(sql`update projects set moved_at_version = 3 where id = ${id}`);
+    expect(await undo(3, 2)).toEqual({ isError: true, text: "Version 2 was made before this project moved to another space, so it can't be undone." });
+    expect(await undo(3, 1)).toEqual({ isError: true, text: "Version 1 was made before this project moved to another space, so it can't be undone." });
+    expect(await undo(3, 3)).toEqual({ isError: true, text: "Version 3 has no undo data." });
+    expect((await project()).version).toBe(3);
+  });
+
   it("two different undos sent against the same version are two different calls", async () => {
     const { db, id, edit, undo, retext } = await setup();
     await edit(1, retext("SECOND")); // version 2

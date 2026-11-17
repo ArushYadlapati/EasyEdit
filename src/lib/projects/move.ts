@@ -1,8 +1,10 @@
-import { and, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { DB } from "@/db";
+import { rowsOf, type DB } from "@/db";
 import { assets, organization, projectMove, projects } from "@/db/schema";
 import { meetsRole } from "@/lib/access-rules";
+import type { Role } from "@/lib/allowlist/service";
+import { FORBIDDEN_BODY } from "@/lib/api-errors";
 import { requireRole, type Actor } from "@/lib/actor";
 import type { DriveClient } from "@/lib/drive/client";
 import { DriveError } from "@/lib/drive/token";
@@ -17,14 +19,17 @@ import { storageState, type StorageDeps } from "@/lib/spaces/storage";
 import { slugFor } from "@/lib/spaces/paths";
 import type { SpaceKind } from "@/lib/spaces/types";
 import { ConnectionBrokenError } from "@/lib/storage/google-oauth";
-import type { TimelineDoc } from "@/lib/timeline";
+import type { Op, TimelineDoc } from "@/lib/timeline";
 import { MOVE_MESSAGES } from "./move-messages";
+import { MAX_WRITE_ATTEMPTS } from "./service";
 
 export type MoveRow = typeof projectMove.$inferSelect;
 
 export type MoveDeps = { db: DB; driveFor: (spaceId: string) => Promise<DriveClient | null>; origin: string; onDriveError?: (e: DriveError) => void;
   // What storageState reads the server's Drive settings with; tests point it at a pretend Google.
   storage?: StorageDeps;
+  // Tests only: runs between finishMove's read and its write, so a test can land another write in between.
+  beforeFinishWrite?: () => Promise<void>;
 };
 
 export type CopyState = { assetId: string; status: "uploading" | "ready"; hasPreview: boolean; hasPoster: boolean };
@@ -86,20 +91,39 @@ async function dropCopies(deps: MoveDeps, move: Pick<MoveRow, "id" | "toSpaceId"
   }
 }
 
-// One statement ends each move that is still open; those it ended have their copies dropped.
-async function abandonWhere(deps: MoveDeps, where: ReturnType<typeof and>): Promise<number> {
+// One statement ends each move that is still open; those it ended have their copies dropped. With `quietly`, a copy
+// that can't be dropped is reported, not thrown: its rows stay hidden until the clean-up.
+async function abandonWhere(deps: MoveDeps, where: ReturnType<typeof and>, quietly = false): Promise<number> {
   const ended = await deps.db
     .update(projectMove)
     .set({ abandonedAt: sql`now()` })
     .where(and(where, isNull(projectMove.abandonedAt), isNull(projectMove.finishedAt)))
     .returning({ id: projectMove.id, toSpaceId: projectMove.toSpaceId });
-  for (const move of ended) await dropCopies(deps, move);
+  for (const move of ended) {
+    try {
+      await dropCopies(deps, move);
+    } catch (error) {
+      if (!quietly) throw error;
+      deps.onDriveError?.(error instanceof DriveError ? error : new DriveError("cleanup", 0, "unknown"));
+    }
+  }
   return ended.length;
 }
 
 export async function abandonMove(deps: MoveDeps, userId: string, moveId: string): Promise<void> {
   const ended = await abandonWhere(deps, and(eq(projectMove.id, moveId), eq(projectMove.startedBy, userId)));
   if (ended === 0) throw goneMove();
+}
+
+// The space a move goes to, where the person must be an editor or admin. A space they are not in is as good as missing.
+async function destination(db: DB, userId: string, spaceId: string): Promise<{ to: MovePlan["to"]; role: Role }> {
+  const role = await roleIn(db, userId, spaceId);
+  const [space] = role ? await db.select().from(organization).where(eq(organization.id, spaceId)) : [];
+  if (!role || !space) throw notFound();
+  const kind = space.kind as SpaceKind;
+  const to = { id: space.id, name: space.name, slug: slugFor({ id: space.id, name: space.name, slug: space.slug, kind }), kind };
+  if (!meetsRole(role, "editor")) throw new ServiceError("FORBIDDEN", 403, MOVE_MESSAGES.cantEditThere(to.name));
+  return { to, role };
 }
 
 export async function startMove(deps: MoveDeps, actor: Actor, input: { projectId: string; toSpaceId: string }): Promise<MovePlan> {
@@ -112,12 +136,7 @@ export async function startMove(deps: MoveDeps, actor: Actor, input: { projectId
   if (!project) throw new ServiceError("NOT_FOUND", 404, `Project "${input.projectId}" not found`);
   if (input.toSpaceId === actor.spaceId) throw new ServiceError("INVALID", 400, MOVE_MESSAGES.sameSpace);
 
-  // The destination: a space the person is not in is as good as missing.
-  const role = await roleIn(db, actor.userId, input.toSpaceId);
-  const [space] = role ? await db.select().from(organization).where(eq(organization.id, input.toSpaceId)) : [];
-  if (!role || !space) throw notFound();
-  const to = { id: space.id, name: space.name, slug: slugFor({ id: space.id, name: space.name, slug: space.slug, kind: space.kind as SpaceKind }), kind: space.kind as SpaceKind };
-  if (!meetsRole(role, "editor")) throw new ServiceError("FORBIDDEN", 403, MOVE_MESSAGES.cantEditThere(to.name));
+  const { to, role } = await destination(db, actor.userId, input.toSpaceId);
 
   const state = await storageState(db, to.id, deps.storage);
   if (!state.ready) {
@@ -403,4 +422,87 @@ export async function completeCopyFile(deps: MoveDeps, userId: string, moveId: s
   }
   await trashQuietly({ db, drive, origin: deps.origin, onDriveError: deps.onDriveError }, [row[file.column]]); // a copy's own earlier file, never the source's
   return stateOf(moved);
+}
+
+// ---- Finishing: the project is pointed at its copies and changes space, all in one write.
+
+export type FinishedMove = { projectId: string; spaceId: string; slug: string; version: number };
+
+// The doc with every media clip pointed at its copy, and the update_clip ops that say so, one per clip.
+function ontoCopies(doc: TimelineDoc, copyOf: Map<string, string>): { doc: TimelineDoc; ops: Op[] } {
+  const moved = structuredClone(doc);
+  const ops: Op[] = [];
+  for (const track of moved.tracks) {
+    for (const clip of track.clips) {
+      if (clip.type === "text") continue;
+      clip.assetId = copyOf.get(clip.assetId)!;
+      ops.push({ op: "update_clip", clipId: clip.id, patch: { assetId: clip.assetId } });
+    }
+  }
+  return { doc: moved, ops };
+}
+
+export async function finishMove(deps: MoveDeps, userId: string, moveId: string): Promise<FinishedMove> {
+  const { db } = deps;
+  for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
+    const move = await moveOf(db, userId, moveId);
+    const [project] = await db
+      .select({ doc: projects.doc, version: projects.version })
+      .from(projects)
+      .where(and(eq(projects.id, move.projectId), eq(projects.spaceId, move.fromSpaceId), isNull(projects.deletedAt)));
+    if (!project) throw new ServiceError("NOT_FOUND", 404, `Project "${move.projectId}" not found`);
+    // Roles may have changed since the move started: still an editor where the project is, and where it goes.
+    const from = await roleIn(db, userId, move.fromSpaceId);
+    if (!from) throw new ServiceError("NOT_FOUND", 404, `Project "${move.projectId}" not found`);
+    if (!meetsRole(from, "editor")) throw new ServiceError("FORBIDDEN", 403, FORBIDDEN_BODY.message);
+    const { to } = await destination(db, userId, move.toSpaceId);
+
+    // Every asset the doc uses now has a finished copy; of two copies of one source, the first made is used.
+    const ids = usedAssetIds(project.doc);
+    const copies = ids.length === 0 ? [] : await db
+      .select({ id: assets.id, copiedFrom: assets.copiedFrom })
+      .from(assets)
+      .where(and(eq(assets.moveId, move.id), eq(assets.status, "ready"), inArray(assets.copiedFrom, ids)))
+      .orderBy(asc(assets.createdAt), asc(assets.id));
+    const copyOf = new Map<string, string>();
+    for (const row of copies) if (!copyOf.has(row.copiedFrom!)) copyOf.set(row.copiedFrom!, row.id);
+    const missing = ids.filter((id) => !copyOf.has(id));
+    if (missing.length > 0) throw new ServiceError("COPIES_MISSING", 409, MOVE_MESSAGES.copiesMissing, { missing });
+    const { doc, ops } = ontoCopies(project.doc, copyOf);
+    const used = [...new Set(copyOf.values())];
+    const usedCopy = used.length === 0 ? sql`false` : sql`id in (${sql.join(used.map((id) => sql`${id}`), sql`, `)})`;
+
+    await deps.beforeFinishWrite?.();
+    // One statement. The project moves only if it is unchanged since it was read and still in the space it leaves, the
+    // move is still open (its row is locked, so an abandon waits and then finds it finished), and every copy the doc
+    // now names is still there. Then: no change from before can be undone, the old space's pin goes, the copies the
+    // doc uses join the destination's library (any others stay hidden for the clean-up), and the move is finished.
+    // The wipe runs on the rows as they were before this statement, so it never touches the move's own log row.
+    const result = await db.execute(sql`
+      with upd as (
+        update projects
+        set space_id = ${to.id}::text, folder_id = null, doc = ${JSON.stringify(doc)}::jsonb, version = version + 1,
+            moved_at_version = version + 1, updated_by = ${userId}::text, updated_at = now()
+        where id = ${move.projectId}::text and space_id = ${move.fromSpaceId}::text and version = ${project.version}::integer
+          and deleted_at is null
+          and exists (select 1 from project_move where id = ${move.id}::text and finished_at is null and abandoned_at is null for update)
+          and (select count(*) from assets where move_id = ${move.id}::text and status = 'ready' and ${usedCopy}) = ${used.length}::integer
+        returning version
+      ),
+      wipe as (update project_ops set inverse = null where project_id = ${move.projectId}::text and inverse is not null and exists (select 1 from upd)),
+      unpin as (delete from project_pins where project_id = ${move.projectId}::text and exists (select 1 from upd)),
+      adopt as (update assets set move_id = null where move_id = ${move.id}::text and ${usedCopy} and exists (select 1 from upd)),
+      done as (update project_move set finished_at = now() where id = ${move.id}::text and exists (select 1 from upd))
+      insert into project_ops (project_id, version, ops, inverse, actor)
+      select ${move.projectId}::text, version, ${JSON.stringify(ops)}::jsonb, null, ${userId}::text from upd
+      returning version
+    `);
+    const rows = rowsOf<{ version: number }>(result);
+    if (rows.length === 0) continue; // changed meanwhile: read again, which may find new media or the move gone
+
+    // Anyone else's move of this project can no longer land; its copies are dropped, and trouble there is only reported.
+    await abandonWhere(deps, and(eq(projectMove.projectId, move.projectId), ne(projectMove.id, move.id)), true);
+    return { projectId: move.projectId, spaceId: to.id, slug: to.slug, version: Number(rows[0].version) };
+  }
+  throw new ServiceError("CONFLICT", 409, MOVE_MESSAGES.busy);
 }

@@ -6,6 +6,7 @@ import { requireRole, type Actor } from "@/lib/actor";
 import { LIMITS } from "@/lib/limits";
 import { assetIdsToCheck, findMediaProblem, mediaProblemMessage } from "@/lib/media/refs";
 import { loadAssetFacts } from "@/lib/media/service";
+import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
 import { copyName, projectFrame, projectName } from "@/lib/projects/schemas";
 import { ServiceError } from "@/lib/service-error";
 import {
@@ -19,7 +20,7 @@ import {
   type TimelineDoc,
 } from "@/lib/timeline";
 
-const MAX_WRITE_ATTEMPTS = 3;
+export const MAX_WRITE_ATTEMPTS = 3;
 
 const newId = () => nanoid(12);
 
@@ -32,6 +33,8 @@ export type ProjectRecord = {
   updatedBy: string;
   updatedAt: Date;
   thumbnailVersion: number | null;
+  // The version the last move to another space landed at; edits and undos from before it are refused.
+  movedAtVersion: number | null;
 };
 
 export type ProjectSummary = {
@@ -149,6 +152,7 @@ export async function getProject(db: DB, actor: Actor, id: string): Promise<Proj
       updatedBy: projects.updatedBy,
       updatedAt: projects.updatedAt,
       thumbnailVersion: projects.thumbnailVersion,
+      movedAtVersion: projects.movedAtVersion,
     })
     .from(projects)
     .where(liveProject(actor, id));
@@ -270,7 +274,7 @@ export async function applyProjectOps(
 
   for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
     const rows = await db
-      .select({ doc: projects.doc, version: projects.version })
+      .select({ doc: projects.doc, version: projects.version, movedAtVersion: projects.movedAtVersion })
       .from(projects)
       .where(liveProject(actor, input.projectId));
     const current = rows[0];
@@ -279,6 +283,10 @@ export async function applyProjectOps(
     if (requestId !== null) {
       const prior = await getAppliedRequest(db, actor, input.projectId, requestId);
       if (prior) return prior;
+    }
+    // A change planned before the project moved to another space may name media of the old space.
+    if (current.movedAtVersion !== null && input.baseVersion < current.movedAtVersion) {
+      throw new ServiceError("MOVED", 409, MOVE_MESSAGES.moved, { currentVersion: current.version });
     }
     // A strict write is refused unless its base is the current version, so it never lands on edits the caller
     // has not seen. Inverses do not need this: their guards refuse an undo that would overwrite a later change.

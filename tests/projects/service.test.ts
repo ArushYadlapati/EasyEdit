@@ -112,6 +112,7 @@ describe("projects service", () => {
       updatedBy: "u7",
       updatedAt: expect.any(Date),
       thumbnailVersion: null,
+      movedAtVersion: null,
     });
   });
 

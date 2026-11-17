@@ -1,46 +1,15 @@
 import { and, eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assets, projectMove, projects } from "@/db/schema";
-import { sharedFolderClient } from "@/lib/drive/client";
 import { abandonMove, completeCopy, completeCopyFile, openCopy, openCopyFile, startMove, type MoveDeps } from "@/lib/projects/move";
 import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
-import { storageFor } from "@/lib/spaces/storage";
-import { makeSetUpStorage } from "@/lib/storage/setup";
-import { testActor } from "../helpers/actor";
 import { piece } from "../helpers/fake-drive";
-import { storageWorld } from "../helpers/storage";
 import { insertAsset, mediaClip } from "../media/context";
+import { moveWorld } from "./move-world";
 
 afterEach(() => vi.restoreAllMocks());
 
-const ORIGIN = "https://app.test";
-
-async function world() {
-  const w = await storageWorld();
-  const storage = { config: () => w.cfg, sharedFolder: () => sharedFolderClient(w.fake.config, { fetch: w.fake.fetch, now: w.fake.now }), fetch: w.fake.fetch };
-  const deps: MoveDeps = { db: w.db, driveFor: (id) => storageFor(w.db, id, storage), origin: ORIGIN, storage };
-  const setUp = async (spaceId: string, userId = "u1") => {
-    const connection = await w.connect({ userId });
-    await makeSetUpStorage({ config: w.cfg, fetch: w.fake.fetch })(w.db, { spaceId, connectionId: connection.id, byUserId: userId });
-    return connection;
-  };
-  const connection = await setUp(w.personal);
-  const actor = testActor();
-  const track = (kind: string, clips: unknown[]) => ({ id: `t-${kind}`, kind, name: kind, muted: false, hidden: false, locked: false, clips });
-  const a = await insertAsset(w.db, { name: "Clip A", previewFileId: "prev-a", posterFileId: "poster-a", driveFileId: "orig-a" });
-  const b = await insertAsset(w.db, { name: "Photo B", kind: "image", driveFileId: "orig-b" });
-  const doc = {
-    schemaVersion: 1, format: "short_9x16", width: 1080, height: 1920, fps: 30,
-    tracks: [
-      track("video", [{ id: "c1", ...mediaClip(a) }, { id: "c2", ...mediaClip(a, { start: 100 }) }, { id: "c3", ...mediaClip(b, { type: "image" }) }]),
-      track("text", [{ id: "c4", type: "text", start: 0, duration: 30, text: "hi", style: {}, transform: {} }]),
-    ],
-  };
-  await w.db.insert(projects).values({ id: "p1", spaceId: actor.spaceId, name: "P", format: "short_9x16", doc: doc as never, createdBy: "u1", updatedBy: "u1" });
-  return { w, deps, actor, a, b, doc: doc as never, connection, storage, setUp };
-}
-
-
+const world = moveWorld;
 
 async function started() {
   const x = await world();

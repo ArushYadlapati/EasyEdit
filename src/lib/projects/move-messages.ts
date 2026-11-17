@@ -10,4 +10,5 @@ export const MOVE_MESSAGES = {
   gone: "This move was canceled or has already finished.",
   copiesMissing: "Some media was added while the project was copying.",
   moved: "This project was moved to another space. Open it there to keep editing.",
+  busy: "The project kept changing while it was being moved. Try again.",
 } as const;

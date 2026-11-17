@@ -190,6 +190,10 @@ export function noUndoData(version: number): string {
   return `Version ${version} has no undo data.`;
 }
 
+export function undoBeforeMove(version: number): string {
+  return `Version ${version} was made before this project moved to another space, so it can't be undone.`;
+}
+
 // runEdit's refusal for an undo, reworded: an op index into stored undo data means nothing to the caller.
 // Every other refusal (role, conflict, budget, not found) passes through unchanged.
 export function undoFailure(version: number, result: ToolResult): ToolResult {

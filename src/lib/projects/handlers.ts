@@ -205,7 +205,8 @@ export function makeProjectHandlers(deps: HandlerDeps) {
       if (actor instanceof Response) return actor;
       const version = await getProjectVersion(deps.db(), actor, id);
       if (version === null) return notFound(id);
-      return Response.json({ version });
+      // The space too, so an open editor learns the project has moved.
+      return Response.json({ version, spaceId: actor.spaceId });
     }),
 
     rename: apiRoute(async (req: Request, ctx: ProjectRouteContext): Promise<Response> => {
