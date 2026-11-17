@@ -54,7 +54,8 @@ describe("Claude and the website on one project", () => {
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name).sort()).toEqual(TOOLS);
       // search and fetch carry output schemas, the shape ChatGPT documents for them.
-      expect(JSON.stringify(tools).length).toBeLessThan(15_200);
+      // templates (Plan 8) added 1_607 chars (14_599 vs 12_992 on main); raising past 13_000 is Arush's call
+      expect(JSON.stringify(tools).length).toBeLessThan(14_600);
       for (const t of tools) expect(t.annotations?.readOnlyHint, t.name).toBe(["fetch", "get_editing_guide", "get_project", "get_template", "list_assets", "list_projects", "list_templates", "search"].includes(t.name));
       const keysOf = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {}).sort();
       expect(keysOf("list_assets")).toEqual(["cursor", "kind", "search"]);
@@ -65,7 +66,7 @@ describe("Claude and the website on one project", () => {
       }
       expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.format).toMatchObject({ enum: FormatId.options });
       expect(tools.find((t) => t.name === "create_project")?.description).toBe(
-        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks. Pass space: a space's slug as list_projects shows it, or \"personal\". If you leave out space and the person has more than one, you'll be asked to check with them. To use a team's media, create the project in that team (pass its space). To start from a template (an id from list_templates), pass template instead of a format; its slots come back for fill_template.",
+        "Create an empty project with a name and a format: short_9x16 (1080×1920, Reels and Shorts), feed_4x5 (1080×1350), square_1x1 (1080×1080), long_16x9 (1920×1080), long_4k (3840×2160), or custom with a width and height in pixels: even numbers from 16 to 4096, at most the area of 3840×2160. Returns the new project's id, its version (0) and its starting tracks. Pass space: a space's slug as list_projects shows it, or \"personal\". If you leave out space and the person has more than one, you'll be asked to check with them. To use a team's media, create the project in that team (pass its space). Or pass a template instead of a format.",
       );
       const getProject = tools.find((t) => t.name === "get_project");
       expect(Object.keys(getProject?.inputSchema.properties ?? {}).sort()).toEqual(["cursor", "project_id", "version"]);

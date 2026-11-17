@@ -111,7 +111,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           ? "Pass space: a space's slug as list_projects shows it, or \"personal\". "
           : "Pass space: a team's slug as list_projects shows it. Personal spaces are coming soon and take no new projects. ") +
         "If you leave out space and the person has more than one, you'll be asked to check with them. " +
-        "To use a team's media, create the project in that team (pass its space). To start from a template (an id from list_templates), pass template instead of a format; its slots come back for fill_template.",
+        "To use a team's media, create the project in that team (pass its space). Or pass a template instead of a format.",
       // The range tells Claude the limits; evenness and the area are answered by the service's sentence.
       inputSchema: z.object({
         name: z.string(),
@@ -131,7 +131,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "List templates",
       description:
-        "List project templates (built-in starters and each space's saved ones) with id, format and slots to fill. Pass space for one space; otherwise all the person's spaces. Start from one with create_project's template.",
+        "List project templates: the built-in starters and each space's saved ones.",
       inputSchema: z.object({ space: z.string().max(100).optional() }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -143,7 +143,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "Read a template",
       description:
-        "Read one template by id from list_templates: notes for you, each slot with its hint, and its timeline as text. space picks the brand fonts a starter uses.",
+        "Read one template by id: notes, slots and timeline.",
       inputSchema: z.object({ template: z.string().min(1).max(100), space: z.string().max(100).optional() }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -155,7 +155,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "Fill template slots",
       description:
-        "Fill slots of a project made from a template, as one change that can be undone. Each item names a slot and gives text (text slot) or asset_id from list_assets (video, image or audio slot), and optionally in_seconds to start into the footage. Needs expected_version, like edit_timeline.",
+        "Fill the slots of a project made from a template.",
       inputSchema: z.object({
         project_id: z.string().min(1),
         expected_version: z.number().int().min(0),
