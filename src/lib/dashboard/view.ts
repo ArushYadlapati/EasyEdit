@@ -95,7 +95,6 @@ export function pictureFits(picture: { width: number; height: number }, project:
   return off <= Math.max(project.width, project.height) || off <= 0.05 * picture.height * project.width;
 }
 
-// Your most recently opened projects, in the order you opened them, that match the search.
 // The space's pinned projects in the pins' order (oldest first), whatever the view or the search; an id with no project
 // here (deleted meanwhile) is left out.
 export function pinnedProjects<T extends { id: string }>(projects: readonly T[], pinnedIds: readonly string[]): T[] {
@@ -103,6 +102,7 @@ export function pinnedProjects<T extends { id: string }>(projects: readonly T[],
   return pinnedIds.flatMap((id) => byProjectId.get(id) ?? []);
 }
 
+// Your most recently opened projects, in the order you opened them, that match the search.
 export function recentProjects<T extends { id: string; name: string }>(projects: readonly T[], recentIds: readonly string[], search: string): T[] {
   const byProjectId = new Map(projects.map((p) => [p.id, p]));
   return recentIds

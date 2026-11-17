@@ -85,7 +85,12 @@ export function SidebarSection({ id, label, action, className, children }: {
           aria-expanded={!collapsed}
           aria-controls={itemsId}
           onClick={toggle}
-          className={cx("hidden size-4 items-center justify-center rounded text-ed-muted hover:text-ed-text md:mr-auto md:flex", FOCUS_RING, FADE)}
+          className={cx(
+            // 24px to hit, its negative margins keeping the 16px it takes in the row (and the chevron where it was).
+            "-my-1 -ml-1 hidden size-6 items-center justify-center rounded text-ed-muted hover:text-ed-text md:mr-auto md:flex",
+            FOCUS_RING,
+            FADE,
+          )}
         >
           <ChevronDown aria-hidden className={cx("size-3 transition-transform motion-reduce:transition-none", collapsed && "-rotate-90")} />
         </button>

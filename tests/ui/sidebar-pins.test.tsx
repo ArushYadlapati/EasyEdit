@@ -25,6 +25,15 @@ describe("the sidebar's Pinned section", () => {
     ]);
   });
 
+  it("marks each pin with a pin icon on a narrow window, where the heading is for screen readers only", () => {
+    renderDashboard({ pinnedIds: ["c", "a"] });
+    for (const link of pinnedLinks()) {
+      const icon = within(link).getByRole("img", { name: "Pinned" });
+      expect((icon.getAttribute("class") ?? "").split(" ")).toContain("md:hidden");
+    }
+    expect(pinnedLinks().map((link) => link.textContent)).toEqual(["Finals", "Qual recap"]);
+  });
+
   it("isn't drawn with nothing pinned", () => {
     renderDashboard({ pinnedIds: [] });
     expect(headings()).toEqual(["Projects", "Folders"]);
