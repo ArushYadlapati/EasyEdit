@@ -1,5 +1,5 @@
 import { driveFileSize, driveSource, type ReadTokens } from "@/lib/media/read-tokens";
-import { sendFile, type UploadTransport } from "@/lib/media/uploader";
+import { SourceReadError, sendFile, type PieceSource, type UploadTransport } from "@/lib/media/uploader";
 import type { CopyState, FinishedMove, MoveItem, MovePlan } from "./move";
 import type { MoveApi, MoveResult } from "./move-api";
 import { MOVE_MESSAGES } from "./move-messages";
@@ -53,6 +53,26 @@ function valueOf<T>(result: MoveResult<T>): T {
   return result.value;
 }
 
+// A source that remembers when Drive said it will never give a piece: the file is gone, or not ours to read. A
+// refusal of the destination's session is the transport's, and is not counted here.
+function watched(source: PieceSource): { source: PieceSource; unreadable(): boolean } {
+  let unreadable = false;
+  return {
+    source: {
+      size: source.size,
+      async piece(start, end, signal) {
+        try {
+          return await source.piece(start, end, signal);
+        } catch (error) {
+          if (error instanceof SourceReadError && error.kind !== "offline") unreadable = true;
+          throw error;
+        }
+      },
+    },
+    unreadable: () => unreadable,
+  };
+}
+
 const filesOf = (item: MoveItem) => 1 + (item.previewFileId ? 1 : 0) + (item.posterFileId ? 1 : 0);
 const copiedFilesOf = ({ copy, previewFileId, posterFileId }: MoveItem) =>
   copy === null ? 0 : (copy.status === "ready" ? 1 : 0) + (previewFileId && copy.hasPreview ? 1 : 0) + (posterFileId && copy.hasPoster ? 1 : 0);
@@ -84,7 +104,7 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
 
   // The original's bytes into its copy, resumed where the copy stopped. The copy's state once the server has it.
   async function copyOriginal(id: string, item: MoveItem, bytesBefore: number): Promise<CopyState> {
-    const source = driveSource(item.originalFileId, item.sizeBytes, read);
+    const { source, unreadable } = watched(driveSource(item.originalFileId, item.sizeBytes, read));
     for (let tries = 1; ; tries += 1) {
       const opened = valueOf(await api.openCopy(id, item.sourceAssetId));
       checkSignal();
@@ -126,6 +146,8 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
         checkSignal();
         if (refused) throw new Stopped(sentenceOf(refused));
         if (!sent.ok) {
+          // Drive will not give the original: no try will copy it, so the person is told which one it is.
+          if (unreadable()) throw new Stopped(MOVE_MESSAGES.cantReadSource(item.name));
           if ((renewed || sent.reason === "expired") && tries < SESSION_TRIES) continue;
           throw new Stopped(COPY_STOPPED);
         }
@@ -136,13 +158,15 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
     }
   }
 
-  // A preview or poster into the copy, from its first byte: the server keeps no offset for these.
-  async function copyFile(id: string, copyAssetId: string, role: "preview" | "poster", fileId: string): Promise<CopyState> {
+  // A preview or poster into the copy, from its first byte: the server keeps no offset for these. Null when Drive
+  // will not give the source's file: it is skipped, and the move goes on without it (finishing marks a video copy
+  // with no preview as failed).
+  async function copyFile(id: string, copyAssetId: string, role: "preview" | "poster", fileId: string): Promise<CopyState | null> {
     let sentence = COPY_STOPPED;
     for (let attempt = 0; attempt < FILE_TRIES; attempt++) {
       const size = await driveFileSize(fileId, { ...read, signal });
       checkSignal();
-      if (size === "missing" || size === "refused") throw new Stopped(COPY_STOPPED);
+      if (size === "missing" || size === "refused") return null;
       if (size === "offline") continue;
       const opened = await api.openCopyFile(id, copyAssetId, role, size);
       checkSignal();
@@ -150,7 +174,8 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
         sentence = sentenceOf(opened);
         continue;
       }
-      const sent = await sendFile(driveSource(fileId, size, read), { uploadUrl: opened.value.uploadUrl, offset: 0 }, {
+      const { source, unreadable } = watched(driveSource(fileId, size, read));
+      const sent = await sendFile(source, { uploadUrl: opened.value.uploadUrl, offset: 0 }, {
         transport,
         sleep,
         chunkBytes,
@@ -160,6 +185,7 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
       });
       checkSignal();
       if (!sent.ok) {
+        if (unreadable()) return null;
         if (sent.reason === "refused") throw new Stopped(COPY_STOPPED);
         sentence = COPY_STOPPED;
         continue;
@@ -193,12 +219,13 @@ export async function runMove(input: MoveRunInput, deps: MoveRunDeps): Promise<M
         report({ filesDone: (filesDone += 1), bytesDone });
       }
       const copyAssetId = state.assetId;
+      // A skipped file counts as done: there is nothing more to do for it.
       if (item.previewFileId && !state.hasPreview) {
-        state = await copyFile(plan.moveId, copyAssetId, "preview", item.previewFileId);
+        state = (await copyFile(plan.moveId, copyAssetId, "preview", item.previewFileId)) ?? state;
         report({ filesDone: (filesDone += 1) });
       }
       if (item.posterFileId && !state.hasPoster) {
-        state = await copyFile(plan.moveId, copyAssetId, "poster", item.posterFileId);
+        state = (await copyFile(plan.moveId, copyAssetId, "poster", item.posterFileId)) ?? state;
         report({ filesDone: (filesDone += 1) });
       }
     }

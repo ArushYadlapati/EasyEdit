@@ -4,12 +4,13 @@ import { assets, folders, projectMove, projectOps, projectPins, projects } from 
 import type { Actor } from "@/lib/actor";
 import { DriveError } from "@/lib/drive/token";
 import { listAssets } from "@/lib/media/service";
-import { finishMove, startMove, type MoveDeps } from "@/lib/projects/move";
+import { completeCopyFile, finishMove, openCopyFile, startMove, type MoveDeps } from "@/lib/projects/move";
 import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
 import { applyProjectOps, getProject } from "@/lib/projects/service";
 import type { ServiceError } from "@/lib/service-error";
 import type { OpInput, TimelineDoc } from "@/lib/timeline";
 import { joinSpace, testActor } from "../helpers/actor";
+import { piece } from "../helpers/fake-drive";
 import { insertAsset, mediaClip } from "../media/context";
 import { copyAll, copyFully, moveWorld, type MoveWorld } from "./move-world";
 
@@ -175,6 +176,45 @@ describe("finishMove", () => {
     expect(used.moveId).toBeNull();
     expect(unused.moveId).toBe(x.moveId);
     expect((await listAssets(x.w.db, x.personal)).map((a) => a.id)).toEqual([copies.get(x.a)]);
+  });
+});
+
+describe("finishing with a preview that was never copied", () => {
+  it("marks an adopted video copy with no preview as failed, so none waits for ever", async () => {
+    const x = await started();
+    await x.w.db.update(assets).set({ previewStatus: "ready" }).where(eq(assets.id, x.a));
+    const copies = await copyAll(x, "u1", x.moveId); // originals only: the preview of A could not be read
+    const before = await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.a)!));
+    expect(before[0]).toMatchObject({ previewStatus: "pending", previewFileId: null });
+    await finishMove(x.deps, "u1", x.moveId);
+    const [video] = await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.a)!));
+    const [image] = await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.b)!));
+    expect(video).toMatchObject({ moveId: null, previewStatus: "failed", previewFileId: null });
+    expect(image).toMatchObject({ moveId: null, previewStatus: "none" });
+  });
+
+  it("leaves a copy whose preview came across ready", async () => {
+    const x = await started();
+    await x.w.db.update(assets).set({ previewStatus: "ready" }).where(eq(assets.id, x.a));
+    const copies = await copyAll(x, "u1", x.moveId);
+    const copy = copies.get(x.a)!;
+    const { uploadUrl } = await openCopyFile(x.deps, "u1", x.moveId, copy, { role: "preview", sizeBytes: 1000 });
+    await piece(x.w.fake, uploadUrl, 0, 1000, 1000);
+    await completeCopyFile(x.deps, "u1", x.moveId, copy, "preview");
+    await finishMove(x.deps, "u1", x.moveId);
+    const [video] = await x.w.db.select().from(assets).where(eq(assets.id, copy));
+    expect(video.previewStatus).toBe("ready");
+    expect(video.previewFileId).not.toBeNull();
+  });
+
+  it("leaves the copies it does not adopt as they are", async () => {
+    const x = await started();
+    await x.w.db.update(assets).set({ previewStatus: "ready" }).where(eq(assets.id, x.a));
+    const copies = await copyAll(x, "u1", x.moveId);
+    await applyProjectOps(x.w.db, x.actor, { projectId: "p1", baseVersion: 1, ops: [{ op: "remove_clip", clipId: "c1" } as OpInput, { op: "remove_clip", clipId: "c2" } as OpInput] });
+    await finishMove(x.deps, "u1", x.moveId);
+    const [unused] = await x.w.db.select().from(assets).where(eq(assets.id, copies.get(x.a)!));
+    expect(unused).toMatchObject({ moveId: x.moveId, previewStatus: "pending" });
   });
 });
 

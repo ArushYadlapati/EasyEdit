@@ -33,7 +33,9 @@ function world(options: { sources?: Source[] } = {}) {
   const sessions = new Map<string, { size: number; held: number[]; dead: boolean }>();
   const fileSessions = new Map<string, string>(); // "<copy id> <role>" → its session
   const reads: string[] = [];
-  const refusedReads = new Set<string>();
+  const refusedReads = new Set<string>(); // Drive answers 403
+  const missingReads = new Set<string>(); // Drive answers 404
+  const refusedPieces = new Set<string>(); // Drive answers 403 to a read of more than the first byte
   let sessionCount = 0;
   // What the next call of a kind answers instead, one entry per call.
   const scripted: Partial<Record<keyof MoveApi, MoveResult<unknown>[]>> = {};
@@ -138,6 +140,8 @@ function world(options: { sources?: Source[] } = {}) {
     const range = new Headers(init?.headers).get("range");
     reads.push(`${fileId} ${range}`);
     if (refusedReads.has(fileId)) return new Response(null, { status: 403 });
+    if (missingReads.has(fileId)) return new Response(null, { status: 404 });
+    if (refusedPieces.has(fileId) && range !== "bytes=0-0") return new Response(null, { status: 403 });
     const file = FILES.get(fileId)!;
     const match = /^bytes=(\d+)-(\d+)$/.exec(range ?? "");
     if (!match) return new Response(file, { status: 200 });
@@ -169,7 +173,7 @@ function world(options: { sources?: Source[] } = {}) {
       { api, tokens, transport, sleep: async (ms) => void sleeps.push(ms), chunkBytes: 4, fetch: fetchFn },
     );
   return {
-    api, log, copies, sessions, reads, refusedReads, scripted, pieceHooks, progress, sleeps, abort, plans, run,
+    api, log, copies, sessions, reads, refusedReads, missingReads, refusedPieces, scripted, pieceHooks, progress, sleeps, abort, plans, run,
     setSources: (next: Source[]) => void (sources = next),
     seedCopy: (source: Source, state: Partial<Copy> & { held?: number }) => {
       const url = openSession(size(source.original));
@@ -331,15 +335,62 @@ describe("moving a project from the browser", () => {
     expect(w.log).toEqual(["start p1 s2", "openCopy a"]);
   });
 
-  it("a source Drive will not read stops the move without abandoning it", async () => {
+  it("an original Drive will not give stops the move, names it, and keeps what was copied", async () => {
+    for (const unreadable of ["refusedReads", "missingReads"] as const) {
+      const w = world({ sources: [B, A] });
+      w[unreadable].add("orig-a");
+      expect(await w.run()).toEqual({ ok: false, message: MOVE_MESSAGES.cantReadSource("A") });
+      expect(w.log).toEqual(["start p1 s2", "openCopy b", "completeCopy copy-b", "openCopy a"]);
+      expect(w.log).not.toContain("abandon m1");
+    }
+    expect(MOVE_MESSAGES.cantReadSource("A")).toBe('"A" can\'t be read from Google Drive, so it can\'t be copied. Remove it from the project or upload it again, then try the move again.');
+  });
+
+  it("a preview that is gone from Drive is skipped, and the move finishes", async () => {
     const w = world();
-    w.refusedReads.add("orig-a");
+    w.missingReads.add("prev-a");
+    expect(await w.run()).toEqual({ ok: true, moved: MOVED });
+    expect(w.log).toEqual([
+      "start p1 s2",
+      "openCopy a",
+      "completeCopy copy-a",
+      "openCopyFile copy-a poster 3",
+      "completeCopyFile copy-a poster",
+      "openCopy b",
+      "completeCopy copy-b",
+      "finish m1",
+    ]);
+    expect(w.progress.at(-1)).toEqual({ filesDone: 4, filesTotal: 4, bytesDone: 17, bytesTotal: 17 });
+  });
+
+  it("a poster Drive refuses is skipped, and the move finishes", async () => {
+    const w = world();
+    w.refusedReads.add("post-a");
+    expect(await w.run()).toEqual({ ok: true, moved: MOVED });
+    expect(w.log).not.toContain("openCopyFile copy-a poster 3");
+    expect(w.log.at(-1)).toBe("finish m1");
+  });
+
+  it("a preview whose pieces Drive refuses after its size is skipped too", async () => {
+    const w = world();
+    w.refusedPieces.add("prev-a");
+    expect(await w.run()).toEqual({ ok: true, moved: MOVED });
+    expect(w.log).toContain("openCopyFile copy-a preview 6");
+    expect(w.log).not.toContain("completeCopyFile copy-a preview");
+    expect(w.log.at(-1)).toBe("finish m1");
+  });
+
+  it("a preview piece the destination refuses still stops the move", async () => {
+    const w = world();
+    const openFile = w.api.openCopyFile;
+    w.api.openCopyFile = async (...args) => {
+      w.pieceHooks.push(() => {
+        throw new PieceError("refused");
+      });
+      return openFile(...args);
+    };
     expect(await w.run()).toEqual({ ok: false, message: COPY_STOPPED });
-    expect(w.log).toEqual(["start p1 s2", "openCopy a"]);
-    const preview = world();
-    preview.refusedReads.add("prev-a");
-    expect(await preview.run()).toEqual({ ok: false, message: COPY_STOPPED });
-    expect(preview.log).toEqual(["start p1 s2", "openCopy a", "completeCopy copy-a"]);
+    expect(w.log).toEqual(["start p1 s2", "openCopy a", "completeCopy copy-a", "openCopyFile copy-a preview 6"]);
   });
 
   it("a refusal from the server stops the move with the server's own sentence", async () => {

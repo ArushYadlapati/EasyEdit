@@ -476,7 +476,8 @@ export async function finishMove(deps: MoveDeps, userId: string, moveId: string)
     // One statement. The project moves only if it is unchanged since it was read and still in the space it leaves, the
     // move is still open (its row is locked, so an abandon waits and then finds it finished), and every copy the doc
     // now names is still there. Then: no change from before can be undone, the old space's pin goes, the copies the
-    // doc uses join the destination's library (any others stay hidden for the clean-up), and the move is finished.
+    // doc uses join the destination's library (any others stay hidden for the clean-up), a video copy among them whose
+    // preview never came across is marked failed, so none waits for one for ever, and the move is finished.
     // The wipe runs on the rows as they were before this statement, so it never touches the move's own log row.
     const result = await db.execute(sql`
       with upd as (
@@ -491,7 +492,12 @@ export async function finishMove(deps: MoveDeps, userId: string, moveId: string)
       ),
       wipe as (update project_ops set inverse = null where project_id = ${move.projectId}::text and inverse is not null and exists (select 1 from upd)),
       unpin as (delete from project_pins where project_id = ${move.projectId}::text and exists (select 1 from upd)),
-      adopt as (update assets set move_id = null where move_id = ${move.id}::text and ${usedCopy} and exists (select 1 from upd)),
+      adopt as (
+        update assets
+        set move_id = null,
+            preview_status = case when kind = 'video' and preview_file_id is null then 'failed' else preview_status end
+        where move_id = ${move.id}::text and ${usedCopy} and exists (select 1 from upd)
+      ),
       done as (update project_move set finished_at = now() where id = ${move.id}::text and exists (select 1 from upd))
       insert into project_ops (project_id, version, ops, inverse, actor)
       select ${move.projectId}::text, version, ${JSON.stringify(ops)}::jsonb, null, ${userId}::text from upd
