@@ -7,6 +7,7 @@ import { drawFrame } from "@/lib/render/compositor";
 import { graphemes } from "@/lib/text";
 import { createEmptyDoc, type Clip, type TimelineDoc } from "@/lib/timeline";
 import { text } from "../editor/fixtures";
+import { docWithCaptions } from "../helpers/docs";
 import { fakeCtx } from "../render/fake-ctx";
 
 const SHEET = "https://app.test/_next/static/chunks/1jrsbwixkl84l.css";
@@ -185,5 +186,38 @@ describe("the worker's side", () => {
     const narrow = [{ font: "700 100px a", text: "t", width: 100 }];
     expect(mismatchedProbe(narrow, () => 99.6)).toBeNull();
     expect(mismatchedProbe(narrow, () => 100.6)).toBe(narrow[0]);
+  });
+});
+
+describe("caption fonts", () => {
+  const captioned = (style: Record<string, unknown> = {}) => {
+    const d = docWithCaptions("short_9x16");
+    d.tracks[0].clips = [{ id: "c", type: "video", assetId: "a", start: 0, duration: 90, in: 0, speed: 1, volume: 1, transform: { ...text("x", 0, 1).transform }, captions: true } as Clip];
+    d.captions = {
+      transcripts: { a: [{ t: "żółw", s: 0, e: 400 }, { t: "go", s: 500, e: 900 }] },
+      style: { preset: "block", fontFamily: "Geist Mono", fontWeight: 600, fontSize: 60, color: "#ffffff", highlight: "#ffd400", y: 0.8, uppercase: false, ...style },
+    };
+    return d;
+  };
+
+  it("asks for the caption font with the words' characters", () => {
+    const requests = probeRequests(captioned(), pageFont);
+    expect(requests).toEqual([{ font: '600 100px "Geist Mono", sans-serif', text: `${PROBE_BASE}żółw` }]);
+  });
+
+  it("upper-cases the characters when the style does", () => {
+    expect(probeRequests(captioned({ uppercase: true }), pageFont)[0].text).toBe(`${PROBE_BASE}ŻÓŁWGO`);
+  });
+
+  it("adds nothing when captions are hidden or there are no words, and puts the family in the bundle otherwise", () => {
+    const hidden = captioned();
+    hidden.tracks.find((t) => t.kind === "caption")!.hidden = true;
+    expect(probeRequests(hidden, pageFont)).toEqual([]);
+    const empty = captioned();
+    empty.captions!.transcripts = { a: [] };
+    expect(probeRequests(empty, pageFont)).toEqual([]);
+    const bundle = buildFontBundle(captioned(), pageFont, RULES, measure);
+    expect(Object.keys(bundle.families)).toEqual(["Geist Mono"]);
+    expect(bundle.faces.map((f) => f.family)).toEqual(["Geist Mono"]);
   });
 });

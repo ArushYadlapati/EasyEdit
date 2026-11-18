@@ -1,4 +1,6 @@
+import { captionsShow } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
+import { drawCaptions } from "./captions";
 import { drawShape } from "./shapes";
 import type { Clip, Crop, MediaClip, TextClip, TimelineDoc, Track, Transform } from "@/lib/timeline";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
@@ -284,7 +286,14 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
   const resolveFont = options.resolveFont ?? defaultResolveFont;
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, doc.width, doc.height);
+  // Captions sit at their track's place in the stack: after the clips on tracks before it, before those after it.
+  const captionAt = captionsShow(doc) ? doc.tracks.findIndex((t) => t.kind === "caption") : -1;
+  let captionsDrawn = captionAt < 0;
   for (const { track, clip, tail } of drawnClips(doc, frame)) {
+    if (!captionsDrawn && doc.tracks.indexOf(track) > captionAt) {
+      drawCaptions(ctx, doc, frame, resolveFont);
+      captionsDrawn = true;
+    }
     if (clip.id === options.hideClipId) continue;
     if (tail) {
       // Under a crossfade the outgoing clip plays on as it is: its own out-transition belongs to the cut, not the blend.
@@ -307,4 +316,5 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
       ctx.restore();
     }
   }
+  if (!captionsDrawn) drawCaptions(ctx, doc, frame, resolveFont);
 }

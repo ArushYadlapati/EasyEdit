@@ -1,6 +1,7 @@
 import { defaultResolveFont } from "@/lib/render/compositor";
+import { captionsShow, docCues } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
-import type { TextClip, TimelineDoc } from "@/lib/timeline";
+import { captionStyleOf, type TextClip, type TimelineDoc } from "@/lib/timeline";
 import { mayShow } from "@/lib/timeline/keyframes";
 
 // The fonts an export needs: the page's @font-face rules turned into faces the worker can build, the font string
@@ -115,6 +116,14 @@ function drawnTextClips(doc: TimelineDoc): TextClip[] {
   return clips;
 }
 
+// The caption look and the words it will draw, when captions are shown and there is something to say; else null.
+function drawnCaptions(doc: TimelineDoc): { style: ReturnType<typeof captionStyleOf>; words: string[] } | null {
+  if (!captionsShow(doc)) return null;
+  const cues = docCues(doc);
+  if (cues.length === 0) return null;
+  return { style: captionStyleOf(doc), words: cues.flatMap((cue) => cue.words.map((w) => w.text)) };
+}
+
 const isLineBreak = (character: string) => /^[\r\n]+$/.test(character);
 
 // The one rule for which fonts and characters a project needs: one request per family and weight its drawn text
@@ -131,6 +140,18 @@ export function probeRequests(doc: TimelineDoc, resolveFont: (family: string) =>
       if (!base.has(character) && !isLineBreak(character)) extra.add(character);
     }
   }
+  const captions = drawnCaptions(doc);
+  if (captions) {
+    const font = `${captions.style.fontWeight} ${PROBE_PX}px ${resolveFont(captions.style.fontFamily)}`;
+    let extra = byFont.get(font);
+    if (!extra) byFont.set(font, (extra = new Set()));
+    for (const word of captions.words) {
+      for (const character of graphemes(captions.style.uppercase ? word.toUpperCase() : word)) {
+        if (extra.size >= MAX_EXTRA_CHARACTERS) break;
+        if (!base.has(character) && !isLineBreak(character)) extra.add(character);
+      }
+    }
+  }
   return Array.from(byFont, ([font, extra]) => ({ font, text: PROBE_BASE + Array.from(extra).join("") }));
 }
 
@@ -145,6 +166,8 @@ export function buildFontBundle(
     const family = clip.style.fontFamily;
     if (!Object.hasOwn(families, family)) families[family] = resolveFont(family);
   }
+  const captions = drawnCaptions(doc);
+  if (captions && !Object.hasOwn(families, captions.style.fontFamily)) families[captions.style.fontFamily] = resolveFont(captions.style.fontFamily);
   const names = [...new Set(Object.values(families).flatMap(familyNames))];
   const probes = probeRequests(doc, resolveFont).map((request) => ({ ...request, width: measure(request.font, request.text) }));
   return { families, faces: fontFaceSpecs(rules, names), probes };
