@@ -108,4 +108,11 @@ describe("saved transcripts", () => {
     expect([...(await loadTranscripts(ctx.db, team.spaceId, [mine.id, theirs])).keys()]).toEqual([theirs]);
     expect((await loadTranscripts(ctx.db, ctx.ada.spaceId, [])).size).toBe(0);
   });
+
+  it("loadTranscripts takes saved words that are an empty list as none saved", async () => {
+    const ctx = await mediaContext();
+    const quiet = await readyAsset(ctx);
+    await saveTranscript(ctx.db, ctx.ada, quiet.id, { words: [], model: "m" });
+    expect((await loadTranscripts(ctx.db, ctx.ada.spaceId, [quiet.id])).size).toBe(0);
+  });
 });

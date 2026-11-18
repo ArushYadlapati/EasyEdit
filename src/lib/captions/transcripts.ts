@@ -37,8 +37,8 @@ export async function saveTranscript(db: DB, actor: Actor, assetId: string, inpu
     .onConflictDoUpdate({ target: assetTranscripts.assetId, set: { words: words.data, model, updatedAt: now } });
 }
 
-// The saved words of each of these files that has some, for files of this space only. No role check: callers have
-// checked the actor already.
+// The saved words of each of these files that has some, for files of this space only. Saved words that are an empty
+// list count as none. No role check: callers have checked the actor already.
 export async function loadTranscripts(db: DB, spaceId: string, assetIds: string[]): Promise<Map<string, CaptionWord[]>> {
   const ids = [...new Set(assetIds)];
   if (ids.length === 0) return new Map();
@@ -46,5 +46,5 @@ export async function loadTranscripts(db: DB, spaceId: string, assetIds: string[
     .select({ assetId: assetTranscripts.assetId, words: assetTranscripts.words })
     .from(assetTranscripts)
     .where(and(eq(assetTranscripts.spaceId, spaceId), inArray(assetTranscripts.assetId, ids)));
-  return new Map(rows.map((row) => [row.assetId, row.words]));
+  return new Map(rows.filter((row) => row.words.length > 0).map((row) => [row.assetId, row.words]));
 }
