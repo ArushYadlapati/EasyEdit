@@ -7,13 +7,22 @@ import { env, pipeline, type AutomaticSpeechRecognitionOutput, type ProgressInfo
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from "mediabunny";
 import { SAMPLE_RATE, createSpeechSound, silenceCutWindows } from "@/lib/captions/speech/audio";
 import { correctWords, dropNonSpeech, type RawWord } from "@/lib/captions/speech/correct";
-import { SPEECH_MODEL, SPEECH_MODEL_REVISION, type FromTranscriber, type ToTranscriber, type TranscribeFailure } from "@/lib/captions/speech/protocol";
+import {
+  SPEECH_MODEL,
+  SPEECH_MODEL_REVISION,
+  pinnedModelUrl,
+  type FromTranscriber,
+  type ToTranscriber,
+  type TranscribeFailure,
+} from "@/lib/captions/speech/protocol";
 import { LIMITS } from "@/lib/limits";
 
 env.allowLocalModels = false;
 if (env.backends.onnx.wasm) env.backends.onnx.wasm.wasmPaths = "/ort/";
 const modelHost = process.env.NEXT_PUBLIC_SPEECH_MODEL_HOST;
 if (modelHost) env.remoteHost = modelHost;
+// Every request the library makes for the model goes to the pinned revision, also the ones it makes at "main".
+env.fetch = (input: string | URL, init?: RequestInit) => fetch(pinnedModelUrl(input), init);
 
 const post = (message: FromTranscriber) => self.postMessage(message);
 

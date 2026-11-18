@@ -8,6 +8,14 @@ export const SPEECH_MODEL = "onnx-community/whisper-base_timestamped";
 // The model repository's commit the worker loads, so its words do not change when the repository does.
 export const SPEECH_MODEL_REVISION = "608c49e61301901684bc36cac8f74b95ff6b5a8e";
 
+// The speech library asks for each model file's size, and reads a few small settings files, at the repository's moving
+// "main" address, whatever revision the pipeline was given. The worker sends those requests to the pinned revision too,
+// so every request is for one version of the model. Seen once on a production build: the "main" address of one model
+// file answered 502 after 22 s on every run, while the pinned address answered at once.
+export function pinnedModelUrl(url: string | URL): string {
+  return String(url).replace(`/${SPEECH_MODEL}/resolve/main/`, `/${SPEECH_MODEL}/resolve/${SPEECH_MODEL_REVISION}/`);
+}
+
 export type TranscribeFailure = "no-sound" | "undecodable" | "too-long" | "model" | "unknown";
 export type TranscribeStage = "model" | "sound" | "speech";
 
