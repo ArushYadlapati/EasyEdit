@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import type { DB } from "@/db";
-import { driveConnection, member, projects, spaceStorage, user } from "@/db/schema";
+import { driveConnection, member, projects, socialConnection, spaceStorage, user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import type { Actor } from "@/lib/actor";
 import { acceptInvite, findInvite, inviteToTeam } from "@/lib/spaces/invites";
@@ -41,6 +41,13 @@ describe("deleting a team", () => {
     await deleteTeam(db, await as("u1"), { confirmName: `  ${NAME} ` });
     for (const id of ["u1", "u2"]) expect((await listMySpaces(db, id)).some((s) => s.id === team)).toBe(false);
     expect(await db.select().from(member).where(eq(member.organizationId, team))).toEqual([]);
+  });
+
+  it("deleting a team disconnects its YouTube channel", async () => {
+    const { db, team, as } = await setup();
+    await db.insert(socialConnection).values({ id: "sc_1", spaceId: team, platform: "youtube", connectedBy: "u1", googleSub: "g1", email: "c@gmail.com", refreshTokenEnc: "sealed", scopes: "" });
+    await deleteTeam(db, await as("u1"), { confirmName: NAME });
+    expect(await db.select().from(socialConnection)).toEqual([]);
   });
 
   it("deleting a team cancels its invites", async () => {

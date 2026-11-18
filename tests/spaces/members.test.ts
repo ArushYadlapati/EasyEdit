@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { rowsOf, type DB } from "@/db";
-import { driveConnection, spaceStorage, user } from "@/db/schema";
+import { driveConnection, socialConnection, spaceStorage, user } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
 import { LIMITS } from "@/lib/limits";
@@ -69,6 +69,33 @@ async function storageOwnedBy(db: DB, spaceId: string, userId: string) {
   await db.insert(driveConnection).values({ id: `dc_${userId}`, userId, googleSub: `sub_${userId}`, email: `${userId}@gmail.com`, refreshTokenEnc: "x", scopes: "drive.file" });
   await db.insert(spaceStorage).values({ spaceId, kind: "google_account", connectionId: `dc_${userId}`, rootFolderId: "folder_x", folderName: "EasyEdit", createdBy: userId });
 }
+
+describe("a team's YouTube channel and the person who connected it", () => {
+  const channel = (team: string, connectedBy: string) => ({ id: `sc_${connectedBy}`, spaceId: team, platform: "youtube" as const, connectedBy, googleSub: `g-${connectedBy}`, email: "c@gmail.com", refreshTokenEnc: "sealed", scopes: "" });
+
+  it("goes when that person leaves or is removed, and stays when anyone else does", async () => {
+    const { db, team } = await setup();
+    await joinSpace(db, { id: "u2" }, "admin", team);
+    await joinSpace(db, { id: "u3" }, "editor", team);
+    await db.insert(socialConnection).values(channel(team, "u2"));
+    await removeMember(db, await as(db, "u1", team), "u3");
+    expect(await db.select().from(socialConnection)).toHaveLength(1);
+    await leaveTeam(db, await as(db, "u2", team));
+    expect(await db.select().from(socialConnection)).toEqual([]);
+
+    await joinSpace(db, { id: "u4" }, "admin", team);
+    await db.insert(socialConnection).values(channel(team, "u4"));
+    await removeMember(db, await as(db, "u1", team), "u4");
+    expect(await db.select().from(socialConnection)).toEqual([]);
+  });
+
+  it("stays when a removal is refused", async () => {
+    const { db, team } = await setup();
+    await db.insert(socialConnection).values(channel(team, "u1"));
+    await expect(leaveTeam(db, await as(db, "u1", team))).rejects.toMatchObject(LAST_ADMIN);
+    expect(await db.select().from(socialConnection)).toHaveLength(1);
+  });
+});
 
 describe("team limits", () => {
   it("states the limit as 100 by default", () => {
