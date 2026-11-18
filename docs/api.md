@@ -73,3 +73,12 @@ A project can be moved to another space you are an editor or admin of. The brows
 | `POST /api/moves/:moveId/finish` | none | `200` with `{ projectId, spaceId, slug, version }`. Answers `409` `COPIES_MISSING` with `missing` while a used original has no finished copy, and `409` `CONFLICT` when the project kept changing while it was being moved (try again). |
 
 Other answers: `404` for a project or move that is not yours to see, `409` `NO_STORAGE` when the new space has no working storage, `409` `CONFLICT` when the mover has an unfinished upload of the same file in the new space (let it finish or cancel it, then try again), `409` `STORAGE_BROKEN` and `502` when Drive fails, as the media routes answer.
+
+## Saved words of a media file
+
+Speech recognition runs in the browser; its words are kept per media file so the next project need not transcribe the file again. The file's own space decides who may call: a file outside your library answers `404`. These routes need a signed-in browser session.
+
+| Route | Who may call it | What it does |
+| --- | --- | --- |
+| `GET /api/media/:id/transcript` | any member | `{ "transcript": { "words", "model" } }`, or `{ "transcript": null }` when none were saved. A word is `{ t, s, e }`: the text and its start and end in milliseconds. |
+| `PUT /api/media/:id/transcript` | editor and up | Send `{ "words", "model" }` to save or replace the file's words. Answers `{ "ok": true }`. `400` `INVALID` when the file is not a finished video or audio file, the words are not in time order, there are more than 10,000, a word is over 80 characters, or the model name is not 1 to 100 characters. |

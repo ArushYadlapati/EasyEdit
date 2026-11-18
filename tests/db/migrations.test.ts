@@ -23,7 +23,7 @@ describe("migrations", () => {
     );
     expect(rowsOf<{ table_name: string }>(r).map((x) => x.table_name)).toEqual(
       expect.arrayContaining([
-        "account", "allowlist", "assets", "brand_kit", "folders", "invitation", "member", "organization", "project_ops", "project_opens",
+        "account", "allowlist", "asset_transcripts", "assets", "brand_kit", "folders", "invitation", "member", "organization", "project_ops", "project_opens",
         "project_pins", "project_presence", "projects", "session", "space_visits", "tutorial_views", "user", "verification",
       ]),
     );

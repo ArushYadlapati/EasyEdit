@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import type { AgentKind } from "@/lib/connector/agents";
-import type { FormatId, Op, TimelineDoc } from "@/lib/timeline";
+import type { CaptionWord, FormatId, Op, TimelineDoc } from "@/lib/timeline";
 import { organization, user } from "./auth-schema";
 
 export * from "./auth-schema";
@@ -373,4 +373,24 @@ export const templates = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("templates_space_name_idx").on(t.spaceId, sql`lower(${t.name})`)],
+);
+
+// The words speech recognition found in one media file, kept so a file is transcribed once and every project in the
+// space can caption from it. One row per file; it goes when the file does.
+export const assetTranscripts = pgTable(
+  "asset_transcripts",
+  {
+    assetId: text("asset_id")
+      .primaryKey()
+      .references(() => assets.id, { onDelete: "cascade" }),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    words: jsonb("words").$type<CaptionWord[]>().notNull(),
+    model: text("model").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("asset_transcripts_space_id_idx").on(t.spaceId)],
 );

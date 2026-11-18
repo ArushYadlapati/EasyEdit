@@ -623,6 +623,40 @@ describe("the media API", () => {
   });
 });
 
+describe("the transcript routes", () => {
+  const WORDS = [{ t: "hello", s: 0, e: 400 }];
+
+  it("answers none, then what was saved, and refuses a write from another site", async () => {
+    const ctx = await mediaContext();
+    const api = handlersFor(ctx, ctx.ada);
+    const video = await readyAsset(ctx);
+    const path = `/api/media/${video.id}/transcript`;
+    expect(await answer(await api.transcript(request("GET", path), at(video.id)))).toEqual({ status: 200, body: { transcript: null } });
+    expect(await answer(await api.saveTranscript(request("PUT", path, { words: WORDS, model: "m" }), at(video.id)))).toEqual({ status: 200, body: { ok: true } });
+    expect(await answer(await api.transcript(request("GET", path), at(video.id)))).toEqual({ status: 200, body: { transcript: { words: WORDS, model: "m" } } });
+
+    const elsewhere = await api.saveTranscript(request("PUT", path, { words: [], model: "other" }, "https://evil.test"), at(video.id));
+    expect(elsewhere.status).toBe(403);
+    expect(await answer(await api.transcript(request("GET", path), at(video.id)))).toMatchObject({ body: { transcript: { model: "m" } } });
+  });
+
+  it("refuses a viewer's write, a bad body and invalid words", async () => {
+    const ctx = await mediaContext();
+    const video = await readyAsset(ctx);
+    const path = `/api/media/${video.id}/transcript`;
+    const viewer = handlersFor(ctx, ctx.vera);
+    expect((await viewer.saveTranscript(request("PUT", path, { words: WORDS, model: "m" }), at(video.id))).status).toBe(403);
+    expect((await viewer.transcript(request("GET", path), at(video.id))).status).toBe(200);
+    const api = handlersFor(ctx, ctx.ada);
+    for (const body of [{ words: WORDS }, { words: WORDS, model: "m", by: "ada" }, { words: "no", model: "m" }, "{"]) {
+      expect((await api.saveTranscript(request("PUT", path, body), at(video.id))).status, JSON.stringify(body)).toBe(400);
+    }
+    const unordered = [{ t: "b", s: 5, e: 6 }, { t: "a", s: 0, e: 1 }];
+    expect((await api.saveTranscript(request("PUT", path, { words: unordered, model: "m" }), at(video.id))).status).toBe(400);
+    expect((await api.transcript(request("GET", `/api/media/nobody/transcript`), at("nobody"))).status).toBe(404);
+  });
+});
+
 describe("the route files", () => {
   // Each file, the methods it answers, and the handler each method goes to.
   const ROUTES: [string, () => Promise<Record<string, unknown>>, Record<string, string>][] = [
@@ -633,6 +667,7 @@ describe("the route files", () => {
     ["media/[id]/files/route.ts", () => import("@/app/api/media/[id]/files/route"), { POST: "openFile" }],
     ["media/[id]/files/complete/route.ts", () => import("@/app/api/media/[id]/files/complete/route"), { POST: "completeFile" }],
     ["media/[id]/preview-failed/route.ts", () => import("@/app/api/media/[id]/preview-failed/route"), { POST: "previewFailed" }],
+    ["media/[id]/transcript/route.ts", () => import("@/app/api/media/[id]/transcript/route"), { GET: "transcript", PUT: "saveTranscript" }],
     ["drive/read-token/route.ts", () => import("@/app/api/drive/read-token/route"), { POST: "readToken" }],
   ];
 
@@ -643,14 +678,14 @@ describe("the route files", () => {
     vi.resetModules();
   });
 
-  it("there are eight, and each sends its methods to the handlers of the table", async () => {
+  it("there are nine, and each sends its methods to the handlers of the table", async () => {
     const files = [...sources("src/app/api/media"), ...sources("src/app/api/drive")].map(([file]) => file);
     expect(files.sort()).toEqual(ROUTES.map(([file]) => `src/app/api/${file}`).sort());
 
     // No setting is there to be read while the files load.
     for (const name of ["DATABASE_URL", "BETTER_AUTH_URL", "BETTER_AUTH_SECRET", "GOOGLE_SERVICE_ACCOUNT_KEY", "DRIVE_FOLDER_ID"]) vi.stubEnv(name, "");
     vi.resetModules();
-    const handlerNames = ["list", "open", "update", "remove", "offset", "complete", "openFile", "completeFile", "previewFailed"];
+    const handlerNames = ["list", "open", "update", "remove", "offset", "complete", "openFile", "completeFile", "previewFailed", "transcript", "saveTranscript"];
     const handlers: Record<string, unknown> = Object.fromEntries(handlerNames.map((name) => [name, vi.fn()]));
     const readToken = vi.fn();
     const makeMediaHandlers = vi.fn<(deps: MediaHandlerDeps) => unknown>(() => handlers);
@@ -670,7 +705,7 @@ describe("the route files", () => {
     const { getDb } = await import("@/db");
     const { readerFor, storageFor } = await import("@/lib/spaces/storage");
     const { appBaseUrl } = await import("@/lib/connector/config");
-    expect(makeMediaHandlers).toHaveBeenCalledTimes(7);
+    expect(makeMediaHandlers).toHaveBeenCalledTimes(8);
     expect(makeReadTokenHandler).toHaveBeenCalledTimes(1);
     for (const [deps] of [...makeMediaHandlers.mock.calls, ...makeReadTokenHandler.mock.calls]) {
       expect(Object.keys(deps).sort()).toEqual(["auth", "db", "drive", "origin", "reader"]);

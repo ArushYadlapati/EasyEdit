@@ -28,7 +28,7 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
 
     `.env.local` must still exist, because `pnpm db:seed` reads it.
 
-    **Writing a new migration:** `pnpm db:generate` numbers its files by position in `drizzle/meta/_journal.json`, not after the last number used (some were skipped), so today it would write `0022_…` and overwrite `drizzle/meta/0022_snapshot.json`. Claim the next number (0024) first, rename the new SQL file, its snapshot and its journal `tag` to it by hand, and put `0022_snapshot.json` back with `git checkout`. A test in `tests/db/migrations.test.ts` checks that the snapshots still chain.
+    **Writing a new migration:** `pnpm db:generate` numbers its files by position in `drizzle/meta/_journal.json`, not after the last number used (some were skipped), so today it would write `0023_…` and overwrite `drizzle/meta/0023_snapshot.json`. Claim the next number (0025) first, rename the new SQL file, its snapshot and its journal `tag` to it by hand, and put `0023_snapshot.json` back with `git checkout`. A test in `tests/db/migrations.test.ts` checks that the snapshots still chain.
 
     **Before deploying a version with media:** run the migration against the production database first, with the command above, then deploy. The version that is live now ignores the new table.
 
@@ -77,6 +77,8 @@ The app is meant to run on Vercel for free, on the Hobby tier. Nobody has run th
     - After the deploy, reload any editor tab that was open before it.
 
     **Before deploying the version that moves projects between spaces:** run the migration `0023_project_move` against the production database right before the push, with the command above. It comes after `0022_templates`; if that hasn't run yet, the same command runs both. It only adds: one new table (`project_move`), three nullable columns (`assets.move_id`, `assets.copied_from`, `projects.moved_at_version`) and indexes on the new table. It leaves the rule for unfinished uploads as it was, so the earlier version keeps working against it, during the deploy and after going back. (After going back, copies made by a move that hasn't finished show up in the destination's library, since the earlier version doesn't know to hide them.)
+
+    **Before deploying the version that keeps the words of captioned files:** run the migration `0024_asset_transcripts` against the production database right before the push, with the command above. It comes after `0023_project_move`; if that hasn't run yet, the same command runs both. It only adds one table (`asset_transcripts`) and its index, so the version that is live now keeps working against it, during the deploy and after going back. Until it has run, the new version's saved words fail to load and to save, and Auto captions has to transcribe each file again.
 
     **Before deploying the version with the intro tutorial:** run the migration `0018_tutorial_views` against the production database right before the push, with the command above. It adds one table and changes nothing else, and the earlier version keeps working against it. Set `TUTORIAL_VIDEO_URL` only once the table is there.
 
