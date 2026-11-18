@@ -1,4 +1,5 @@
 import { graphemes } from "@/lib/text";
+import { drawShape } from "./shapes";
 import type { Clip, Crop, MediaClip, TextClip, TimelineDoc, Track, Transform } from "@/lib/timeline";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
@@ -273,6 +274,7 @@ function drawClip(
   // A stretch widens text glyphs too. Wrapping happens in local units, so it does not change.
   ctx.scale(t.scale * stretchOf(t), t.scale);
   if (clip.type === "text") drawText(ctx, doc, clip, resolveFont, draw.text);
+  else if (clip.type === "shape") drawShape(ctx, clip);
   else if (clip.type === "video" || clip.type === "image") drawMedia(ctx, doc, clip as MediaClip & { type: "video" | "image" }, frame, options);
   ctx.restore();
 }
