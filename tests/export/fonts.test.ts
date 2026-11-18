@@ -209,6 +209,19 @@ describe("caption fonts", () => {
     expect(probeRequests(captioned({ uppercase: true }), pageFont)[0].text).toBe(`${PROBE_BASE}ŻÓŁWGO`);
   });
 
+  it("asks the same for an hour of ASCII words as for their first few hundred", () => {
+    const vocabulary = ["quick", "jumps", "over", "lazy", "dogs", "WHY?", "yes,", "zap!", "Q&A", "x-ray", "(maybe)", "it's", "#1", "$5", "50%", "@team"];
+    const long = (count: number) => {
+      const d = captioned();
+      d.tracks[0].clips[0].duration = 30 * 3000;
+      d.captions!.transcripts = { a: Array.from({ length: count }, (_, i) => ({ t: vocabulary[i % vocabulary.length], s: i * 300, e: i * 300 + 250 })) };
+      return d;
+    };
+    const all = probeRequests(long(9000), pageFont);
+    expect(all).toEqual(probeRequests(long(300), pageFont));
+    expect(all[0].text).toBe(`${PROBE_BASE}qckjplzydWY?,!Q&Ax-()'#$%@`);
+  });
+
   it("adds nothing when captions are hidden or there are no words, and puts the family in the bundle otherwise", () => {
     const hidden = captioned();
     hidden.tracks.find((t) => t.kind === "caption")!.hidden = true;

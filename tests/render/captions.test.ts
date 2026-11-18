@@ -115,6 +115,20 @@ describe("drawing captions", () => {
     expect(moves[1]).toBeCloseTo(960 - (48 + 8), 5); // one line is 1.2 × 40, plus a 0.2 × 40 gap
   });
 
+  it("stacked bar captions keep 0.2 × the font size between their boxes, not between their text", () => {
+    const d = make({ preset: "bar" }, [speaker("c1")]);
+    d.tracks[1].clips = [speaker("c2")];
+    const calls = caps(d, 5);
+    const moves = named(calls, "translate").map((c) => c[2] as number);
+    expect(moves).toHaveLength(2);
+    expect(moves[0]).toBe(960);
+    // Each box is the 48 px line plus 0.3 × 40 above and below: 72 px tall, centred on its move.
+    const box = 48 + 2 * 0.3 * 40;
+    const lowerTop = moves[0] - box / 2;
+    const upperBottom = moves[1] + box / 2;
+    expect(lowerTop - upperBottom).toBeCloseTo(0.2 * 40, 5);
+  });
+
   it("leaves no state behind", () => {
     const calls = caps(make({ preset: "word" }), 1);
     expect(named(calls, "save").length).toBe(named(calls, "restore").length);

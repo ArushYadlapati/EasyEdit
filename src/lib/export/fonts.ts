@@ -1,5 +1,5 @@
 import { defaultResolveFont } from "@/lib/render/compositor";
-import { captionsShow, docCues } from "@/lib/captions/cues";
+import { captionsShow, docCues, type Cue } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
 import type { TextClip, TimelineDoc } from "@/lib/timeline";
 import { captionStyleOf } from "@/lib/timeline/captions";
@@ -117,15 +117,17 @@ function drawnTextClips(doc: TimelineDoc): TextClip[] {
   return clips;
 }
 
-// The caption look and the words it will draw, when captions are shown and there is something to say; else null.
-function drawnCaptions(doc: TimelineDoc): { style: ReturnType<typeof captionStyleOf>; words: string[] } | null {
+// The caption look and the lines it will draw, when captions are shown and there is something to say; else null.
+function drawnCaptions(doc: TimelineDoc): { style: ReturnType<typeof captionStyleOf>; cues: Cue[] } | null {
   if (!captionsShow(doc)) return null;
   const cues = docCues(doc);
   if (cues.length === 0) return null;
-  return { style: captionStyleOf(doc), words: cues.flatMap((cue) => cue.words.map((w) => w.text)) };
+  return { style: captionStyleOf(doc), cues };
 }
 
 const isLineBreak = (character: string) => /^[\r\n]+$/.test(character);
+// Each character of plain ASCII text is one grapheme, so such text needs no segmenter.
+const isAscii = (text: string) => /^[\x00-\x7f]*$/.test(text);
 
 // The one rule for which fonts and characters a project needs: one request per family and weight its drawn text
 // uses, in the order first met, with the base line and then each character those clips add, once.
@@ -146,10 +148,16 @@ export function probeRequests(doc: TimelineDoc, resolveFont: (family: string) =>
     const font = `${captions.style.fontWeight} ${PROBE_PX}px ${resolveFont(captions.style.fontFamily)}`;
     let extra = byFont.get(font);
     if (!extra) byFont.set(font, (extra = new Set()));
-    for (const word of captions.words) {
-      for (const character of graphemes(captions.style.uppercase ? word.toUpperCase() : word)) {
-        if (extra.size >= MAX_EXTRA_CHARACTERS) break;
-        if (!base.has(character) && !isLineBreak(character)) extra.add(character);
+    // This runs on every change of the shown document, and an hour of speech is thousands of words: it stops once the
+    // most characters are collected, and takes a plain ASCII word's characters as they are.
+    collect: for (const cue of captions.cues) {
+      for (const { text } of cue.words) {
+        if (extra.size >= MAX_EXTRA_CHARACTERS) break collect;
+        const word = captions.style.uppercase ? text.toUpperCase() : text;
+        for (const character of isAscii(word) ? word : graphemes(word)) {
+          if (extra.size >= MAX_EXTRA_CHARACTERS) break;
+          if (!base.has(character) && !isLineBreak(character)) extra.add(character);
+        }
       }
     }
   }

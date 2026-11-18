@@ -67,6 +67,17 @@ describe("toTemplateDoc", () => {
     expect(Object.keys(v[0]).sort()).toEqual(["accepts", "duration", "id", "slot", "start", "transform", "type"]);
   });
 
+  it("keeps the caption style and the words of files a remaining media clip uses, and drops the others", () => {
+    const d = build();
+    const words = [{ t: "hi", s: 0, e: 100 }];
+    const captionStyle = { preset: "bar", fontFamily: "Inter", fontWeight: 800, fontSize: 60, color: "#ffffff", highlight: "#FFD400", y: 0.8, uppercase: true } as const;
+    // as3 is a plain clip that stays; as1 and as4 are slotted and become empty slots; gone has no clip at all.
+    d.captions = { style: captionStyle, transcripts: { as1: words, as3: words, as4: words, gone: words } };
+    expect(toTemplateDoc(d).captions).toEqual({ style: captionStyle, transcripts: { as3: words } });
+    d.captions = { transcripts: { as1: words } };
+    expect("captions" in toTemplateDoc(d)).toBe(false);
+  });
+
   it("does not mutate its input", () => {
     const d = build();
     const before = structuredClone(d);

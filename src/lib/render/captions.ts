@@ -5,7 +5,8 @@ import type { Ctx2D } from "./compositor";
 import { LINE_HEIGHT, wrapLines } from "./text-layout";
 
 const OUTLINE = 0.14; // of the font size
-const GAP = 0.2; // between stacked cues, of the font size
+const GAP = 0.2; // between stacked cues (a bar's boxes, else the text), of the font size
+const BAR_PAD = 0.3; // a bar's box above and below its text, of the font size
 const WORD_SCALE = 1.3; // the "word" preset is bigger than the others
 const POP_FRAMES = 3;
 const POP_FROM = 0.8;
@@ -55,9 +56,11 @@ export function drawCaptions(ctx: Ctx2D, doc: TimelineDoc, frame: number, resolv
     const text = words.join(" ");
     const lines = wrapLines(text, (bar ? 0.9 : 0.8) * doc.width, measure);
     const height = lines.length * lineHeight;
-    const centre = first ? bottom : bottom - (GAP * style.fontSize + height / 2);
+    // What a cue takes up: a bar's box reaches past its text, so the gap is measured from the box.
+    const extent = height + (bar ? 2 * BAR_PAD * style.fontSize : 0);
+    const centre = first ? bottom : bottom - (GAP * style.fontSize + extent / 2);
     // The next cue goes above this block's top edge.
-    bottom = centre - height / 2;
+    bottom = centre - extent / 2;
     first = false;
     ctx.save();
     ctx.translate(doc.width / 2, centre);
@@ -68,7 +71,7 @@ export function drawCaptions(ctx: Ctx2D, doc: TimelineDoc, frame: number, resolv
     if (bar) {
       const widest = Math.max(...lines.map(measure));
       const w = widest + style.fontSize;
-      const h = height + 0.6 * style.fontSize;
+      const h = extent;
       roundedBox(ctx, -w / 2, -h / 2, w, h, 0.2 * style.fontSize);
       ctx.fillStyle = BAR_FILL;
       ctx.fill();
