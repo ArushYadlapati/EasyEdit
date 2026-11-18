@@ -196,7 +196,7 @@ function AnimationSide({ clip, side, canEdit, fps }: { clip: TextClip; side: "in
     <div className="flex flex-col gap-2">
       <Field label={title}>
         <Select
-          aria-label={`Animation ${side}`}
+          aria-label={`Transition ${side}`}
           data-edit-control
           disabled={!canEdit}
           value={current?.preset ?? ""}
@@ -236,7 +236,7 @@ export function AnimationSection({ clip }: { clip: TextClip }) {
   const setEmphasis = (next: Emphasis | null) => send(store, emphasisOps(clip, next), "text animation");
   return (
     <div className="flex flex-col gap-2">
-      <Heading>Animation</Heading>
+      <Heading>Transitions</Heading>
       <AnimationSide clip={clip} side="in" canEdit={canEdit} fps={fps} />
       <AnimationSide clip={clip} side="out" canEdit={canEdit} fps={fps} />
       <Field label="Emphasis">
