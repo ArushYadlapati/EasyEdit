@@ -4,7 +4,7 @@ import { beginCanvasDrag, resolveCanvasDrag } from "@/lib/editor/canvas-drag";
 import { canvasItems, hitTest, onShape } from "@/lib/editor/canvas-geometry";
 import { newTrackIndex } from "@/lib/editor/placement";
 import { drawnGeometry, placeShape, redrawShape, snapPoint } from "@/lib/editor/shape-draw";
-import { DEFAULT_TRANSFORM, applyOps, arrowEnds, createEmptyDoc, newShapeClip, type OpInput, type ShapeClip, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, applyOps, prepareOps, arrowEnds, createEmptyDoc, newShapeClip, type OpInput, type ShapeClip, type TimelineDoc } from "@/lib/timeline";
 
 const frame = { width: 1080, height: 1920 };
 const keys = { shift: false, centre: false };
@@ -53,7 +53,7 @@ describe("drawing with the Shape tool", () => {
     if (!placed.ok) return;
     const add = placed.ops[0] as Extract<OpInput, { op: "add_track" }>;
     expect(add).toMatchObject({ op: "add_track", track: { kind: "shape", name: "Shapes 1" }, index: 1 });
-    const next = applyOps(doc, placed.ops).doc;
+    const next = applyOps(doc, prepareOps(placed.ops)).doc;
     expect(next.tracks.map((t) => t.kind)).toEqual(["video", "shape", "text", "audio"]);
     const again = placeShape(next, "arrow", g, { start: 90, duration: 90, trackId: null }, genId);
     expect(again.ok && again.ops.map((o) => o.op)).toEqual(["add_clip"]);
@@ -129,7 +129,7 @@ describe("resizing a box", () => {
     expect(op.patch).toMatchObject({ width: 500 });
     expect(op.patch).not.toHaveProperty("height");
     expect((op.patch.transform as Record<string, unknown>).scale).toBeUndefined();
-    const next = applyOps(doc, result.ops).doc;
+    const next = applyOps(doc, prepareOps(result.ops)).doc;
     const clip = next.tracks[1].clips[0] as ShapeClip;
     expect(clip).toMatchObject({ width: 500, height: 200, strokeWidth: 11, transform: { ...DEFAULT_TRANSFORM, x: clip.transform.x } });
   });

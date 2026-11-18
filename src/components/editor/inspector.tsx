@@ -35,7 +35,8 @@ import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { docDuration, isCropped, isMediaClip, type Clip, type KeyframeProp, type Track } from "@/lib/timeline";
+import { docDuration, isCropped, isMediaClip, type Clip, type KeyframeProp, type ShapeClip, type Track } from "@/lib/timeline";
+import { SHAPE_COLOR, arrowLook, shapeName } from "@/lib/timeline/shapes";
 import { FONT_LIST, isListedFont } from "@/lib/brand/fonts";
 import { AnimationSection, TransitionsSection } from "./effects-section";
 import { useBrand } from "./brand/brand-context";
@@ -43,7 +44,6 @@ import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./cont
 import { FormatFields } from "./format-select";
 import { KenBurnsButton, KeyframeButton, KeyframeSteps } from "./keyframe-button";
 import { useLibrary, useMedia } from "./media/media-context";
-import { ShapeSection } from "./shape-section";
 import { SlotSection } from "./slot-section";
 import { useTextMeasure } from "./text-measure";
 import { Timecode } from "./timecode";
@@ -109,7 +109,14 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
     case "scale":
     case "rotation":
     case "opacity":
+    case "radius":
       return { scrub: 1, decimals: 1 };
+    case "strokeWidth":
+      return { scrub: 0.5, decimals: 1 };
+    case "headSize":
+      return { scrub: 0.05, decimals: 1 };
+    case "bend":
+      return { scrub: 0.5, decimals: 0 };
     case "cropLeft":
     case "cropTop":
     case "cropRight":
@@ -227,13 +234,14 @@ function NumberField(props: {
   );
 }
 
-// The native color input previews while the picker moves and saves when it closes.
-function ColorField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
+// The native color input previews while the picker moves and saves when it closes. field: a text clip's colour, or a
+// shape's outline or fill.
+function ColorField({ clip, canEdit, field = "color", label = "Color" }: { clip: Clip; canEdit: boolean; field?: "color" | "stroke" | "fill"; label?: string }) {
   const store = useEditorStore();
   const swatch = useRef<HTMLInputElement>(null);
-  const shown = clipFieldValue(clip, "color", fieldContext(viewDoc(store.getState()), clip));
-  const hex = useTextField(store, clip.id, "color", shown);
-  const picked = useFieldGesture(store, clip.id, "color");
+  const shown = clipFieldValue(clip, field, fieldContext(viewDoc(store.getState()), clip));
+  const hex = useTextField(store, clip.id, field, shown);
+  const picked = useFieldGesture(store, clip.id, field);
 
   // React's onChange follows the input event, so the closing change event is listened for here,
   // afresh after each render so it sees this render's gesture.
@@ -243,7 +251,7 @@ function ColorField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
     function onChange() {
       if (!input) return;
       // Previewed again first, so the save never depends on which handler ran first.
-      picked.preview(fieldOps(store, clip.id, "color", input.value));
+      picked.preview(fieldOps(store, clip.id, field, input.value));
       picked.finish();
     }
     input.addEventListener("change", onChange);
@@ -252,19 +260,19 @@ function ColorField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
 
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <span className={CAPTION}>Color</span>
+      <span className={CAPTION}>{label}</span>
       <div className="flex min-w-0 gap-2">
         <input
           ref={swatch}
           type="color"
-          aria-label="Color"
+          aria-label={label}
           data-edit-control
           disabled={!canEdit}
           value={HEX.test(shown) ? shown : "#000000"}
           onChange={(event) => {
             // The closing change event is saved by the listener above.
             if (event.nativeEvent.type === "change") return;
-            picked.preview(fieldOps(store, clip.id, "color", event.target.value));
+            picked.preview(fieldOps(store, clip.id, field, event.target.value));
           }}
           className={cx(
             "h-7 w-9 shrink-0 cursor-pointer rounded-md border border-ed-line-strong bg-ed-raised p-0.5",
@@ -275,7 +283,7 @@ function ColorField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
           )}
         />
         <TextInput
-          aria-label="Hex color"
+          aria-label={field === "color" ? "Hex color" : `${label} hex`}
           data-edit-control
           disabled={!canEdit}
           maxLength={7}
@@ -386,6 +394,99 @@ function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   );
 }
 
+const DASH_OPTIONS = [
+  { value: "solid", label: "Solid" },
+  { value: "dashed", label: "Dashed" },
+  { value: "dotted", label: "Dotted" },
+] as const;
+const HEADS_OPTIONS = [
+  { value: "end", label: "End" },
+  { value: "start", label: "Start" },
+  { value: "both", label: "Both" },
+  { value: "none", label: "None" },
+] as const;
+const HEAD_OPTIONS = [
+  { value: "triangle", label: "Triangle" },
+  { value: "open", label: "Open" },
+  { value: "bar", label: "Bar" },
+] as const;
+const PATH_OPTIONS = [
+  { value: "straight", label: "Straight" },
+  { value: "curved", label: "Curved" },
+] as const;
+
+// A labelled row holding a set of buttons, one of them on.
+function Choice<T extends string>(props: { label: string; value: T; options: readonly { value: T; label: string }[]; canEdit: boolean; onChange(value: T): void }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className={cx(CAPTION, "w-12 shrink-0")}>{props.label}</span>
+      <Segmented<T> label={props.label} data-edit-control disabled={!props.canEdit} className="flex-1" value={props.value} options={[...props.options]} onChange={props.onChange} />
+    </div>
+  );
+}
+
+// A shape's look: a box's or ellipse's outline (which can be turned off while it has a fill), its width, dashes and
+// rounding, and its fill; an arrow's or line's colour, width and dashes, its heads, their look and size, and whether
+// it is straight or curved, and how far.
+function ShapeSection({ clip, canEdit }: { clip: ShapeClip; canEdit: boolean }) {
+  const store = useEditorStore();
+  const box = clip.shape !== "arrow";
+  const look = arrowLook(clip);
+  const outlined = clip.stroke !== null;
+  const filled = clip.fill != null;
+  const edit = (field: ClipField) => (value: string) => editField(store, clip.id, field, value);
+  return (
+    <Section title={shapeName(clip)}>
+      {box && (
+        <Toggle
+          label="Outline"
+          data-edit-control
+          checked={outlined}
+          // The last thing a shape shows can't be turned off.
+          disabled={!canEdit || (outlined && !filled)}
+          onChange={(on) => editField(store, clip.id, "stroke", on ? (clip.fill ?? SHAPE_COLOR) : "")}
+        />
+      )}
+      {outlined && (
+        <>
+          <ColorField clip={clip} canEdit={canEdit} field="stroke" label={box ? "Outline color" : "Color"} />
+          <div className="grid grid-cols-2 gap-2">
+            <NumberField clipId={clip.id} field="strokeWidth" label={box ? "Outline width" : "Line width"} suffix="px" min={1} max={LIMITS.shapeStrokeMax} />
+            {clip.shape === "rect" && <NumberField clipId={clip.id} field="radius" label="Rounding" suffix="px" min={0} />}
+          </div>
+          <Choice label="Style" value={clip.dash} options={DASH_OPTIONS} canEdit={canEdit} onChange={edit("dash")} />
+        </>
+      )}
+      {!outlined && clip.shape === "rect" && <NumberField clipId={clip.id} field="radius" label="Rounding" suffix="px" min={0} />}
+      {box && (
+        <>
+          <Toggle
+            label="Fill"
+            data-edit-control
+            checked={filled}
+            disabled={!canEdit || (filled && !outlined)}
+            onChange={(on) => editField(store, clip.id, "fill", on ? (clip.stroke ?? SHAPE_COLOR) : "")}
+          />
+          {filled && <ColorField clip={clip} canEdit={canEdit} field="fill" label="Fill color" />}
+        </>
+      )}
+      {!box && (
+        <>
+          <Choice label="Heads" value={look.heads} options={HEADS_OPTIONS} canEdit={canEdit} onChange={edit("heads")} />
+          {look.heads !== "none" && (
+            <>
+              <Choice label="Head" value={look.head} options={HEAD_OPTIONS} canEdit={canEdit} onChange={edit("head")} />
+              <NumberField clipId={clip.id} field="headSize" label="Head size" suffix="×" min={1} max={8} step={0.5} />
+            </>
+          )}
+          <Choice label="Path" value={look.bend === 0 ? "straight" : "curved"} options={PATH_OPTIONS} canEdit={canEdit} onChange={edit("path")} />
+          {look.bend !== 0 && <NumberField clipId={clip.id} field="bend" label="Bend" suffix="%" min={-50} max={50} />}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // A field with its keyframe diamond beside it.
 function Keyed({ clipId, prop, children }: { clipId: string; prop: KeyframeProp; children: ReactNode }) {
   return (
@@ -399,7 +500,9 @@ function Keyed({ clipId, prop, children }: { clipId: string; prop: KeyframeProp;
 // X and Y place the clip's centre, and Width and Height give its drawn size, in the unit chosen in Settings. An arrow
 // moves them a pixel, or a tenth of a centimetre or inch. The fields show the clip at the playhead; a keyframed one is
 // changed by keying it there.
-function PositionSection({ clipId, image }: { clipId: string; image: boolean }) {
+// A shape's Width and Height are its own size (an arrow's is one Length), which never thickens its outline.
+// lengthLabel: an arrow's or line's single size field, named so it is not taken for Timing's Length.
+function PositionSection({ clipId, image, lengthLabel }: { clipId: string; image: boolean; lengthLabel?: string }) {
   const settings = useSettingsStore();
   const units = useSettings((s) => s.units);
   const lockAspect = useSettings((s) => s.lockAspect);
@@ -415,6 +518,9 @@ function PositionSection({ clipId, image }: { clipId: string; image: boolean }) 
           <NumberField clipId={clipId} field="y" label="Y" {...length} />
         </Keyed>
       </div>
+      {lengthLabel ? (
+        <NumberField clipId={clipId} field="width" label={lengthLabel} {...length} />
+      ) : (
       <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-1">
         <NumberField clipId={clipId} field="width" label="Width" {...length} />
         <IconButton
@@ -428,6 +534,7 @@ function PositionSection({ clipId, image }: { clipId: string; image: boolean }) 
         </IconButton>
         <NumberField clipId={clipId} field="height" label="Height" {...length} />
       </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <Keyed clipId={clipId} prop="scale">
           <NumberField clipId={clipId} field="scale" label="Scale" suffix="%" min={1} />
@@ -525,7 +632,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
           <MediaSection assetId={clip.assetId} kind={clip.type} />
         </>
       )}
-      {drawsOnCanvas && <PositionSection clipId={clip.id} image={clip.type === "image"} />}
+      {drawsOnCanvas && <PositionSection clipId={clip.id} image={clip.type === "image"} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
       {/* A visual slot carries its transitions over to the clip that fills it. */}
       {(clip.type === "video" || clip.type === "image" || clip.type === "shape" || (clip.type === "placeholder" && drawsOnCanvas)) && <TransitionsSection clip={clip} />}

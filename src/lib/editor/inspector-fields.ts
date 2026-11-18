@@ -1,6 +1,8 @@
 import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
 import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
-import { isMediaClip } from "@/lib/timeline";
+import { ArrowHead, ArrowHeads, ShapeDash, isMediaClip, type ShapeClip } from "@/lib/timeline";
+import { ARROW_DEFAULTS, CURVED_BEND } from "@/lib/timeline/shapes";
+import { LIMITS } from "@/lib/limits";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
 import { CROP_MIN_SHOWN, clipRects, type Sizer } from "./clip-box";
@@ -33,7 +35,19 @@ export type ClipField =
   | "cropRight"
   | "cropBottom"
   | "start"
-  | "duration";
+  | "duration"
+  // A shape's: its outline (or an arrow's line) colour and width, its fill, dashes and rounding, and an arrow's heads,
+  // head look and size, and bend (Path sets it straight or curved; Bend sets how far, in percent of the length).
+  | "stroke"
+  | "strokeWidth"
+  | "fill"
+  | "dash"
+  | "radius"
+  | "heads"
+  | "head"
+  | "headSize"
+  | "path"
+  | "bend";
 
 export type CropField = "cropLeft" | "cropTop" | "cropRight" | "cropBottom";
 
@@ -58,6 +72,16 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   cropBottom: "crop",
   start: "timing change",
   duration: "timing change",
+  stroke: "style change",
+  strokeWidth: "style change",
+  fill: "style change",
+  dash: "style change",
+  radius: "style change",
+  heads: "style change",
+  head: "style change",
+  headSize: "style change",
+  path: "style change",
+  bend: "style change",
 };
 
 export const WEIGHTS: { value: number; label: string }[] = [
@@ -191,6 +215,7 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
     case "duration":
       return (clip.duration / fps).toFixed(2);
   }
+  if (clip.type === "shape") return shapeFieldValue(clip, field);
   if (clip.type !== "text") return "";
   switch (field) {
     case "text":
@@ -205,7 +230,109 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
       return clip.style.color.toLowerCase();
     case "align":
       return clip.style.align;
+    default:
+      return "";
   }
+}
+
+function shapeFieldValue(clip: ShapeClip, field: ClipField): string {
+  switch (field) {
+    case "stroke":
+      return (clip.stroke ?? "").toLowerCase();
+    case "fill":
+      return (clip.fill ?? "").toLowerCase();
+    case "strokeWidth":
+      return oneDecimal(clip.strokeWidth);
+    case "dash":
+      return clip.dash;
+    case "radius":
+      return oneDecimal(clip.radius ?? 0);
+    case "heads":
+      return clip.heads ?? ARROW_DEFAULTS.heads;
+    case "head":
+      return clip.head ?? ARROW_DEFAULTS.head;
+    case "headSize":
+      return oneDecimal(clip.headSize ?? ARROW_DEFAULTS.headSize);
+    case "path":
+      return (clip.bend ?? 0) === 0 ? "straight" : "curved";
+    case "bend":
+      return oneDecimal((clip.bend ?? 0) * 100);
+    default:
+      return "";
+  }
+}
+
+// A shape's own field, set to what was typed or picked. A colour may be cleared (""), when the shape still shows
+// something: a box keeps an outline or a fill, an arrow always has its line.
+function shapeFieldOps(clip: ShapeClip, field: ClipField, raw: string): OpInput[] | null {
+  const update = (patch: Record<string, unknown>): OpInput[] => [{ op: "update_clip", clipId: clip.id, patch }];
+  const number = (lo: number, hi: number, places = 1) => {
+    const n = parseNumber(raw);
+    return n === null ? null : round(clamp(n, lo, hi), places);
+  };
+  const box = clip.shape !== "arrow";
+  switch (field) {
+    case "stroke":
+    case "fill": {
+      const color = raw.trim().toLowerCase();
+      if (color === "") {
+        if (field === "fill" ? !box || !clip.stroke : !box || !clip.fill) return null;
+        return (field === "fill" ? clip.fill : clip.stroke) == null ? [] : update({ [field]: null });
+      }
+      if (field === "fill" && !box) return null;
+      return HEX_COLOR.test(color) ? update({ [field]: color }) : null;
+    }
+    case "strokeWidth": {
+      const n = number(1, LIMITS.shapeStrokeMax);
+      return n === null ? null : n === clip.strokeWidth ? [] : update({ strokeWidth: n });
+    }
+    case "dash": {
+      const dash = ShapeDash.safeParse(raw);
+      return dash.success ? update({ dash: dash.data }) : null;
+    }
+    case "radius": {
+      if (clip.shape !== "rect") return null;
+      const n = number(0, Math.min(clip.width, clip.height) / 2);
+      return n === null ? null : update({ radius: n });
+    }
+    case "heads":
+    case "head": {
+      if (box) return null;
+      const parsed = (field === "heads" ? ArrowHeads : ArrowHead).safeParse(raw);
+      return parsed.success ? update({ [field]: parsed.data }) : null;
+    }
+    case "headSize": {
+      if (box) return null;
+      const n = number(1, 8);
+      return n === null ? null : update({ headSize: n });
+    }
+    case "path": {
+      if (box || (raw !== "straight" && raw !== "curved")) return null;
+      const straight = (clip.bend ?? 0) === 0;
+      if (raw === "straight") return straight ? [] : update({ bend: 0 });
+      return straight ? update({ bend: CURVED_BEND }) : [];
+    }
+    case "bend": {
+      if (box) return null;
+      const n = number(-50, 50);
+      return n === null ? null : update({ bend: round(n / 100, 3) });
+    }
+    default:
+      return null;
+  }
+}
+
+// A shape's size changed to typed (project pixels as drawn): its own width or height at its scale, so its outline
+// keeps its thickness. Locked, a box keeps its shape. An arrow has a length (its width) and no height.
+function resizeShape(clip: ShapeClip, field: "width" | "height", typed: number, locked: boolean): OpInput[] | null {
+  const s = clip.transform.scale;
+  const update = (patch: Record<string, unknown>): OpInput[] => [{ op: "update_clip", clipId: clip.id, patch }];
+  if (clip.shape === "arrow") return field === "width" ? update({ width: round(Math.min(LIMITS.shapeSideMax, typed / s), 2) }) : null;
+  const own = round(Math.min(LIMITS.shapeSideMax, typed / s), 2);
+  const f = own / clip[field];
+  if (!locked) return update({ [field]: own });
+  const other = field === "width" ? "height" : "width";
+  return update({ [field]: own, [other]: round(Math.min(LIMITS.shapeSideMax, Math.max(1, clip[other] * f)), 2) });
 }
 
 // A size changed by f. Locked, the scale alone, so the shape is kept. Unlocked, Width changes the stretch alone, and
@@ -277,6 +404,7 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       const typed = fromUnit(n, ctx.units);
       // A value typed as it is shown (the rounded number) never nudges the clip.
       if (showUnit(typed, ctx.units) === showUnit(now, ctx.units)) return [];
+      if (sizing && clip.type === "shape") return resizeShape(clip, field, typed, ctx.lockAspect);
       if (sizing) return place(resize(clip, field, typed / now, ctx.lockAspect));
       return place({ [field]: round(typed / (field === "x" ? ctx.frame.width : ctx.frame.height), 6) });
     }
@@ -307,6 +435,7 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
     }
   }
 
+  if (clip.type === "shape") return shapeFieldOps(clip, field, raw);
   if (clip.type !== "text") return null;
   switch (field) {
     case "text":
@@ -335,5 +464,7 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       const align = ALIGNS.find((a) => a === raw);
       return align ? update({ style: { align } }) : null;
     }
+    default:
+      return null;
   }
 }
