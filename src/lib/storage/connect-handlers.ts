@@ -1,10 +1,11 @@
 import "server-only";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import type { DB } from "@/db";
 import type { CurrentUser } from "@/lib/access-rules";
 import { apiRoute } from "@/lib/api-route";
 import { DriveError } from "@/lib/drive/token";
+import { cookieFrom, cookieLine, type OAuthCookie, pageAnswer, redirectTo, sameState } from "@/lib/oauth-redirects";
 import { ServiceError } from "@/lib/service-error";
 import { slugFor } from "@/lib/spaces/paths";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
@@ -32,7 +33,7 @@ export type ConnectHandlerDeps = {
 // What the browser keeps between pressing "Choose Google account" and Google sending it back: sealed with the token key,
 // so it can't be read or made up. Only /api/storage gets it.
 export const OAUTH_COOKIE = "ee_storage_oauth";
-const COOKIE_PATH = "/api/storage";
+const COOKIE: OAuthCookie = { name: OAUTH_COOKIE, path: "/api/storage" };
 const LIFE_SECONDS = 600; // how long a started connect is good for (`exp`)
 // The cookie outlives `exp`, so a connect that took too long can still be told apart from one never started here, and
 // can go back to its space.
@@ -55,21 +56,6 @@ const FAILED_PAGE = "/dashboard?storage=failed";
 
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 
-const firstValue = (value: string | null) => value?.split(",")[0].trim() || null;
-const isHttps = (req: Request) => (firstValue(req.headers.get("x-forwarded-proto")) ?? new URL(req.url).protocol.slice(0, -1)) === "https";
-
-function cookieLine(req: Request, value: string, maxAge: number): string {
-  return `${OAUTH_COOKIE}=${value}; Path=${COOKIE_PATH}; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${isHttps(req) ? "; Secure" : ""}`;
-}
-
-function cookieFrom(req: Request): string | null {
-  for (const pair of (req.headers.get("cookie") ?? "").split(";")) {
-    const at = pair.indexOf("=");
-    if (at > 0 && pair.slice(0, at).trim() === OAUTH_COOKIE) return pair.slice(at + 1).trim() || null;
-  }
-  return null;
-}
-
 // A path in this app under /s/, or the welcome page (with any query), and nothing else: never another site, never a
 // path that climbs out of /s/. The welcome page is where a new account's first connect comes back to.
 export function returnPath(value: string | null): string | null {
@@ -86,11 +72,6 @@ export function returnPath(value: string | null): string | null {
   if (url.origin !== probe) return null;
   if (welcome ? url.pathname !== "/welcome" : !url.pathname.startsWith("/s/")) return null;
   return url.pathname + url.search;
-}
-
-// Both hashed first, so the comparison takes as long whatever the lengths.
-function sameState(a: string, b: string): boolean {
-  return timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
 }
 
 function unseal(value: string | null, key: Uint8Array): Started | null {
@@ -120,15 +101,13 @@ function withNote(path: string, note: string): string {
 // A redirect to a path of this app: on the configured address when there is one (never the request's Host), else as a
 // path the browser resolves against the address it used.
 function goTo(cfg: StorageConfig | null, path: string): Response {
-  const location = cfg ? new URL(path, new URL(cfg.redirectUri).origin).toString() : path;
-  return new Response(null, { status: 302, headers: { location, "cache-control": "no-store" } });
+  return redirectTo(cfg?.redirectUri ?? null, path);
 }
 
 // Anything that is not already a redirect (a signed-out or role answer from `auth`, apiRoute's 500) becomes one to a
 // fixed page.
 function asPage(cfg: StorageConfig | null, res: Response): Response {
-  if (res.status >= 300 && res.status < 400 && res.headers.has("location")) return res;
-  return goTo(cfg, res.status >= 500 ? FAILED_PAGE : REFUSED_PAGE);
+  return pageAnswer(cfg?.redirectUri ?? null, res, { failed: FAILED_PAGE, refused: REFUSED_PAGE });
 }
 
 // Only an admin of a space connects storage for it (a personal space's owner is its admin). Anyone else, a
@@ -170,7 +149,7 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
     });
     return new Response(null, {
       status: 302,
-      headers: { location, "set-cookie": cookieLine(req, seal(JSON.stringify(started), cfg.tokenKey), COOKIE_SECONDS), "cache-control": "no-store" },
+      headers: { location, "set-cookie": cookieLine(req, COOKIE, seal(JSON.stringify(started), cfg.tokenKey), COOKIE_SECONDS), "cache-control": "no-store" },
     });
   });
   const connect = async (req: Request): Promise<Response> => asPage(deps.config(), await startConnect(req));
@@ -179,7 +158,7 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
   // saved. Nothing is stored until the code is exchanged and drive.file was granted.
   async function finish(req: Request, cfg: StorageConfig, user: CurrentUser): Promise<Response> {
     const params = new URL(req.url).searchParams;
-    const started = unseal(cookieFrom(req), cfg.tokenKey);
+    const started = unseal(cookieFrom(req, OAUTH_COOKIE), cfg.tokenKey);
     const state = params.get("state");
     const refused = () => goTo(cfg, REFUSED_PAGE);
     if (!started || !state || !sameState(state, started.state) || started.userId !== user.id) return refused();
@@ -242,7 +221,7 @@ export function makeConnectHandlers(deps: ConnectHandlerDeps): { connect(req: Re
   const callback = async (req: Request): Promise<Response> => {
     const res = asPage(deps.config(), await answer(req));
     const headers = new Headers(res.headers);
-    headers.append("set-cookie", cookieLine(req, "", 0));
+    headers.append("set-cookie", cookieLine(req, COOKIE, "", 0));
     return new Response(null, { status: res.status, headers });
   };
 
