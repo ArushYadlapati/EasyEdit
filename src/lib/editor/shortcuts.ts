@@ -3,7 +3,7 @@ export type CommandId =
   | "prev-edge" | "next-edge" | "go-start" | "go-end"
   | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste" | "duplicate"
   | "nudge-left" | "nudge-right" | "nudge-left-second" | "nudge-right-second"
-  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "export" | "show-shortcuts"
+  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "export" | "show-shortcuts" | "search"
   | "tool-select" | "tool-razor" | "tool-text" | "tool-shape" | "tool-shape-next" | "tool-guide" | "tool-crop";
 
 // edits: the command changes the project, so it does nothing for a viewer. repeats: holding the key
@@ -79,6 +79,7 @@ export const SHORTCUTS: Shortcut[] = [
   row("Timeline", "toggle-snapping", ["N"], "Snapping on or off"),
   row("General", "export", ["Mod+E"], "Export"),
   row("General", "show-shortcuts", ["?"], "Show shortcuts"),
+  row("General", "search", ["Mod+K"], "Search tools and actions"),
 ];
 
 type Combo = { mod: boolean; alt: boolean; shift: boolean; key: string };

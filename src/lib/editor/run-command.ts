@@ -15,8 +15,9 @@ import { ZOOM_STEP } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import type { EditorState, EditorStore } from "./store";
 
-// openExport is left out where no export can be opened (the clip and canvas menus); the key then does nothing.
-export type CommandContext = { store: EditorStore; clipboard: ClipboardStore; openShortcuts(): void; openExport?(): void };
+// openExport and openSearch are left out where neither can be opened (the clip and canvas menus); their keys then do
+// nothing.
+export type CommandContext = { store: EditorStore; clipboard: ClipboardStore; openShortcuts(): void; openExport?(): void; openSearch?(): void };
 
 const EDITS = new Set(SHORTCUTS.filter((s) => s.edits).map((s) => s.command));
 
@@ -122,6 +123,8 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return ctx.openExport?.();
     case "show-shortcuts":
       return ctx.openShortcuts();
+    case "search":
+      return ctx.openSearch?.();
     default: {
       // A command added to CommandId without a case here does not compile.
       const missing: never = command;

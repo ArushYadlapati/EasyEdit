@@ -135,6 +135,7 @@ describe("matching keys", () => {
       ["toggle-snapping", "N", "Snapping on or off"],
       ["export", "Mod+E", "Export"],
       ["show-shortcuts", "?", "Show shortcuts"],
+      ["search", "Mod+K", "Search tools and actions"],
     ]);
   });
 
@@ -155,7 +156,7 @@ describe("matching keys", () => {
       "Editing:copy", "Editing:cut", "Editing:paste", "Editing:duplicate",
       "Editing:nudge-left", "Editing:nudge-right", "Editing:nudge-left-second", "Editing:nudge-right-second",
       "Timeline:select-all", "Timeline:clear-selection", "Timeline:zoom-in", "Timeline:zoom-out", "Timeline:zoom-fit",
-      "Timeline:toggle-snapping", "General:export", "General:show-shortcuts",
+      "Timeline:toggle-snapping", "General:export", "General:show-shortcuts", "General:search",
     ]);
   });
 
@@ -195,7 +196,7 @@ describe("matching keys", () => {
 describe("running commands", () => {
   function setup(canEdit = true, doc = sampleDoc()) {
     const store = makeStore({ canEdit, doc });
-    return { st: () => store.getState(), ctx: { store, clipboard: createClipboard(), openShortcuts: vi.fn(), openExport: vi.fn() } };
+    return { st: () => store.getState(), ctx: { store, clipboard: createClipboard(), openShortcuts: vi.fn(), openExport: vi.fn(), openSearch: vi.fn() } };
   }
 
   it("picks a tool, and a viewer keeps Selection", () => {
@@ -239,6 +240,8 @@ describe("running commands", () => {
     expect(ctx.openShortcuts).toHaveBeenCalledTimes(1);
     runCommand("export", ctx);
     expect(ctx.openExport).toHaveBeenCalledTimes(1);
+    runCommand("search", ctx);
+    expect(ctx.openSearch).toHaveBeenCalledTimes(1);
   });
 
   it("a viewer's editing commands do nothing; the rest still work", () => {
