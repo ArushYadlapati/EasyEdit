@@ -43,4 +43,5 @@ All projects run at 30 frames per second. Times in the timeline are whole frames
 - An upload stops if you leave the editor. It goes on from where it stopped when you choose the same file again within 7 days.
 - A video's preview copy is made in the uploader's browser. If you leave the editor or press Cancel while the preview is still being made, the video ends up with no preview: at once after Cancel, after up to two hours if you left the editor or closed the tab. Choosing the file again then uploads a second copy, so remove the first one.
 - The preview plays the 720p copy. Playing backward is silent, and a volume above 100% sounds like 100% in the preview.
+- Auto captions run in the browser and take English speech only. A file longer than 60 minutes is refused (`captionAudioMinutes`). One caption word is at most 80 characters (`captionWordChars`), a file keeps at most 10,000 words (`captionWordsPerFile`), and a project keeps words for at most 50 files (`captionFilesPerProject`).
 - The browser keeps about 2 GB of playback files, so footage you played before does not download again.

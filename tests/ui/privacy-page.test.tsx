@@ -24,4 +24,11 @@ describe("privacy page", () => {
       "The access EasyEdit keeps for a connected Google Drive is stored encrypted, and is used only to store and play the videos you add to EasyEdit.",
     );
   });
+
+  it("says auto captions run in the browser", () => {
+    const { container } = render(<PrivacyPage />);
+    expect(container.textContent).toContain(
+      "Auto captions run in your browser. Your audio is not sent anywhere to be transcribed. The first time you use them, your browser downloads the speech model from Hugging Face.",
+    );
+  });
 });

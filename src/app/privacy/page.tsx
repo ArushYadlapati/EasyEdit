@@ -45,6 +45,12 @@ export default function PrivacyPage() {
           process the data for us.
         </p>
 
+        <h2 className={H2}>Auto captions</h2>
+        <p>
+          Auto captions run in your browser. Your audio is not sent anywhere to be transcribed. The first time you use them, your browser downloads
+          the speech model from Hugging Face.
+        </p>
+
         <h2 className={H2}>AI agents</h2>
         <p>An AI agent can work on your projects only after you connect it to your account. It acts with your connection, and you can disconnect it.</p>
 

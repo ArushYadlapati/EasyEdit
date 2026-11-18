@@ -39,6 +39,25 @@ Do this once after a change to templates. It takes about ten minutes.
 8. Export a project that still has an empty slot. The dialog says how many slots are still empty and names them.
 9. Open the Templates page as a viewer. There is no Edit or Delete, and no sentence telling you to save one.
 
+## What to click to check captions
+
+Speech-to-text runs in a real browser, so it cannot be tested without one. Do this once after a change to captions. You need a video with clear English speech, about a minute long, and about fifteen minutes.
+
+1. Open a project and add the video to the timeline. Open the **Captions** tab (third in the left panel). Select the clip and click **Auto captions**. The first time, a row says "Getting the speech model… 42%" with "A one-time download." under it, then "Reading the sound…", then "Listening… 0:30 of 1:05". There is a **Cancel** button the whole time.
+2. When it ends, a Captions track appears with a block for each line, the lines are listed in the tab, and the preview shows the words as they are spoken. Click **Auto captions** again on a fresh project with the same file: it says "Using saved captions…" and finishes at once, with no download.
+3. Press Play and compare the words with the speech. Click a line's time in the tab and a block on the Captions track: the playhead jumps to that line.
+4. Move the clip later on the timeline, trim its start by a few seconds, then split it in the middle. In each case the captions stay with the speech, none show outside the clip, and no step beyond the edit was needed. Change its speed to 2: the captions run twice as fast.
+5. Under **Style**, click each look: **Block**, **Karaoke** (the spoken word is highlighted), **One word** and **Bar**. The preview changes each time and the pressed button is shown. Change the font, size, text color, highlight color, position and Uppercase.
+6. In the tab, retype one caption line with fewer words, then one with more, and press Enter. The preview shows the new words, timed inside the old line. Retype another and press Escape: the old words come back.
+7. Press undo after each change: the style, the line and then **Auto captions** itself (the track, the style and the words go together). Press redo and they come back.
+8. Hide the Captions track with its eye: the captions leave the preview. Show it again: they return.
+9. Click **Export** and export the project. Open the file: the captions are there in the same look, place and timing as the preview.
+10. Click **Remove captions**: the captions go and the clip plays as before. Click **Auto captions** again, then **Transcribe again**, and it listens again rather than using the saved words.
+11. Select a still image and click **Auto captions**: it says there is nothing to caption. Try a video with no speech (music only): it says "No speech found in" the file's name and the project is unchanged.
+12. Click **Auto captions** and **Cancel** halfway: the button works again and the project is unchanged.
+13. Sign in as a second person on another browser, open the same project and add the same file to a new project: **Auto captions** says "Using saved captions…" and no model download starts.
+14. As a viewer, the Captions tab's buttons and fields are all dimmed.
+
 ## What to click to check export
 
 Export cannot be tested without a real browser and a real sign-in. Do this once after a change to export. It takes about five minutes.
