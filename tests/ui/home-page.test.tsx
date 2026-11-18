@@ -218,7 +218,7 @@ describe("terms page", () => {
   it("renders signed out with its date, the rules and a link back to /privacy", () => {
     render(<TermsPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Terms of service" })).toBeTruthy();
-    expect(screen.getByText("Last updated November 15, 2026.")).toBeTruthy();
+    expect(screen.getByText("Last updated November 17, 2026.")).toBeTruthy();
     const text = document.body.textContent ?? "";
     expect(text).toContain("at least 13");
     expect(text).toContain("You keep ownership");

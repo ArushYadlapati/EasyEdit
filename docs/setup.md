@@ -153,6 +153,26 @@ EasyEdit can welcome each person with a short intro video the first time they op
 
 Plain `http` is accepted from `localhost` only, to try a new recording on your own computer.
 
+## Posting to YouTube
+
+A space's admin can connect a YouTube channel to the space, and after an export anyone who can edit there can post the video to it. This is optional and off until you set it up: without the two settings below there is no **Socials** tab in space settings and no **Post to YouTube** button.
+
+1. **`STORAGE_TOKEN_KEY`**, as for [Storage per space](#storage-per-space). It encrypts the channel's token too.
+2. **The YouTube API.** In Google Cloud, open the project your OAuth client is in and enable **YouTube Data API v3**.
+3. **An OAuth client.** Use the one sign-in uses, or make a second one (type "Web application"). Add `<your site>/api/social/youtube/callback` as an authorized redirect URI, for example `http://localhost:3000/api/social/youtube/callback`.
+4. **The YouTube permissions.** On the OAuth consent screen, add the scopes `https://www.googleapis.com/auth/youtube.upload` (to post) and `https://www.googleapis.com/auth/youtube.readonly` (to show the channel's name). Google calls both "sensitive": until Google has verified the app for them, people see a warning screen when they connect a channel, and at most 100 people can connect one.
+5. **`YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET`.** The client's id and secret, in `.env.local` (and in Vercel, followed by a redeploy). They are never taken from the sign-in settings by themselves, so a deploy can't show a Connect button before steps 2 to 4 are done.
+
+How it works, and what to know:
+
+- Videos go from the person's browser straight to YouTube. EasyEdit's server opens the upload with the title, description and visibility the person chose, and the browser gets only that one upload's address, never a token.
+- Nothing is posted until someone presses **Post**, and the form starts on Private.
+- One channel per space. Connecting again replaces it. **Disconnect** removes it, stops any upload still running, and ends EasyEdit's access to that Google account, unless another space's channel or Drive uses the same account (then the access stays, and the person can remove EasyEdit in their Google account).
+- A channel is connected with one person's Google account. If that person leaves the team or is removed from it, or the team is deleted, the channel is disconnected.
+- A space can post 10 videos in 24 hours. YouTube also gives the whole site a daily allowance; when it is used up, posting says so until the next day.
+- Only the file that was just exported can be posted, from the Export dialog.
+- It needs the migration `0025_socials`, on every server, also one that doesn't post: disconnecting a Google Drive looks in the new table.
+
 ## 4. Run it
 
 Create the database tables, add the first admin, and start the app:

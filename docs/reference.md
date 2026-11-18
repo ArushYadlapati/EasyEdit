@@ -36,6 +36,13 @@ Some rules:
 
 All projects run at 30 frames per second. Times in the timeline are whole frames.
 
+## Posting limits
+
+- A space can post 10 videos to YouTube in 24 hours. A post that was started counts, however it ended.
+- A title can be up to 100 characters and a description up to 5,000; neither can contain `<` or `>`. These are YouTube's rules.
+- Only the space's admins connect or disconnect its YouTube channel. Admins and editors post.
+- The channel is disconnected when the person who connected it leaves the team.
+
 ## Media limits
 
 - File types: video in MP4, M4V, MOV or WebM; images in JPEG, PNG or WebP; audio in MP3, M4A, WAV or AAC. HEIC photos are not taken: save them as JPEG first.

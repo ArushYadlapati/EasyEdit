@@ -39,6 +39,26 @@ export default function PrivacyPage() {
           EasyEdit.
         </p>
 
+        <h2 className={H2}>Posting to YouTube</h2>
+        <p>
+          A space&apos;s admin can connect a YouTube channel so the space can post its videos there. EasyEdit uses YouTube API Services for
+          this. It asks Google for permission to upload videos to the channel and to read the channel&apos;s name. It keeps the access to the
+          channel encrypted, and keeps the channel&apos;s name, the Google account&apos;s address, and a list of what was posted, by whom and
+          when. A video goes from your browser straight to YouTube, and only when someone presses Post.
+        </p>
+        <p>
+          What Google does with it is in the{" "}
+          <a className="underline underline-offset-4" href="https://policies.google.com/privacy">
+            Google Privacy Policy
+          </a>
+          . To end EasyEdit&apos;s access, disconnect the channel in the space&apos;s settings, or remove EasyEdit on your Google
+          account&apos;s{" "}
+          <a className="underline underline-offset-4" href="https://myaccount.google.com/permissions">
+            permissions page
+          </a>
+          .
+        </p>
+
         <h2 className={H2}>Where your data lives</h2>
         <p>
           Accounts and projects are kept in a Neon database. The website runs on Vercel. Your media is kept in Google Drive. These companies

@@ -69,6 +69,23 @@ Moving copies media between two real Google Drives, so it needs a real browser a
 10. Pick a space with no storage: the dialog says so. As that space's admin it shows **Set up storage**; as an editor it says to ask an admin and has no link.
 11. Start a project from a template and leave one of its slots empty. Give a video clip a **Zoom** transition in, then move the project to your other space. It moves, opens there with the slot still empty and the zoom in place, and exports: the empty slot is a black or silent gap, and the zoom plays as it does in the preview.
 
+## What to click to check posting to YouTube
+
+Posting needs a real YouTube channel and a real sign-in, so do this once after a change to posting. You need a space you are an admin of, on a server with the YouTube settings ([Posting to YouTube](setup.md#posting-to-youtube)), and a channel you don't mind test videos on.
+
+1. Open the space's settings. There is a **Socials** tab. As an editor of the same space there is none.
+2. Click **Connect a YouTube channel**. Google asks which account, then which channel, then for two permissions. Allow both. You land back on Socials with "YouTube channel connected." and the channel's name.
+3. Connect again and untick the upload permission: it says EasyEdit needs it, and the channel shown is unchanged.
+4. Open a project in that space and export it. The finished screen has **Post to YouTube**.
+5. Click it. The title is the project's name and "Who can see it" is Private. For an upright project of three minutes or less it says the video will show as a Short.
+6. Click **Post**. A bar shows the upload. Close the dialog and open it again: the upload is still going. When it ends there is an **Open on YouTube** link, and the video is on the channel, private, with your title.
+7. Post again with a large export and click **Cancel** halfway: it goes back to the form, and no video appears on the channel.
+8. Post again, and turn Wi-Fi off for ten seconds halfway. It carries on when the connection is back.
+9. Back on Socials, **Recent posts** lists what you posted and what you stopped.
+10. As an editor of the space (a second account), export and post: it works, to the same channel. As an editor there is still no Socials tab.
+11. Connect the channel as a second admin of a team, then have that admin leave the team. The channel is gone from Socials.
+12. **Disconnect**. The page says the channel is disconnected, the Export dialog no longer offers Post, and in your Google account (Security, Third-party access) EasyEdit no longer has YouTube access.
+
 ## Checking an exported file
 
 `pnpm check:export` reads a finished file with ffmpeg (`brew install ffmpeg`) and checks what a player needs: H.264, the right size, the exact frame rate and length, keyframes, the sound track. It can also compare frames of the video with frames the editor saved.
