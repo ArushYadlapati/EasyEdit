@@ -22,6 +22,7 @@ import { EditorScreen } from "./editor-screen";
 import type { SpaceKind } from "@/lib/spaces/types";
 import type { StorageBlock } from "@/lib/storage/messages";
 import { BrandProvider } from "./brand/brand-context";
+import { CaptionsProvider } from "./captions/captions-context";
 import { MediaProvider, createMediaServices, gateStorage, useLibrary, type StorageProblem } from "./media/media-context";
 import { PresenceProvider } from "./presence-context";
 import { browserThumbnailDeps } from "./thumbnail-deps";
@@ -267,9 +268,11 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
         drop={drop}
       >
         <EditorBrand spaceId={space.id}>
-          <PresenceProvider store={presenceStore}>
-            <EditorScreen spaceSlug={space.slug} spaceId={space.id} initialLayout={layout} />
-          </PresenceProvider>
+          <CaptionsProvider>
+            <PresenceProvider store={presenceStore}>
+              <EditorScreen spaceSlug={space.slug} spaceId={space.id} initialLayout={layout} />
+            </PresenceProvider>
+          </CaptionsProvider>
         </EditorBrand>
       </MediaProvider>
     </EditorProvider>

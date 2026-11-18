@@ -58,7 +58,7 @@ function LengthField({ label, frames, fps, canEdit, onCommit }: { label: string;
 }
 
 // The swatch saves when the picker closes (its change event, not each input event); the hex box on Enter or blur.
-function EffectColor(props: { label: string; value: string; canEdit: boolean; onCommit(color: string): void }) {
+export function EffectColor(props: { label: string; value: string; canEdit: boolean; onCommit(color: string): void }) {
   // Keyed by the saved value, so the boxes start over when it changes.
   return <EffectColorBoxes key={props.value} {...props} />;
 }

@@ -36,9 +36,9 @@ function setup(canEdit = true, doc = sampleDoc()) {
 
 const clipOf = (store: ReturnType<typeof makeStore>, id: string) => findClip(store.getState().doc, id)!.clip;
 
-it("the left panel has Text, Media and Brand kit tabs", () => {
+it("the left panel has Text, Media, Captions and Brand kit tabs", () => {
   setup();
-  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Text", "Media", "Brand kit"]);
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Text", "Media", "Captions", "Brand kit"]);
 });
 
 it("clicking Title adds a title in the kit font", () => {

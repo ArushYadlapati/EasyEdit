@@ -4,12 +4,13 @@ import { memo, useCallback, useMemo, useRef, type MouseEvent, type PointerEvent 
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { cx } from "@/components/ui/cx";
 import { addTrack, duplicateTrack, paste, removeTrack } from "@/lib/editor/actions";
-import { HEADER_WIDTH, ROW_HEIGHT, visibleClips } from "@/lib/editor/geometry";
+import { ROW_HEIGHT, visibleClips } from "@/lib/editor/geometry";
 import { laneMenu, rightClickEntries } from "@/lib/editor/menus";
 import type { Track, TrackKind } from "@/lib/timeline";
 import { useClipboard, useEditorStore } from "../context";
 import { useToMenuItems } from "../menu-items";
 import { useIsMac } from "../use-shortcuts";
+import { CaptionLane } from "./caption-lane";
 import { ClipView } from "./clip-view";
 import { LANE_GUTTER } from "./playhead";
 import { TrackHeader } from "./track-header";
@@ -107,11 +108,7 @@ export const TrackRow = memo(function TrackRow(props: TrackRowProps) {
             still={track.kind !== "caption"}
           />
         ))}
-        {track.kind === "caption" && track.clips.length === 0 && (
-          <p className="pointer-events-none sticky w-max text-xs leading-4 text-ed-muted" style={{ left: HEADER_WIDTH + 12 }}>
-            Captions are not available yet.
-          </p>
-        )}
+        {track.kind === "caption" && <CaptionLane zoom={zoom} fromFrame={fromFrame} toFrame={toFrame} hidden={track.hidden} />}
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import { TEXT_PRESETS, presetFont, type TextPreset } from "@/lib/editor/text-pre
 import type { AssetView } from "@/lib/media/types";
 import { useBrand } from "./brand/brand-context";
 import { BrandTab } from "./brand/brand-tab";
+import { CaptionsTab } from "./captions/captions-tab";
 import { useEditor, useEditorStore, useSettingsStore } from "./context";
 import { useMediaDrop } from "./media/media-context";
 import { MediaTab, type PanelProps } from "./media/media-tab";
@@ -20,6 +21,7 @@ import { useIsMac } from "./use-shortcuts";
 const TABS = [
   { id: "text", label: "Text" },
   { id: "media", label: "Media" },
+  { id: "captions", label: "Captions" },
   { id: "brand", label: "Brand kit" },
 ];
 
@@ -102,11 +104,13 @@ export function LeftPanel() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-11 shrink-0 items-center border-b border-ed-line px-3">
-        {/* Compact: the tool rail shares the column, and the three tabs must still read in full. */}
+        {/* Compact: the tool rail shares the column, and the four tabs must still read in full. */}
         <Tabs label="Add" value={current.id} tabs={TABS} onChange={setTab} idPrefix={idPrefix} compact />
       </div>
       {current.id === "text" ? (
         <TextTab panel={panel} />
+      ) : current.id === "captions" ? (
+        <CaptionsTab panel={panel} />
       ) : current.id === "brand" ? (
         <BrandTab panel={panel} />
       ) : (
