@@ -62,7 +62,7 @@ it("clicking a swatch with no text selected says so", () => {
   act(() => store.getState().select(["c1"]));
   fireEvent.click(screen.getByRole("button", { name: "#ff5a1f" }));
   expect(store.getState().queue).toEqual([]);
-  expect(store.getState().notice).toMatchObject({ tone: "info", text: "Select a text clip to recolor it." });
+  expect(store.getState().notice).toMatchObject({ tone: "info", text: "Select a text clip or a shape to recolor it." });
 });
 
 // sampleDoc with a locked text track t9 holding x9.

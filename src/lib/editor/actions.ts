@@ -160,22 +160,28 @@ export function addLogo(store: EditorStore, asset: AssetView, opts: { stillSecon
   return result.ok;
 }
 
-// Sets every selected text clip to the color, as one change. Text on a locked track is left out, so the rest is not
-// refused with it. With no text clip selected it says how to use it; with only locked ones, that the track is locked.
+// Sets every selected text clip and shape to the color, as one change: a shape's outline, or its fill when it has no
+// outline. Clips on a locked track are left out, so the rest is not refused with them. With none selected it says how
+// to use it; with only locked ones, that the track is locked.
 export function recolorSelection(store: EditorStore, color: string): void {
   const state = store.getState();
   if (!state.canEdit) return;
   const selected = state.selection.clipIds.flatMap((id) => {
     const found = findClip(state.doc, id);
-    return found?.clip.type === "text" ? [{ clip: found.clip, locked: found.track.locked }] : [];
+    return found?.clip.type === "text" || found?.clip.type === "shape" ? [{ clip: found.clip, locked: found.track.locked }] : [];
   });
-  const texts = selected.filter((t) => !t.locked).map((t) => t.clip);
-  if (texts.length === 0) {
+  const clips = selected.filter((t) => !t.locked).map((t) => t.clip);
+  if (clips.length === 0) {
     if (selected.length > 0) state.notify("error", explainOpError("TRACK_LOCKED"));
     else state.notify("info", MESSAGES.selectTextToRecolor);
     return;
   }
-  const ops: OpInput[] = texts.filter((c) => c.style.color.toLowerCase() !== color).map((c) => ({ op: "update_clip", clipId: c.id, patch: { style: { color } } }));
+  const ops: OpInput[] = clips.flatMap((c): OpInput[] => {
+    if (c.type === "text") return c.style.color.toLowerCase() === color ? [] : [{ op: "update_clip", clipId: c.id, patch: { style: { color } } }];
+    if (c.type !== "shape") return [];
+    const field = c.stroke !== null ? "stroke" : "fill";
+    return (c[field] ?? "").toLowerCase() === color ? [] : [{ op: "update_clip", clipId: c.id, patch: { [field]: color } }];
+  });
   if (ops.length > 0) state.edit(ops, "style change");
 }
 

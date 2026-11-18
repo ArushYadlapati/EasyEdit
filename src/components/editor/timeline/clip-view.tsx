@@ -52,6 +52,7 @@ function clipName(clip: Clip, assetName: string | undefined, fps: number): strin
   const range = `${formatTimecode(clip.start, fps)} to ${formatTimecode(clip.start + clip.duration, fps)}`;
   if (clip.type === "text") return `Text clip "${clipLabel(clip, undefined)}", ${range}`;
   if (clip.type === "placeholder") return `${clipLabel(clip, undefined)}, ${range}`;
+  if (clip.type === "shape") return `${shapeName(clip)} clip, ${range}`;
   return assetName === undefined ? `${KIND[clip.type]} clip, ${range}` : `${KIND[clip.type]} clip "${assetName}", ${range}`;
 }
 
@@ -168,6 +169,7 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
       )}
       {showLook && pictured && <ClipStill fileId={stillFileId} removed={removed} />}
       {showLook && clip.type === "text" && <TextSample style={clip.style} />}
+      {showLook && clip.type === "shape" && <ShapeSample color={clip.stroke ?? clip.fill ?? "#000000"} round={clip.shape === "ellipse"} line={clip.shape === "arrow"} />}
       {width >= MIN_LABEL_PX && <span className="min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>}
       <ClipMarkings marks={marks} zoom={zoom} />
       {dragger && width >= MIN_TRIM_PX && (
@@ -224,6 +226,15 @@ function ClipStill({ fileId, removed }: { fileId: string | null; removed: boolea
 }
 
 // "Aa" in the text's own font, weight and color, on the backdrop that color reads best on.
+// A shape clip's swatch: its outline colour (or fill), as a ring, a rounded box or a bar.
+function ShapeSample({ color, round, line }: { color: string; round: boolean; line: boolean }) {
+  return (
+    <span data-clip-sample aria-hidden className="ml-2 flex size-6 shrink-0 items-center justify-center rounded-[2px] bg-ed-bg">
+      <span className={cx(line ? "h-0.5 w-4 -rotate-45" : "size-3.5 border-2", round ? "rounded-full" : "rounded-[2px]")} style={line ? { backgroundColor: color } : { borderColor: color }} />
+    </span>
+  );
+}
+
 function TextSample({ style }: { style: TextStyle }) {
   return (
     <span
