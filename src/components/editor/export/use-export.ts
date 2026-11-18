@@ -20,6 +20,7 @@ export type Exporter = {
   cancel(): void;
   reset(): void; // also drops a held file
   download(): void; // hands a held file to the browser; call it inside a click
+  file(): Promise<Blob | null>; // the finished file, for posting it; null when there is none or it can't be read any more
 };
 
 type ExportOptions = { onFinish?(outcome: ExportOutcome, fileName: string, held: boolean): void };
@@ -30,13 +31,14 @@ type Running = {
   busy: boolean; // set inside the click, before anything is awaited, so a second click asks for no second save dialog
   controller: AbortController | null; // the running export's
   held: { blob: Blob; fileName: string } | null; // a finished file waiting for a Download click
+  finished: (() => Promise<Blob | null>) | null; // reads the finished file back, until the export is reset
 };
 
 export function useExport(options: ExportOptions = {}): Exporter {
   const deps = useExportDeps();
   const editor = useEditorStore();
   const [store] = useState(() => createStore<ExportState>(() => ({ phase: "idle" })));
-  const running = useRef<Running>({ mounted: false, busy: false, controller: null, held: null });
+  const running = useRef<Running>({ mounted: false, busy: false, controller: null, held: null, finished: null });
   const onFinish = useRef(options.onFinish);
   useEffect(() => {
     onFinish.current = options.onFinish;
@@ -51,6 +53,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
       now.mounted = false;
       now.controller?.abort();
       now.held = null;
+      now.finished = null;
       editor.getState().setExportHeld(false);
     };
   }, [editor]);
@@ -75,7 +78,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
         // Closed without a choice, or the editor closed while it was open: nothing starts. The empty file the save
         // dialog made stays where the person saved it.
         if (picked === null || !now.mounted) return;
-        const { target, fileName, held } = picked;
+        const { target, fileName, held, read } = picked;
         const controller = new AbortController();
         now.controller = controller;
         dispatch({ type: "start", fileName });
@@ -102,6 +105,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
         );
         now.controller = null;
         const blob = outcome.status === "done" ? (held?.() ?? null) : null;
+        if (outcome.status === "done" && now.mounted) now.finished = read ?? (async () => blob);
         if (blob !== null && now.mounted) {
           now.held = { blob, fileName };
           editor.getState().setExportHeld(true); // before exporting ends, so no moment has neither flag set
@@ -122,6 +126,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
       cancel: () => running.current.controller?.abort(),
       reset: () => {
         running.current.held = null;
+        running.current.finished = null;
         editor.getState().setExportHeld(false);
         dispatch({ type: "reset" });
       },
@@ -131,6 +136,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
         // The file stays held, so Download works again; only the leave guard ends.
         editor.getState().setExportHeld(false);
       },
+      file: async () => (await running.current.finished?.()) ?? null,
     };
   }, [store, deps, editor]);
 }
