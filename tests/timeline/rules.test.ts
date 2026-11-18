@@ -25,7 +25,7 @@ describe("limits", () => {
       mediaIdsPerRequest: 200, mediaPosterBytes: 1_048_576, mediaDirectPlayBytes: 209_715_200,
       mediaPreviewWaitMs: 7_200_000, mediaCacheBytes: 2_147_483_648, mediaReadTokenMinSeconds: 600,
       connectorAssetsPage: 50, connectorMediaItems: 20, frameSideMin: 16, frameSideMax: 4096, frameAreaMax: 8_294_400,
-      folderNameChars: 60, teamNameChars: 60, teamsPerDay: 10, teamMembers: 100, teamPendingInvites: 50, dashboardRecent: 6, thumbnailBytes: 307_200, presenceClipIds: 100, presenceIdChars: 64,
+      folderNameChars: 60, teamNameChars: 60, teamsPerDay: 10, teamMembers: 100, teamPendingInvites: 50, socialTitleChars: 100, socialDescriptionBytes: 5000, socialPostsPerSpacePerDay: 10, socialFileBytes: 8_589_934_592, dashboardRecent: 6, thumbnailBytes: 307_200, presenceClipIds: 100, presenceIdChars: 64,
       presenceBodyBytes: 16_384, presencePeers: 20, presenceTabsPerPerson: 5, presenceRefreshMs: 15_000,
       presenceTtlMs: 50_000, presenceKeepMs: 600_000, moveAbandonAfterMs: 86_400_000, presenceSweepRows: 50 });
   });
