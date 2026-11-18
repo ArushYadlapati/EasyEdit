@@ -195,6 +195,10 @@ describe("the guide", () => {
     expect(section).toContain('"op":"set_caption_style"');
     expect(section).toContain('"op":"splice_caption_words"');
     expect(section).toContain('"patch":{"captions":true}');
+    expect(section).toContain('"text":"');
+    expect(section).toContain("You do not need expect");
+    expect(section).not.toContain('"insert"');
+    expect(section).not.toContain('"expect":');
     expect(section).toContain("Auto captions");
     expect(section).not.toContain('"op":"set_transcript"');
     expect(EDIT_DESCRIPTION).not.toContain("## Captions");

@@ -71,6 +71,7 @@ export async function editTimelineTool(
   // Turning captions on needs the file's words in the document, and the Captions track to show them on. When the
   // project has moved since expected_version nothing is added: the edit below gives its normal conflict answer.
   const before: OpInput[] = [];
+  let broughtIn: string[] = [];
   if (hasCaptionOps(input.ops) && meetsRole(pc.actor.role, "editor")) {
     const project = await getProject(pc.db, pc.actor, input.project_id);
     if (project && project.version === input.expected_version) {
@@ -81,6 +82,7 @@ export async function editTimelineTool(
       if (without.length > 0) return fail(noSavedCaptions(without));
       const hasTrackOp = input.ops.some((op) => (op as { op?: unknown; track?: { kind?: unknown } } | null)?.op === "add_track" && (op as { track: { kind?: unknown } }).track?.kind === "caption");
       if (files.length > 0 && !captionTrack(project.doc) && !hasTrackOp) before.push(...addTrackOps(project.doc, "caption"));
+      broughtIn = missing;
       for (const assetId of missing) before.push({ op: "set_transcript", assetId, words: saved.get(assetId)! });
     }
   }
@@ -94,5 +96,5 @@ export async function editTimelineTool(
   });
   if (!done.ok) return done.result;
   const n = done.applied.ops.length;
-  return ok(editedText(pc, `Applied ${n} ${n === 1 ? "op" : "ops"} as version ${done.applied.version}.`, done));
+  return ok(editedText(pc, `${broughtIn.length > 0 ? `Brought in saved captions for ${broughtIn.join(", ")}.\n` : ""}Applied ${n} ${n === 1 ? "op" : "ops"} as version ${done.applied.version}.`, done));
 }

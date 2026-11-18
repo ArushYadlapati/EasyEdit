@@ -29,7 +29,7 @@ describe("edit_timeline: turning captions on", () => {
     expect((await x.edit(0, [addVideo(x.asset)])).isError).toBe(false);
     const result = await x.edit(1, [{ op: "update_clip", clipId: "m1", patch: { captions: true } }]);
     expect(result.isError).toBe(false);
-    expect(result.text.split("\n")[0]).toBe("Applied 3 ops as version 2.");
+    expect(result.text.split("\n").slice(0, 2)).toEqual([`Brought in saved captions for ${x.asset}.`, "Applied 3 ops as version 2."]);
     const { doc } = await x.project();
     expect(doc.captions?.transcripts).toEqual({ [x.asset]: WORDS });
     expect(captionTrack(doc)).toBeDefined();
@@ -49,7 +49,7 @@ describe("edit_timeline: turning captions on", () => {
     const x = await setup();
     await x.edit(0, [addVideo(x.asset), { op: "add_track", track: { kind: "caption", name: "Captions" } }]);
     const result = await x.edit(1, [{ op: "update_clip", clipId: "m1", patch: { captions: true } }]);
-    expect(result.text.split("\n")[0]).toBe("Applied 2 ops as version 2.");
+    expect(result.text.split("\n").slice(0, 2)).toEqual([`Brought in saved captions for ${x.asset}.`, "Applied 2 ops as version 2."]);
     expect((await x.project()).doc.tracks.filter((t) => t.kind === "caption")).toHaveLength(1);
   });
 
@@ -57,9 +57,10 @@ describe("edit_timeline: turning captions on", () => {
     const x = await setup();
     await x.edit(0, [addVideo(x.asset, { captions: true })]);
     const off = await x.edit(1, [{ op: "update_clip", clipId: "m1", patch: { captions: false } }]);
+    expect(off.text).not.toContain("Brought in");
     expect(off.text.split("\n")[0]).toBe("Applied 1 op as version 2.");
     const on = await x.edit(2, [{ op: "update_clip", clipId: "m1", patch: { captions: true } }]);
-    expect(on.text.split("\n")[0]).toBe("Applied 1 op as version 3.");
+    expect(on.text.split("\n")[0]).toBe("Applied 1 op as version 3."); // the words are already in the document
   });
 
   it("refuses the whole call when a file has no saved words", async () => {
@@ -97,7 +98,8 @@ describe("edit_timeline: turning captions on", () => {
     const ops = [{ op: "update_clip", clipId: "m1", patch: { captions: true } }];
     const first = await x.edit(1, ops);
     const again = await x.edit(1, ops);
-    expect(again.text).toBe(first.text);
+    // The repeat has nothing to bring in, so it is the first answer without its note.
+    expect(again.text).toBe(first.text.split("\n").slice(1).join("\n"));
     expect((await x.project()).version).toBe(2);
   });
 });
