@@ -48,9 +48,13 @@ export function mixedSlots(doc: TimelineDoc): string[] {
 }
 
 // A copy of the doc where every slotted video, image and audio clip is an empty placeholder in the same place.
+// The caption style stays, so a project made from it looks the same; the words belong to the media it had, which are
+// gone, so they are dropped. A clip that stays a media clip keeps its captions switch.
 export function toTemplateDoc(doc: TimelineDoc): TimelineDoc {
+  const { captions, ...rest } = structuredClone(doc);
   return {
-    ...structuredClone(doc),
+    ...rest,
+    ...(captions?.style && { captions: { style: captions.style } }),
     tracks: doc.tracks.map((track) => ({
       ...structuredClone(track),
       clips: track.clips.map((clip): Clip => {

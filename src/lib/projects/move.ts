@@ -459,6 +459,14 @@ function ontoCopies(doc: TimelineDoc, copyOf: Map<string, string>): { doc: Timel
       ops.push({ op: "update_clip", clipId: clip.id, patch: { assetId: clip.assetId } });
     }
   }
+  // The saved words are kept per file, so they move to the copies' ids too; words of a file with no copy are dropped.
+  const transcripts = moved.captions?.transcripts;
+  if (moved.captions && transcripts) {
+    const kept = Object.fromEntries(Object.entries(transcripts).flatMap(([assetId, words]) => (copyOf.has(assetId) ? [[copyOf.get(assetId)!, words]] : [])));
+    if (Object.keys(kept).length > 0) moved.captions.transcripts = kept;
+    else delete moved.captions.transcripts;
+    if (Object.keys(moved.captions).length === 0) delete moved.captions;
+  }
   return { doc: moved, ops };
 }
 

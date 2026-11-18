@@ -34,7 +34,7 @@ The **AI agents** page (account menu → **AI agents**, or `/agents`) shows the 
 | `search` | Finds projects and media by name. ChatGPT's deep research uses it. |
 | `fetch` | Reads one search result in full. ChatGPT's deep research uses it. |
 
-No agent can see inside footage yet.
+No agent can see inside footage yet. Captions are the exception for speech: an agent reads each caption line in `get_project`, turns captions on for a clip with `edit_timeline` when the file already has saved captions (a person creates them with **Auto captions** in the editor's Captions tab), fixes words and restyles them. The editing guide's Captions section teaches this.
 
 **Roles:** everyone in a space can edit, so their agents can create and change projects there. Every change an agent makes is listed in the editor's **Activity** with the agent's name, for example "Claude (for <name>)" or "ChatGPT (for <name>)", and can be undone there. A change from an agent is refused if the project changed since it last read it, and it is told what changed, so it never overwrites an edit it has not seen.
 

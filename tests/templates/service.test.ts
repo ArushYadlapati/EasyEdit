@@ -148,6 +148,22 @@ describe("templates service", () => {
     await expect(deleteTemplate(db, ed, "starter-match-recap")).rejects.toMatchObject({ code: "INVALID", message: "Starter templates can't be deleted" });
   });
 
+  it("a saved template keeps the caption style and the captions switch, and drops the words", async () => {
+    const db = await setup();
+    const id = await projectWithSlots(db);
+    const row = (await getProject(db, ed, id))!;
+    const doc = structuredClone(row.doc);
+    const style = { preset: "bar", fontFamily: "Inter", fontWeight: 800, fontSize: 60, color: "#ffffff", highlight: "#FFD400", y: 0.8, uppercase: true } as const;
+    doc.captions = { style, transcripts: { gone: [{ t: "hi", s: 0, e: 100 }] } };
+    // A plain video clip with no slot stays a media clip and keeps its switch.
+    doc.tracks[0].clips.push({ ...video("v3"), start: 100, captions: true } as Clip);
+    await db.update(projects).set({ doc }).where(eq(projects.id, id));
+    const saved = await saveTemplate(db, ed, { projectId: id, name: "Captioned" });
+    const template = (await getTemplate(db, ed, saved.id))!;
+    expect(template.doc.captions).toEqual({ style });
+    expect(template.doc.tracks[0].clips.find((c) => c.id === "v3")).toMatchObject({ type: "video", captions: true });
+  });
+
   it("refuses a save past the template limit", async () => {
     const db = await setup();
     const id = await projectWithSlots(db);

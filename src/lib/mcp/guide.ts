@@ -98,6 +98,14 @@ Crossfade is in-only (transitionIn). It blends from the clip that ends exactly w
 animationIn / animationOut / emphasis (text only) are replaced whole too; null removes it. ${JSON.stringify({ op: "update_clip", clipId: "C", patch: { animationIn: EXAMPLE_TEXT_ANIMATION } })}
 animationIn is {"preset":P,"frames":F}, P is "fade"|"pop"|"slide_up"|"slide_down"|"slide_left"|"slide_right"|"typewriter"|"scale_punch". animationOut is the same without "typewriter" and "scale_punch". slide_up rises into place. emphasis is {"preset":"shake"|"pulse"|"highlight_word","color":HEX} for the whole clip; color is for highlight_word.`;
 
+// Captions are taught here and not in OP_REFERENCE, which is part of the size-capped tool list. Agents never write a
+// transcript by hand, so set_transcript is not shown.
+export const CAPTIONS_REFERENCE = `Captions show what is said in a clip that has them on. get_project lists them under the caption track, one line per caption: its time, its text, the clip and file, and words=first-last, the places of its words in the file's word list.
+Captions follow their clip when it moves, trims, splits or changes speed. Never place them by hand.
+Turn them on for a clip: ${JSON.stringify({ op: "update_clip", clipId: "C", patch: { captions: true } })}. That works when the file already has saved captions, and adds the Captions track if the project has none. Otherwise ask a person to press Auto captions in the editor's Captions tab. Never write the words yourself.
+Fix a wrong word with ${JSON.stringify({ op: "splice_caption_words", assetId: "A", index: 3, remove: 1, insert: [{ t: "Solvers", s: 1200, e: 1700 }], expect: { words: [{ t: "Solvers", s: 1200, e: 1700 }] } })}. index and remove count words in the file's list; t is the word, s and e its start and end in milliseconds of the file. Give expect: the words being replaced, so an edit made by someone else meanwhile is refused instead of overwritten.
+Restyle every caption in the project: ${JSON.stringify({ op: "set_caption_style", patch: { preset: "block", fontSize: 72, highlight: "#FFD400", uppercase: true } })}. Fields: preset "block"|"karaoke"|"word"|"bar", fontFamily, fontWeight, fontSize, color, highlight, y (0 to 1, the share of the frame's height). ${JSON.stringify({ op: "set_caption_style", clear: true })} goes back to the default look.`;
+
 export const EDIT_DESCRIPTION = `Change a project's timeline with a batch of ops. The whole batch is applied, or none of it.
 
 Always pass expected_version: the version from your latest get_project, create_project or edit result for this project. If the project changed since, nothing is applied and you get the changes and the current project back.
@@ -129,7 +137,7 @@ export function buildEditingGuide(): string {
     "## What is possible today",
     "- Create projects. Add and style text. Add video, images and audio from the library. Move, trim, split and delete clips. Add, rename, lock, hide, reorder and remove tracks. Change the format. Crop and stretch video, images and text.",
     "- Draw arrows, lines, boxes and ellipses to point at things or outline them (see Shapes below).",
-    "- Not yet: seeing inside footage, captions, export, posting. Say so when asked. Never make up an asset id.",
+    "- Not yet: seeing inside footage, export, posting. Say so when asked. Never make up an asset id.",
     "",
     "## Working well",
     "- Read first: call get_project before the first change to a project.",
@@ -165,9 +173,11 @@ export function buildEditingGuide(): string {
     "- add_media lays clips end to end in the order you give them. To use part of a video, give in_seconds and duration_seconds.",
     "- A video's own sound plays with it, unless its track is hidden or muted. Volume runs from 0 (silent) to 1 (as recorded); above 1 plays at 1 for now. A clip at another speed keeps its pitch.",
     "- A clip cannot run past the end of its footage. A trim that would is refused.",
+    "- Captions show what is said in a captioned clip (see Captions below).",
   ];
   lines.push("", "## Effects: transitions, keyframes and text animation", ...EFFECTS_REFERENCE.split("\n"));
   lines.push("", "## Shapes", ...SHAPES_REFERENCE.split("\n"));
+  lines.push("", "## Captions", ...CAPTIONS_REFERENCE.split("\n"));
   if (TEAM_STYLE_RULES.length > 0) lines.push("", "## Team style", ...TEAM_STYLE_RULES.map((rule) => `- ${rule}`));
   return lines.join("\n");
 }
