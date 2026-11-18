@@ -3,6 +3,7 @@
 import { expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { EffectsPanel } from "@/components/editor/effects-panel";
+import { SWATCH_BOX } from "@/components/ui/cx";
 import { findClip, viewDoc } from "@/lib/editor/store";
 import { fireEvent, render, screen } from "../helpers/dom";
 import { makeStore } from "../editor/fixtures";
@@ -51,7 +52,8 @@ it("a text clip's section is called Transitions too, with its own presets and Em
     { label: "text animation", ops: [{ patch: { animationIn: { preset: "pop", frames: 15 } } }] },
     { label: "text animation", ops: [{ patch: { emphasis: { preset: "highlight_word", color: "#FFD400" } } }] },
   ]);
-  expect(screen.getByLabelText("Highlight color")).toBeTruthy();
+  // The same color box as the inspector's and the brand kit's.
+  expect(screen.getByLabelText("Highlight color").className).toBe(SWATCH_BOX);
 });
 
 it("a viewer's controls are disabled", () => {

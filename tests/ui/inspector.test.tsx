@@ -6,6 +6,7 @@ import { FONT_LIST } from "@/lib/brand/fonts";
 import { DEFAULT_BRAND_KIT } from "@/lib/brand/types";
 import { EffectsPanel } from "@/components/editor/effects-panel";
 import { Inspector } from "@/components/editor/inspector";
+import { SWATCH_BOX } from "@/components/ui/cx";
 import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
 import { MESSAGES, explainOpError } from "@/lib/editor/messages";
 import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
@@ -128,6 +129,15 @@ it("a clip removed by someone else while its field is typed in ends the edit", (
   expect(store.getState().notice).toMatchObject({ text: MESSAGES.clipGone });
   expect(screen.getByText("Select a clip to edit it.")).toBeTruthy();
   expect(store.getState().queue).toEqual([]);
+});
+
+it("the color swatch is the shared color box, with the field edge", () => {
+  const store = makeStore();
+  store.getState().select(["x1"]);
+  render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+  const swatch = screen.getByLabelText("Color");
+  expect(swatch.className).toBe(SWATCH_BOX);
+  expect(swatch.className.split(" ")).toContain("border-ed-field-line");
 });
 
 it("the color swatch previews while it moves and saves once when it closes; a bad hex value is reported", () => {

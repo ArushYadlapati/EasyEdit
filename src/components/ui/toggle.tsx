@@ -24,7 +24,7 @@ export function Toggle({ label, checked, onChange, disabled, className, onClick,
           if (!event.defaultPrevented) onChange(!checked);
         }}
         className={cx(
-          "group relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border border-ed-line-strong bg-ed-raised",
+          "group relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border border-ed-field-line bg-ed-raised",
           "aria-checked:border-ed-accent aria-checked:bg-ed-accent-weak",
           FOCUS_RING,
           FADE,

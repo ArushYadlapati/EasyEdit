@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
+import { TAG } from "@/components/ui/cx";
 import type { EditorStore } from "@/lib/editor/store";
 import { makeStore, sampleDoc } from "../editor/fixtures";
 import { fireEvent, render, screen } from "../helpers/dom";
@@ -45,7 +46,8 @@ it("a viewer sees the same screen with no working edit control", () => {
   for (const control of controls) expect(control.disabled, control.outerHTML.slice(0, 120)).toBe(true);
   expect(container.querySelector("[data-trim-handle]")).toBeNull();
   expect(container.querySelector("[data-canvas-handle]")).toBeNull();
-  expect(screen.getByText("View only")).toBeTruthy();
+  // The same tag look as Starter and Soon on the dashboard.
+  expect(screen.getByText("View only").className).toBe(TAG);
   expect((screen.getByRole("button", { name: /^Play/ }) as HTMLButtonElement).disabled).toBe(false);
   expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(false);
   expect(screen.getByRole("img", { name: "Preview" })).toBeTruthy();

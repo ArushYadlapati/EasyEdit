@@ -14,8 +14,8 @@ const SECONDS = 10; // the timeline's visible length
 const PLAYHEAD = 3;
 
 // Stills from Pexels footage (free to use, no credit required).
-const DOG = { name: "beach-dog", thumb: "/home/still-dog.jpg" };
-const SURF = { name: "surf", thumb: "/home/still-surf.jpg" };
+const DOG = { name: "beach-dog", thumb: "/home/still-dog.webp" };
+const SURF = { name: "surf", thumb: "/home/still-surf.webp" };
 
 const BASE: Doc = {
   vertical: false,

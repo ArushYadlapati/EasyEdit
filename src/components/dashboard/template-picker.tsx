@@ -2,7 +2,7 @@
 
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { BlankFrame } from "@/components/dashboard/blank-frame";
-import { DISABLED, FADE, FOCUS_RING, cx } from "@/components/ui/cx";
+import { DISABLED, FADE, FOCUS_RING, TAG, cx } from "@/components/ui/cx";
 import type { TemplateSummary } from "@/lib/templates/types";
 import { FORMAT_PRESETS } from "@/lib/timeline/presets";
 
@@ -75,9 +75,11 @@ export function TemplatePicker({
             </span>
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-xs font-medium text-ed-text">{template ? template.name : "Blank"}</span>
-              <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-ed-muted">
+              {/* With two cards to a row, a phone or a tablet leaves too little room for the slot count and the Starter tag
+                  side by side, so the tag drops to its own line there rather than cutting the count short. */}
+              <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-ed-muted">
                 <span className="truncate">{template ? slotCount(template.slots.length) : "Pick a format"}</span>
-                {template?.builtIn && <span className="shrink-0 rounded-sm border border-ed-line px-1 text-[10px] leading-4">Starter</span>}
+                {template?.builtIn && <span className={TAG}>Starter</span>}
               </span>
             </span>
           </button>

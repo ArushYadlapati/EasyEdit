@@ -5,6 +5,7 @@ import { useEffect, useId, useState, type FormEvent, type ReactNode } from "reac
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { templateFormatLine } from "@/components/dashboard/template-picker";
 import { Button } from "@/components/ui/button";
+import { TAG } from "@/components/ui/cx";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { TextArea } from "@/components/ui/text-area";
@@ -51,7 +52,7 @@ export function TemplatesPage({ spaceId, canEdit, templates }: { spaceId: string
           <li key={template.id} className="flex flex-col gap-1 rounded-md border border-ed-line bg-ed-raised px-3 py-2.5">
             <div className="flex min-w-0 items-center gap-2">
               <span className="min-w-0 truncate text-[13px] font-medium text-ed-text">{template.name}</span>
-              {template.builtIn && <span className="shrink-0 rounded-sm border border-ed-line px-1 text-[10px] leading-4 text-ed-muted">Starter</span>}
+              {template.builtIn && <span className={TAG}>Starter</span>}
               {canEdit && !template.builtIn && (
                 <span className="ml-auto flex shrink-0 gap-1">
                   <Button onClick={() => setEditing(template)}>Edit</Button>

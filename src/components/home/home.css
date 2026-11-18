@@ -84,6 +84,21 @@
   padding: 0 18px;
   font-size: 14px;
 }
+/* The small Pause / Play pill for anything that moves on its own: the hero, and the agent logos. */
+.h-pause {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.12);
+  color: rgb(255 255 255 / 0.85);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 160ms;
+}
+.h-pause:hover {
+  background: rgb(255 255 255 / 0.22);
+}
 
 .h-brand {
   display: inline-flex;
@@ -901,18 +916,6 @@
   z-index: 2;
   right: var(--h-pad);
   bottom: 24px;
-  padding: 6px 12px;
-  border: 0;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.12);
-  color: rgb(255 255 255 / 0.85);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background-color 160ms;
-}
-.h-heroPause:hover {
-  background: rgb(255 255 255 / 0.22);
 }
 
 /* ---------- Drawn pieces in the team cards ---------- */
@@ -1545,6 +1548,14 @@
   width: max-content;
   animation: h-scroll 36s linear infinite;
 }
+.h-marquee:hover .h-marqueeTrack,
+.h-marqueeTrack[data-paused] {
+  animation-play-state: paused;
+}
+.h-marqueePause {
+  display: block;
+  margin: 20px 0 0 auto;
+}
 .h-agent {
   display: inline-flex;
   align-items: center;
@@ -1629,12 +1640,13 @@
   background: var(--ed-accent-weak);
   color: var(--ed-accent);
 }
+/* The real sidebar's section heading, at its size. */
 .h-driveHead {
   margin-top: 10px;
   color: var(--ed-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.025em;
   text-transform: uppercase;
 }
 .h-driveMain {
@@ -1834,6 +1846,10 @@
     width: auto;
   }
   .h-marqueeTrack > .h-agent:nth-child(n + 9) {
+    display: none;
+  }
+  /* Nothing moves, so there is nothing to pause. */
+  .h-marqueePause {
     display: none;
   }
 }

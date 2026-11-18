@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { DISABLED, FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
+import { SWATCH_BOX } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
 import { NumberInput } from "@/components/ui/number-input";
 import { Select } from "@/components/ui/select";
@@ -88,13 +88,7 @@ function EffectColorBoxes({ label, value, canEdit, onCommit }: { label: string; 
           data-edit-control
           disabled={!canEdit}
           defaultValue={HEX.test(value) ? value : "#000000"}
-          className={cx(
-            "h-7 w-9 shrink-0 cursor-pointer rounded-md border border-ed-line-strong bg-ed-raised p-0.5",
-            "[&::-moz-color-swatch]:rounded-[4px] [&::-moz-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-[4px] [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch-wrapper]:p-0",
-            FOCUS_RING_INSET,
-            FADE,
-            DISABLED,
-          )}
+          className={SWATCH_BOX}
         />
         <TextInput
           aria-label={`${label} hex`}

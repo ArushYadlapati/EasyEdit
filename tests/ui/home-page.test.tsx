@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "@/app/page";
 import { AgentDemo, REQUESTS } from "@/components/home/agent-demo";
@@ -24,6 +26,18 @@ const { signedIn } = vi.hoisted(() => ({ signedIn: { user: null as CurrentUser |
 vi.mock("@/lib/access", () => ({ getCurrentUser: vi.fn(async () => signedIn.user) }));
 
 const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
+
+// A WebP file's pixel size, from its first chunk: lossy (VP8), lossless (VP8L) or extended (VP8X).
+function webpSize(file: Buffer): { width: number; height: number } {
+  const chunk = file.toString("ascii", 12, 16);
+  if (chunk === "VP8 ") return { width: file.readUInt16LE(26) & 0x3fff, height: file.readUInt16LE(28) & 0x3fff };
+  if (chunk === "VP8L") {
+    const bits = file.readUInt32LE(21);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+  }
+  if (chunk === "VP8X") return { width: file.readUIntLE(24, 3) + 1, height: file.readUIntLE(27, 3) + 1 };
+  throw new Error(`not a WebP file (first chunk ${JSON.stringify(chunk)})`);
+}
 
 beforeEach(() => {
   signedIn.user = null;
@@ -71,15 +85,42 @@ describe("home page", () => {
     vi.useRealTimers();
   });
 
-  it("holds the scene while paused", async () => {
+  it("holds the scene while paused, and its button then says Play", async () => {
     vi.useFakeTimers();
     render(await Home());
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    const button = screen.getByRole("button", { name: "Pause" });
+    // The words change with the state, so the button is a plain button, not a pressed toggle as well.
+    expect(button.hasAttribute("aria-pressed")).toBe(false);
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "Play" })).toBe(button);
     act(() => {
       vi.advanceTimersByTime(12000);
     });
     expect(document.querySelector(".h-heroPhrase [data-on]")?.textContent).toBe("for AI agents.");
+
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "Pause" })).toBe(button);
+    expect(button.hasAttribute("aria-pressed")).toBe(false);
     vi.useRealTimers();
+  });
+
+  it("pauses the agent logos with their own button, and leaves the hero playing", async () => {
+    render(await Home());
+    const track = document.querySelector(".h-marqueeTrack")!;
+    const button = screen.getByRole("button", { name: "Pause the agent logos" });
+    expect(button.hasAttribute("aria-pressed")).toBe(false);
+    expect(track.hasAttribute("data-paused")).toBe(false);
+
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "Play the agent logos" })).toBe(button);
+    expect(button.hasAttribute("aria-pressed")).toBe(false);
+    expect(track.hasAttribute("data-paused")).toBe(true);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy(); // the hero's, untouched
+
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "Pause the agent logos" })).toBe(button);
+    expect(track.hasAttribute("data-paused")).toBe(false);
+    expect(track.querySelectorAll(".h-agent")).toHaveLength(16); // the row twice, so the loop has no seam
   });
 
   it("has the AI, team and get-started sections, linked from the top, and no tools section", async () => {
@@ -93,6 +134,26 @@ describe("home page", () => {
       expect(document.getElementById(id)).toBeTruthy();
     }
     expect(document.getElementById("tools")).toBeNull();
+  });
+
+  it("draws its stills and posters from WebP files in public/home, each img sized to its file's shape", async () => {
+    render(await Home());
+    const images = [...document.querySelectorAll("img")].filter((img) => img.getAttribute("src")?.startsWith("/home/"));
+    const posters = [...document.querySelectorAll("video")].map((video) => video.getAttribute("poster") ?? "");
+    expect(images.length).toBeGreaterThan(0);
+    expect(posters).toHaveLength(4);
+    for (const src of [...images.map((img) => img.getAttribute("src") ?? ""), ...posters]) {
+      expect(src).toMatch(/^\/home\/[\w-]+\.webp$/);
+      expect(existsSync(join(process.cwd(), "public", src)), src).toBe(true);
+    }
+    // The width and height reserve the image's space before it loads, so they must keep the file's own shape.
+    for (const img of images) {
+      const src = img.getAttribute("src") ?? "";
+      const file = webpSize(readFileSync(join(process.cwd(), "public", src)));
+      const width = Number(img.getAttribute("width"));
+      const height = Number(img.getAttribute("height"));
+      expect(width * file.height, `${src} at ${width}x${height}`).toBe(height * file.width);
+    }
   });
 
   it("says it works with every AI agent inside the AI section, that it's completely free, then offers the first project", async () => {

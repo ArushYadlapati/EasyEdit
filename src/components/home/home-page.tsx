@@ -2,13 +2,14 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { LogoMark } from "@/components/ui/logo";
 import { AgentDemo } from "./agent-demo";
+import { AgentMarquee } from "./agent-marquee";
 import { HeroScene } from "./hero-scene";
 import { NewProjectForm } from "./new-project-form";
 import { DriveShot, PresenceShot, ProjectsShot } from "./team-shots";
 import "./home.css";
 
 // The public home page, for anyone who lands on easyedit.arush.dev signed out. Always dark, in the app's own type.
-// The footage in public/home is from Pexels (free to use, no credit required); activity.jpg and brand-kit.jpg are
+// The footage in public/home is from Pexels (free to use, no credit required); activity.webp and brand-kit.webp are
 // crops of the real editor from the intro tutorial's recording.
 
 const AI_POINTS = [
@@ -36,7 +37,7 @@ const TEAM: { shot: ReactNode; title: string; text: string }[] = [
     shot: (
       // eslint-disable-next-line @next/next/no-img-element -- a fixed crop of the real editor, served as is
       <img
-        src="/home/activity.jpg"
+        src="/home/activity.webp"
         alt="The Activity list: Sam Okafor added a video clip, and you added 3 clips, each with Undo this change."
         width={540}
         height={370}
@@ -55,7 +56,7 @@ const TEAM: { shot: ReactNode; title: string; text: string }[] = [
     shot: (
       // eslint-disable-next-line @next/next/no-img-element -- a fixed crop of the real editor, served as is
       <img
-        src="/home/brand-kit.jpg"
+        src="/home/brand-kit.webp"
         alt="A team's brand kit: Orbitron for titles, Inter for subtitles and body text, and four brand colours."
         width={1180}
         height={820}
@@ -112,16 +113,14 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
             {AGENTS.join(", ")} and anything else that speaks MCP. Connect one from AI agents in your account menu.
           </p>
         </div>
-        <div className="h-marquee" aria-hidden="true">
-          <div className="h-marqueeTrack">
-            {[...AGENT_LOGOS, ...AGENT_LOGOS].map((a, i) => (
-              <span key={`${a.name}-${i}`} className="h-agent">
-                <span className="h-agentLogo" style={{ maskImage: `url(/home/logos/${a.logo}.svg)` }} />
-                {a.name}
-              </span>
-            ))}
-          </div>
-        </div>
+        <AgentMarquee>
+          {[...AGENT_LOGOS, ...AGENT_LOGOS].map((a, i) => (
+            <span key={`${a.name}-${i}`} className="h-agent">
+              <span className="h-agentLogo" style={{ maskImage: `url(/home/logos/${a.logo}.svg)` }} />
+              {a.name}
+            </span>
+          ))}
+        </AgentMarquee>
       </section>
 
       <section id="teams" className="h-section" aria-labelledby="teams-title">

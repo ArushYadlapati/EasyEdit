@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, expect, it, vi } from "vitest";
 import { TemplatesPage } from "@/components/dashboard/templates-page";
+import { TAG } from "@/components/ui/cx";
 import { TemplateApiError } from "@/lib/templates/client";
 import type { Template, TemplateSummary } from "@/lib/templates/types";
 import { act, fireEvent, render, screen, waitFor, within } from "../helpers/dom";
@@ -67,6 +68,12 @@ it("lists starters first, then saved templates, with the Starter tag and slots",
   expect(screen.getByText("Our recap.")).toBeTruthy();
   expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
   expect(screen.queryByText(/Open a project, mark clips/)).toBeNull();
+});
+
+it("sets the Starter tag at 11 px, no smaller than any other label, in the shared tag look", () => {
+  page(true);
+  expect(screen.getByText("Starter").className.split(" ")).toEqual(expect.arrayContaining(["text-[11px]", "leading-4", "font-medium"]));
+  expect(screen.getByText("Starter").className).toBe(TAG);
 });
 
 it("shows how to make a template when none is saved", () => {

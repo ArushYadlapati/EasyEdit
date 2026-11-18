@@ -24,7 +24,7 @@ const SCENES: Scene[] = [
     phrase: "for AI agents.",
     line: "Ask Claude, ChatGPT or Cursor in plain words, and watch the edit land in your project.",
     video: "/home/scene-friends.mp4",
-    poster: "/home/scene-friends.jpg",
+    poster: "/home/scene-friends.webp",
   },
   {
     key: "team",
@@ -32,7 +32,7 @@ const SCENES: Scene[] = [
     phrase: "for teams.",
     line: "Everyone edits the same project at once, and sees who's working on what.",
     video: "/home/scene-city.mp4",
-    poster: "/home/scene-city.jpg",
+    poster: "/home/scene-city.webp",
   },
   {
     key: "creators",
@@ -40,7 +40,7 @@ const SCENES: Scene[] = [
     phrase: "for creators.",
     line: "Vertical, square or wide: make it once and shape it for Reels, Shorts, TikTok or YouTube.",
     video: "/home/scene-mountain.mp4",
-    poster: "/home/scene-mountain.jpg",
+    poster: "/home/scene-mountain.webp",
   },
   {
     key: "browser",
@@ -48,17 +48,17 @@ const SCENES: Scene[] = [
     phrase: "in your browser.",
     line: "Nothing to install. Your video renders to an MP4 right on your computer.",
     video: "/home/scene-wave.mp4",
-    poster: "/home/scene-wave.jpg",
+    poster: "/home/scene-wave.webp",
   },
 ];
 
 const MEDIA = [
-  { name: "bonfire.mp4", img: "/home/scene-friends.jpg" },
-  { name: "shibuya.mp4", img: "/home/scene-city.jpg" },
-  { name: "ridge.mp4", img: "/home/scene-mountain.jpg" },
-  { name: "wave.mp4", img: "/home/scene-wave.jpg" },
-  { name: "beach-dog.mp4", img: "/home/still-dog.jpg" },
-  { name: "surf.mp4", img: "/home/still-surf.jpg" },
+  { name: "bonfire.mp4", img: "/home/scene-friends.webp" },
+  { name: "shibuya.mp4", img: "/home/scene-city.webp" },
+  { name: "ridge.mp4", img: "/home/scene-mountain.webp" },
+  { name: "wave.mp4", img: "/home/scene-wave.webp" },
+  { name: "beach-dog.mp4", img: "/home/still-dog.webp" },
+  { name: "surf.mp4", img: "/home/still-surf.webp" },
 ];
 
 // Each scene's new Activity lines (the app's wording, from summarizeOps), and when each arrives, in seconds.
@@ -372,8 +372,9 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
         {closedBeta && <p className="h-heroNote">EasyEdit is in closed beta. Sign-in is by invitation only for now.</p>}
       </div>
 
+      {/* Its words say what a press does, so, like the agent logos' button, it is not also marked pressed. */}
       {!still && (
-        <button type="button" className="h-heroPause" onClick={() => setPaused((p) => !p)} aria-pressed={paused}>
+        <button type="button" className="h-pause h-heroPause" onClick={() => setPaused((p) => !p)}>
           {paused ? "Play" : "Pause"}
         </button>
       )}

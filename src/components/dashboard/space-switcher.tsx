@@ -4,7 +4,7 @@ import Link from "next/link";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { CreateTeamDialog } from "@/components/dashboard/create-team-dialog";
 import { SidebarSection } from "@/components/dashboard/sidebar-section";
-import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
+import { FADE, FOCUS_RING_INSET, TAG, cx } from "@/components/ui/cx";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { PERSONAL_SOON } from "@/lib/spaces/personal";
 import type { TeamFormState } from "@/lib/spaces/team-actions";
@@ -105,7 +105,7 @@ export function SpaceSwitcher({
               <span className="min-w-0 truncate">{labelOf(space)}</span>
               {soon && " "}
               {soon && (
-                <span className="rounded-sm border border-ed-line px-1 text-[10px] leading-4 font-medium text-ed-muted">{PERSONAL_SOON.tag}</span>
+                <span className={TAG}>{PERSONAL_SOON.tag}</span>
               )}
             </Link>
           );

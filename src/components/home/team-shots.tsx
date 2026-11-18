@@ -16,7 +16,7 @@ export function PresenceShot() {
       </div>
       <div className="h-shotPreview">
         {/* eslint-disable-next-line @next/next/no-img-element -- footage inside a drawn interface */}
-        <img src="/home/still-street.jpg" alt="" width={960} height={540} />
+        <img src="/home/still-street.webp" alt="" width={960} height={540} />
         <span className="h-shotSel" style={{ inset: "8% 46% 30% 6%", "--peer": "var(--ed-peer-1)" } as React.CSSProperties}>
           <span>Sam</span>
         </span>
@@ -30,10 +30,10 @@ export function PresenceShot() {
 }
 
 const PROJECTS = [
-  { name: "Summer reel", img: "/home/still-dog.jpg", meta: "Vertical 9:16", by: "Changed 2 hours ago by Sam Okafor" },
-  { name: "City nights", img: "/home/still-street.jpg", meta: "Landscape 16:9", by: "Changed yesterday by you" },
-  { name: "Into the hills", img: "/home/still-misty.jpg", meta: "Feed 4:5", by: "Changed 3 days ago by Mika Kato" },
-  { name: "Surf day", img: "/home/still-surf.jpg", meta: "Square 1:1", by: "Changed last week by you" },
+  { name: "Summer reel", img: "/home/still-dog.webp", meta: "Vertical 9:16", by: "Changed 2 hours ago by Sam Okafor" },
+  { name: "City nights", img: "/home/still-street.webp", meta: "Landscape 16:9", by: "Changed yesterday by you" },
+  { name: "Into the hills", img: "/home/still-misty.webp", meta: "Feed 4:5", by: "Changed 3 days ago by Mika Kato" },
+  { name: "Surf day", img: "/home/still-surf.webp", meta: "Square 1:1", by: "Changed last week by you" },
 ];
 
 export function ProjectsShot() {
@@ -81,7 +81,7 @@ export function DriveShot() {
         </div>
         <div className="h-shotPreview">
           {/* eslint-disable-next-line @next/next/no-img-element -- footage inside a drawn interface */}
-          <img src="/home/still-dog.jpg" alt="" width={960} height={540} />
+          <img src="/home/still-dog.webp" alt="" width={960} height={540} />
         </div>
       </div>
 

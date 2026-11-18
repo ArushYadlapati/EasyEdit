@@ -34,6 +34,22 @@ it("stays inside the app when nothing is at risk", () => {
   expect(assign).not.toHaveBeenCalled();
 });
 
+it("an error is said in the danger color, with no stripe down the notice's side", () => {
+  const store = makeStore();
+  render(<EditorProvider store={store}><NoticeBar /></EditorProvider>);
+  act(() => store.getState().notify("error", "That clip is gone."));
+  const words = screen.getByRole("alert");
+  expect(words.textContent).toBe("That clip is gone.");
+  expect(words.className.split(" ")).toContain("text-ed-danger");
+  const frame = words.parentElement!;
+  expect(frame.className.split(" ").filter((c) => c.startsWith("border-l"))).toEqual([]);
+  expect(frame.className.split(" ")).toEqual(expect.arrayContaining(["border", "border-ed-line", "bg-ed-raised"]));
+  act(() => store.getState().notify("info", "Saved."));
+  expect(screen.getByRole("status").textContent).toBe("Saved.");
+  expect(screen.getByRole("status").className).not.toContain("text-ed-danger");
+  expect(screen.getByRole("alert").textContent).toBe("");
+});
+
 it("shows no link for an address outside this app", () => {
   for (const href of ["https://evil.example/", "//evil.example/", "javascript:alert(1)"]) {
     const store = show(href);

@@ -17,6 +17,7 @@
   --color-ed-hover: var(--ed-hover);
   --color-ed-line: var(--ed-line);
   --color-ed-line-strong: var(--ed-line-strong);
+  --color-ed-field-line: var(--ed-field-line);
   --color-ed-text: var(--ed-text);
   --color-ed-muted: var(--ed-muted);
   --color-ed-faint: var(--ed-faint);
@@ -64,14 +65,21 @@ html:has(.editor, .ed-theme) {
   --ed-raised: #1c1c1c;      /* inputs, menus, track headers */
   --ed-hover: #262626;
   --ed-line: #2a2a2a;        /* hairlines */
-  --ed-line-strong: #3d3d3d; /* borders of inputs, dividers between regions */
+  --ed-line-strong: #3d3d3d; /* dividers between regions */
+  /* The edge of fields, off switches and color swatches. Their fill is barely lighter than a panel, so the edge is what
+     shows where the control is: the darkest grey with at least 3:1 against --ed-raised (3.01:1), --ed-panel (3.26:1)
+     and --ed-bg (3.50:1). */
+  --ed-field-line: #676767;
   --ed-text: #ededed;        /* the app's dark foreground */
   --ed-muted: #a3a3a3;       /* secondary text */
   --ed-faint: #737373;       /* decoration and disabled marks only, never text a person must read */
   --ed-accent: #6ea8ff;      /* selection, focus, the primary action */
   --ed-accent-weak: rgb(110 168 255 / 0.18);
   --ed-danger: #f26d6d;      /* errors, destructive actions, a drop that is not allowed */
-  --ed-warn: #e0b341;        /* offline */
+  /* Something has stopped or needs care now: the save status when the editor is offline, at the daily limit or moved
+     away, the moved banner's folder mark, a new access token's "copy it now" line, and the storage banner when a
+     space's Google connection breaks. */
+  --ed-warn: #e0b341;
   --ed-guide: #2fd3c5;       /* guides placed on the preview, apart from the accent of selection and snapping */
   /* PLACEHOLDER_FILL in src/lib/render/compositor.ts repeats the next two values, because a worker cannot read CSS variables. */
   --ed-clip-video: #2c3d5c;

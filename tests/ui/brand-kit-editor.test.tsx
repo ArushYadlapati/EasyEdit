@@ -2,6 +2,7 @@
 import { expect, it, vi } from "vitest";
 import { BrandKitEditor } from "@/components/brand/brand-kit-editor";
 import { MediaProvider } from "@/components/editor/media/media-context";
+import { SWATCH_BOX } from "@/components/ui/cx";
 import { DEFAULT_BRAND_KIT, type BrandKit } from "@/lib/brand/types";
 import { cssFontFamily } from "@/lib/editor/fonts";
 import { fireEvent, render, screen, within } from "../helpers/dom";
@@ -33,6 +34,29 @@ it("clicking a font, a color or a logo uses it", () => {
   expect(onUseFont).toHaveBeenCalledWith("subtitle");
   expect(onUseColor).toHaveBeenCalledWith("#ff5a1f");
   expect(onUseLogo).toHaveBeenCalledWith(logo);
+});
+
+it("every color chip has the field edge, so a near-black brand color still shows where it is", () => {
+  setup({ onUseColor: vi.fn() });
+  const chip = screen.getByRole("button", { name: "#111111" }).className.split(/\s+/);
+  expect(chip).toContain("border-ed-field-line");
+  expect(chip).not.toContain("border-ed-line");
+  expect(screen.getByLabelText("Pick a color").className.split(/\s+/)).toContain("border-ed-field-line");
+});
+
+it("the Pick a color box is the same color box as the inspector's, with no second edge inside it", () => {
+  setup();
+  const picker = screen.getByLabelText("Pick a color");
+  expect(picker.className).toBe(SWATCH_BOX);
+  // The browser draws its own grey border around the swatch unless it is taken off.
+  expect(picker.className.split(/\s+/)).toEqual(expect.arrayContaining(["[&::-webkit-color-swatch]:border-none", "[&::-moz-color-swatch]:border-none"]));
+});
+
+it("a read-only color chip has the same edge as the buttons", () => {
+  setup({ canEdit: false });
+  const chip = screen.getByTitle("#111111").className.split(/\s+/);
+  expect(chip).toContain("border-ed-field-line");
+  expect(chip).not.toContain("border-ed-line");
 });
 
 it("choosing a font saves only that role", () => {

@@ -16,6 +16,9 @@ const NEXT_KEYS: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLe
 // arrow keys move the choice. Extra props go on every option button, except id, which names the
 // group (an id must be unique). A caller's onClick and onKeyDown run first; calling
 // preventDefault() in them skips the control's own handling.
+// The chosen option's tint and blue words differ from the others mostly in hue (1.38:1 and 1.05:1), so it also takes
+// a 1 px accent edge, 7:1 against the well. The edge is an inset ring rather than a border, so no option's
+// word loses room to it: some callers fit their words to the pixel.
 export function Segmented<T extends string>({
   label,
   value,
@@ -66,6 +69,7 @@ export function Segmented<T extends string>({
             "flex-1 truncate rounded-[4px] px-2 text-xs font-medium text-ed-muted select-none",
             "enabled:hover:bg-ed-hover enabled:hover:text-ed-text",
             "aria-checked:bg-ed-accent-weak aria-checked:text-ed-accent enabled:aria-checked:hover:bg-ed-accent-weak enabled:aria-checked:hover:text-ed-accent",
+            "aria-checked:inset-ring aria-checked:inset-ring-ed-accent",
             FOCUS_RING,
             FADE,
             DISABLED,

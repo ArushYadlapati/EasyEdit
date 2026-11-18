@@ -10,20 +10,35 @@ export const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-
 export const FOCUS_RING_INSET = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ed-accent";
 export const FADE = "transition-[color,background-color,border-color,opacity] duration-120 motion-reduce:transition-none";
 export const DISABLED = "disabled:cursor-not-allowed disabled:opacity-40";
-// A boxed text field: 13 px text, raised fill and an input border. Single-line fields add h-7 (28 px).
+// A boxed text field: 13 px text, raised fill and a field edge. The fill is barely lighter than a panel, so the edge is
+// what shows where an empty field is. Single-line fields add h-7 (28 px).
 export const FIELD_BOX = cx(
-  "w-full min-w-0 rounded-md border border-ed-line-strong bg-ed-raised px-2 text-[13px] leading-5 text-ed-text placeholder:text-ed-muted",
+  "w-full min-w-0 rounded-md border border-ed-field-line bg-ed-raised px-2 text-[13px] leading-5 text-ed-text placeholder:text-ed-muted",
   FOCUS_RING_INSET,
   FADE,
   DISABLED,
 );
 // A number you drag sideways, as in Premiere: at rest an underlined accent value with no box, a box only while it is
-// typed in. FIELD_BOX's size, padding, focus ring and fade, never mixed with its border and fill.
+// typed in. FIELD_BOX's size, padding, focus ring and fade, never mixed with its border and fill. The faint hover box is
+// for the resting value only: a click types in the field with the pointer still over it, and a plain hover rule would
+// outrank the focus edge there.
 export const SCRUB_BOX = cx(
   "w-full min-w-0 rounded-md px-2 text-[13px] leading-5 placeholder:text-ed-muted",
   FOCUS_RING_INSET,
   FADE,
   "border border-transparent bg-transparent text-ed-accent underline decoration-dotted underline-offset-4 cursor-ew-resize",
-  "enabled:hover:border-ed-line focus:border-ed-line-strong focus:bg-ed-raised focus:text-ed-text focus:no-underline focus:cursor-text",
+  "enabled:not-focus:hover:border-ed-line focus:border-ed-field-line focus:bg-ed-raised focus:text-ed-text focus:no-underline focus:cursor-text",
   "disabled:text-ed-text disabled:no-underline disabled:cursor-default",
 );
+// A color input, as a field-sized box the chosen color fills. It keeps the field edge, so a color close to the panel's
+// still shows where the control is, and the browser's own swatch border and padding are taken off so there is only one.
+export const SWATCH_BOX = cx(
+  "h-7 w-9 shrink-0 cursor-pointer rounded-md border border-ed-field-line bg-ed-raised p-0.5",
+  "[&::-moz-color-swatch]:rounded-[4px] [&::-moz-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-[4px] [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch-wrapper]:p-0",
+  FOCUS_RING_INSET,
+  FADE,
+  DISABLED,
+);
+// A small tag beside a name, such as Starter or Soon: the label size, 11 px, which is as small as words to read get. It is
+// the same look as the editor's View only tag, 6 px a side like a key cap.
+export const TAG = "shrink-0 rounded-[4px] border border-ed-line px-1.5 text-[11px] leading-4 font-medium text-ed-muted";

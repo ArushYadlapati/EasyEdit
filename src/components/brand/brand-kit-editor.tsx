@@ -4,7 +4,7 @@ import { Plus, X } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { usePoster } from "@/components/editor/media/use-poster";
 import { Button } from "@/components/ui/button";
-import { DISABLED, FADE, FOCUS_RING, cx } from "@/components/ui/cx";
+import { DISABLED, FADE, FOCUS_RING, SWATCH_BOX, cx } from "@/components/ui/cx";
 import { Select } from "@/components/ui/select";
 import { TextInput } from "@/components/ui/text-input";
 import { FONT_LIST } from "@/lib/brand/fonts";
@@ -151,12 +151,12 @@ function Colors({ kit, canEdit, save, onUseColor }: BrandKitEditorProps) {
                 data-edit-control
                 aria-label={hex}
                 title={hex}
-                className={cx("size-8 rounded-md border border-ed-line", FOCUS_RING, FADE)}
+                className={cx("size-8 rounded-md border border-ed-field-line", FOCUS_RING, FADE)}
                 style={{ background: hex }}
                 onClick={() => onUseColor(hex)}
               />
             ) : (
-              <span title={hex} className="block size-8 rounded-md border border-ed-line" style={{ background: hex }} />
+              <span title={hex} className="block size-8 rounded-md border border-ed-field-line" style={{ background: hex }} />
             )}
             {canEdit && <RemoveBadge label={`Remove ${hex}`} onClick={() => void save({ colors: kit.colors.filter((c) => c !== hex) })} />}
           </li>
@@ -167,7 +167,7 @@ function Colors({ kit, canEdit, save, onUseColor }: BrandKitEditorProps) {
           <input
             type="color"
             aria-label="Pick a color"
-            className={cx("h-7 w-8 shrink-0 cursor-pointer rounded-md border border-ed-line bg-transparent", FOCUS_RING)}
+            className={SWATCH_BOX}
             value={HEX_COLOR.test(draft) ? draft.toLowerCase() : "#ffffff"}
             onChange={(e) => setDraft(e.target.value)}
           />

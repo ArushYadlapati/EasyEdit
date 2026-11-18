@@ -2,6 +2,7 @@
 import { Component, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NewProjectDialog } from "@/components/dashboard/new-project-dialog";
+import { TAG } from "@/components/ui/cx";
 import type { DashboardFolder } from "@/lib/dashboard/view";
 import type { TemplateSummary } from "@/lib/templates/types";
 import type { FormState } from "@/lib/projects/dashboard-actions";
@@ -472,6 +473,22 @@ it("choosing a template hides the format fields, shows its format and sends temp
   expect(sent().get("templateId")).toBe("tpl1");
   expect(sent().get("format")).toBeNull();
   expect(sent().get("name")).toBe("Untitled project");
+});
+
+it("sets a starter's Starter tag at 11 px, the size of the line it sits in", () => {
+  render(dialog({ templates: [TEMPLATE] }));
+  const tag = Array.from(radio("Quick promo").querySelectorAll("span")).find((span) => span.textContent === "Starter")!;
+  expect(tag.className.split(" ")).toEqual(expect.arrayContaining(["text-[11px]", "leading-4"]));
+  expect(tag.parentElement!.className.split(" ")).toContain("text-[11px]");
+  expect(tag.className).toBe(TAG);
+});
+
+it("lets a starter's Starter tag drop under the slot count when the card is narrow, so the count is never cut", () => {
+  render(dialog({ templates: [TEMPLATE] }));
+  const tag = Array.from(radio("Quick promo").querySelectorAll("span")).find((span) => span.textContent === "Starter")!;
+  const line = tag.parentElement!;
+  expect(line.textContent).toBe("3 slotsStarter");
+  expect(line.className.split(" ")).toEqual(expect.arrayContaining(["flex", "flex-wrap"]));
 });
 
 it("choosing Blank again brings the format fields back with the earlier choice", () => {

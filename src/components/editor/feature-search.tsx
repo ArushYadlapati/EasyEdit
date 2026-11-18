@@ -113,8 +113,8 @@ export function FeatureSearch({ items, onRun, inputRef, className }: FeatureSear
         onBlur={close}
         onKeyDown={onKeyDown}
         className={cx(
-          "peer h-7 w-full min-w-0 rounded-md border border-ed-line bg-ed-bg pr-12 pl-7 text-xs leading-5 text-ed-text placeholder:text-ed-muted",
-          "hover:border-ed-line-strong focus:border-ed-line-strong focus:bg-ed-raised",
+          "peer h-7 w-full min-w-0 rounded-md border border-ed-field-line bg-ed-bg pr-12 pl-7 text-xs leading-5 text-ed-text placeholder:text-ed-muted",
+          "focus:bg-ed-raised",
           FOCUS_RING_INSET,
           FADE,
         )}

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { SpaceSwitcher } from "@/components/dashboard/space-switcher";
+import { TAG } from "@/components/ui/cx";
 import type { MySpace } from "@/lib/spaces/types";
 import { render, screen } from "../helpers/dom";
 
@@ -36,6 +37,12 @@ describe("SpaceSwitcher", () => {
     expect(heading.parentElement!.firstElementChild).toBe(heading);
     // Beside the list on a wide window; for screen readers only on a narrow one, where the switcher is a row.
     expect(heading.className.split(" ")).toEqual(expect.arrayContaining(["sr-only", "md:not-sr-only", "uppercase"]));
+  });
+
+  it("sets the Soon tag at 11 px, no smaller than any other label, in the same look as the Starter tag", () => {
+    render(<SpaceSwitcher spaces={[PERSONAL, TEAM]} current={TEAM.id} personalSoon />);
+    expect(screen.getByText("Soon").className.split(" ")).toEqual(expect.arrayContaining(["text-[11px]", "leading-4"]));
+    expect(screen.getByText("Soon").className).toBe(TAG);
   });
 
   it("has no Create a team item", () => {

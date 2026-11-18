@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -47,6 +48,86 @@ it("puts data-edit-control and disabled on the native control itself", () => {
   for (const el of marked) expect(el.disabled, el.outerHTML.slice(0, 80)).toBe(true);
   expect(screen.getAllByRole("radio")).toHaveLength(2);
   expect(screen.getByRole("switch", { name: "Locked" }).hasAttribute("data-edit-control")).toBe(true);
+});
+
+// WCAG's contrast ratio between two #rrggbb colors.
+function contrast(a: string, b: string): number {
+  const luminance = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+// The app's color roles, read from the stylesheet so the ratios below follow any change to them.
+const css = readFileSync("src/app/globals.css", "utf8");
+const role = (name: string) => css.match(new RegExp(`--ed-${name}: (#[0-9a-f]{6});`))![1];
+
+it("fields and the off switch are edged in the field line, which stands 3:1 off every dark surface", () => {
+  render(
+    <>
+      <TextInput aria-label="Name" />
+      <NumberInput ariaLabel="Size" value={1} onCommit={() => {}} />
+      <TextArea aria-label="Text" />
+      <Select aria-label="Weight">
+        <option>400</option>
+      </Select>
+      <Toggle label="Locked" checked={false} onChange={() => {}} />
+    </>,
+  );
+  for (const el of [
+    screen.getByRole("textbox", { name: "Name" }),
+    screen.getByRole("textbox", { name: "Size" }),
+    screen.getByRole("textbox", { name: "Text" }),
+    screen.getByRole("combobox", { name: "Weight" }),
+    screen.getByRole("switch", { name: "Locked" }),
+  ]) {
+    const classes = el.className.split(" ");
+    expect(classes, el.outerHTML.slice(0, 60)).toContain("border-ed-field-line");
+    expect(classes, el.outerHTML.slice(0, 60)).not.toContain("border-ed-line-strong");
+  }
+
+  expect(css).toContain("--color-ed-field-line: var(--ed-field-line);");
+  for (const surface of ["raised", "panel", "bg"]) {
+    expect(contrast(role("field-line"), role(surface)), surface).toBeGreaterThanOrEqual(3);
+  }
+});
+
+it("a scrub number shows the field edge while it is typed in, even with the pointer still over it", () => {
+  render(<NumberInput ariaLabel="Opacity" value={1} scrub={0.01} onCommit={() => {}} />);
+  const classes = screen.getByRole("textbox", { name: "Opacity" }).className.split(" ");
+  expect(classes).toContain("focus:border-ed-field-line");
+  // The faint hover box is for the resting value only. A plain hover rule is more specific than the focus rule and
+  // would put the 1.2:1 hairline back on the field being typed in.
+  expect(classes).toContain("enabled:not-focus:hover:border-ed-line");
+  expect(classes).not.toContain("enabled:hover:border-ed-line");
+  expect(classes).not.toContain("border-ed-line-strong");
+});
+
+it("the chosen segment has an accent edge as well as its tint, 3:1 off the well and off the tint", () => {
+  render(<Segmented label="Align" value="right" options={[...ALIGN]} onChange={() => {}} />);
+  expect(screen.getByRole("radio", { name: "Right" }).getAttribute("aria-checked")).toBe("true");
+  expect(screen.getByRole("radio", { name: "Left" }).getAttribute("aria-checked")).toBe("false");
+  for (const option of screen.getAllByRole("radio")) {
+    const classes = option.className.split(" ");
+    expect(classes).toContain("aria-checked:inset-ring");
+    expect(classes).toContain("aria-checked:inset-ring-ed-accent");
+    // A ring drawn inside, not a border, so no option's word loses room when it is chosen.
+    expect(classes.filter((c) => /(^|:)border/.test(c))).toEqual([]);
+  }
+
+  // The tint alone is 1.38:1 off the well and the blue words 1.05:1 off the muted ones; the edge carries the choice.
+  const [r, g, b, alpha] = css.match(/--ed-accent-weak: rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\);/)!.slice(1).map(Number);
+  const well = role("raised");
+  const under = [1, 3, 5].map((i) => parseInt(well.slice(i, i + 2), 16));
+  const tint = `#${[r, g, b].map((c, i) => Math.round(alpha * c + (1 - alpha) * under[i]).toString(16).padStart(2, "0")).join("")}`;
+  expect(tint).toBe("#2b3545");
+  expect(contrast(role("accent"), well)).toBeGreaterThanOrEqual(3);
+  expect(contrast(role("accent"), tint)).toBeGreaterThanOrEqual(3);
 });
 
 it("a caller's onClick on Toggle and Segmented does not stop onChange", () => {

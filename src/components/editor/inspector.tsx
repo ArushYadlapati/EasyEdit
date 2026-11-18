@@ -3,7 +3,7 @@
 import { Link2, Link2Off } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { DISABLED, FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
+import { SWATCH_BOX, cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
 import { IconButton } from "@/components/ui/icon-button";
 import { NumberInput } from "@/components/ui/number-input";
@@ -272,13 +272,7 @@ function ColorField({ clip, canEdit, field = "color", label = "Color" }: { clip:
             if (event.nativeEvent.type === "change") return;
             picked.preview(fieldOps(store, clip.id, field, event.target.value));
           }}
-          className={cx(
-            "h-7 w-9 shrink-0 cursor-pointer rounded-md border border-ed-line-strong bg-ed-raised p-0.5",
-            "[&::-moz-color-swatch]:rounded-[4px] [&::-moz-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-[4px] [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch-wrapper]:p-0",
-            FOCUS_RING_INSET,
-            FADE,
-            DISABLED,
-          )}
+          className={SWATCH_BOX}
         />
         <TextInput
           aria-label={field === "color" ? "Hex color" : `${label} hex`}
