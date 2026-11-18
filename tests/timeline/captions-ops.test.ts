@@ -226,6 +226,14 @@ describe("set_transcript", () => {
     expect(prep([w("a", 100, 50)])).toThrow(/invalid/);
     expect(() => prepareOps([{ op: "splice_caption_words", assetId: "a", index: 0, remove: 0, insert: [w("a", 9, 1)] }])).toThrow(/invalid/);
   });
+
+  it("a word holds no whitespace: a raw set_transcript or insert with a space, tab or newline in a word is INVALID", () => {
+    for (const t of ["two words", "tab\there", "new\nline", "no\u00a0break", " lead", "trail "]) {
+      expect(code(() => prepareOps([{ op: "set_transcript", assetId: "a", words: [w(t, 0, 10)] }]))).toBe("INVALID");
+      expect(code(() => prepareOps([{ op: "splice_caption_words", assetId: "a", index: 0, remove: 0, insert: [w(t, 0, 0)] }]))).toBe("INVALID");
+    }
+    expect(code(() => prepareOps([{ op: "set_transcript", assetId: "a", words: [w("don't-stop!", 0, 10)] }]))).toBeNull();
+  });
 });
 
 describe("splice_caption_words", () => {

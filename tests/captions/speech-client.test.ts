@@ -6,7 +6,7 @@ import {
   type TranscribeProgress,
   type TranscribeWorker,
 } from "@/lib/captions/speech/client";
-import type { FromTranscriber, ToTranscriber } from "@/lib/captions/speech/protocol";
+import { SPEECH_MODEL_REVISION, type FromTranscriber, type ToTranscriber } from "@/lib/captions/speech/protocol";
 
 // A worker that only writes down what it is sent; the test delivers its messages, and says when it breaks.
 function pretendWorker() {
@@ -54,8 +54,9 @@ const WORDS = [
 ];
 
 describe("the transcriber", () => {
-  it("names the base Whisper model with word times", () => {
+  it("names the base Whisper model with word times, pinned to one commit of its repository", () => {
     expect(SPEECH_MODEL).toBe("onnx-community/whisper-base_timestamped");
+    expect(SPEECH_MODEL_REVISION).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it("starts a worker, sends it the file and resolves with its words, then ends the worker", async () => {

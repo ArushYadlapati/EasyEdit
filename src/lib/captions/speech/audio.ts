@@ -2,8 +2,8 @@ import { reach, resampleInto, sincKernel } from "@/lib/export/resample";
 import type { SoundPacket } from "@/lib/export/source-ring";
 
 // A file's sound as Whisper hears it (mono, 16 kHz, from file time 0), and where to cut it into windows.
-// findSilences, silenceCutWindows and their constants are Plan 2's whisper spike, unchanged: they were tuned on one
-// speech set and passed on a held-out one (docs/superpowers/plans/plan-2-findings.md, "Findings: whisper").
+// findSilences, silenceCutWindows and their constants were tuned on one set of synthetic test speech and then passed,
+// unchanged, on another set they had not seen.
 
 export const SAMPLE_RATE = 16_000;
 

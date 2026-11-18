@@ -1,12 +1,13 @@
 // Hears one media file's speech: decodes its first sound track with Mediabunny, takes it to mono 16 kHz, cuts it at
 // pauses and runs Whisper (transformers.js, WASM) on each window, with word times. It makes no network request but for
 // the model files (Hugging Face, or NEXT_PUBLIC_SPEECH_MODEL_HOST) and the ONNX runtime, which the app serves from
-// /ort/ (scripts/copy-ort.mjs). The decisions are Plan 2's whisper findings; the pure parts are in src/lib/captions/speech.
+// /ort/ (scripts/copy-ort.mjs). How it cuts and corrects was measured on test speech; the pure parts are in
+// src/lib/captions/speech, with what was measured beside each.
 import { env, pipeline, type AutomaticSpeechRecognitionOutput, type ProgressInfo } from "@huggingface/transformers";
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from "mediabunny";
 import { SAMPLE_RATE, createSpeechSound, silenceCutWindows } from "@/lib/captions/speech/audio";
-import { correctWords, type RawWord } from "@/lib/captions/speech/correct";
-import { SPEECH_MODEL, type FromTranscriber, type ToTranscriber, type TranscribeFailure } from "@/lib/captions/speech/protocol";
+import { correctWords, dropNonSpeech, type RawWord } from "@/lib/captions/speech/correct";
+import { SPEECH_MODEL, SPEECH_MODEL_REVISION, type FromTranscriber, type ToTranscriber, type TranscribeFailure } from "@/lib/captions/speech/protocol";
 import { LIMITS } from "@/lib/limits";
 
 env.allowLocalModels = false;
@@ -76,6 +77,7 @@ async function hear(file: Blob): Promise<Float32Array> {
 async function loadModel() {
   try {
     return await pipeline("automatic-speech-recognition", SPEECH_MODEL, {
+      revision: SPEECH_MODEL_REVISION,
       device: "wasm",
       dtype: "q8",
       // The library sums the bytes of every file it is loading into one "progress_total".
@@ -88,6 +90,9 @@ async function loadModel() {
   }
 }
 
+// The shortest window worth hearing, in seconds.
+const MIN_WINDOW_SECONDS = 0.1;
+
 async function transcribe(file: Blob): Promise<FromTranscriber> {
   const audio = await hear(file);
   const seconds = audio.length / SAMPLE_RATE;
@@ -96,21 +101,22 @@ async function transcribe(file: Blob): Promise<FromTranscriber> {
     const raw: RawWord[] = [];
     post({ type: "progress", stage: "speech", done: 0, total: seconds });
     // Each window on its own, not the library's 30-second chunk merging, which repeated a sentence and put times out
-    // of order in Plan 2's test.
+    // of order when it was tried on test speech.
     for (const window of silenceCutWindows(audio)) {
-      const slice = audio.subarray(Math.round(window.start * SAMPLE_RATE), Math.round(window.end * SAMPLE_RATE));
-      const output = (await transcriber(slice, {
-        return_timestamps: "word",
-        language: "english",
-        task: "transcribe",
-      })) as AutomaticSpeechRecognitionOutput;
-      for (const chunk of output.chunks ?? []) {
-        const [start, end] = chunk.timestamp;
-        raw.push({
-          text: chunk.text,
+      // Too short to hold a word: Whisper would only make one up.
+      if (window.end - window.start >= MIN_WINDOW_SECONDS) {
+        const slice = audio.subarray(Math.round(window.start * SAMPLE_RATE), Math.round(window.end * SAMPLE_RATE));
+        const output = (await transcriber(slice, {
+          return_timestamps: "word",
+          language: "english",
+          task: "transcribe",
+        })) as AutomaticSpeechRecognitionOutput;
+        const words = (output.chunks ?? []).map(({ text, timestamp: [start, end] }) => ({
+          text,
           start: start === null ? null : start + window.start,
           end: end === null ? null : end + window.start,
-        });
+        }));
+        raw.push(...dropNonSpeech(words));
       }
       post({ type: "progress", stage: "speech", done: window.end, total: seconds });
     }

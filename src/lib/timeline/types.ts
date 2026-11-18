@@ -272,7 +272,13 @@ export type Guide = z.infer<typeof Guide>;
 // One spoken word: its text and when it starts and ends, in milliseconds of the media file it was heard in.
 export const CaptionWord = z
   .strictObject({
-    t: z.string().min(1).max(LIMITS.captionWordChars).refine(isStorableText, UNSTORABLE_TEXT),
+    // One word: no whitespace inside it, so lines wrap and highlight word by word.
+    t: z
+      .string()
+      .min(1)
+      .max(LIMITS.captionWordChars)
+      .refine(isStorableText, UNSTORABLE_TEXT)
+      .refine((t) => !/\s/u.test(t), "a caption word cannot hold whitespace"),
     s: z.number().int().min(0),
     e: z.number().int().min(0),
   })
