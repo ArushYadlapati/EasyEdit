@@ -23,6 +23,7 @@ The editor cannot be opened without a Google sign-in, so the tests cannot click 
 15. Press `?`. The list of shortcuts opens. Close it with `Escape`.
 16. Make the window narrower than 1024 px. The editor is replaced by "The editor needs a wider window."
 17. Add a title. Once the status reads "Saved", wait ten seconds, then click **Projects**: the project's card shows the title on its picture.
+18. Select a video clip and open **Effects** (right of Activity): it shows Transitions and Keyframes, and Inspect no longer has Transitions. Click the Scale diamond in Inspect at two playhead times, then in Effects change the first keyframe's time to 1 s, its value to 120 % and its ease to Ease out: each change is one undo step and the preview follows. **Go to** moves the playhead to the keyframe; **Delete** and **Clear** remove them.
 
 ## What to click to check templates
 

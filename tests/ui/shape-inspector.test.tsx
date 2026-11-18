@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
+import { EffectsPanel } from "@/components/editor/effects-panel";
 import { Inspector } from "@/components/editor/inspector";
 import { findClip } from "@/lib/editor/store";
 import { newShapeClip, type ShapeClip, type TimelineDoc } from "@/lib/timeline";
@@ -108,5 +109,14 @@ describe("the inspector for a shape", () => {
     render(<EditorProvider store={store}><Inspector /></EditorProvider>);
     expect((screen.getByLabelText("Line width") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByRole("radio", { name: "Both" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("the Effects tab offers a shape its transitions, without crossfade", () => {
+    const store = makeStore({ doc: docWith(shape("rect")) });
+    store.getState().select(["sh"]);
+    render(<EditorProvider store={store}><EffectsPanel /></EditorProvider>);
+    const inKinds = [...(screen.getAllByRole("combobox")[0] as HTMLSelectElement).options].map((o) => o.textContent);
+    expect(inKinds).toContain("Fade");
+    expect(inKinds).not.toContain("Crossfade");
   });
 });

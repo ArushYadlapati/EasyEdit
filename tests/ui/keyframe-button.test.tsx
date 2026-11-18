@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
+import { EffectsPanel } from "@/components/editor/effects-panel";
 import { Inspector } from "@/components/editor/inspector";
 import { findClip, viewDoc } from "@/lib/editor/store";
 import type { Clip, Keyframes, TimelineDoc } from "@/lib/timeline";
@@ -12,14 +13,14 @@ function withClip(doc: TimelineDoc, clipId: string, extra: Record<string, unknow
   return doc;
 }
 
-function open(id: string, opts: { keyframes?: Keyframes; canEdit?: boolean; playhead?: number; image?: boolean } = {}) {
+function open(id: string, opts: { keyframes?: Keyframes; canEdit?: boolean; playhead?: number; image?: boolean; effects?: boolean } = {}) {
   let doc = sampleDoc();
   if (opts.keyframes) doc = withClip(doc, id, { keyframes: opts.keyframes });
   if (opts.image) doc = withClip(doc, id, { type: "image" });
   const store = makeStore({ doc, canEdit: opts.canEdit ?? true });
   store.getState().select([id]);
   store.getState().seek(opts.playhead ?? 10);
-  render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+  render(<EditorProvider store={store}>{opts.effects ? <EffectsPanel /> : <Inspector />}</EditorProvider>);
   return store;
 }
 
@@ -73,8 +74,8 @@ it("the arrows move the playhead to the clip's previous and next keyframe", () =
   expect(button("Previous keyframe").disabled).toBe(true);
 });
 
-it("Ken Burns is offered for images only and keys the scale in one edit", () => {
-  const store = open("c1", { image: true });
+it("Ken Burns is offered for images only, in Effects, and keys the scale in one edit", () => {
+  const store = open("c1", { image: true, effects: true });
   expect(button("Ken Burns").title).toBe("Slow zoom in across the clip (replaces its scale keyframes)");
   fireEvent.click(button("Ken Burns"));
   expect(store.getState().queue).toMatchObject([
@@ -83,15 +84,25 @@ it("Ken Burns is offered for images only and keys the scale in one edit", () => 
   expect(store.getState().undoStack).toHaveLength(1);
 });
 
-it("a video or text clip has no Ken Burns", () => {
-  open("c1");
+it("a video or text clip has no Ken Burns, and Inspect has none", () => {
+  open("c1", { effects: true });
   expect(screen.queryByRole("button", { name: "Ken Burns" })).toBeNull();
 });
 
-it("a viewer's diamonds and Ken Burns are disabled, and the arrows still seek", () => {
+it("an image's Ken Burns is not in Inspect", () => {
+  open("c1", { image: true });
+  expect(screen.queryByRole("button", { name: "Ken Burns" })).toBeNull();
+  expect(button("Add Scale keyframe")).toBeTruthy();
+});
+
+it("a viewer's Ken Burns is disabled", () => {
+  open("c1", { canEdit: false, image: true, effects: true });
+  expect(button("Ken Burns").disabled).toBe(true);
+});
+
+it("a viewer's diamonds are disabled, and the arrows still seek", () => {
   const store = open("c1", { canEdit: false, image: true, keyframes: { x: [{ at: 20, value: 0.5 }] } });
   expect(button("Add X keyframe").disabled).toBe(true);
-  expect(button("Ken Burns").disabled).toBe(true);
   const next = button("Next keyframe");
   expect(next.disabled).toBe(false);
   expect(next.hasAttribute("data-edit-control")).toBe(false);

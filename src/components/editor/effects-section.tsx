@@ -26,7 +26,8 @@ import { DEFAULT_DIP_COLOR, DEFAULT_HIGHLIGHT_COLOR } from "@/lib/render/effects
 import type { Emphasis, OpInput, TextAnimationIn, TextAnimationOut, TextClip, Transition } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "./context";
 
-type Transitioned = Parameters<typeof transitionOps>[0];
+// type: a shape has nothing to blend from, so it is offered no crossfade.
+type Transitioned = Parameters<typeof transitionOps>[0] & { type?: string };
 
 const HEX = /^#[0-9a-f]{6}$/i;
 const CAPTION = "text-xs font-medium text-ed-muted";
@@ -138,7 +139,7 @@ function TransitionSide({ clip, side, canEdit, fps }: { clip: Transitioned; side
           }}
         >
           <option value="">None</option>
-          {TRANSITION_KINDS.filter((k) => (side === "in" ? k.in : k.out)).map((k) => (
+          {TRANSITION_KINDS.filter((k) => (side === "in" ? k.in : k.out) && (k.value !== "crossfade" || clip.type !== "shape")).map((k) => (
             <option key={k.value} value={k.value}>
               {k.label}
             </option>

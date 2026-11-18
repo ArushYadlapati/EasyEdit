@@ -38,11 +38,10 @@ import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { docDuration, isCropped, isMediaClip, type Clip, type KeyframeProp, type ShapeClip, type Track } from "@/lib/timeline";
 import { SHAPE_COLOR, arrowLook, shapeName } from "@/lib/timeline/shapes";
 import { FONT_LIST, isListedFont } from "@/lib/brand/fonts";
-import { AnimationSection, TransitionsSection } from "./effects-section";
 import { useBrand } from "./brand/brand-context";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatFields } from "./format-select";
-import { KenBurnsButton, KeyframeButton, KeyframeSteps } from "./keyframe-button";
+import { KeyframeButton, KeyframeSteps } from "./keyframe-button";
 import { useLibrary, useMedia } from "./media/media-context";
 import { SlotSection } from "./slot-section";
 import { useTextMeasure } from "./text-measure";
@@ -502,7 +501,7 @@ function Keyed({ clipId, prop, children }: { clipId: string; prop: KeyframeProp;
 // changed by keying it there.
 // A shape's Width and Height are its own size (an arrow's is one Length), which never thickens its outline.
 // lengthLabel: an arrow's or line's single size field, named so it is not taken for Timing's Length.
-function PositionSection({ clipId, image, lengthLabel }: { clipId: string; image: boolean; lengthLabel?: string }) {
+function PositionSection({ clipId, lengthLabel }: { clipId: string; lengthLabel?: string }) {
   const settings = useSettingsStore();
   const units = useSettings((s) => s.units);
   const lockAspect = useSettings((s) => s.lockAspect);
@@ -546,11 +545,6 @@ function PositionSection({ clipId, image, lengthLabel }: { clipId: string; image
           <NumberField clipId={clipId} field="opacity" label="Opacity" suffix="%" min={0} max={100} />
         </Keyed>
       </div>
-      {image && (
-        <div className="flex flex-col items-start">
-          <KenBurnsButton clipId={clipId} />
-        </div>
-      )}
     </Section>
   );
 }
@@ -632,11 +626,8 @@ function ClipInspector({ clip }: { clip: Clip }) {
           <MediaSection assetId={clip.assetId} kind={clip.type} />
         </>
       )}
-      {drawsOnCanvas && <PositionSection clipId={clip.id} image={clip.type === "image"} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
+      {drawsOnCanvas && <PositionSection clipId={clip.id} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
-      {/* A visual slot carries its transitions over to the clip that fills it. */}
-      {(clip.type === "video" || clip.type === "image" || clip.type === "shape" || (clip.type === "placeholder" && drawsOnCanvas)) && <TransitionsSection clip={clip} />}
-      {clip.type === "text" && <AnimationSection clip={clip} />}
       <TimingSection clipId={clip.id} />
       <SlotSection clip={clip} />
     </>

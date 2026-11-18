@@ -4,6 +4,7 @@ import { BrandProvider } from "@/components/editor/brand/brand-context";
 import { EditorProvider } from "@/components/editor/context";
 import { FONT_LIST } from "@/lib/brand/fonts";
 import { DEFAULT_BRAND_KIT } from "@/lib/brand/types";
+import { EffectsPanel } from "@/components/editor/effects-panel";
 import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
 import { MESSAGES, explainOpError } from "@/lib/editor/messages";
@@ -969,12 +970,13 @@ describe("template slot section", () => {
     doc.tracks[3].clips = [{ id: "pa", type: "placeholder", accepts: "audio", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, slot: { name: "music" } } as Clip];
     const store = makeStore({ doc });
     store.getState().select(["ph"]);
-    const view = render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+    const view = render(<EditorProvider store={store}><EffectsPanel /></EditorProvider>);
     fireEvent.change(screen.getByLabelText("Transition in"), { target: { value: "fade" } });
     expect(findClip(store.getState().doc, "ph")!.clip).toMatchObject({ type: "placeholder", transitionIn: { kind: "fade", frames: 15 } });
     expect(screen.getByLabelText("Transition out")).toBeTruthy();
     act(() => store.getState().select(["pa"]));
     expect(screen.queryByLabelText("Transition in")).toBeNull();
+    expect(screen.getByText("Audio clips have no visual effects yet.")).toBeTruthy();
     view.unmount();
   });
 
