@@ -10,6 +10,7 @@ import {
   createEmptyDoc,
   defaultCaptionStyle,
   newShapeClip,
+  safeAreaOf,
   prepareOps,
   transcriptOf,
   type CaptionStyle,
@@ -54,9 +55,10 @@ describe("defaults and helpers", () => {
   it("defaultCaptionStyle sizes from the width and sits low in the safe area", () => {
     const style = defaultCaptionStyle(createEmptyDoc("short_9x16"));
     expect(style).toMatchObject({ preset: "karaoke", fontFamily: "Geist", fontWeight: 700, fontSize: 70, color: "#ffffff", highlight: "#FFD400", uppercase: false });
+    const safe = safeAreaOf(createEmptyDoc("short_9x16"));
+    expect(style.y).toBe(Math.round((safe.top + safe.height * 0.82) * 1000) / 1000);
     expect(style.y).toBeGreaterThan(0.5);
-    expect(style.y).toBeLessThan(1);
-    expect(Number.isInteger(style.y * 1000 + 1e-9) || Math.abs(style.y * 1000 - Math.round(style.y * 1000)) < 1e-6).toBe(true);
+    expect(String(style.y).split(".")[1]?.length ?? 0).toBeLessThanOrEqual(3);
   });
 
   it("captionStyleOf, transcriptOf and captionTrack read the document", () => {
@@ -98,13 +100,28 @@ describe("set_caption_style", () => {
     roundTrip(d, [{ op: "set_caption_style", patch: { preset: "block" } }]);
   });
 
-  it("a patch that changes nothing has no inverse and stores nothing", () => {
-    expect(applyOps(base(), [{ op: "set_caption_style", patch: { preset: "bar" } }]).inverse).toEqual([]);
-    const d = createEmptyDoc("short_9x16");
-    const r = applyOps(d, [{ op: "set_caption_style", patch: { preset: "karaoke" } }]);
-    expect(r.doc).toEqual(d);
-    expect("captions" in r.doc).toBe(false);
+  it("a patch that changes nothing has no inverse when a style is stored", () => {
+    const r = applyOps(base(), [{ op: "set_caption_style", patch: { preset: "bar" } }]);
+    expect(r.doc).toEqual(base());
     expect(r.inverse).toEqual([]);
+  });
+
+  it("a patch equal to the default still stores the style when none is stored, and undo clears it", () => {
+    const d = createEmptyDoc("short_9x16");
+    const { doc, inverse } = roundTrip(d, [{ op: "set_caption_style", patch: { preset: "karaoke" } }]);
+    expect(doc.captions?.style).toEqual(defaultCaptionStyle(d));
+    expect(inverse).toEqual([{ op: "set_caption_style", clear: true, expect: { preset: "karaoke" } }]);
+  });
+
+  it("a style patched back to the default values stays stored, and clearing it undoes exactly", () => {
+    const d = createEmptyDoc("short_9x16");
+    const dflt = defaultCaptionStyle(d);
+    const away = applyOps(d, [{ op: "set_caption_style", patch: { preset: "word" } }]).doc;
+    const back = applyOps(away, [{ op: "set_caption_style", patch: { preset: dflt.preset } }]).doc;
+    expect(back.captions?.style).toEqual(dflt);
+    const cleared = roundTrip(back, [{ op: "set_caption_style", clear: true }]);
+    expect("captions" in cleared.doc).toBe(false);
+    expect(applyOps(cleared.doc, trip(cleared.inverse)).doc).toEqual(back);
   });
 
   it("clear removes the stored style and its undo puts the whole style back", () => {

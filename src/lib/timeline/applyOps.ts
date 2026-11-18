@@ -774,15 +774,17 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           const issue = checked.error.issues[0];
           throw new OpError("INVALID", `${name}: the caption style is invalid: ${issue.path.join(".")}${issue.path.length ? ": " : ""}${issue.message}`, opIndex);
         }
-        // Nothing changed: leave the document as it is, so a project with no stored style still has none.
-        if (!Object.keys(written).length) break;
+        if (stored) {
+          // Nothing changed: leave the style as it is.
+          if (!Object.keys(written).length) break;
+          groups.push([{ op: "set_caption_style", patch: old as Partial<CaptionStyle>, expect: written as Partial<CaptionStyle> }]);
+        } else {
+          // Nothing stored yet: the first patch always stores the style, even one equal to the default, and the way
+          // back is to clear it, so "no style" is restored exactly. The expect is every key the patch set.
+          const set = Object.fromEntries(Object.entries(op.patch ?? {}).filter(([, v]) => v !== undefined));
+          groups.push([{ op: "set_caption_style", clear: true, expect: set as Partial<CaptionStyle> }]);
+        }
         doc.captions = { ...doc.captions, style: checked.data };
-        // With no style stored before, the way back is to clear it, so "no style" is restored exactly.
-        groups.push([
-          stored
-            ? { op: "set_caption_style", patch: old as Partial<CaptionStyle>, expect: written as Partial<CaptionStyle> }
-            : { op: "set_caption_style", clear: true, expect: written as Partial<CaptionStyle> },
-        ]);
         break;
       }
 
