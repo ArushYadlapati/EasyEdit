@@ -9,9 +9,11 @@ import { SettingsError } from "@/lib/drive/config";
 import { type AccessSource, DriveError } from "@/lib/drive/token";
 import { LIMITS } from "@/lib/limits";
 import { ServiceError } from "@/lib/service-error";
+import type { CaptionWord } from "@/lib/timeline";
 import { actorIn, assetActor, spaceQuery } from "@/lib/spaces/access";
 import { ConnectionBrokenError } from "@/lib/storage/google-oauth";
 import { forgetAllSources } from "@/lib/storage/token-cache";
+import { getTranscript, saveTranscript } from "@/lib/captions/transcripts";
 import { MEDIA_MESSAGES } from "./messages";
 import {
   assetGone,
@@ -67,6 +69,8 @@ const openBody: z.ZodType<OpenUploadInput> = z.strictObject({
 });
 
 const updateBody = z.strictObject({ name: z.string().optional(), event: z.string().nullable().optional() });
+
+const transcriptBody = z.strictObject({ words: z.array(z.unknown()), model: z.string() });
 
 const fileRole: z.ZodType<AssetFileRole> = z.enum(["preview", "poster"]);
 const openFileBody = z.strictObject({ role: fileRole, sizeBytes: z.number() });
@@ -245,6 +249,18 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
       const { id } = await ctx.params;
       const { role } = await bodyOf(req, completeFileBody);
       return Response.json({ asset: await completeAssetFile(service, actor, id, role) });
+    }),
+
+    transcript: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {
+      const { id } = await ctx.params;
+      return Response.json({ transcript: await getTranscript(deps.db(), actor, id) });
+    }),
+
+    saveTranscript: mediaRoute(deps, inAssetSpace, async (actor, req, ctx: AssetRouteContext) => {
+      const { id } = await ctx.params;
+      const { words, model } = await bodyOf(req, transcriptBody);
+      await saveTranscript(deps.db(), actor, id, { words: words as CaptionWord[], model });
+      return Response.json({ ok: true });
     }),
 
     previewFailed: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {

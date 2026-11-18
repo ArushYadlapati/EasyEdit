@@ -312,7 +312,7 @@ export async function listAssets(db: DB, actor: Actor, filter: { ids?: string[] 
 }
 
 // An asset the member can change: in the library, and not another member's unfinished upload.
-async function libraryAsset(db: DB, actor: Actor, assetId: string): Promise<AssetRow> {
+export async function libraryAsset(db: DB, actor: Actor, assetId: string): Promise<AssetRow> {
   const [row] = await db.select().from(assets).where(and(eq(assets.id, assetId), inLibraryFor(actor)));
   if (!row) throw gone();
   return row;
