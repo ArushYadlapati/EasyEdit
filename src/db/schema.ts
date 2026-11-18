@@ -375,6 +375,63 @@ export const templates = pgTable(
   (t) => [uniqueIndex("templates_space_name_idx").on(t.spaceId, sql`lower(${t.name})`)],
 );
 
+// The social channel a space posts its videos to: one per space and platform, connected by an admin of the space.
+// The refresh token is kept encrypted and never leaves the server.
+export const socialConnection = pgTable(
+  "social_connection",
+  {
+    id: text("id").primaryKey(),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    platform: text("platform", { enum: ["youtube"] }).notNull(),
+    connectedBy: text("connected_by").notNull(), // a user id
+    googleSub: text("google_sub").notNull(), // Google's account id
+    email: text("email").notNull(), // the Google account's, shown when the channel's name is not known
+    channelId: text("channel_id"), // null when the person did not let EasyEdit read the channel
+    channelTitle: text("channel_title"),
+    refreshTokenEnc: text("refresh_token_enc").notNull(),
+    scopes: text("scopes").notNull(), // space-separated, as Google granted
+    brokenAt: timestamp("broken_at"),
+    brokenReason: text("broken_reason"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("social_connection_platform_check", sql`${t.platform} in ('youtube')`),
+    uniqueIndex("social_connection_space_platform_unique").on(t.spaceId, t.platform),
+  ],
+);
+
+// One video a person posted, or started posting, from a space to its channel. The upload address is the permission
+// to send that one video, so it is kept encrypted and dropped once the post has ended.
+export const socialPost = pgTable(
+  "social_post",
+  {
+    id: text("id").primaryKey(),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+    platform: text("platform", { enum: ["youtube"] }).notNull(),
+    postedBy: text("posted_by").notNull(), // a user id
+    title: text("title").notNull(),
+    visibility: text("visibility", { enum: ["private", "unlisted", "public"] }).notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    status: text("status", { enum: ["uploading", "posted", "failed", "canceled"] }).notNull().default("uploading"),
+    uploadUrlEnc: text("upload_url_enc"), // null once the post has ended
+    videoId: text("video_id"), // the platform's id of the posted video
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    finishedAt: timestamp("finished_at"),
+  },
+  (t) => [
+    check("social_post_platform_check", sql`${t.platform} in ('youtube')`),
+    check("social_post_visibility_check", sql`${t.visibility} in ('private', 'unlisted', 'public')`),
+    check("social_post_status_check", sql`${t.status} in ('uploading', 'posted', 'failed', 'canceled')`),
+    index("social_post_space_created_at_idx").on(t.spaceId, t.createdAt),
+  ],
+);
+
 // The words speech recognition found in one media file, kept so a file is transcribed once and every project in the
 // space can caption from it. One row per file; it goes when the file does.
 export const assetTranscripts = pgTable(

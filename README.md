@@ -113,6 +113,7 @@ Also planned: thumbnails and waveforms on the timeline, captions in other langua
     | `GOOGLE_CLIENT_SECRET` | From your OAuth client |
     | `GOOGLE_SERVICE_ACCOUNT_KEY`, `DRIVE_FOLDER_ID` | Optional. Leave them empty to run without uploads. |
     | `STORAGE_TOKEN_KEY` | Optional. For storage per space: see [Storage per space](docs/setup.md#storage-per-space). |
+    | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET` | Optional. For posting exports to YouTube: see [Posting to YouTube](docs/setup.md#posting-to-youtube). |
     | `OPEN_SIGNUP` | Optional. Set to `true` so anyone with a Google account can sign up. Leave it unset and only the allowlist and team invites can sign in. |
     | `TUTORIAL_VIDEO_URL` | Optional. A link to the intro video: see [Tutorial video](docs/setup.md#tutorial-video). |
     | `NEXT_PUBLIC_SPEECH_MODEL_HOST` | Optional. Where browsers get the Auto captions speech model; unset, Hugging Face. See [Auto captions](docs/setup.md#auto-captions). |

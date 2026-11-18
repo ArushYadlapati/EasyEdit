@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { describe, expect, it, vi } from "vitest";
 import type { DB } from "@/db";
-import { assets, driveConnection, spaceStorage } from "@/db/schema";
+import { assets, driveConnection, socialConnection, spaceStorage } from "@/db/schema";
 import { ServiceError } from "@/lib/service-error";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { makeDisconnectStorage } from "@/lib/storage/disconnect";
@@ -39,6 +39,17 @@ describe("disconnecting a Google account from a space", () => {
     expect(await connectionRow(w.db, connection.id)).toBeNull();
     expect(revoke).toHaveBeenCalledTimes(1);
     expect(revoke).toHaveBeenCalledWith(connection.refreshToken);
+  });
+
+  it("a YouTube channel on the same Google account keeps the account's grant: the storage goes, Google is not told", async () => {
+    const w = await storageWorld();
+    const { connection, revoke, disconnect } = await connected(w, w.personal);
+    const googleSub = (await connectionRow(w.db, connection.id))!.googleSub;
+    await w.db.insert(socialConnection).values({ id: "sc_1", spaceId: SEED_TEAM_ID, platform: "youtube", connectedBy: "u1", googleSub, email: "x@gmail.com", refreshTokenEnc: "sealed", scopes: "" });
+    await disconnect(w.db, { spaceId: w.personal, byUserId: "u1" });
+    expect(await storageOf(w.db, w.personal)).toBeNull();
+    expect(await connectionRow(w.db, connection.id)).toBeNull();
+    expect(revoke).not.toHaveBeenCalled();
   });
 
   it("a team's storage, by its admin who connected it", async () => {

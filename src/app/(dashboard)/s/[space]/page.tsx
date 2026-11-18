@@ -23,6 +23,7 @@ import { storageState } from "@/lib/spaces/storage";
 import { listTemplates } from "@/lib/templates/service";
 import { storageBlock } from "@/lib/storage/availability";
 import { connectionOwner } from "@/lib/storage/settings-view";
+import { dashboardChannelNote } from "@/lib/social/messages";
 import { dashboardNote, storageCard, storageSettingsPath } from "@/lib/storage/messages";
 import { StorageBanner, StorageNote, StorageSetupCard } from "@/components/storage/storage-banner";
 import {
@@ -81,7 +82,7 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
     listTemplates(db, actor),
   ]);
   const names = await getUserNames(db, projects.map((project) => actorUserId(project.updatedBy)));
-  const { folder, view: named, storage: storageNote } = await searchParams;
+  const { folder, view: named, storage: storageNote, youtube: channelNote } = await searchParams;
   // The sidebar sections this browser folded, so the first paint already has them folded.
   const sidebarCollapsed = (await cookies()).get(SECTIONS_COOKIE)?.value;
   // Someone who has opened nothing here yet (a teammate's first visit) lands on All projects, not an empty Recent.
@@ -97,7 +98,7 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   // upload. No storage at all: the setup card for its admins, where this server can set storage up.
   const storage = await storageState(db, space.id);
   const settingsHref = storageSettingsPath(slug);
-  const note = dashboardNote(storageNote);
+  const note = dashboardNote(storageNote) ?? dashboardChannelNote(channelNote);
   const broken = !storage.ready && storage.reason === "broken" && canEdit;
   // Only the person who connected the account can reconnect it; another admin is told who.
   const owner = broken && isAdmin ? await connectionOwner(db, space.id) : null;

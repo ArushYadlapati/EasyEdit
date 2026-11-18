@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { rowsOf, type DB } from "@/db";
 import { assets } from "@/db/schema";
 import { ServiceError } from "@/lib/service-error";
+import { channelUsesAccount } from "@/lib/social/connections";
 import { roleIn } from "@/lib/spaces/service";
 import { type StorageConfig, storageConfig } from "./config";
 import { revokeGrant } from "./google-oauth";
@@ -25,7 +26,7 @@ const noStorage = () => new ServiceError("NO_STORAGE", 409, "This space has no G
 const notOwner = () => new ServiceError("NOT_OWNER", 403, "Only the person who connected this Google account can disconnect it.");
 const hasUploads = () => new ServiceError("HAS_UPLOADS", 409, "This space has videos in that Google Drive, so it can't be disconnected yet.");
 
-type Row = { owner: string | null; connection_id: string | null; held: boolean; removed: boolean; sealed: string | null; connection_gone: boolean };
+type Row = { owner: string | null; connection_id: string | null; held: boolean; removed: boolean; sealed: string | null; google_sub: string | null; connection_gone: boolean };
 
 export function makeDisconnectStorage(deps: DisconnectDeps): DisconnectStorage {
   const revoke = deps.revoke ?? ((token: string) => revokeGrant(token));
@@ -36,7 +37,7 @@ export function makeDisconnectStorage(deps: DisconnectDeps): DisconnectStorage {
     const uploads = sql`exists (select 1 from ${assets} where ${assets.spaceId} = ${spaceId} and ${assets.removedAt} is null)`;
     const result = await db.execute(sql`
       with target as (
-        select ss.space_id, ss.connection_id, dc.user_id, dc.refresh_token_enc
+        select ss.space_id, ss.connection_id, dc.user_id, dc.refresh_token_enc, dc.google_sub
         from space_storage ss join drive_connection dc on dc.id = ss.connection_id
         where ss.space_id = ${spaceId} and ss.kind = 'google_account'
       ),
@@ -55,6 +56,7 @@ export function makeDisconnectStorage(deps: DisconnectDeps): DisconnectStorage {
         (select user_id from target) as owner,
         (select connection_id from target) as connection_id,
         (select refresh_token_enc from target) as sealed,
+        (select google_sub from target) as google_sub,
         ${uploads} as held,
         exists (select 1 from gone) as removed,
         exists (select 1 from gone_connection) as connection_gone
@@ -68,6 +70,9 @@ export function makeDisconnectStorage(deps: DisconnectDeps): DisconnectStorage {
     }
     if (row.connection_id) forgetSources(`connection:${row.connection_id}:`);
     if (!row.connection_gone || row.sealed === null) return;
+    // A revoke ends the Google account's whole grant. A space's YouTube channel on the same account would stop
+    // working with it, so the grant stays while one uses it.
+    if (row.google_sub !== null && (await channelUsesAccount(db, row.google_sub))) return;
     // Best effort, after the rows are gone: a token the server's key can't open, or Google refusing, doesn't undo the
     // disconnect. The person can still remove EasyEdit in their Google account.
     let refreshToken: string;

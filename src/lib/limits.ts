@@ -53,6 +53,10 @@ export const LIMITS = {
   teamsPerDay: 10, // teams one person may create in 24 hours
   teamMembers: 100, // people in one team, counting invites still waiting
   teamPendingInvites: 50, // invites waiting for an answer in one team
+  socialTitleChars: 100, // a posted video's title; YouTube's own limit
+  socialDescriptionBytes: 5000, // a posted video's description, as UTF-8; YouTube's own limit
+  socialPostsPerSpacePerDay: 10, // videos one space may post in 24 hours; the site shares one daily allowance at YouTube
+  socialFileBytes: 8 * 1024 * 1024 * 1024, // one posted video
   frameSideMin: 16, // a custom size, each side in pixels
   frameSideMax: 4096,
   frameAreaMax: 3840 * 2160, // a custom size; 8,294,400 is the area of 4K

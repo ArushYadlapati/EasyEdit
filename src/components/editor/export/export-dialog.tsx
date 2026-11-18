@@ -19,11 +19,13 @@ import { checkSupport, type Support } from "@/lib/export/support";
 import { useEditor, useEditorStore, useExportDeps } from "../context";
 import { useLibrary } from "../media/media-context";
 import { Timecode } from "../timecode";
+import { PostBody, PostButton, PostFooter, PostOffer, usePostPanel, type PostPanel } from "./post-panel";
 import type { Exporter } from "./use-export";
 
 // The Export dialog: the choices, then the export's progress and its end. Closing it never cancels an export, and
 // opening it again shows where things stand. Its body and its footer read the export's store; the Dialog draws them
-// only while it is open, so a closed dialog reads nothing.
+// only while it is open, so a closed dialog reads nothing. A finished export can be posted to the space's YouTube
+// channel from here (post-panel.tsx): while that is on screen, the dialog shows the post instead of the export.
 
 type ExportDialogProps = { open: boolean; onClose(): void; exporter: Exporter };
 
@@ -54,6 +56,15 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
     };
   }, [open, deps, editor]);
 
+  const post = usePostPanel(exporter, open);
+  const posting = post.step.at !== "closed";
+  // Done: the export and anything of a post are forgotten, and the dialog closes.
+  const finish = () => {
+    post.close();
+    exporter.reset();
+    onClose();
+  };
+
   const choice: ChoiceProps = { support, selected };
   return (
     <Dialog
@@ -61,9 +72,9 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
       size="md"
       open={open}
       onClose={onClose}
-      footer={<ExportFooter exporter={exporter} onClose={onClose} {...choice} />}
+      footer={posting ? <PostFooter panel={post} onDone={finish} /> : <ExportFooter exporter={exporter} onDone={finish} post={post} {...choice} />}
     >
-      <ExportBody exporter={exporter} onSelect={setSelected} {...choice} />
+      {posting ? <PostBody panel={post} /> : <ExportBody exporter={exporter} onSelect={setSelected} post={post} {...choice} />}
     </Dialog>
   );
 }
@@ -97,10 +108,10 @@ function useChoices({ support, selected }: ChoiceProps) {
 
 const choosing = (state: ExportState) => state.phase === "idle" || state.phase === "canceled";
 
-function ExportBody({ exporter, onSelect, ...choice }: ChoiceProps & { exporter: Exporter; onSelect(id: ExportPresetId): void }) {
+function ExportBody({ exporter, onSelect, post, ...choice }: ChoiceProps & { exporter: Exporter; onSelect(id: ExportPresetId): void; post: PostPanel }) {
   const state = useStore(exporter.store);
   if (choosing(state)) return <Choices onSelect={onSelect} canceled={state.phase === "canceled"} {...choice} />;
-  return <Progress state={state} />;
+  return <Progress state={state} post={post} />;
 }
 
 function Choices({ support, selected, onSelect, canceled }: ChoiceProps & { onSelect(id: ExportPresetId): void; canceled: boolean }) {
@@ -156,7 +167,7 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
 
 const count = (n: number) => n.toLocaleString("en-US");
 
-function Progress({ state }: { state: Exclude<ExportState, { phase: "idle" | "canceled" }> }) {
+function Progress({ state, post }: { state: Exclude<ExportState, { phase: "idle" | "canceled" }>; post: PostPanel }) {
   const deps = useExportDeps();
   switch (state.phase) {
     case "preparing":
@@ -194,6 +205,7 @@ function Progress({ state }: { state: Exclude<ExportState, { phase: "idle" | "ca
             <p>The project changed while this was exporting. The file shows it as it was when the export started.</p>
           )}
           {!state.hasAudio && <p className={MUTED}>This file has no sound track.</p>}
+          <PostOffer panel={post} />
         </div>
       );
     case "failed":
@@ -205,7 +217,7 @@ function Progress({ state }: { state: Exclude<ExportState, { phase: "idle" | "ca
   }
 }
 
-function ExportFooter({ exporter, onClose, ...choice }: ChoiceProps & { exporter: Exporter; onClose(): void }) {
+function ExportFooter({ exporter, onDone, post, ...choice }: ChoiceProps & { exporter: Exporter; onDone(): void; post: PostPanel }) {
   const phase = useStore(exporter.store, (s) => s.phase);
   const held = useStore(exporter.store, (s) => s.phase === "done" && s.held);
   const finishing = useStore(exporter.store, (s) => s.phase === "running" && s.framesDone >= s.totalFrames);
@@ -220,20 +232,20 @@ function ExportFooter({ exporter, onClose, ...choice }: ChoiceProps & { exporter
       </Button>
     );
   }
-  const finish = () => {
-    exporter.reset();
-    onClose();
-  };
   if (!held) {
     return (
-      <Button variant="primary" onClick={finish}>
-        Done
-      </Button>
+      <>
+        <PostButton panel={post} />
+        <Button variant="primary" onClick={onDone}>
+          Done
+        </Button>
+      </>
     );
   }
   return (
     <>
-      <Button onClick={finish}>Done</Button>
+      <PostButton panel={post} />
+      <Button onClick={onDone}>Done</Button>
       {/* Inside the click, so the browser treats it as the person's own download. */}
       <Button
         variant="primary"

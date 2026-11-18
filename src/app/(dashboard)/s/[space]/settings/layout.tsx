@@ -9,11 +9,12 @@ import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace } from "@/lib/spaces/service";
 import { settingsTabsFor } from "@/lib/spaces/settings-tabs";
+import { socialConfig } from "@/lib/social/config";
 
 // A space's settings, for its members: the space's name, the way back to its projects, and a row of the tabs they may
-// open (settingsTabsFor: Members in a team, for everyone; Storage, for its admins; Brand kit, for everyone). Someone
-// not in the space gets a plain 404. Each page checks again for itself, as a layout is not run again on a client
-// navigation.
+// open (settingsTabsFor: Members in a team, for everyone; Storage, for its admins; Brand kit, for everyone; Socials,
+// for its admins where posting is set up). Someone not in the space gets a plain 404. Each page checks again for
+// itself, as a layout is not run again on a client navigation.
 export default async function SpaceSettingsLayout({ params, children }: LayoutProps<"/s/[space]/settings">): Promise<ReactNode> {
   const user = await requireUser();
   const space = await findMySpace(getDb(), user.id, (await params).space);
@@ -32,7 +33,7 @@ export default async function SpaceSettingsLayout({ params, children }: LayoutPr
           Back to projects
         </Link>
         <h1 className="min-w-0 truncate text-base font-semibold">{space.kind === "personal" ? "Personal" : space.name}</h1>
-        <SettingsTabs slug={slug} tabs={settingsTabsFor(space)} />
+        <SettingsTabs slug={slug} tabs={settingsTabsFor(space, { socials: socialConfig() !== null })} />
         {children}
       </div>
     </main>

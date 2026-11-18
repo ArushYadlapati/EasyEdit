@@ -21,11 +21,14 @@ export type ServiceErrorCode =
   | "EXPIRED"
   | "INVITE_USED"
   | "MOVED"
-  | "COPIES_MISSING";
+  | "COPIES_MISSING"
+  | "NOT_CONNECTED"
+  | "CONNECTION_BROKEN"
+  | "PLATFORM_REFUSED";
 
 export class ServiceError extends Error {
   code: ServiceErrorCode;
-  status: 400 | 403 | 404 | 409 | 410 | 429;
+  status: 400 | 403 | 404 | 409 | 410 | 429 | 502;
   // Declared, not defined, so an absent value is not an own property set to undefined.
   declare opIndex?: number;
   declare currentVersion?: number;
@@ -33,7 +36,7 @@ export class ServiceError extends Error {
 
   constructor(
     code: ServiceErrorCode,
-    status: 400 | 403 | 404 | 409 | 410 | 429,
+    status: 400 | 403 | 404 | 409 | 410 | 429 | 502,
     message: string,
     extra: { opIndex?: number; currentVersion?: number; missing?: string[] } = {},
   ) {

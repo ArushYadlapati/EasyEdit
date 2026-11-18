@@ -13,7 +13,7 @@ export default function TermsPage() {
           EasyEdit
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Terms of service</h1>
-        <p className="text-sm text-foreground/70">Last updated November 15, 2026.</p>
+        <p className="text-sm text-foreground/70">Last updated November 17, 2026.</p>
         <p>These are the rules for using EasyEdit. By signing in, you agree to them. If you don&apos;t agree, don&apos;t use EasyEdit.</p>
 
         <h2 className={H2}>Who can use EasyEdit</h2>
@@ -33,6 +33,16 @@ export default function TermsPage() {
           You keep ownership of your projects and the media you upload. You let EasyEdit store, process and show them only so it can work for
           you and for the people in your space. Your media is kept in the Google Drive your space uses, so Google&apos;s own terms apply to it
           too.
+        </p>
+
+        <h2 className={H2}>Posting to YouTube</h2>
+        <p>
+          EasyEdit can post a video to a YouTube channel that a space&apos;s admin connected. It uses YouTube API Services to do that, so by
+          posting from EasyEdit you also agree to the{" "}
+          <a className="underline underline-offset-4" href="https://www.youtube.com/t/terms">
+            YouTube Terms of Service
+          </a>
+          . You are responsible for what you post.
         </p>
 
         <h2 className={H2}>Teams</h2>

@@ -3,6 +3,7 @@ import { gatherMedia, type ExportMediaDeps } from "@/lib/export/gather-media";
 import { ExportError } from "@/lib/export/messages";
 import { fileTarget, memoryTarget } from "@/lib/export/sinks";
 import type { SupportProbe } from "@/lib/export/support";
+import { createPosting } from "@/lib/social/post-client";
 import type { MediaServices } from "../media/media-context";
 import { collectPageFonts } from "../page-fonts";
 import type { ExportDeps, PickedTarget } from "./deps";
@@ -36,7 +37,15 @@ async function pickTarget(suggestedName: string): Promise<PickedTarget | null | 
         startIn: "videos",
         types: [{ description: "MP4 video", accept: { "video/mp4": [".mp4"] } }],
       });
-      return { target: fileTarget(handle), fileName: handle.name, held: null };
+      // The save dialog gave leave to write the file, which covers reading it back.
+      const read = async () => {
+        try {
+          return await handle.getFile();
+        } catch {
+          return null; // moved, deleted, or the leave was taken back
+        }
+      };
+      return { target: fileTarget(handle), fileName: handle.name, held: null, read };
     } catch (error) {
       if (errorName(error) === "AbortError") return null; // the person closed it
       // The click's activation has gone, or another dialog is open: the person is asked to click once more. The bytes
@@ -111,5 +120,6 @@ export function browserExportDeps(media: MediaServices): ExportDeps {
     keepRunning,
     now: () => performance.now(),
     saveFrame: savePageFrame(exportMediaDeps(media)),
+    posting: createPosting(),
   };
 }

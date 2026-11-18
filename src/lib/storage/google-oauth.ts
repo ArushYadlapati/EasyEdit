@@ -36,13 +36,14 @@ export function pkcePair(): { verifier: string; challenge: string } {
 }
 
 // chooseAccount false: Google goes straight to the hinted account (still asking for consent) instead of its account
-// chooser; for "Connect to this Google Drive", the account the person signed in with.
-export function authorizeUrl(cfg: StorageConfig, input: { state: string; codeChallenge: string; loginHint?: string; chooseAccount?: boolean }): string {
+// chooser; for "Connect to this Google Drive", the account the person signed in with. scope: what is asked for, when
+// it is not Drive (a YouTube channel).
+export function authorizeUrl(cfg: StorageConfig, input: { state: string; codeChallenge: string; loginHint?: string; chooseAccount?: boolean; scope?: string }): string {
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
     response_type: "code",
-    scope: `openid email ${DRIVE_FILE_SCOPE}`,
+    scope: input.scope ?? `openid email ${DRIVE_FILE_SCOPE}`,
     access_type: "offline",
     prompt: input.chooseAccount === false && input.loginHint ? "consent" : "consent select_account",
     include_granted_scopes: "false",

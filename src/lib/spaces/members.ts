@@ -6,6 +6,8 @@ import { requireRole, type Actor } from "@/lib/actor";
 import { isAssignableRole, type AssignableRole, type Role } from "@/lib/allowlist/service";
 import { FORBIDDEN_BODY } from "@/lib/api-errors";
 import { ServiceError } from "@/lib/service-error";
+import { socialConfig } from "@/lib/social/config";
+import { dropChannel } from "@/lib/social/connections";
 import { checkedTeamName } from "./service";
 import { SEED_TEAM_ID } from "./types";
 
@@ -168,10 +170,24 @@ async function deleteMember(db: DB, actor: Actor, spaceId: string, userId: strin
   `);
   const row = rowsOf<ChangeRow>(result)[0];
   const error = refusal(row, null);
-  if (!error) return;
+  if (!error) {
+    // A YouTube channel is connected with a person's own Google account: when that person goes, so does the channel.
+    await forgetChannel(db, { spaceId, onlyConnectedBy: userId });
+    return;
+  }
   // A leaver who was removed while this ran is no longer in the space.
   if (!opts.byAdmin && error.code === "NOT_FOUND") throw spaceNotFound();
   throw error;
+}
+
+// Removes the space's YouTube channel after a change that is already made. Never fails that change: a channel that
+// could not be removed is logged, and its admins can still disconnect it (or the person can, in their Google account).
+async function forgetChannel(db: DB, input: { spaceId: string; onlyConnectedBy?: string }): Promise<void> {
+  try {
+    await dropChannel(db, socialConfig(), input);
+  } catch (error) {
+    console.error("Removing a space's YouTube channel failed:", error instanceof Error ? error.name : "unknown");
+  }
 }
 
 const hasProjects = () => new ServiceError("HAS_PROJECTS", 409, "Delete this team's projects first.");
@@ -179,7 +195,7 @@ const hasProjects = () => new ServiceError("HAS_PROJECTS", 409, "Delete this tea
 type DeleteRow = { changed: boolean; caller_admin: boolean; name_ok: boolean; has_projects: boolean };
 
 // Deletes a team: its member, invitation, space_visits and space_storage rows go, so nobody sees it and its invite links
-// stop working. The organization row stays (projects, folders and assets point at it with no cascade), as do the
+// stop working. Its YouTube channel is disconnected too. The organization row stays (projects, folders and assets point at it with no cascade), as do the
 // team's folders, assets, brand kit, pins and Drive connection. An admin only, and only with the team's name typed
 // exactly, and only when no project is left in it (deleted ones don't count). One statement after the early checks, so
 // an admin demoted a moment ago can't still delete. Its storage row going frees its Google account for another space.
@@ -205,7 +221,10 @@ export async function deleteTeam(db: DB, actor: Actor, input: { confirmName: str
       exists (select 1 from projects where space_id = ${spaceId} and deleted_at is null) as has_projects
   `);
   const row = rowsOf<DeleteRow>(result)[0];
-  if (row.changed) return;
+  if (row.changed) {
+    await forgetChannel(db, { spaceId }); // nobody could reach its settings again to disconnect it
+    return;
+  }
   if (!row.caller_admin) throw forbidden();
   if (!row.name_ok) throw new ServiceError("INVALID", 400, "Type the team's name to delete it.");
   if (row.has_projects) throw hasProjects();

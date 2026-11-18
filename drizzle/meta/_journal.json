@@ -159,8 +159,15 @@
     {
       "idx": 22,
       "version": "7",
-      "when": 1794965880992,
-      "tag": "0024_asset_transcripts",
+      "when": 1794966669644,
+      "tag": "0025_socials",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794979095931,
+      "tag": "0026_asset_transcripts",
       "breakpoints": true
     }
   ]
