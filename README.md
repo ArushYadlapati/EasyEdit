@@ -115,6 +115,7 @@ Also planned: thumbnails and waveforms on the timeline, captions in other langua
     | `STORAGE_TOKEN_KEY` | Optional. For storage per space: see [Storage per space](docs/setup.md#storage-per-space). |
     | `OPEN_SIGNUP` | Optional. Set to `true` so anyone with a Google account can sign up. Leave it unset and only the allowlist and team invites can sign in. |
     | `TUTORIAL_VIDEO_URL` | Optional. A link to the intro video: see [Tutorial video](docs/setup.md#tutorial-video). |
+    | `NEXT_PUBLIC_SPEECH_MODEL_HOST` | Optional. Where browsers get the Auto captions speech model; unset, Hugging Face. See [Auto captions](docs/setup.md#auto-captions). |
 
     Never commit `.env.local`. It holds secrets.
 
@@ -138,8 +139,8 @@ Without media storage the app runs and edits as usual, and the Media tab says up
 
 | Command | What it does |
 | --- | --- |
-| `pnpm dev` | Start the app at http://localhost:3000 |
-| `pnpm build` | Build the app for production |
+| `pnpm dev` | Start the app at http://localhost:3000 (it copies the Auto captions speech runtime into `public/ort/` first) |
+| `pnpm build` | Build the app for production (it copies the speech runtime first too) |
 | `pnpm start` | Run the built app |
 | `pnpm test` | Run the test suite (no database needed) |
 | `pnpm typecheck` | Check the TypeScript types |

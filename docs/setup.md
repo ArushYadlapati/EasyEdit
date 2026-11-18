@@ -153,6 +153,13 @@ EasyEdit can welcome each person with a short intro video the first time they op
 
 Plain `http` is accepted from `localhost` only, to try a new recording on your own computer.
 
+## Auto captions
+
+Auto captions turns speech into words in the browser, so it needs no settings. Two things to know:
+
+- `pnpm dev` and `pnpm build` first copy the speech runtime (two ONNX runtime files) into `public/ort/`, and the browser loads it from there. Running `next dev` or `next build` directly skips the copy, and Auto captions then fails with "the speech model couldn't be loaded". The folder is not in git.
+- The speech model itself (downloaded by each browser the first time, then kept) comes from Hugging Face, pinned to one version of the model. To serve it from your own host instead, set `NEXT_PUBLIC_SPEECH_MODEL_HOST` to that host's address, ending in `/`. It must serve the files at the same paths as Hugging Face (`<model>/resolve/<revision>/<file>`). The value is built into the app, so after changing it in Vercel, redeploy. Unset, Hugging Face is used.
+
 ## 4. Run it
 
 Create the database tables, add the first admin, and start the app:
@@ -166,6 +173,8 @@ pnpm dev
 `pnpm db:seed` adds `admin@seattlesolvers.com` as an admin. It is safe to run again.
 
 When you pull changes that add migrations (new files in the `drizzle` folder), run `pnpm db:migrate` again before `pnpm dev`.
+
+Start the app with `pnpm dev`, not `next dev`: it copies the speech runtime for Auto captions first ([Auto captions](#auto-captions)).
 
 Open [http://localhost:3000](http://localhost:3000) and click the Google sign-in button.
 

@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The speech runtime copied from onnxruntime-web by scripts/copy-ort.mjs (git-ignored).
+    "public/ort/**",
   ]),
 ]);
 
