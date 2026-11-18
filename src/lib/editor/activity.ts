@@ -126,6 +126,9 @@ export function summarizeOps(ops: Op[], kindOf: KindOf = () => undefined): strin
   if (only("add_guide")) return count(n, "Added a guide", (k) => `Added ${k} guides`);
   if (only("move_guide")) return count(n, "Moved a guide", (k) => `Moved ${k} guides`);
   if (only("remove_guide")) return count(n, "Removed a guide", (k) => `Removed ${k} guides`);
+  if (only("set_caption_style")) return "Changed the caption style";
+  if (only("set_transcript")) return "Changed the captions";
+  if (only("splice_caption_words")) return "Edited caption words";
   return summarizeMixed(ops) ?? fallback;
 }
 
@@ -140,6 +143,9 @@ const MIXED_GROUPS: { match: (op: Op["op"]) => boolean; one: string; many: (n: n
   { match: (k) => k === "set_format", one: "changed the format", many: () => "changed the format" },
   { match: (k) => k === "set_safe_area", one: "changed the safe area", many: () => "changed the safe area" },
   { match: (k) => k.endsWith("_guide"), one: "changed guides", many: () => "changed guides" },
+  { match: (k) => k === "set_caption_style", one: "changed the caption style", many: () => "changed the caption style" },
+  { match: (k) => k === "set_transcript", one: "changed the captions", many: () => "changed the captions" },
+  { match: (k) => k === "splice_caption_words", one: "edited caption words", many: () => "edited caption words" },
 ];
 
 // 0.88 → "88%"; a typed 0.875 → "87.5%".

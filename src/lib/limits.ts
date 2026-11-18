@@ -69,6 +69,10 @@ export const LIMITS = {
   presenceKeepMs: 10 * 60_000, // rows this old are deleted by the next check from anyone
   moveAbandonAfterMs: 24 * 60 * 60 * 1000, // an unfinished move this old is dropped by the next move into the same space
   presenceSweepRows: 50, // rows one check deletes at most
+  captionWordChars: 80, // one caption word, in characters
+  captionWordsPerFile: 10_000, // words kept for one media file
+  captionFilesPerProject: 50, // media files with words kept in one project
+  captionAudioMinutes: 60, // the longest sound one auto-captions run takes
 } as const;
 
 export type Limits = { readonly [K in keyof typeof LIMITS]: number };

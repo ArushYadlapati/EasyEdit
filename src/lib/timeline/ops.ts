@@ -1,7 +1,11 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
+import { LIMITS } from "@/lib/limits";
 import { OpError } from "./errors";
 import {
+  CaptionStyle,
+  CaptionWord,
+  CaptionWords,
   Clip,
   FormatId,
   Guide,
@@ -45,6 +49,7 @@ const ClipExpect = z
     keyframes: z.strictObject(Keyframes.shape),
     transitionIn: MediaClip.shape.transitionIn,
     transitionOut: MediaClip.shape.transitionOut,
+    captions: MediaClip.shape.captions,
     animationIn: TextClip.shape.animationIn,
     animationOut: TextClip.shape.animationOut,
     emphasis: TextClip.shape.emphasis,
@@ -157,6 +162,32 @@ const sharedOps = [
   z.object({ op: z.literal("move_guide"), guideId: id, at: Guide.shape.at, expect: z.object({ at: Guide.shape.at }).strict().optional() }),
   // expect: the guide as it must be now.
   z.object({ op: z.literal("remove_guide"), guideId: id, expect: z.object({ guide: Guide }).strict().optional() }),
+  // Some of the caption style's keys, or clear: true to drop the stored style (back to the default); exactly one of the two.
+  // expect: the values those keys must have now.
+  z
+    .object({
+      op: z.literal("set_caption_style"),
+      patch: CaptionStyle.partial().strict().optional(),
+      clear: z.literal(true).optional(),
+      expect: CaptionStyle.partial().strict().optional(),
+    })
+    .refine((o) => (o.patch === undefined) !== (o.clear === undefined), "give either patch or clear, not both and not neither"),
+  // All the words of one media file; null removes them. expect: how many words the file has now (null: none).
+  z.object({
+    op: z.literal("set_transcript"),
+    assetId: id,
+    words: CaptionWords.nullable(),
+    expect: z.object({ words: z.number().int().nullable() }).strict().optional(),
+  }),
+  // Replaces `remove` words from `index` with `insert`. expect: the words being removed, as they must be now.
+  z.object({
+    op: z.literal("splice_caption_words"),
+    assetId: id,
+    index: z.number().int().min(0),
+    remove: z.number().int().min(0),
+    insert: z.array(CaptionWord).max(LIMITS.captionWordsPerFile),
+    expect: z.object({ words: z.array(CaptionWord) }).strict().optional(),
+  }),
 ] as const;
 
 export const Op = z.discriminatedUnion("op", [

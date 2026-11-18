@@ -11,7 +11,11 @@ import { toolContext } from "./context";
 describe("the op reference", () => {
   it("names every op the engine accepts, except the one kept for undo data", () => {
     const engineOps = OpInput.options.map((o) => o.shape.op.value as string);
-    for (const op of engineOps.filter((name) => name !== "replace_track")) expect(OP_REFERENCE, op).toContain(`"op":"${op}"`);
+    // The caption ops are named in a one-line pointer to the guide's Captions section, not spelled out (the tool list is capped).
+    const pointed = ["set_caption_style", "set_transcript", "splice_caption_words"];
+    for (const op of engineOps.filter((name) => name !== "replace_track")) {
+      expect(OP_REFERENCE, op).toContain(pointed.includes(op) ? op : `"op":"${op}"`);
+    }
     expect(OP_REFERENCE).not.toContain("replace_track");
     expect(checkAllowedOps([{ op: "replace_track" }])).not.toBeNull();
     expect(EDIT_DESCRIPTION).toContain(OP_REFERENCE);

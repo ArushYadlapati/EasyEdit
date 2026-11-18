@@ -133,6 +133,8 @@ export const MediaClip = z.object({
   keyframes: Keyframes.optional(),
   transitionIn: Transition.nullable().optional(),
   transitionOut: TransitionOut.nullable().optional(),
+  // Video and audio only (checked in the ops): this clip's speech is captioned. Absent means off.
+  captions: z.boolean().optional(),
 });
 export type MediaClip = z.infer<typeof MediaClip>;
 
@@ -267,6 +269,45 @@ export type SafeArea = z.infer<typeof SafeArea>;
 export const Guide = z.strictObject({ id: z.string().min(1), axis: z.enum(["x", "y"]), at: z.number().min(0).max(1) });
 export type Guide = z.infer<typeof Guide>;
 
+// One spoken word: its text and when it starts and ends, in milliseconds of the media file it was heard in.
+export const CaptionWord = z
+  .strictObject({
+    t: z.string().min(1).max(LIMITS.captionWordChars).refine(isStorableText, UNSTORABLE_TEXT),
+    s: z.number().int().min(0),
+    e: z.number().int().min(0),
+  })
+  .refine((w) => w.e >= w.s, "a word cannot end before it starts");
+export type CaptionWord = z.infer<typeof CaptionWord>;
+
+export const CaptionPreset = z.enum(["block", "karaoke", "word", "bar"]);
+export type CaptionPreset = z.infer<typeof CaptionPreset>;
+
+// How every caption in the project looks. y is the share of the frame's height where the lines sit.
+export const CaptionStyle = z.strictObject({
+  preset: CaptionPreset,
+  fontFamily: z.string().min(1).max(100),
+  fontWeight: z.number().int().min(100).max(900),
+  fontSize: z.number().positive().max(2000),
+  color: HexColor,
+  highlight: HexColor,
+  y: z.number().min(0).max(1),
+  uppercase: z.boolean(),
+});
+export type CaptionStyle = z.infer<typeof CaptionStyle>;
+
+export const CaptionWords = z
+  .array(CaptionWord)
+  .max(LIMITS.captionWordsPerFile)
+  .refine((words) => words.every((w, i) => i === 0 || w.s >= words[i - 1].s), "caption words must be in time order");
+export type CaptionWords = z.infer<typeof CaptionWords>;
+
+// Words are kept per media file (by asset id), so every clip cut from a file shares them. Both parts are optional.
+export const Captions = z.strictObject({
+  style: CaptionStyle.optional(),
+  transcripts: z.record(z.string().min(1), CaptionWords).optional(),
+});
+export type Captions = z.infer<typeof Captions>;
+
 export const TimelineDoc = z.object({
   schemaVersion: z.literal(1),
   format: FormatId,
@@ -278,5 +319,7 @@ export const TimelineDoc = z.object({
   safeAreas: z.partialRecord(FormatId, SafeArea).optional(),
   // In the order they were added. Older projects, and a project whose last guide was removed, have no field.
   guides: z.array(Guide).optional(),
+  // The caption style and the words heard in each media file. Absent until captions are first used.
+  captions: Captions.optional(),
 });
 export type TimelineDoc = z.infer<typeof TimelineDoc>;

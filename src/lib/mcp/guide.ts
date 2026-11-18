@@ -78,6 +78,7 @@ export const OP_REFERENCE = `Ops:
 {"op":"set_safe_area","format":FORMAT,"size":{"width":W,"height":H}}   shares of the frame; "size":null goes back to the default
 {"op":"add_guide","guide":{"axis":"x"|"y","at":P}}  a snap line; x is vertical; P 0..1
 {"op":"move_guide","guideId":G,"at":P} {"op":"remove_guide","guideId":G}
+- set_caption_style, set_transcript, splice_caption_words: captions; see the guide's Captions section.
 
 A text CLIP: {"type":"text","start":F,"duration":F,"text":S,"transform":${JSON.stringify(EXAMPLE_TEXT_CLIP.transform)},"style":${JSON.stringify(EXAMPLE_TEXT_CLIP.style)}}
 A media CLIP: {"type":"video"|"image"|"audio","assetId":A,"start":F,"duration":F,"in":F,"speed":1,"volume":1,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"}}

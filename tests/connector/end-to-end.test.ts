@@ -54,8 +54,9 @@ describe("Claude and the website on one project", () => {
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name).sort()).toEqual(TOOLS);
       // search and fetch carry output schemas, the shape ChatGPT documents for them.
-      // templates (Plan 8) added 1_607 chars (14_599 vs 12_992 on main); raising past 13_000 is Arush's call
-      expect(JSON.stringify(tools).length).toBeLessThan(14_600);
+      // templates (Plan 8) added 1_607 chars (14_599 vs 12_992 on main); raising past 13_000 is Arush's call;
+      // captions (Plan 5B) added 85 chars; Arush's call
+      expect(JSON.stringify(tools).length).toBeLessThan(14_685);
       for (const t of tools) expect(t.annotations?.readOnlyHint, t.name).toBe(["fetch", "get_editing_guide", "get_project", "get_template", "list_assets", "list_projects", "list_templates", "search"].includes(t.name));
       const keysOf = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {}).sort();
       expect(keysOf("list_assets")).toEqual(["cursor", "kind", "search"]);

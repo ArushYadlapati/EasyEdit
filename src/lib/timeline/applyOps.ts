@@ -13,8 +13,9 @@ import {
   maxSafeAreaHeight,
   trackTakes,
 } from "./presets";
+import { captionStyleOf, captionTrack, defaultCaptionStyle, transcriptOf } from "./captions";
 import { ARROW_DEFAULTS } from "./shapes";
-import { MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
+import { CaptionStyle, CaptionWords, MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
 import type { Clip, FormatId, FrameSize, Guide, TimelineDoc, Track } from "./types";
 
 // update_clip re-validates strictly so a typo'd or foreign key is rejected, not dropped.
@@ -36,6 +37,7 @@ const CLIP_FILL: Record<string, () => unknown> = {
   animationIn: () => null,
   animationOut: () => null,
   emphasis: () => null,
+  captions: () => false,
 };
 
 // A shape's optional fields, each with the value its absence means, filled the same way so the first change to one
@@ -53,10 +55,11 @@ const SHAPE_FILL: Record<string, () => unknown> = {
 // itself instead of transitioning. A placeholder carries what the clip that fills it would: a visual slot the
 // video and image effects (so a template's fade or move survives the fill), an audio slot none.
 const VISUAL_EFFECTS = ["keyframes", "transitionIn", "transitionOut"] as const;
+// A video clip also takes captions; sound takes only that (see CLIP_EFFECTS).
 const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string[]> = {
-  video: VISUAL_EFFECTS,
+  video: [...VISUAL_EFFECTS, "captions"],
   image: VISUAL_EFFECTS,
-  audio: [],
+  audio: ["captions"],
   text: ["keyframes", "animationIn", "animationOut", "emphasis"],
   shape: VISUAL_EFFECTS,
 };
@@ -215,6 +218,21 @@ function assertOneCaptionTrack(doc: TimelineDoc, incoming: Track, replacedIndex:
   if (countAfter > 1 && countAfter > countNow) {
     throw new OpError("INVALID", `${opName}: a project can have only one caption track`, opIndex);
   }
+}
+
+// Caption words and style are edited through the caption track, so a locked one holds them still.
+function assertCaptionsUnlocked(doc: TimelineDoc, opIndex: number, opName: string) {
+  const track = captionTrack(doc);
+  if (track?.locked) throw new OpError("TRACK_LOCKED", `${opName}: track "${track.id}" is locked`, opIndex);
+}
+
+// Stores the transcripts, and drops the empty list, and the whole captions field once it holds nothing (like guides).
+function setTranscripts(doc: TimelineDoc, transcripts: Record<string, CaptionWords>) {
+  const captions = { ...doc.captions };
+  if (Object.keys(transcripts).length) captions.transcripts = transcripts;
+  else delete captions.transcripts;
+  if (captions.style || captions.transcripts) doc.captions = captions;
+  else delete doc.captions;
 }
 
 function clipIdInUse(doc: TimelineDoc, clipId: string, exceptTrackId?: string): boolean {
@@ -713,6 +731,102 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (rest.length) doc.guides = rest;
         else delete doc.guides;
         groups.push([{ op: "add_guide", guide: { ...guide }, index }]);
+        break;
+      }
+
+      case "set_caption_style": {
+        assertCaptionsUnlocked(doc, opIndex, name);
+        if ((op.patch === undefined) === (op.clear === undefined)) {
+          throw new OpError("INVALID", `${name}: give either patch or clear, not both and not neither`, opIndex);
+        }
+        const stored = doc.captions?.style;
+        const now: Record<string, unknown> = { ...captionStyleOf(doc) };
+        const expected: Record<string, unknown> = { ...op.expect };
+        for (const key of Object.keys(expected)) {
+          if (expected[key] !== undefined && !isEqual(expected[key], now[key])) throw stale("the caption style");
+        }
+        if (op.clear) {
+          if (!stored) break;
+          // The undo puts the whole style back, and expects the default's values that differ from it.
+          const dflt: Record<string, unknown> = { ...defaultCaptionStyle(doc) };
+          const differing: Record<string, unknown> = {};
+          for (const key of Object.keys(dflt)) if (!isEqual(dflt[key], (stored as Record<string, unknown>)[key])) differing[key] = dflt[key];
+          groups.push([{ op: "set_caption_style", patch: { ...stored }, expect: differing as Partial<CaptionStyle> }]);
+          const captions = { ...doc.captions };
+          delete captions.style;
+          if (captions.transcripts) doc.captions = captions;
+          else delete doc.captions;
+          break;
+        }
+        const next: Record<string, unknown> = { ...now };
+        const old: Record<string, unknown> = {};
+        const written: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(op.patch ?? {})) {
+          if (value === undefined) continue;
+          next[key] = value;
+          if (!isEqual(now[key], value)) {
+            old[key] = now[key];
+            written[key] = value;
+          }
+        }
+        const checked = CaptionStyle.safeParse(next);
+        if (!checked.success) {
+          const issue = checked.error.issues[0];
+          throw new OpError("INVALID", `${name}: the caption style is invalid: ${issue.path.join(".")}${issue.path.length ? ": " : ""}${issue.message}`, opIndex);
+        }
+        // Nothing changed: leave the document as it is, so a project with no stored style still has none.
+        if (!Object.keys(written).length) break;
+        doc.captions = { ...doc.captions, style: checked.data };
+        // With no style stored before, the way back is to clear it, so "no style" is restored exactly.
+        groups.push([
+          stored
+            ? { op: "set_caption_style", patch: old as Partial<CaptionStyle>, expect: written as Partial<CaptionStyle> }
+            : { op: "set_caption_style", clear: true, expect: written as Partial<CaptionStyle> },
+        ]);
+        break;
+      }
+
+      case "set_transcript": {
+        assertCaptionsUnlocked(doc, opIndex, name);
+        const before = transcriptOf(doc, op.assetId);
+        if (op.expect && op.expect.words !== (before?.length ?? null)) throw stale("the captions");
+        if (op.words === null && !before) break;
+        if (op.words && !before && Object.keys(doc.captions?.transcripts ?? {}).length + 1 > LIMITS.captionFilesPerProject) {
+          throw new OpError("LIMIT_EXCEEDED", `${name}: a project can keep words for at most ${LIMITS.captionFilesPerProject} files`, opIndex);
+        }
+        groups.push([{ op: "set_transcript", assetId: op.assetId, words: before ?? null, expect: { words: op.words?.length ?? null } }]);
+        const rest = { ...doc.captions?.transcripts };
+        delete rest[op.assetId];
+        if (op.words) rest[op.assetId] = structuredClone(op.words);
+        setTranscripts(doc, rest);
+        break;
+      }
+
+      case "splice_caption_words": {
+        assertCaptionsUnlocked(doc, opIndex, name);
+        const before = transcriptOf(doc, op.assetId);
+        if (!before) throw new OpError("NOT_FOUND", `${name}: no words kept for "${op.assetId}"`, opIndex);
+        if (op.index + op.remove > before.length) {
+          throw new OpError("INVALID", `${name}: ${op.remove} words from ${op.index} is past the ${before.length} words there are`, opIndex);
+        }
+        const removed = before.slice(op.index, op.index + op.remove);
+        if (op.expect && !isEqual(op.expect.words, removed)) throw stale("the captions");
+        const next = [...before.slice(0, op.index), ...structuredClone(op.insert), ...before.slice(op.index + op.remove)];
+        const checked = CaptionWords.safeParse(next);
+        if (!checked.success) {
+          throw new OpError("INVALID", `${name}: the words are invalid: ${checked.error.issues[0].message}`, opIndex);
+        }
+        groups.push([
+          {
+            op: "splice_caption_words",
+            assetId: op.assetId,
+            index: op.index,
+            remove: op.insert.length,
+            insert: removed,
+            expect: { words: structuredClone(op.insert) },
+          },
+        ]);
+        setTranscripts(doc, { ...doc.captions?.transcripts, [op.assetId]: checked.data });
         break;
       }
 

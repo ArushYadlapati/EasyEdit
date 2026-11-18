@@ -19,6 +19,12 @@ function richGuides(): TimelineDoc {
   return { ...rich(), guides: [{ id: "g1", axis: "x", at: 0.5 }, { id: "g2", axis: "y", at: 0.25 }] };
 }
 
+// A stored style and one file's words. An undone style change keeps a stored style, so its start has one.
+function richCaptions(): TimelineDoc {
+  const style = { preset: "bar", fontFamily: "Geist", fontWeight: 700, fontSize: 70, color: "#ffffff", highlight: "#FFD400", y: 0.7, uppercase: false } as const;
+  return { ...rich(), captions: { style, transcripts: { a: [{ t: "hi", s: 0, e: 100 }, { t: "there", s: 150, e: 400 }] } } };
+}
+
 function rich(): TimelineDoc {
   const d = docWithCaptions("short_9x16");
   d.tracks[0].clips = [video("c1", 0, 30, { in: 10, speed: 1.5 }), video("c2", 30, 30), video("c3", 60, 30)];
@@ -65,6 +71,13 @@ const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["add_guide", { op: "add_guide", guide: { id: "g9", axis: "x", at: 0.3 } }],
   ["move_guide", { op: "move_guide", guideId: "g2", at: 0.75 }, richGuides],
   ["remove_guide", { op: "remove_guide", guideId: "g1" }, richGuides],
+  ["set_caption_style", { op: "set_caption_style", patch: { preset: "word", fontSize: 90 } }, richCaptions],
+  ["set_caption_style on a doc with no style", { op: "set_caption_style", patch: { preset: "word" } }],
+  ["set_caption_style clear", { op: "set_caption_style", clear: true }, richCaptions],
+  ["set_transcript", { op: "set_transcript", assetId: "a", words: [{ t: "new", s: 0, e: 10 }] }, richCaptions],
+  ["set_transcript to a new file", { op: "set_transcript", assetId: "b", words: [{ t: "new", s: 0, e: 10 }] }],
+  ["set_transcript null", { op: "set_transcript", assetId: "a", words: null }, richCaptions],
+  ["splice_caption_words", { op: "splice_caption_words", assetId: "a", index: 1, remove: 1, insert: [{ t: "all", s: 160, e: 300 }, { t: "of", s: 310, e: 350 }] }, richCaptions],
 ];
 
 describe("inverse round trip", () => {
