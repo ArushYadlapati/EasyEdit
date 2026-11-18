@@ -8,7 +8,7 @@ export const SHAPE_TOOL_NAME: Record<ShapeTool, string> = { rect: "Rectangle", e
 
 // The highlight yellow text emphasis already uses, for a space with no brand colour.
 export const SHAPE_COLOR = "#FFD400";
-export const ARROW_DEFAULTS = { heads: "end" as ArrowHeads, head: "triangle" as ArrowHead, headSize: 3, bend: 0 };
+export const ARROW_DEFAULTS = { heads: "end" as ArrowHeads, head: "triangle" as ArrowHead, headSize: 4, bend: 0 };
 // The bend "Curved" sets on a straight arrow.
 export const CURVED_BEND = 0.25;
 

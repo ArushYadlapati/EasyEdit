@@ -203,10 +203,12 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         // The text being typed in place shows its own box instead.
         const framed = items.filter((i) => i.clipId !== state.textEditId);
         const visible = surface.visible();
+        const ends = endsOf(state, framed, view, box, visible);
         next = {
-          outlines: outlinesOf(framed, state.selection.clipIds, view, box),
+          // An arrow showing its end handles needs no box round it.
+          outlines: outlinesOf(framed.filter((i) => !ends.some((e) => e.clipId === i.clipId)), state.selection.clipIds, view, box),
           handles: handlesOf(state, framed, view, box, visible, followed, marks),
-          ends: endsOf(state, framed, view, box, visible),
+          ends,
           guides: guidesOf(drag.guides.getState(), viewDoc(state), view, box),
           placed: state.showGuides ? placedOf(viewDoc(state), state.guideId, guideDrag.removing.getState().guideId, view, box) : [],
           full: cut ? fullOf(cut, view, box) : null,

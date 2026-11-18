@@ -47,7 +47,7 @@ export const SHAPES_REFERENCE = `Shapes and arrows point at things or outline th
 A shape CLIP: ${JSON.stringify(EXAMPLE_ARROW_CLIP)}
 shape is "rect"|"ellipse"|"arrow". width and height are in project pixels (an arrow's width is its length; its height is 0). transform x, y is the centre, rotation turns it. An arrow points from tail to tip along its rotation: 0 points right, 90 down. Shapes take no stretch or crop; change width and height instead, so the outline keeps its thickness.
 stroke is the outline (an arrow's line) as hex, or null for none on a filled rect or ellipse. strokeWidth 1 to ${LIMITS.shapeStrokeMax} px. dash "solid"|"dashed"|"dotted". fill (rect, ellipse) is hex or null. radius (rect) rounds the corners, in px.
-Arrow only: heads "end"|"start"|"both"|"none" (none is a line), head "triangle"|"open"|"bar", headSize 1 to 8 (times strokeWidth, default 3), bend -0.5 to 0.5 (0 straight; the curve's middle sits bend × length to the arrow's right of the straight line).
+Arrow only: heads "end"|"start"|"both"|"none" (none is a line), head "triangle"|"open"|"bar", headSize 1 to 8 (times strokeWidth, default 4), bend -0.5 to 0.5 (0 straight; the curve's middle sits bend × length to the arrow's right of the straight line).
 Change any of these with update_clip (e.g. {"strokeWidth":16,"dash":"dashed"}). Shapes take keyframes and transitions like images, except crossfade.`;
 
 // The crop shown in the op reference. The test applies it to a video clip and a text clip.

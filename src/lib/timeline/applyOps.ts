@@ -13,6 +13,7 @@ import {
   maxSafeAreaHeight,
   trackTakes,
 } from "./presets";
+import { ARROW_DEFAULTS } from "./shapes";
 import { MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
 import type { Clip, FormatId, FrameSize, Guide, TimelineDoc, Track } from "./types";
 
@@ -42,10 +43,10 @@ const CLIP_FILL: Record<string, () => unknown> = {
 const SHAPE_FILL: Record<string, () => unknown> = {
   fill: () => null,
   radius: () => 0,
-  heads: () => "end",
-  head: () => "triangle",
-  headSize: () => 3,
-  bend: () => 0,
+  heads: () => ARROW_DEFAULTS.heads,
+  head: () => ARROW_DEFAULTS.head,
+  headSize: () => ARROW_DEFAULTS.headSize,
+  bend: () => ARROW_DEFAULTS.bend,
 };
 
 // Which of those fields each kind of clip may carry. Sound has no picture to move or fade, and text animates

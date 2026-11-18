@@ -201,7 +201,7 @@ export const ShapeClipFields = z.object({
   radius: z.number().min(0).max(LIMITS.shapeSideMax).optional(), // rect: corner rounding in project pixels; drawn at most half the short side
   heads: ArrowHeads.optional(), // arrow: absent = "end"
   head: ArrowHead.optional(), // arrow: absent = "triangle"
-  headSize: z.number().min(1).max(8).optional(), // arrow: the head's length as a multiple of strokeWidth; absent = 3
+  headSize: z.number().min(1).max(8).optional(), // arrow: the head's length as a multiple of strokeWidth; absent = 4
   bend: z.number().min(-0.5).max(0.5).optional(), // arrow: absent = 0, straight
   keyframes: Keyframes.optional(),
   transitionIn: TransitionOut.nullable().optional(), // no crossfade: a shape has nothing to blend from
