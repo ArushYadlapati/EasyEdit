@@ -46,13 +46,13 @@ function hasTextSelection(): boolean {
 }
 
 // Runs one command of the shortcut table, from a key or a menu. This is the one place the commands'
-// context is built. Pass a stable openShortcuts and openExport: a new one makes a new runner.
-export function useCommandRunner(openShortcuts: () => void, openExport?: () => void): (command: CommandId) => void {
+// context is built. Pass a stable openShortcuts, openExport and openSearch: a new one makes a new runner.
+export function useCommandRunner(openShortcuts: () => void, openExport?: () => void, openSearch?: () => void): (command: CommandId) => void {
   const store = useEditorStore();
   const clipboard = useClipboard();
   return useCallback(
-    (command: CommandId) => runCommand(command, { store, clipboard, openShortcuts, openExport }),
-    [store, clipboard, openShortcuts, openExport],
+    (command: CommandId) => runCommand(command, { store, clipboard, openShortcuts, openExport, openSearch }),
+    [store, clipboard, openShortcuts, openExport, openSearch],
   );
 }
 
@@ -63,12 +63,12 @@ export function useCommandRunner(openShortcuts: () => void, openExport?: () => v
 // or pauses even on a button, unless the button was reached with the keyboard. Copy and cut
 // are left to the browser when no clip is selected or text is. A held key runs its command again
 // only where the table says it repeats. The keys are this browser's keymap, read as each key goes
-// down; with every shortcut off the browser gets every key. Pass a stable openShortcuts and openExport:
+// down; with every shortcut off the browser gets every key. Pass a stable openShortcuts, openExport and openSearch:
 // a new one adds the listener again.
-export function useShortcuts(openShortcuts: () => void, openExport?: () => void): void {
+export function useShortcuts(openShortcuts: () => void, openExport?: () => void, openSearch?: () => void): void {
   const store = useEditorStore();
   const settings = useSettingsStore();
-  const run = useCommandRunner(openShortcuts, openExport);
+  const run = useCommandRunner(openShortcuts, openExport, openSearch);
 
   useEffect(() => {
     const isMac = isMacPlatform();

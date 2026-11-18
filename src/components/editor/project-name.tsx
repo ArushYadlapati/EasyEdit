@@ -9,8 +9,9 @@ import { useEditor, useEditorApi, useEditorStore } from "./context";
 import { useIsMac } from "./use-shortcuts";
 
 // The project's name in the top bar. An editor clicks it to rename the project in place; a viewer,
-// or anyone on a deleted project, sees it as plain text.
-export function ProjectName(): ReactNode {
+// or anyone on a deleted project, sees it as plain text. Each new renameRequest (a count above 0) starts the rename too,
+// as the top bar's search does.
+export function ProjectName({ renameRequest = 0 }: { renameRequest?: number } = {}): ReactNode {
   const store = useEditorStore();
   const api = useEditorApi();
   const name = useEditor((s) => s.name);
@@ -20,6 +21,13 @@ export function ProjectName(): ReactNode {
   const renaming = editing && canRename;
   const button = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false); // a key ended the rename, so focus goes back to the name
+
+  // A new request starts the rename, adjusted while rendering as React suggests rather than in an effect.
+  const [seenRequest, setSeenRequest] = useState(renameRequest);
+  if (renameRequest !== seenRequest) {
+    setSeenRequest(renameRequest);
+    if (renameRequest > 0) setEditing(true);
+  }
 
   useEffect(() => {
     if (renaming || !refocus.current) return;
