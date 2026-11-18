@@ -64,6 +64,16 @@ describe("summarizeOps", () => {
       "Moved a clip, trimmed a clip, split a clip and more"],
     [[{ op: "add_track", track: { id: "t2", kind: "text", name: "Text 2" } }, { op: "move_track", trackId: "t2", index: 0 }], "Changed tracks"],
     [[{ op: "add_track", track: { id: "t2", kind: "text", name: "Text 2" } }, { op: "add_clip", trackId: "t2", clip: text("n", 0, 30) }, rm("a")], "Added a clip, deleted a clip and changed tracks"],
+    // Auto captions: the track, the style, the words, dropped words of unused files, and the clip switches.
+    [[{ op: "add_track", track: { id: "c", kind: "caption", name: "Captions" } }, { op: "set_caption_style", patch: { preset: "karaoke" } }, { op: "set_transcript", assetId: "z", words: null }, { op: "set_transcript", assetId: "a", words: [{ t: "hi", s: 0, e: 100 }] }, { op: "update_clip", clipId: "v", patch: { captions: true } }], "Added captions"],
+    [[{ op: "set_transcript", assetId: "a", words: [{ t: "hi", s: 0, e: 100 }] }, { op: "update_clip", clipId: "v", patch: { captions: true } }, { op: "update_clip", clipId: "w", patch: { captions: true } }], "Added captions"],
+    [[{ op: "update_clip", clipId: "v", patch: { captions: true } }], "Added captions"],
+    [[{ op: "update_clip", clipId: "v", patch: { captions: false } }], "Removed captions"],
+    [[{ op: "update_clip", clipId: "v", patch: { captions: false } }, { op: "update_clip", clipId: "w", patch: { captions: false } }], "Removed captions"],
+    // Transcribe again, or an agent's words: the words change.
+    [[{ op: "set_transcript", assetId: "a", words: [{ t: "hi", s: 0, e: 100 }] }], "Changed the captions"],
+    [[{ op: "update_clip", clipId: "v", patch: { captions: false, volume: 0.5 } }], "Changed a clip: volume"],
+    [[{ op: "update_clip", clipId: "v", patch: { captions: true } }, rm("b")], "Deleted a clip and edited a clip"],
   ])("%#", (ops, summary) => {
     expect(summarizeOps(ops)).toBe(summary);
   });

@@ -18,13 +18,16 @@ const MUTED = "text-[13px] leading-5 text-ed-muted";
 // Seconds as "1:10".
 const clock = (seconds: number) => formatClock(Math.floor(seconds), 1);
 
-// What the run is doing now, and a second line under it when there is one to say.
-function stageText(p: AutoCaptionProgress): { text: string; note?: string } {
+// What the run is doing now, and a second line under it when there is one to say. slowModel: getting the model has
+// taken long enough that it is being downloaded, which happens once.
+function stageText(p: AutoCaptionProgress, slowModel: boolean): { text: string; note?: string } {
   switch (p.stage) {
+    case "checking":
+      return { text: "Checking for saved captions…" };
     case "saved":
       return { text: "Using saved captions…" };
     case "model":
-      return { text: `Getting the speech model… ${p.total > 0 ? Math.floor((p.done / p.total) * 100) : 0}%`, note: "A one-time download." };
+      return { text: `Getting the speech model… ${p.total > 0 ? Math.floor((p.done / p.total) * 100) : 0}%`, ...(slowModel && { note: "A one-time download." }) };
     case "sound":
       return { text: "Reading the sound…" };
     case "speech":
@@ -59,7 +62,7 @@ export function CaptionsTab({ panel }: { panel: PanelProps }) {
     };
   }, [doc, selection]);
   const hasCaptions = doc.captions !== undefined || doc.tracks.some((t) => t.clips.some((c) => "captions" in c && c.captions));
-  const stage = run.progress ? stageText(run.progress) : null;
+  const stage = run.progress ? stageText(run.progress, run.slowModel) : null;
 
   return (
     <div {...panel} className="min-h-0 flex-1 overflow-y-auto">

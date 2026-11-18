@@ -1,12 +1,13 @@
 import type { BrandFonts } from "@/lib/brand/types";
 import { nearestWeight } from "@/lib/brand/fonts";
 import { addTrackOps } from "@/lib/editor/commands";
+import { explainOpError } from "@/lib/editor/messages";
 import { findClip, type EditorStore } from "@/lib/editor/store";
 import { LIMITS } from "@/lib/limits";
 import type { MediaFiles } from "@/lib/media/media-files";
 import { playbackFileFor } from "@/lib/media/playback";
 import type { AssetView } from "@/lib/media/types";
-import { defaultCaptionStyle, transcriptOf, type CaptionWord, type Clip, type MediaClip, type OpInput, type TimelineDoc } from "@/lib/timeline";
+import { captionTrack, defaultCaptionStyle, transcriptOf, type CaptionWord, type Clip, type MediaClip, type OpInput, type TimelineDoc } from "@/lib/timeline";
 import type { Cue } from "./cues";
 import { retextCue } from "./cues";
 import { TranscribeError, type Transcriber } from "./speech/client";
@@ -30,8 +31,17 @@ export function captionTargets(doc: TimelineDoc, selectedClipIds: readonly strin
 const sameWords = (a: readonly CaptionWord[] | undefined, b: readonly CaptionWord[]) =>
   !!a && a.length === b.length && a.every((x, i) => x.t === b[i].t && x.s === b[i].s && x.e === b[i].e);
 
+// The files whose words the project keeps though no clip uses them any more. A clip of the file keeps its words
+// whether its captions are on or off, so turning them off and on again keeps a person's fixes.
+export function unusedTranscripts(doc: TimelineDoc): string[] {
+  const used = new Set(doc.tracks.flatMap((track) => track.clips.flatMap((clip) => ("assetId" in clip ? [clip.assetId] : []))));
+  return Object.keys(doc.captions?.transcripts ?? {}).filter((assetId) => !used.has(assetId));
+}
+
 // Everything one file's captions need, and only what is missing: the Captions track; the style, in the kit's title
 // font, when none is stored (so captions look like the brand from the start); the file's words; the switch on each clip.
+// Words differing from the file's are written over them. The same edit drops the words of files no clip uses, before
+// the new ones, so a project does not keep growing and the drop is undone with the rest.
 export function captionOps(doc: TimelineDoc, input: { assetId: string; words: CaptionWord[]; clipIds: string[]; fonts: BrandFonts }): OpInput[] {
   const { assetId, words, clipIds, fonts } = input;
   const ops: OpInput[] = [...addTrackOps(doc, "caption")];
@@ -40,12 +50,17 @@ export function captionOps(doc: TimelineDoc, input: { assetId: string; words: Ca
     ops.push({ op: "set_caption_style", patch: { ...defaultCaptionStyle(doc), fontFamily: font, fontWeight: nearestWeight(font, 700) } });
   }
   const before = transcriptOf(doc, assetId);
-  if (!sameWords(before, words)) ops.push({ op: "set_transcript", assetId, words, expect: { words: before?.length ?? null } });
+  const changes: OpInput[] = [];
+  if (!sameWords(before, words)) changes.push({ op: "set_transcript", assetId, words, expect: { words: before?.length ?? null } });
   for (const clipId of clipIds) {
     const clip = findClip(doc, clipId)?.clip;
-    if (clip && hasSpeech(clip) && !clip.captions) ops.push({ op: "update_clip", clipId, patch: { captions: true } });
+    if (clip && hasSpeech(clip) && !clip.captions) changes.push({ op: "update_clip", clipId, patch: { captions: true } });
   }
-  return ops;
+  if (ops.length === 0 && changes.length === 0) return [];
+  for (const unused of unusedTranscripts(doc)) {
+    if (unused !== assetId) ops.push({ op: "set_transcript", assetId: unused, words: null, expect: { words: transcriptOf(doc, unused)!.length } });
+  }
+  return [...ops, ...changes];
 }
 
 // The edit that makes a caption line read as typed. Nothing when the text is the same, or when the line's words have
@@ -80,8 +95,8 @@ export type AutoCaptionDeps = {
   fonts(): BrandFonts;
 };
 
-// file counts from 1. "saved": asking the server for words saved before.
-export type AutoCaptionProgress = { file: number; files: number; name: string; stage: "saved" | TranscribeStage; done: number; total: number };
+// file counts from 1. "checking": asking the server for words saved before; "saved": using the ones it had.
+export type AutoCaptionProgress = { file: number; files: number; name: string; stage: "checking" | "saved" | TranscribeStage; done: number; total: number };
 // silent: names of files with no speech; failed: why each other file has no captions.
 export type AutoCaptionOutcome = { captioned: number; silent: string[]; failed: { name: string; why: string }[]; cancelled: boolean };
 
@@ -94,6 +109,7 @@ const WHY = {
   unreadable: "its file couldn't be read.",
   undecodable: "its sound couldn't be read.",
   model: "the speech model couldn't be loaded.",
+  full: `this project already has captions for ${LIMITS.captionFilesPerProject} files.`,
   unknown: "something went wrong. Try again.",
 } as const;
 
@@ -143,9 +159,11 @@ function unusable(asset: AssetView | undefined): string | null {
   return null;
 }
 
-// Auto captions: each file of the target clips in turn, its saved words or else heard here, then one edit (one undo
-// step) per file against the project as it is by then, on the target clips still in it. A cancel stops before the next
-// step and keeps what is done. A file with nothing to caption changes nothing. Never throws.
+// Auto captions: each file of the target clips in turn, then one edit (one undo step) per file against the project as it
+// is by then, on the target clips still in it. A file's words are the project's own when it has some (they may hold a
+// person's fixes), else the saved ones, else heard here; "Transcribe again" (redo) always hears it. A cancel stops
+// before the next step and keeps what is done. A file with nothing to caption changes nothing. A locked Captions track
+// stops it before it starts. Never throws.
 export async function runAutoCaptions(
   store: EditorStore,
   deps: AutoCaptionDeps,
@@ -154,6 +172,10 @@ export async function runAutoCaptions(
   const { redo = false, signal, onProgress } = opts;
   const outcome: AutoCaptionOutcome = { captioned: 0, silent: [], failed: [], cancelled: false };
   const begin = store.getState();
+  if (captionTrack(begin.doc)?.locked) {
+    begin.notify("error", explainOpError("TRACK_LOCKED"));
+    return outcome;
+  }
   const targets = captionTargets(begin.doc, begin.selection.clipIds);
   const clipIds = targets.map((clip) => clip.id);
   const assetIds = [...new Set(targets.map((clip) => clip.assetId))];
@@ -182,11 +204,27 @@ export async function runAutoCaptions(
         }
         const report = (stage: AutoCaptionProgress["stage"], done = 0, total = 0) => onProgress?.({ file: i + 1, files: assetIds.length, name, stage, done, total });
 
-        let words: CaptionWord[] | null = null;
-        if (!redo) {
-          report("saved");
-          words = await deps.fetchSaved(assetId).catch(() => null);
+        const now = store.getState().doc;
+        const own = transcriptOf(now, assetId);
+        let words: CaptionWord[] | null = !redo && own && own.length > 0 ? own : null;
+        // A file new to the project must fit beside the files whose words it keeps (the ones no clip uses go in the
+        // same edit), else hearing it would be wasted.
+        if (!own) {
+          const kept = Object.keys(now.captions?.transcripts ?? {}).length - unusedTranscripts(now).length;
+          if (kept + 1 > LIMITS.captionFilesPerProject) {
+            outcome.failed.push({ name, why: WHY.full });
+            continue;
+          }
+        }
+        if (!words && !redo) {
+          report("checking");
+          // Saved words that are an empty list are taken as none: a file heard as silent once may be heard again.
+          const saved = await deps.fetchSaved(assetId).catch(() => null);
           stopped();
+          if (saved && saved.length > 0) {
+            words = saved;
+            report("saved");
+          }
         }
         if (!words) {
           const heard = await hear(asset, deps, signal, report);
@@ -200,9 +238,12 @@ export async function runAutoCaptions(
             continue;
           }
           words = heard.words;
-          // The next project with this file gets its words at once. A failed save costs only that.
-          await deps.save(assetId, words).catch(() => false);
-          stopped();
+          // The next project with this file gets its words at once. A failed save costs only that. No words are not
+          // saved, so the file can be heard again.
+          if (words.length > 0) {
+            await deps.save(assetId, words).catch(() => false);
+            stopped();
+          }
         }
         if (words.length === 0) {
           outcome.silent.push(name);

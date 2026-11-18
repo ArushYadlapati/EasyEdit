@@ -141,7 +141,6 @@ it("shows each stage while it runs, and captions the file when the words come", 
 
   act(() => calls[0].progress({ stage: "model", done: 42, total: 100 }));
   expect(screen.getByText("Getting the speech model… 42%")).toBeTruthy();
-  expect(screen.getByText("A one-time download.")).toBeTruthy();
   act(() => calls[0].progress({ stage: "sound", done: 0, total: 185 }));
   expect(screen.getByText("Reading the sound…")).toBeTruthy();
   act(() => calls[0].progress({ stage: "speech", done: 70, total: 185 }));
@@ -155,21 +154,53 @@ it("shows each stage while it runs, and captions the file when the words come", 
   expect(clipOf(store.getState().doc, "c1").captions).toBe(true);
 });
 
-it("says it is using saved captions while it asks for them, and names the file when there are several", async () => {
-  let answer: (words: CaptionWord[] | null) => void = () => {};
+it("says it is checking for saved captions while it asks, using them only once found, and names the file when there are several", async () => {
+  const answers: ((words: CaptionWord[] | null) => void)[] = [];
   const doc = sampleDoc();
   doc.tracks[0].clips = [video("c1", 0, 30), video("c2", 30, 30, { assetId: "b" })];
-  setup({
+  const { calls } = setup({
     doc,
     assets: [INTAKE, assetView({ id: "b", name: "speech" })],
-    deps: { fetchSaved: vi.fn(() => new Promise<CaptionWord[] | null>((resolve) => (answer = resolve))) },
+    deps: { fetchSaved: vi.fn(() => new Promise<CaptionWord[] | null>((resolve) => answers.push(resolve))) },
   });
   fireEvent.click(autoButton());
   await flush();
-  expect(screen.getByText("Using saved captions…")).toBeTruthy();
+  expect(screen.getByText("Checking for saved captions…")).toBeTruthy();
+  expect(screen.queryByText("Using saved captions…")).toBeNull();
   expect(screen.getByText("1 of 2 · intake")).toBeTruthy();
-  await act(async () => answer(WORDS));
+  // None saved for the first file: it is heard, and "Using saved captions…" never shows.
+  await act(async () => answers[0](null));
+  expect(screen.queryByText("Using saved captions…")).toBeNull();
+  expect(screen.getByText("Reading the sound…")).toBeTruthy();
+  await act(async () => calls[0].answer(WORDS));
   expect(screen.getByText("2 of 2 · speech")).toBeTruthy();
+  expect(screen.getByText("Checking for saved captions…")).toBeTruthy();
+});
+
+it("says the model is a one-time download only once getting it has taken more than 2 seconds", async () => {
+  const { calls } = setup();
+  fireEvent.click(autoButton());
+  await flush();
+  vi.useFakeTimers();
+  try {
+    act(() => calls[0].progress({ stage: "model", done: 0, total: 100 }));
+    expect(screen.queryByText("A one-time download.")).toBeNull();
+    act(() => vi.advanceTimersByTime(1500));
+    act(() => calls[0].progress({ stage: "model", done: 60, total: 100 }));
+    expect(screen.queryByText("A one-time download.")).toBeNull();
+    act(() => vi.advanceTimersByTime(600));
+    expect(screen.getByText("A one-time download.")).toBeTruthy();
+    act(() => calls[0].progress({ stage: "sound", done: 0, total: 185 }));
+    expect(screen.queryByText("A one-time download.")).toBeNull();
+    // A model stage that ends quickly (the model is already in the browser) never shows it.
+    act(() => calls[0].progress({ stage: "model", done: 100, total: 100 }));
+    act(() => vi.advanceTimersByTime(1000));
+    act(() => calls[0].progress({ stage: "speech", done: 0, total: 185 }));
+    act(() => vi.advanceTimersByTime(5000));
+    expect(screen.queryByText("A one-time download.")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("Cancel stops the run, changes nothing and lets it start again", async () => {

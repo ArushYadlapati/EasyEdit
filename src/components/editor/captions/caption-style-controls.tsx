@@ -64,7 +64,8 @@ export function CaptionStyleControls({ canEdit }: { canEdit: boolean }) {
           onCommit={(fontSize) => set({ fontSize })}
         />
       </Field>
-      <div className="grid grid-cols-2 gap-2">
+      {/* One color to a row: side by side, the hex boxes are too narrow to show a whole value at the panel's widths. */}
+      <div className="flex flex-col gap-2">
         <EffectColor label="Text color" value={style.color} canEdit={canEdit} onCommit={(color) => set({ color })} />
         <EffectColor label="Highlight color" value={style.highlight} canEdit={canEdit} onCommit={(highlight) => set({ highlight })} />
       </div>

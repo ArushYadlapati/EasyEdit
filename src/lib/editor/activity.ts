@@ -85,6 +85,18 @@ function summarizeClipUpdates(ops: OpOf<"update_clip">[], kindOf: KindOf): strin
   return `Changed ${nounFor(kindOf(ops[0].clipId) ?? (isText ? "text" : undefined))}: ${listed(aspects)}`;
 }
 
+// A clip switch and nothing else: { captions: true } or { captions: false }.
+const captionSwitch = (op: Op, on: boolean) => op.op === "update_clip" && Object.keys(op.patch).length === 1 && op.patch.captions === on;
+
+// Auto captions, or captions switched on by hand: only caption ops and clips switched on, with words or a clip
+// switched on among them. Words alone are "Changed the captions" (Transcribe again, or an agent's fix).
+function addsCaptions(ops: Op[]): boolean {
+  const fits = (op: Op) =>
+    (op.op === "add_track" && op.track.kind === "caption") || op.op === "set_caption_style" || op.op === "set_transcript" || captionSwitch(op, true);
+  if (!ops.every(fits)) return false;
+  return ops.some((op) => captionSwitch(op, true)) || (ops.some((op) => op.op === "set_transcript" && op.words !== null) && ops.some((op) => op.op !== "set_transcript"));
+}
+
 // A short line for the activity list saying what a batch of ops did. With kindOf, a change to one clip names its kind.
 export function summarizeOps(ops: Op[], kindOf: KindOf = () => undefined): string {
   const fallback = `Made ${ops.length} changes`;
@@ -100,6 +112,8 @@ export function summarizeOps(ops: Op[], kindOf: KindOf = () => undefined): strin
     const added = adds[0].clip;
     return added.type === "placeholder" ? `Added slot ${added.slot.name}` : `Added ${nounFor(added.type)}`;
   }
+  if (addsCaptions(ops)) return "Added captions";
+  if (ops.every((op) => captionSwitch(op, false))) return "Removed captions";
   const one = (verb: string) => `${verb} ${nounFor(kindOf((ops[0] as { clipId: string }).clipId))}`;
   if (only("remove_clip")) return count(n, one("Deleted"), (k) => `Deleted ${k} clips`);
   if (only("move_clip")) return count(n, one("Moved"), (k) => `Moved ${k} clips`);

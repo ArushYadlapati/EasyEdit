@@ -23,10 +23,16 @@ export function browserCaptionDeps(media: MediaServices, fonts: () => BrandFonts
   };
 }
 
-// One Auto captions run at a time. progress: where it is, null before the first step; outcome: how the last one ended.
+// How long getting the speech model must take before the tab says it is a download: with the model already in the
+// browser it takes well under this.
+export const SLOW_MODEL_MS = 2000;
+
+// One Auto captions run at a time. progress: where it is, null before the first step; slowModel: it has been getting the
+// speech model for more than SLOW_MODEL_MS; outcome: how the last one ended.
 export type AutoCaptionsRun = {
   running: boolean;
   progress: AutoCaptionProgress | null;
+  slowModel: boolean;
   outcome: AutoCaptionOutcome | null;
   start(opts?: { redo?: boolean }): void;
   cancel(): void;
@@ -45,25 +51,52 @@ export function CaptionsProvider({ deps: given, children }: { deps?: AutoCaption
   // A run uses the kit's fonts as they were when it started.
   const deps = useMemo(() => given ?? browserCaptionDeps(media, () => fonts), [given, media, fonts]);
 
-  const [state, setState] = useState<Pick<AutoCaptionsRun, "running" | "progress" | "outcome">>({ running: false, progress: null, outcome: null });
+  const [state, setState] = useState<Pick<AutoCaptionsRun, "running" | "progress" | "slowModel" | "outcome">>({ running: false, progress: null, slowModel: false, outcome: null });
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => controller.current?.abort(), []);
+  // The timer that marks the model stage as slow, and the last step seen, to tell when a model stage begins.
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const last = useRef<AutoCaptionProgress | null>(null);
+  const stopSlowTimer = useCallback(() => {
+    if (slowTimer.current) clearTimeout(slowTimer.current);
+    slowTimer.current = null;
+  }, []);
+  useEffect(
+    () => () => {
+      controller.current?.abort();
+      stopSlowTimer();
+    },
+    [stopSlowTimer],
+  );
+
+  const onProgress = useCallback(
+    (progress: AutoCaptionProgress) => {
+      const inModel = progress.stage === "model";
+      const begins = inModel && !(last.current?.stage === "model" && last.current.file === progress.file);
+      last.current = progress;
+      if (!inModel || begins) stopSlowTimer();
+      if (begins) slowTimer.current = setTimeout(() => setState((s) => ({ ...s, slowModel: true })), SLOW_MODEL_MS);
+      setState((s) => ({ ...s, progress, slowModel: inModel && !begins && s.slowModel }));
+    },
+    [stopSlowTimer],
+  );
 
   const start = useCallback(
     (opts: { redo?: boolean } = {}) => {
       if (controller.current) return;
       const current = new AbortController();
       controller.current = current;
-      setState({ running: true, progress: null, outcome: null });
-      void runAutoCaptions(store, deps, { redo: opts.redo, signal: current.signal, onProgress: (progress) => setState((s) => ({ ...s, progress })) }).then(
+      last.current = null;
+      setState({ running: true, progress: null, slowModel: false, outcome: null });
+      void runAutoCaptions(store, deps, { redo: opts.redo, signal: current.signal, onProgress }).then(
         (outcome) => {
           controller.current = null;
-          setState({ running: false, progress: null, outcome });
+          stopSlowTimer();
+          setState({ running: false, progress: null, slowModel: false, outcome });
           if (outcome.silent.length > 0) store.getState().notify("info", `No speech found in ${outcome.silent.join(", ")}.`);
         },
       );
     },
-    [store, deps],
+    [store, deps, onProgress, stopSlowTimer],
   );
   const cancel = useCallback(() => controller.current?.abort(), []);
 
