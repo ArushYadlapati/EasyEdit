@@ -26,6 +26,30 @@ export const EXAMPLE_MEDIA_CLIP: { type: "video"; assetId: string; start: number
   transform: { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, fit: "cover" },
 };
 
+// The arrow shown in the editing guide's Shapes section. The test adds it to a shapes track.
+export const EXAMPLE_ARROW_CLIP = {
+  type: "shape",
+  start: 0,
+  duration: 90,
+  shape: "arrow",
+  width: 300,
+  height: 0,
+  stroke: "#FFD400",
+  strokeWidth: 12,
+  dash: "solid",
+  heads: "end",
+  bend: 0.2,
+  transform: { x: 0.5, y: 0.4, scale: 1, rotation: 45, opacity: 1, fit: "contain" },
+} as const;
+
+// Shapes are explained in the editing guide, like effects: the op reference only names them.
+export const SHAPES_REFERENCE = `Shapes and arrows point at things or outline them. A shape clip goes on a "shape" track (add_track kind "shape"); a later track draws on top.
+A shape CLIP: ${JSON.stringify(EXAMPLE_ARROW_CLIP)}
+shape is "rect"|"ellipse"|"arrow". width and height are in project pixels (an arrow's width is its length; its height is 0). transform x, y is the centre, rotation turns it. An arrow points from tail to tip along its rotation: 0 points right, 90 down. Shapes take no stretch or crop; change width and height instead, so the outline keeps its thickness.
+stroke is the outline (an arrow's line) as hex, or null for none on a filled rect or ellipse. strokeWidth 1 to ${LIMITS.shapeStrokeMax} px. dash "solid"|"dashed"|"dotted". fill (rect, ellipse) is hex or null. radius (rect) rounds the corners, in px.
+Arrow only: heads "end"|"start"|"both"|"none" (none is a line), head "triangle"|"open"|"bar", headSize 1 to 8 (times strokeWidth, default 3), bend -0.5 to 0.5 (0 straight; the curve's middle sits bend × length to the arrow's right of the straight line).
+Change any of these with update_clip (e.g. {"strokeWidth":16,"dash":"dashed"}). Shapes take keyframes and transitions like images, except crossfade.`;
+
 // The crop shown in the op reference. The test applies it to a video clip and a text clip.
 export const EXAMPLE_CROP: Crop = { left: 0.1, top: 0, right: 0.1, bottom: 0 };
 
@@ -43,11 +67,11 @@ export const OP_REFERENCE = `Ops:
 {"op":"remove_clip","clipId":C,"ripple":true}               ripple is optional: it closes the gap
 {"op":"move_clip","clipId":C,"start":F,"trackId":T}         trackId is optional: another track
 {"op":"trim_clip","clipId":C,"edge":"start"|"end","to":F}   to is the new timeline frame of that edge
-{"op":"split_clip","clipId":C,"at":F}                       the second half gets a new id
-{"op":"update_clip","clipId":C,"patch":{...}}               text, style{...}, transform{...}, volume, speed; never start or duration
-{"op":"add_track","track":{"kind":"video"|"overlay"|"text"|"audio","name":S},"index":N}   index is optional
-{"op":"update_track","trackId":T,"patch":{"name":S,"muted":B,"hidden":B,"locked":B}}       any of the four
-{"op":"move_track","trackId":T,"index":N}                   a later track draws on top
+{"op":"split_clip","clipId":C,"at":F}  the second half gets a new id
+{"op":"update_clip","clipId":C,"patch":{...}}               text, style{...}, transform{...}, volume, speed, shape fields; never start or duration
+{"op":"add_track","track":{"kind":"video"|"overlay"|"text"|"audio"|"shape","name":S},"index":N}   index is optional
+{"op":"update_track","trackId":T,"patch":{"name":S,"muted":B,"hidden":B,"locked":B}}  any of the four
+{"op":"move_track","trackId":T,"index":N}  a later track draws on top
 {"op":"remove_track","trackId":T}
 {"op":"set_format","format":"short_9x16"|"feed_4x5"|"square_1x1"|"long_16x9"|"long_4k"}
 {"op":"set_format","format":"custom","width":W,"height":H}   W and H in pixels: even, 16 to 4096, at most the area of 3840×2160
@@ -96,13 +120,14 @@ export function buildEditingGuide(): string {
     "# EasyEdit editing guide",
     "",
     "## How a project is built",
-    "- A project is one timeline in one format. Tracks are layers: a later track draws on top. Track kinds: video, overlay, text, caption, audio.",
+    "- A project is one timeline in one format. Tracks are layers: a later track draws on top. Track kinds: video, overlay, text, caption, audio, shape.",
     "- Clips sit on tracks and never overlap on the same track. Times are whole frames; the project's first line gives fps.",
     "- Every change is a batch of ops (see edit_timeline). Each batch is one line in the editor's Activity list, under your name, and people can undo it there.",
     '- Each format has a safe area: a box, centred sideways, that the apps\' buttons and captions leave uncovered. A project can set its own size for a format; get_project then shows a "Safe area" line, and that box is the one to keep text inside.',
     "",
     "## What is possible today",
     "- Create projects. Add and style text. Add video, images and audio from the library. Move, trim, split and delete clips. Add, rename, lock, hide, reorder and remove tracks. Change the format. Crop and stretch video, images and text.",
+    "- Draw arrows, lines, boxes and ellipses to point at things or outline them (see Shapes below).",
     "- Not yet: seeing inside footage, captions, export, posting. Say so when asked. Never make up an asset id.",
     "",
     "## Working well",
@@ -141,6 +166,7 @@ export function buildEditingGuide(): string {
     "- A clip cannot run past the end of its footage. A trim that would is refused.",
   ];
   lines.push("", "## Effects: transitions, keyframes and text animation", ...EFFECTS_REFERENCE.split("\n"));
+  lines.push("", "## Shapes", ...SHAPES_REFERENCE.split("\n"));
   if (TEAM_STYLE_RULES.length > 0) lines.push("", "## Team style", ...TEAM_STYLE_RULES.map((rule) => `- ${rule}`));
   return lines.join("\n");
 }

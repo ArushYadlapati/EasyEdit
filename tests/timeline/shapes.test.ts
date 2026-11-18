@@ -156,3 +156,14 @@ describe("shape geometry", () => {
     expect(shapeBox(rect())).toEqual({ left: -150, top: -100, right: 150, bottom: 100 });
   });
 });
+
+describe("the editing guide's shape example", () => {
+  it("adds to a shapes track as it is written, and the guide explains every field", async () => {
+    const { EXAMPLE_ARROW_CLIP, SHAPES_REFERENCE, buildEditingGuide } = await import("@/lib/mcp/guide");
+    const ops = prepareOps([{ op: "add_clip", trackId: "s1", clip: structuredClone(EXAMPLE_ARROW_CLIP) as never }]);
+    const doc = applyOps(docWithShapes(), ops).doc;
+    expect(doc.tracks.find((t) => t.id === "s1")!.clips[0]).toMatchObject({ shape: "arrow", bend: 0.2 });
+    for (const field of ["stroke", "strokeWidth", "dash", "fill", "radius", "heads", "head", "headSize", "bend"]) expect(SHAPES_REFERENCE, field).toContain(field);
+    expect(buildEditingGuide()).toContain("## Shapes\n");
+  });
+});

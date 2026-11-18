@@ -4,7 +4,7 @@ import { rowsOf } from "@/db";
 import { user } from "@/db/schema";
 import { LIMITS } from "@/lib/limits";
 import { conflictResult, failureResult, OP_HINTS } from "@/lib/mcp/errors";
-import { EXAMPLE_CROP } from "@/lib/mcp/guide";
+import { EXAMPLE_ARROW_CLIP, EXAMPLE_CROP } from "@/lib/mcp/guide";
 import { editTimelineTool } from "@/lib/mcp/tools/edit-timeline";
 import { applyProjectOps, createProject, deleteProject, getProject } from "@/lib/projects/service";
 import { FRAME_SIZE_MESSAGE, type OpInput } from "@/lib/timeline";
@@ -45,6 +45,21 @@ async function setup(over: Parameters<typeof toolContext>[1] = {}) {
 }
 
 describe("edit_timeline", () => {
+  it("Claude can draw an arrow on a shapes track and restyle it", async () => {
+    const { edit, project } = await setup();
+    const add = await edit(0, [
+      { op: "add_track", track: { id: "s1", kind: "shape", name: "Shapes 1" }, index: 1 },
+      { op: "add_clip", trackId: "s1", clip: { ...EXAMPLE_ARROW_CLIP } },
+    ]);
+    expect(add.isError).toBe(false);
+    const arrow = (await project()).doc.tracks.find((t) => t.kind === "shape")!.clips[0];
+    expect(arrow).toMatchObject({ type: "shape", shape: "arrow", bend: 0.2 });
+    const r = await edit(1, [{ op: "update_clip", clipId: arrow.id, patch: { strokeWidth: 16, dash: "dashed", heads: "both" } }]);
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain('shape="arrow" width=300 stroke="#FFD400" strokeWidth=16 dash="dashed" heads="both" bend=0.2');
+    expect((await edit(2, [{ op: "update_clip", clipId: arrow.id, patch: { fill: "#000000" } }])).isError).toBe(true);
+  });
+
   it("Claude can crop a clip and sees the crop", async () => {
     const { edit, project } = await setup();
     expect((await edit(0, [addText(0)])).isError).toBe(false);
