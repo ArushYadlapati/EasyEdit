@@ -18,12 +18,14 @@ import { MediaTab, type PanelProps } from "./media/media-tab";
 import { useToMenuItems } from "./menu-items";
 import { useIsMac } from "./use-shortcuts";
 
-const TABS = [
+// Exported for the top bar's search, which opens them by name.
+export const LEFT_TABS = [
   { id: "text", label: "Text" },
   { id: "media", label: "Media" },
   { id: "captions", label: "Captions" },
   { id: "brand", label: "Brand kit" },
 ];
+const TABS = LEFT_TABS;
 
 // Each preset adds itself at the playhead on a click, or from its right-click menu, in its brand kit font, which its
 // button is drawn in. On a Mac a Ctrl+click is that right-click, so it adds nothing.
@@ -81,11 +83,15 @@ function TextTab({ panel }: { panel: PanelProps }) {
   );
 }
 
-export function LeftPanel() {
+// tab and onTab, when given, hold the open tab outside, so the top bar's search can open one; without them the panel
+// keeps its own.
+export function LeftPanel({ tab: heldTab, onTab }: { tab?: string; onTab?(tab: string): void } = {}) {
   const store = useEditorStore();
   const settings = useSettingsStore();
   const addAsset = (asset: AssetView) => addMedia(store, asset, { stillSeconds: settings.getState().stillSeconds });
-  const [tab, setTab] = useState("text");
+  const [ownTab, setOwnTab] = useState("text");
+  const tab = heldTab ?? ownTab;
+  const setTab = onTab ?? setOwnTab;
   const drop = useMediaDrop();
   // A file from the computer over the window opens the Media tab, where it can be dropped. It stays there afterwards.
   useEffect(
@@ -93,7 +99,7 @@ export function LeftPanel() {
       drop?.state.subscribe((state, before) => {
         if (state.incoming === "files" && before.incoming !== "files") setTab("media");
       }),
-    [drop],
+    [drop, setTab], // both setters are stable, so this subscribes once
   );
   const current = TABS.find((t) => t.id === tab) ?? TABS[0];
   const idPrefix = useId();

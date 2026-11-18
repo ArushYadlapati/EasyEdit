@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import { useStore } from "zustand";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
@@ -77,7 +77,13 @@ export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOU
     if (store.getState().status !== "deleted" || isBusy(exportStore.getState()) || store.getState().exportHeld)
       setExportOpen(true);
   }, [store, exportStore]);
-  useShortcuts(openShortcuts, openExport);
+  // The panels' open tabs live here, so the top bar's search can open one.
+  const [leftTab, setLeftTab] = useState("text");
+  const [rightTab, setRightTab] = useState("inspect");
+  const openPanel = useCallback((side: "left" | "right", tab: string) => (side === "left" ? setLeftTab : setRightTab)(tab), []);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const openSearch = useCallback(() => searchRef.current?.focus(), []);
+  useShortcuts(openShortcuts, openExport, openSearch);
 
   return (
     <div className="editor relative h-dvh overflow-hidden bg-ed-bg font-sans text-ed-text [--ed-left-w:240px] [--ed-right-w:280px] [--ed-timeline-h:clamp(220px,36vh,360px)]">
@@ -94,13 +100,16 @@ export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOU
               onResetLayout={() => layout.getState().reset()}
               onExport={openExport}
               onSaveTemplate={spaceId ? () => setTemplateOpen(true) : undefined}
+              onShowSettingsAt={showSettingsAt}
+              onOpenPanel={openPanel}
+              searchRef={searchRef}
             />
           }
           left={
             // The rail's width comes out of the left column, so the preview is as wide as without it.
             <div className="flex h-full min-h-0">
               <div className="min-w-0 flex-1">
-                <LeftPanel />
+                <LeftPanel tab={leftTab} onTab={setLeftTab} />
               </div>
               <ToolRail />
             </div>
@@ -120,7 +129,7 @@ export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOU
               <Preview />
             )
           }
-          right={<RightPanel />}
+          right={<RightPanel tab={rightTab} onTab={setRightTab} />}
           bottom={<Timeline />}
           overlay={
             <>
