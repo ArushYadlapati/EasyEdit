@@ -47,15 +47,16 @@ describe("the right panel", () => {
     expect(screen.queryByRole("button", { name: "Add Scale keyframe" })).toBeNull();
   });
 
-  it("a text clip's Animation is in Effects, not Inspect", () => {
+  it("a text clip's Transitions are in Effects, not Inspect", () => {
     const store = makeStore();
     store.getState().select(["x1"]);
     render(<EditorProvider store={store}><RightPanel /></EditorProvider>);
-    expect(screen.queryByRole("heading", { name: "Animation" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Transitions" })).toBeNull();
     expect(screen.getByRole("button", { name: "Add Scale keyframe" })).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Effects" }));
-    expect(screen.getByRole("heading", { name: "Animation" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Transitions" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Transitions" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Animation" })).toBeNull();
+    expect(screen.getByLabelText("Emphasis")).toBeTruthy();
   });
 
   it("an image's Ken Burns is in Effects, not Inspect", () => {

@@ -17,7 +17,7 @@ function open(id: string, canEdit = true) {
 it("a video clip has Transitions, and choosing Fade sends the whole transition", () => {
   const store = open("c1");
   expect(screen.getByText("Transitions")).toBeTruthy();
-  expect(screen.queryByText("Animation")).toBeNull();
+  expect(screen.queryByLabelText("Emphasis")).toBeNull(); // text only
   fireEvent.change(screen.getByLabelText("Transition in"), { target: { value: "fade" } });
   expect(store.getState().queue).toMatchObject([
     { label: "transition", ops: [{ op: "update_clip", clipId: "c1", patch: { transitionIn: { kind: "fade", frames: 15 } } }] },
@@ -40,11 +40,12 @@ it("None sends null", () => {
   expect(findClip(viewDoc(store.getState()), "c1")!.clip).toMatchObject({ transitionIn: null });
 });
 
-it("a text clip has Animation and no Transitions", () => {
+it("a text clip's section is called Transitions too, with its own presets and Emphasis", () => {
   const store = open("x1");
-  expect(screen.getByText("Animation")).toBeTruthy();
-  expect(screen.queryByText("Transitions")).toBeNull();
-  fireEvent.change(screen.getByLabelText("Animation in"), { target: { value: "pop" } });
+  expect(screen.getByRole("heading", { name: "Transitions" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "Animation" })).toBeNull();
+  expect([...(screen.getByLabelText("Transition in") as HTMLSelectElement).options].map((o) => o.textContent)).toContain("Typewriter");
+  fireEvent.change(screen.getByLabelText("Transition in"), { target: { value: "pop" } });
   fireEvent.change(screen.getByLabelText("Emphasis"), { target: { value: "highlight_word" } });
   expect(store.getState().queue).toMatchObject([
     { label: "text animation", ops: [{ patch: { animationIn: { preset: "pop", frames: 15 } } }] },
