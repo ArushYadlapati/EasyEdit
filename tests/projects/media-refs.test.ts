@@ -109,7 +109,7 @@ describe("a project's media must exist", () => {
   it("4. a change that touches no media never reads the assets table", async () => {
     const { ctx, video, send } = await setup();
     await send([add(clip("video", video.id))], 0);
-    await ctx.db.execute(sql`drop table assets`);
+    await ctx.db.execute(sql`drop table assets cascade`);
     const textClip = { type: "text", start: 0, duration: 30, text: "GO SOLVERS", transform: { ...T, fit: "contain" }, style: { fontFamily: "Geist", fontSize: 96, fontWeight: 700, color: "#ffffff", align: "center" } };
     expect((await send([add(textClip, "t1"), { op: "move_clip", clipId: "c1", start: 30 }], 1)).version).toBe(2);
     await expect(send([{ op: "trim_clip", clipId: "c1", edge: "end", to: 60 }], 2)).rejects.toThrow(); // this one needs the table

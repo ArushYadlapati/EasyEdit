@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
+import { isStorableText } from "@/lib/text";
 import { OpError } from "./errors";
 import {
   CaptionStyle,
@@ -179,15 +180,20 @@ const sharedOps = [
     words: CaptionWords.nullable(),
     expect: z.object({ words: z.number().int().nullable() }).strict().optional(),
   }),
-  // Replaces `remove` words from `index` with `insert`. expect: the words being removed, as they must be now.
-  z.object({
-    op: z.literal("splice_caption_words"),
-    assetId: id,
-    index: z.number().int().min(0),
-    remove: z.number().int().min(0),
-    insert: z.array(CaptionWord).max(LIMITS.captionWordsPerFile),
-    expect: z.object({ words: z.array(CaptionWord) }).strict().optional(),
-  }),
+  // Replaces `remove` words from `index` with `insert`, or with `text`: the removed run said again in these words, with
+  // times worked out from the run's own (at least one word must be removed). Exactly one of the two.
+  // expect: the words being removed, as they must be now.
+  z
+    .object({
+      op: z.literal("splice_caption_words"),
+      assetId: id,
+      index: z.number().int().min(0),
+      remove: z.number().int().min(0),
+      insert: z.array(CaptionWord).max(LIMITS.captionWordsPerFile).optional(),
+      text: z.string().max(LIMITS.textClipChars).refine(isStorableText).optional(),
+      expect: z.object({ words: z.array(CaptionWord) }).strict().optional(),
+    })
+    .refine((o) => (o.insert === undefined) !== (o.text === undefined), "give either insert or text, not both and not neither"),
 ] as const;
 
 export const Op = z.discriminatedUnion("op", [

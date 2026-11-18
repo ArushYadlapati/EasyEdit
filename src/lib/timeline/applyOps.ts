@@ -13,7 +13,7 @@ import {
   maxSafeAreaHeight,
   trackTakes,
 } from "./presets";
-import { captionStyleOf, captionTrack, defaultCaptionStyle, transcriptOf } from "./captions";
+import { captionStyleOf, captionTrack, defaultCaptionStyle, rewordRun, transcriptOf } from "./captions";
 import { ARROW_DEFAULTS } from "./shapes";
 import { CaptionStyle, CaptionWords, MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
 import type { Clip, FormatId, FrameSize, Guide, TimelineDoc, Track } from "./types";
@@ -813,7 +813,10 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         }
         const removed = before.slice(op.index, op.index + op.remove);
         if (op.expect && !isEqual(op.expect.words, removed)) throw stale("the captions");
-        const next = [...before.slice(0, op.index), ...structuredClone(op.insert), ...before.slice(op.index + op.remove)];
+        if (op.text !== undefined && op.remove < 1) throw new OpError("INVALID", `${name}: text needs at least one word to remove`, opIndex);
+        // The text form is worked out here, so the inverse is the ordinary explicit splice and undo stays exact.
+        const insert = op.text !== undefined ? rewordRun(removed, op.text) : structuredClone(op.insert ?? []);
+        const next = [...before.slice(0, op.index), ...insert, ...before.slice(op.index + op.remove)];
         const checked = CaptionWords.safeParse(next);
         if (!checked.success) {
           throw new OpError("INVALID", `${name}: the words are invalid: ${checked.error.issues[0].message}`, opIndex);
@@ -823,9 +826,9 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
             op: "splice_caption_words",
             assetId: op.assetId,
             index: op.index,
-            remove: op.insert.length,
+            remove: insert.length,
             insert: removed,
-            expect: { words: structuredClone(op.insert) },
+            expect: { words: structuredClone(insert) },
           },
         ]);
         setTranscripts(doc, { ...doc.captions?.transcripts, [op.assetId]: checked.data });

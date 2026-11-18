@@ -84,6 +84,20 @@ describe("finishMove", () => {
     expect(log[0].inverse).toBeNull();
   });
 
+  it("moves the captions' words onto the copies' ids and drops words of files the project no longer uses", async () => {
+    const x = await started();
+    const words = [{ t: "hi", s: 0, e: 300 }];
+    const gone = [{ t: "old", s: 0, e: 100 }];
+    const doc = structuredClone(x.doc) as TimelineDoc;
+    doc.captions = { style: { preset: "block", fontFamily: "Inter", fontWeight: 700, fontSize: 60, color: "#ffffff", highlight: "#FFD400", y: 0.8, uppercase: false }, transcripts: { [x.a]: words, unused: gone } };
+    await x.w.db.update(projects).set({ doc }).where(eq(projects.id, "p1"));
+    const copies = await copyAll(x, "u1", x.moveId);
+    await finishMove(x.deps, "u1", x.moveId);
+    const after = (await x.row()).doc;
+    expect(after.captions?.transcripts).toEqual({ [copies.get(x.a)!]: words });
+    expect(after.captions?.style).toMatchObject({ preset: "block" });
+  });
+
   it("shows the project only in its new space", async () => {
     const x = await started();
     await copyAll(x, "u1", x.moveId);

@@ -1,7 +1,5 @@
-import { LIMITS } from "@/lib/limits";
-import { graphemes } from "@/lib/text";
-import { captionStyleOf, captionTrack, transcriptOf } from "@/lib/timeline";
-import type { CaptionPreset, CaptionWord, MediaClip, TimelineDoc } from "@/lib/timeline";
+import { captionStyleOf, captionTrack, rewordRun, transcriptOf } from "@/lib/timeline/captions";
+import type { CaptionPreset, CaptionWord, MediaClip, TimelineDoc } from "@/lib/timeline/types";
 
 // A spoken word placed on the timeline. index is its place in the file's word list; start and end are timeline frames.
 export type CueWord = { index: number; text: string; start: number; end: number };
@@ -119,22 +117,8 @@ export function captionsShow(doc: TimelineDoc): boolean {
   return !!track && !track.hidden;
 }
 
-// A word cut to the most the document allows, in graphemes and in the UTF-16 units zod counts, never mid-character.
-function cutWord(text: string): string {
-  const parts = graphemes(text);
-  let out = "";
-  let count = 0;
-  for (const part of parts) {
-    if (count + 1 > LIMITS.captionWordChars || out.length + part.length > LIMITS.captionWordChars) break;
-    out += part;
-    count++;
-  }
-  return out;
-}
-
-// The edit that turns a line's words into the typed text. Same words: nothing to do. Same count: each keeps its
-// times. Otherwise the line's whole span is shared out by how long each new word is, so the times stay inside the
-// old ones and in order. The result is the arguments of a splice_caption_words op.
+// The edit that turns a line's words into the typed text (see rewordRun). Same words: nothing to do. The result is
+// the arguments of a splice_caption_words op.
 export function retextCue(
   cue: Cue,
   fileWords: readonly CaptionWord[],
@@ -143,26 +127,7 @@ export function retextCue(
   const index = cue.words[0].index;
   const remove = cue.words.length;
   const old = fileWords.slice(index, index + remove);
-  const next = text.split(/\s+/).filter(Boolean).map(cutWord).filter(Boolean);
-  if (next.length === old.length && next.every((t, i) => t === old[i].t)) return null;
-  if (next.length === 0) return { index, remove, insert: [] };
-  if (next.length === old.length) return { index, remove, insert: next.map((t, i) => ({ t, s: old[i].s, e: old[i].e })) };
-
-  const from = old[0].s;
-  const to = old[old.length - 1].e;
-  const span = to - from;
-  const weights = next.map((t) => graphemes(t).length);
-  const total = weights.reduce((a, b) => a + b, 0);
-  // Boundaries between words, rounded to whole milliseconds. Where the span is long enough, each word gets at least
-  // one: a boundary is at least one past the last and leaves room for the words still to come.
-  const bounds = [from];
-  let sum = 0;
-  for (let k = 1; k < next.length; k++) {
-    sum += weights[k - 1];
-    let at = from + Math.round((span * sum) / total);
-    if (span >= next.length) at = Math.min(Math.max(at, bounds[k - 1] + 1), to - (next.length - k));
-    bounds.push(at);
-  }
-  bounds.push(to);
-  return { index, remove, insert: next.map((t, i) => ({ t, s: bounds[i], e: bounds[i + 1] })) };
+  const insert = rewordRun(old, text);
+  if (insert.length === old.length && insert.every((word, i) => word.t === old[i].t)) return null;
+  return { index, remove, insert };
 }

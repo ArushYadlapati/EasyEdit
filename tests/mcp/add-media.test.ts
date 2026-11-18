@@ -191,7 +191,7 @@ describe("media through edit_timeline", () => {
 
   it("a text-only batch makes no asset query", async () => {
     const { db, ctx, id } = await setup();
-    await db.execute(sql`drop table assets`);
+    await db.execute(sql`drop table assets cascade`);
     const text = { type: "text", start: 0, duration: 30, text: "GO SOLVERS", transform: { ...T, fit: "contain" }, style: { fontFamily: "Geist", fontSize: 96, fontWeight: 700, color: "#ffffff", align: "center" } };
     const result = await editTimelineTool(ctx, { project_id: id, expected_version: 0, ops: [{ op: "add_clip", trackId: "t1", clip: text }] });
     expect(result.text.split("\n")[0]).toBe("Applied 1 op as version 1.");
@@ -239,7 +239,7 @@ describe("media through edit_timeline", () => {
 
   it("leaves ops of another shape to the engine, with no asset query", async () => {
     const { db, ctx, id } = await setup();
-    await db.execute(sql`drop table assets`);
+    await db.execute(sql`drop table assets cascade`);
     const text = { type: "text", start: 0, duration: 30, text: "GO SOLVERS", assetId: "made-up-id", transform: { ...T, fit: "contain" }, style: { fontFamily: "Geist", fontSize: 96, fontWeight: 700, color: "#ffffff", align: "center" } };
     const result = await editTimelineTool(ctx, { project_id: id, expected_version: 0, ops: [{ op: "add_clip", trackId: "t1", clip: text }] });
     expect(result.text.split("\n")[0]).toBe("Applied 1 op as version 1.");

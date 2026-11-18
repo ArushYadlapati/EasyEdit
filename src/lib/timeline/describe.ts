@@ -1,8 +1,10 @@
+import { docCues } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
+import { captionStyleOf } from "./captions";
 import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
 import { KEYFRAME_PROPS } from "./keyframes";
 import { shapeToolOf } from "./shapes";
-import type { Clip, KeyframeProp, ShapeClip, Slot, Track, TimelineDoc, Transform, Transition } from "./types";
+import type { Clip, KeyframeProp, MediaClip, ShapeClip, Slot, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -87,7 +89,7 @@ function describeClip(clip: Clip, fps: number): string {
   if (clip.type === "shape") {
     return `  ${clip.id}  shape(${shapeToolOf(clip)})  ${range}  ${clip.stroke ?? clip.fill ?? ""}${describeEffects(clip, fps, false)}`;
   }
-  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
+  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${captionsSuffix(clip)}${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
 }
 
 // Scale, stretch, rotation, opacity and crop are only worth a word when they are not the defaults. Audio draws nothing, so its
@@ -128,12 +130,30 @@ function describeClipInDetail(clip: Clip, fps: number): string {
     `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +
     describeTransformChanges(t, clip.type) +
+    captionsSuffix(clip) +
     slotSuffix(clip.slot) +
     describeEffects(clip, fps, true)
   );
 }
 
-function describeTrack(track: Track, fps: number, detail: boolean): string[] {
+// Only a clip with captions on says so; off is the default.
+function captionsSuffix(clip: MediaClip): string {
+  return clip.captions ? " captions=on" : "";
+}
+
+// The caption track holds no clips of its own: its lines come from the clips that have captions on.
+function describeCaptionLines(doc: TimelineDoc, detail: boolean): string[] {
+  const cues = docCues(doc);
+  if (cues.length === 0) return ["  (empty)"];
+  if (!detail) return [`  (${cues.length} caption ${cues.length === 1 ? "line" : "lines"})`];
+  return cues.map((cue) => {
+    const range = `${framesToSeconds(cue.start, doc.fps)}–${framesToSeconds(cue.end, doc.fps)}s`;
+    return `  ${range}  "${escapeQuoted(cue.text)}"  clip=${cue.clipId} asset="${escapeQuoted(cue.assetId)}" words=${cue.words[0].index}-${cue.words[cue.words.length - 1].index}`;
+  });
+}
+
+function describeTrack(track: Track, doc: TimelineDoc, detail: boolean): string[] {
+  const fps = doc.fps;
   const flags = [
     track.hidden && "hidden",
     track.muted && "muted",
@@ -142,7 +162,7 @@ function describeTrack(track: Track, fps: number, detail: boolean): string[] {
   const suffix = flags.length > 0 ? ` (${flags.join(", ")})` : "";
   const lines = [`Track ${track.id} [${track.kind}] "${escapeQuoted(track.name)}"${suffix}`];
   if (track.clips.length === 0) {
-    lines.push("  (empty)");
+    lines.push(...(track.kind === "caption" ? describeCaptionLines(doc, detail) : ["  (empty)"]));
   } else {
     const sorted = [...track.clips].sort((a, b) => a.start - b.start);
     for (const clip of sorted) lines.push(detail ? describeClipInDetail(clip, fps) : describeClip(clip, fps));
@@ -165,6 +185,10 @@ export function describe(doc: TimelineDoc, opts?: { version?: number; detail?: b
     const where = (g: { id: string; axis: "x" | "y"; at: number }) => `${g.id} ${g.axis === "x" ? "vertical" : "horizontal"} at ${Number((g.at * 100).toFixed(1))}%`;
     lines.push(`Guides: ${doc.guides.map(where).join(", ")}`);
   }
-  for (const track of doc.tracks) lines.push(...describeTrack(track, doc.fps, opts?.detail === true));
+  if (doc.captions?.style || Object.keys(doc.captions?.transcripts ?? {}).length > 0) {
+    const c = captionStyleOf(doc);
+    lines.push(`Captions: ${c.preset} font="${escapeQuoted(c.fontFamily)}" size=${c.fontSize} weight=${c.fontWeight} color=${c.color} highlight=${c.highlight} y=${c.y}${c.uppercase ? " uppercase" : ""}`);
+  }
+  for (const track of doc.tracks) lines.push(...describeTrack(track, doc, opts?.detail === true));
   return lines.join("\n");
 }
