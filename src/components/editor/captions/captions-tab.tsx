@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { captionTargets, captionsOffOps, type AutoCaptionProgress } from "@/lib/captions/actions";
 import { formatClock } from "@/lib/editor/geometry";
+import { editBlocked } from "@/lib/editor/menus";
 import { findClip } from "@/lib/editor/store";
 import { useEditor, useEditorStore } from "../context";
 import type { PanelProps } from "../media/media-tab";
@@ -36,17 +37,25 @@ function stageText(p: AutoCaptionProgress): { text: string; note?: string } {
 export function CaptionsTab({ panel }: { panel: PanelProps }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
+  const blocked = useEditor(editBlocked);
   const doc = useEditor((s) => s.doc);
   const selection = useEditor(useShallow((s) => s.selection.clipIds));
   const run = useAutoCaptions();
 
-  const { selectedSound, selectedCaptioned, targets } = useMemo(() => {
+  const { selectedCaptioned, targets, hint } = useMemo(() => {
     const clips = selection.flatMap((id) => findClip(doc, id)?.clip ?? []);
     const sound = clips.filter((c) => c.type === "video" || c.type === "audio");
+    const anyInProject = doc.tracks.some((t) => t.clips.some((c) => c.type === "video" || c.type === "audio"));
     return {
-      selectedSound: sound.length > 0,
       selectedCaptioned: sound.some((c) => "captions" in c && c.captions),
       targets: captionTargets(doc, selection).length,
+      hint: !anyInProject
+        ? "Add a video or audio clip to caption it."
+        : selection.length === 0
+          ? "Captions every clip with sound."
+          : sound.length > 0
+            ? "Captions the selected clips."
+            : "Select a video or audio clip, or select nothing to caption every clip with sound.",
     };
   }, [doc, selection]);
   const hasCaptions = doc.captions !== undefined || doc.tracks.some((t) => t.clips.some((c) => "captions" in c && c.captions));
@@ -56,10 +65,10 @@ export function CaptionsTab({ panel }: { panel: PanelProps }) {
     <div {...panel} className="min-h-0 flex-1 overflow-y-auto">
       <div className="flex flex-col gap-4 p-3">
         <div className="flex flex-col gap-2">
-          <Button data-edit-control variant="primary" disabled={!canEdit || targets === 0 || run.running} onClick={() => run.start()}>
+          <Button data-edit-control variant="primary" disabled={blocked || targets === 0 || run.running} onClick={() => run.start()}>
             Auto captions
           </Button>
-          <p className={MUTED}>{selectedSound ? "Captions the selected clips." : "Captions every clip with sound."}</p>
+          <p className={MUTED}>{hint}</p>
 
           {run.running && (
             <div className="flex items-start justify-between gap-2">
@@ -83,14 +92,15 @@ export function CaptionsTab({ panel }: { panel: PanelProps }) {
 
           {selectedCaptioned && (
             <div className="flex flex-wrap gap-2">
-              <Button data-edit-control disabled={!canEdit || run.running} onClick={() => run.start({ redo: true })}>
+              <Button data-edit-control disabled={blocked || run.running} onClick={() => run.start({ redo: true })}>
                 Transcribe again
               </Button>
               <Button
                 data-edit-control
-                disabled={!canEdit || run.running}
+                disabled={blocked || run.running}
                 onClick={() => {
                   const state = store.getState();
+                  if (editBlocked(state)) return;
                   const ops = captionsOffOps(state.doc, state.selection.clipIds);
                   if (ops.length > 0) state.edit(ops, "remove captions");
                 }}

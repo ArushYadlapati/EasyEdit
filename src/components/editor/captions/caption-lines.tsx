@@ -30,17 +30,20 @@ export function CaptionLines({ canEdit }: { canEdit: boolean }) {
   );
 }
 
-// Enter or leaving the box saves the typed words as one edit; Escape puts the line back as it is.
+// Enter or leaving the box saves the typed words as one edit; Escape puts the line back as it is. The fix is made to
+// the words as they were when typing began: if someone changed them meanwhile it can't apply, and says so.
 function CaptionLine({ cue, fps, canEdit }: { cue: Cue; fps: number; canEdit: boolean }) {
   const store = useEditorStore();
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ text: string; from: Cue } | null>(null);
   const time = formatClock(cue.start, fps);
 
   function save() {
     if (draft === null) return;
     const state = store.getState();
-    const ops = retextOps(state.doc, cue, draft);
+    const ops = retextOps(state.doc, draft.from, draft.text);
     if (ops.length > 0) state.edit(ops, "edit caption");
+    // Nothing applied, though the text would change the line as it is now: the words moved under the typing.
+    else if (retextOps(state.doc, cue, draft.text).length > 0) state.notify("info", "That caption changed while you were typing. Try again.");
     setDraft(null);
   }
 
@@ -59,8 +62,8 @@ function CaptionLine({ cue, fps, canEdit }: { cue: Cue; fps: number; canEdit: bo
         disabled={!canEdit}
         spellCheck
         autoComplete="off"
-        value={draft ?? cue.text}
-        onChange={(event) => setDraft(event.target.value)}
+        value={draft?.text ?? cue.text}
+        onChange={(event) => setDraft({ text: event.target.value, from: draft?.from ?? cue })}
         onBlur={save}
         onKeyDown={(event) => {
           if (event.key === "Enter") save();

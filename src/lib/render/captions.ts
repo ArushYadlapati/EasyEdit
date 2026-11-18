@@ -1,5 +1,6 @@
 import { cuesAt } from "@/lib/captions/cues";
-import { captionStyleOf, type TimelineDoc } from "@/lib/timeline";
+import { captionStyleOf } from "@/lib/timeline/captions";
+import type { TimelineDoc } from "@/lib/timeline";
 import type { Ctx2D } from "./compositor";
 import { LINE_HEIGHT, wrapLines } from "./text-layout";
 

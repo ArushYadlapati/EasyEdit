@@ -145,7 +145,7 @@ export function rightClickEntries(entries: MenuEntry[], canEdit: boolean): MenuE
 }
 
 // Nothing that changes the project runs for a viewer, in a deleted project, or in the middle of a drag.
-function editBlocked(state: EditorState): boolean {
+export function editBlocked(state: EditorState): boolean {
   return !state.canEdit || state.status === "deleted" || state.gesture !== null;
 }
 

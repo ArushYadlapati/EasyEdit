@@ -46,8 +46,8 @@ describe("captionTargets", () => {
     expect(captionTargets(plainDoc(), ["x1", "c2", "s1"]).map((c) => c.id)).toEqual(["c2", "s1"]);
   });
 
-  it("is every video and audio clip when the selection holds none of them", () => {
-    expect(captionTargets(plainDoc(), ["x1"]).map((c) => c.id)).toEqual(["c1", "c2", "s1"]);
+  it("is nothing when the selection holds clips but no video or audio clip", () => {
+    expect(captionTargets(plainDoc(), ["x1"])).toEqual([]);
   });
 });
 
@@ -191,8 +191,10 @@ describe("runAutoCaptions", () => {
     expect(outcome.captioned).toBe(1);
     expect(heard).toEqual(["prev-a"]);
     expect(deps.save).toHaveBeenCalledWith("a", HELLO);
-    expect(progress.map((p) => p.stage)).toEqual(["saved", "model", "sound", "speech"]);
-    expect(progress[3]).toEqual({ file: 1, files: 1, name: "intake", stage: "speech", done: 70, total: 185 });
+    // "sound" first while the file itself is read, before the transcriber reports anything.
+    expect(progress.map((p) => p.stage)).toEqual(["saved", "sound", "model", "sound", "speech"]);
+    expect(progress[1]).toEqual({ file: 1, files: 1, name: "intake", stage: "sound", done: 0, total: 0 });
+    expect(progress[4]).toEqual({ file: 1, files: 1, name: "intake", stage: "speech", done: 70, total: 185 });
   });
 
   it("transcribes again with redo, ignoring the saved words", async () => {
@@ -200,8 +202,10 @@ describe("runAutoCaptions", () => {
     store.getState().select(["c1"]);
     const fresh = [w("fresh", 0, 300)];
     const { deps, heard } = fakeDeps({ saved: { a: HELLO }, answers: { "prev-a": fresh } });
-    await runAutoCaptions(store, deps, { redo: true });
+    const stages: string[] = [];
+    await runAutoCaptions(store, deps, { redo: true, onProgress: (p) => stages.push(p.stage) });
     expect(deps.fetchSaved).not.toHaveBeenCalled();
+    expect(stages[0]).toBe("sound");
     expect(heard).toEqual(["prev-a"]);
     expect(store.getState().doc.captions?.transcripts?.a).toEqual(fresh);
     expect(deps.save).toHaveBeenCalledWith("a", fresh);
@@ -307,12 +311,24 @@ describe("runAutoCaptions", () => {
     expect(store.getState().undoStack.map((e) => e.label)).toEqual(["auto captions"]);
   });
 
-  it("never throws", async () => {
+  it("never throws: a dep that throws or rejects fails that file", async () => {
+    const run = async (over: Parameters<typeof fakeDeps>[0]) => {
+      const store = makeStore({ doc: plainDoc() });
+      store.getState().select(["c1"]);
+      const before = structuredClone(store.getState().doc);
+      const outcome = await runAutoCaptions(store, fakeDeps(over).deps, {});
+      expect(store.getState().doc).toStrictEqual(before);
+      return outcome;
+    };
+    const why = "something went wrong. Try again.";
+    const rejecting: MediaFiles = { get: () => Promise.reject(new Error("down")), put: async () => {} };
+    expect(await run({ files: rejecting, ensure: vi.fn(() => Promise.reject(new Error("down"))) })).toEqual({ captioned: 0, silent: [], failed: [{ name: "intake", why }], cancelled: false });
+    const throwing = fakeDeps().deps;
+    throwing.assets = () => {
+      throw new Error("broken library");
+    };
     const store = makeStore({ doc: plainDoc() });
     store.getState().select(["c1"]);
-    const { deps } = fakeDeps({ ensure: vi.fn(async () => Promise.reject(new Error("down"))), fetchSaved: vi.fn(async () => Promise.reject(new Error("down"))) });
-    const outcome = await runAutoCaptions(store, deps, {});
-    expect(outcome.cancelled).toBe(false);
-    expect(outcome.failed).toEqual([{ name: "intake", why: "something went wrong. Try again." }]);
+    expect(await runAutoCaptions(store, throwing, {})).toEqual({ captioned: 0, silent: [], failed: [{ name: "a file", why }], cancelled: false });
   });
 });

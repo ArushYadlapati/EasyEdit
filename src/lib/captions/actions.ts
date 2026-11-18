@@ -17,14 +17,14 @@ import type { TranscribeStage } from "./speech/protocol";
 
 const hasSpeech = (clip: Clip): clip is MediaClip => clip.type === "video" || clip.type === "audio";
 
-// The selected video and audio clips; with none of those selected, every video and audio clip in the project.
+// The selected video and audio clips; with nothing selected, every video and audio clip in the project. A selection of
+// only other kinds of clip has nothing to caption: it never falls back to the whole project.
 export function captionTargets(doc: TimelineDoc, selectedClipIds: readonly string[]): MediaClip[] {
-  const selected = selectedClipIds.flatMap((id) => {
+  if (selectedClipIds.length === 0) return doc.tracks.flatMap((track) => track.clips.filter(hasSpeech));
+  return selectedClipIds.flatMap((id) => {
     const clip = findClip(doc, id)?.clip;
     return clip && hasSpeech(clip) ? [clip] : [];
   });
-  if (selected.length > 0) return selected;
-  return doc.tracks.flatMap((track) => track.clips.filter(hasSpeech));
 }
 
 const sameWords = (a: readonly CaptionWord[] | undefined, b: readonly CaptionWord[]) =>
@@ -112,6 +112,8 @@ async function hear(asset: AssetView, deps: AutoCaptionDeps, signal: AbortSignal
   if (first.from === "preview" && asset.originalFileId) tries.push(asset.originalFileId);
 
   for (const [i, fileId] of tries.entries()) {
+    // Reading the file can take a while (it may come from Drive): said as reading the sound, which it is the start of.
+    report("sound", 0, 0);
     const got = await deps.files.get(fileId);
     if (signal?.aborted) return { cancelled: true };
     if (!got.ok) return { why: WHY.unreadable };

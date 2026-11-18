@@ -1,7 +1,8 @@
 import { defaultResolveFont } from "@/lib/render/compositor";
 import { captionsShow, docCues } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
-import { captionStyleOf, type TextClip, type TimelineDoc } from "@/lib/timeline";
+import type { TextClip, TimelineDoc } from "@/lib/timeline";
+import { captionStyleOf } from "@/lib/timeline/captions";
 import { mayShow } from "@/lib/timeline/keyframes";
 
 // The fonts an export needs: the page's @font-face rules turned into faces the worker can build, the font string

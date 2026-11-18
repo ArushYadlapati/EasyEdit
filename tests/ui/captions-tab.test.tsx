@@ -90,10 +90,34 @@ it("lists Captions as the third tab", () => {
 it("says what Auto captions works on, from the selection", () => {
   const { store } = setup();
   expect(screen.getByText("Captions every clip with sound.")).toBeTruthy();
+  expect(autoButton().disabled).toBe(false);
   act(() => store.getState().select(["c1", "x1"]));
   expect(screen.getByText("Captions the selected clips.")).toBeTruthy();
+  expect(autoButton().disabled).toBe(false);
+  // Only other kinds of clip selected: nothing to caption, and no falling back to the whole project.
   act(() => store.getState().select(["x1"]));
-  expect(screen.getByText("Captions every clip with sound.")).toBeTruthy();
+  expect(screen.getByText("Select a video or audio clip, or select nothing to caption every clip with sound.")).toBeTruthy();
+  expect(autoButton().disabled).toBe(true);
+});
+
+it("asks for a video or audio clip in a project with none", () => {
+  const doc = sampleDoc();
+  doc.tracks[0].clips = [];
+  setup({ doc });
+  expect(screen.getByText("Add a video or audio clip to caption it.")).toBeTruthy();
+  expect(autoButton().disabled).toBe(true);
+});
+
+it("disables the caption buttons while editing is blocked: a project deleted elsewhere, or a drag", () => {
+  const { store } = setup({ doc: captionedDoc() });
+  act(() => store.getState().select(["c1"]));
+  const buttons = () => ["Auto captions", "Transcribe again", "Remove captions"].map((name) => screen.getByRole("button", { name }) as HTMLButtonElement);
+  expect(buttons().map((b) => b.disabled)).toEqual([false, false, false]);
+  act(() => void store.getState().setGesture([{ op: "move_clip", clipId: "c2", start: 100 }]));
+  expect(buttons().map((b) => b.disabled)).toEqual([true, true, true]);
+  act(() => void store.getState().setGesture(null));
+  act(() => store.getState().setStatus("deleted"));
+  expect(buttons().map((b) => b.disabled)).toEqual([true, true, true]);
 });
 
 it("disables Auto captions for a viewer", () => {
@@ -242,6 +266,21 @@ it("Enter saves a retyped line as one edit; Escape puts it back", () => {
     { label: "edit caption", ops: [{ op: "splice_caption_words", assetId: "a", index: 2, remove: 2, insert: [w("second", 1000, 1400), w("time", 1450, 1800)] }] },
   ]);
   expect(line().value).toBe("second time");
+});
+
+it("says so when a typed fix can't be applied because the line changed meanwhile", () => {
+  const { store } = setup({ doc: captionedDoc() });
+  const line = () => screen.getAllByRole("textbox", { name: /^Caption at / })[1] as HTMLInputElement;
+  fireEvent.change(line(), { target: { value: "second time" } });
+  // A teammate fixes the same words first.
+  const fixed = [...WORDS.slice(0, 2), w("secant", 1000, 1400), w("line", 1450, 1800)];
+  act(() => void store.getState().edit([{ op: "set_transcript", assetId: "a", words: fixed }], "edit caption"));
+  const queued = store.getState().queue.length;
+  fireEvent.keyDown(line(), { key: "Enter" });
+  expect(store.getState().queue).toHaveLength(queued);
+  expect(store.getState().doc.captions?.transcripts?.a).toEqual(fixed);
+  expect(store.getState().notice).toMatchObject({ tone: "info", text: "That caption changed while you were typing. Try again." });
+  expect(line().value).toBe("secant line");
 });
 
 it("says when there are no captions yet", () => {

@@ -103,9 +103,10 @@ export function LeftPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-11 shrink-0 items-center border-b border-ed-line px-3">
-        {/* Compact: the tool rail shares the column, and the four tabs must still read in full. */}
-        <Tabs label="Add" value={current.id} tabs={TABS} onChange={setTab} idPrefix={idPrefix} compact />
+      <div className="flex min-h-11 shrink-0 items-center border-b border-ed-line px-3 py-1.5">
+        {/* Compact, and wrapping rather than cutting a tab off: the tool rail shares the column, so the four tabs take
+            two rows at the default width, three at the narrowest, and one from about 304 px. The row grows with them. */}
+        <Tabs label="Add" value={current.id} tabs={TABS} onChange={setTab} idPrefix={idPrefix} compact wrap className="gap-y-1" />
       </div>
       {current.id === "text" ? (
         <TextTab panel={panel} />
