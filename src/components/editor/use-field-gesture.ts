@@ -8,6 +8,7 @@ import { explainOpError } from "@/lib/editor/messages";
 import { findClip, type EditorStore } from "@/lib/editor/store";
 import type { LibraryStore } from "@/lib/media/library-store";
 import type { Op, OpInput } from "@/lib/timeline";
+import { isMediaClip } from "@/lib/timeline";
 
 // What a number field shows and changes against besides the document: this browser's unit and lock, and how the
 // clip's box is measured.
@@ -22,7 +23,7 @@ export function fieldOps(store: EditorStore, clipId: string, field: ClipField, r
   const found = findClip(doc, clipId);
   if (!found) return null;
   const { clip } = found;
-  const lengthFrames = clip.type === "text" || clip.type === "placeholder" || !library ? undefined : mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps);
+  const lengthFrames = !isMediaClip(clip) || !library ? undefined : mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps);
   return clipFieldOps(clip, field, raw, fieldContext(doc, clip, view?.prefs, view?.sizer, playhead), lengthFrames);
 }
 

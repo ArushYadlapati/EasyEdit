@@ -6,3 +6,4 @@ export * from "./ops";
 export * from "./applyOps";
 export * from "./describe";
 export * from "./slots";
+export * from "./shapes";

@@ -8,6 +8,7 @@ export const TRACK_KIND_LABEL: Record<TrackKind, string> = {
   text: "Text",
   caption: "Captions",
   audio: "Audio",
+  shape: "Shapes",
 };
 
 // "Captions" for a caption track, else "<label> <n>" with the smallest n no track name uses.
@@ -30,6 +31,7 @@ export function newTrackIndex(doc: { tracks: { kind: TrackKind }[] }, kind: Trac
 export function homeKind(type: Clip["type"]): TrackKind {
   if (type === "text") return "text";
   if (type === "audio") return "audio";
+  if (type === "shape") return "shape";
   return "video";
 }
 

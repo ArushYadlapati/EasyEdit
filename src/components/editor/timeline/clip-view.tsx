@@ -12,6 +12,7 @@ import { ROW_HEIGHT, formatTimecode, frameToPx } from "@/lib/editor/geometry";
 import { SNAP_PX, clipEdges } from "@/lib/editor/snap";
 import { posterFileFor } from "@/lib/media/playback";
 import type { Clip, TextStyle, Track } from "@/lib/timeline";
+import { isMediaClip, shapeName } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
 import { useLibrary } from "../media/media-context";
 import { usePosterUrl } from "../media/use-poster";
@@ -25,12 +26,13 @@ const FILL: Record<Clip["type"], string> = {
   text: "bg-ed-clip-text",
   audio: "bg-ed-clip-audio",
   placeholder: "bg-ed-raised",
+  shape: "bg-ed-clip-shape",
 };
 
 // An empty slot's body: diagonal hatching in the line colour, so it reads as a hole to fill.
 const HATCH = "repeating-linear-gradient(135deg, transparent 0 5px, var(--ed-line-strong) 5px 6px)";
 
-const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot" };
+const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot", shape: "Shape" };
 
 const MIN_LABEL_PX = 24;
 export const CLIP_HEIGHT = 32; // the clip's box in its row; the timeline draws a refused drop's outline with the same
@@ -42,6 +44,7 @@ const HANDLE = cx("absolute inset-y-0 w-1.5 cursor-ew-resize", FADE); // 6 px, a
 function clipLabel(clip: Clip, assetName: string | undefined): string {
   if (clip.type === "text") return clip.text.split("\n")[0];
   if (clip.type === "placeholder") return `Slot: ${clip.slot.name}`;
+  if (clip.type === "shape") return shapeName(clip);
   return assetName ?? KIND[clip.type];
 }
 
@@ -67,7 +70,7 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
   const store = useEditorStore();
   const drag = useClipDrag();
   const canEdit = useEditor((s) => s.canEdit);
-  const assetName = useLibrary((s) => (clip.type === "text" || clip.type === "placeholder" ? undefined : s.assets[clip.assetId]?.name));
+  const assetName = useLibrary((s) => (!isMediaClip(clip) ? undefined : s.assets[clip.assetId]?.name));
   const pictured = clip.type === "video" || clip.type === "image";
   const stillFileId = useLibrary((s) => (pictured ? posterFileFor(s.assets[clip.assetId]) : null));
   const removed = useLibrary((s) => pictured && s.assets[clip.assetId]?.removed === true);

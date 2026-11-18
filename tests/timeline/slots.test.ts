@@ -1,5 +1,5 @@
 import { describe as suite, expect, it } from "vitest";
-import { DEFAULT_TRANSFORM, OpError, applyOps, describe, isPlaceholder, prepareOps, toTemplateDoc, type OpInput, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, OpError, applyOps, describe, isPlaceholder, prepareOps, slotOf, toTemplateDoc, type OpInput, type TimelineDoc } from "@/lib/timeline";
 import { createEmptyDoc } from "@/lib/timeline";
 
 const style = { fontFamily: "Inter", fontSize: 96, fontWeight: 800, color: "#FFFFFF", align: "center" } as const;
@@ -86,15 +86,15 @@ suite("slots", () => {
     d = run(d, { op: "split_clip", clipId: "p1", at: 30, newClipId: "p2" }).doc;
     const [l, r] = d.tracks[0].clips;
     expect(l.type).toBe("placeholder");
-    expect(l.slot).toEqual({ name: "hero_clip", hint: "the hero shot" });
-    expect(r.slot).toEqual(l.slot);
+    expect(slotOf(l)).toEqual({ name: "hero_clip", hint: "the hero shot" });
+    expect(slotOf(r)).toEqual(slotOf(l));
     let e = run(base(), {
       op: "add_clip",
       trackId: "v",
       clip: { id: "m", type: "video", start: 0, duration: 90, transform: DEFAULT_TRANSFORM, assetId: "a1", in: 0, speed: 1, volume: 1, slot: { name: "main" } },
     }).doc;
     e = run(e, { op: "split_clip", clipId: "m", at: 30, newClipId: "m2" }).doc;
-    expect(e.tracks[0].clips.map((c) => c.slot)).toEqual([{ name: "main" }, { name: "main" }]);
+    expect(e.tracks[0].clips.map((c) => slotOf(c))).toEqual([{ name: "main" }, { name: "main" }]);
   });
 
   it("trims and moves a placeholder", () => {

@@ -1,6 +1,7 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { LIMITS } from "@/lib/limits";
 import type { TimelineDoc } from "@/lib/timeline";
+import { isMediaClip } from "@/lib/timeline";
 import type { MediaApi, MediaFailure, MediaResult } from "./api";
 import type { AssetKind, AssetView, UploadItem } from "./types";
 
@@ -186,6 +187,6 @@ export function visibleAssets(state: LibraryState): AssetView[] {
 
 // Each asset id once, in document order.
 export function docAssetIds(doc: TimelineDoc): string[] {
-  const ids = doc.tracks.flatMap((track) => track.clips.flatMap((clip) => (clip.type === "text" || clip.type === "placeholder" ? [] : [clip.assetId])));
+  const ids = doc.tracks.flatMap((track) => track.clips.flatMap((clip) => (!isMediaClip(clip) ? [] : [clip.assetId])));
   return [...new Set(ids)];
 }

@@ -10,7 +10,7 @@ import { MESSAGES, explainOpError } from "@/lib/editor/messages";
 import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
 import { findClip, viewDoc } from "@/lib/editor/store";
 import { LIMITS } from "@/lib/limits";
-import { DEFAULT_TRANSFORM, isCropped, type Clip } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, isCropped, slotOf, type Clip } from "@/lib/timeline";
 import { entry, makeStore, sampleDoc, text, video } from "../editor/fixtures";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
@@ -949,10 +949,10 @@ describe("template slot section", () => {
     expect(hint.maxLength).toBe(LIMITS.slotHintChars);
     fireEvent.change(hint, { target: { value: "the headline" } });
     fireEvent.blur(hint);
-    expect(findClip(store.getState().doc, "x1")!.clip.slot).toEqual({ name: "title", hint: "the headline" });
+    expect(slotOf(findClip(store.getState().doc, "x1")!.clip)).toEqual({ name: "title", hint: "the headline" });
     fireEvent.change(hint, { target: { value: "" } });
     fireEvent.blur(hint);
-    expect(findClip(store.getState().doc, "x1")!.clip.slot).toEqual({ name: "title" });
+    expect(slotOf(findClip(store.getState().doc, "x1")!.clip)).toEqual({ name: "title" });
   });
 
   it("removes the slot with null", () => {

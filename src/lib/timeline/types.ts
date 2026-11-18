@@ -11,7 +11,7 @@ export const FormatId = z.enum([...PresetId.options, "custom"]);
 export type FormatId = z.infer<typeof FormatId>;
 export type FrameSize = { width: number; height: number };
 
-export const TrackKind = z.enum(["video", "overlay", "text", "caption", "audio"]);
+export const TrackKind = z.enum(["video", "overlay", "text", "caption", "audio", "shape"]);
 export type TrackKind = z.infer<typeof TrackKind>;
 
 const CropSide = z.number().min(0).max(1);
@@ -172,11 +172,77 @@ export const PlaceholderClip = z.object({
 });
 export type PlaceholderClip = z.infer<typeof PlaceholderClip>;
 
-export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip]);
+// A drawn shape: a box (rect), an ellipse, or an arrow. An arrow with no heads is a line. Its size is its own, in
+// project pixels, so resizing never thickens its outline; scale (and its keyframes) scales the whole drawing.
+// An arrow lies along its own x-axis from tail (left) to tip (right), centred on the transform's x, y and turned by
+// its rotation; `width` is its length and `height` is unused (0). `bend` pushes the middle of an arrow sideways, as a
+// share of its length (positive bends towards its own +y), making a curve; 0 is straight.
+export const ShapeKind = z.enum(["rect", "ellipse", "arrow"]);
+export type ShapeKind = z.infer<typeof ShapeKind>;
+export const ShapeDash = z.enum(["solid", "dashed", "dotted"]);
+export type ShapeDash = z.infer<typeof ShapeDash>;
+export const ArrowHeads = z.enum(["end", "start", "both", "none"]);
+export type ArrowHeads = z.infer<typeof ArrowHeads>;
+export const ArrowHead = z.enum(["triangle", "open", "bar"]);
+export type ArrowHead = z.infer<typeof ArrowHead>;
+const ShapeSide = z.number().min(0).max(LIMITS.shapeSideMax);
+
+// The fields alone, for schemas that extend them (op input, strict update); every use goes through shapeRules.
+export const ShapeClipFields = z.object({
+  ...ClipBase,
+  type: z.literal("shape"),
+  shape: ShapeKind,
+  width: ShapeSide.refine((w) => w > 0, "a shape's width must be above 0"),
+  height: ShapeSide,
+  stroke: HexColor.nullable(), // the outline's (an arrow's line's) colour; null: none, for a filled box or ellipse
+  strokeWidth: z.number().min(1).max(LIMITS.shapeStrokeMax),
+  dash: ShapeDash,
+  fill: HexColor.nullable().optional(), // rect and ellipse; absent or null: see-through
+  radius: z.number().min(0).max(LIMITS.shapeSideMax).optional(), // rect: corner rounding in project pixels; drawn at most half the short side
+  heads: ArrowHeads.optional(), // arrow: absent = "end"
+  head: ArrowHead.optional(), // arrow: absent = "triangle"
+  headSize: z.number().min(1).max(8).optional(), // arrow: the head's length as a multiple of strokeWidth; absent = 3
+  bend: z.number().min(-0.5).max(0.5).optional(), // arrow: absent = 0, straight
+  keyframes: Keyframes.optional(),
+  transitionIn: TransitionOut.nullable().optional(), // no crossfade: a shape has nothing to blend from
+  transitionOut: TransitionOut.nullable().optional(),
+});
+
+export function shapeRules(c: Omit<z.infer<typeof ShapeClipFields>, "id">, ctx: z.RefinementCtx): void {
+  if ((c.transform.stretch ?? 1) !== 1) {
+    ctx.addIssue({ code: "custom", path: ["transform", "stretch"], message: "a shape takes no stretch: set its width and height" });
+  }
+  if (c.shape === "arrow") {
+    if (c.stroke === null) ctx.addIssue({ code: "custom", path: ["stroke"], message: "an arrow needs a stroke colour" });
+    if (c.fill != null) ctx.addIssue({ code: "custom", path: ["fill"], message: "an arrow has no fill" });
+  } else {
+    if (c.height <= 0) ctx.addIssue({ code: "custom", path: ["height"], message: "a box or ellipse's height must be above 0" });
+    if (c.stroke === null && c.fill == null) ctx.addIssue({ code: "custom", path: ["stroke"], message: "a shape needs a stroke or a fill" });
+    for (const key of ["heads", "head", "headSize", "bend"] as const) {
+      if (c[key] !== undefined) ctx.addIssue({ code: "custom", path: [key], message: `only an arrow takes ${key}` });
+    }
+  }
+  if (c.shape !== "rect" && c.radius !== undefined) ctx.addIssue({ code: "custom", path: ["radius"], message: "only a rect takes radius" });
+}
+
+export const ShapeClip = ShapeClipFields.superRefine(shapeRules);
+export type ShapeClip = z.infer<typeof ShapeClip>;
+
+export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip, ShapeClip]);
 export type Clip = z.infer<typeof Clip>;
 
 export function isPlaceholder(clip: Clip): clip is PlaceholderClip {
   return clip.type === "placeholder";
+}
+
+// A clip that plays a file from the library: video, image or audio. Text, slots and shapes name no asset.
+export function isMediaClip<C extends Pick<Clip, "type">>(clip: C): clip is Extract<C, { type: MediaClip["type"] }> {
+  return clip.type === "video" || clip.type === "image" || clip.type === "audio";
+}
+
+// A clip's slot, if it has one. Shapes never do.
+export function slotOf(clip: Clip): Slot | undefined {
+  return clip.type === "shape" ? undefined : clip.slot;
 }
 
 export const Track = z.object({

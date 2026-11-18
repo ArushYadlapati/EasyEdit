@@ -1,4 +1,5 @@
 import type { OpInput, TimelineDoc } from "@/lib/timeline";
+import { isMediaClip } from "@/lib/timeline";
 import { moveOps } from "./commands";
 import { trimBounds } from "./media-clips";
 import { clipEdges, snap } from "./snap";
@@ -52,7 +53,7 @@ export function beginTrim(
   const origins = originsOf(doc, new Set([clipId]));
   if (origins.length === 0) return null;
   const clip = doc.tracks.find((t) => t.id === origins[0].trackId)?.clips.find((c) => c.id === clipId);
-  const bounds = clip && clip.type !== "text" && clip.type !== "placeholder" && lengthOf ? trimBounds(clip, lengthOf(clip.assetId)) : undefined;
+  const bounds = clip && isMediaClip(clip) && lengthOf ? trimBounds(clip, lengthOf(clip.assetId)) : undefined;
   return { type: "trim", edge, grabFrame, primary: clipId, origins: [bounds ? { ...origins[0], ...bounds } : origins[0]] };
 }
 

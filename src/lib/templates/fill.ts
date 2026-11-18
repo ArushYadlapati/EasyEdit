@@ -1,5 +1,5 @@
 import type { Clip, MediaClip, OpInput, TimelineDoc } from "@/lib/timeline";
-import { slotsOf } from "@/lib/timeline";
+import { slotOf, slotsOf } from "@/lib/timeline";
 
 export type SlotFill = { slot: string; text?: string; assetId?: string; inFrames?: number };
 // durationFrames is in frames at the doc's fps; null for images.
@@ -49,7 +49,7 @@ export function fillSlots(
     if (hasText !== (slot.kind === "text")) return { error: `${name} takes ${TAKES[slot.kind]}` };
 
     const clips = doc.tracks.flatMap((track) =>
-      track.clips.filter((c) => c.slot?.name === name).map((clip) => ({ trackId: track.id, clip })),
+      track.clips.filter((c) => slotOf(c)?.name === name).map((clip) => ({ trackId: track.id, clip })),
     );
 
     if (hasText) {
@@ -83,7 +83,7 @@ export function fillSlots(
           speed: 1,
           volume: 1,
           transform: clip.transform,
-          slot: clip.slot!,
+          slot: slotOf(clip)!,
           ...(asset.kind !== "audio" && visualEffects(clip)),
         },
       });

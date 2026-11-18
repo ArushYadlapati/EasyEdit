@@ -108,6 +108,7 @@ export const TRACK_ACCEPTS: Record<TrackKind, Clip["type"][]> = {
   text: ["text"],
   caption: [],
   audio: ["audio"],
+  shape: ["shape"],
 };
 
 // Whether a track of this kind takes this clip. A placeholder goes by what it accepts: visual on video and overlay, audio on audio.

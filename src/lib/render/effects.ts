@@ -1,6 +1,6 @@
 import { graphemes } from "@/lib/text";
 import { ease, effectiveTransform } from "@/lib/timeline/keyframes";
-import type { Clip, MediaClip, TextClip, Transform } from "@/lib/timeline/types";
+import type { Clip, MediaClip, ShapeClip, TextClip, Transform } from "@/lib/timeline/types";
 
 export const DEFAULT_DIRECTION = "left" as const;
 export const DEFAULT_DIP_COLOR = "#000000";
@@ -67,7 +67,7 @@ type Pass = { alpha: number; scale: number; dx: number; dy: number; ghosts: Ghos
 
 const neutral = (): Pass => ({ alpha: 1, scale: 1, dx: 0, dy: 0, ghosts: [], dip: null, reveal: null });
 
-function mediaEffect(clip: MediaClip, isIn: boolean, p: number, doc: Doc): Pass {
+function mediaEffect(clip: Pick<MediaClip | ShapeClip, "transitionIn" | "transitionOut">, isIn: boolean, p: number, doc: Doc): Pass {
   const t = isIn ? clip.transitionIn : clip.transitionOut;
   const out = neutral();
   if (!t) return out;

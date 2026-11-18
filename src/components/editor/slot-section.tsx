@@ -6,14 +6,14 @@ import { cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
 import { TextInput } from "@/components/ui/text-input";
 import { LIMITS } from "@/lib/limits";
-import { Slot, type Clip, type TimelineDoc } from "@/lib/timeline";
+import { Slot, slotOf, type Clip, type TimelineDoc } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "./context";
 
 export const SLOT_NAME_ERROR = "Use lowercase letters, numbers and _, starting with a letter";
 
 // slot_1, slot_2, ...: the first not used by any clip in the document.
 export function nextSlotName(doc: TimelineDoc): string {
-  const used = new Set(doc.tracks.flatMap((t) => t.clips.flatMap((c) => (c.slot ? [c.slot.name] : []))));
+  const used = new Set(doc.tracks.flatMap((t) => t.clips.flatMap((c) => slotOf(c)?.name ?? [])));
   let n = 1;
   while (used.has(`slot_${n}`)) n++;
   return `slot_${n}`;
@@ -21,6 +21,10 @@ export function nextSlotName(doc: TimelineDoc): string {
 
 // What this clip is in a template: nothing, or a slot that gets filled in later. Every change is one update_clip.
 export function SlotSection({ clip }: { clip: Clip }) {
+  return clip.type === "shape" ? null : <SlotFields clip={clip} />;
+}
+
+function SlotFields({ clip }: { clip: Exclude<Clip, { type: "shape" }> }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const locked = useEditor((s) => s.doc.tracks.some((t) => t.locked && t.clips.some((c) => c.id === clip.id)));
@@ -28,7 +32,7 @@ export function SlotSection({ clip }: { clip: Clip }) {
   const [hint, setHint] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const off = !canEdit || locked;
-  const slot = clip.slot;
+  const slot = slotOf(clip);
 
   function write(next: Slot | null, label: string) {
     store.getState().edit([{ op: "update_clip", clipId: clip.id, patch: { slot: next } }], label);

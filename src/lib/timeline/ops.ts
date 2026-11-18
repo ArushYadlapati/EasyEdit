@@ -9,6 +9,7 @@ import {
   MediaClip,
   PlaceholderClip,
   SafeArea,
+  ShapeClipFields,
   Slot,
   TextClip,
   TextStyle,
@@ -16,6 +17,7 @@ import {
   TrackKind,
   TrackName,
   Transform,
+  shapeRules,
 } from "./types";
 
 const id = z.string().min(1);
@@ -46,6 +48,18 @@ const ClipExpect = z
     animationIn: TextClip.shape.animationIn,
     animationOut: TextClip.shape.animationOut,
     emphasis: TextClip.shape.emphasis,
+    shape: ShapeClipFields.shape.shape,
+    width: ShapeClipFields.shape.width,
+    height: ShapeClipFields.shape.height,
+    stroke: ShapeClipFields.shape.stroke,
+    strokeWidth: ShapeClipFields.shape.strokeWidth,
+    dash: ShapeClipFields.shape.dash,
+    fill: ShapeClipFields.shape.fill,
+    radius: ShapeClipFields.shape.radius,
+    heads: ShapeClipFields.shape.heads,
+    head: ShapeClipFields.shape.head,
+    headSize: ShapeClipFields.shape.headSize,
+    bend: ShapeClipFields.shape.bend,
   })
   .partial()
   .strict();
@@ -54,6 +68,7 @@ const ClipInput = z.discriminatedUnion("type", [
   MediaClip.extend(optionalId),
   TextClip.extend(optionalId),
   PlaceholderClip.extend(optionalId),
+  ShapeClipFields.extend(optionalId).superRefine(shapeRules),
 ]);
 
 const newTrack = { kind: TrackKind, name: TrackName };

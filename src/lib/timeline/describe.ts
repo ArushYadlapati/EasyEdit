@@ -1,7 +1,8 @@
 import { graphemes } from "@/lib/text";
 import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
 import { KEYFRAME_PROPS } from "./keyframes";
-import type { Clip, KeyframeProp, Slot, Track, TimelineDoc, Transform, Transition } from "./types";
+import { shapeToolOf } from "./shapes";
+import type { Clip, KeyframeProp, ShapeClip, Slot, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -65,6 +66,15 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
   return out;
 }
 
+// Every shape field that is set, as JSON-ish key=value pairs an update_clip patch can copy.
+function describeShape(clip: ShapeClip): string {
+  const keys = ["shape", "width", "height", "stroke", "strokeWidth", "dash", "fill", "radius", "heads", "head", "headSize", "bend"] as const;
+  return keys
+    .filter((k) => clip[k] !== undefined && !(clip.shape === "arrow" && k === "height"))
+    .map((k) => `${k}=${typeof clip[k] === "string" ? `"${clip[k]}"` : clip[k]}`)
+    .join(" ");
+}
+
 function describeClip(clip: Clip, fps: number): string {
   const range = `${framesToSeconds(clip.start, fps)}–${framesToSeconds(clip.start + clip.duration, fps)}s`;
   // The slot comes before the effects, on every kind of clip.
@@ -73,6 +83,9 @@ function describeClip(clip: Clip, fps: number): string {
   }
   if (clip.type === "text") {
     return `  ${clip.id}  text  ${range}  "${describeText(clip.text)}"${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
+  }
+  if (clip.type === "shape") {
+    return `  ${clip.id}  shape(${shapeToolOf(clip)})  ${range}  ${clip.stroke ?? clip.fill ?? ""}${describeEffects(clip, fps, false)}`;
   }
   return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
 }
@@ -110,6 +123,7 @@ function describeClipInDetail(clip: Clip, fps: number): string {
       describeEffects(clip, fps, true)
     );
   }
+  if (clip.type === "shape") return `${head}  ${describeShape(clip)}  x=${t.x} y=${t.y}` + describeTransformChanges(t, clip.type) + describeEffects(clip, fps, true);
   return (
     `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +

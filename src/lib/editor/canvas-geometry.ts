@@ -13,7 +13,7 @@ import { clipRects, type Sizer } from "./clip-box";
 export type CanvasItem = {
   clipId: string;
   trackId: string;
-  type: "video" | "image" | "text" | "placeholder";
+  type: "video" | "image" | "text" | "placeholder" | "shape";
   slot?: string; // an empty slot's name
   locked: boolean;
   opacity: number;

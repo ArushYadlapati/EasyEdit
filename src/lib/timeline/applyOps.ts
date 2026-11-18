@@ -13,13 +13,14 @@ import {
   maxSafeAreaHeight,
   trackTakes,
 } from "./presets";
-import { MediaClip, PlaceholderClip, TextClip, Transform, TextStyle } from "./types";
+import { MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
 import type { Clip, FormatId, FrameSize, Guide, TimelineDoc, Track } from "./types";
 
 // update_clip re-validates strictly so a typo'd or foreign key is rejected, not dropped.
 const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).strict();
 const StrictTextClip = TextClip.extend({ transform: Transform.strict(), style: TextStyle.strict() }).strict();
 const StrictPlaceholderClip = PlaceholderClip.extend({ transform: Transform.strict() }).strict();
+const StrictShapeClip = ShapeClipFields.extend({ transform: Transform.strict() }).strict().superRefine(shapeRules);
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
 // The clip fields whose sub-keys are set, undone and expected one by one. Every other field, a transition or an
 // emphasis included, is one value: a new one replaces the old whole, so no sub-key of the old one is left behind.
@@ -36,6 +37,17 @@ const CLIP_FILL: Record<string, () => unknown> = {
   emphasis: () => null,
 };
 
+// A shape's optional fields, each with the value its absence means, filled the same way so the first change to one
+// records an undo that goes back to it.
+const SHAPE_FILL: Record<string, () => unknown> = {
+  fill: () => null,
+  radius: () => 0,
+  heads: () => "end",
+  head: () => "triangle",
+  headSize: () => 3,
+  bend: () => 0,
+};
+
 // Which of those fields each kind of clip may carry. Sound has no picture to move or fade, and text animates
 // itself instead of transitioning. A placeholder carries what the clip that fills it would: a visual slot the
 // video and image effects (so a template's fade or move survives the fill), an audio slot none.
@@ -45,6 +57,7 @@ const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string
   image: VISUAL_EFFECTS,
   audio: [],
   text: ["keyframes", "animationIn", "animationOut", "emphasis"],
+  shape: VISUAL_EFFECTS,
 };
 
 type EffectsHolder = Pick<Clip, "type"> & { accepts?: "visual" | "audio" };
@@ -396,7 +409,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         assertUnlocked(track, opIndex, name);
         const target = track.clips[clipIndex];
         if (op.expect && !holds(target, op.expect)) throw stale(`clip "${op.clipId}"`);
-        if (op.in !== undefined && (op.edge !== "start" || target.type === "text" || target.type === "placeholder")) {
+        if (op.in !== undefined && (op.edge !== "start" || !isMediaClip(target))) {
           throw new OpError(
             "INVALID",
             `${name}: "in" is only allowed when trimming the start of a media clip`,
@@ -431,7 +444,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (op.edge === "end") {
           const to = target.start + target.duration;
           groups.push([{ op: "trim_clip", clipId: op.clipId, edge: "end", to, expect: { start, duration } }]);
-        } else if (sourceIn === undefined || target.type === "text" || target.type === "placeholder") {
+        } else if (sourceIn === undefined || !isMediaClip(target)) {
           groups.push([{ op: "trim_clip", clipId: op.clipId, edge: "start", to: target.start, expect: { start } }]);
         } else {
           groups.push([
@@ -530,6 +543,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         const fields: Record<string, unknown> = current;
         for (const key of [...givenKeys(op.patch), ...givenKeys(op.expect)]) {
           if (clipEffects(current).includes(key) && fields[key] === undefined) fields[key] = CLIP_FILL[key]();
+          if (current.type === "shape" && Object.hasOwn(SHAPE_FILL, key) && fields[key] === undefined) fields[key] = SHAPE_FILL[key]();
         }
         const keyframes = fields.keyframes;
         if (isPlainObject(keyframes)) {
@@ -540,7 +554,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (op.expect) {
           // slot: null means "has no slot", which holds when the key is absent (its neutral value, never stored).
           const { slot: expectSlot, ...otherExpect } = op.expect;
-          const slotHolds = expectSlot === undefined || (expectSlot === null ? current.slot === undefined : holds(current, { slot: expectSlot }));
+          const slotHolds = expectSlot === undefined || (expectSlot === null ? slotOf(current) === undefined : holds(current, { slot: expectSlot }));
           if (!slotHolds || !holds(current, otherExpect)) throw stale(`clip "${op.clipId}"`);
         }
         for (const key of FROZEN_CLIP_KEYS) {
@@ -560,7 +574,11 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           merged[key] =
             MERGED_FIELDS.has(key) && isPlainObject(existing) && isPlainObject(value) ? { ...existing, ...value } : value;
         }
-        const schema = current.type === "text" ? StrictTextClip : current.type === "placeholder" ? StrictPlaceholderClip : StrictMediaClip;
+        const schema =
+          current.type === "text" ? StrictTextClip
+          : current.type === "placeholder" ? StrictPlaceholderClip
+          : current.type === "shape" ? StrictShapeClip
+          : StrictMediaClip;
         const result = schema.safeParse(merged);
         if (!result.success) {
           const issue = result.error.issues[0];

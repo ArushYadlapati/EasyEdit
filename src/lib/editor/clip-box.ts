@@ -1,6 +1,7 @@
 import { cropRect, mediaSize, type LocalRect } from "@/lib/render/compositor";
 import { textRect } from "@/lib/render/text-layout";
 import { stretchOf } from "@/lib/timeline/presets";
+import { shapeBox } from "@/lib/timeline/shapes";
 import type { Clip, FrameSize, MediaClip, PlaceholderClip, TextClip, TimelineDoc } from "@/lib/timeline";
 
 // What a clip's box is measured with: the picture size of a video or image (null when it is not known, so the
@@ -22,8 +23,10 @@ export function clipRects(doc: TimelineDoc, clip: Clip, sizer: Sizer): { full: L
       ? textRect(clip, doc.width, (s) => sizer.measure(clip, s))
       : clip.type === "placeholder"
         ? centred(doc) // an empty slot is as large as the frame before its transform
-        : centred(mediaSize(doc, clip, sizer.source(clip)));
-  return { full, kept: cropRect(full, clip.transform.crop) };
+        : clip.type === "shape"
+          ? shapeBox(clip) // a shape takes no crop
+          : centred(mediaSize(doc, clip, sizer.source(clip)));
+  return { full, kept: clip.type === "shape" ? full : cropRect(full, clip.transform.crop) };
 }
 
 const centred = ({ width, height }: { width: number; height: number }): LocalRect => ({

@@ -156,6 +156,7 @@ export function trackToggles(kind: TrackKind): ("hidden" | "muted")[] {
       return ["hidden", "muted"];
     case "text":
     case "caption":
+    case "shape":
       return ["hidden"];
     case "audio":
       return ["muted"];

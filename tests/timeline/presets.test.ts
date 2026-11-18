@@ -66,6 +66,7 @@ describe("timeline presets", () => {
       text: ["text"],
       caption: [],
       audio: ["audio"],
+      shape: ["shape"],
     });
   });
 

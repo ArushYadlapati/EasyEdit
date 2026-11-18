@@ -184,12 +184,13 @@ export function clipMenu(state: EditorState): MenuEntry[] {
   ];
 }
 
-export type LaneMenuId = "paste" | "track-duplicate" | "track-remove" | "add-video" | "add-overlay" | "add-text" | "add-audio" | "add-caption";
+export type LaneMenuId = "paste" | "track-duplicate" | "track-remove" | "add-video" | "add-overlay" | "add-text" | "add-audio" | "add-caption" | "add-shape";
 
 const ADDABLE: { kind: TrackKind; label: string }[] = [
   { kind: "video", label: "Add video track" },
   { kind: "overlay", label: "Add overlay track" },
   { kind: "text", label: "Add text track" },
+  { kind: "shape", label: "Add shapes track" },
   { kind: "audio", label: "Add audio track" },
   { kind: "caption", label: "Add captions track" },
 ];

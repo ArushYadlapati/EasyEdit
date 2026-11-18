@@ -7,6 +7,8 @@ export const LIMITS = {
   guidesPerProject: 50,
   clipsPerTrack: 1000,
   keyframesPerProperty: 100,
+  shapeStrokeMax: 200, // a shape's outline or an arrow's line, in project pixels
+  shapeSideMax: 16_384, // a shape's width, height or an arrow's length, in project pixels
   effectFramesMax: 600, // one transition or text animation, in frames
   docBytes: 2 * 1024 * 1024,
   opsPerRequest: 500,

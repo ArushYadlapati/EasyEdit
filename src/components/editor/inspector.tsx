@@ -35,7 +35,7 @@ import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { docDuration, isCropped, type Clip, type KeyframeProp, type Track } from "@/lib/timeline";
+import { docDuration, isCropped, isMediaClip, type Clip, type KeyframeProp, type Track } from "@/lib/timeline";
 import { FONT_LIST, isListedFont } from "@/lib/brand/fonts";
 import { AnimationSection, TransitionsSection } from "./effects-section";
 import { useBrand } from "./brand/brand-context";
@@ -43,6 +43,7 @@ import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./cont
 import { FormatFields } from "./format-select";
 import { KenBurnsButton, KeyframeButton, KeyframeSteps } from "./keyframe-button";
 import { useLibrary, useMedia } from "./media/media-context";
+import { ShapeSection } from "./shape-section";
 import { SlotSection } from "./slot-section";
 import { useTextMeasure } from "./text-measure";
 import { Timecode } from "./timecode";
@@ -51,7 +52,7 @@ import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-f
 const TEXT = "text-[13px] leading-5";
 const CAPTION = "text-xs font-medium text-ed-muted";
 
-const MEDIA_TITLE: Record<Exclude<Clip["type"], "text" | "placeholder">, string> = {
+const MEDIA_TITLE: Record<Exclude<Clip["type"], "text" | "placeholder" | "shape">, string> = {
   video: "Video clip",
   image: "Image",
   audio: "Audio clip",
@@ -144,7 +145,7 @@ function NumberField(props: {
   // A video or image is measured by its picture's size as the library knows it; until then, the placeholder's frame.
   const assetId = useEditor((s) => {
     const clip = findClip(viewDoc(s), clipId)?.clip;
-    return clip && clip.type !== "text" && clip.type !== "placeholder" ? clip.assetId : null;
+    return clip && isMediaClip(clip) ? clip.assetId : null;
   });
   const sourceWidth = useLibrary((s) => (assetId === null ? null : (s.assets[assetId]?.width ?? null)));
   const sourceHeight = useLibrary((s) => (assetId === null ? null : (s.assets[assetId]?.height ?? null)));
@@ -171,7 +172,7 @@ function NumberField(props: {
     scrubRange = () => {
       const { doc } = store.getState();
       const clip = findClip(doc, clipId)?.clip;
-      const lengthFrames = clip && clip.type !== "text" && clip.type !== "placeholder" ? mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps) : undefined;
+      const lengthFrames = clip && isMediaClip(clip) ? mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps) : undefined;
       return scrubBounds(doc, clipId, field, lengthFrames);
     };
   } else if (field === "cropLeft" || field === "cropTop" || field === "cropRight" || field === "cropBottom") {
@@ -516,6 +517,8 @@ function ClipInspector({ clip }: { clip: Clip }) {
         <TextSection clip={clip} canEdit={canEdit} />
       ) : clip.type === "placeholder" ? (
         <h2 className="text-sm leading-5 font-semibold text-ed-text">Slot: {clip.slot.name}</h2>
+      ) : clip.type === "shape" ? (
+        <ShapeSection clip={clip} canEdit={canEdit} />
       ) : (
         <>
           <h2 className="text-sm leading-5 font-semibold text-ed-text">{MEDIA_TITLE[clip.type]}</h2>
@@ -523,9 +526,9 @@ function ClipInspector({ clip }: { clip: Clip }) {
         </>
       )}
       {drawsOnCanvas && <PositionSection clipId={clip.id} image={clip.type === "image"} />}
-      {drawsOnCanvas && clip.type !== "placeholder" && <CropSection clipId={clip.id} />}
+      {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
       {/* A visual slot carries its transitions over to the clip that fills it. */}
-      {(clip.type === "video" || clip.type === "image" || (clip.type === "placeholder" && drawsOnCanvas)) && <TransitionsSection clip={clip} />}
+      {(clip.type === "video" || clip.type === "image" || clip.type === "shape" || (clip.type === "placeholder" && drawsOnCanvas)) && <TransitionsSection clip={clip} />}
       {clip.type === "text" && <AnimationSection clip={clip} />}
       <TimingSection clipId={clip.id} />
       <SlotSection clip={clip} />

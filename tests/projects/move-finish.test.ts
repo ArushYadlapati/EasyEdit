@@ -9,6 +9,7 @@ import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
 import { applyProjectOps, getProject } from "@/lib/projects/service";
 import type { ServiceError } from "@/lib/service-error";
 import type { OpInput, TimelineDoc } from "@/lib/timeline";
+import { isMediaClip } from "@/lib/timeline";
 import { joinSpace, testActor } from "../helpers/actor";
 import { piece } from "../helpers/fake-drive";
 import { insertAsset, mediaClip, VIDEO } from "../media/context";
@@ -114,7 +115,7 @@ describe("finishMove", () => {
     await expect(finishMove(x.deps, "u1", x.moveId)).rejects.toMatchObject({ code: "COPIES_MISSING", missing: [c] });
     const copy = await copyFully(x, "u1", x.moveId, c);
     expect(await finishMove(x.deps, "u1", x.moveId)).toMatchObject({ version: 3 });
-    expect(clipsOf((await x.row()).doc).map((cl) => (cl.type === "text" || cl.type === "placeholder" ? null : cl.assetId))).toContain(copy);
+    expect(clipsOf((await x.row()).doc).map((cl) => (!isMediaClip(cl) ? null : cl.assetId))).toContain(copy);
   });
 
   it("tries again when an ordinary edit lands between its read and its write", async () => {
