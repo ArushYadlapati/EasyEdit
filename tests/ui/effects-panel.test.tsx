@@ -227,12 +227,92 @@ describe("the keyframe list", () => {
   it("a field commits to the clip it belongs to", () => {
     const store = storeWith({ x1: { keyframes: SCALE }, x2: { keyframes: SCALE } });
     openEffects(store, ["x1"]);
+    const before = clipOf(store, "x1");
     const time = box(row("Scale keyframe at 0.00s"), "Time");
     fireEvent.change(time, { target: { value: "1" } });
+    // A click on a timeline clip selects it on pointerdown, before the field's blur.
     act(() => store.getState().select(["x2"]));
+    expect(store.getState().queue).toHaveLength(1);
+    expect(store.getState().queue[0]).toMatchObject({ label: "keyframe", ops: editKeyframeOps(before, "scale", 0, { at: 30 }) });
     fireEvent.blur(time);
-    expect(store.getState().queue.flatMap((e) => e.ops).filter((op) => "clipId" in op && op.clipId === "x2")).toEqual([]);
+    expect(store.getState().queue).toHaveLength(1);
     expect(clipOf(store, "x2").keyframes).toEqual(SCALE);
+    // The new clip's fields start clean.
+    expect(box(row("Scale keyframe at 0.00s"), "Time").value).toBe("0");
+  });
+
+  it("a value typed and left by selecting another clip is saved to its own clip", () => {
+    const store = storeWith({ x1: { keyframes: SCALE }, x2: { keyframes: SCALE } });
+    openEffects(store, ["x1"]);
+    const before = clipOf(store, "x1");
+    fireEvent.change(box(row("Scale keyframe at 2.00s"), "Value"), { target: { value: "125" } });
+    act(() => store.getState().select(["x2"]));
+    expect(store.getState().queue).toMatchObject([{ label: "keyframe", ops: editKeyframeOps(before, "scale", 60, { value: 1.25 }) }]);
+    expect(clipOf(store, "x2").keyframes).toEqual(SCALE);
+  });
+
+  it("a half-typed value left by selecting another clip saves nothing", () => {
+    const store = storeWith({ x1: { keyframes: SCALE }, x2: { keyframes: SCALE } });
+    openEffects(store, ["x1"]);
+    fireEvent.change(box(row("Scale keyframe at 0.00s"), "Value"), { target: { value: "1e" } });
+    fireEvent.change(box(row("Scale keyframe at 0.00s"), "Time"), { target: { value: "-" } });
+    act(() => store.getState().select(["x2"]));
+    expect(store.getState().queue).toEqual([]);
+  });
+
+  it("the arrows step a keyframe's time a frame at a time, keeping the focus in the field", () => {
+    const store = storeWith({ x1: { keyframes: SCALE } });
+    openEffects(store, ["x1"]);
+    store.getState().seek(20);
+    const time = box(row("Scale keyframe at 0.00s"), "Time");
+    time.focus();
+    fireEvent.keyDown(time, { key: "ArrowUp" });
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+    expect(clipOf(store, "x1").keyframes?.scale?.map((k) => k.at)).toEqual([2, 60]);
+    expect(document.activeElement).toBe(time);
+    expect(time.isConnected).toBe(true);
+    expect(store.getState().playhead).toBe(20);
+    expect(store.getState().undoStack).toHaveLength(2);
+  });
+
+  it("a keyframe moved past another keeps its row and the focus", () => {
+    const store = storeWith({ x1: { keyframes: SCALE } });
+    openEffects(store, ["x1"]);
+    const time = box(row("Scale keyframe at 0.00s"), "Time");
+    time.focus();
+    fireEvent.change(time, { target: { value: "3" } });
+    fireEvent.keyDown(time, { key: "Enter" });
+    expect(clipOf(store, "x1").keyframes?.scale?.map((k) => k.at)).toEqual([60, 90]);
+    expect(box(row("Scale keyframe at 3.00s"), "Time")).toBe(time);
+    expect(document.activeElement).toBe(time);
+    // A new keyframe at the old time gets a row of its own.
+    act(() => {
+      store.getState().edit([{ op: "update_clip", clipId: "x1", patch: { keyframes: { scale: [{ at: 0, value: 2 }, { at: 60, value: 1.5 }, { at: 90, value: 1 }] } } }], "keyframe");
+    });
+    expect(box(row("Scale keyframe at 0.00s"), "Value").value).toBe("200");
+    expect(box(row("Scale keyframe at 3.00s"), "Time")).toBe(time);
+  });
+
+  it("after Delete the focus goes to the next row's Delete, else the property's Clear, else the next property's Clear", () => {
+    const keyframes: Keyframes = { scale: [{ at: 0, value: 1 }, { at: 30, value: 1.2 }, { at: 60, value: 1.5 }], rotation: [{ at: 0, value: 0 }], opacity: [{ at: 0, value: 1 }] };
+    const store = storeWith({ x1: { keyframes } });
+    openEffects(store, ["x1"]);
+    const del = (name: string) => within(row(name)).getByRole("button", { name: "Delete" });
+    const clear = (prop: string) => within(screen.getByRole("group", { name: prop })).getByRole("button", { name: "Clear" });
+    del("Scale keyframe at 0.00s").focus();
+    fireEvent.click(del("Scale keyframe at 0.00s"));
+    expect(document.activeElement).toBe(del("Scale keyframe at 1.00s"));
+    fireEvent.click(del("Scale keyframe at 2.00s"));
+    expect(document.activeElement).toBe(clear("Scale"));
+    fireEvent.click(del("Rotation keyframe at 0.00s"));
+    expect(document.activeElement).toBe(clear("Opacity"));
+    fireEvent.click(del("Opacity keyframe at 0.00s"));
+    expect(document.activeElement).toBe(clear("Scale"));
+  });
+
+  it("the ease says what it shapes", () => {
+    openEffects(storeWith({ x1: { keyframes: SCALE } }), ["x1"]);
+    expect(within(row("Scale keyframe at 2.00s")).getByLabelText("Ease").getAttribute("title")).toBe("Easing shapes the move to the next keyframe");
   });
 
   it("a viewer can only go to a keyframe", () => {

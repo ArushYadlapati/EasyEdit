@@ -1,7 +1,8 @@
 "use client";
 
 import { LocateFixed, Trash2 } from "lucide-react";
-import { useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
@@ -9,6 +10,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { Select } from "@/components/ui/select";
 import { parseNumber } from "@/lib/editor/inspector-fields";
 import { clearKeyframesOps, deleteKeyframeOps, editKeyframeOps, keyframeRows } from "@/lib/editor/keyframe-list";
+import { KEYFRAME_PROPS } from "@/lib/timeline/keyframes";
 import type { Units } from "@/lib/editor/settings";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import { UNIT_SUFFIX, fromUnit, showUnit } from "@/lib/editor/units";
@@ -47,11 +49,11 @@ const seconds = (frames: number, fps: number) => (frames / fps).toFixed(2);
 
 // One edit, one undo step, against the clip as saved now: a field typed in before a change from someone else still
 // edits the keyframe it was showing, or nothing when that keyframe is gone.
-function send(store: EditorStore, clipId: string, make: (clip: Clip) => OpInput[]) {
+function send(store: EditorStore, clipId: string, make: (clip: Clip) => OpInput[]): boolean {
   const clip = findClip(store.getState().doc, clipId)?.clip;
-  if (!clip) return;
+  if (!clip) return false;
   const ops = make(clip);
-  if (ops.length > 0) store.getState().edit(ops, "keyframe");
+  return ops.length > 0 && store.getState().edit(ops, "keyframe").ok;
 }
 
 // A keyframe's value as Inspect shows it, and a typed number back as the value kept, or null when it changes nothing
@@ -101,10 +103,26 @@ function typedIsPlain(box: HTMLInputElement | null, suffix: string): boolean {
   return parseNumber(text) !== null;
 }
 
-type RowProps = { clipId: string; prop: KeyframeProp; keyframe: Keyframe; fps: number; canEdit: boolean };
+// A typed number, as NumberInput would commit it: plain decimals only, within min and max. null for anything else.
+function typedNumber(text: string, suffix: string, min = -Infinity, max = Infinity): number | null {
+  let t = text.trim();
+  if (t.endsWith(suffix)) t = t.slice(0, -suffix.length);
+  const n = parseNumber(t);
+  return n === null ? null : Math.min(max, Math.max(min, n));
+}
+
+type RowProps = {
+  clipId: string;
+  prop: KeyframeProp;
+  keyframe: Keyframe;
+  fps: number;
+  canEdit: boolean;
+  onMoved(from: number, to: number): void; // the keyframe's time changed here
+  onDelete(): void;
+};
 
 // One keyframe: its time from the clip's start in seconds, its value, the ease to the next keyframe, Go to and Delete.
-function KeyframeRow({ clipId, prop, keyframe, fps, canEdit }: RowProps) {
+function KeyframeRow({ clipId, prop, keyframe, fps, canEdit, onMoved, onDelete }: RowProps) {
   const store = useEditorStore();
   const units = useSettings((s) => s.units);
   const width = useEditor((s) => viewDoc(s).width);
@@ -113,8 +131,42 @@ function KeyframeRow({ clipId, prop, keyframe, fps, canEdit }: RowProps) {
   const valueBox = useRef<HTMLInputElement>(null);
   const { at } = keyframe;
   const view = valueView(prop, keyframe.value, units, { width, height });
+  const shownTime = Number(seconds(at, fps));
   const ease = keyframe.ease ?? "linear";
   const edit = (patch: { at?: number; value?: number; ease?: Ease }) => send(store, clipId, (clip) => editKeyframeOps(clip, prop, at, patch));
+
+  // Typed seconds to the nearest frame. True when the keyframe moved.
+  function saveTime(typed: number): boolean {
+    const frames = Math.round(typed * fps) || 0; // never -0
+    if (frames === at || !edit({ at: frames })) return false;
+    onMoved(at, frames);
+    return true;
+  }
+
+  function saveValue(typed: number) {
+    const value = view.kept(typed);
+    if (value !== null) edit({ value });
+  }
+
+  // A value typed and then left by selecting another clip (which selects on pointerdown, before the field's blur) is
+  // saved to this row's clip as the field goes, as Inspect does. The boxes are the ones mounted; a box whose text is
+  // what it shows holds no draft.
+  const leave = useRef<() => void>(() => {});
+  useLayoutEffect(() => {
+    const time = timeBox.current;
+    const value = valueBox.current;
+    leave.current = () => {
+      if (time && time.value.trim() !== String(shownTime)) {
+        const typed = typedNumber(time.value, "s");
+        if (typed !== null) saveTime(typed);
+      }
+      if (value && value.value.trim() !== String(view.shown)) {
+        const typed = typedNumber(value.value, view.suffix, view.min, view.max);
+        if (typed !== null) saveValue(typed);
+      }
+    };
+  });
+  useEffect(() => () => leave.current(), []);
 
   function goTo() {
     const state = store.getState();
@@ -132,13 +184,20 @@ function KeyframeRow({ clipId, prop, keyframe, fps, canEdit }: RowProps) {
           ariaLabel="Time"
           data-edit-control
           disabled={!canEdit}
-          value={Number(seconds(at, fps))}
+          value={shownTime}
           suffix="s"
           step={1 / fps}
           onCommit={(typed) => {
-            if (!typedIsPlain(timeBox.current, "s")) return;
-            const frames = Math.round(typed * fps) || 0; // never -0
-            if (frames !== at) edit({ at: frames });
+            const box = timeBox.current;
+            if (!typedIsPlain(box, "s")) return;
+            const focused = box !== null && document.activeElement === box;
+            let moved = false;
+            flushSync(() => {
+              moved = saveTime(typed);
+            });
+            // Enter or an arrow keeps typing here, even if the row moved: the arrows must not fall through to the
+            // playhead's shortcuts.
+            if (moved && focused && timeBox.current && document.activeElement !== timeBox.current) timeBox.current.focus();
           }}
         />
         <NumberInput
@@ -152,9 +211,7 @@ function KeyframeRow({ clipId, prop, keyframe, fps, canEdit }: RowProps) {
           min={view.min}
           max={view.max}
           onCommit={(typed) => {
-            if (!typedIsPlain(valueBox.current, view.suffix)) return;
-            const value = view.kept(typed);
-            if (value !== null) edit({ value });
+            if (typedIsPlain(valueBox.current, view.suffix)) saveValue(typed);
           }}
         />
         {/* Seeking changes nothing, so a viewer has it too. */}
@@ -165,6 +222,7 @@ function KeyframeRow({ clipId, prop, keyframe, fps, canEdit }: RowProps) {
       <div className={ROW}>
         <Select
           aria-label="Ease"
+          title="Easing shapes the move to the next keyframe"
           data-edit-control
           disabled={!canEdit}
           className="col-span-2"
@@ -179,12 +237,7 @@ function KeyframeRow({ clipId, prop, keyframe, fps, canEdit }: RowProps) {
           {/* Not offered, but an agent may set it; shown as it is rather than as Linear. */}
           {ease === "hold" && <option value="hold">Hold</option>}
         </Select>
-        <IconButton
-          label="Delete"
-          data-edit-control
-          disabled={!canEdit}
-          onClick={() => send(store, clipId, (clip) => deleteKeyframeOps(clip, prop, at))}
-        >
+        <IconButton label="Delete" data-edit-control data-delete disabled={!canEdit} onClick={onDelete}>
           <Trash2 />
         </IconButton>
       </div>
@@ -192,16 +245,66 @@ function KeyframeRow({ clipId, prop, keyframe, fps, canEdit }: RowProps) {
   );
 }
 
+// Each row's React key: its time, unless its time was changed here, when it keeps the key it had so the row (and the
+// focus in it) stays. A key that a moved row took is skipped by a row that comes to sit at its old time.
+function rowKeys(keyframes: Keyframe[], moved: ReadonlyMap<number, string>): string[] {
+  const taken = new Set(keyframes.flatMap((k) => (moved.has(k.at) ? [moved.get(k.at)!] : [])));
+  return keyframes.map((k) => {
+    const own = moved.get(k.at);
+    if (own !== undefined) return own;
+    let key = `at:${k.at}`;
+    while (taken.has(key)) key += "+";
+    return key;
+  });
+}
+
+// After a Delete: the next row's Delete, or the property's Clear when it was the last row, or, when the property has
+// no keyframes left, the Clear of the property after it (or before it).
+function focusAfterDelete(section: Element | null, prop: KeyframeProp, index: number) {
+  if (!section) return;
+  const group = section.querySelector(`[data-prop="${prop}"]`);
+  if (group) {
+    const next = group.querySelectorAll<HTMLElement>("[data-delete]")[index] ?? group.querySelector<HTMLElement>("[data-clear]");
+    next?.focus();
+    return;
+  }
+  const clears = [...section.querySelectorAll<HTMLElement>("[data-clear]")];
+  const order = (el: HTMLElement) => KEYFRAME_PROPS.indexOf(el.closest("[data-prop]")?.getAttribute("data-prop") as KeyframeProp);
+  (clears.find((el) => order(el) > KEYFRAME_PROPS.indexOf(prop)) ?? clears.at(-1))?.focus();
+}
+
 function PropertyKeyframes({ clipId, prop, keyframes, fps, canEdit }: { clipId: string; prop: KeyframeProp; keyframes: Keyframe[]; fps: number; canEdit: boolean }) {
   const store = useEditorStore();
   const headingId = useId();
+  const group = useRef<HTMLDivElement>(null);
+  const [moved, setMoved] = useState<ReadonlyMap<number, string>>(new Map());
+  const keys = rowKeys(keyframes, moved);
+
+  function onMoved(index: number, from: number, to: number) {
+    const key = keys[index];
+    setMoved((m) => {
+      const next = new Map(m);
+      next.delete(from);
+      next.set(to, key);
+      return next;
+    });
+  }
+
+  function remove(index: number, at: number) {
+    const section = group.current?.closest("[data-keyframes]") ?? null;
+    flushSync(() => {
+      send(store, clipId, (clip) => deleteKeyframeOps(clip, prop, at));
+    });
+    focusAfterDelete(section, prop, index);
+  }
+
   return (
-    <div role="group" aria-labelledby={headingId} className="flex flex-col gap-1.5">
+    <div ref={group} role="group" aria-labelledby={headingId} data-prop={prop} className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
         <h3 id={headingId} className={cx(TEXT, "font-medium text-ed-text")}>
           {PROP_LABEL[prop]}
         </h3>
-        <Button variant="ghost" size="sm" data-edit-control disabled={!canEdit} onClick={() => send(store, clipId, (clip) => clearKeyframesOps(clip, prop))}>
+        <Button variant="ghost" size="sm" data-edit-control data-clear disabled={!canEdit} onClick={() => send(store, clipId, (clip) => clearKeyframesOps(clip, prop))}>
           Clear
         </Button>
       </div>
@@ -211,8 +314,17 @@ function PropertyKeyframes({ clipId, prop, keyframes, fps, canEdit }: { clipId: 
         <span className="w-7" />
       </div>
       <div className="flex flex-col gap-2">
-        {keyframes.map((k) => (
-          <KeyframeRow key={k.at} clipId={clipId} prop={prop} keyframe={k} fps={fps} canEdit={canEdit} />
+        {keyframes.map((k, i) => (
+          <KeyframeRow
+            key={keys[i]}
+            clipId={clipId}
+            prop={prop}
+            keyframe={k}
+            fps={fps}
+            canEdit={canEdit}
+            onMoved={(from, to) => onMoved(i, from, to)}
+            onDelete={() => remove(i, k.at)}
+          />
         ))}
       </div>
     </div>
@@ -229,7 +341,7 @@ function KeyframesSection({ clip }: { clip: Clip }) {
       {rows.length === 0 ? (
         <Hint>No keyframes yet. Use the ◆ beside a field in Inspect to add one.</Hint>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div data-keyframes className="flex flex-col gap-4">
           {rows.map((r) => (
             <PropertyKeyframes key={r.prop} clipId={clip.id} prop={r.prop} keyframes={r.keyframes} fps={fps} canEdit={canEdit} />
           ))}
