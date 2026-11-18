@@ -8,8 +8,8 @@ const guided = () => ({ ...sampleDoc(), guides: [{ id: "gd1", axis: "x" as const
 describe("the current tool", () => {
   it("starts as Selection and lists the rail's tools in order", () => {
     expect(makeStore().getState().tool).toBe("select");
-    expect(TOOLS).toEqual(["select", "razor", "text", "guide", "crop"]);
-    expect(TOOLS.filter(toolNeedsEdit)).toEqual(["razor", "text", "guide", "crop"]);
+    expect(TOOLS).toEqual(["select", "razor", "text", "shape", "guide", "crop"]);
+    expect(TOOLS.filter(toolNeedsEdit)).toEqual(["razor", "text", "shape", "guide", "crop"]);
   });
 
   it("changes for an editor", () => {

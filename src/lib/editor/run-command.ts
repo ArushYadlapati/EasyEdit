@@ -1,4 +1,4 @@
-import { docDuration } from "@/lib/timeline";
+import { SHAPE_TOOLS, docDuration } from "@/lib/timeline";
 import {
   copySelection,
   cutSelection,
@@ -74,6 +74,11 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return void state.setTool("razor");
     case "tool-text":
       return void state.setTool("text");
+    case "tool-shape":
+      return void state.setTool("shape");
+    case "tool-shape-next":
+      if (state.setTool("shape")) state.setShapeTool(SHAPE_TOOLS[(SHAPE_TOOLS.indexOf(state.shapeTool) + 1) % SHAPE_TOOLS.length]);
+      return;
     case "tool-guide":
       return void state.setTool("guide");
     case "tool-crop":

@@ -18,6 +18,7 @@ import { clampZoom, fitZoom } from "./geometry";
 import { MESSAGES, explainOpError } from "./messages";
 import { shuttle as nextShuttle } from "./playback";
 import { toolNeedsEdit, type Tool } from "./tools";
+import type { ShapeTool } from "@/lib/timeline/shapes";
 import { foldQueue, sameOps } from "./reconcile";
 import type {
   ActivityEntry,
@@ -75,6 +76,7 @@ export type EditorState = {
   // The text opened for typing starts with all of it selected (new text from the Text tool), else with the caret at the end.
   textEditSelectAll: boolean;
   tool: Tool; // the rail's current tool, this person's own
+  shapeTool: ShapeTool; // the shape the Shape tool draws, this person's own; Rectangle when the editor opens
   // The guide picked on the preview, this person's own. Picking a clip or a track clears it; so does its removal.
   guideId: string | null;
   showGuides: boolean; // this browser's choice, from View as
@@ -118,6 +120,7 @@ export type EditorState = {
   setViewAs(id: string | null): void; // a platform view turns the safe area off
   setName(name: string): void; // only what the editor shows; renameFromEditor saves it
   setCropArmed(clipId: string | null): void;
+  setShapeTool(shape: ShapeTool): void;
   setTool(tool: Tool): boolean; // false: a tool that changes the project, for someone who can't edit
   selectGuide(guideId: string | null): void; // clears the clip and track selection; a guide not there selects nothing
   setShowGuides(on: boolean): void; // hiding them clears the selected guide and leaves the Guide tool
@@ -341,6 +344,7 @@ export function createEditorStore(
       showSafeZones: deps.view?.showSafeZones ?? false,
       showGuides: deps.view?.showGuides ?? true,
       tool: "select",
+      shapeTool: "rect",
       guideId: null,
       boardScale: 1,
       viewAs: null,
@@ -655,6 +659,10 @@ export function createEditorStore(
 
       setCropArmed(clipId) {
         if (clipId !== get().cropArmed) set({ cropArmed: clipId });
+      },
+
+      setShapeTool(shape) {
+        if (shape !== get().shapeTool) set({ shapeTool: shape });
       },
 
       setTool(tool) {

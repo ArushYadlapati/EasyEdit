@@ -70,7 +70,7 @@ it("an editor sees those controls working", () => {
 // exact, so a control that loses data-edit-control (or a new one without it) is noticed.
 const TOP = [
   "button Undo", "button Redo", "button Add title", "button Add subtitle", "button Add body text",
-  "button Razor", "button Text", "button Guide", "button Crop", "button Split", "button Delete", "button Ripple delete",
+  "button Razor", "button Text", "button Shape: Rectangle", "button Guide", "button Crop", "button Split", "button Delete", "button Ripple delete",
 ];
 const TIMELINE = [
   "button Add track",

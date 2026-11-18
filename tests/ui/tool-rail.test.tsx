@@ -21,7 +21,7 @@ describe("the tool rail", () => {
     const bar = screen.getByRole("toolbar", { name: "Tools" });
     expect(bar.getAttribute("aria-orientation")).toBe("vertical");
     const names = [...bar.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
-    expect(names).toEqual(["Selection", "Razor", "Text", "Guide", "Crop", "Split", "Delete", "Ripple delete"]);
+    expect(names).toEqual(["Selection", "Razor", "Text", "Shape: Rectangle", "Guide", "Crop", "Split", "Delete", "Ripple delete"]);
   });
 
   it("a click picks a tool and shows it pressed", () => {
@@ -64,7 +64,7 @@ describe("the tool rail", () => {
   it("a viewer can only use Selection", () => {
     const { button } = show(false);
     expect(button("Selection").disabled).toBe(false);
-    for (const name of ["Razor", "Text", "Guide", "Crop", "Split", "Delete", "Ripple delete"]) expect(button(name).disabled, name).toBe(true);
+    for (const name of ["Razor", "Text", "Shape: Rectangle", "Guide", "Crop", "Split", "Delete", "Ripple delete"]) expect(button(name).disabled, name).toBe(true);
   });
 
   it("keeps a tab stop when the button it was on is disabled", () => {

@@ -40,6 +40,10 @@ import { PEER_MORE, peerLook } from "./peer-look";
 import { usePresenceStore } from "./presence-context";
 import { useCanvasDrag } from "./use-canvas-drag";
 import { useGuideDrag } from "./use-guide-drag";
+import { useShapeDraw } from "./use-shape-draw";
+import { useArrowDrag } from "./use-arrow-drag";
+import type { ArrowGrip } from "@/lib/editor/arrow-drag";
+import { arrowPoint } from "@/lib/timeline/shapes";
 import { useClipMenu } from "./use-clip-menu";
 import { useCommandRunner, useIsMac } from "./use-shortcuts";
 
@@ -103,8 +107,10 @@ const NO_PEER_MARKS: PeerMarks = { peerOutlines: [], peerLabels: [] };
 type Placed = Guide & { id: string; selected: boolean; removing: boolean; label: string };
 // slots: the empty template slots drawn now, each a dashed box (its polygon) and its name at the box's top-left corner.
 type SlotMark = { clipId: string; name: string; points: string; left: number; top: number };
-type Drawn = { outlines: Outline[]; handles: HandleView[]; guides: Guide[]; placed: Placed[]; full: string | null; slots: SlotMark[] } & PeerMarks;
-const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], guides: [], placed: [], full: null, slots: [], ...NO_PEER_MARKS };
+// ends: a selected arrow's handles, at its tail, tip and middle (which bends it), in overlay pixels.
+type EndHandle = { grip: ArrowGrip; clipId: string; left: number; top: number };
+type Drawn = { outlines: Outline[]; handles: HandleView[]; ends: EndHandle[]; guides: Guide[]; placed: Placed[]; full: string | null; slots: SlotMark[] } & PeerMarks;
+const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], ends: [], guides: [], placed: [], full: null, slots: [], ...NO_PEER_MARKS };
 
 // A clamped handle being dragged is drawn at the pointer (client pixels, null until it moves), clamped the same way.
 type Follow = { pointerId: number; grip: Handle; client: Point | null };
@@ -156,6 +162,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const [drawn] = useState(() => createStore<Drawn>(() => NOTHING_DRAWN));
   const outlines = useStore(drawn, (s) => s.outlines);
   const handles = useStore(drawn, (s) => s.handles);
+  const ends = useStore(drawn, (s) => s.ends);
   const guides = useStore(drawn, (s) => s.guides);
   const placed = useStore(drawn, (s) => s.placed);
   const full = useStore(drawn, (s) => s.full);
@@ -163,9 +170,16 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const peerOutlines = useStore(drawn, (s) => s.peerOutlines);
   const peerLabels = useStore(drawn, (s) => s.peerLabels);
   const handlesShown = handles.length > 0;
+  const arrowDrag = useArrowDrag(surface);
   const textEditId = useEditor((s) => s.textEditId);
   const settings = useSettingsStore();
-  const { fonts } = useBrand().kit;
+  const { fonts, colors } = useBrand().kit;
+  // A new shape takes the brand kit's first colour; the drag reads it when it starts.
+  const brandColor = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    brandColor.current = colors[0];
+  }, [colors]);
+  const shapeDraw = useShapeDraw(surface, { seconds: () => settings.getState().textSeconds, color: () => brandColor.current });
   // The tool shows in the cursor: text for Text, a crosshair for Guide. Someone who can't edit keeps Selection.
   const tool = useEditor((s) => (s.canEdit ? s.tool : "select"));
   // A Text tool press waiting for its release, which adds or opens text there if the pointer stayed put.
@@ -192,6 +206,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         next = {
           outlines: outlinesOf(framed, state.selection.clipIds, view, box),
           handles: handlesOf(state, framed, view, box, visible, followed, marks),
+          ends: endsOf(state, framed, view, box, visible),
           guides: guidesOf(drag.guides.getState(), viewDoc(state), view, box),
           placed: state.showGuides ? placedOf(viewDoc(state), state.guideId, guideDrag.removing.getState().guideId, view, box) : [],
           full: cut ? fullOf(cut, view, box) : null,
@@ -203,6 +218,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       const patch: Partial<Drawn> = {};
       if (!sameOutlines(now.outlines, next.outlines)) patch.outlines = next.outlines;
       if (JSON.stringify(now.handles) !== JSON.stringify(next.handles)) patch.handles = next.handles;
+      if (JSON.stringify(now.ends) !== JSON.stringify(next.ends)) patch.ends = next.ends;
       if (JSON.stringify(now.guides) !== JSON.stringify(next.guides)) patch.guides = next.guides;
       if (JSON.stringify(now.placed) !== JSON.stringify(next.placed)) patch.placed = next.placed;
       if (now.full !== next.full) patch.full = next.full;
@@ -313,6 +329,11 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     // A Text press whose release went elsewhere is forgotten, so it never adds text later.
     textPress.current = null;
     if (inTextEditor(e.target)) return;
+    const end = endOf(e.target);
+    if (end && e.button === 0) {
+      arrowDrag.press(e, end.clipId, end.grip);
+      return;
+    }
     const grip = gripOf(e.target);
     if (isMac && e.ctrlKey && !resizes(grip)) return; // a right-click
     ctrlCrop.current = isMac && e.ctrlKey;
@@ -322,6 +343,11 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     const view = surface.view();
     if (!view) return;
     const state = store.getState();
+    // The Shape tool draws wherever it is pressed, over clips and guides alike.
+    if (state.canEdit && state.tool === "shape") {
+      shapeDraw.press(e);
+      return;
+    }
     if (state.canEdit && state.tool === "text") {
       textPress.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       return;
@@ -413,7 +439,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   function onDoubleClick(e: MouseEvent<HTMLDivElement>) {
     if (inTextEditor(e.target)) return;
     const state = store.getState();
-    if (state.canEdit && state.tool === "guide") return;
+    if (state.canEdit && (state.tool === "guide" || state.tool === "shape")) return;
     const view = surface.view();
     if (!view) return;
     const hit = hitAt(state, view, e.clientX, e.clientY, true);
@@ -460,7 +486,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     <div
       ref={ref}
       data-canvas-overlay
-      className={cx("absolute inset-0 touch-none select-none", tool === "text" && "cursor-text", tool === "guide" && "cursor-crosshair")}
+      className={cx("absolute inset-0 touch-none select-none", tool === "text" && "cursor-text", (tool === "guide" || tool === "shape") && "cursor-crosshair")}
       onPointerDown={onPointerDown}
       onPointerEnter={() => setOver(true)}
       onPointerLeave={() => setOver(false)}
@@ -629,6 +655,17 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
           )}
         </div>
       ))}
+      {ends.map((h) => (
+        <div
+          key={h.grip}
+          data-shape-end={h.grip}
+          data-clip-id={h.clipId}
+          className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+          style={{ left: h.left, top: h.top, width: TARGET_PX, height: TARGET_PX, cursor: h.grip === "bend" ? "move" : "crosshair" }}
+        >
+          <span className={cx("rounded-full border border-ed-accent", h.grip === "bend" ? "size-2 bg-ed-accent" : "size-2.5 bg-ed-bg")} />
+        </div>
+      ))}
       {textEditId !== null && <CanvasTextEditor key={textEditId} clipId={textEditId} surface={surface} />}
     </div>
   );
@@ -684,6 +721,27 @@ function gripOf(target: EventTarget): Handle | "rotate" | null {
 
 const inside = (p: Point, box: Box) => p.x >= box.left && p.x <= box.right && p.y >= box.top && p.y <= box.bottom;
 
+// The arrow end handle a press landed on, if any.
+function endOf(target: EventTarget): { grip: ArrowGrip; clipId: string } | null {
+  if (!(target instanceof Element)) return null;
+  const el = target.closest<HTMLElement>("[data-shape-end]");
+  if (!el?.dataset.clipId) return null;
+  return { grip: el.dataset.shapeEnd as ArrowGrip, clipId: el.dataset.clipId };
+}
+
+// A selected arrow's three handles, when it is the one clip selected, can be edited and nothing plays: its tail, its
+// tip and its middle (on the curve), each kept inside the visible pane.
+function endsOf(state: EditorState, items: CanvasItem[], view: View, overlay: { left: number; top: number }, visible: Box | null): EndHandle[] {
+  const ids = state.selection.clipIds;
+  if (ids.length !== 1 || !state.canEdit || state.playing || !visible) return [];
+  const item = items.find((i) => i.clipId === ids[0]);
+  if (!item?.shape || item.shape.shape !== "arrow" || item.locked) return [];
+  const clip = item.shape;
+  const at = (t: number) => clampInto(toOverlay(view, overlay, toWorld(item, arrowPoint(clip, t))), visible, EDGE_PX);
+  const spot = (grip: ArrowGrip, p: Point): EndHandle => ({ grip, clipId: item.clipId, left: px(p.x), top: px(p.y) });
+  return [spot("tail", at(0)), spot("bend", at(0.5)), spot("tip", at(1))];
+}
+
 // The handles of the one selected clip, when it is drawn now, can be edited, is on an unlocked track and nothing
 // plays, in the overlay's pixels; the rotate handle is placed last, clear of the rest. followed: a dragged clamped
 // handle drawn at the pointer. marks: whether a clip's handles show as crop marks.
@@ -700,6 +758,8 @@ function handlesOf(
   if (ids.length !== 1 || !state.canEdit || state.playing || !visible) return [];
   const item = items.find((i) => i.clipId === ids[0]);
   if (!item || item.locked) return [];
+  // An arrow has its own end handles instead.
+  if (item.shape?.shape === "arrow") return [];
   const k = view.k;
   const width = (item.rect.right - item.rect.left) * item.sx * k;
   const height = (item.rect.bottom - item.rect.top) * item.sy * k;
@@ -708,7 +768,7 @@ function handlesOf(
   const rotateOffset = { ns: (push.ns > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k, ew: (push.ew > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k };
   const at = new Map(handlePoints(item, rotateOffset.ns, push).map((p) => [p.grip, toOverlay(view, overlay, p.at)]));
 
-  const look = marks(item.clipId) ? "crop" : "resize";
+  const look = marks(item.clipId) && !item.shape ? "crop" : "resize"; // a shape takes no crop
   const placed: HandleView[] = [];
   const shownAs = (grip: Handle | "rotate", p: Point, clamped: boolean, cursor: string): HandleView => ({
     grip,

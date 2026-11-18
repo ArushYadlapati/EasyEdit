@@ -323,9 +323,9 @@ it("laneMenu on a track's row offers Duplicate track and Remove track; below the
   const store = makeStore();
   const st = () => store.getState();
   const row = laneMenu(st(), true, "v1");
-  expect(ids(row)).toEqual(["paste", "track-duplicate", "track-remove", "add-video", "add-overlay", "add-text", "add-audio"]);
+  expect(ids(row)).toEqual(["paste", "track-duplicate", "track-remove", "add-video", "add-overlay", "add-text", "add-shape", "add-audio"]);
   expect(row.map((e) => e.label)).toEqual([
-    "Paste", "Duplicate track", "Remove track", "Add video track", "Add overlay track", "Add text track", "Add audio track",
+    "Paste", "Duplicate track", "Remove track", "Add video track", "Add overlay track", "Add text track", "Add shapes track", "Add audio track",
   ]);
   expect(row.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["track-duplicate", "add-video"]);
   expect(row.filter((e) => e.danger).map((e) => e.id)).toEqual(["track-remove"]);
@@ -333,7 +333,7 @@ it("laneMenu on a track's row offers Duplicate track and Remove track; below the
   expect(enabled(row)).toEqual(ids(row));
 
   const below = laneMenu(st(), true, null);
-  expect(ids(below)).toEqual(["paste", "add-video", "add-overlay", "add-text", "add-audio"]);
+  expect(ids(below)).toEqual(["paste", "add-video", "add-overlay", "add-text", "add-shape", "add-audio"]);
   expect(below.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["add-video"]);
   // A track that is not there is the same as none.
   expect(ids(laneMenu(st(), true, "gone"))).toEqual(ids(below));
@@ -350,7 +350,7 @@ it("laneMenu leaves out Captions when the project has one, and disables adding i
   const doc = sampleDoc();
   doc.tracks = doc.tracks.filter((t) => t.kind !== "caption");
   const noCaptions = laneMenu(makeStore({ doc }).getState(), true, null);
-  expect(ids(noCaptions)).toEqual(["paste", "add-video", "add-overlay", "add-text", "add-audio", "add-caption"]);
+  expect(ids(noCaptions)).toEqual(["paste", "add-video", "add-overlay", "add-text", "add-shape", "add-audio", "add-caption"]);
   expect(byId(noCaptions, "add-caption").label).toBe("Add captions track");
   expect(enabled(noCaptions)).toEqual(ids(noCaptions));
 
@@ -362,7 +362,7 @@ it("laneMenu leaves out Captions when the project has one, and disables adding i
   expect(enabled(entries)).toEqual(["paste", "track-remove"]);
   // One short of full, they come back.
   full.tracks.pop();
-  expect(enabled(laneMenu(makeStore({ doc: full }).getState(), true, null))).toEqual(["paste", "add-video", "add-overlay", "add-text", "add-audio"]);
+  expect(enabled(laneMenu(makeStore({ doc: full }).getState(), true, null))).toEqual(["paste", "add-video", "add-overlay", "add-text", "add-shape", "add-audio"]);
 });
 
 it("clipMenu and laneMenu grey every editing entry once the project is deleted", () => {

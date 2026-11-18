@@ -26,7 +26,18 @@ export type Grip = Handle | "rotate" | "body";
 export type CanvasDrag = (
   | { type: "move"; clipId: string; grab: Point; from: { x: number; y: number }; frame: Size; box: Box; lines: Lines }
   | { type: "rotate"; clipId: string; grab: Point; center: Point; from: number }
-  | { type: "resize"; clipId: string; handle: Handle; grab: Point; item: CanvasItem; frame: Size; from: { scale: number; stretch: number; crop: Crop }; drawn: Point | null }
+  | {
+      type: "resize";
+      clipId: string;
+      handle: Handle;
+      grab: Point;
+      item: CanvasItem;
+      frame: Size;
+      from: { scale: number; stretch: number; crop: Crop };
+      drawn: Point | null;
+      // A shape's own size: resizing a shape changes it, not its scale, so its outline keeps its thickness.
+      shape?: { width: number; height: number };
+    }
 ) & { keyed?: { clip: Clip; at: number } };
 
 // What of a moved clip snaps, on each axis, as offsets in project pixels from its centre: the sides of the box its kept
@@ -108,6 +119,7 @@ export function beginCanvasDrag(
     frame,
     from: { scale: t.scale, stretch: stretchOf(t), crop: { ...(t.crop ?? NO_CROP) } },
     drawn: drawn ?? null,
+    ...(found.clip.type === "shape" && { shape: { width: found.clip.width, height: found.clip.height } }),
   };
 }
 
@@ -123,14 +135,22 @@ export type CanvasDragResult = { ops: OpInput[]; label: "position change" | "siz
 const NO_GUIDES = { x: null, y: null };
 
 export function resolveCanvasDrag(drag: CanvasDrag, input: CanvasDragInput): CanvasDragResult {
-  const result = drag.type === "move" ? resolveMove(drag, input) : drag.type === "rotate" ? resolveRotate(drag, input) : input.crop ? resolveCrop(drag, input) : resolveResize(drag, input);
+  const shape = drag.type === "resize" && drag.shape !== undefined;
+  const result =
+    drag.type === "move" ? resolveMove(drag, input)
+    : drag.type === "rotate" ? resolveRotate(drag, input)
+    : input.crop && !shape ? resolveCrop(drag, input) // a shape takes no crop
+    : resolveResize(drag, shape ? { ...input, shift: !input.shift } : input); // a shape resizes freely; Shift keeps its shape
   if (!drag.keyed || result.ops.length === 0) return result;
-  // The same change, with each keyframed property keyed at the press's frame instead.
+  // The same change, with each keyframed property keyed at the press's frame instead. A shape's size is not keyframed.
   const op = result.ops[0] as Extract<OpInput, { op: "update_clip" }>;
-  return { ...result, ops: writeTransformOps(drag.keyed.clip, drag.keyed.at, op.patch.transform ?? {}) };
+  const { transform, ...size } = op.patch as { transform?: Record<string, unknown> };
+  const keyed = writeTransformOps(drag.keyed.clip, drag.keyed.at, transform ?? {});
+  return { ...result, ops: Object.keys(size).length ? [...keyed, { op: "update_clip", clipId: drag.clipId, patch: size }] : keyed };
 }
 
 const round4 = (n: number) => Number(n.toFixed(4)) + 0; // + 0 turns −0 into 0
+const round2 = (n: number) => Math.max(1, Number(n.toFixed(2)));
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 const dot = (a: Point, b: Point) => a.x * b.x + a.y * b.y;
 const degrees = (radians: number) => (radians * 180) / Math.PI;
@@ -281,6 +301,16 @@ function resolveResize(drag: Resize, input: CanvasDragInput): CanvasDragResult {
   const ay = ny * A.y;
   const cx = anchor.x - (ax * u.x + ay * v.x);
   const cy = anchor.y - (ax * u.y + ay * v.y);
+  if (drag.shape) {
+    // The drawn factors become the shape's own width and height at its scale, which stays as it was.
+    const s = drag.from.scale;
+    const pos = changedKeys({ x: cx / frame.width, y: cy / frame.height }, { x: item.center.x / frame.width, y: item.center.y / frame.height });
+    const width = round2((kw * nx) / s);
+    const height = drag.shape.height === 0 ? 0 : round2((kh * ny) / s);
+    const size = { ...(width !== drag.shape.width && { width }), ...(height !== drag.shape.height && { height }) };
+    if (!Object.keys(pos).length && !Object.keys(size).length) return { ops: [], label: "size change", guides: NO_GUIDES };
+    return { ops: [{ op: "update_clip", clipId: drag.clipId, patch: { ...(Object.keys(pos).length && { transform: pos }), ...size } }], label: "size change", guides: NO_GUIDES };
+  }
   const next = { x: cx / frame.width, y: cy / frame.height, scale: ny, stretch: nx / ny };
   const from = { x: item.center.x / frame.width, y: item.center.y / frame.height, scale: drag.from.scale, stretch: drag.from.stretch };
   const patch = changedKeys(next, from);

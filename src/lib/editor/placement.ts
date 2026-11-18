@@ -22,10 +22,19 @@ export function nextTrackName(doc: TimelineDoc, kind: TrackKind, taken: string[]
 
 // Where a new track of this kind goes in doc.tracks: right after the last track of its kind, so it
 // sits just in front of its own kind and behind everything that was in front of it. A kind with no
-// track yet goes at the end.
+// track yet goes at the end, except the first shapes track: it goes just behind the lowest text track, so shapes draw
+// over the footage and under text (a filled box can sit behind a title), or with no text track just in front of the
+// top video or overlay track.
 export function newTrackIndex(doc: { tracks: { kind: TrackKind }[] }, kind: TrackKind): number {
   const last = doc.tracks.findLastIndex((t) => t.kind === kind);
-  return last < 0 ? doc.tracks.length : last + 1;
+  if (last >= 0) return last + 1;
+  if (kind === "shape") {
+    const text = doc.tracks.findIndex((t) => t.kind === "text");
+    if (text >= 0) return text;
+    const picture = doc.tracks.findLastIndex((t) => t.kind === "video" || t.kind === "overlay");
+    if (picture >= 0) return picture + 1;
+  }
+  return doc.tracks.length;
 }
 
 export function homeKind(type: Clip["type"]): TrackKind {

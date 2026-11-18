@@ -1,7 +1,8 @@
 import { activeClips, type LocalRect } from "@/lib/render/compositor";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { stretchOf } from "@/lib/timeline/presets";
-import type { TimelineDoc } from "@/lib/timeline";
+import type { ShapeClip, TimelineDoc } from "@/lib/timeline";
+import { arrowPoint, headHalfWidth } from "@/lib/timeline/shapes";
 import type { Point, Size } from "./board";
 import { clipRects, type Sizer } from "./clip-box";
 
@@ -15,6 +16,7 @@ export type CanvasItem = {
   trackId: string;
   type: "video" | "image" | "text" | "placeholder" | "shape";
   slot?: string; // an empty slot's name
+  shape?: ShapeClip; // a shape's clip, which picking and an arrow's end handles read
   locked: boolean;
   opacity: number;
   center: Point;
@@ -39,6 +41,7 @@ export function canvasItems(doc: TimelineDoc, frame: number, sizer: Sizer): Canv
       trackId: track.id,
       type: clip.type,
       ...(clip.type === "placeholder" && { slot: clip.slot.name }),
+      ...(clip.type === "shape" && { shape: clip }),
       locked: track.locked,
       opacity: t.opacity,
       center: { x: t.x * doc.width, y: t.y * doc.height },
@@ -91,9 +94,44 @@ export function hitTest(items: CanvasItem[], p: Point, slop = 0, opts: HitOption
     const gx = slop / item.sx;
     const gy = slop / item.sy;
     const { left, top, right, bottom } = item.rect;
-    if (local.x >= left - gx && local.x <= right + gx && local.y >= top - gy && local.y <= bottom + gy) return item;
+    if (local.x < left - gx || local.x > right + gx || local.y < top - gy || local.y > bottom + gy) continue;
+    // A selected shape takes its whole box, so it can be dragged from anywhere in it.
+    if (item.shape && !keep.includes(item.clipId) && !onShape(item.shape, local, gx)) continue;
+    return item;
   }
   return null;
+}
+
+// Whether a point in a shape's own units lands on what it draws, within slop: an arrow's line or heads, a filled box or
+// ellipse anywhere inside, an outline-only one only on its outline, so a box drawn round something leaves its middle to
+// whatever is under it.
+export function onShape(clip: ShapeClip, p: Point, slop: number): boolean {
+  if (clip.shape === "arrow") {
+    const reach = Math.max(clip.strokeWidth / 2, headHalfWidth(clip)) + slop;
+    // The curve as 32 straight pieces, each checked by its nearest point.
+    const STEPS = 32;
+    let prev = arrowPoint(clip, 0);
+    for (let i = 1; i <= STEPS; i++) {
+      const next = arrowPoint(clip, i / STEPS);
+      const dx = next.x - prev.x;
+      const dy = next.y - prev.y;
+      const t = Math.max(0, Math.min(1, ((p.x - prev.x) * dx + (p.y - prev.y) * dy) / (dx * dx + dy * dy || 1)));
+      if (Math.hypot(prev.x + t * dx - p.x, prev.y + t * dy - p.y) <= reach) return true;
+      prev = next;
+    }
+    return false;
+  }
+  const a = clip.width / 2;
+  const b = clip.height / 2;
+  const band = (clip.stroke ? clip.strokeWidth / 2 : 0) + slop;
+  if (clip.shape === "ellipse") {
+    const r = Math.hypot(p.x / a, p.y / b);
+    if (clip.fill) return r <= 1 + band / Math.min(a, b);
+    return Math.abs(r - 1) * Math.min(a, b) <= band;
+  }
+  const outside = Math.max(Math.abs(p.x) - a, Math.abs(p.y) - b);
+  if (clip.fill) return outside <= band;
+  return Math.abs(outside) <= band;
 }
 
 // The kept box's corners in project pixels: nw, ne, se, sw.

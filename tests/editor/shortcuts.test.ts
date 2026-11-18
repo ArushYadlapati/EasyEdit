@@ -65,7 +65,7 @@ describe("matching keys", () => {
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
       "cut", "delete", "duplicate", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "ripple-delete", "split",
-      "tool-crop", "tool-guide", "tool-razor", "tool-text", "undo",
+      "tool-crop", "tool-guide", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo",
     ]);
   });
 
@@ -98,6 +98,8 @@ describe("matching keys", () => {
       ["tool-select", "V A", "Selection tool"],
       ["tool-razor", "C", "Razor: click a clip to cut it"],
       ["tool-text", "T", "Text: click the preview to add text"],
+      ["tool-shape", "U", "Shape: drag on the preview to draw one"],
+      ["tool-shape-next", "Shift+U", "Next shape: rectangle, ellipse, line, arrow"],
       ["tool-guide", "G", "Guide: drag on the preview to add a guide"],
       ["tool-crop", "R", "Crop tool"],
       ["play-pause", "Space", "Play or pause"],
@@ -145,7 +147,7 @@ describe("matching keys", () => {
 
   it("lists the commands in the table's order, with their groups", () => {
     expect(SHORTCUTS.map((s) => `${s.group}:${s.command}`)).toEqual([
-      "Tools:tool-select", "Tools:tool-razor", "Tools:tool-text", "Tools:tool-guide", "Tools:tool-crop",
+      "Tools:tool-select", "Tools:tool-razor", "Tools:tool-text", "Tools:tool-shape", "Tools:tool-shape-next", "Tools:tool-guide", "Tools:tool-crop",
       "Playback:play-pause", "Playback:play-forward", "Playback:pause", "Playback:play-reverse",
       "Playback:frame-back", "Playback:frame-forward", "Playback:second-back", "Playback:second-forward",
       "Playback:prev-edge", "Playback:next-edge", "Playback:go-start", "Playback:go-end",
