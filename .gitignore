@@ -43,3 +43,6 @@ next-env.d.ts
 
 # drive check output
 /scripts/drive-check/out/
+
+# speech runtime, copied from onnxruntime-web by scripts/copy-ort.mjs
+/public/ort/
