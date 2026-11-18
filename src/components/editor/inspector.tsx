@@ -37,11 +37,10 @@ import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { docDuration, isCropped, type Clip, type KeyframeProp, type Track } from "@/lib/timeline";
 import { FONT_LIST, isListedFont } from "@/lib/brand/fonts";
-import { AnimationSection, TransitionsSection } from "./effects-section";
 import { useBrand } from "./brand/brand-context";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FormatFields } from "./format-select";
-import { KenBurnsButton, KeyframeButton, KeyframeSteps } from "./keyframe-button";
+import { KeyframeButton, KeyframeSteps } from "./keyframe-button";
 import { useLibrary, useMedia } from "./media/media-context";
 import { SlotSection } from "./slot-section";
 import { useTextMeasure } from "./text-measure";
@@ -398,7 +397,7 @@ function Keyed({ clipId, prop, children }: { clipId: string; prop: KeyframeProp;
 // X and Y place the clip's centre, and Width and Height give its drawn size, in the unit chosen in Settings. An arrow
 // moves them a pixel, or a tenth of a centimetre or inch. The fields show the clip at the playhead; a keyframed one is
 // changed by keying it there.
-function PositionSection({ clipId, image }: { clipId: string; image: boolean }) {
+function PositionSection({ clipId }: { clipId: string }) {
   const settings = useSettingsStore();
   const units = useSettings((s) => s.units);
   const lockAspect = useSettings((s) => s.lockAspect);
@@ -438,11 +437,6 @@ function PositionSection({ clipId, image }: { clipId: string; image: boolean }) 
           <NumberField clipId={clipId} field="opacity" label="Opacity" suffix="%" min={0} max={100} />
         </Keyed>
       </div>
-      {image && (
-        <div className="flex flex-col items-start">
-          <KenBurnsButton clipId={clipId} />
-        </div>
-      )}
     </Section>
   );
 }
@@ -522,11 +516,8 @@ function ClipInspector({ clip }: { clip: Clip }) {
           <MediaSection assetId={clip.assetId} kind={clip.type} />
         </>
       )}
-      {drawsOnCanvas && <PositionSection clipId={clip.id} image={clip.type === "image"} />}
+      {drawsOnCanvas && <PositionSection clipId={clip.id} />}
       {drawsOnCanvas && clip.type !== "placeholder" && <CropSection clipId={clip.id} />}
-      {/* A visual slot carries its transitions over to the clip that fills it. */}
-      {(clip.type === "video" || clip.type === "image" || (clip.type === "placeholder" && drawsOnCanvas)) && <TransitionsSection clip={clip} />}
-      {clip.type === "text" && <AnimationSection clip={clip} />}
       <TimingSection clipId={clip.id} />
       <SlotSection clip={clip} />
     </>

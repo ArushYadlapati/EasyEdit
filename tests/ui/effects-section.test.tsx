@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
+// Transitions and Animation, in the Effects tab.
 import { expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
-import { Inspector } from "@/components/editor/inspector";
+import { EffectsPanel } from "@/components/editor/effects-panel";
 import { findClip, viewDoc } from "@/lib/editor/store";
 import { fireEvent, render, screen } from "../helpers/dom";
 import { makeStore } from "../editor/fixtures";
@@ -9,7 +10,7 @@ import { makeStore } from "../editor/fixtures";
 function open(id: string, canEdit = true) {
   const store = makeStore({ canEdit });
   store.getState().select([id]);
-  render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+  render(<EditorProvider store={store}><EffectsPanel /></EditorProvider>);
   return store;
 }
 

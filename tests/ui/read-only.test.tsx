@@ -88,7 +88,6 @@ const STATES: [string, (store: EditorStore) => void, string[]][] = [
       "input X", "button Add X keyframe", "input Y", "button Add Y keyframe", "input Width", "button Lock aspect ratio", "input Height",
       "input Scale", "button Add Scale keyframe", "input Rotation", "button Add Rotation keyframe", "input Opacity", "button Add Opacity keyframe",
       "input Crop left", "input Crop top", "input Crop right", "input Crop bottom", "button Reset crop",
-      "select Animation in", "select Animation out", "select Emphasis",
       "input Start", "input Length", "button Make this a slot",
     ],
   ],
