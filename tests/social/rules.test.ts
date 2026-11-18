@@ -62,6 +62,7 @@ describe("messages", () => {
   it("a connect that could not name its space is told on the space's dashboard", () => {
     expect(dashboardChannelNote("refused")).toEqual({ text: "That link to connect a YouTube channel didn't work. Start again from the space's settings, under Socials.", problem: true });
     expect(dashboardChannelNote(["failed", "x"])?.problem).toBe(true);
+    expect(dashboardChannelNote("not-configured")?.text).toBe("Posting to YouTube isn't set up on this server.");
     expect(dashboardChannelNote("connected")).toBeNull();
     expect(dashboardChannelNote(undefined)).toBeNull();
   });

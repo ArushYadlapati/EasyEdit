@@ -90,7 +90,7 @@ describe("connect", () => {
   it("never goes to Google on a server that isn't set up", async () => {
     const { start } = await setup({ config: null });
     const { res, line } = await start();
-    expect(res.headers.get("location")).toBe("/s/seattle-solvers/settings/socials?youtube=not-configured");
+    expect(res.headers.get("location")).toBe("/dashboard?youtube=not-configured");
     expect(line).toBe("");
   });
 });

@@ -69,6 +69,7 @@ export function refusalMessage(failure: { call: string; reason: string; status: 
 const DASHBOARD_NOTES: Record<string, { text: string; problem: boolean }> = {
   refused: { text: "That link to connect a YouTube channel didn't work. Start again from the space's settings, under Socials.", problem: true },
   failed: { text: "Connecting the YouTube channel didn't work. Try again from the space's settings, under Socials.", problem: true },
+  "not-configured": { text: "Posting to YouTube isn't set up on this server.", problem: true },
 };
 export function dashboardChannelNote(value: string | string[] | null | undefined): { text: string; problem: boolean } | null {
   const first = Array.isArray(value) ? value[0] : value;

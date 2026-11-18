@@ -38,7 +38,7 @@ type Started = z.infer<typeof startedShape>;
 
 // Both routes are reached by the browser navigating, so every answer is a redirect to a page, never JSON. Whatever
 // can't be trusted to name a space lands on one fixed page.
-const PAGES = { refused: "/dashboard?youtube=refused", failed: "/dashboard?youtube=failed" };
+const PAGES = { refused: "/dashboard?youtube=refused", failed: "/dashboard?youtube=failed", notSetUp: "/dashboard?youtube=not-configured" };
 
 export const socialsPage = (space: MySpace, note?: ConnectNote) => `/s/${slugFor(space)}/settings/socials${note ? `?youtube=${note}` : ""}`;
 
@@ -77,8 +77,9 @@ export function makeSocialConnectHandlers(deps: SocialConnectDeps): { connect(re
     if (req.headers.get("sec-fetch-site") === "cross-site") return goTo(cfg, PAGES.refused);
     const space = await adminSpace(user.id, new URL(req.url).searchParams.get("space") || null);
     if (!space) return goTo(cfg, PAGES.refused);
-    // A typed or kept link too: nobody is sent to Google for a connect this server can't finish.
-    if (!cfg) return goTo(cfg, socialsPage(space, "not-configured"));
+    // A typed or kept link too: nobody is sent to Google for a connect this server can't finish. The Socials page
+    // doesn't exist on such a server, so it is told on the space's dashboard.
+    if (!cfg) return goTo(cfg, PAGES.notSetUp);
 
     const state = randomBytes(32).toString("base64url");
     const { verifier, challenge } = pkcePair();
