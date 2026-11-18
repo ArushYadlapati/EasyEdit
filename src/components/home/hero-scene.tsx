@@ -11,6 +11,8 @@ import { platformViewsFor, type PlatformView } from "@/lib/editor/platform-views
 // ("for AI agents"), a teammate's selection ("for teams"), a project going vertical for Reels ("for creators"),
 // an export finishing ("in your browser"). The moments inside a scene are CSS animations that restart because each
 // scene's overlay is keyed by the scene, so the only timer is the one that changes scenes.
+// With reduced motion asked for there is no timer: the hero keeps the scene it shows (the first, for anyone who
+// arrives that way) on its poster, and home.css shows each of that scene's moments as it ends.
 // The footage is from Pexels (free to use, no credit required).
 
 type Scene = { key: string; ms: number; phrase: string; line: string; video: string; poster: string };
@@ -83,25 +85,28 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
   // length of the crossfade, so nothing snaps back while it goes.
   const [leaving, setLeaving] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
-  const [still, setStill] = useState(false);
+  // Whether reduced motion is asked for; null until the page has asked the browser, so the timer and the clips wait
+  // for the answer instead of starting and then stopping at once.
+  const [still, setStill] = useState<boolean | null>(null);
   const videos = useRef<(HTMLVideoElement | null)[]>([]);
 
   useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setStill(query.matches);
+    const query = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+    const update = () => setStill(query?.matches ?? false);
     update();
+    if (!query) return;
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
 
+  // Turning reduced motion on while the page is open stops the hero on the scene it shows; a crossfade already under
+  // way still finishes, through the leaving timer below.
   useEffect(() => {
-    if (paused) return;
-    const ms = SCENES[active].ms;
+    if (paused || still !== false) return;
     const t = window.setTimeout(() => {
       setLeaving(active);
       setActive((active + 1) % SCENES.length);
-    }, still ? ms * 2 : ms);
+    }, SCENES[active].ms);
     return () => window.clearTimeout(t);
   }, [active, paused, still]);
 
@@ -112,6 +117,7 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
   }, [leaving]);
 
   useEffect(() => {
+    if (still === null) return;
     videos.current.forEach((video, i) => {
       if (!video) return;
       if (i === active && !paused && !still) {
@@ -372,7 +378,8 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
         {closedBeta && <p className="h-heroNote">EasyEdit is in closed beta. Sign-in is by invitation only for now.</p>}
       </div>
 
-      {/* Its words say what a press does, so, like the agent logos' button, it is not also marked pressed. */}
+      {/* Its words say what a press does, so, like the agent logos' button, it is not also marked pressed. With reduced
+          motion nothing changes by itself, so there is no button (home.css hides it before the script has run too). */}
       {!still && (
         <button type="button" className="h-pause h-heroPause" onClick={() => setPaused((p) => !p)}>
           {paused ? "Play" : "Pause"}

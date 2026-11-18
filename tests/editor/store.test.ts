@@ -386,3 +386,44 @@ describe("selection and playhead", () => {
     expect(st().textEditId).toBeNull();
   });
 });
+
+describe("the notice to sign in again", () => {
+  function signedOut() {
+    const { st } = fresh();
+    st().setStatus("signed-out");
+    st().notify("error", MESSAGES.signedOut);
+    return st;
+  }
+
+  it("stays while the status is signed out, and goes once it is anything else", () => {
+    for (const next of ["saved", "saving", "offline", "limited", "deleted"] as const) {
+      const st = signedOut();
+      st().setStatus("signed-out"); // refused again
+      expect(st().notice).toMatchObject({ text: MESSAGES.signedOut });
+      st().setStatus(next, "Today's limit is used up.");
+      expect(st().notice).toBeNull();
+    }
+  });
+
+  it("goes when the project turns out to have moved", () => {
+    const st = signedOut();
+    st().markMoved(true);
+    expect(st()).toMatchObject({ moved: true, notice: null });
+  });
+
+  it("leaves any other notice alone", () => {
+    const st = signedOut();
+    st().notify("error", MESSAGES.clipGone);
+    st().setStatus("saved");
+    expect(st().notice).toMatchObject({ tone: "error", text: MESSAGES.clipGone });
+    st().setStatus("signed-out");
+    st().notify("info", MESSAGES.signedOut); // the same words, not the error
+    st().setStatus("saved");
+    expect(st().notice).toMatchObject({ tone: "info", text: MESSAGES.signedOut });
+    st().notify("error", MESSAGES.signedOut);
+    st().setStatus("offline"); // not from signed out
+    expect(st().notice).toMatchObject({ tone: "error", text: MESSAGES.signedOut });
+    st().markMoved();
+    expect(st().notice).toBeNull();
+  });
+});

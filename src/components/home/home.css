@@ -332,7 +332,9 @@
 @keyframes h-toSky {
   to {
     left: 5%;
-    top: 10%;
+    /* On a small frame 10% would put the handles, which reach 10 px above the title, past the frame's top edge; the
+       second value keeps them 4 px inside (half the title's height is 0.675em + 4 px). */
+    top: max(10%, calc(0.675em + 18px));
     transform: translate(0, -50%); /* anchored by its left edge, so the box and tag never leave the frame */
   }
 }
@@ -350,7 +352,8 @@
 /* Leo lifts the title up the dark sky, clear of the page's headline. */
 @keyframes h-lift {
   to {
-    top: 23%;
+    /* Likewise, on a small frame Leo's name tag, 28 px above the title, stays 4 px inside. */
+    top: max(23%, calc(0.675em + 36px));
   }
 }
 .h-edPeerTitle > .h-edFontA,
@@ -1733,9 +1736,12 @@
   flex-direction: column;
   gap: 20px;
 }
+/* The frame sizes itself against its box's height (container units), so that box must have a definite height: a grid
+   row gives it one. As a flex-1 item in a column with only a min-height, it was drawn 0 px wide in Chrome and Edge.
+   The min-height still lets the panel grow with the fields beside it. */
 .h-npPreview {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px;
   min-height: 340px;
   padding: 24px;
@@ -1835,11 +1841,27 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Nothing moves, and each moment shows how it ends: every one-off animation lands on its last frame at once instead
+     of being removed. Many of the hero's pieces are pairs in one spot, where one fades out as the other fades in
+     ("Claude is editing…" and "Saved", the title's two fonts, View as: Off and YouTube Shorts, Rendering and ready);
+     without their animations both halves would show on top of each other. The parts that rise in as they scroll
+     into view run on the clock instead of the scroll, so they are simply there. */
   .h-page *,
   .h-page *::before,
   .h-page *::after {
-    animation: none !important;
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    animation-fill-mode: both !important;
+    animation-timeline: auto !important;
     transition-duration: 1ms !important;
+  }
+  /* A loop has no last frame to land on, so the loops stay off: the agent logos and the dots that pulse beside
+     "is editing…". */
+  .h-page .h-marqueeTrack,
+  .h-page .h-edDot,
+  .h-page .h-uiDot {
+    animation: none !important;
   }
   .h-marqueeTrack {
     flex-wrap: wrap;
@@ -1849,6 +1871,7 @@
     display: none;
   }
   /* Nothing moves, so there is nothing to pause. */
+  .h-heroPause,
   .h-marqueePause {
     display: none;
   }

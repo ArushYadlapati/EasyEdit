@@ -206,6 +206,12 @@ function refusalMessage(kind: EditKind, code: OpErrorCode): string {
   return explainOpError(code);
 }
 
+// Takes away the notice that asks the person to sign in again, when it is still the one showing. An error notice stays
+// until it is dismissed or replaced, so this one has to go once it is no longer true.
+function withoutSignedOutNotice(notice: Notice | null): { notice?: null } {
+  return notice?.tone === "error" && notice.text === MESSAGES.signedOut ? { notice: null } : {};
+}
+
 // A request id names the edit exactly, so an entry from my other tab with the same ops is not
 // taken for this tab's edit. Entries without one are matched on who made them and what they do.
 function isOwnHead(entry: ActivityEntry, head: PendingEdit | undefined, meId: string): boolean {
@@ -588,7 +594,11 @@ export function createEditorStore(
       },
 
       setStatus(status, limitMessage) {
-        set({ status, limitMessage: status === "limited" ? (limitMessage ?? null) : null });
+        // Out of "signed-out", a request got past the sign-in check or failed for another reason, so the notice that
+        // asks the person to sign in goes and doesn't sit under a top bar saying Saved. If they are still signed out,
+        // the next refusal says so again.
+        const leftSignedOut = get().status === "signed-out" && status !== "signed-out";
+        set({ status, limitMessage: status === "limited" ? (limitMessage ?? null) : null, ...(leftSignedOut && withoutSignedOutNotice(get().notice)) });
       },
 
       revokeEditing() {
@@ -609,7 +619,11 @@ export function createEditorStore(
 
       markMoved(elsewhere = false) {
         if (get().moved) return;
-        set({ moved: true, movedElsewhere: elsewhere, canEdit: false, gesture: null, cropArmed: null, textEditId: null, tool: "select", guideId: null });
+        // A notice asking the person to sign in to save goes too: nothing more is saved here, and the banner says why.
+        set({
+          moved: true, movedElsewhere: elsewhere, canEdit: false, gesture: null, cropArmed: null, textEditId: null, tool: "select", guideId: null,
+          ...withoutSignedOutNotice(get().notice),
+        });
       },
 
       play() {

@@ -74,7 +74,7 @@ export function NewProjectForm() {
           )}
         </div>
         <div className="h-npPreview">
-          <BlankFrame width={shown.width} height={shown.height} className="min-h-0 flex-1">
+          <BlankFrame width={shown.width} height={shown.height} className="min-h-0">
             <span className="h-npName" style={{ aspectRatio: `${shown.width} / ${shown.height}` }}>
               {name.trim() || "Untitled project"}
             </span>

@@ -35,7 +35,7 @@ it("a moved project's banner looks like the notice bar, with no stripe down its 
   const message = screen.getByText(MOVE_MESSAGES.moved);
   expect(message.getAttribute("role")).toBe("alert");
   const banner = message.parentElement!;
-  const notice = screen.getByText("Saved.").parentElement!;
+  const notice = screen.getByText("Saved.").closest("[role=status]")!.parentElement!;
   expect(look(banner)).toEqual(look(notice));
   expect(classes(banner)).toEqual(expect.arrayContaining(["rounded-md", "border", "border-ed-line", "bg-ed-raised", "text-[13px]", "leading-5"]));
   for (const frame of [banner, notice]) expect(classes(frame).filter((c) => c.startsWith("border-l"))).toEqual([]);

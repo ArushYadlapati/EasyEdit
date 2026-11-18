@@ -212,6 +212,19 @@ describe("home page new project form", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
     expect(push).toHaveBeenCalledWith("/login");
   });
+
+  it("puts the preview's frame in a box with a definite height", () => {
+    // The frame's width comes from its box's height through container units. As a flex-1 item in a column with only a
+    // min-height, that box had no definite height and Chrome drew the frame 0 px wide; the first grid row gives it one.
+    const css = readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8");
+    const preview = /^\.h-npPreview \{([^}]*)\}/m.exec(css)?.[1] ?? "";
+    expect(preview).toContain("display: grid;");
+    expect(preview).toContain("grid-template-rows: minmax(0, 1fr) auto;");
+    const { container } = render(<NewProjectForm />);
+    const [box, caption] = [...(container.querySelector(".h-npPreview")?.children ?? [])];
+    expect(box.querySelector("[data-blank-frame]")).toBeTruthy();
+    expect(caption.textContent).toBe("1080 × 1920 px · 30 fps");
+  });
 });
 
 describe("home page agent demo", () => {

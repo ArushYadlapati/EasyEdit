@@ -361,12 +361,13 @@ describe("stopping", () => {
     st().edit(move(150), "move");
     await after(60_000);
     expect(server.calls).toEqual(["post"]);
+    expect(st().notice).toBe(notice);
     show(true); // signed in again in another tab, then back to this one
     await settle();
     expect(server.calls).toEqual(["post", "ops", "post", "post"]);
     expect(st()).toMatchObject({ status: "saved", queue: [] });
     expect(server.log.map((e) => (e.ops[0] as { start: number }).start)).toEqual([120, 150]);
-    expect(st().notice).toBe(notice);
+    expect(st().notice).toBeNull(); // no longer true, so it goes with the status
   });
 
   it("signed out: a 401 while trying again halts again without a second notice; retryNow tries once more", async () => {
@@ -384,7 +385,26 @@ describe("stopping", () => {
     sync.retryNow(); // the network came back, or anything else that asks for a retry
     await settle();
     expect(server.calls).toEqual(["post", "ops", "ops", "post"]);
-    expect(st()).toMatchObject({ status: "saved", queue: [], notice });
+    expect(st()).toMatchObject({ status: "saved", queue: [], notice: null });
+  });
+
+  it("signed out, then offline while trying again: the notice goes with the status, and a later 401 says so again", async () => {
+    const { server, show, st } = setup();
+    server.fail("signed-out");
+    st().edit(move(120), "move");
+    await settle();
+    const notice = st().notice;
+    expect(notice).toMatchObject({ tone: "error", text: MESSAGES.signedOut });
+    server.fail("network");
+    server.fail("signed-out");
+    show(true);
+    await settle();
+    expect(st()).toMatchObject({ status: "offline", notice: null });
+    await after(60_000); // the retry is refused: still signed out
+    expect(st().status).toBe("signed-out");
+    expect(st().notice).toMatchObject({ tone: "error", text: MESSAGES.signedOut });
+    expect(st().notice).not.toBe(notice);
+    expect(st().queue).toHaveLength(1);
   });
 
   it("signed out with nothing queued: showing the tab checks the version and the status returns", async () => {

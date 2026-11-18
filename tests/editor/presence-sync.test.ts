@@ -261,6 +261,7 @@ describe("failures", () => {
     await settle();
     expect(out.fake.count()).toBe(3);
     expect(out.st().status).toBe("saved");
+    expect(out.st().notice).toBeNull(); // the notice to sign in goes with the status
     expect(out.list().peers).toHaveLength(1);
   });
 

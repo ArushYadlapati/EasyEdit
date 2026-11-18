@@ -268,7 +268,10 @@ describe("the editor against the real server", () => {
     ada.st().edit(moveX2(200), "move");
     await until(() => ada.st().status === "signed-out");
     expect(ada.st().notice?.text).toBe(MESSAGES.signedOut);
-    const notice = ada.st().notice;
+    const told = new Set([ada.st().notice!.id]);
+    const unsubscribe = ada.store.subscribe((s) => {
+      if (s.notice?.text === MESSAGES.signedOut) told.add(s.notice.id);
+    });
     ada.st().edit(moveX2(210), "move"); // editing goes on
     // Coming back to the tab while still signed out asks the server again and is refused again.
     const before = denied;
@@ -282,8 +285,10 @@ describe("the editor against the real server", () => {
       ada.sync.visibilityChanged();
       return false;
     });
-    // The same notice object: the second refusal showed no second notice.
-    expect(ada.st()).toMatchObject({ status: "saved", notice, server: { version: 3 } });
+    unsubscribe();
+    // One notice: the second refusal showed no second one. It went once saving worked again.
+    expect(told.size).toBe(1);
+    expect(ada.st()).toMatchObject({ status: "saved", notice: null, server: { version: 3 } });
     expect(findClip((await stored()).doc, "x2")!.clip.start).toBe(210);
   });
 
