@@ -3,7 +3,7 @@ import Link from "next/link";
 import { SITE_METADATA, SITE_VIEWPORT, SitePage } from "@/components/site/site-page";
 import { LEGAL_ARTICLE, LEGAL_H2, LEGAL_MAIN, LEGAL_TITLE } from "@/app/legal";
 
-export const metadata: Metadata = { ...SITE_METADATA, title: "Terms - EasyEdit" };
+export const metadata: Metadata = { ...SITE_METADATA, title: "Terms · EasyEdit" };
 export const viewport: Viewport = SITE_VIEWPORT;
 
 const LIST = "flex list-disc flex-col gap-2 pl-5";
@@ -14,7 +14,7 @@ export default function TermsPage() {
       <main className={LEGAL_MAIN}>
         <article className={LEGAL_ARTICLE}>
           <h1 className={LEGAL_TITLE}>Terms of service</h1>
-          <p className="text-sm text-foreground/70">Last updated November 17, 2026.</p>
+          <p className="text-sm text-(--h-muted)">Last updated November 17, 2026.</p>
           <p>These are the rules for using EasyEdit. By signing in, you agree to them. If you don&apos;t agree, don&apos;t use EasyEdit.</p>
 
           <h2 className={LEGAL_H2}>Who can use EasyEdit</h2>

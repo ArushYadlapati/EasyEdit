@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
-import LoginPage from "@/app/(auth)/login/page";
+import LoginPage, { metadata as loginMetadata } from "@/app/(auth)/login/page";
 import { PasskeySignInButton } from "@/app/(auth)/login/passkey-sign-in-button";
+import { cssRules } from "../helpers/css-rules";
 import { act, fireEvent, render, screen, waitFor } from "../helpers/dom";
 
 type SignInResult = {
@@ -135,6 +138,25 @@ describe("the login page with sign-up open", () => {
     const page: Page = LoginPage;
     render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({ error: "NOT_ALLOWLISTED" }) }));
     expect(screen.getByRole("alert").textContent).toBe("Google hasn't verified that email address, so EasyEdit can't use it to sign in.");
+  });
+
+  it("names its tab as the site's other pages do", () => {
+    expect(loginMetadata.title).toBe("Sign in · EasyEdit");
+  });
+
+  it("sets an error in the site's body size, like the rest of the page's words, Google's and the passkey's alike", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    passkey.mockResolvedValueOnce({ data: null, error: { code: "PASSKEY_NOT_FOUND", status: 404, statusText: "NOT_FOUND" } });
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({ error: "NOT_ALLOWLISTED" }) }));
+    fireEvent.click(button());
+    await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2));
+    // Both errors sit in the page's column, where site.css sets them at 17 px instead of the shared class's 16 px.
+    for (const alert of screen.getAllByRole("alert")) expect(alert.closest(".h-plainColumn")).not.toBeNull();
+    const css = readFileSync(join(process.cwd(), "src/components/site/site.css"), "utf8");
+    const rule = cssRules(css).find((r) => r.media === null && r.selectors.includes('.h-plainColumn [role="alert"]'));
+    expect(rule?.decls.get("font-size")).toBe("17px");
+    expect(cssRules(css).find((r) => r.selectors.includes(".h-site"))?.decls.get("font-size")).toBe("17px");
   });
 
   it("the passkey button is told the same", async () => {

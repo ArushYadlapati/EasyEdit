@@ -211,6 +211,11 @@
 .h-plainInk {
   color: var(--h-text);
 }
+/* An error here (PLAIN_ERROR: its words in the danger colour) is at the site's body size, like the rest of the site's
+   words, rather than the 16 px it has on the pages outside the site that share the class (consent, an invite). */
+.h-plainColumn [role="alert"] {
+  font-size: 17px;
+}
 .h-plainActions {
   display: flex;
   flex-wrap: wrap;

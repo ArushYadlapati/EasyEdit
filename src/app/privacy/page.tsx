@@ -3,7 +3,7 @@ import Link from "next/link";
 import { SITE_METADATA, SITE_VIEWPORT, SitePage } from "@/components/site/site-page";
 import { LEGAL_ARTICLE, LEGAL_H2, LEGAL_MAIN, LEGAL_TITLE } from "@/app/legal";
 
-export const metadata: Metadata = { ...SITE_METADATA, title: "Privacy - EasyEdit" };
+export const metadata: Metadata = { ...SITE_METADATA, title: "Privacy · EasyEdit" };
 export const viewport: Viewport = SITE_VIEWPORT;
 
 export default function PrivacyPage() {

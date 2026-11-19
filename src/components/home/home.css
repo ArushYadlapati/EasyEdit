@@ -924,7 +924,7 @@
 .h-h2 {
   font-size: var(--h-h2);
   font-weight: 600;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.04em;
   line-height: 1;
   text-wrap: balance;
 }
@@ -2457,7 +2457,6 @@ html:has(.h-dock[data-shown]) {
      at h2 here, and its list a size under it at the lead size: two heading lines, then four short sentences. */
   .h-freeTitle {
     font-size: var(--h-h2);
-    letter-spacing: -0.045em;
   }
   .h-facts {
     gap: 0.8em;

@@ -79,7 +79,7 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
             Built for teams.
           </h2>
           <p className="h-lead">
-            Everyone edits the same project at the same time. Each person&apos;s selection shows in their colour with
+            Everyone edits the same project at the same time. Each person&apos;s selection shows in their color with
             their name on it, and anyone can undo any change, a teammate&apos;s too. Nobody waits for a file.
           </p>
           <TeamScene />
@@ -93,7 +93,7 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
             </div>
             <div>
               <h3>One brand kit</h3>
-              <p>Set the team&apos;s fonts, colours and logos once. New titles start in the team&apos;s fonts.</p>
+              <p>Set the team&apos;s fonts, colors and logos once. New titles start in the team&apos;s fonts.</p>
               <KitRow />
             </div>
           </div>

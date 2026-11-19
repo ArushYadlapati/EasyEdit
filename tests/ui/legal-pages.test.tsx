@@ -37,6 +37,10 @@ describe.each([
     expect(viewport.colorScheme).toBe("dark");
   });
 
+  it("names its tab the way the site's other pages do (Sign in · EasyEdit, Page not found · EasyEdit)", () => {
+    expect(metadata.title).toBe(`${title === "Privacy" ? "Privacy" : "Terms"} · EasyEdit`);
+  });
+
   it("sets its 16 px text in a column about 65 characters wide, in the middle of the window", () => {
     const { container } = render(<Page />);
     const article = container.querySelector("article")!;
@@ -55,6 +59,12 @@ describe.each([
     expect(classes(article)).toContain("gap-5");
     for (const heading of headings) expect(classes(heading)).toEqual(expect.arrayContaining(["mt-7", "-mb-2", "text-2xl"]));
   });
+});
+
+it("sets the terms' date line small, in the site's own muted grey", () => {
+  render(<TermsPage />);
+  const line = screen.getByText(/^Last updated /);
+  expect(classes(line)).toEqual(["text-sm", "text-(--h-muted)"]);
 });
 
 it("the terms and privacy pages share one reading layout", () => {

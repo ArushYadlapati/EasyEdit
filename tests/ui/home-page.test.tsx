@@ -394,6 +394,14 @@ describe("home page free, teams and every agent", () => {
     expect(scene.querySelectorAll("a, button, input, [tabindex]")).toHaveLength(0);
   });
 
+  it("spells color the way the app's own screens do (the brand kit's Colors, Add color)", async () => {
+    render(await Home());
+    const main = screen.getByRole("main");
+    expect(main.textContent).toContain("Each person's selection shows in their color with their name on it");
+    expect(main.textContent).toContain("Set the team's fonts, colors and logos once.");
+    expect(main.textContent).not.toMatch(/colour/i);
+  });
+
   it("puts a space for each team and one brand kit under the editor, the kit drawn small with its fonts and colours", async () => {
     render(await Home());
     const teams = document.getElementById("teams")!;
@@ -490,6 +498,21 @@ describe("home page stylesheet (home.css)", () => {
       ["@media (max-width: 860px)", ".h-freeTitle", "var(--h-h2)"],
       ["@media (max-width: 860px)", ".h-facts", "var(--h-lead)"],
     ]);
+  });
+
+  it("keeps every line's tracking at -0.04em or looser, and the site's page titles as tight as its section headings", () => {
+    const site = cssRules(readFileSync(join(process.cwd(), "src/components/site/site.css"), "utf8"));
+    const tracked = [...rules, ...site].flatMap((r) => {
+      const value = r.decls.get("letter-spacing");
+      return value?.endsWith("em") ? [[r.selectors.join(", "), Number.parseFloat(value)] as const] : [];
+    });
+    expect(tracked.length).toBeGreaterThan(5);
+    for (const [where, em] of tracked) expect(em, where).toBeGreaterThanOrEqual(-0.04);
+    const spacing = (list: typeof rules, selector: string) =>
+      list.find((r) => r.media === null && r.selectors.includes(selector))?.decls.get("letter-spacing");
+    expect(spacing(rules, ".h-h2")).toBe("-0.04em");
+    expect(spacing(site, ".h-plainTitle")).toBe(spacing(rules, ".h-h2"));
+    expect(spacing(rules, ".h-display")).toBe(spacing(rules, ".h-h2"));
   });
 
   it("leads the Free section from its heading to its list by size and weight, in full ink, each line apart", () => {
