@@ -188,6 +188,49 @@ describe("the login page with sign-up open", () => {
     expect(Array.from(container.querySelectorAll(".h-signTrackName")).map((n) => n.textContent)).toEqual(["Text 1", "Video 1"]);
   });
 
+  it("holds the ocean still while the playhead is held down, and plays on when it's let go", async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    await screen.findByRole("button", { name: "Pause the ocean video" });
+    const scrub = screen.getByRole("slider", { name: "Moment in the ocean video" });
+    vi.spyOn(scrub, "getBoundingClientRect").mockReturnValue({ left: 100, width: 600, top: 0, height: 100, right: 700, bottom: 100, x: 100, y: 0, toJSON() {} } as DOMRect);
+    scrub.setPointerCapture = () => {};
+    scrub.hasPointerCapture = () => true;
+    pause.mockClear();
+    play.mockClear();
+    // Pressed: it stops where it's put, and moving back and forth doesn't start it again.
+    fireEvent.pointerDown(scrub, { button: 0, clientX: 400, pointerId: 1 });
+    expect(pause).toHaveBeenCalledTimes(1);
+    fireEvent.pointerMove(scrub, { clientX: 150, pointerId: 1 });
+    fireEvent.pointerMove(scrub, { clientX: 110, pointerId: 1 });
+    expect(play).not.toHaveBeenCalled();
+    // The button still says what a press does once the scrub is over: it is only held, not paused.
+    expect(screen.getByRole("button", { name: "Pause the ocean video" })).not.toBeNull();
+    // Let go: it plays on from there, once.
+    fireEvent.pointerUp(scrub, { pointerId: 1 });
+    fireEvent.lostPointerCapture(scrub, { pointerId: 1 });
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays paused after a scrub when it was paused before", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    act(() => screen.getByRole("button", { name: "Pause the ocean video" }).click());
+    const scrub = screen.getByRole("slider", { name: "Moment in the ocean video" });
+    vi.spyOn(scrub, "getBoundingClientRect").mockReturnValue({ left: 100, width: 600, top: 0, height: 100, right: 700, bottom: 100, x: 100, y: 0, toJSON() {} } as DOMRect);
+    scrub.setPointerCapture = () => {};
+    scrub.hasPointerCapture = () => true;
+    play.mockClear();
+    fireEvent.pointerDown(scrub, { button: 0, clientX: 400, pointerId: 1 });
+    fireEvent.pointerUp(scrub, { pointerId: 1 });
+    expect(play).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Play the ocean video" })).not.toBeNull();
+  });
+
   it("doesn't start the ocean by itself when reduced motion is asked for, but Play still plays it", async () => {
     vi.spyOn(window, "matchMedia").mockImplementation(
       (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,

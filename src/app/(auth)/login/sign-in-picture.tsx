@@ -80,7 +80,11 @@ export function SignInPicture() {
     setTime(to);
   }
 
-  // A press anywhere on the ruler or the tracks goes to that moment, and dragging keeps going.
+  // A press anywhere on the ruler or the tracks goes to that moment, and dragging keeps going. While the press lasts the
+  // footage holds still on the moment under the pointer, as an editor's playhead does; let go and it plays on from
+  // there if it was playing. Holding isn't pausing: the button keeps saying Pause, because that is what a press does
+  // once the scrub is over.
+  const held = useRef(false);
   function seekToPointer(event: PointerEvent<HTMLDivElement>) {
     const box = event.currentTarget.getBoundingClientRect();
     if (box.width > 0) seek(((event.clientX - box.left) / box.width) * length);
@@ -88,10 +92,20 @@ export function SignInPicture() {
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (playing && !held.current) {
+      held.current = true;
+      video.current?.pause();
+    }
     seekToPointer(event);
   }
   function onPointerMove(event: PointerEvent<HTMLDivElement>) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) seekToPointer(event);
+  }
+  // Up, cancelled, or the capture lost some other way: whichever comes first lets go, once.
+  function letGo() {
+    if (!held.current) return;
+    held.current = false;
+    if (playing) video.current?.play()?.catch(() => {});
   }
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const moves: Record<string, number> = { ArrowLeft: -STEP, ArrowDown: -STEP, ArrowRight: STEP, ArrowUp: STEP, PageDown: -1, PageUp: 1 };
@@ -184,6 +198,9 @@ export function SignInPicture() {
             aria-valuetext={`${timecode(time)} of ${timecode(length)}`}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
+            onPointerUp={letGo}
+            onPointerCancel={letGo}
+            onLostPointerCapture={letGo}
             onKeyDown={onKeyDown}
           >
             <span ref={playhead} className="h-signPlayhead" aria-hidden="true" />
