@@ -34,6 +34,15 @@
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
+/* Words for screen readers only, such as which thing a Pause button holds. */
+.h-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .h-site :focus-visible {
   outline: 2px solid var(--h-accent);
   outline-offset: 3px;
@@ -334,20 +343,48 @@
 }
 
 /* The picture: a drawn editor window in the product's own colours (the editor's roles from .ed-theme), its edge a 1 px
-   ring as on the home page, with a still in the preview and a title on it that you have selected. */
-/* It sits right against the sign-in and takes the rest of the width, so there is no empty band between them; on a
-   very wide or short window it stops at the size that still fits the window's height (a 16:9 frame plus the bar and
-   the stage's padding). */
+   ring as on the home page, playing footage with a title on it that an agent has selected. It takes all the width
+   beside the sign-in and the height the window leaves between the header and the footer, so neither side of it is
+   left empty; the footage crops to fit (object-fit: cover). */
+.h-signPictureCell {
+  position: relative;
+  height: clamp(380px, calc(100svh - var(--h-bar) - 240px), 900px);
+}
 .h-signPicture {
-  justify-self: start;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-width: calc((100svh - var(--h-bar) - 300px) * 16 / 9 + 64px);
+  height: 100%;
   margin: 0;
   overflow: hidden;
   border-radius: 12px;
   background: var(--ed-panel);
   box-shadow: 0 0 0 1px var(--ed-line-strong);
   color: var(--ed-text);
+}
+/* The footage's own Pause, over the stage's corner, in the site's pill look. */
+.h-signPause {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: rgb(255 255 255 / 0.9);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+  transition: background-color 160ms;
+}
+.h-signPause:hover {
+  background: rgb(0 0 0 / 0.75);
+}
+@media (prefers-reduced-motion: reduce) {
+  .h-signPause {
+    display: none;
+  }
 }
 .h-signBar {
   --logo-accent: var(--ed-accent);
@@ -376,12 +413,14 @@
   font-weight: 500;
 }
 .h-signStage {
+  flex: 1;
+  min-height: 0;
   padding: clamp(16px, 2.2vw, 32px);
   background: var(--ed-bg);
 }
 .h-signFrame {
   position: relative;
-  aspect-ratio: 16 / 9;
+  height: 100%;
   overflow: hidden;
   container-type: inline-size;
 }
@@ -443,7 +482,7 @@
     grid-template-columns: minmax(0, 1fr);
     align-content: start;
   }
-  .h-signPicture {
+  .h-signPictureCell {
     display: none;
   }
 }

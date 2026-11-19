@@ -38,15 +38,6 @@
   text-decoration: none;
 }
 
-.h-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 /* ---------- Buttons (the pills are the site's, in site.css) ---------- */
 
 /* The small Pause / Play pill for anything that moves on its own: the hero, and the agent logos. */

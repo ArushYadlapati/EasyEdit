@@ -55,7 +55,9 @@ describe("the login page", () => {
   it("offers Google, then a passkey, and no field to type in", async () => {
     const page: Page = LoginPage;
     render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
-    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([
+    // The sign-in's own buttons (the picture beside it has only its Pause).
+    const signIn = screen.getByRole("heading", { level: 1, name: "Sign in" }).parentElement!;
+    expect(Array.from(signIn.querySelectorAll("button")).map((b) => b.textContent)).toEqual([
       "Sign in with Google",
       "Sign in with a passkey",
     ]);
@@ -121,14 +123,47 @@ describe("the login page with sign-up open", () => {
     const picture = container.querySelector("figure.h-signPicture")!;
     expect(picture.getAttribute("aria-hidden")).toBe("true");
     expect(picture.hasAttribute("data-ui")).toBe(true);
-    expect(picture.querySelector("img")!.getAttribute("alt")).toBe("");
+    // The ocean on a loop: muted, inline, with its still as the poster.
+    const clip = picture.querySelector("video")!;
+    expect(clip.getAttribute("src")).toBe("/home/scene-wave.mp4");
+    expect(clip.getAttribute("poster")).toBe("/home/scene-wave.webp");
+    expect([clip.muted, clip.loop, clip.hasAttribute("playsinline")]).toEqual([true, true, true]);
     expect(picture.textContent).toContain("Your next video");
     expect(picture.querySelector(".h-signTag")!.textContent).toBe("Codex");
     const css = readFileSync(join(process.cwd(), "src/components/site/site.css"), "utf8");
     expect(css).toMatch(/\.h-signTitle \{\s*--peer: var\(--h-codex\);/);
     // The sign-in comes first in the page, then the picture.
     const main = screen.getByRole("main");
-    expect(main.lastElementChild).toBe(picture);
+    expect(main.lastElementChild).toBe(picture.parentElement);
+  });
+
+  it("gives the moving picture a Pause of its own, outside the hidden picture, that holds and plays the clip", async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    const button = await screen.findByRole("button", { name: "Pause the ocean video" });
+    expect(button.closest("[aria-hidden]")).toBeNull();
+    expect(button.hasAttribute("aria-pressed")).toBe(false);
+    act(() => button.click());
+    expect(pause).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Play the ocean video" })).toBe(button);
+    play.mockClear();
+    act(() => button.click());
+    expect(play).toHaveBeenCalled();
+  });
+
+  it("holds the picture still, with no Pause, when reduced motion is asked for", async () => {
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+    );
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    const page: Page = LoginPage;
+    const { container } = render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: /the ocean video/ })).toBeNull();
+    expect(play).not.toHaveBeenCalled();
+    expect(container.querySelector("video")!.getAttribute("preload")).toBe("none");
   });
 
   it("is no dead end: the site's header leads home, with the footer under the page", async () => {
