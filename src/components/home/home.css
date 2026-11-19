@@ -230,7 +230,6 @@
   padding: 0 16px;
   background: var(--ed-panel);
   border-bottom: 1px solid var(--ed-line);
-  --logo-accent: var(--ed-accent);
 }
 .h-edMenu {
   color: var(--ed-muted);
@@ -1605,7 +1604,6 @@
   bottom: 0;
   width: 76%;
   height: 470px;
-  --logo-accent: var(--ed-accent);
 }
 .h-driveBody {
   display: grid;
@@ -1711,7 +1709,6 @@
   min-width: 0;
   padding: 0 16px;
   background: var(--ed-panel);
-  --logo-accent: var(--ed-accent);
 }
 .h-tmProject {
   font-weight: 600;

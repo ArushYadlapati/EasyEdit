@@ -387,7 +387,6 @@
   }
 }
 .h-signBar {
-  --logo-accent: var(--ed-accent);
   display: flex;
   align-items: center;
   gap: 12px;
