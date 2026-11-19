@@ -10,9 +10,10 @@ import { LIMITS } from "@/lib/limits";
 import { DEFAULT_FPS, FORMAT_PRESETS, FRAME_SIZE_MESSAGE, isFrameSize, type FormatId, type FrameSize } from "@/lib/timeline";
 
 // The dashboard's New project dialog (components/dashboard/new-project-dialog.tsx) made simpler for the home page:
-// the same Name field, format cards and blank frame, with sizes in pixels only and no folder. The frame shows a still
-// of real footage in the chosen shape, with the name on it as the project's title. Nothing is created here; Create
-// project goes to sign in, where the real dialog waits on the dashboard.
+// the same Name field, format cards and blank frame, with sizes in pixels only and no folder, set at the page's own
+// sizes (home.css). The frame shows a still of real footage in the chosen shape, with the name on it as the project's
+// title: a text clip with your selection round it, as the editor draws it. Nothing is created here; Create project
+// goes to sign in, where the real dialog waits on the dashboard.
 
 const DEFAULT_FORMAT = "short_9x16" satisfies FormatId;
 
@@ -41,8 +42,8 @@ export function NewProjectForm() {
         <Field label="Name">
           <TextInput maxLength={LIMITS.projectNameChars} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-ed-muted">Format</span>
+        <div className="flex flex-col gap-1.5">
+          <span className="h-npLabel">Format</span>
           <FormatCards value={format} onChange={setFormat} />
         </div>
         {format === "custom" && (
@@ -84,7 +85,16 @@ export function NewProjectForm() {
             loading="lazy"
             decoding="async"
           />
-          <span className="h-npName">{name.trim() || "Untitled project"}</span>
+          <span className="h-npName">
+            <span className="h-npNameText">{name.trim() || "Untitled project"}</span>
+            <span className="h-npSel">
+              <span className="h-edPeerTag">You</span>
+              <span className="h-edHandle" data-at="tl" />
+              <span className="h-edHandle" data-at="tr" />
+              <span className="h-edHandle" data-at="bl" />
+              <span className="h-edHandle" data-at="br" />
+            </span>
+          </span>
         </BlankFrame>
         <p className="h-npSize">
           {shown.width} × {shown.height} px · {DEFAULT_FPS} fps

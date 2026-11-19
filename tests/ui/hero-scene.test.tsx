@@ -203,6 +203,25 @@ describe("home hero scenes", () => {
     expect(ending()).toBe("for teams.");
   });
 
+  it("pauses from the editor's own play button, at the start of its timeline's ruler, named for what a press does", () => {
+    stubReducedMotion(false);
+    render(<HeroScene closedBeta={false} />);
+    const button = screen.getByRole("button", { name: "Pause" });
+    // The editor's control, not a pill of its own: in the timeline, before its ruler, with an icon for a face.
+    const timeline = document.querySelector(".h-hero > .h-edTimeline")!;
+    expect(button.parentElement).toBe(timeline);
+    expect(button.className).toBe("h-edPlay");
+    expect(button.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    expect([button.title, button.hasAttribute("aria-pressed")]).toEqual(["Pause", false]);
+    // Everything else in the timeline is decoration; the button is what a screen reader meets there.
+    for (const el of timeline.children) if (el !== button) expect(el.getAttribute("aria-hidden"), el.className).toBe("true");
+    // The first screen has no other Pause.
+    expect(screen.getAllByRole("button")).toEqual([button]);
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "Play" })).toBe(button);
+    expect(button.title).toBe("Play");
+  });
+
   it("after a Pause partway through a scene, carries on from the same point: the clip where it stopped, the scene for what was left", () => {
     stubReducedMotion(false);
     render(<HeroScene closedBeta={false} />);
@@ -357,10 +376,15 @@ describe("home page under reduced motion (home.css)", () => {
     for (const loop of loops) expect(off, loop).toContain(`.h-page ${loop}`);
   });
 
-  it("hides both Pause pills, before the page's script has run too", () => {
+  it("hides the editor's play button and the agents' Pause pill, before the page's script has run too", () => {
     const hidden = reduced.filter((r) => r.decls.get("display") === "none").flatMap((r) => r.selectors);
-    expect(hidden).toContain(".h-heroPause");
+    expect(hidden).toContain(".h-edPlay");
     expect(hidden).toContain(".h-marqueePause");
+    // On a phone the timeline is only the play button's row, so with nothing to play it goes, and the editor ends
+    // with its preview.
+    const phone = rules.filter((r) => r.media === "@media (max-width: 860px) and (prefers-reduced-motion: reduce)");
+    expect(phone.find((r) => r.selectors.includes(".h-edTimeline"))?.decls.get("display")).toBe("none");
+    expect(phone.find((r) => r.selectors.includes(".h-ed"))?.decls.get("border-radius")).toBe("12px");
   });
 });
 
@@ -372,6 +396,16 @@ describe("home hero (home.css)", () => {
     const held = rules.find((r) => r.selectors.includes(".h-hero[data-paused] .h-ed *"));
     expect(held?.decls.get("animation-play-state")).toBe("paused !important");
     expect(held?.selectors).toContain(".h-hero[data-paused] .h-ed");
+    // The timeline is drawn on its own now, under the editor; its playhead and clips hold too.
+    expect(held?.selectors).toContain(".h-hero[data-paused] .h-edTimeline *");
+  });
+
+  it("draws the play button as the app's 28 px icon button, its focus ring inside its edge", () => {
+    const base = (selector: string) => rules.find((r) => r.media === null && r.selectors.includes(selector))?.decls;
+    const play = base(".h-edPlay");
+    expect([play?.get("width"), play?.get("height"), play?.get("color")]).toEqual(["28px", "28px", "var(--ed-accent)"]);
+    expect(base(".h-hero .h-edPlay:focus-visible")?.get("outline-offset")).toBe("-2px");
+    expect(rules.some((r) => r.selectors.includes(".h-heroPause"))).toBe(false);
   });
 
   it("moves the drawn playhead with a transform rather than its left edge", () => {
@@ -453,8 +487,74 @@ describe("home hero (home.css)", () => {
     const band = rules.find((r) => r.media === null && r.selectors.includes(".h-heroBand"))?.decls;
     expect(band?.get("grid-template-columns")).toBe("auto minmax(0, 30rem)");
     expect(band?.get("justify-content")).toBe("space-between");
-    // The headline's longer line (7.04em), the most room between the columns, and the side column.
-    expect(band?.get("max-width")).toBe("calc(var(--h-display) * 7.04 + 176px + 30rem)");
+    // The page's column: the headline's longer line (7.04em), the most room between the columns, and the side
+    // column. The sections keep to it too, on the same left edge.
+    expect(band?.get("max-width")).toBe("var(--h-column)");
+    const page = rules.find((r) => r.media === null && r.selectors.includes(".h-page"))?.decls;
+    expect(page?.get("--h-column")).toBe("calc(var(--h-display) * 7.04 + 176px + 30rem)");
+    const section = rules.find((r) => r.media === null && r.selectors.includes(".h-section"))?.decls;
+    expect(section?.get("max-width")).toBe("calc(var(--h-column) + 2 * var(--h-pad))");
+    expect(section?.has("margin")).toBe(false); // not centred: its left edge is the page's
+  });
+
+  it("draws the timeline under the editor on its own, its ruler and first track above the window's foot", () => {
+    const rule = (selector: string, media: string | null = null) =>
+      rules.find((r) => r.media === media && r.selectors.includes(selector))?.decls;
+    // The editor is its top bar and body; the timeline is the hero's third row, as long as the timeline and the fold.
+    expect(rule(".h-ed")?.get("grid-template-rows")).toBe("44px minmax(0, 1fr)");
+    expect(rule(".h-ed")?.get("border-radius")).toBe("12px 12px 0 0");
+    expect(rule(".h-edTimeline")?.get("grid-row")).toBe("3");
+    expect(rule(".h-edTimeline")?.get("height")).toBe("var(--h-timeline)");
+    expect(rule(".h-edTimeline")?.get("border-radius")).toBe("0 0 12px 12px");
+    const hero = rule(".h-hero");
+    expect(hero?.get("grid-template-rows")).toBe("auto minmax(340px, 1fr) calc(var(--h-timeline) + var(--h-fold))");
+    expect(hero?.get("--h-peek")).toBe("88px"); // the ruler (30), the first track (42) and the next clips' tops
+    expect(hero?.get("min-height")).toBe(
+      "calc( min(100svh - var(--h-bar), 56vw + 520px - var(--h-timeline)) - var(--h-peek) + var(--h-timeline) + var(--h-fold) )",
+    );
+    // A phone has room for the ruler's row only: the play button and View as, under the preview, as the app's
+    // control row is.
+    const phone = "@media (max-width: 860px)";
+    expect(rule(".h-hero", phone)?.get("grid-template-rows")).toBe("auto auto auto");
+    expect(rule(".h-ed", phone)?.has("border-radius")).toBe(false);
+    expect(rule(".h-edTimeline", phone)?.get("height")).toBe("40px");
+    const strip = rules.find((r) => r.media === phone && r.selectors.join(", ") === ".h-edTimeline > :not(.h-edPlay, .h-edViewAs)");
+    expect(strip?.decls.get("display")).toBe("none");
+  });
+
+  it("holds the timeline at the window's top and folds it into one track, only with motion allowed", () => {
+    const motion = "@media (width > 860px) and (prefers-reduced-motion: no-preference)";
+    const rule = (selector: string) => rules.find((r) => r.media === motion && r.selectors.includes(selector))?.decls;
+    const timeline = rule(".h-edTimeline");
+    expect(timeline?.get("position")).toBe("sticky");
+    expect(timeline?.get("top")).toBe("0");
+    // Folded, it is the 56 px band round its video track (its lane 77 px down, so the band from 65), moved up by as
+    // much: the dock's place, its lane 12 px down.
+    expect(timeline?.get("translate")).toBe("0 calc(var(--fold, 0) * -65px)");
+    expect(timeline?.get("clip-path")).toBe(
+      "inset(calc(var(--fold, 0) * 65px - 1px) -1px calc(var(--fold, 0) * 55px - 1px) round 0 0 13px 13px)",
+    );
+    expect(176 - 65 - 55).toBe(56);
+    // Its ruler, play button and other tracks go by half way, when the dock takes its video track's clips and its
+    // playhead over at once (the dock's are drawn just as they are); the track's name goes over the third quarter, as
+    // the dock's comes in over the last.
+    const rest = rules.find(
+      (r) =>
+        r.media === motion &&
+        r.selectors.join(", ") ===
+          '.h-edTimeline > :is(.h-edViewAs, .h-edPlay, .h-edRuler, [data-track="text"], [data-track="audio"])',
+    );
+    expect(rest?.decls.get("opacity")).toBe("calc(1 - var(--fold, 0) * 2)");
+    const handed = rule('.h-edTimeline > [data-track="video"] > .h-edLane');
+    expect(handed?.get("opacity")).toBe("clamp(0, (0.5 - var(--fold, 0)) * 1000, 1)");
+    expect(rules.find((r) => r.media === motion && r.selectors.includes(".h-edTimeline > .h-edPlayhead"))?.decls).toBe(handed);
+    expect(rule('.h-edTimeline > [data-track="video"] > .h-edTrackName')?.get("opacity")).toBe("calc(3 - var(--fold, 0) * 4)");
+    // With the keyboard on its play button the timeline is whole wherever it is held, over the dock (z 20).
+    const focused = rule(".h-edTimeline:has(:focus-visible)");
+    expect([focused?.get("--fold"), focused?.get("z-index")]).toEqual(["0", "21"]);
+    // Nowhere else is it held: without motion it scrolls away with the page.
+    const held = rules.filter((r) => r.selectors.includes(".h-edTimeline") && r.decls.get("position") === "sticky");
+    expect(held.map((r) => r.media)).toEqual([motion]);
   });
 
   it("between a phone and a laptop, drops the media panel and makes the editor as tall as its preview needs", () => {

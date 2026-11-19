@@ -1,8 +1,9 @@
 // The terms and privacy pages share one reading layout, inside the public site's frame (SitePage), which gives them the
 // header with the way back home and the footer.
 
-// The column sits in the middle of the window, with the site's own side margin on a phone.
-export const LEGAL_MAIN = "flex flex-1 justify-center px-(--h-pad) pt-12 pb-24 sm:pt-20";
+// The column starts on the site's left edge, under the header as the sign-in and not-found pages' do (h-plain in
+// components/site/site.css).
+export const LEGAL_MAIN = "h-plain";
 
 // About 65 characters a line, so a long paragraph is easy to follow from the end of one line to the start of the next.
 // The width is 32rem rather than 65ch: ch is the width of a zero, and Geist's zero is much wider than its average

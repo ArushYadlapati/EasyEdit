@@ -5,13 +5,13 @@ import { AgentMarquee, type MarqueeAgent } from "./agent-marquee";
 import { HeroScene } from "./hero-scene";
 import { NewProjectForm } from "./new-project-form";
 import { PageDock } from "./page-dock";
-import { DriveShot, KitRow, TeamScene } from "./team-shots";
+import { DriveShot, TeamScene } from "./team-shots";
 import "./home.css";
 
 // The public home page, for anyone who lands on easyedit.arush.dev signed out. Always dark, in the app's own type.
 // The footage in public/home is from Pexels (free to use, no credit required); the pieces of the app in it are drawn.
 
-// The agents in the marquee, each with its mark (a file in public/home/logos).
+// The agents in the marquee, each with its own mark (a file in public/home/logos).
 const AGENTS: MarqueeAgent[] = [
   { name: "Claude", logo: "claude" },
   { name: "ChatGPT", logo: "openai" },
@@ -20,7 +20,6 @@ const AGENTS: MarqueeAgent[] = [
   { name: "Cursor", logo: "cursor" },
   { name: "Gemini CLI", logo: "geminicli" },
   { name: "VS Code Copilot", logo: "githubcopilot" },
-  { name: "OpenAI API", logo: "openai" },
 ];
 
 // What free and in your Drive come to, one plain sentence each: no cost for anyone, the folder EasyEdit makes in the
@@ -34,7 +33,9 @@ const FREE_FACTS = [
 
 // closedBeta: sign-up isn't open (openSignUp() in signup.ts, read on the server), so only invited people get in.
 // The site's header and footer go around the page's <main>; the first screen starts under the header. Each section
-// after it is a clip on the page's dock (page-dock.tsx), named by its data-dock-label.
+// after it is a clip on the page's dock (page-dock.tsx), named by its data-dock-label, the close included, so the
+// dock's playhead reaches the end of the last clip as the page ends. Every section heading is at the one h2 size; only
+// the first screen's headline is larger.
 export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
   return (
     <SitePage>
@@ -54,15 +55,16 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
         </section>
 
         <section id="start" className="h-section h-start" aria-labelledby="start-title" data-dock-label="First project">
-          <h2 id="start-title" className="h-display h-startTitle">
+          <h2 id="start-title" className="h-h2 h-startTitle">
             Make your first project.
           </h2>
           <NewProjectForm />
         </section>
 
-        {/* The heading, then what it comes to as a list a size under it, then the app's Storage page. */}
+        {/* The heading, then what it comes to as a list a size under it (beside it on a computer), then the app's
+            Storage page. */}
         <section id="free" className="h-section h-free" aria-labelledby="free-title" data-dock-label="Free">
-          <h2 id="free-title" className="h-display h-freeTitle">
+          <h2 id="free-title" className="h-h2">
             <span className="h-line">Free, and your files</span> <span className="h-line">stay in your Drive.</span>
           </h2>
           <ul className="h-facts">
@@ -73,42 +75,35 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
           <DriveShot />
         </section>
 
-        {/* One shared editor, large, then the two smaller things a team gets beside it. */}
+        {/* One shared editor, large: the team's project with its people in it, and the team's brand kit open beside it. */}
         <section id="teams" className="h-section h-teams" aria-labelledby="teams-title" data-dock-label="Teams">
           <h2 id="teams-title" className="h-h2">
             Built for teams.
           </h2>
           <p className="h-lead">
-            Everyone edits the same project at the same time. Each person&apos;s selection shows in their color with
-            their name on it, and anyone can undo any change, a teammate&apos;s too. Nobody waits for a file.
+            Everyone in a team space edits the same project at the same time. Each person&apos;s selection shows in their
+            color with their name on it, and anyone can undo any change, a teammate&apos;s too. Nobody waits for a file.
           </p>
           <TeamScene />
-          <div className="h-teamFacts">
-            <div>
-              <h3>A space for each team</h3>
-              <p>
-                A team space holds its projects, folders and media. Invite people with a link you send them, pin
-                projects for everyone, and keep a Personal space of your own.
-              </p>
-            </div>
-            <div>
-              <h3>One brand kit</h3>
-              <p>Set the team&apos;s fonts, colors and logos once. New titles start in the team&apos;s fonts.</p>
-              <KitRow />
-            </div>
-          </div>
         </section>
 
         <section id="agents" className="h-section h-agents" aria-labelledby="agents-title" data-dock-label="Every agent">
-          <h2 id="agents-title" className="h-display">
+          <h2 id="agents-title" className="h-h2">
             <span className="h-line">Works with</span> <span className="h-line">every AI agent.</span>
           </h2>
           <p className="h-lead">
             Any agent that speaks MCP can edit your projects. Connect one from AI&nbsp;agents in your account menu.
           </p>
           <AgentMarquee agents={AGENTS} />
-          {/* The page's close, and the end of the page: the page's dock goes down while it is in view (page-dock.tsx). */}
-          <div className="h-close" data-dock-end>
+        </section>
+
+        {/* The page's close, a beat of its own after the agents and the last clip on the page's dock: you and your agent
+            on the same project, then the one action again. */}
+        <section id="timeline" className="h-section h-close" aria-labelledby="close-title" data-dock-label="One timeline">
+          <h2 id="close-title" className="h-h2">
+            <span className="h-line">You and your agent</span> <span className="h-line">share one timeline.</span>
+          </h2>
+          <div className="h-closeActions">
             {closedBeta ? (
               <Link href="/login" className="h-btn">
                 Sign in

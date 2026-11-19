@@ -10,7 +10,7 @@ const SAM = peer("var(--ed-peer-1)");
 const MIKA = peer("var(--ed-peer-2)");
 const YOU = peer("var(--ed-accent)");
 
-// The team's brand kit, as its Brand kit tab lists it: a font for each kind of text, its colours and its logo.
+// The team's brand kit, as the editor's Brand kit tab lists it: a font for each kind of text, its colours and its logo.
 const KIT_FONTS = [
   { role: "Title", family: "Bebas Neue" },
   { role: "Subtitle", family: "Montserrat" },
@@ -52,14 +52,19 @@ const ACTIVITY = [
 
 const RULER = ["0:00", "0:04", "0:08", "0:12", "0:16", "0:20"];
 
-// One project open in the editor with two teammates in it: the top bar's dots say who is here (you, Sam, Mika), each
-// person's selection is drawn in their own colour with their name (Sam on the title, Mika on the video clip, you on
-// the logo), and Activity lists their changes, each with Undo this change. The title is set in the team's title font.
+// One of the team's projects open in the editor with two teammates in it: the top bar's dots say who is here (you,
+// Sam, Mika), each person's selection is drawn in their own colour with their name (Sam on the title, Mika on the
+// video clip, you on the logo), and Activity lists their changes, each with Undo this change. The left panel is open
+// on the team's brand kit, and what is in the picture comes from it: the title is set in its title font, and the logo
+// is its logo.
 export function TeamScene() {
   return (
     <div className="h-tm" data-ui aria-hidden="true">
       <div className="h-tmBar">
         <LogoMark size={16} />
+        <span className="h-tmMenu">Projects</span>
+        <span className="h-tmMenu">Edit</span>
+        <span className="h-tmMenu">View</span>
         <span className="h-tmProject">City nights</span>
         <span className="h-tmPeople">
           <span className="h-tmMe" />
@@ -75,6 +80,31 @@ export function TeamScene() {
       </div>
 
       <div className="h-tmBody">
+        <div className="h-tmKit">
+          <div className="h-tmTabs">
+            <span>Text</span>
+            <span>Media</span>
+            <span data-on>Brand kit</span>
+          </div>
+          <div className="h-kit">
+            <p className="h-kitHead">Fonts</p>
+            {KIT_FONTS.map((f) => (
+              <p key={f.role} className="h-kitFont">
+                <span className="h-kitRole">{f.role}</span>
+                <span className="h-kitFamily">{f.family}</span>
+              </p>
+            ))}
+            <p className="h-kitHead">Colors</p>
+            <div className="h-kitSwatches">
+              {KIT_COLOURS.map((c) => (
+                <span key={c} className="h-kitSwatch" style={{ background: c }} />
+              ))}
+            </div>
+            <p className="h-kitHead">Logos</p>
+            <KitLogo className="h-kitLogo" />
+          </div>
+        </div>
+
         <div className="h-tmStage">
           <div className="h-tmFrame">
             {/* eslint-disable-next-line @next/next/no-img-element -- footage inside a drawn interface */}
@@ -162,31 +192,6 @@ export function TeamScene() {
   );
 }
 
-// The team's brand kit, as a small drawn panel: its three fonts by name, its colours and its logo.
-export function KitRow() {
-  return (
-    <div className="h-kit" data-ui aria-hidden="true">
-      <div className="h-kitFonts">
-        {KIT_FONTS.map((f) => (
-          <span key={f.role}>
-            <span className="h-kitRole">{f.role}</span>
-            <span className="h-kitFamily">{f.family}</span>
-          </span>
-        ))}
-      </div>
-      <div className="h-kitSwatches">
-        {KIT_COLOURS.map((c) => (
-          <span key={c} className="h-kitSwatch">
-            <span style={{ background: c }} />
-            {c}
-          </span>
-        ))}
-        <KitLogo className="h-kitLogo" />
-      </div>
-    </div>
-  );
-}
-
 // Storage, as the app shows it: the dashboard window of a team, open on its Storage settings (wording from
 // lib/storage/messages.ts and the settings tabs), with the editor dimmed behind it, so it reads as the app itself.
 export function DriveShot() {
@@ -235,7 +240,7 @@ export function DriveShot() {
               <span>Brand kit</span>
             </div>
             <div className="h-driveCard">
-              <p>Stored in maya.lin@gmail.com&apos;s Google Drive</p>
+              <p>Stored in maya@example.com&apos;s Google Drive</p>
               <p className="h-shotMuted">Folder &quot;EasyEdit – Summer crew&quot;</p>
               <p className="h-shotMuted">2.4 GB of 15 GB used</p>
               <span className="h-shotMeter">

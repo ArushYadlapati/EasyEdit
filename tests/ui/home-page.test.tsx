@@ -170,7 +170,7 @@ describe("home page", () => {
     fireEvent.click(button);
     expect(screen.getByRole("button", { name: "Pause the agent logos" })).toBe(button);
     expect(track.hasAttribute("data-paused")).toBe(false);
-    expect(track.querySelectorAll(".h-agent")).toHaveLength(16); // the row twice, so the loop has no seam
+    expect(track.querySelectorAll(".h-agent")).toHaveLength(14); // the row twice, so the loop has no seam
   });
 
   it("has the AI, free and team sections, linked from the site's header, and no tools section", async () => {
@@ -222,18 +222,25 @@ describe("home page", () => {
     for (const section of sections) expect(section.dataset.dockLabel, section.id).toMatch(/^\S+( \S+){0,2}$/);
     const links = [...dock.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
     expect(links).toEqual(sections.map((section) => [section.dataset.dockLabel, `#${section.id}`]));
-    // The end of the page is marked for the dock, which goes down while it is in view. It is the end of the last
-    // section: marked anywhere higher up, the dock would go down in the middle of the page. The new project form,
-    // higher up the page now, no longer carries it.
-    const ends = [...main.querySelectorAll("[data-dock-end]")];
-    expect(ends).toHaveLength(1);
-    expect(sections.at(-1)!.contains(ends[0])).toBe(true);
-    expect(document.querySelector("form")?.closest("[data-dock-end]")).toBeNull();
-    expect(document.querySelector("form [data-dock-end]")).toBeNull();
-    const afterIt = [...sections.at(-1)!.querySelectorAll("*")].filter(
-      (el) => ends[0].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING && !ends[0].contains(el),
-    );
-    expect(afterIt).toEqual([]);
+    // The dock is the first screen's timeline folded up, so that timeline is there to fold: drawn on its own under
+    // the editor, its tracks named by kind, the video track (the one the dock's track rides on) among them.
+    const timeline = document.querySelector(".h-hero > .h-edTimeline") as HTMLElement;
+    expect(timeline.hasAttribute("data-ui")).toBe(true);
+    expect(timeline.previousElementSibling?.classList.contains("h-ed")).toBe(true);
+    expect([...timeline.querySelectorAll(".h-edTrack")].map((t) => (t as HTMLElement).dataset.track)).toEqual([
+      "text",
+      "video",
+      "audio",
+    ]);
+    // All of it is decoration but its play button, which is the first screen's Pause.
+    const exposed = [...timeline.children].filter((el) => el.getAttribute("aria-hidden") !== "true");
+    expect(exposed.map((el) => [el.tagName, el.getAttribute("aria-label")])).toEqual([["BUTTON", "Pause"]]);
+    // The dock's clips start out as that video track's clips: their names and pictures, for the eye only.
+    const from = [...dock.querySelectorAll(".h-dockFrom")];
+    expect(from.map((el) => el.textContent)).toEqual(["bonfire.mp4", "shibuya.mp4", "ridge.mp4", "wave.mp4"]);
+    for (const el of from) expect(el.getAttribute("aria-hidden")).toBe("true");
+    // Nothing marks an end of the page for it any more: held at the top, it is never over the close or the footer.
+    expect(main.querySelector("[data-dock-end]")).toBeNull();
   });
 
   it("draws its stills and posters from WebP files in public/home, each img sized to its file's shape", async () => {
@@ -260,7 +267,7 @@ describe("home page", () => {
     render(await Home());
     const main = screen.getByRole("main");
     const sections = [...main.children].filter((el) => el.tagName === "SECTION" && el.id);
-    expect(sections.map((el) => el.id)).toEqual(["ai", "start", "free", "teams", "agents"]);
+    expect(sections.map((el) => el.id)).toEqual(["ai", "start", "free", "teams", "agents", "timeline"]);
     const names = sections.map((el) => within(el as HTMLElement).getAllByRole("heading", { level: 2 })[0]);
     expect(names.map((h) => h.textContent)).toEqual([
       "Ask an agent. Watch it edit.",
@@ -268,7 +275,11 @@ describe("home page", () => {
       "Free, and your files stay in your Drive.",
       "Built for teams.",
       "Works with every AI agent.",
+      "You and your agent share one timeline.",
     ]);
+    // One size for every section heading; only the first screen's headline is larger.
+    for (const h of names) expect(h.className.split(" "), h.id).toContain("h-h2");
+    expect(main.querySelector(".h-display")).toBeNull();
     for (const el of sections) expect(el.getAttribute("aria-labelledby"), el.id).toBe(names[sections.indexOf(el)].id);
     // The form is the first project section's own, right after its heading.
     expect(within(sections[1] as HTMLElement).getByRole("form", { name: "New project" })).toBeTruthy();
@@ -280,11 +291,15 @@ describe("home page", () => {
     const heading = within(ai).getByRole("heading", { level: 2, name: "Ask an agent. Watch it edit." });
     const requests = within(ai).getByRole("list", { name: "Ask an agent" });
     const stage = within(ai).getByRole("figure", { name: "A working model of the editor" });
-    // The order a phone shows them in, one under the other; a computer only moves the editor to a column of its own.
+    // The order a phone shows them in, one under the other; a computer only moves the editor, with what its agent did
+    // under it, to a column of its own.
     const demo = heading.parentElement!;
     expect(demo.classList.contains("h-demo")).toBe(true);
-    expect([...demo.children].map((el) => el.tagName)).toEqual(["H2", "P", "FIGURE", "DIV", "UL"]);
-    expect([...demo.children].slice(2)).toEqual([stage, demo.querySelector(".h-demoAnswer"), requests]);
+    expect([...demo.children].map((el) => el.tagName)).toEqual(["H2", "P", "DIV", "UL"]);
+    const show = demo.children[2];
+    expect(show.className).toBe("h-demoShow");
+    expect([...show.children]).toEqual([stage, demo.querySelector(".h-demoAnswer")]);
+    expect(demo.children[3]).toBe(requests);
     expect(ai.querySelector(".h-demoText, .h-sectionHead, .h-points, h3")).toBeNull();
     // The old three points live on as the requests' own result lines.
     for (const gone of ["Plain words in, real edits out", "Signed and undoable", "It works as you"]) {
@@ -316,7 +331,7 @@ describe("home page", () => {
     const primary = document.querySelector(".h-heroActions .h-btn");
     expect([primary?.textContent, primary?.getAttribute("href")]).toEqual(["Sign in", "/login"]);
     // The close at the end of the page is the one white pill, Sign in, too.
-    const close = document.querySelector(".h-close")!;
+    const close = document.querySelector(".h-closeActions")!;
     expect([...close.querySelectorAll("a")].map((a) => [a.textContent, a.className, a.getAttribute("href")])).toEqual([
       ["Sign in", "h-btn", "/login"],
     ]);
@@ -346,7 +361,7 @@ describe("home page free, teams and every agent", () => {
       "Free, and your files",
       "stay in your Drive.",
     ]);
-    expect(heading.className).toBe("h-display h-freeTitle");
+    expect(heading.className).toBe("h-h2");
     const facts = within(free).getByRole("list");
     expect(within(facts).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "It costs nothing, teams included.",
@@ -360,7 +375,9 @@ describe("home page free, teams and every agent", () => {
     const picture = free.lastElementChild!;
     expect(picture.classList.contains("h-driveStage")).toBe(true);
     expect([picture.hasAttribute("data-ui"), picture.getAttribute("aria-hidden")]).toEqual([true, "true"]);
-    expect(picture.textContent).toContain("Stored in maya.lin@gmail.com's Google Drive");
+    // The made-up person's address is on the domain kept for examples, not a real one.
+    expect(picture.textContent).toContain("Stored in maya@example.com's Google Drive");
+    expect(picture.textContent).not.toMatch(/@(?!example\.com)[\w-]+\.\w+/);
   });
 
   it("shows a team as one drawn editor: who is here, each person's selection by name, Undo on a teammate's change", async () => {
@@ -398,27 +415,31 @@ describe("home page free, teams and every agent", () => {
     render(await Home());
     const main = screen.getByRole("main");
     expect(main.textContent).toContain("Each person's selection shows in their color with their name on it");
-    expect(main.textContent).toContain("Set the team's fonts, colors and logos once.");
+    expect(document.querySelector(".h-tmKit")?.textContent).toContain("Colors");
     expect(main.textContent).not.toMatch(/colour/i);
   });
 
-  it("puts a space for each team and one brand kit under the editor, the kit drawn small with its fonts and colours", async () => {
+  it("shows the team's brand kit inside its editor, as the Brand kit tab, with no row of facts under it", async () => {
     render(await Home());
     const teams = document.getElementById("teams")!;
-    const facts = teams.querySelector(".h-teamFacts")!;
-    expect(teams.querySelector(".h-tm")?.compareDocumentPosition(facts)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(within(facts as HTMLElement).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
-      "A space for each team",
-      "One brand kit",
+    // The section is its heading, its lead (which names the team space) and the one drawn editor.
+    expect([...teams.children].map((el) => el.tagName)).toEqual(["H2", "P", "DIV"]);
+    expect(teams.querySelector(".h-teamFacts, h3")).toBeNull();
+    expect(teams.querySelector(".h-lead")?.textContent).toMatch(/^Everyone in a team space edits the same project/);
+    // The left panel is open on Brand kit, which lists the kit as the app's tab does: fonts, colors, logos.
+    const scene = teams.querySelector(".h-tm")!;
+    const kit = scene.querySelector(".h-tmKit")!;
+    expect(kit.querySelector(".h-tmTabs [data-on]")?.textContent).toBe("Brand kit");
+    expect([...kit.querySelectorAll(".h-kitHead")].map((h) => h.textContent)).toEqual(["Fonts", "Colors", "Logos"]);
+    expect([...kit.querySelectorAll(".h-kitFont")].map((f) => [f.firstElementChild?.textContent, f.lastElementChild?.textContent])).toEqual([
+      ["Title", "Bebas Neue"],
+      ["Subtitle", "Montserrat"],
+      ["Body text", "Inter"],
     ]);
-    // EasyEdit makes the invite's link; the admin sends it (no email goes out).
-    expect(facts.textContent).toContain("Invite people with a link you send them, pin projects for everyone");
-    expect(facts.textContent).not.toMatch(/email/i);
-    expect(facts.textContent).toContain("New titles start in the team's fonts.");
-    const kit = facts.querySelector(".h-kit")!;
-    expect([kit.hasAttribute("data-ui"), kit.getAttribute("aria-hidden")]).toEqual([true, "true"]);
-    expect([...kit.querySelectorAll(".h-kitFamily")].map((f) => f.textContent)).toEqual(["Bebas Neue", "Montserrat", "Inter"]);
     expect(kit.querySelectorAll(".h-kitSwatch")).toHaveLength(4);
+    expect(kit.querySelector("svg.h-kitLogo")).toBeTruthy();
+    // What is in the picture comes from the kit: its logo, which you have selected.
+    expect(scene.querySelector(".h-tmLogo svg")).toBeTruthy();
     // Every picture in the section is footage inside the drawn editor: no screenshots of the app.
     const images = [...teams.querySelectorAll("img")];
     expect(images.length).toBeGreaterThan(0);
@@ -433,10 +454,13 @@ describe("home page free, teams and every agent", () => {
     const agents = document.getElementById("agents")!;
     const heading = within(agents).getByRole("heading", { level: 2 });
     expect([...heading.querySelectorAll(".h-line")].map((line) => line.textContent)).toEqual(["Works with", "every AI agent."]);
-    expect(heading.className).toBe("h-display");
+    expect(heading.className).toBe("h-h2");
     const list = within(agents).getByRole("list", { name: "AI agents" });
-    const names = ["Claude", "ChatGPT", "Claude Code", "Codex", "Cursor", "Gemini CLI", "VS Code Copilot", "OpenAI API"];
+    const names = ["Claude", "ChatGPT", "Claude Code", "Codex", "Cursor", "Gemini CLI", "VS Code Copilot"];
     expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(names);
+    // Each with a mark of its own: no two agents in the row share one.
+    const marks = [...list.querySelectorAll<HTMLElement>(".h-agentLogo")].map((mark) => mark.style.maskImage);
+    expect(new Set(marks).size).toBe(names.length);
     expect(list.closest("[aria-hidden]")).toBeNull();
     // The second copy, which closes the loop, is for the eye only.
     const copies = agents.querySelectorAll(".h-marqueeList");
@@ -453,16 +477,31 @@ describe("home page free, teams and every agent", () => {
     render(await Home());
     vi.unstubAllEnvs();
     const agents = document.getElementById("agents")!;
-    const close = agents.lastElementChild!;
-    expect(close.className).toBe("h-close");
-    expect(close.hasAttribute("data-dock-end")).toBe(true);
+    // A beat of its own, the section after the agents and the last clip on the page's dock: you and your agent on one
+    // project, set as two lines, then the action.
+    const close = agents.nextElementSibling as HTMLElement;
+    expect([close.tagName, close.className, close.id, close.dataset.dockLabel]).toEqual([
+      "SECTION",
+      "h-section h-close",
+      "timeline",
+      "One timeline",
+    ]);
+    const heading = within(close).getByRole("heading", { level: 2, name: "You and your agent share one timeline." });
+    expect(close.getAttribute("aria-labelledby")).toBe(heading.id);
+    expect([...heading.querySelectorAll(".h-line")].map((l) => l.textContent)).toEqual(["You and your agent", "share one timeline."]);
+    // Said nowhere else on the page.
+    const main = screen.getByRole("main");
+    expect(main.textContent!.split("share one timeline").length).toBe(2);
+    expect(close.lastElementChild?.className).toBe("h-closeActions");
     expect([...close.querySelectorAll("a")].map((a) => [a.textContent, a.className, a.getAttribute("href")])).toEqual([
       ["Start free", "h-btn", "/login"],
       ["Sign in", "h-closeLink", "/login"],
     ]);
-    // The section is the last one in main, and the footer comes after main.
-    const main = screen.getByRole("main");
-    expect([...main.querySelectorAll(":scope > section")].at(-1)).toBe(agents);
+    // The agents' section ends with its row, the row's Pause right before it, at its leading edge.
+    expect(agents.lastElementChild?.classList.contains("h-marquee")).toBe(true);
+    expect(agents.lastElementChild?.previousElementSibling?.classList.contains("h-marqueePause")).toBe(true);
+    // The close is the last section in main, and the footer comes after main.
+    expect([...main.querySelectorAll(":scope > section")].at(-1)).toBe(close);
     expect(main.nextElementSibling).toBe(screen.getByRole("contentinfo"));
   });
 
@@ -471,7 +510,7 @@ describe("home page free, teams and every agent", () => {
     const drawn = [...document.querySelectorAll("main [class*='h-ed'], main [class*='h-ui'], main [class*='h-tm'], main [class*='h-kit'], main [class*='h-shot'], main [class*='h-drive'], main [class*='h-dock']")];
     expect(drawn.length).toBeGreaterThan(100);
     for (const el of drawn) expect(el.closest("[data-ui]"), el.className).toBeTruthy();
-    for (const root of [".h-ed", ".h-ui", ".h-tm", ".h-kit", ".h-driveStage", ".h-np"]) {
+    for (const root of [".h-ed", ".h-edTimeline", ".h-ui", ".h-tm", ".h-driveStage", ".h-np"]) {
       expect(document.querySelector(root)?.hasAttribute("data-ui"), root).toBe(true);
     }
   });
@@ -489,15 +528,14 @@ describe("home page stylesheet (home.css)", () => {
     for (const size of ["--h-display", "--h-h2", "--h-lead", "--h-body", "--h-small"]) expect(tokens.has(size), size).toBe(true);
     const sizes = new Set(pageRules.flatMap((r) => (r.decls.has("font-size") ? [r.decls.get("font-size")] : [])));
     expect([...sizes].sort()).toEqual(["var(--h-body)", "var(--h-display)", "var(--h-h2)", "var(--h-lead)", "var(--h-small)"]);
-    // On a phone the display size changes, to fit the longer line of a two-line headline, and the Free section's
-    // heading and list each step down a size; nothing else changes size.
+    // On a phone the display size changes, to fit the longer line of a two-line headline; nothing else changes size.
     const phone = rules.filter((r) => r.media === "@media (max-width: 860px)" && r.selectors.includes(".h-page"));
     expect(phone.flatMap((r) => [...r.decls.keys()])).toEqual(["--h-display"]);
     const resized = rules.filter((r) => r.media !== null && r.selectors.some(own) && r.decls.has("font-size"));
-    expect(resized.map((r) => [r.media, r.selectors.join(", "), r.decls.get("font-size")])).toEqual([
-      ["@media (max-width: 860px)", ".h-freeTitle", "var(--h-h2)"],
-      ["@media (max-width: 860px)", ".h-facts", "var(--h-lead)"],
-    ]);
+    expect(resized).toEqual([]);
+    // The display size is the first screen's headline's alone; every section heading is h2.
+    const display = pageRules.filter((r) => r.decls.get("font-size") === "var(--h-display)").flatMap((r) => r.selectors);
+    expect(display).toEqual([".h-heroTitle"]);
   });
 
   it("keeps every line's tracking at -0.04em or looser, and the site's page titles as tight as its section headings", () => {
@@ -512,25 +550,32 @@ describe("home page stylesheet (home.css)", () => {
       list.find((r) => r.media === null && r.selectors.includes(selector))?.decls.get("letter-spacing");
     expect(spacing(rules, ".h-h2")).toBe("-0.04em");
     expect(spacing(site, ".h-plainTitle")).toBe(spacing(rules, ".h-h2"));
-    expect(spacing(rules, ".h-display")).toBe(spacing(rules, ".h-h2"));
+    expect(spacing(rules, ".h-heroTitle")).toBe(spacing(rules, ".h-h2"));
   });
 
   it("leads the Free section from its heading to its list by size and weight, in full ink, each line apart", () => {
     const rule = (selector: string, media: string | null = null) =>
       rules.find((r) => r.media === media && r.selectors.includes(selector))!.decls;
-    // A computer: the heading at the display size, the list a size under it and a step lighter, in the same white.
-    expect([rule(".h-display").get("font-size"), rule(".h-display").get("font-weight")]).toEqual(["var(--h-display)", "600"]);
+    // The heading at the h2 size every section heading has; the list a clear step under it, at the lead size and a
+    // step lighter, in the same white, so no line of it is as large as a heading.
+    expect([rule(".h-h2").get("font-size"), rule(".h-h2").get("font-weight")]).toEqual(["var(--h-h2)", "600"]);
     const facts = rule(".h-facts");
-    expect([facts.get("font-size"), facts.get("font-weight"), facts.get("color")]).toEqual(["var(--h-h2)", "500", "var(--h-text)"]);
+    expect([facts.get("font-size"), facts.get("font-weight"), facts.get("color")]).toEqual(["var(--h-lead)", "500", "var(--h-text)"]);
     // More room under the heading than between the lines, and between the lines than their leading.
     const em = (value: string | undefined) => Number(/^([\d.]+)em/.exec(value ?? "")?.[1]);
-    expect(em(facts.get("margin"))).toBeGreaterThanOrEqual(1);
-    expect(em(facts.get("gap"))).toBeGreaterThanOrEqual(0.6);
     expect(em(facts.get("margin"))).toBeGreaterThan(em(facts.get("gap")));
-    // A phone: the heading at h2, the list at the lead size, the same order of room.
-    const phone = rule(".h-facts", "@media (max-width: 860px)");
-    expect(em(phone.get("margin-top"))).toBeGreaterThan(em(phone.get("gap")));
-    expect(em(phone.get("gap"))).toBeGreaterThanOrEqual(0.6);
+    expect(em(facts.get("gap"))).toBeGreaterThanOrEqual(0.6);
+    // On a computer the list stands beside the heading along its foot, in the first screen's side column, and the
+    // Storage page runs across under both.
+    const desktop = "@media (width > 860px)";
+    const free = rule(".h-free", desktop);
+    expect([free.get("display"), free.get("grid-template-columns"), free.get("align-items")]).toEqual([
+      "grid",
+      "auto minmax(0, 30rem)",
+      "end",
+    ]);
+    expect(rule(".h-free > .h-facts", desktop).get("margin-top")).toBe("0");
+    expect(rule(".h-free > .h-driveStage", desktop).get("grid-column")).toBe("1 / -1");
   });
 
   it("puts every section on the one black ground, with no panel greys, shadows, gradients or fades", () => {
@@ -550,7 +595,13 @@ describe("home page stylesheet (home.css)", () => {
 
   it("runs the agents' row across the whole window, and under reduced motion stands it in rows without its copy", () => {
     const marquee = rules.find((r) => r.media === null && r.selectors.includes(".h-marquee"))!;
-    expect(marquee.decls.get("margin")).toBe("clamp(48px, 5vw, 72px) calc(50% - 50vw) 0");
+    // From the window's left edge to its right one: back over the section's margin on the left, past the end of the
+    // page's column on the right. The row itself starts at the page's left margin, its Pause pill right above it.
+    expect(marquee.decls.get("margin")).toBe("16px calc(100% + var(--h-pad) - 100vw) 0 calc(-1 * var(--h-pad))");
+    const pause = rules.find((r) => r.media === null && r.selectors.includes(".h-marqueePause"))!;
+    expect([pause.decls.get("display"), pause.decls.get("margin-top")]).toEqual(["block", "clamp(48px, 5vw, 72px)"]);
+    expect(pause.decls.has("margin-left")).toBe(false);
+    expect(marquee.decls.get("padding-left")).toBe("var(--h-pad)");
     expect(marquee.decls.has("mask-image")).toBe(false);
     // Each copy ends with the gap before the next, so half the track's width is exactly one copy.
     const list = rules.find((r) => r.media === null && r.selectors.includes(".h-marqueeList"))!;
@@ -560,15 +611,50 @@ describe("home page stylesheet (home.css)", () => {
     expect(rule(".h-marqueeList[aria-hidden]")?.get("display")).toBe("none");
     expect(rule(".h-marqueeList")?.get("flex-wrap")).toBe("wrap");
     expect([rule(".h-marquee")?.get("margin-inline"), rule(".h-marquee")?.get("padding-left")]).toEqual(["0", "0"]);
+    // With no Pause pill above the rows, they keep its room under the line before them.
+    expect(rule(".h-marquee")?.get("margin-top")).toBe(pause.decls.get("margin-top"));
   });
 
-  it("closes the last section as closely after the agents as the agents follow its lead, apart from the footer", () => {
+  it("gives the close a section's gap of its own under the agents, its heading right over the action", () => {
     const base = (selector: string) => rules.find((r) => r.media === null && r.selectors.includes(selector))!.decls;
-    const marqueeTop = base(".h-marquee").get("margin")!.split(" calc(")[0];
-    expect(base(".h-close").get("margin-top")).toBe(marqueeTop);
-    // The page's own room before the footer is a section's gap, much more than that.
-    expect(base(".h-page").get("padding-bottom")).toBe("clamp(80px, 11vw, 140px)");
     expect(base(".h-section").get("padding")).toBe("clamp(120px, 14vw, 180px) var(--h-pad) 0");
+    expect(rules.some((r) => r.media === null && r.selectors.includes(".h-close"))).toBe(false); // a section like the others
+    expect(base(".h-closeActions").get("margin-top")).toBe("clamp(32px, 3.5vw, 48px)");
+    // The page's own room before the footer.
+    expect(base(".h-page").get("--h-room")).toBe("clamp(80px, 11vw, 140px)");
+    expect(base(".h-page").get("padding-bottom")).toBe("var(--h-room)");
+  });
+
+  it("ends a computer's last screen with the agents' row whole under the dock, or all the way under it", () => {
+    const at = (media: string, selector: string) => rules.find((r) => r.media === media && r.selectors.includes(selector))?.decls;
+    // Its room above is what is left of the window once the dock (and 24 px), the row's pill (30 + 16), the row (1.2
+    // of h2), the close's heading (2 of h2) with the room over its 52 px pill, the page's room and the 112 px footer
+    // have theirs: between 48 px and a section's gap.
+    expect(at("@media (width > 860px)", ".h-close")?.get("padding-top")).toBe(
+      "clamp( 48px, 100svh - 290px - var(--h-h2) * 3.2 - clamp(32px, 3.5vw, 48px) - var(--h-room), clamp(120px, 14vw, 180px) )",
+    );
+    expect(56 + 24 + 30 + 16 + 52 + 112).toBe(290);
+    // A short computer screen keeps less room before the footer, so the close can keep more above it.
+    expect(at("@media (width > 860px) and (height <= 800px)", ".h-page")?.get("--h-room")).toBe("80px");
+    // Under 710 px tall there is no room for all of that: the row goes up under the dock instead, its foot on the dock's.
+    expect(at("@media (width > 860px) and (height < 710px)", ".h-close")?.get("padding-top")).toBe(
+      "max( clamp(120px, 14vw, 180px), 100svh - 220px - var(--h-h2) * 2 - clamp(32px, 3.5vw, 48px) - var(--h-room) )",
+    );
+    expect(56 + 52 + 112).toBe(220);
+    // The widest window's row and close fit above 710 px: the room left is never under 48 px there.
+    const h2 = 76;
+    expect(710 - 290 - h2 * 3.2 - 48 - 80).toBeGreaterThanOrEqual(48);
+  });
+
+  it("keeps every section on the first screen's left edge, the first one starting a fold nearer the timeline", () => {
+    const section = rules.find((r) => r.media === null && r.selectors.includes(".h-section"))!.decls;
+    expect(section.has("margin")).toBe(false);
+    expect(section.get("max-width")).toBe("calc(var(--h-column) + 2 * var(--h-pad))");
+    const first = rules.find((r) => r.selectors.includes(".h-hero + .h-section"))!;
+    expect(first.media).toBe("@media (width > 860px)");
+    expect(first.decls.get("padding-top")).toBe("calc(clamp(120px, 14vw, 180px) - var(--h-fold))");
+    // A link to it from the first screen or the header leaves the dock's room above it.
+    expect(first.decls.get("scroll-margin-top")).toBe("72px");
   });
 });
 
@@ -624,16 +710,50 @@ describe("home page new project form", () => {
     expect(still.getAttribute("alt")).toBe(""); // the preview is a picture; the Name field already says the name
     expect(still.getAttribute("loading")).toBe("lazy");
     expect(frame.style.aspectRatio).toBe("1080 / 1920");
-    expect(frame.querySelector(".h-npName")?.textContent).toBe("My first video");
+    expect(frame.querySelector(".h-npNameText")?.textContent).toBe("My first video");
 
     fireEvent.click(screen.getByRole("radio", { name: /Square 1:1/ }));
     expect(frame.style.aspectRatio).toBe("1080 / 1080");
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "   " } });
-    expect(frame.querySelector(".h-npName")?.textContent).toBe("Untitled project");
+    expect(frame.querySelector(".h-npNameText")?.textContent).toBe("Untitled project");
 
     const css = readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8");
     const rule = /^\.h-npStill \{([^}]*)\}/m.exec(css)?.[1] ?? "";
     expect(rule).toContain("object-fit: cover;");
+  });
+
+  it("draws the name as a text clip with your selection round it: a blue edge, four handles and your name", () => {
+    const { container } = render(<NewProjectForm />);
+    const name = container.querySelector<HTMLElement>(".h-npName")!;
+    const selection = name.querySelector(".h-npSel")!;
+    expect(selection.querySelector(".h-edPeerTag")?.textContent).toBe("You");
+    expect([...selection.querySelectorAll(".h-edHandle")].map((h) => h.getAttribute("data-at"))).toEqual(["tl", "tr", "bl", "br"]);
+    const rules = cssRules(readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8"));
+    const decl = (selector: string, prop: string) =>
+      rules.find((r) => r.media === null && r.selectors.includes(selector))?.decls.get(prop);
+    expect(decl(".h-npName", "--peer")).toBe("var(--ed-accent)"); // Selection Blue, as your selection is in the editor
+    expect(decl(".h-npSel", "outline")).toBe("2px solid var(--peer)");
+    expect(decl(".h-npName", "max-width")).toBe("84%");
+  });
+
+  it("sets the form at the page's own sizes: what you type and choose at the body size, fields 48 px tall", () => {
+    const rules = cssRules(readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8"));
+    const decl = (selector: string, prop: string) =>
+      rules.find((r) => r.media === null && r.selectors.includes(selector))?.decls.get(prop);
+    expect(decl(".h-np", "font-size")).toBe("var(--h-body)");
+    expect([decl(".h-npFields input", "height"), decl(".h-npFields input", "font-size")]).toEqual(["48px", "var(--h-body)"]);
+    expect(decl(".h-npLabel", "font-size")).toBe("var(--h-small)");
+    expect(decl(".h-npFields label > span:first-child", "font-size")).toBe("var(--h-small)");
+    expect(decl('.h-npFields [role="radio"] > span:last-child > span:first-child', "font-size")).toBe("var(--h-body)");
+    expect(decl('.h-npFields [role="radio"] > span:last-child > span:last-child', "font-size")).toBe("var(--h-small)");
+    expect(decl('.h-npFields [role="alert"]', "font-size")).toBe("var(--h-small)");
+    // The Format label is the page's, not the dialog's 12 px.
+    const { container } = render(<NewProjectForm />);
+    const label = container.querySelector(".h-npLabel")!;
+    expect([label.textContent, label.className]).toEqual(["Format", "h-npLabel"]);
+    // At that size two cards a row would cut the formats' names short on a phone, so there it is one a row.
+    const narrow = rules.find((r) => r.media === "@media (max-width: 520px)" && r.selectors.includes('.h-npFields [role="radiogroup"]'));
+    expect(narrow?.decls.get("grid-template-columns")).toBe("minmax(0, 1fr)");
   });
 
   it("ends with Create project as the page's white pill, after the fields and the preview", () => {
@@ -840,17 +960,23 @@ describe("home page agent demo", () => {
     const narrow = css.slice(css.indexOf("@container (max-width: 520px)"));
     expect(rule("  .h-uiSide", narrow)).toMatch(/min-height: 134px/);
     expect(rule("  .h-uiActivity li:not([data-fresh])", narrow)).toMatch(/display: none/);
-    // Two requests a row everywhere, so the answer is never more than a row from the one it answers.
+    // Two requests a row everywhere.
     expect(rule(".h-demoRequests")).toMatch(/grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
-    // On a computer only the editor moves: to the right column, across all of its rows, with a last row that takes
-    // up its height if it is ever the taller. The rest stay in the page's order down the left column.
-    expect(rule(".h-demo")).toMatch(/grid-template-rows: repeat\(4, auto\) 1fr/);
-    expect(rule(".h-demo > :not(.h-demoStage)")).toMatch(/grid-column: 1/);
-    expect(rule(".h-demoStage")).toMatch(/grid-column: 2;\s*grid-row: 1 \/ -1;\s*position: sticky/);
+    // On a computer only the editor and its answer move: to the right column, across all of its rows. The two
+    // columns start and end together: the requests sit at the foot of a 1fr last row, and the editor grows to the
+    // column's height (its middle row takes the room), with its answer under it at the foot. Nothing is sticky.
+    expect(rule(".h-demo")).toMatch(/grid-template-rows: auto auto 1fr;/);
+    expect(rule(".h-demo > :not(.h-demoShow)")).toMatch(/grid-column: 1/);
+    expect(rule(".h-demoShow")).toMatch(/grid-column: 2;\s*grid-row: 1 \/ -1;\s*display: flex;\s*flex-direction: column;/);
+    expect(rule(".h-demoRequests")).toMatch(/align-self: end;/);
+    expect(rule(".h-demoStage")).toMatch(/flex: 1;/);
+    expect(rule(".h-demoStage > .h-ui")).toMatch(/flex: 1;/);
+    expect(rule(".h-uiMain", css)).toMatch(/flex: 1;[\s\S]*min-height: 250px;/);
+    expect(demo).not.toMatch(/position: sticky/);
     // Phones: the page's own order, one column, with nothing reordered for the eye that the keyboard would not follow.
-    const phone = css.slice(css.indexOf("@media (max-width: 860px)"), css.indexOf("@media (max-width: 380px)"));
+    const phone = css.slice(css.indexOf("@media (max-width: 860px)"), css.indexOf("@media (max-width: 520px)"));
     expect(rule("  .h-demo", phone)).toMatch(/grid-template-rows: none/);
-    expect(rule("  .h-demoStage", phone)).toMatch(/grid-column: 1;\s*grid-row: auto;\s*position: static/);
+    expect(rule("  .h-demoShow", phone)).toMatch(/grid-column: 1;\s*grid-row: auto;/);
     for (const block of [demo, phone]) {
       expect(block).not.toMatch(/\border:\s*-?\d|display: contents|h-demoText/);
     }
@@ -870,9 +996,10 @@ describe("home page agent demo", () => {
       expect(at, sel).toBeGreaterThan(-1);
       return css.slice(at, css.indexOf("}", at));
     };
-    // Every request, Undo and the Pause pills get the system's button edge; the chosen request a thicker edge in the
-    // selection colour, drawn on top of its own (so it keeps its size), and a used Undo the switched-off colour.
-    expect(rule("  .h-demoRequest,\n  .h-uiUndo,\n  .h-pause", forced(home))).toMatch(/border: 1px solid ButtonText/);
+    // Every request, Undo, the Pause pill and the first screen's play button get the system's button edge; the chosen
+    // request a thicker edge in the selection colour, drawn on top of its own (so it keeps its size), and a used Undo
+    // the switched-off colour.
+    expect(rule("  .h-demoRequest,\n  .h-uiUndo,\n  .h-pause,\n  .h-edPlay", forced(home))).toMatch(/border: 1px solid ButtonText/);
     const chosen = rule('  .h-demoRequest[aria-pressed="true"]::after', forced(home));
     expect(chosen).toMatch(/position: absolute;\s*inset: -1px;\s*border: 2px solid Highlight/);
     expect(rule("  .h-demoRequest", forced(home))).toMatch(/position: relative/);
@@ -911,12 +1038,20 @@ describe("privacy page", () => {
     expect(screen.getByRole("link", { name: "terms of service" }).getAttribute("href")).toBe("/terms");
   });
 
-  it("says media is in the Google Drive the space uses, which for Seattle Solvers is the team's shared drive", () => {
+  it("says media is in the Google Drive of the account that connected the space, for any space", () => {
     render(<PrivacyPage />);
     const text = document.body.textContent ?? "";
-    expect(text).toContain("stored in the Google Drive the space uses");
-    expect(text).toContain("For Seattle Solvers, that is the team's shared drive.");
+    expect(text).toContain("stored in the Google Drive of the account that connected the space, not on EasyEdit's own servers.");
+    // No one team's own setup, described as if it were everyone's.
+    expect(text).not.toContain("Seattle Solvers");
     expect(text).not.toContain("the Google Drive you connect");
+  });
+
+  it("dates itself the way the terms do", () => {
+    render(<PrivacyPage />);
+    const line = screen.getByText("Last updated November 18, 2026.");
+    expect(line.className).toBe("text-sm text-(--h-muted)");
+    expect(line.previousElementSibling?.tagName).toBe("H1");
   });
 });
 

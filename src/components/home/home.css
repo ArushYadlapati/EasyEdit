@@ -5,22 +5,30 @@
    (--h-*), the pill buttons, the header and the footer are the public site's, in components/site/site.css. The page
    sits inside .ed-theme, so the editor's colour roles (--ed-*) are defined here too. */
 
-/* The page's own words come in five sizes: display (the first screen's headline and the page's other big lines), h2
-   (section headings, and anything set as large as one), lead (the line under a heading), body and small. The drawn
-   pieces of the app keep the app's own sizes. A heading's line fits a phone's column at h2 size at every phone width:
-   up to 9.2em, which "Free, and your files" (8.2em) needs. On a phone the Free section steps its heading and its list
-   down a size each (see the end of this file); nothing else changes size there but the display token. */
+/* The page's own words come in five sizes: display (the first screen's headline, and nothing else), h2 (every
+   section heading, and the agents' names), lead (the line under a heading, and the Free section's list), body and
+   small. The drawn pieces of the app keep the app's own sizes. A heading's line fits a phone's column at h2 size at
+   every phone width: up to 9.2em, which "Free, and your files" (8.2em) needs. On a phone nothing changes size but the
+   display token. */
 .h-page {
   --h-display: clamp(48px, 7vw, 112px);
   --h-h2: min(clamp(38px, 5.2vw, 76px), (100vw - 2 * var(--h-pad)) / 9.2);
   --h-lead: clamp(17px, 1.3vw, 20px);
   --h-body: 17px;
   --h-small: 14px;
+  /* How far the page scrolls while the first screen's timeline, held at the window's top, folds into the page's dock:
+     the height it loses on the way (176 px down to the dock's 56 px), so its foot keeps pace with the page under it.
+     page-dock.tsx reads the page with the same numbers. */
+  --h-fold: 120px;
+  /* The page's one column: as wide as the first screen's headline band (its headline, 176 px, then the 30rem column
+     beside it), on the page's left margin. On a window up to about 1450 px wide it is the whole width inside the
+     margins; wider, everything but the editor, the dock and the marquee stops at its right edge. */
+  --h-column: calc(var(--h-display) * 7.04 + 176px + 30rem);
+  /* Room between the last section and the site's footer (less on a short computer screen: see the close). */
+  --h-room: clamp(80px, 11vw, 140px);
   width: 100%;
   overflow-x: clip;
-  /* Room between the last section and the site's footer. On a computer (94 px or more) the page's dock rests in it at
-     the end of the page, under the last section; see .h-dock. */
-  padding-bottom: clamp(80px, 11vw, 140px);
+  padding-bottom: var(--h-room);
 }
 
 .h-page a {
@@ -58,31 +66,38 @@
 
 /* ---------- First screen: the headline across the top, the editor under it ---------- */
 
-/* Two rows: the headline band, then the editor at full width. On a computer the editor fills the rest of the window
-   down to the top of its timeline, which runs on below the first screen; a very tall window stops growing it at a
-   sensible shape. */
+/* Three rows: the headline band, the editor at full width, then the editor's timeline (its last row, drawn on its own
+   so that it can stay at the top of the window as the page scrolls on; see the page's dock below). On a computer the
+   editor fills the rest of the window so that the timeline's ruler and first track show above its foot, and the rest
+   of the timeline runs on below the first screen; a very tall window stops growing it at a sensible shape. The
+   timeline's row is longer than the timeline by --h-fold: the scroll over which it is held at the window's top and
+   folds into the dock. */
 .h-hero {
   --h-timeline: 176px;
+  --h-peek: 88px;
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(540px, 1fr);
-  min-height: min(calc(100svh - var(--h-bar) + var(--h-timeline)), calc(56vw + 520px));
+  grid-template-rows: auto minmax(340px, 1fr) calc(var(--h-timeline) + var(--h-fold));
+  min-height: calc(
+    min(100svh - var(--h-bar), 56vw + 520px - var(--h-timeline)) - var(--h-peek) + var(--h-timeline) + var(--h-fold)
+  );
   padding: 0 var(--h-pad);
   background: #000;
 }
 
 /* The headline on the left; the line under it, the two pills and the note on the right, along its foot. The space
-   below holds the author's name tag and the Pause pill. On a wide window the band stops growing once the room between
+   below holds the author's name tag. On a wide window the band stops growing once the room between
    its two columns reaches 176 px (about what it is at 1440 px): the headline's longer line is 7.04em, so the lead and
    Start free stay beside the headline they belong to instead of drifting off to the window's far side, while the
-   editor below still runs the whole width. */
+   editor below still runs the whole width. That width is the page's column (--h-column), which every section keeps
+   to as well. */
 .h-heroBand {
   display: grid;
   grid-template-columns: auto minmax(0, 30rem);
   justify-content: space-between;
   align-items: end;
   column-gap: 48px;
-  max-width: calc(var(--h-display) * 7.04 + 176px + 30rem);
+  max-width: var(--h-column);
   padding: clamp(12px, 2.5vh, 32px) 0 68px;
 }
 /* Two lines at every width: the column is as wide as the longer line, and the size follows the window so that it
@@ -192,17 +207,10 @@
   font-size: var(--h-small);
   color: var(--h-muted);
 }
-/* Just above the editor's top right corner: it holds what moves below it. */
-.h-heroPause {
-  grid-row: 2;
-  grid-column: 1;
-  justify-self: end;
-  align-self: start;
-  translate: 0 calc(-100% - 12px);
-}
-/* Paused, every moment in the editor holds where it is too. */
+/* Paused, every moment in the editor and its timeline holds where it is too. */
 .h-hero[data-paused] .h-ed,
-.h-hero[data-paused] .h-ed * {
+.h-hero[data-paused] .h-ed *,
+.h-hero[data-paused] .h-edTimeline * {
   animation-play-state: paused !important;
 }
 
@@ -211,11 +219,11 @@
   grid-row: 2;
   grid-column: 1;
   position: relative;
-  border-radius: 12px;
+  border-radius: 12px 12px 0 0;
   overflow: hidden;
   box-shadow: 0 0 0 1px var(--ed-line-strong); /* the editor window's own edge, a 1 px ring as in the app */
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr) var(--h-timeline);
+  grid-template-rows: 44px minmax(0, 1fr);
   background: var(--ed-bg);
   color: var(--ed-text);
   font-size: 13px;
@@ -782,12 +790,53 @@
   box-shadow: inset 0 0 0 1px var(--ed-accent);
 }
 
+/* The window's last row, under the editor and in its colours, with the window's edge carried on round it. */
 .h-edTimeline {
   --names: 96px;
+  grid-row: 3;
+  grid-column: 1;
+  align-self: start;
   position: relative;
+  height: var(--h-timeline);
+  overflow: hidden;
+  border-radius: 0 0 12px 12px;
   background: var(--ed-panel);
-  border-top: 1px solid var(--ed-line);
-  padding-bottom: 12px;
+  box-shadow: 0 0 0 1px var(--ed-line-strong);
+  color: var(--ed-text);
+  font-size: 13px;
+  line-height: 1.35;
+  user-select: none;
+}
+/* The editor's play button, at the start of the ruler's row, where the app has its play controls: the app's 28 px
+   icon button with its icon in Selection Blue, as the app's play button is. It pauses and plays the whole first
+   screen. Its focus ring is drawn inside its edge, as the timeline's own edge would cut one drawn outside. */
+.h-edPlay {
+  position: absolute;
+  top: 1px;
+  left: 10px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ed-accent);
+  cursor: pointer;
+  transition: background-color 120ms;
+}
+.h-edPlay:hover {
+  background: var(--ed-hover);
+}
+.h-hero .h-edPlay:focus-visible {
+  outline-offset: -2px;
+}
+.h-edPlay > svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
 }
 .h-edRuler {
   display: flex;
@@ -817,6 +866,8 @@
   height: 32px;
   margin-right: 16px;
 }
+/* A clip, as the app draws one: its kind's fill and the 1 px edge every clip has, so the dock's clips, which start out
+   as these, are drawn the same. */
 .h-edClip {
   position: absolute;
   top: 0;
@@ -827,6 +878,7 @@
   padding: 0 8px 0 3px;
   overflow: hidden;
   white-space: nowrap;
+  border: 1px solid var(--ed-line-strong);
   border-radius: 4px;
   background: var(--ed-clip-video);
   font-size: 12px;
@@ -938,9 +990,9 @@
 
 /* ---------- Sections ---------- */
 
+/* Each section keeps to the page's column, on the same left edge as the site bar, the headline and the editor. */
 .h-section {
-  max-width: 1280px;
-  margin: 0 auto;
+  max-width: calc(var(--h-column) + 2 * var(--h-pad));
   padding: clamp(120px, 14vw, 180px) var(--h-pad) 0;
 }
 .h-h2 {
@@ -956,14 +1008,6 @@
   color: var(--h-muted);
   max-width: 54ch;
 }
-/* The first screen's headline size, for the page's other big lines: the first project, free, and every agent. */
-.h-display {
-  font-size: var(--h-display);
-  font-weight: 600;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  text-wrap: balance;
-}
 /* A heading set as two lines, a span each. */
 .h-line {
   display: block;
@@ -971,30 +1015,37 @@
 
 /* ---------- AI: the live demo ---------- */
 
-/* The heading, the lead, what the chosen request's agent did and the requests down the left column, and the drawn
-   editor in the right one, across all of its rows, its top on the heading's. The page has them in the order a phone
-   shows them (the editor after the lead), so it is only the editor that moves here, and Tab still goes from its Undo
-   down to the requests. The left column is the taller, so the editor holds near the top of the window while the
-   requests go by (sticky), and never leaves the column's ends; were it ever the taller, the last row would take up
-   the difference instead of spreading the left column's pieces apart. */
+/* The heading, the lead and the requests down the left column; the drawn editor, with what the chosen request's
+   agent did there under it, in the right one across all of its rows. The page has them in the order a phone shows
+   them (the editor and its line after the lead), so it is only those that move here, and Tab still goes from the
+   editor's Undo down to the requests. The two columns start and end together: the editor's top is on the heading's,
+   its line ends where the requests do. Whichever column is the shorter gives way: a shorter left one has its requests
+   at its foot, and a shorter right one has an editor grown to the left one's height (its preview takes the room). */
 .h-demo {
   display: grid;
   grid-template-columns: minmax(0, 11fr) minmax(0, 13fr);
-  grid-template-rows: repeat(4, auto) 1fr;
+  grid-template-rows: auto auto 1fr;
   column-gap: clamp(32px, 4vw, 64px);
-  align-items: start;
 }
-.h-demo > :not(.h-demoStage) {
+.h-demo > :not(.h-demoShow) {
   grid-column: 1;
 }
 .h-demo > .h-lead {
   margin-top: 24px;
   text-wrap: pretty;
 }
-/* Two a row, so the answer above them is never more than a row from the request it answers. */
+.h-demoShow {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+/* Two a row. */
 .h-demoRequests {
+  align-self: end;
   list-style: none;
-  margin: 20px 0 0;
+  margin: 40px 0 0;
   padding: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1041,12 +1092,12 @@
   font-size: var(--h-small);
   color: var(--h-muted);
 }
-/* What the chosen request's agent did, just above the requests. All four answers sit in the one grid cell and the
-   unseen ones hold it open, so the space is the longest answer's: nothing under it moves when one answer gives way to
+/* What the chosen request's agent did, under the editor where it happened. All four answers sit in the one grid cell
+   and the unseen ones hold it open, so the space is the longest answer's: nothing moves when one answer gives way to
    the next, or while it is empty as the agent works. */
 .h-demoAnswer {
   display: grid;
-  margin-top: 40px;
+  max-width: 62ch;
 }
 .h-demoAnswer > p {
   grid-area: 1 / 1;
@@ -1061,12 +1112,16 @@
 }
 
 .h-demoStage {
-  grid-column: 2;
-  grid-row: 1 / -1;
-  position: sticky;
-  top: clamp(24px, 10svh, 96px);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   margin: 0;
   container-type: inline-size;
+}
+.h-demoStage > .h-ui {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 /* The drawn editor, in the editor's own colours (from .editor in globals.css) and type. */
@@ -1144,9 +1199,10 @@
   font-weight: 600;
 }
 .h-uiMain {
+  flex: 1;
   display: grid;
   grid-template-columns: 1fr 210px;
-  height: 250px;
+  min-height: 250px;
 }
 .h-uiPreview {
   display: flex;
@@ -1423,24 +1479,40 @@
 
 /* ---------- Free, and your files stay in your Drive ---------- */
 
-/* The heading at the display size, then what it comes to, a line each at the h2 size and a step lighter, in the same
-   white: size and weight lead from the heading to the list. More room under the heading than between the lines, and
-   more between the lines than their leading, so each reads as a sentence of its own. Then the app's own Storage page,
-   as the picture. */
+/* The heading, then what it comes to, a line each at the lead size, a step lighter and in the same white: the
+   heading leads by a clear step in size and weight, and the list is never as large as a heading. More room under the
+   heading than between the lines, and more between the lines than their leading, so each reads as a sentence of its
+   own. On a computer the list stands beside the heading, along its foot, as the first screen's lead stands beside its
+   headline, in the same 30rem column. Then the app's own Storage page, as the picture, across the whole column. */
 .h-facts {
   display: grid;
-  gap: 0.6em;
-  margin: 1em 0 0;
+  gap: 0.8em;
+  margin: 1.75em 0 0;
   padding: 0;
   list-style: none;
-  font-size: var(--h-h2);
+  font-size: var(--h-lead);
   font-weight: 500;
-  letter-spacing: -0.04em;
-  line-height: 1.05;
+  letter-spacing: -0.01em;
+  line-height: 1.45;
   color: var(--h-text);
 }
 .h-facts li {
   text-wrap: balance;
+}
+@media (width > 860px) {
+  .h-free {
+    display: grid;
+    grid-template-columns: auto minmax(0, 30rem);
+    justify-content: space-between;
+    align-items: end;
+    column-gap: 48px;
+  }
+  .h-free > .h-facts {
+    margin-top: 0;
+  }
+  .h-free > .h-driveStage {
+    grid-column: 1 / -1;
+  }
 }
 
 /* The Storage page: the dashboard window of a team on its Storage settings, with its editor dimmed behind it. Each
@@ -1683,9 +1755,12 @@
   color: #0a0a0a;
   font-weight: 600;
 }
+.h-tmMenu {
+  color: var(--ed-muted);
+}
 .h-tmBody {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 320px);
+  grid-template-columns: clamp(200px, 17vw, 248px) minmax(0, 1fr) clamp(260px, 22vw, 320px);
   gap: 1px;
   height: clamp(300px, 32vw, 460px);
   min-height: 0;
@@ -1916,79 +1991,65 @@
   background: var(--ed-text);
 }
 
-/* The two smaller things a team gets, under the editor: a line each, and the brand kit drawn small. */
-.h-teamFacts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 40px clamp(32px, 4vw, 64px);
-  margin-top: clamp(40px, 4vw, 56px);
-}
-.h-teamFacts h3 {
-  font-size: var(--h-lead);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.3;
-}
-.h-teamFacts p {
-  max-width: 46ch;
-  margin-top: 8px;
-  text-wrap: pretty;
-}
-/* The kit as its Brand kit tab lists it, at a size to read: the three fonts by name, the colours, the logo. */
-.h-kit {
-  display: grid;
-  gap: 16px;
-  max-width: 480px;
-  margin-top: 24px;
-  padding: 16px 18px;
-  border-radius: 10px;
-  background: var(--ed-panel);
-  color: var(--ed-text);
-  font-size: 13px;
-  line-height: 1.35;
-}
-.h-kitFonts {
+/* The left panel, open on the team's brand kit as the editor's Brand kit tab shows it: its fonts by kind of text, its
+   colours as chips and its logo. Each colour chip has the edge a chip has in the app, so the dark one still shows on
+   the panel. */
+.h-tmKit {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px 32px;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
-.h-kitFonts > span {
+.h-kit {
+  flex: 1;
   display: grid;
-  gap: 2px;
+  align-content: start;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--ed-panel);
+}
+.h-kitHead {
+  margin-top: 8px;
+  color: var(--ed-muted);
+  font-size: 12px;
+}
+.h-kitHead:first-child {
+  margin-top: 0;
+}
+.h-kitFont {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--ed-raised);
 }
 .h-kitRole {
   color: var(--ed-muted);
   font-size: 12px;
 }
 .h-kitFamily {
-  font-size: 15px;
   font-weight: 600;
+  white-space: nowrap;
 }
 .h-kitSwatches {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 18px;
+  gap: 8px;
 }
 .h-kitSwatch {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ed-muted);
-  font-variant-numeric: tabular-nums;
-}
-/* Each colour has the edge a colour chip has in the app, so the dark one still shows on the panel. */
-.h-kitSwatch > span {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   outline: 1px solid var(--ed-field-line);
   outline-offset: -1px;
 }
 .h-kitLogo {
-  width: 28px;
-  height: 28px;
-  margin-left: auto;
+  width: 36px;
+  height: 36px;
 }
 
 /* ---------- Works with every AI agent, and the close ---------- */
@@ -1997,11 +2058,17 @@
   margin-top: 28px;
   text-wrap: pretty;
 }
+/* The row's Pause pill, at its leading edge: on the page's left margin, where the row starts, right above it. */
+.h-marqueePause {
+  display: block;
+  margin-top: clamp(48px, 5vw, 72px);
+}
 /* The agents' names and marks at the h2 size, running across the whole window. The row starts at the page's left
-   edge (the padding) and runs out of sight at the window's edges, with no fade. */
+   margin and runs out of sight at the window's edges, with no fade: the box reaches from the window's left edge to
+   its right one, past the section's own margin and the end of its column. */
 .h-marquee {
-  margin: clamp(48px, 5vw, 72px) calc(50% - 50vw) 0;
-  padding-left: max(var(--h-pad), 50vw - 640px + var(--h-pad));
+  margin: 16px calc(100% + var(--h-pad) - 100vw) 0 calc(-1 * var(--h-pad));
+  padding-left: var(--h-pad);
   overflow: hidden;
 }
 .h-marqueeTrack {
@@ -2022,10 +2089,6 @@
   margin: 0;
   padding: 0 var(--gap) 0 0;
   list-style: none;
-}
-.h-marqueePause {
-  display: block;
-  margin: 20px 0 0 auto;
 }
 .h-agent {
   display: inline-flex;
@@ -2052,15 +2115,15 @@
     transform: translateX(-50%);
   }
 }
-/* The page's close: the one action again, with Sign in beside it, before the footer. It follows the agents as closely
-   as the agents follow the lead, so it ends their section, and the page's own room before the footer (as much as
-   between two sections) keeps the footer apart from it. */
-.h-close {
+/* The page's close, a section of its own after the agents and the last clip on the page's dock: its heading at the
+   h2 size, and the one action again right under it, with Sign in beside it. The page's own room before the footer
+   keeps the footer apart from it. */
+.h-closeActions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 16px 32px;
-  margin-top: clamp(48px, 5vw, 72px);
+  margin-top: clamp(32px, 3.5vw, 48px);
 }
 .h-closeLink {
   font-size: var(--h-body);
@@ -2070,10 +2133,41 @@
 .h-closeLink:hover {
   text-decoration: underline;
 }
+/* On a computer the room above the close is set so that the page's last screen, scrolled to the end, has the
+   agents' row whole under the dock, never part way under it: the window's height, less the dock and 24 px under it
+   (80 px), the row's Pause pill and the gap under it (46 px), the row (1.2 of the h2 size), the close's two-line
+   heading, the room over its 52 px pill, the page's own room before the footer, and the footer (112 px). It stays
+   between 48 px and a section's gap. On a computer screen 800 px tall or less the page keeps less room
+   before the footer, so the close keeps more above it. A window under 710 px tall has no room for all of that, so
+   there the row goes on up under the dock instead: the room above the close is then at least what puts the row's
+   foot on the dock's (the window less the dock, the heading, its pill and the room over it, the page's room and the
+   footer: 220 px and the rest). */
+@media (width > 860px) {
+  .h-close {
+    padding-top: clamp(
+      48px,
+      100svh - 290px - var(--h-h2) * 3.2 - clamp(32px, 3.5vw, 48px) - var(--h-room),
+      clamp(120px, 14vw, 180px)
+    );
+  }
+}
+@media (width > 860px) and (height <= 800px) {
+  .h-page {
+    --h-room: 80px;
+  }
+}
+@media (width > 860px) and (height < 710px) {
+  .h-close {
+    padding-top: max(
+      clamp(120px, 14vw, 180px),
+      100svh - 220px - var(--h-h2) * 2 - clamp(32px, 3.5vw, 48px) - var(--h-room)
+    );
+  }
+}
 
 /* ---------- Make your first project ---------- */
 
-/* At the display size: one line on a computer, two on a phone. */
+/* One line on a computer, two on a phone. */
 .h-startTitle {
   margin-bottom: clamp(40px, 5vw, 64px);
 }
@@ -2089,17 +2183,58 @@
     "preview actions";
   column-gap: clamp(32px, 4vw, 64px);
   color: var(--ed-text);
-  font-size: 13px;
+  font-size: var(--h-body);
 }
 .h-npFields {
   grid-area: fields;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
+}
+/* The app's own fields and format cards, at the page's sizes rather than a dialog's: what you type and choose at the
+   body size, in fields 48 px tall, and their labels and the formats' uses at the small size. */
+.h-npFields label > span:first-child,
+.h-npLabel {
+  color: var(--ed-muted);
+  font-size: var(--h-small);
+  font-weight: 500;
+  line-height: 20px;
+}
+.h-npFields label {
+  gap: 6px;
+}
+.h-npFields input {
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: var(--h-body);
+  line-height: 24px;
+}
+.h-npFields [role="alert"] {
+  font-size: var(--h-small);
+  line-height: 20px;
 }
 /* Two cards a row in this column, so the formats' names and uses are never cut short. */
 .h-npFields [role="radiogroup"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.h-npFields [role="radio"] {
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 10px;
+}
+.h-npFields [role="radio"] > span:first-child {
+  width: 24px;
+  height: 24px;
+}
+.h-npFields [role="radio"] > span:last-child > span:first-child {
+  font-size: var(--h-body);
+  line-height: 24px;
+}
+.h-npFields [role="radio"] > span:last-child > span:last-child {
+  font-size: var(--h-small);
+  line-height: 20px;
 }
 /* The frame sizes itself against its box's height (container units), so that box must have a definite height: here
    its own, and the frame's box is the first grid row inside it. As a flex-1 item in a column with only a min-height,
@@ -2126,14 +2261,24 @@
   object-fit: cover;
   object-position: 46% 50%;
 }
-/* The project's title as a text clip in the frame: white Geist on the dark ground of the still, under its middle. */
+/* The project's title as a text clip in the frame: white Geist on the dark ground of the still, under its middle, as
+   wide as its words up to most of the frame, with your selection round it as the editor draws one (Selection Blue,
+   2 px, corner handles, your name tag), as the first screen draws the headline's ending. */
 .h-npName {
+  --peer: var(--ed-accent);
   position: absolute;
-  inset: 54% 8% auto;
+  top: 54%;
+  left: 50%;
+  translate: -50% 0;
+  width: max-content;
+  max-width: 84%;
+}
+.h-npNameText {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   overflow: hidden;
+  padding: 0 0.12em;
   text-align: center;
   font-size: clamp(16px, min(10cqw, 8cqh), 64px);
   font-weight: 700;
@@ -2142,6 +2287,12 @@
   color: #fff;
   text-wrap: balance;
   overflow-wrap: anywhere;
+}
+.h-npSel {
+  position: absolute;
+  inset: -3px;
+  outline: 2px solid var(--peer);
+  pointer-events: none;
 }
 .h-npSize {
   text-align: center;
@@ -2163,61 +2314,135 @@
   color: var(--h-muted);
 }
 
-/* ---------- The page's timeline, docked at the foot of the window (page-dock.tsx) ---------- */
+/* ---------- The page's timeline, docked at the top of the window (page-dock.tsx) ---------- */
 
-/* The first screen's editor timeline, carried on down the page: as wide as the editor, in its Panel Charcoal with its
-   1 px window edge, a track name column as wide as the editor's, and one lane that lines up with the editor's own
-   lanes. It comes up from the foot of the window once the editor's timeline has gone past the top, and goes down again
-   for the end of the page. It is main's last child, held to the foot of the window while its own place is further
-   down: that place is 24 px under the last section, inside the room main leaves before the footer (the -80 px bottom
-   margin gives that room back, so the dock adds nothing to the page's length), and it can never pass over the footer.
-   Down, it still holds its links, so a keyboard reaches them after the last section, and it shows while one of them
-   has focus. Only rendered on a computer. */
+/* On a computer the first screen's timeline becomes the page's dock. As the page scrolls, the editor goes up past the
+   window's top and its timeline stops there; over the next --h-fold of scroll it folds up into one track: it is cut
+   down to the band round its video track while that track rides up to where the dock's track is, and the ruler, the
+   play button and the other tracks go out under the cut. Half way, the dock takes the video track and the playhead
+   over: its own clips, drawn just as the timeline's are and in the same places, take their place in the same frame,
+   and over the rest of the fold they change into the sections' clips (see the dock below). page-dock.tsx sets how far
+   the fold has gone (--fold, from 0 to 1) on the first screen and on the dock. The timeline row's extra length is what
+   lets the timeline stay put while it folds. */
+@media (width > 860px) and (prefers-reduced-motion: no-preference) {
+  .h-edTimeline {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    translate: 0 calc(var(--fold, 0) * -65px);
+    clip-path: inset(calc(var(--fold, 0) * 65px - 1px) -1px calc(var(--fold, 0) * 55px - 1px) round 0 0 13px 13px);
+  }
+  .h-edTimeline > :is(.h-edViewAs, .h-edPlay, .h-edRuler, [data-track="text"], [data-track="audio"]) {
+    opacity: calc(1 - var(--fold, 0) * 2);
+  }
+  /* The video track's clips and the playhead go at the handover, where the dock's take their place. */
+  .h-edTimeline > [data-track="video"] > .h-edLane,
+  .h-edTimeline > .h-edPlayhead {
+    opacity: clamp(0, (0.5 - var(--fold, 0)) * 1000, 1);
+  }
+  /* The track's name goes over the third quarter, and the dock's comes in over the last. */
+  .h-edTimeline > [data-track="video"] > .h-edTrackName {
+    opacity: calc(3 - var(--fold, 0) * 4);
+  }
+  /* With the keyboard on its play button, the timeline is whole wherever it is held, over the dock. */
+  .h-edTimeline:has(:focus-visible) {
+    --fold: 0;
+    z-index: 21;
+  }
+}
+/* The first screen runs a fold's length past its timeline, so the section after it starts that much nearer: the room
+   from the timeline at rest to that section's heading is a section's gap, as is the room from the dock to the heading
+   once the fold is done. */
+@media (width > 860px) {
+  .h-hero + .h-section {
+    padding-top: calc(clamp(120px, 14vw, 180px) - var(--h-fold));
+    /* A link to it (See it edit, the header's AI agents) leaves room for the dock above its heading. */
+    scroll-margin-top: 72px;
+  }
+}
+
+/* The dock: the timeline's one track, held at the top of the window, as wide as the editor, in its Panel Charcoal with
+   its 1 px window edge and the editor's track name column, its lane on the editor's own lanes. While the timeline folds
+   the dock's track rides on the timeline's video track; from the handover it is drawn there; once the fold is done it
+   has its own panel (on ::before), the page's black behind it across the whole window (on ::after), and takes the
+   pointer, and the timeline goes on up behind it. It is main's last child, so the keyboard comes to it after the last
+   section, and it shows whenever one of its links has the focus. Only rendered on a computer.
+   --morph is how far its clips have gone from the timeline's video clips to the sections' (0 to 1, over the fold's
+   second half), --label how far their names have changed over (0 to 1, over the middle 60% of that), and --taken
+   whether it has the track yet (1 from the handover on). */
 .h-dock {
   --names: 96px;
-  position: sticky;
-  bottom: 0;
+  --morph: clamp(0, (var(--fold, 0) - 0.5) * 2, 1);
+  --label: clamp(0, (var(--morph) - 0.2) / 0.6, 1);
+  --taken: clamp(0, (var(--fold, 0) - 0.5) * 1000 + 1, 1);
+  position: fixed;
+  top: 0;
+  right: var(--h-pad);
+  left: var(--h-pad);
   z-index: 20;
-  margin: 24px var(--h-pad) -80px;
   display: flex;
   align-items: center;
   height: 56px;
-  border-radius: 12px 12px 0 0;
-  background: var(--ed-panel);
-  box-shadow: 0 0 0 1px var(--ed-line-strong);
+  border-radius: 0 0 12px 12px;
   color: var(--ed-text);
   font-size: 12px;
   line-height: 16px;
-  opacity: 0;
   pointer-events: none;
-  transform: translateY(calc(100% + 1px));
-  transition:
-    transform 200ms var(--h-ease),
-    opacity 200ms var(--h-ease);
+}
+.h-dock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--ed-panel);
+  box-shadow: 0 0 0 1px var(--ed-line-strong);
+  opacity: 0;
+}
+/* Nothing that scrolls under the dock shows beside it in the window's margins or above its edge. */
+.h-dock::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: calc(-1 * var(--h-pad));
+  bottom: -1px;
+  left: calc(-1 * var(--h-pad));
+  z-index: -2;
+  background: #000;
+  opacity: 0;
+}
+.h-dockName,
+.h-dockLane {
+  translate: 0 calc((1 - var(--fold, 0)) * 65px);
 }
 .h-dock[data-shown],
 .h-dock:focus-within {
-  opacity: 1;
+  --morph: 1;
+  --taken: 1;
   pointer-events: auto;
-  transform: none;
 }
-/* Down because the end of the page is in view, a dock that takes the focus shows in its own place under the last
-   section, and the browser scrolls to it there, rather than over the page's closing action at the foot of the window.
-   Off the window's edge, it is a whole panel with all four corners round. */
-.h-dock:not([data-shown]):focus-within {
-  position: relative;
-  border-radius: 12px;
+.h-dock[data-shown]::before,
+.h-dock:focus-within::before,
+.h-dock[data-shown]::after,
+.h-dock:focus-within::after {
+  opacity: 1;
 }
-/* While it shows, whatever the browser brings into view (a link reached with Tab) stops above it, not under it. */
+.h-dock:focus-within > * {
+  translate: none;
+  opacity: 1;
+}
+/* While it shows, whatever the browser brings into view (a link reached with Tab) stops below it, not under it. */
 html:has(.h-dock[data-shown]) {
-  scroll-padding-bottom: 72px;
+  scroll-padding-top: 72px;
 }
+/* Its name comes in over the last quarter of the fold, as the timeline's "Video 1" goes over the third. */
 .h-dockName {
   flex: 0 0 var(--names);
   padding-left: 16px;
   overflow: hidden;
   color: var(--ed-muted);
   white-space: nowrap;
+  opacity: calc(var(--fold, 0) * 4 - 3);
 }
 .h-dockLane {
   position: relative;
@@ -2226,11 +2451,22 @@ html:has(.h-dock[data-shown]) {
   margin: 0 16px 0 0;
   padding: 0;
   list-style: none;
+  opacity: var(--taken);
 }
+/* Each clip goes from the place of the timeline's video clip it starts out as (--from-left, --from-width) to its
+   section's (--left, --width) as the clips change over. A section past the timeline's last clip starts out as
+   nothing at the track's end and grows in from there, so each clip is cut to its own box, corners and all, while it
+   is narrower than its name's padding (but not while one of its links has the focus, whose ring is drawn outside). */
 .h-dockLane > li {
   position: absolute;
   top: 0;
   bottom: 0;
+  left: calc(var(--from-left, var(--left)) * (1 - var(--morph)) + var(--left) * var(--morph));
+  width: calc(var(--from-width, var(--width)) * (1 - var(--morph)) + var(--width) * var(--morph));
+  clip-path: inset(0 round 4px);
+}
+.h-dockLane > li:focus-within {
+  clip-path: none;
 }
 /* Each section is drawn as a video clip on the editor's timeline: the clip fill, a 1 px edge, the name, and trim
    handles that show under the pointer. The current section's clip is drawn as your own selection is: a Selection
@@ -2252,11 +2488,35 @@ html:has(.h-dock[data-shown]) {
 .h-dock .h-dockClip:focus-visible {
   outline-offset: 2px; /* inside the gap between two clips */
 }
+/* The timeline clip's name and picture it started out with (drawn over it, inside its edge, as the timeline draws
+   them) roll over to the section's name inside the clip as the clips change: the old goes up and out as the new
+   comes up from below, each fading, and the clip's own edge cuts both, so the two never lie over each other. */
 .h-dockClip > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  opacity: var(--label);
+  translate: 0 calc((1 - var(--label)) * 20px);
+}
+.h-dockFrom {
+  position: absolute;
+  inset: 1px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 3px;
+  overflow: hidden;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: calc(1 - var(--label));
+  translate: 0 calc(var(--label) * -20px);
+}
+.h-dockFrom img {
+  height: 26px;
+  width: auto;
+  border-radius: 2px;
 }
 .h-dockClip::before,
 .h-dockClip::after {
@@ -2279,28 +2539,41 @@ html:has(.h-dock[data-shown]) {
 .h-dockClip:hover::after {
   opacity: 1;
 }
-.h-dockClip[aria-current] {
+/* Drawn once the dock is the strip (or has the focus), so the timeline's clips it starts out as keep their own look
+   until then; it comes on with the clips' 120 ms transitions. */
+.h-dock[data-shown] .h-dockClip[aria-current],
+.h-dock:focus-within .h-dockClip[aria-current] {
   border-color: var(--ed-accent);
   background: color-mix(in srgb, var(--ed-accent) 18%, var(--ed-clip-video));
 }
-.h-dockClip[aria-current]::before,
-.h-dockClip[aria-current]::after {
+.h-dock[data-shown] .h-dockClip[aria-current]::before,
+.h-dock[data-shown] .h-dockClip[aria-current]::after,
+.h-dock:focus-within .h-dockClip[aria-current]::before,
+.h-dock:focus-within .h-dockClip[aria-current]::after {
   background: var(--ed-accent);
   opacity: 1;
 }
 /* The playhead, drawn as the editor's is: a 1 px line, its box's left edge, with its head at the top. Its box is as
    wide as the lane, so moving the box by a share of its own width moves the line along the track by that share.
-   Between one scroll step and the next it glides. The line is a border rather than a fill so that it still shows
-   when the system's high contrast colours replace the page's own. */
+   From the handover it stands where the timeline's did, as tall as what shows of the timeline, and goes on to where
+   the page is read as the fold ends (page-dock.tsx moves it; its head comes in on the way). Once the dock shows it
+   glides between one scroll step and the next. The line is a border rather than a fill so that it still shows when
+   the system's high contrast colours replace the page's own. */
 .h-dockPlayhead {
   position: absolute;
   top: 0;
   right: 16px;
-  bottom: 0;
   left: var(--names);
+  height: calc(56px + (1 - var(--fold, 0)) * 120px);
   border-left: 1px solid var(--ed-text);
   pointer-events: none;
+  opacity: var(--taken);
+}
+.h-dock[data-shown] .h-dockPlayhead {
   transition: transform 160ms var(--h-ease);
+}
+.h-dock:focus-within .h-dockPlayhead {
+  height: 56px;
 }
 /* Centred on the line: the head is placed from inside the border, 1 px to the right of the line. */
 .h-dockPlayhead::after {
@@ -2312,13 +2585,14 @@ html:has(.h-dock[data-shown]) {
   height: 11px;
   background: var(--ed-text);
   clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+  opacity: var(--morph);
 }
 /* With the system's high contrast colours, fills become the window's background and shadows go, so the dock would
-   lose its edge, its current clip would look like the others and the playhead's head would vanish. The dock gets a
-   real edge, the current clip a thicker edge and solid handles in the system's selection colour, and the head the
-   system's text colour. */
+   lose its edge, its current clip would look like the others and the playhead's head would vanish. The dock's panel
+   gets a real edge, the current clip a thicker edge and solid handles in the system's selection colour, and the head
+   the system's text colour. */
 @media (forced-colors: active) {
-  .h-dock {
+  .h-dock::before {
     border: 1px solid CanvasText;
   }
   .h-dockClip[aria-current] {
@@ -2335,13 +2609,14 @@ html:has(.h-dock[data-shown]) {
   }
 }
 /* The same goes for the page's other controls, which are drawn as fills with no edge: the agent demo's requests, its
-   Undo and the Pause pills would be bare words, and the chosen request would look like the rest. They get the
-   system's button edge, and the chosen request a thicker one in its selection colour, drawn over the thin one so the
+   Undo, the Pause pill and the first screen's play button would be bare words or a bare icon, and the chosen request
+   would look like the rest. They get the system's button edge, and the chosen request a thicker one in its selection colour, drawn over the thin one so the
    request keeps its size when the choice moves. A used Undo takes the system's colour for what is switched off. */
 @media (forced-colors: active) {
   .h-demoRequest,
   .h-uiUndo,
-  .h-pause {
+  .h-pause,
+  .h-edPlay {
     border: 1px solid ButtonText;
   }
   .h-demoRequest {
@@ -2388,8 +2663,9 @@ html:has(.h-dock[data-shown]) {
     animation: none !important;
   }
   /* The agents stand still in rows inside the page's margins, every one drawn whole, and the copy that closes the
-     loop goes. */
+     loop goes. With no Pause pill above them, the rows keep its room under the line before them. */
   .h-marquee {
+    margin-top: clamp(48px, 5vw, 72px);
     margin-inline: 0;
     padding-left: 0;
   }
@@ -2405,11 +2681,17 @@ html:has(.h-dock[data-shown]) {
     display: none;
   }
   /* Nothing moves, so there is nothing to pause. */
-  .h-heroPause,
+  .h-edPlay,
   .h-marqueePause {
     display: none;
   }
-  /* The dock comes and goes at once, and its playhead jumps to where it stands instead of gliding there. */
+  /* The timeline scrolls away like the rest of the page (it is held and folded only when motion is allowed), and the
+     dock is simply there once the timeline has gone past the window's top, its playhead jumping to where it stands
+     instead of gliding there. */
+  .h-dockName,
+  .h-dockLane {
+    translate: none;
+  }
   .h-dock,
   .h-dock *,
   .h-dock *::before,
@@ -2429,26 +2711,34 @@ html:has(.h-dock[data-shown]) {
     /* About the headline band's height: the taller of its two columns (the two lines of the headline, or the line
        under it with the pills), plus its padding. */
     --h-band: calc(max(14vw, 168px) + clamp(12px, 2.5vh, 32px) + 68px);
-    grid-template-rows: auto auto;
+    grid-template-rows: auto auto calc(var(--h-timeline) + var(--h-fold));
     min-height: 0;
   }
   .h-ed {
     container-type: inline-size;
-    grid-template-rows: 44px auto var(--h-timeline);
+    grid-template-rows: 44px auto;
   }
   .h-edBody {
     --side: 240px;
     grid-template-columns: minmax(0, 1fr) var(--side);
     height: min(
       calc((100cqw - var(--side) - 48px) * 9 / 16 + 48px),
-      max(320px, calc(100svh - var(--h-bar) - var(--h-band) - 44px))
+      max(320px, calc(100svh - var(--h-bar) - var(--h-band) - 44px - var(--h-peek)))
     );
   }
   .h-edLeft {
     display: none;
   }
-  /* The team's editor is shorter here too, and its oldest change would be cut in half: it shows the three newest. */
+  /* The team's editor is shorter here too, and its oldest change would be cut in half: it shows the three newest. Like
+     the first screen's editor it drops its left panel here, the brand kit, so that the preview keeps a good size. */
   .h-tmActivity li:nth-child(n + 4) {
+    display: none;
+  }
+  .h-tmBody {
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 26vw, 300px);
+  }
+  .h-tmKit,
+  .h-tmMenu {
     display: none;
   }
 }
@@ -2462,9 +2752,9 @@ html:has(.h-dock[data-shown]) {
     --h-display: clamp(34px, (100vw - 2 * var(--h-pad)) / 7.5, 96px);
   }
   /* One column: the headline, the line under it and the pills, then the editor, cut down to its top bar and preview,
-     straight after. */
+     straight after, and its timeline cut down to the ruler's row. */
   .h-hero {
-    grid-template-rows: auto auto;
+    grid-template-rows: auto auto auto;
     min-height: 0;
   }
   .h-heroBand {
@@ -2476,7 +2766,7 @@ html:has(.h-dock[data-shown]) {
     gap: 20px;
   }
   .h-ed {
-    grid-template-rows: 44px auto 0;
+    grid-template-rows: 44px auto;
   }
   .h-edBar {
     gap: 12px;
@@ -2491,29 +2781,30 @@ html:has(.h-dock[data-shown]) {
   .h-edBody {
     grid-template-columns: minmax(0, 1fr);
   }
-  /* The menus, the side panels, the timeline and the people in the top bar go; Export stays. */
+  /* The menus, the side panels and the people in the top bar go; Export stays. */
   .h-edLeft,
   .h-edBody > .h-edRight,
-  .h-edTimeline,
   .h-edMenu,
   .h-edBar .h-edAvatar {
     display: none;
   }
+  /* Of the timeline, only the ruler's row is left, a 40 px row under the preview as the app's control row is: the play
+     button at its start and View as at its end. */
+  .h-edTimeline {
+    height: 40px;
+  }
+  .h-edTimeline > :not(.h-edPlay, .h-edViewAs) {
+    display: none;
+  }
+  .h-edPlay {
+    top: 6px;
+  }
+  .h-edViewAs {
+    top: 10px;
+  }
   .h-edStage {
     aspect-ratio: 16 / 10;
     padding: 12px;
-  }
-  /* "Free, and your files" (8.2em) is longer than the display line a phone's column holds, so the Free heading is set
-     at h2 here, and its list a size under it at the lead size: two heading lines, then four short sentences. */
-  .h-freeTitle {
-    font-size: var(--h-h2);
-  }
-  .h-facts {
-    gap: 0.8em;
-    margin-top: 1.75em;
-    font-size: var(--h-lead);
-    letter-spacing: -0.01em;
-    line-height: 1.45;
   }
   .h-driveStage {
     height: auto;
@@ -2542,7 +2833,9 @@ html:has(.h-dock[data-shown]) {
     padding: 0 12px;
   }
   .h-tmStatus,
-  .h-tmTimeline {
+  .h-tmTimeline,
+  .h-tmKit,
+  .h-tmMenu {
     display: none;
   }
   .h-tmBody {
@@ -2559,23 +2852,19 @@ html:has(.h-dock[data-shown]) {
   .h-driveMain {
     padding: 16px;
   }
-  .h-demo,
-  .h-teamFacts {
-    grid-template-columns: minmax(0, 1fr);
-  }
   /* One column in the page's own order: the heading and lead, then the editor, what the agent did, and the requests
      under it. With the requests in view the editor is too, so a pick shows its edit landing (the timeline and Undo
      right above the requests). */
   .h-demo {
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: none;
   }
-  .h-demoStage {
+  .h-demoShow {
     grid-column: 1;
     grid-row: auto;
-    position: static;
     margin-top: 40px;
   }
-  .h-demoAnswer {
+  .h-demoRequests {
     margin-top: 20px;
   }
   .h-demoRequest {
@@ -2601,8 +2890,18 @@ html:has(.h-dock[data-shown]) {
     width: 100%;
   }
 }
-/* Too narrow for two format cards a row without cutting their names short ("Landscape 1…" and "Landscape 4…"). */
-@media (max-width: 380px) {
+/* On a phone with reduced motion there is nothing to play or pause, so the editor ends with its preview. */
+@media (max-width: 860px) and (prefers-reduced-motion: reduce) {
+  .h-edTimeline {
+    display: none;
+  }
+  .h-ed {
+    border-radius: 12px;
+  }
+}
+/* Too narrow for two format cards a row at the body size without cutting their names short ("Landscape 1…",
+   "Facebook / Li…"). */
+@media (max-width: 520px) {
   .h-npFields [role="radiogroup"] {
     grid-template-columns: minmax(0, 1fr);
   }

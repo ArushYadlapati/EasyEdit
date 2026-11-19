@@ -1,5 +1,6 @@
 "use client";
 
+import { Pause, Play } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { PlatformOverlay } from "@/components/editor/platform-overlay";
@@ -13,8 +14,9 @@ import { platformViewsFor, type PlatformView } from "@/lib/editor/platform-views
 // adding a title, a teammate's selection, a project going vertical for Reels, an export finishing. The moments inside
 // a scene are CSS animations that restart because each scene's overlay is keyed by the scene, so the timers are the
 // one that changes scenes and the one that types.
-// Pause holds all of it where it is: the clip, the moments (home.css stops their animations), the typing and the
-// scene's clock, which keeps what is left of the scene so that Play carries on from the same point in each.
+// The editor's own play button, at the start of its timeline's ruler, pauses all of it where it is: the clip, the
+// moments (home.css stops their animations), the typing and the scene's clock, which keeps what is left of the scene
+// so that Play carries on from the same point in each.
 // With reduced motion asked for there is no timer: the hero keeps the scene it shows (the first, for anyone who
 // arrives that way) with its ending in full, its clips on their posters (none is even downloaded), and home.css shows
 // each of the scene's moments as it ends. Allowing motion again starts the shown scene over, its clip, moments and
@@ -233,15 +235,6 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
         </div>
       </div>
 
-      {/* Its words say what a press does, so, like the agent logos' button, it is not also marked pressed. It holds the
-          scenes, the typing and every moment in the editor below. With reduced motion nothing changes by itself, so
-          there is no button (home.css hides it before the script has run too). */}
-      {!still && (
-        <button type="button" className="h-pause h-heroPause" onClick={() => setPaused((p) => !p)}>
-          {paused ? "Play" : "Pause"}
-        </button>
-      )}
-
       {/* The editor model: decoration for sighted visitors; the headline says what it shows. */}
       <div key={take} className="h-ed" data-ui aria-hidden="true">
         <div className="h-edBar">
@@ -385,67 +378,92 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
             )}
           </div>
         </div>
+      </div>
 
-        <div className="h-edTimeline">
-          <span key={`viewas-${scene.key}`} className="h-edViewAs" data-shorts={scene.key === "creators" || undefined}>
-            View as:{" "}
-            <span className="h-edViewVal">
-              <span className="h-edViewOff">Off</span>
-              {scene.key === "creators" && <span className="h-edViewOn">YouTube Shorts</span>}
+      {/* The editor's timeline, the window's last row, with the editor's play button at the start of its ruler, where
+          the app has its play controls. On a computer it is the page's dock as well: it holds at the top of the window
+          while the page scrolls on, and folds up into the dock's one track (home.css, page-dock.tsx). On a phone only
+          the ruler's row is left, under the preview, with the button and View as. Everything in it but the button is
+          decoration for sighted visitors. */}
+      <div key={`timeline-${take}`} className="h-edTimeline" data-ui>
+        {/* It holds the scenes, the typing and every moment in the editor. Its name says what a press does (Pause or
+            Play), so, like the agent logos' button, it is not also marked pressed. With reduced motion nothing changes
+            by itself, so there is no button (home.css hides it before the script has run too). */}
+        {!still && (
+          <button
+            type="button"
+            className="h-edPlay"
+            aria-label={paused ? "Play" : "Pause"}
+            title={paused ? "Play" : "Pause"}
+            onClick={() => setPaused((p) => !p)}
+          >
+            {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
+          </button>
+        )}
+        <span
+          key={`viewas-${scene.key}`}
+          className="h-edViewAs"
+          data-shorts={scene.key === "creators" || undefined}
+          aria-hidden="true"
+        >
+          View as:{" "}
+          <span className="h-edViewVal">
+            <span className="h-edViewOff">Off</span>
+            {scene.key === "creators" && <span className="h-edViewOn">YouTube Shorts</span>}
+          </span>
+        </span>
+        <div className="h-edRuler" aria-hidden="true">
+          {Array.from({ length: 13 }, (_, s) => (
+            <span key={s}>{`0:${String(s * 2).padStart(2, "0")}`}</span>
+          ))}
+        </div>
+        <div className="h-edTrack" data-track="text" aria-hidden="true">
+          <span className="h-edTrackName">Text 1</span>
+          <span className="h-edLane">
+            <span className="h-edClip h-edClipText" style={{ left: "1%", width: "12%" }} data-fresh={scene.key === "ai" || undefined}>
+              Summer nights
+            </span>
+            <span className="h-edClip h-edClipText" style={{ left: "26%", width: "14%" }} data-peer={scene.key === "team" || undefined}>
+              Shibuya, 2 a.m.
+              {scene.key === "team" && <span className="h-edBadge">SO</span>}
+            </span>
+            <span className="h-edClip h-edClipText" style={{ left: "51%", width: "14%" }}>
+              Into the hills
             </span>
           </span>
-          <div className="h-edRuler">
-            {Array.from({ length: 13 }, (_, s) => (
-              <span key={s}>{`0:${String(s * 2).padStart(2, "0")}`}</span>
-            ))}
-          </div>
-          <div className="h-edTrack">
-            <span className="h-edTrackName">Text 1</span>
-            <span className="h-edLane">
-              <span className="h-edClip h-edClipText" style={{ left: "1%", width: "12%" }} data-fresh={scene.key === "ai" || undefined}>
-                Summer nights
-              </span>
-              <span className="h-edClip h-edClipText" style={{ left: "26%", width: "14%" }} data-peer={scene.key === "team" || undefined}>
-                Shibuya, 2 a.m.
-                {scene.key === "team" && <span className="h-edBadge">SO</span>}
-              </span>
-              <span className="h-edClip h-edClipText" style={{ left: "51%", width: "14%" }}>
-                Into the hills
-              </span>
-            </span>
-          </div>
-          <div className="h-edTrack">
-            <span className="h-edTrackName">Video 1</span>
-            <span className="h-edLane">
-              {SCENES.map((s, i) => (
-                <span
-                  key={s.key}
-                  className="h-edClip"
-                  style={{ left: `${i * 25}%`, width: "24.6%" }}
-                  data-mika={(s.key === "team" && scene.key === "team") || undefined}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- a clip thumbnail in a drawn interface */}
-                  <img src={s.poster} alt="" width={64} height={36} />
-                  {MEDIA[i].name}
-                </span>
-              ))}
-            </span>
-          </div>
-          <div className="h-edTrack">
-            <span className="h-edTrackName">Audio 1</span>
-            <span className="h-edLane">
-              <span className="h-edClip h-edClipAudio" style={{ left: "0%", width: "99.6%" }}>
-                soundtrack.mp3
-              </span>
-            </span>
-          </div>
-          {/* The playhead crosses the scene's own clip over the scene's length. */}
-          <span
-            key={scene.key}
-            className="h-edPlayhead"
-            style={{ "--from": active * 25 + 1, "--to": active * 25 + 24, animationDuration: `${scene.ms}ms` } as React.CSSProperties}
-          />
         </div>
+        <div className="h-edTrack" data-track="video" aria-hidden="true">
+          <span className="h-edTrackName">Video 1</span>
+          <span className="h-edLane">
+            {SCENES.map((s, i) => (
+              <span
+                key={s.key}
+                className="h-edClip"
+                style={{ left: `${i * 25}%`, width: "24.6%" }}
+                data-mika={(s.key === "team" && scene.key === "team") || undefined}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- a clip thumbnail in a drawn interface */}
+                <img src={s.poster} alt="" width={64} height={36} />
+                {MEDIA[i].name}
+              </span>
+            ))}
+          </span>
+        </div>
+        <div className="h-edTrack" data-track="audio" aria-hidden="true">
+          <span className="h-edTrackName">Audio 1</span>
+          <span className="h-edLane">
+            <span className="h-edClip h-edClipAudio" style={{ left: "0%", width: "99.6%" }}>
+              soundtrack.mp3
+            </span>
+          </span>
+        </div>
+        {/* The playhead crosses the scene's own clip over the scene's length. */}
+        <span
+          key={scene.key}
+          className="h-edPlayhead"
+          aria-hidden="true"
+          style={{ "--from": active * 25 + 1, "--to": active * 25 + 24, animationDuration: `${scene.ms}ms` } as React.CSSProperties}
+        />
       </div>
     </section>
   );

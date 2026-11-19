@@ -44,13 +44,14 @@ describe.each([
     expect(metadata.title).toBe(`${title === "Privacy" ? "Privacy" : "Terms"} · EasyEdit`);
   });
 
-  it("sets its 16 px text in a column about 65 characters wide, in the middle of the window", () => {
+  it("sets its 16 px text in a column about 65 characters wide, on the site's left edge", () => {
     const { container } = render(<Page />);
     const article = container.querySelector("article")!;
     // 32rem of 16 px Geist. Not 65ch, which comes out near 90 characters because Geist's zero is wide.
     expect(classes(article)).toEqual(expect.arrayContaining(["max-w-lg", "text-base"]));
     expect(classes(article).some((c) => c.startsWith("max-w-") && c !== "max-w-lg")).toBe(false);
-    expect(classes(article.parentElement!)).toContain("justify-center");
+    // The same main as sign-in and the not-found page, so the column starts where theirs do.
+    expect(article.parentElement!.className).toBe("h-plain");
   });
 
   it("puts more space above each section heading than below it, and sets it clearly bigger than the text", () => {
@@ -87,4 +88,14 @@ it("the terms and privacy pages share one reading layout", () => {
   expect(terms.querySelector("h1")!.className).toBe(privacy.querySelector("h1")!.className);
   const headingClasses = new Set([...terms.querySelectorAll("h2"), ...privacy.querySelectorAll("h2")].map((h) => h.className));
   expect(headingClasses.size).toBe(1);
+});
+
+it("starts every plain page's column on the site's left edge, at the same height under the header", () => {
+  const site = cssRules(readFileSync(join(process.cwd(), "src/components/site/site.css"), "utf8"));
+  const plain = site.find((r) => r.media === null && r.selectors.includes(".h-plain"))!.decls;
+  // Not centred in the window, so going from one page to the next moves nothing sideways.
+  for (const centring of ["justify-content", "align-items", "margin", "margin-inline"]) expect(plain.has(centring), centring).toBe(false);
+  expect(plain.get("padding")).toBe("clamp(48px, 9vh, 112px) var(--h-pad) clamp(80px, 11vw, 140px)");
+  const column = site.find((r) => r.media === null && r.selectors.includes(".h-plainColumn"))!.decls;
+  expect(column.has("margin")).toBe(false);
 });

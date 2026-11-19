@@ -174,15 +174,14 @@
   color: var(--h-text);
 }
 
-/* ---------- Plain pages: sign-in and page not found ---------- */
+/* ---------- Plain pages: sign-in, terms, privacy and page not found ---------- */
 
-/* One column in the middle of the space between the header and the footer, its words set to its left edge. */
+/* Each page's one column starts on the site's left edge, the header's logo and the home page's headings, at the same
+   height under the header on every page, so going from one page to another moves nothing sideways. Each column keeps
+   its own measure (about 65 characters of the terms' 16 px text, the sign-in buttons' width). */
 .h-plain {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(48px, 9vh, 112px) var(--h-pad);
+  padding: clamp(48px, 9vh, 112px) var(--h-pad) clamp(80px, 11vw, 140px);
 }
 .h-plainColumn {
   display: flex;

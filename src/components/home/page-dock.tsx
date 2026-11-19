@@ -1,36 +1,56 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 
-// The page's own timeline. The first screen's editor ends with its timeline; once that has scrolled up out of the
-// window, a timeline drawn like it docks at the foot of the window: one track with a clip for each section of the
-// page, each clip as long as its section is tall, and a playhead that stands where the middle of the window is on
-// the page. A click on a clip goes to its section and puts the keyboard there. The clip of the section across the
-// middle of the window is marked as the current location, and drawn as your own selection is in the editor. The dock
-// goes down again when the end of the page comes up (its closing action, marked data-dock-end, and the footer), so it
-// never sits over either. It is the last thing in <main>, held to the foot of the window (home.css), so at the end of
-// the page it rests under the last section, above the footer.
+// The page's own timeline. On a computer the first screen's editor ends with its timeline, and that timeline becomes
+// the page's dock: once the editor has gone up past the top of the window the timeline stops there, and as the page
+// scrolls on it folds up into one track (home.css). Half way through the fold the dock takes that track over: its
+// clips start out as the timeline's own video clips, in their places and with their names, and over the rest of the
+// fold they grow and shrink into a clip for each section of the page, each as long as its section is tall, their
+// names changing over inside them, and the sections past the timeline's last clip come in at the end of the track;
+// its playhead starts where the timeline's stood and moves to where the page is being read. This component draws that track and says how far the fold has gone. A click on a clip goes to its
+// section and puts the keyboard there. The clip under the playhead is marked as the current location, and drawn as
+// your own selection is in the editor. It is the last thing in <main>, so the keyboard comes to it after the last
+// section.
 // Only on a computer: below 860 px wide the first screen has no timeline and there is no dock. Nothing is drawn on
 // the server, so the page's HTML is the same for every window and the first render in the browser matches it.
 // The clips are read from the page: each <section> with an id straight inside <main>, after the first screen, in
 // page order. A section names its clip with data-dock-label; without one, the clip takes the first sentence of the
-// section's heading.
+// section's heading. A section with no id belongs to the clip before it.
 
 const DESKTOP = "(width > 860px)";
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
-// The line across the window the dock reads the page at: its middle, the same line for the playhead and for which
-// section is current.
-const MIDDLE = "-50% 0px -50% 0px";
-// The window less its top pixel. A first screen whose bottom is exactly on the window's top edge, as it is after a jump
-// to the first section, touches the window and would still count as in view; against this line it has gone, while
-// one pixel of it showing still counts.
-const BELOW_TOP = "-1px 0px 0px 0px";
 // No clip is drawn narrower than this share of the track, so a short section still has room for its name.
 const MIN_SHARE = 0.08;
+// The first screen's timeline and the dock, in px (home.css: --h-timeline, the dock's height, and --h-fold, which is
+// the difference). The first screen ends a fold's length after its timeline, so while its foot is between those two
+// lengths from the window's top the timeline is held there and folding.
+export const TIMELINE = 176;
+export const DOCK = 56;
+export const FOLD = TIMELINE - DOCK;
+// How far into the fold the dock takes the timeline's video track and playhead over (home.css swaps them there too).
+export const HANDOVER = 0.5;
+
+// How far the fold has gone, from 0 (the timeline whole) to 1 (folded into the dock), when the first screen's foot is
+// `bottom` px from the window's top. With reduced motion the timeline isn't held or folded: it scrolls away with the
+// page, and the dock is there once all of it has gone past the window's top.
+export function foldAt(bottom: number, still: boolean): number {
+  if (still) return bottom <= FOLD ? 1 : 0;
+  return Math.min(1, Math.max(0, (TIMELINE + FOLD - bottom) / FOLD));
+}
+
+// How far the dock's clips have gone from the timeline's video clips to the sections' (0 to 1), at a fold: none
+// until the handover, all of it once the fold is done.
+export function morphAt(fold: number): number {
+  return Math.min(1, Math.max(0, (fold - HANDOVER) / (1 - HANDOVER)));
+}
 
 type Clip = { id: string; label: string };
 // A section's place on the page: how far down the document its top is, and its height, in px.
 export type Span = { top: number; height: number };
+// One of the first screen's video clips, as the dock's clips start out: where it starts on the track and how long it
+// is, in % of the track as the timeline sets them, its name and its picture.
+type Source = { left: number; width: number; name: string; poster: string | null };
 
 // Each clip's share of the track: its section's share of the sections' height, but at least MIN_SHARE.
 export function clipShares(heights: number[]): number[] {
@@ -41,9 +61,18 @@ export function clipShares(heights: number[]): number[] {
   return floored.map((share) => share / sum);
 }
 
-// Where the playhead stands, from 0 (the start of the first clip) to 1 (the end of the last), when the middle of the
-// window is `line` px down the document: as far into a clip as the line is into its section. Between two sections it
-// waits at the end of the first; above the first it is at the start, and below the last at the end.
+// The line across the window the dock reads the page at, in px down the document, when the page is scrolled `y` px of
+// at most `last`, in a window `height` px tall: the window's middle, until the last half a window of scroll, over
+// which it goes on down to the window's foot. At the very end of the page it is past the last section, so the
+// playhead has reached the end of the track.
+export function readingLine(y: number, height: number, last: number): number {
+  const left = Math.max(0, last - y);
+  return y + height * Math.max(0.5, 1 - left / height);
+}
+
+// Where the playhead stands, from 0 (the start of the first clip) to 1 (the end of the last), when the reading line is
+// `line` px down the document: as far into a clip as the line is into its section. Between two sections it waits at
+// the end of the first; above the first it is at the start, and below the last at the end.
 export function playheadAt(line: number, spans: Span[], shares: number[]): number {
   let start = 0;
   for (let i = 0; i < spans.length; i++) {
@@ -53,6 +82,16 @@ export function playheadAt(line: number, spans: Span[], shares: number[]): numbe
     start += shares[i];
   }
   return Math.min(start, 1);
+}
+
+// Which clip the playhead is on: the last section whose top the reading line has passed (between two sections the
+// upper one, below the last the last), or -1 while the line is still above the first.
+export function currentAt(line: number, spans: Span[]): number {
+  let at = -1;
+  spans.forEach((span, i) => {
+    if (span.top <= line) at = i;
+  });
+  return at;
 }
 
 // Where each clip starts along the track, as a share of it.
@@ -77,6 +116,25 @@ function shortName(section: HTMLElement): string {
   return first || section.id;
 }
 
+// The first screen's video clips, from its timeline's video track (their places are set as percentages).
+function videoClips(hero: HTMLElement | null): Source[] {
+  if (!hero) return [];
+  return [...hero.querySelectorAll<HTMLElement>('[data-track="video"] .h-edClip')].map((clip) => ({
+    left: Number.parseFloat(clip.style.left) || 0,
+    width: Number.parseFloat(clip.style.width) || 0,
+    name: clip.textContent?.trim() ?? "",
+    poster: clip.querySelector("img")?.getAttribute("src") ?? null,
+  }));
+}
+
+// Where the first screen's own playhead stands along its video track, from 0 to 1, or null when it can't be read.
+function heroPlayhead(hero: HTMLElement): number | null {
+  const line = hero.querySelector(".h-edPlayhead")?.getBoundingClientRect();
+  const lane = hero.querySelector('[data-track="video"] .h-edLane')?.getBoundingClientRect();
+  if (!line || !lane || lane.width <= 0) return null;
+  return Math.min(1, Math.max(0, (line.left - lane.left) / lane.width));
+}
+
 export function PageDock() {
   const [desktop, setDesktop] = useState(false);
   useEffect(() => {
@@ -94,39 +152,79 @@ function Dock() {
   const nav = useRef<HTMLElement>(null);
   const playhead = useRef<HTMLSpanElement>(null);
   const [clips, setClips] = useState<Clip[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
   const [shares, setShares] = useState<number[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
-  // Whether the first screen, which ends with the editor's timeline, has gone up past the top of the window.
-  const [pastHero, setPastHero] = useState(false);
-  // Whether the page's closing action or the footer is in the window.
-  const [atEnd, setAtEnd] = useState(false);
+  // Whether the first screen's timeline has folded all the way into the dock, so the dock is the whole strip.
+  const [shown, setShown] = useState(false);
 
   useEffect(() => {
     const main = nav.current?.closest("main");
     if (!main) return;
     const children = [...main.children] as HTMLElement[];
     const hero = children.find((el) => el.classList.contains("h-hero")) ?? null;
-    const sections = children.filter((el) => el.tagName === "SECTION" && el.id !== "" && el !== hero);
+    // Every section after the first screen, each with the clip it belongs to: its own, or the one before it.
+    const owner = new Map<HTMLElement, HTMLElement>();
+    let last: HTMLElement | null = null;
+    for (const el of children) {
+      if (el.tagName !== "SECTION" || el === hero) continue;
+      if (el.id !== "") last = el;
+      if (last) owner.set(el, last);
+    }
+    const everySection = [...owner.keys()];
+    const sections = everySection.filter((el) => owner.get(el) === el);
     setClips(sections.map((section) => ({ id: section.id, label: shortName(section) })));
+    setSources(videoClips(hero));
+    const motion = typeof window.matchMedia === "function" ? window.matchMedia(REDUCED_MOTION) : null;
 
-    // The playhead moves on the next frame after a scroll, by transform only. Where the sections are is measured
-    // when something changes size, never while scrolling.
+    // On the next frame after a scroll: how far the fold has gone, written as --fold on the first screen and on the
+    // dock (only when it changes), the playhead, moved by transform, and the current clip. Where the first screen and
+    // the sections are, and how tall the page is, is measured when something changes size, never while scrolling.
     let spans: Span[] = [];
     let parts: number[] = [];
+    let heroBottom = 0;
+    let pageHeight = 0;
+    let folded = -1;
+    // Where the first screen's playhead stood when the dock took it over, as a share of the track.
+    let from: number | null = null;
     let frame = 0;
     const draw = () => {
       frame = 0;
-      const at = playheadAt(window.scrollY + window.innerHeight / 2, spans, parts);
+      const fold = hero ? foldAt(heroBottom - window.scrollY, motion?.matches ?? false) : 1;
+      // Part way through the fold, from the handover on. The moment the dock comes into that part, from either side,
+      // it reads where the first screen's playhead is, which the dock's then starts from.
+      const between = (f: number) => f >= HANDOVER && f < 1;
+      if (between(fold) && !between(folded)) from = hero ? heroPlayhead(hero) : null;
+      if (fold !== folded) {
+        folded = fold;
+        const value = fold.toFixed(4);
+        hero?.style.setProperty("--fold", value);
+        nav.current?.style.setProperty("--fold", value);
+        setShown(fold >= 1);
+      }
+      const line = readingLine(window.scrollY, window.innerHeight, pageHeight - window.innerHeight);
+      const reading = playheadAt(line, spans, parts);
+      // While the clips change over, the playhead has gone as far from where the timeline's stood to where the page
+      // is read as they have; with one of its links focused the dock shows whole, and the playhead with it.
+      const focused = nav.current?.contains(document.activeElement) ?? false;
+      const at = between(fold) && from !== null && !focused ? from + (reading - from) * morphAt(fold) : reading;
       if (playhead.current) playhead.current.style.transform = `translateX(${(at * 100).toFixed(3)}%)`;
+      const on = currentAt(line, spans);
+      setCurrent(on >= 0 ? sections[on].id : null);
     };
     const schedule = () => {
       if (!frame) frame = window.requestAnimationFrame(draw);
     };
     const measure = () => {
       const y = window.scrollY;
+      if (hero) heroBottom = hero.getBoundingClientRect().bottom + y;
+      pageHeight = document.documentElement.scrollHeight;
+      // A clip runs from its section's top to the foot of the last section it holds.
       spans = sections.map((section) => {
         const box = section.getBoundingClientRect();
-        return { top: box.top + y, height: box.height };
+        const held = everySection.filter((el) => owner.get(el) === section);
+        const bottom = Math.max(box.bottom, ...held.map((el) => el.getBoundingClientRect().bottom));
+        return { top: box.top + y, height: bottom - box.top };
       });
       const next = clipShares(spans.map((span) => span.height));
       if (!sameShares(parts, next)) {
@@ -138,67 +236,25 @@ function Dock() {
     measure();
     const sizes = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
     sizes?.observe(main);
-    for (const section of sections) sizes?.observe(section);
+    if (hero) sizes?.observe(hero);
+    for (const section of everySection) sizes?.observe(section);
     window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
-
-    const watching: IntersectionObserver[] = [];
-    if (typeof IntersectionObserver === "function") {
-      // The sections across the middle line (one, or two for the moment a boundary is on it: the lower one counts).
-      const across = new Set<Element>();
-      const middle = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) across.add(entry.target);
-            else across.delete(entry.target);
-          }
-          const inView = sections.filter((section) => across.has(section));
-          setCurrent(inView.length > 0 ? inView[inView.length - 1].id : null);
-        },
-        { rootMargin: MIDDLE },
-      );
-      for (const section of sections) middle.observe(section);
-      watching.push(middle);
-
-      if (hero) {
-        const heroWatch = new IntersectionObserver(
-          (entries) => {
-            const entry = entries[entries.length - 1];
-            // Out of view above that line, not below the window.
-            setPastHero(!entry.isIntersecting && entry.boundingClientRect.bottom < 1);
-          },
-          { rootMargin: BELOW_TOP },
-        );
-        heroWatch.observe(hero);
-        watching.push(heroWatch);
-      } else {
-        setPastHero(true);
-      }
-
-      // The end of the page: the closing action, and the footer after <main>. The dock is down while any of them is
-      // in the window.
-      const footer = document.querySelector("main ~ footer");
-      const ends = [...main.querySelectorAll("[data-dock-end]"), ...(footer ? [footer] : [])];
-      if (ends.length > 0) {
-        const endsInView = new Set<Element>();
-        const endWatch = new IntersectionObserver((entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) endsInView.add(entry.target);
-            else endsInView.delete(entry.target);
-          }
-          setAtEnd(endsInView.size > 0);
-        });
-        for (const end of ends) endWatch.observe(end);
-        watching.push(endWatch);
-      }
-    }
+    motion?.addEventListener("change", schedule);
+    const dock = nav.current;
+    dock?.addEventListener("focusin", schedule);
+    dock?.addEventListener("focusout", schedule);
 
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       sizes?.disconnect();
-      for (const observer of watching) observer.disconnect();
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
+      motion?.removeEventListener("change", schedule);
+      dock?.removeEventListener("focusin", schedule);
+      dock?.removeEventListener("focusout", schedule);
+      // Without the dock (a window narrowed to a phone's width) the timeline is whole again.
+      hero?.style.removeProperty("--fold");
     };
   }, []);
 
@@ -219,10 +275,9 @@ function Dock() {
 
   const starts = offsets(shares);
   return (
-    // Down, it keeps its links, so the keyboard still reaches them after the last section, and it shows in its place
-    // under the last section while one of them has focus (home.css). Until the sections are read it has nothing to
-    // offer, so it isn't there at all.
-    <nav ref={nav} aria-label="Page" className="h-dock" data-ui data-shown={(pastHero && !atEnd) || undefined} hidden={clips.length === 0}>
+    // Before the fold is done it keeps its links, so the keyboard still reaches them, and it shows while one of them
+    // has focus (home.css). Until the sections are read it has nothing to offer, so it isn't there at all.
+    <nav ref={nav} aria-label="Page" className="h-dock" data-ui data-shown={shown || undefined} hidden={clips.length === 0}>
       <span className="h-dockName" aria-hidden="true">
         On this page
       </span>
@@ -230,8 +285,17 @@ function Dock() {
         {clips.map((clip, i) => {
           const share = shares[i] ?? 1 / clips.length;
           const left = starts[i] ?? i * share;
+          // The first screen's video clip this one starts out as. There are fewer of those than sections, so the
+          // sections past the last of them start out as nothing at the end of the track and grow in from there as
+          // the clips change over, the others making room.
+          const source: Source | undefined = sources[i];
+          const place: Record<string, string> = { "--left": `${left * 100}%`, "--width": `calc(${share * 100}% - 4px)` };
+          if (sources.length > 0) {
+            place["--from-left"] = `${source ? source.left : 100}%`;
+            place["--from-width"] = `${source ? source.width : 0}%`;
+          }
           return (
-            <li key={clip.id} style={{ left: `${left * 100}%`, width: `calc(${share * 100}% - 4px)` }}>
+            <li key={clip.id} style={place as CSSProperties}>
               <a
                 href={`#${clip.id}`}
                 className="h-dockClip"
@@ -240,6 +304,15 @@ function Dock() {
               >
                 <span>{clip.label}</span>
               </a>
+              {source && (
+                <span className="h-dockFrom" aria-hidden="true">
+                  {source.poster && (
+                    // eslint-disable-next-line @next/next/no-img-element -- a clip thumbnail in a drawn interface
+                    <img src={source.poster} alt="" width={64} height={36} />
+                  )}
+                  {source.name}
+                </span>
+              )}
             </li>
           );
         })}
