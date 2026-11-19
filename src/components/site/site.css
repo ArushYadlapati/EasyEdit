@@ -232,14 +232,83 @@
   gap: 12px;
 }
 
+/* ---------- Terms and privacy ---------- */
+
+/* The list of the page's sections on the left, held in view while the page scrolls, and the text front and centre:
+   on a wide window it sits in the middle of the window, 52rem wide (about 90 characters of 18 px Geist a line), with
+   the list at the site's left edge; on a medium one it takes all the room beside the list. */
+.h-legal {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) minmax(0, 52rem) minmax(0, 1fr);
+  column-gap: clamp(32px, 4vw, 64px);
+  align-items: start;
+}
+.h-legal > article {
+  grid-column: 2;
+}
+.h-legalToc {
+  position: sticky;
+  top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* Level with the top of the title's letters. */
+  padding-top: 10px;
+}
+.h-legalTocName {
+  font-size: 14px;
+  color: var(--h-faint);
+}
+.h-legalToc ol {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.h-legalToc a {
+  display: block;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--h-muted);
+  text-wrap: pretty;
+  transition: color 160ms;
+}
+.h-legalToc a:hover {
+  color: var(--h-text);
+}
+/* A jump to a section leaves room above its heading. */
+.h-legal h2[id] {
+  scroll-margin-top: 32px;
+}
+/* Not wide enough to centre 52rem of text beside the list: the text takes all the room the list leaves. */
+@media (max-width: 1400px) {
+  .h-legal {
+    grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  }
+}
+/* Too narrow for the pair: the text alone, the window's width. */
+@media (max-width: 900px) {
+  .h-legal {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .h-legal > article {
+    grid-column: 1;
+  }
+  .h-legalToc {
+    display: none;
+  }
+}
+
 /* ---------- Sign in ---------- */
 
-/* The sign-in on the left and a picture of the editor on the right, the pair centred in the room between the header
+/* The sign-in on the left and a picture of the editor right beside it, the pair centred in the room between the header
    and the footer so the page doesn't sit at the top with the window's lower half empty. */
 .h-sign {
   display: grid;
   grid-template-columns: minmax(0, 26rem) minmax(0, 1fr);
-  column-gap: clamp(48px, 7vw, 128px);
+  column-gap: clamp(40px, 5vw, 80px);
   align-items: center;
   align-content: center;
 }
@@ -266,10 +335,13 @@
 
 /* The picture: a drawn editor window in the product's own colours (the editor's roles from .ed-theme), its edge a 1 px
    ring as on the home page, with a still in the preview and a title on it that you have selected. */
+/* It sits right against the sign-in and takes the rest of the width, so there is no empty band between them; on a
+   very wide or short window it stops at the size that still fits the window's height (a 16:9 frame plus the bar and
+   the stage's padding). */
 .h-signPicture {
-  justify-self: end;
+  justify-self: start;
   width: 100%;
-  max-width: 760px;
+  max-width: calc((100svh - var(--h-bar) - 300px) * 16 / 9 + 64px);
   margin: 0;
   overflow: hidden;
   border-radius: 12px;

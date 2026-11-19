@@ -44,24 +44,39 @@ describe.each([
     expect(metadata.title).toBe(`${title === "Privacy" ? "Privacy" : "Terms"} · EasyEdit`);
   });
 
-  it("sets its 16 px text in a column about 65 characters wide, on the site's left edge", () => {
+  it("sets its 18 px text wide, front and centre, with the list of its sections on the left", () => {
     const { container } = render(<Page />);
     const article = container.querySelector("article")!;
-    // 32rem of 16 px Geist. Not 65ch, which comes out near 90 characters because Geist's zero is wide.
-    expect(classes(article)).toEqual(expect.arrayContaining(["max-w-lg", "text-base"]));
-    expect(classes(article).some((c) => c.startsWith("max-w-") && c !== "max-w-lg")).toBe(false);
-    // The same main as sign-in and the not-found page, so the column starts where theirs do.
-    expect(article.parentElement!.className).toBe("h-plain");
+    expect(classes(article)).toContain("text-lg");
+    // Its width comes from the page's grid (h-legal), not a narrow column of its own.
+    expect(classes(article).some((c) => c.startsWith("max-w-"))).toBe(false);
+    const main = article.parentElement!;
+    expect(main.className).toBe("h-plain h-legal");
+    // The list comes first, then the text.
+    const nav = screen.getByRole("navigation", { name: "On this page" });
+    expect(main.firstElementChild).toBe(nav);
+    expect(nav.nextElementSibling).toBe(article);
   });
 
-  it("puts more space above each section heading than below it, and sets it clearly bigger than the text", () => {
+  it("lists every section heading beside the text, in order, each linking to its heading", () => {
+    const { container } = render(<Page />);
+    const headings = Array.from(container.querySelectorAll("article h2"));
+    const links = Array.from(screen.getByRole("navigation", { name: "On this page" }).querySelectorAll("a"));
+    expect(links.map((a) => a.textContent)).toEqual(headings.map((h) => h.textContent));
+    for (const [i, link] of links.entries()) {
+      expect(headings[i].id).not.toBe("");
+      expect(link.getAttribute("href")).toBe(`#${headings[i].id}`);
+    }
+  });
+
+  it("puts more space above each section heading than below it, and sets it clearly bigger than the 18 px text", () => {
     const { container } = render(<Page />);
     const article = container.querySelector("article")!;
     const headings = Array.from(article.querySelectorAll("h2"));
     expect(headings.length).toBeGreaterThan(5);
     // Paragraphs are 20 px apart. A heading adds 28 px above it (48 in all) and takes 8 px off below it (12).
     expect(classes(article)).toContain("gap-5");
-    for (const heading of headings) expect(classes(heading)).toEqual(expect.arrayContaining(["mt-7", "-mb-2", "text-2xl"]));
+    for (const heading of headings) expect(classes(heading)).toEqual(expect.arrayContaining(["mt-7", "-mb-2", "text-[28px]"]));
   });
 });
 

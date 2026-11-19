@@ -1,26 +1,41 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { SITE_METADATA, SITE_VIEWPORT, SitePage } from "@/components/site/site-page";
-import { LEGAL_ARTICLE, LEGAL_H2, LEGAL_MAIN, LEGAL_TITLE } from "@/app/legal";
+import { LEGAL_ARTICLE, LEGAL_MAIN, LEGAL_TITLE } from "@/app/legal";
+import { LegalContents, LegalH2 } from "@/app/legal-contents";
 
 export const metadata: Metadata = { ...SITE_METADATA, title: "Privacy · EasyEdit" };
 export const viewport: Viewport = SITE_VIEWPORT;
+
+// The page's section headings, in order, for the list beside the text (a test checks they match the headings).
+const SECTIONS = [
+  "What we collect",
+  "What EasyEdit can see in your Google Drive",
+  "Posting to YouTube",
+  "Where your data lives",
+  "Auto captions",
+  "AI agents",
+  "Deleting your data",
+  "Rules for using EasyEdit",
+  "Contact",
+];
 
 export default function PrivacyPage() {
   return (
     <SitePage current="privacy">
       <main className={LEGAL_MAIN}>
+        <LegalContents sections={SECTIONS} />
         <article className={LEGAL_ARTICLE}>
           <h1 className={LEGAL_TITLE}>Privacy</h1>
 
-          <h2 className={LEGAL_H2}>What we collect</h2>
+          <LegalH2>What we collect</LegalH2>
           <p>
             When you sign in with Google, EasyEdit gets your name, email address and profile picture. It also keeps what you make: your projects
             and the media you upload. That media is stored in the Google Drive the space uses, not on EasyEdit&apos;s own servers: a Google
             account someone in the space connected. For Seattle Solvers, that is the team&apos;s shared drive.
           </p>
 
-          <h2 className={LEGAL_H2}>What EasyEdit can see in your Google Drive</h2>
+          <LegalH2>What EasyEdit can see in your Google Drive</LegalH2>
           <p>
             EasyEdit asks Google for one permission, <code>drive.file</code>. It lets EasyEdit see only the files and folders that EasyEdit itself
             creates in your Drive. It cannot see anything else in your Drive.
@@ -37,7 +52,7 @@ export default function PrivacyPage() {
             EasyEdit.
           </p>
 
-          <h2 className={LEGAL_H2}>Posting to YouTube</h2>
+          <LegalH2>Posting to YouTube</LegalH2>
           <p>
             A space&apos;s admin can connect a YouTube channel so the space can post its videos there. EasyEdit uses YouTube API Services for
             this. It asks Google for permission to upload videos to the channel and to read the channel&apos;s name. It keeps the access to the
@@ -57,22 +72,22 @@ export default function PrivacyPage() {
             .
           </p>
 
-          <h2 className={LEGAL_H2}>Where your data lives</h2>
+          <LegalH2>Where your data lives</LegalH2>
           <p>
             Accounts and projects are kept in a Neon database. The website runs on Vercel. Your media is kept in Google Drive. These companies
             process the data for us.
           </p>
 
-          <h2 className={LEGAL_H2}>Auto captions</h2>
+          <LegalH2>Auto captions</LegalH2>
           <p>
             Auto captions run in your browser. Your audio is not sent anywhere to be transcribed. The first time you use them, your browser downloads
             the speech model from Hugging Face.
           </p>
 
-          <h2 className={LEGAL_H2}>AI agents</h2>
+          <LegalH2>AI agents</LegalH2>
           <p>An AI agent can work on your projects only after you connect it to your account. It acts with your connection, and you can disconnect it.</p>
 
-          <h2 className={LEGAL_H2}>Deleting your data</h2>
+          <LegalH2>Deleting your data</LegalH2>
           <p>
             To have your data deleted, email{" "}
             <a className="underline underline-offset-4" href="mailto:privacy@arush.dev">
@@ -81,7 +96,7 @@ export default function PrivacyPage() {
             .
           </p>
 
-          <h2 className={LEGAL_H2}>Rules for using EasyEdit</h2>
+          <LegalH2>Rules for using EasyEdit</LegalH2>
           <p>
             The rules are in the{" "}
             <Link href="/terms" className="underline underline-offset-4">
@@ -90,7 +105,7 @@ export default function PrivacyPage() {
             .
           </p>
 
-          <h2 className={LEGAL_H2}>Contact</h2>
+          <LegalH2>Contact</LegalH2>
           <p>
             Questions about privacy:{" "}
             <a className="underline underline-offset-4" href="mailto:privacy@arush.dev">
