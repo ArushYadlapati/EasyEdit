@@ -11,6 +11,13 @@
   --h-faint: #8b8b94;
   --h-accent: #6ea8ff;
   --h-claude: #f97316; /* Claude's own colour, wherever Claude is the one editing */
+  /* Each other agent's own colour, so an edit says which agent made it. ChatGPT's is a green near its own; Codex and
+     Cursor, whose marks are black and white, take the open hues between the people's colours (You's blue and the
+     five teammate colours) and the editor's danger and warn colours. All read at 8:1 or more under a tag's dark
+     words. */
+  --h-chatgpt: #4ade80;
+  --h-codex: #e879f9;
+  --h-cursor: #f5e663;
   --h-pad: clamp(20px, 3vw, 40px);
   --h-bar: 76px; /* the header's height; the home page's first screen fills the window below it */
   --h-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
@@ -225,7 +232,152 @@
   gap: 12px;
 }
 
+/* ---------- Sign in ---------- */
+
+/* The sign-in on the left and a picture of the editor on the right, the pair centred in the room between the header
+   and the footer so the page doesn't sit at the top with the window's lower half empty. */
+.h-sign {
+  display: grid;
+  grid-template-columns: minmax(0, 26rem) minmax(0, 1fr);
+  column-gap: clamp(48px, 7vw, 128px);
+  align-items: center;
+  align-content: center;
+}
+.h-signColumn {
+  max-width: 26rem;
+}
+/* What signing in hands over: quieter than the lead, but at the site's reading size, with the privacy page a click away. */
+.h-signNote {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--h-muted);
+  text-wrap: pretty;
+}
+.h-signNote a {
+  color: var(--h-text);
+  text-decoration: underline;
+  text-decoration-color: rgb(250 250 250 / 0.4);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 160ms;
+}
+.h-signNote a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* The picture: a drawn editor window in the product's own colours (the editor's roles from .ed-theme), its edge a 1 px
+   ring as on the home page, with a still in the preview and a title on it that you have selected. */
+.h-signPicture {
+  justify-self: end;
+  width: 100%;
+  max-width: 760px;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--ed-panel);
+  box-shadow: 0 0 0 1px var(--ed-line-strong);
+  color: var(--ed-text);
+}
+.h-signBar {
+  --logo-accent: var(--ed-accent);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  padding: 0 12px 0 14px;
+  border-bottom: 1px solid var(--ed-line);
+  font-size: 13px;
+  color: var(--ed-muted);
+}
+.h-signProject {
+  font-weight: 600;
+  color: var(--ed-text);
+}
+.h-signSaved {
+  margin-left: auto;
+}
+.h-signExport {
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--ed-accent);
+  color: var(--ed-bg);
+  font-size: 12px;
+  font-weight: 500;
+}
+.h-signStage {
+  padding: clamp(16px, 2.2vw, 32px);
+  background: var(--ed-bg);
+}
+.h-signFrame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  container-type: inline-size;
+}
+.h-signStill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.h-signTitle {
+  --peer: var(--h-codex);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: max-content;
+  padding: 0 0.12em;
+  font-size: clamp(22px, 7.5cqw, 64px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: #fff;
+}
+.h-signSel {
+  position: absolute;
+  inset: -4px;
+  outline: 2px solid var(--peer);
+  pointer-events: none;
+}
+.h-signTag {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: -2px;
+  padding: 2px 7px;
+  border-radius: 3px 3px 3px 0;
+  background: var(--peer);
+  color: #0a0a0a;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0;
+}
+.h-signHandle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--peer);
+  background: #fff;
+}
+.h-signHandle[data-at="tl"] { top: -6px; left: -6px; }
+.h-signHandle[data-at="tr"] { top: -6px; right: -6px; }
+.h-signHandle[data-at="bl"] { bottom: -6px; left: -6px; }
+.h-signHandle[data-at="br"] { right: -6px; bottom: -6px; }
+
+/* Too narrow for the pair: the sign-in alone, from the top, as on a phone. */
+@media (max-width: 960px) {
+  .h-sign {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+  }
+  .h-signPicture {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .h-signNote a,
   .h-btn,
   .h-barLink,
   .h-footer nav a {

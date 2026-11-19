@@ -1006,6 +1006,22 @@ describe("home page agent demo", () => {
     expect([decl(".h-uiStatusText", "overflow"), decl(".h-uiStatusText", "text-overflow")]).toEqual(["hidden", "ellipsis"]);
   });
 
+  it("marks each agent's edit in that agent's own colour, a different one for each", () => {
+    const home = readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8");
+    const site = readFileSync(join(process.cwd(), "src/components/site/site.css"), "utf8");
+    const tokens: Record<string, string> = { Claude: "--h-claude", ChatGPT: "--h-chatgpt", Codex: "--h-codex", Cursor: "--h-cursor" };
+    const values = new Set<string>();
+    for (const [agent, token] of Object.entries(tokens)) {
+      expect(home, agent).toMatch(new RegExp(`\\.h-ui\\[data-agent="${agent}"\\]\\s*\\{\\s*--fresh:\\s*var\\(${token}\\);`));
+      const value = site.match(new RegExp(`${token}:\\s*(#[0-9a-f]{6})`))?.[1];
+      expect(value, token).toBeTruthy();
+      values.add(value!);
+    }
+    // Four agents, four colours, none of them You's blue.
+    expect(values.size).toBe(4);
+    expect(values.has("#6ea8ff")).toBe(false);
+  });
+
   it("draws the agent's name on a request in the page's own greys, not an accent colour", () => {
     const css = readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8");
     const from = css.indexOf("/* ---------- AI: the live demo");

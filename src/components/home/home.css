@@ -1257,8 +1257,18 @@
   letter-spacing: -0.01em;
   color: #fff;
 }
+/* An agent's edit is marked in that agent's own colour (site.css). */
 .h-ui[data-agent="Claude"] {
   --fresh: var(--h-claude);
+}
+.h-ui[data-agent="ChatGPT"] {
+  --fresh: var(--h-chatgpt);
+}
+.h-ui[data-agent="Codex"] {
+  --fresh: var(--h-codex);
+}
+.h-ui[data-agent="Cursor"] {
+  --fresh: var(--h-cursor);
 }
 .h-uiTitleText {
   position: relative;

@@ -68,7 +68,7 @@ describe("the login page", () => {
     render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
     vi.unstubAllEnvs();
     expect(screen.getByText("EasyEdit is in closed beta. Sign-in is by invitation only for now.").className).toBe("h-plainLead");
-    expect(screen.queryByText("Sign in or create an account with Google.")).toBeNull();
+    expect(screen.queryByText(/Sign in or create an account with Google\./)).toBeNull();
     expect(screen.queryByRole("link", { name: "Start free" })).toBeNull();
     for (const a of screen.getAllByRole("link", { name: "Sign in" })) expect(a.getAttribute("href")).toBe("/login");
   });
@@ -97,12 +97,38 @@ describe("the login page with sign-up open", () => {
     vi.stubEnv("OPEN_SIGNUP", "true");
     const page: Page = LoginPage;
     render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
-    const line = screen.getByText("Sign in or create an account with Google.");
+    const line = screen.getByText((_, el) => el?.tagName === "P" && el.textContent === "Sign in or create an account with Google. EasyEdit is free.");
     expect(line.className.split(/\s+/)).toContain("h-plainLead");
     const heading = screen.getByRole("heading", { level: 1 });
     expect(heading.textContent).toBe("Sign in");
     expect(heading.className).toBe("h-plainTitle");
     expect(screen.queryByText(/closed beta/)).toBeNull();
+  });
+
+  it("says what Google shares before its screen asks, with the privacy page a click away", async () => {
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    const note = screen.getByText(/Google shares your name, email address and profile picture with EasyEdit\./);
+    expect(note.textContent).toContain("EasyEdit only ever sees the files it makes there.");
+    expect(note.className).toBe("h-signNote");
+    const link = screen.getByRole("link", { name: "How EasyEdit uses your data" });
+    expect(link.getAttribute("href")).toBe("/privacy");
+  });
+
+  it("draws the editor beside the sign-in as a picture, out of the screen reader's way", async () => {
+    const page: Page = LoginPage;
+    const { container } = render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    const picture = container.querySelector("figure.h-signPicture")!;
+    expect(picture.getAttribute("aria-hidden")).toBe("true");
+    expect(picture.hasAttribute("data-ui")).toBe(true);
+    expect(picture.querySelector("img")!.getAttribute("alt")).toBe("");
+    expect(picture.textContent).toContain("Your next video");
+    expect(picture.querySelector(".h-signTag")!.textContent).toBe("Codex");
+    const css = readFileSync(join(process.cwd(), "src/components/site/site.css"), "utf8");
+    expect(css).toMatch(/\.h-signTitle \{\s*--peer: var\(--h-codex\);/);
+    // The sign-in comes first in the page, then the picture.
+    const main = screen.getByRole("main");
+    expect(main.lastElementChild).toBe(picture);
   });
 
   it("is no dead end: the site's header leads home, with the footer under the page", async () => {

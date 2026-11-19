@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SITE_METADATA, SITE_VIEWPORT, SitePage } from "@/components/site/site-page";
 import { PLAIN_ERROR } from "@/components/ui/cx";
@@ -10,6 +11,7 @@ import { openSignUp } from "@/lib/signup";
 import { loginErrorMessage } from "@/lib/login-error-message";
 import { PasskeySignInButton } from "./passkey-sign-in-button";
 import { SignInButton } from "./sign-in-button";
+import { SignInPicture } from "./sign-in-picture";
 
 // In the public site's frame, always dark like the home page; the header leads back home, and leaves out its own Sign in
 // and Start free, which lead here.
@@ -36,8 +38,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
   return (
     <SitePage current="login">
-      <main className="h-plain">
-        <div className="h-plainColumn h-plainNarrow">
+      <main className="h-plain h-sign">
+        <div className="h-plainColumn h-signColumn">
           <h1 className="h-plainTitle">Sign in</h1>
           {forClaude && !expired && <p className="h-plainLead h-plainInk">{`Sign in to connect ${agentName}.`}</p>}
           {expired && (
@@ -50,13 +52,29 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
               {errorMessage}
             </p>
           )}
-          <p className="h-plainLead">{open ? "Sign in or create an account with Google." : CLOSED_BETA}</p>
+          {/* The second sentence on a line of its own, so neither is ever broken mid-way. */}
+          <p className="h-plainLead">
+            {open ? (
+              <>
+                Sign in or create an account with Google. <span className="block">EasyEdit is free.</span>
+              </>
+            ) : (
+              CLOSED_BETA
+            )}
+          </p>
           {/* The site's own pills: white for Google, the quieter tint for a passkey. */}
           <div className="flex flex-col gap-3">
             <SignInButton className="h-btn w-full" />
             <PasskeySignInButton openSignUp={open} className="h-btn h-btnGhost w-full" />
           </div>
+          {/* What signing in hands over, said before the Google screen asks, in the privacy page's own terms. */}
+          <p className="h-signNote">
+            Google shares your name, email address and profile picture with EasyEdit. Your videos are kept in Google Drive,
+            not on EasyEdit&apos;s servers, and EasyEdit only ever sees the files it makes there.{" "}
+            <Link href="/privacy">How EasyEdit uses your data</Link>
+          </p>
         </div>
+        <SignInPicture />
       </main>
     </SitePage>
   );
