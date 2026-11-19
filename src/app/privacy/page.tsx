@@ -12,13 +12,12 @@ export default function PrivacyPage() {
       <main className={LEGAL_MAIN}>
         <article className={LEGAL_ARTICLE}>
           <h1 className={LEGAL_TITLE}>Privacy</h1>
-          <p className="text-sm text-(--h-muted)">Last updated November 18, 2026.</p>
 
           <h2 className={LEGAL_H2}>What we collect</h2>
           <p>
             When you sign in with Google, EasyEdit gets your name, email address and profile picture. It also keeps what you make: your projects
-            and the media you upload. That media is stored in the Google Drive of the account that connected the space, not on EasyEdit&apos;s
-            own servers.
+            and the media you upload. That media is stored in the Google Drive the space uses, not on EasyEdit&apos;s own servers: a Google
+            account someone in the space connected. For Seattle Solvers, that is the team&apos;s shared drive.
           </p>
 
           <h2 className={LEGAL_H2}>What EasyEdit can see in your Google Drive</h2>

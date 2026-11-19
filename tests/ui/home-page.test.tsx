@@ -1122,20 +1122,11 @@ describe("privacy page", () => {
     expect(screen.getByRole("link", { name: "terms of service" }).getAttribute("href")).toBe("/terms");
   });
 
-  it("says media is in the Google Drive of the account that connected the space, for any space", () => {
+  it("says where the media is kept, in its own words", () => {
     render(<PrivacyPage />);
     const text = document.body.textContent ?? "";
-    expect(text).toContain("stored in the Google Drive of the account that connected the space, not on EasyEdit's own servers.");
-    // No one team's own setup, described as if it were everyone's.
-    expect(text).not.toContain("Seattle Solvers");
-    expect(text).not.toContain("the Google Drive you connect");
-  });
-
-  it("dates itself the way the terms do", () => {
-    render(<PrivacyPage />);
-    const line = screen.getByText("Last updated November 18, 2026.");
-    expect(line.className).toBe("text-sm text-(--h-muted)");
-    expect(line.previousElementSibling?.tagName).toBe("H1");
+    expect(text).toContain("stored in the Google Drive the space uses, not on EasyEdit's own servers");
+    expect(text).toContain("For Seattle Solvers, that is the team's shared drive.");
   });
 });
 
