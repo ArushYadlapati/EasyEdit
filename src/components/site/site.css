@@ -86,6 +86,17 @@
   padding: 0 18px;
   font-size: 14px;
 }
+/* With the system's high contrast colours the fill goes, so a pill gets an edge in its own text colour (a link's or a
+   button's), and one at work the system's colour for what is switched off. */
+@media (forced-colors: active) {
+  .h-btn {
+    border: 1px solid currentColor;
+  }
+  .h-btn:disabled {
+    border-color: GrayText;
+    color: GrayText !important;
+  }
+}
 
 .h-brand {
   display: inline-flex;

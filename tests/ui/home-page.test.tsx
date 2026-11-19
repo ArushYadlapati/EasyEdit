@@ -221,12 +221,14 @@ describe("home page", () => {
     for (const section of sections) expect(section.dataset.dockLabel, section.id).toMatch(/^\S+( \S+){0,2}$/);
     const links = [...dock.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
     expect(links).toEqual(sections.map((section) => [section.dataset.dockLabel, `#${section.id}`]));
-    // The page's closing action is marked for the dock, which goes down while it is in view. It is the end of the last
-    // section: marked anywhere higher up, the dock would go down in the middle of the page.
+    // The end of the page is marked for the dock, which goes down while it is in view. It is the end of the last
+    // section: marked anywhere higher up, the dock would go down in the middle of the page. The new project form,
+    // higher up the page now, no longer carries it.
     const ends = [...main.querySelectorAll("[data-dock-end]")];
     expect(ends).toHaveLength(1);
     expect(sections.at(-1)!.contains(ends[0])).toBe(true);
-    expect(within(ends[0] as HTMLElement).getByRole("button", { name: "Create project" })).toBeTruthy();
+    expect(document.querySelector("form")?.closest("[data-dock-end]")).toBeNull();
+    expect(document.querySelector("form [data-dock-end]")).toBeNull();
     const afterIt = [...sections.at(-1)!.querySelectorAll("*")].filter(
       (el) => ends[0].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING && !ends[0].contains(el),
     );
@@ -253,12 +255,56 @@ describe("home page", () => {
     }
   });
 
-  it("says it works with every AI agent inside the AI section, that it's completely free, then offers the first project", async () => {
+  it("goes from the agent demo straight to the first project, then free, teams and every agent", async () => {
     render(await Home());
-    expect(document.getElementById("ai")?.textContent).toContain("Works with every AI agent.");
-    expect(screen.getByRole("heading", { level: 2, name: "Completely free. Based in your Drive." })).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 2, name: "Works with every AI agent." })).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 2, name: "Make your first project." })).toBeTruthy();
+    const main = screen.getByRole("main");
+    const sections = [...main.children].filter((el) => el.tagName === "SECTION" && el.id);
+    expect(sections.map((el) => el.id)).toEqual(["ai", "start", "free", "teams", "agents"]);
+    const names = sections.map((el) => within(el as HTMLElement).getAllByRole("heading", { level: 2 })[0]);
+    expect(names.map((h) => h.textContent)).toEqual([
+      "Ask an agent. Watch it edit.",
+      "Make your first project.",
+      "Completely free. Based in your Drive.",
+      "Built for teams.",
+      "Works with every AI agent.",
+    ]);
+    for (const el of sections) expect(el.getAttribute("aria-labelledby"), el.id).toBe(names[sections.indexOf(el)].id);
+    // The form is the first project section's own, right after its heading.
+    expect(within(sections[1] as HTMLElement).getByRole("form", { name: "New project" })).toBeTruthy();
+  });
+
+  it("sets the agent demo's heading and lead first, then the editor, what its agent did and the requests", async () => {
+    render(await Home());
+    const ai = document.getElementById("ai")!;
+    const heading = within(ai).getByRole("heading", { level: 2, name: "Ask an agent. Watch it edit." });
+    const requests = within(ai).getByRole("list", { name: "Ask an agent" });
+    const stage = within(ai).getByRole("figure", { name: "A working model of the editor" });
+    // The order a phone shows them in, one under the other; a computer only moves the editor to a column of its own.
+    const demo = heading.parentElement!;
+    expect(demo.classList.contains("h-demo")).toBe(true);
+    expect([...demo.children].map((el) => el.tagName)).toEqual(["H2", "P", "FIGURE", "DIV", "UL"]);
+    expect([...demo.children].slice(2)).toEqual([stage, demo.querySelector(".h-demoAnswer"), requests]);
+    expect(ai.querySelector(".h-demoText, .h-sectionHead, .h-points, h3")).toBeNull();
+    // The old three points live on as the requests' own result lines.
+    for (const gone of ["Plain words in, real edits out", "Signed and undoable", "It works as you"]) {
+      expect(ai.textContent).not.toContain(gone);
+    }
+    expect(stage.querySelector(":scope > [data-ui]")).toBeTruthy();
+    expect(stage.querySelector("figcaption")).toBeNull();
+  });
+
+  it("takes the keyboard from the editor's Undo to the requests and then on to the first project", async () => {
+    render(await Home());
+    const ai = document.getElementById("ai")!;
+    const start = document.getElementById("start")!;
+    const stops = [...ai.querySelectorAll("button, a[href], input, [tabindex]:not([tabindex='-1'])")];
+    expect(stops.map((el) => el.textContent?.replace(/^(.*?)Ask \w+$/, "$1"))).toEqual([
+      "Undo this change",
+      ...REQUESTS.map((r) => r.words),
+    ]);
+    // The section's next stop is the first project's name field, after the last request.
+    const name = within(start).getByRole("textbox", { name: "Name" });
+    expect(stops.at(-1)!.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("says EasyEdit is in closed beta while sign-up is closed, and the buttons just sign in", async () => {
@@ -313,15 +359,55 @@ describe("home page new project form", () => {
 
   it("puts the preview's frame in a box with a definite height", () => {
     // The frame's width comes from its box's height through container units. As a flex-1 item in a column with only a
-    // min-height, that box had no definite height and Chrome drew the frame 0 px wide; the first grid row gives it one.
+    // min-height, that box had no definite height and Chrome drew the frame 0 px wide. The preview has a height of its
+    // own, and the frame's box is its first grid row.
     const css = readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8");
     const preview = /^\.h-npPreview \{([^}]*)\}/m.exec(css)?.[1] ?? "";
     expect(preview).toContain("display: grid;");
     expect(preview).toContain("grid-template-rows: minmax(0, 1fr) auto;");
+    expect(preview).toMatch(/^\s*height: clamp\(\d+px, [\d.]+vw, \d+px\);$/m);
+    expect(preview).not.toContain("min-height");
+    const phone = css.slice(css.indexOf("@media (max-width: 860px)"));
+    expect(/\.h-npPreview \{\s*height: min\(\d+px, [\d.]+vw\);\s*\}/.test(phone)).toBe(true);
     const { container } = render(<NewProjectForm />);
     const [box, caption] = [...(container.querySelector(".h-npPreview")?.children ?? [])];
     expect(box.querySelector("[data-blank-frame]")).toBeTruthy();
     expect(caption.textContent).toBe("1080 × 1920 px · 30 fps");
+  });
+
+  it("shows a still of real footage in the chosen shape, with the name on it as its title", () => {
+    const { container } = render(<NewProjectForm />);
+    const frame = container.querySelector<HTMLElement>("[data-blank-frame]")!;
+    const still = frame.querySelector("img")!;
+    expect(still.getAttribute("src")).toMatch(/^\/home\/still-[\w-]+\.webp$/);
+    expect(still.getAttribute("alt")).toBe(""); // the preview is a picture; the Name field already says the name
+    expect(still.getAttribute("loading")).toBe("lazy");
+    expect(frame.style.aspectRatio).toBe("1080 / 1920");
+    expect(frame.querySelector(".h-npName")?.textContent).toBe("My first video");
+
+    fireEvent.click(screen.getByRole("radio", { name: /Square 1:1/ }));
+    expect(frame.style.aspectRatio).toBe("1080 / 1080");
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "   " } });
+    expect(frame.querySelector(".h-npName")?.textContent).toBe("Untitled project");
+
+    const css = readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8");
+    const rule = /^\.h-npStill \{([^}]*)\}/m.exec(css)?.[1] ?? "";
+    expect(rule).toContain("object-fit: cover;");
+  });
+
+  it("ends with Create project as the page's white pill, after the fields and the preview", () => {
+    const { container } = render(<NewProjectForm />);
+    const create = screen.getByRole("button", { name: "Create project" });
+    expect(create.getAttribute("type")).toBe("submit");
+    expect(create.className).toBe("h-btn"); // the site's full-size white pill, not the app's small blue button
+    const form = container.querySelector("form")!;
+    const order = [".h-npFields", ".h-npPreview", ".h-npActions"].map((s) => form.querySelector(s));
+    expect([...form.children]).toEqual(order);
+    expect(within(order[2] as HTMLElement).getByText("You'll sign in with Google first.")).toBeTruthy();
+    // No dialog chrome around it any more: the section's heading names it.
+    expect(form.querySelector(".h-npHead, .h-npFoot")).toBeNull();
+    expect(screen.queryByText("New project")).toBeNull();
+    expect(form.getAttribute("aria-label")).toBe("New project");
   });
 });
 
@@ -331,24 +417,199 @@ describe("home page agent demo", () => {
     render(<AgentDemo />);
     expect(screen.getByText("Claude (for you) · Added text")).toBeTruthy();
 
+    // The top bar's status holds both of its words in one spot, and shows the one in use.
+    const status = (words: RegExp) => screen.getByText(words).closest(".h-uiStatus > span")!;
+    expect(status(/^Saved$/).hasAttribute("data-on")).toBe(true);
+    expect(status(/Claude is editing/).hasAttribute("data-on")).toBe(false);
+
     fireEvent.click(screen.getByRole("button", { name: /Make it vertical for Reels and TikTok/ }));
-    expect(screen.getByText(/Codex is editing/)).toBeTruthy();
-    expect(screen.queryByText(/Codex \(for you\)/)).toBeNull();
+    expect(status(/Codex is editing/).hasAttribute("data-on")).toBe(true);
+    expect(status(/^Saved$/).hasAttribute("data-on")).toBe(false);
+    // Codex's line already holds its place in Activity, unseen and out of the accessibility tree, while Codex works.
+    const line = screen.getByText("Codex (for you) · Changed the format to Vertical 9:16").closest("li")!;
+    expect(line.hasAttribute("data-pending")).toBe(true);
+    expect(line.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.queryByRole("button", { name: "Undo this change" })).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(screen.getByText("Codex (for you) · Changed the format to Vertical 9:16")).toBeTruthy();
+    // The same element, now seen: nothing new is put in above the older line when the edit lands.
+    expect(screen.getByText("Codex (for you) · Changed the format to Vertical 9:16").closest("li")).toBe(line);
+    expect(line.hasAttribute("data-pending")).toBe(false);
+    expect(line.hasAttribute("aria-hidden")).toBe(false);
+    expect(within(line).getByRole("button", { name: "Undo this change" })).toBeTruthy();
+    expect(status(/^Saved$/).hasAttribute("data-on")).toBe(true);
+    expect(status(/Codex is editing/).hasAttribute("data-on")).toBe(false);
     expect(screen.getByRole("button", { name: /Make it vertical/ }).getAttribute("aria-pressed")).toBe("true");
     vi.useRealTimers();
   });
 
-  it("undoes the agent's change from Activity", () => {
+  it("keeps every request the same when one is picked, so the one under the pointer stays there", () => {
+    vi.useFakeTimers();
+    const { container } = render(<AgentDemo />);
+    const list = screen.getByRole("list", { name: "Ask an agent" });
+    const items = [...list.children];
+    const before = items.map((li) => li.innerHTML.replace(/aria-pressed="(true|false)"/, ""));
+    fireEvent.click(screen.getByRole("button", { name: /Make the surf shot two seconds long/ }));
+    const atClick = [...list.children];
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    const landed = [...list.children];
+    // The same four elements throughout, each holding only its words and its agent: nothing in the list grows or
+    // shrinks with the choice; only aria-pressed (and with it the fill) moves.
+    for (const now of [atClick, landed]) {
+      expect(now).toEqual(items);
+      expect(now.map((li) => li.innerHTML.replace(/aria-pressed="(true|false)"/, ""))).toEqual(before);
+    }
+    expect(list.querySelectorAll("p, [aria-live]")).toHaveLength(0);
+    expect(container.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it("undoes the agent's change from Activity, and the focus stays on the button", () => {
     render(<AgentDemo />);
     expect(screen.getAllByText("Summer trip").length).toBeGreaterThan(1); // the project name, the title, its clip
-    fireEvent.click(screen.getByRole("button", { name: "Undo this change" }));
-    expect(screen.getByRole("button", { name: "Undone" }).hasAttribute("disabled")).toBe(true);
+    const undo = screen.getByRole("button", { name: "Undo this change" });
+    undo.focus();
+    fireEvent.click(undo);
+    // The same button, still focusable, now says Undone: a disabled button would drop the focus to the page.
+    expect(screen.getByRole("button", { name: "Undone" })).toBe(undo);
+    expect(undo.hasAttribute("disabled")).toBe(false);
+    expect(undo.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(undo);
     expect(screen.getAllByText("Summer trip")).toHaveLength(1); // only the project name is left
+    fireEvent.click(undo); // pressing it again does nothing
+    expect(screen.getByRole("button", { name: "Undone" })).toBe(undo);
+    expect(screen.getAllByText("Summer trip")).toHaveLength(1);
+  });
+
+  it("says beside the requests what the chosen one's agent did, once its edit has landed", () => {
+    vi.useFakeTimers();
+    const { container } = render(<AgentDemo />);
+    const answer = container.querySelector(".h-demoAnswer")!;
+    const live = answer.querySelector(".h-demoResult")!;
+    const sizers = () => [...answer.querySelectorAll(".h-demoSizer")];
+    // One polite live region, always there, for the chosen request's answer.
+    expect([...container.querySelectorAll("[aria-live]")]).toEqual([live]);
+    expect(live.getAttribute("aria-live")).toBe("polite");
+    expect(live.textContent).toBe(
+      "Claude adds the text clip. It shows in Activity with Claude's name on it, and Undo takes it back.",
+    );
+    // Every answer is in the same spot, unseen and hidden from screen readers, holding the space at the longest one's.
+    const all = REQUESTS.map((r) => r.result);
+    expect(sizers().map((p) => p.textContent)).toEqual(all);
+    for (const p of sizers()) expect(p.getAttribute("aria-hidden")).toBe("true");
+    // The answer isn't part of the request's name.
+    expect(screen.getByRole("button", { name: /Add a title that says Summer trip/ }).textContent).toBe(
+      "Add a title that says Summer trip.Ask Claude",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Make it vertical/ }));
+    // While Codex is at work the live line is empty, so the answer is heard once, when the edit lands, and the
+    // unseen answers still hold the space open.
+    expect(live.textContent).toBe("");
+    expect(sizers().map((p) => p.textContent)).toEqual(all);
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(answer.querySelector(".h-demoResult")).toBe(live);
+    expect(live.textContent).toBe("Codex changes the format for you. Each agent acts as you, in the space you choose.");
+    expect(sizers().map((p) => p.textContent)).toEqual(all);
+    vi.useRealTimers();
+  });
+
+  it("gives each request a result line with one true fact about agents in EasyEdit", () => {
+    expect(REQUESTS.map((r) => [r.agent, r.result])).toEqual([
+      ["Claude", "Claude adds the text clip. It shows in Activity with Claude's name on it, and Undo takes it back."],
+      ["ChatGPT", "ChatGPT trims the surf clip on the timeline, the same edit you'd make by hand."],
+      ["Codex", "Codex changes the format for you. Each agent acts as you, in the space you choose."],
+      ["Cursor", "Cursor splits the beach clip in two. Connect as many agents as you like."],
+    ]);
+  });
+
+  it("draws the agent's name on a request in the page's own greys, not an accent colour", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8");
+    const from = css.indexOf("/* ---------- AI: the live demo");
+    const demo = css.slice(from, css.indexOf("/* The drawn editor, in the editor's own"));
+    expect(demo).not.toMatch(/--h-accent|--h-claude|#1a1c24/);
+    expect(demo).not.toMatch(/box-shadow|border:\s*1px/);
+  });
+
+  it("styles the demo so a pick moves nothing and the focus ring goes round the whole request", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8");
+    const from = css.indexOf("/* ---------- AI: the live demo");
+    const demo = css.slice(from, css.indexOf("/* The drawn editor, in the editor's own"));
+    const rule = (sel: string, within = demo) => {
+      const at = within.indexOf(`\n${sel} {`);
+      expect(at, sel).toBeGreaterThan(-1);
+      return within.slice(at, within.indexOf("}", at));
+    };
+    // The fill is the button's, so the site's focus ring (outside the button) wraps all of it, with nothing of the
+    // request under the button for the ring to cross.
+    expect(rule(".h-demoRequest")).toMatch(/background: rgb\(255 255 255 \/ 0\.05\)/);
+    expect(rule('.h-demoRequest[aria-pressed="true"]')).toMatch(/background: rgb\(255 255 255 \/ 0\.12\)/);
+    expect(rule(".h-demoRequests li")).not.toMatch(/background/);
+    expect(demo).not.toMatch(/margin(-top)?:\s*-/);
+    // Every answer in one grid cell, the unseen ones holding it open.
+    expect(rule(".h-demoAnswer")).toMatch(/display: grid/);
+    expect(rule(".h-demoAnswer > p")).toMatch(/grid-area: 1 \/ 1/);
+    expect(rule(".h-demoSizer")).toMatch(/visibility: hidden/);
+    // The agent's Activity line keeps its place while the agent works, and comes in only once the edit lands.
+    expect(rule(".h-uiActivity li[data-pending]", css)).toMatch(/visibility: hidden/);
+    expect(rule(".h-uiActivity li[data-fresh]:not([data-pending])", css)).toMatch(/animation: h-arrive/);
+    // Going vertical cuts the frame's sides away (clip-path) rather than narrowing it, so its box doesn't move.
+    expect(rule(".h-uiFrame", css)).toMatch(/clip-path: inset\(0 var\(--cut\)\)/);
+    expect(rule(".h-uiFrame[data-vertical]", css)).toMatch(/--cut: calc\(50% - var\(--frame-h, 218px\) \* 9 \/ 32\)/);
+    expect(rule(".h-uiFrame[data-vertical]", css)).not.toMatch(/aspect-ratio|width/);
+    // In the narrow editor its side panel keeps room for the agent's line at two lines, and shows only that line.
+    const narrow = css.slice(css.indexOf("@container (max-width: 520px)"));
+    expect(rule("  .h-uiSide", narrow)).toMatch(/min-height: 134px/);
+    expect(rule("  .h-uiActivity li:not([data-fresh])", narrow)).toMatch(/display: none/);
+    // Two requests a row everywhere, so the answer is never more than a row from the one it answers.
+    expect(rule(".h-demoRequests")).toMatch(/grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+    // On a computer only the editor moves: to the right column, across all of its rows, with a last row that takes
+    // up its height if it is ever the taller. The rest stay in the page's order down the left column.
+    expect(rule(".h-demo")).toMatch(/grid-template-rows: repeat\(4, auto\) 1fr/);
+    expect(rule(".h-demo > :not(.h-demoStage)")).toMatch(/grid-column: 1/);
+    expect(rule(".h-demoStage")).toMatch(/grid-column: 2;\s*grid-row: 1 \/ -1;\s*position: sticky/);
+    // Phones: the page's own order, one column, with nothing reordered for the eye that the keyboard would not follow.
+    const phone = css.slice(css.indexOf("@media (max-width: 860px)"), css.indexOf("@media (max-width: 380px)"));
+    expect(rule("  .h-demo", phone)).toMatch(/grid-template-rows: none/);
+    expect(rule("  .h-demoStage", phone)).toMatch(/grid-column: 1;\s*grid-row: auto;\s*position: static/);
+    for (const block of [demo, phone]) {
+      expect(block).not.toMatch(/\border:\s*-?\d|display: contents|h-demoText/);
+    }
+  });
+
+  it("keeps the requests, Undo and the pills visible as controls with the system's high contrast colours", () => {
+    const home = readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8");
+    const site = readFileSync(join(process.cwd(), "src/components/site/site.css"), "utf8");
+    const forced = (css: string) =>
+      css
+        .split("@media (forced-colors: active) {")
+        .slice(1)
+        .map((b) => b.slice(0, b.indexOf("\n}\n")))
+        .join("\n");
+    const rule = (sel: string, css: string) => {
+      const at = css.indexOf(`\n${sel} {`);
+      expect(at, sel).toBeGreaterThan(-1);
+      return css.slice(at, css.indexOf("}", at));
+    };
+    // Every request, Undo and the Pause pills get the system's button edge; the chosen request a thicker edge in the
+    // selection colour, drawn on top of its own (so it keeps its size), and a used Undo the switched-off colour.
+    expect(rule("  .h-demoRequest,\n  .h-uiUndo,\n  .h-pause", forced(home))).toMatch(/border: 1px solid ButtonText/);
+    const chosen = rule('  .h-demoRequest[aria-pressed="true"]::after', forced(home));
+    expect(chosen).toMatch(/position: absolute;\s*inset: -1px;\s*border: 2px solid Highlight/);
+    expect(rule("  .h-demoRequest", forced(home))).toMatch(/position: relative/);
+    expect(rule('  .h-uiUndo[aria-disabled="true"]', forced(home))).toMatch(/border-color: GrayText;\s*color: GrayText/);
+    // The site's pills (here, on sign-in and on the page-not-found page) get an edge in their own text colour.
+    expect(rule("  .h-btn", forced(site))).toMatch(/border: 1px solid currentColor/);
+    expect(rule("  .h-btn:disabled", forced(site))).toMatch(/border-color: GrayText/);
+    // Outside that mode they keep their plain fills.
+    expect(rule(".h-demoRequest", home)).toMatch(/border: 0/);
+    expect(rule(".h-btn", site)).toMatch(/border: 0/);
   });
 
   it("offers one request per real agent tool, in the app's own Activity wording", () => {

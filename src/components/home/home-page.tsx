@@ -12,21 +12,6 @@ import "./home.css";
 // The footage in public/home is from Pexels (free to use, no credit required); activity.webp and brand-kit.webp are
 // crops of the real editor from the intro tutorial's recording.
 
-const AI_POINTS = [
-  {
-    title: "Plain words in, real edits out",
-    text: "Agents add text and media, trim, split and move clips, change the format and add guides. They can start new projects too.",
-  },
-  {
-    title: "Signed and undoable",
-    text: "Every change an agent makes shows in Activity with its name on it. Undo it like any other change.",
-  },
-  {
-    title: "It works as you",
-    text: "Each agent acts as you, in the space you choose. Connect as many as you like.",
-  },
-];
-
 const TEAM: { shot: ReactNode; title: string; text: string }[] = [
   {
     shot: <PresenceShot />,
@@ -92,38 +77,35 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
         <HeroScene closedBeta={closedBeta} />
 
         <section id="ai" className="h-section" aria-labelledby="ai-title" data-dock-label="Ask an agent">
-          <div className="h-sectionHead">
+          <AgentDemo>
             <h2 id="ai-title" className="h-h2">
-              Ask an agent. Watch it edit.
+              <span className="h-line">Ask an agent.</span> <span className="h-line">Watch it edit.</span>
             </h2>
             <p className="h-lead">
-              Connect Claude, ChatGPT, Cursor or any agent that speaks MCP. Say what you want, and the change lands in your
-              project, signed with the agent&apos;s name.
+              Connect Claude, ChatGPT, Cursor or any agent that speaks MCP. Pick a request and watch it land in a working
+              model of the editor.
             </p>
-          </div>
-          <AgentDemo />
-          <ul className="h-points">
-            {AI_POINTS.map((p) => (
-              <li key={p.title}>
-                <h3>{p.title}</h3>
-                <p>{p.text}</p>
-              </li>
-            ))}
-          </ul>
-          <div className="h-statement h-agents">
-            <h2 className="h-giant">Works with every AI agent.</h2>
+          </AgentDemo>
+        </section>
+
+        <section id="start" className="h-section h-start" aria-labelledby="start-title" data-dock-label="First project">
+          <h2 id="start-title" className="h-startTitle">
+            Make your first project.
+          </h2>
+          <NewProjectForm />
+        </section>
+
+        <section id="free" className="h-section h-drive" aria-labelledby="drive-title" data-dock-label="Free">
+          <div className="h-sectionHead">
+            <h2 id="drive-title" className="h-h2">
+              <span className="h-line">Completely free.</span> <span className="h-line">Based in your Drive.</span>
+            </h2>
             <p className="h-lead">
-              {AGENTS.join(", ")} and anything else that speaks MCP. Connect one from AI agents in your account menu.
+              EasyEdit costs nothing. Connect a Google account, and your videos, images and audio live in a folder EasyEdit
+              makes in that Drive. They stay yours, and EasyEdit can&apos;t see your other files.
             </p>
           </div>
-          <AgentMarquee>
-            {[...AGENT_LOGOS, ...AGENT_LOGOS].map((a, i) => (
-              <span key={`${a.name}-${i}`} className="h-agent">
-                <span className="h-agentLogo" style={{ maskImage: `url(/home/logos/${a.logo}.svg)` }} />
-                {a.name}
-              </span>
-            ))}
-          </AgentMarquee>
+          <DriveShot />
         </section>
 
         <section id="teams" className="h-section" aria-labelledby="teams-title" data-dock-label="Teams">
@@ -147,26 +129,24 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
           </div>
         </section>
 
-        <section id="free" className="h-section h-drive" aria-labelledby="drive-title" data-dock-label="Free">
-          <div className="h-sectionHead">
-            <h2 id="drive-title" className="h-h2">
-              <span className="h-line">Completely free.</span> <span className="h-line">Based in your Drive.</span>
-            </h2>
-            <p className="h-lead">
-              EasyEdit costs nothing. Connect a Google account, and your videos, images and audio live in a folder EasyEdit
-              makes in that Drive. They stay yours, and EasyEdit can&apos;t see your other files.
-            </p>
+        <section id="agents" className="h-section h-statement" aria-labelledby="agents-title" data-dock-label="Every agent">
+          <h2 id="agents-title" className="h-giant">
+            Works with every AI agent.
+          </h2>
+          <p className="h-lead">
+            {AGENTS.join(", ")} and anything else that speaks MCP. Connect one from AI agents in your account menu.
+          </p>
+          {/* The end of the page: the page's dock goes down while it is in view (page-dock.tsx). */}
+          <div data-dock-end>
+            <AgentMarquee>
+              {[...AGENT_LOGOS, ...AGENT_LOGOS].map((a, i) => (
+                <span key={`${a.name}-${i}`} className="h-agent">
+                  <span className="h-agentLogo" style={{ maskImage: `url(/home/logos/${a.logo}.svg)` }} />
+                  {a.name}
+                </span>
+              ))}
+            </AgentMarquee>
           </div>
-          <DriveShot />
-        </section>
-
-        <section id="start" className="h-section h-start" aria-labelledby="start-title" data-dock-label="First project">
-          <div className="h-sectionHead">
-            <h2 id="start-title" className="h-wide">
-              Make your first project.
-            </h2>
-          </div>
-          <NewProjectForm />
         </section>
 
         {/* After the sections, so the keyboard comes to it once it has been through the page. */}

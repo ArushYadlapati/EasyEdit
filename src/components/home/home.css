@@ -1100,104 +1100,104 @@
   max-width: 54ch;
 }
 
-.h-points {
-  list-style: none;
-  margin: 64px 0 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 40px;
-}
-.h-points h3 {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-.h-points p {
-  margin-top: 8px;
-  color: var(--h-muted);
-}
-
 /* ---------- AI: the live demo ---------- */
 
+/* The heading, the lead, what the chosen request's agent did and the requests down the left column, and the drawn
+   editor in the right one, across all of its rows, its top on the heading's. The page has them in the order a phone
+   shows them (the editor after the lead), so it is only the editor that moves here, and Tab still goes from its Undo
+   down to the requests. The left column is the taller, so the editor holds near the top of the window while the
+   requests go by (sticky), and never leaves the column's ends; were it ever the taller, the last row would take up
+   the difference instead of spreading the left column's pieces apart. */
 .h-demo {
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: 24px;
-  align-items: stretch;
+  grid-template-columns: minmax(0, 11fr) minmax(0, 13fr);
+  grid-template-rows: repeat(4, auto) 1fr;
+  column-gap: clamp(32px, 4vw, 64px);
+  align-items: start;
 }
+.h-demo > :not(.h-demoStage) {
+  grid-column: 1;
+}
+.h-demo > .h-lead {
+  margin-top: 24px;
+  text-wrap: pretty;
+}
+/* Two a row, so the answer above them is never more than a row from the request it answers. */
 .h-demoRequests {
   list-style: none;
-  margin: 0;
+  margin: 20px 0 0;
   padding: 0;
   display: grid;
-  gap: 10px;
-  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
+.h-demoRequests li {
+  display: grid; /* the button fills it, so a row of requests is one height */
+}
+/* Each request is a control, so it has a fill like the ghost pill's, and the chosen one is a step lighter. The fill
+   is the button's own, so the focus ring goes round the whole of it. */
 .h-demoRequest {
   display: grid;
-  gap: 6px;
+  align-content: start;
+  gap: 4px;
   width: 100%;
-  padding: 18px 20px;
+  padding: 16px 20px;
   border: 0;
   border-radius: 16px;
-  background: var(--h-panel);
+  background: rgb(255 255 255 / 0.05);
   text-align: left;
   font: inherit;
   color: var(--h-muted);
   cursor: pointer;
   transition:
-    color 200ms,
     background-color 200ms,
-    border-color 200ms,
-    transform 200ms var(--h-ease);
+    color 200ms;
 }
 .h-demoRequest:hover {
+  background: rgb(255 255 255 / 0.08);
   color: var(--h-text);
-  transform: translateX(4px);
-}
-.h-demoRequest:active {
-  transform: translateX(2px);
 }
 .h-demoRequest[aria-pressed="true"] {
+  background: rgb(255 255 255 / 0.12);
   color: var(--h-text);
-  background: #1a1c24;
-  transform: none;
 }
 .h-demoWords {
-  font-size: 19px;
+  font-size: clamp(17px, 1.3vw, 20px);
   font-weight: 500;
   letter-spacing: -0.02em;
   line-height: 1.3;
+  text-wrap: pretty;
 }
 .h-demoAgent {
-  font-size: 13px;
-  color: var(--h-faint);
+  font-size: 14px;
+  color: var(--h-muted);
 }
-.h-demoRequest[aria-pressed="true"] .h-demoAgent {
-  color: var(--h-accent);
+/* What the chosen request's agent did, just above the requests. All four answers sit in the one grid cell and the
+   unseen ones hold it open, so the space is the longest answer's: nothing under it moves when one answer gives way to
+   the next, or while it is empty as the agent works. */
+.h-demoAnswer {
+  display: grid;
+  margin-top: 40px;
 }
-.h-demoRequest[aria-pressed="true"][data-agent="Claude"] .h-demoAgent {
-  color: var(--h-claude);
+.h-demoAnswer > p {
+  grid-area: 1 / 1;
+  margin: 0;
+  text-wrap: pretty;
+}
+.h-demoSizer {
+  visibility: hidden;
+}
+.h-demoResult:not(:empty) {
+  animation: h-in 300ms ease both;
 }
 
 .h-demoStage {
-  display: flex;
-  align-items: center;
-  padding: clamp(20px, 3vw, 40px);
-  border-radius: 24px;
-  background: var(--h-panel);
-  box-shadow: inset 0 0 0 1px var(--h-line);
-}
-.h-demoFigure {
-  width: 100%;
+  grid-column: 2;
+  grid-row: 1 / -1;
+  position: sticky;
+  top: clamp(24px, 10svh, 96px);
   margin: 0;
   container-type: inline-size;
-}
-.h-demoNote {
-  margin-top: 16px;
-  font-size: 13px;
-  color: var(--h-faint);
 }
 
 /* The drawn editor, in the editor's own colours (from .editor in globals.css) and type. */
@@ -1208,9 +1208,7 @@
   background: var(--ed-bg);
   border-radius: 10px;
   overflow: hidden;
-  box-shadow:
-    0 0 0 1px var(--ed-line-strong),
-    0 30px 80px rgb(0 0 0 / 0.6);
+  box-shadow: 0 0 0 1px var(--ed-line-strong); /* the window's own edge, a 1 px ring as in the app */
 }
 .h-uiBar {
   display: flex;
@@ -1226,10 +1224,22 @@
 }
 .h-uiStatus {
   margin-left: auto;
+  display: grid;
+  justify-items: end;
+  color: var(--ed-muted);
+}
+.h-uiStatus > span {
+  grid-area: 1 / 1;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--ed-muted);
+  white-space: nowrap;
+}
+.h-uiStatus > :not([data-on]) {
+  visibility: hidden;
+}
+.h-uiStatus > :not([data-on]) .h-uiDot {
+  animation: none;
 }
 .h-uiDot {
   width: 7px;
@@ -1258,15 +1268,29 @@
   min-width: 0;
 }
 .h-uiFrame {
+  --cut: 0px;
   position: relative;
-  height: var(--frame-h, 218px); /* explicit: a percentage height doesn't resolve here, and 9:16 needs one */
+  height: var(--frame-h, 218px); /* explicit: a percentage height doesn't resolve here, and the 9:16 cut needs one */
   aspect-ratio: 16 / 9;
   max-width: 100%;
   overflow: hidden;
   background: #000;
+  clip-path: inset(0 var(--cut));
+  transition: clip-path 500ms var(--h-ease);
 }
+/* Vertical 9:16 at the same height is the middle of the same picture (it fills the frame either way), so the frame
+   cuts its sides away instead of narrowing: its box stays where it is, and nothing in the editor moves when the format
+   changes. */
 .h-uiFrame[data-vertical] {
-  aspect-ratio: 9 / 16;
+  --cut: calc(50% - var(--frame-h, 218px) * 9 / 32);
+}
+/* The vertical frame's edge for the moment it changes, drawn round the part left showing so the cut doesn't take its
+   sides. It only exists on the vertical frame, so it comes in at its own size and never moves. */
+.h-uiFrame[data-vertical]::after {
+  content: "";
+  position: absolute;
+  inset: 0 var(--cut);
+  pointer-events: none;
 }
 .h-uiFrame img {
   width: 100%;
@@ -1330,7 +1354,11 @@
   padding: 10px 12px;
   border-bottom: 1px solid var(--ed-line);
 }
-.h-uiActivity li[data-fresh] {
+/* The agent's line keeps its place while the agent works, and comes in there once the edit lands. */
+.h-uiActivity li[data-pending] {
+  visibility: hidden;
+}
+.h-uiActivity li[data-fresh]:not([data-pending]) {
   animation: h-arrive 600ms var(--h-ease) both;
 }
 .h-uiWhen {
@@ -1351,10 +1379,10 @@
   cursor: pointer;
   transition: background-color 150ms;
 }
-.h-uiUndo:hover:not(:disabled) {
+.h-uiUndo:hover:not([aria-disabled="true"]) {
   background: var(--ed-hover);
 }
-.h-uiUndo:disabled {
+.h-uiUndo[aria-disabled="true"] {
   color: var(--ed-muted);
   cursor: default;
 }
@@ -1422,9 +1450,14 @@
   padding-left: 8px;
 }
 .h-uiClip[data-fresh],
-.h-uiTitle[data-fresh],
-.h-uiFrame[data-fresh] {
+.h-uiTitle[data-fresh] {
   animation: h-fresh 1200ms var(--h-ease) both;
+}
+.h-uiFrame[data-fresh] {
+  animation: h-settle 1200ms var(--h-ease) both;
+}
+.h-uiFrame[data-fresh]::after {
+  animation: h-mark 1200ms var(--h-ease) both;
 }
 @keyframes h-fresh {
   from {
@@ -1432,6 +1465,19 @@
     outline-offset: -2px;
     transform: scale(0.97);
   }
+  60% {
+    outline: 2px solid var(--fresh, var(--ed-accent));
+    outline-offset: -2px;
+  }
+}
+/* The same moment for the frame, in two parts: the frame settles, and its edge (on ::after) holds, then goes. */
+@keyframes h-settle {
+  from {
+    transform: scale(0.97);
+  }
+}
+@keyframes h-mark {
+  from,
   60% {
     outline: 2px solid var(--fresh, var(--ed-accent));
     outline-offset: -2px;
@@ -1454,12 +1500,22 @@
     height: 200px;
     --frame-h: 168px;
   }
+  /* Under the preview here, so its height adds to the editor's. It shows the agent's own line only, and keeps room
+     for that line at two lines long (the tabs 44.5 px, the line 87.5 px, its edge), so the requests under the editor
+     stay where they are whichever agent's line is in it. It can still grow when the text needs more room. */
   .h-uiSide {
+    min-height: 134px;
     border-left: 0;
     border-top: 1px solid var(--ed-line);
   }
+  .h-uiActivity li:not([data-fresh]) {
+    display: none;
+  }
+  .h-uiActivity li {
+    border-bottom: 0; /* the one line left; the room kept under it is the panel's own */
+  }
   .h-uiTimeline {
-    --names: 52px;
+    --names: 60px; /* "Video 1" at 12 px with its padding */
   }
   .h-uiRuler span:nth-child(even) {
     display: none;
@@ -1507,11 +1563,8 @@
   color: var(--h-muted);
 }
 
-/* ---------- Every agent (in the AI section), and the Drive ---------- */
+/* ---------- Every agent, and the Drive ---------- */
 
-.h-agents {
-  margin-top: clamp(120px, 14vw, 180px);
-}
 .h-statement .h-lead {
   margin-top: 28px;
 }
@@ -1678,78 +1731,99 @@
 
 /* ---------- Make your first project ---------- */
 
-.h-start .h-sectionHead {
-  display: block;
-  container-type: inline-size;
-  margin-bottom: 40px;
-}
-/* One line, edge to edge of the content column, at any width. */
-.h-wide {
-  font-size: 10cqw;
+/* At the hero headline's size: one line on a computer, two on a phone. */
+.h-startTitle {
+  margin-bottom: clamp(40px, 5vw, 64px);
+  font-size: clamp(48px, 7vw, 112px);
   font-weight: 600;
-  letter-spacing: -0.055em;
-  line-height: 0.9;
-  white-space: nowrap;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  text-wrap: balance;
 }
 
+/* The real form on the page's black: the picture on the left, as large as the column allows; the fields, then
+   Create project, on the right, where the eye ends. Its fields keep the app's own look. */
 .h-np {
-  border-radius: 16px;
-  overflow: hidden;
-  background: var(--ed-panel);
+  display: grid;
+  grid-template-columns: minmax(0, 13fr) minmax(0, 11fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "preview fields"
+    "preview actions";
+  column-gap: clamp(32px, 4vw, 64px);
   color: var(--ed-text);
   font-size: 13px;
-  box-shadow: 0 0 0 1px var(--ed-line-strong);
-}
-.h-npHead {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--ed-line);
-}
-.h-npTitle {
-  font-size: 15px;
-  font-weight: 600;
-}
-.h-npBody {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
-  padding: 20px;
 }
 .h-npFields {
+  grid-area: fields;
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
-/* The frame sizes itself against its box's height (container units), so that box must have a definite height: a grid
-   row gives it one. As a flex-1 item in a column with only a min-height, it was drawn 0 px wide in Chrome and Edge.
-   The min-height still lets the panel grow with the fields beside it. */
+/* Two cards a row in this column, so the formats' names and uses are never cut short. */
+.h-npFields [role="radiogroup"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* The frame sizes itself against its box's height (container units), so that box must have a definite height: here
+   its own, and the frame's box is the first grid row inside it. As a flex-1 item in a column with only a min-height,
+   it was drawn 0 px wide in Chrome and Edge. */
 .h-npPreview {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px;
-  min-height: 340px;
-  padding: 24px;
-  border-radius: 8px;
-  background: var(--ed-raised);
+  gap: 16px;
+  grid-area: preview;
+  height: clamp(380px, 36vw, 520px);
 }
-.h-npName {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* The frame is a size container too, so the title follows the frame's own size. */
+.h-npPreview [data-blank-frame] {
+  position: relative;
+  overflow: hidden;
+  outline: 0;
+  container-type: size;
+}
+.h-npStill {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  padding: 8%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 46% 50%;
+}
+/* The project's title as a text clip in the frame: white Geist on the dark ground of the still, under its middle. */
+.h-npName {
+  position: absolute;
+  inset: 54% 8% auto;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
   text-align: center;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: clamp(16px, min(10cqw, 8cqh), 64px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
   color: #fff;
+  text-wrap: balance;
   overflow-wrap: anywhere;
 }
-.h-npFoot {
+.h-npSize {
+  text-align: center;
+  font-size: 14px;
+  color: var(--h-muted);
+  font-variant-numeric: tabular-nums;
+}
+.h-npActions {
+  grid-area: actions;
+  align-self: start;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
-  gap: 16px;
-  padding: 14px 20px;
-  border-top: 1px solid var(--ed-line);
+  gap: 12px 20px;
+  margin-top: 32px;
+}
+.h-npNote {
+  font-size: 14px;
+  color: var(--h-muted);
 }
 
 /* ---------- Entrances as each part scrolls in (no script; content shows where unsupported) ---------- */
@@ -1762,29 +1836,16 @@
 }
 @supports (animation-timeline: view()) {
   .h-sectionHead > *,
-  .h-demoRequests li,
-  .h-demoStage,
-  .h-points li,
   .h-teamCard,
-  .h-statement,
-  .h-driveStage,
-  .h-np {
+  .h-statement > :is(.h-giant, .h-lead),
+  .h-driveStage {
     animation: h-rise linear both;
     animation-timeline: view();
     animation-range: entry 0% entry 50%;
   }
   .h-sectionHead > :nth-child(2),
-  .h-demoRequests li:nth-child(2),
-  .h-points li:nth-child(2),
   .h-teamCard:nth-child(2n) {
     animation-range: entry 8% entry 58%;
-  }
-  .h-demoRequests li:nth-child(3),
-  .h-points li:nth-child(3) {
-    animation-range: entry 16% entry 66%;
-  }
-  .h-demoRequests li:nth-child(4) {
-    animation-range: entry 24% entry 74%;
   }
 }
 
@@ -1959,6 +2020,32 @@ html:has(.h-dock[data-shown]) {
     background: CanvasText;
   }
 }
+/* The same goes for the page's other controls, which are drawn as fills with no edge: the agent demo's requests, its
+   Undo and the Pause pills would be bare words, and the chosen request would look like the rest. They get the
+   system's button edge, and the chosen request a thicker one in its selection colour, drawn over the thin one so the
+   request keeps its size when the choice moves. A used Undo takes the system's colour for what is switched off. */
+@media (forced-colors: active) {
+  .h-demoRequest,
+  .h-uiUndo,
+  .h-pause {
+    border: 1px solid ButtonText;
+  }
+  .h-demoRequest {
+    position: relative;
+  }
+  .h-demoRequest[aria-pressed="true"]::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border: 2px solid Highlight;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  .h-uiUndo[aria-disabled="true"] {
+    border-color: GrayText;
+    color: GrayText;
+  }
+}
 /* A section's heading takes the focus when the dock goes to it, so that Tab carries on from there. Like the app's
    headings that take focus in code, it draws no ring for it. */
 .h-page :is(h2, h3)[tabindex="-1"]:focus {
@@ -2117,33 +2204,57 @@ html:has(.h-dock[data-shown]) {
   }
   .h-sectionHead,
   .h-demo,
-  .h-points,
-  .h-teamGrid,
-  .h-npBody {
+  .h-teamGrid {
     grid-template-columns: minmax(0, 1fr);
   }
   .h-sectionHead {
     gap: 20px;
     margin-bottom: 40px;
   }
-  .h-demoRequests {
-    grid-template-columns: 1fr 1fr;
+  /* One column in the page's own order: the heading and lead, then the editor, what the agent did, and the requests
+     under it. With the requests in view the editor is too, so a pick shows its edit landing (the timeline and Undo
+     right above the requests). */
+  .h-demo {
+    grid-template-rows: none;
+  }
+  .h-demoStage {
+    grid-column: 1;
+    grid-row: auto;
+    position: static;
+    margin-top: 40px;
+  }
+  .h-demoAnswer {
+    margin-top: 20px;
   }
   .h-demoRequest {
-    padding: 14px;
-    height: 100%;
+    padding: 14px 16px;
   }
-  .h-demoRequest:hover {
-    transform: none;
+  .h-startTitle {
+    font-size: clamp(34px, (100vw - 2 * var(--h-pad)) / 7.5, 96px); /* the hero headline's phone size */
   }
-  .h-demoWords {
-    font-size: 16px;
+  /* The fields, the picture they shape, then Create project at full width. */
+  .h-np {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas:
+      "fields"
+      "preview"
+      "actions";
+    row-gap: 32px;
   }
   .h-npPreview {
-    min-height: 260px;
+    height: min(440px, 112vw);
   }
-  .h-npFoot {
-    flex-direction: column;
-    align-items: stretch;
+  .h-npActions {
+    margin-top: 0;
+  }
+  .h-npActions .h-btn {
+    width: 100%;
+  }
+}
+/* Too narrow for two format cards a row without cutting their names short ("Landscape 1…" and "Landscape 4…"). */
+@media (max-width: 380px) {
+  .h-npFields [role="radiogroup"] {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
