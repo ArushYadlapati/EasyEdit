@@ -362,29 +362,138 @@
   box-shadow: 0 0 0 1px var(--ed-line-strong);
   color: var(--ed-text);
 }
-/* The footage's own Pause, over the stage's corner, in the site's pill look. */
-.h-signPause {
+/* The editor's timeline under the preview, in its own sizes: the play/pause button at the start of the ruler, a text
+   and a video track named on the left, their clips, and the playhead, a white line with a small head. The ruler and the
+   tracks are one place to scrub (.h-signScrub, over the lanes). */
+.h-signTimeline {
+  --names: 84px;
+  position: relative;
+  flex: none;
+  padding-bottom: 8px;
+  border-top: 1px solid var(--ed-line-strong);
+  font-size: 12px;
+  line-height: 1.35;
+  user-select: none;
+}
+.h-signPlay {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
-  padding: 6px 12px;
+  top: 1px;
+  left: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 0.55);
-  color: rgb(255 255 255 / 0.9);
-  font: inherit;
-  font-size: 13px;
-  line-height: 18px;
+  border-radius: 6px;
+  background: none;
+  color: var(--ed-accent);
   cursor: pointer;
-  transition: background-color 160ms;
+  transition: background-color 120ms;
 }
-.h-signPause:hover {
-  background: rgb(0 0 0 / 0.75);
+.h-signPlay:hover {
+  background: var(--ed-hover);
 }
-@media (prefers-reduced-motion: reduce) {
-  .h-signPause {
-    display: none;
-  }
+.h-signPlay svg {
+  width: 16px;
+  height: 16px;
+}
+/* The numbers sit low in the row, under the playhead's head. */
+.h-signRuler {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 30px;
+  padding-bottom: 3px;
+  margin: 0 16px 0 var(--names);
+  color: var(--ed-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+/* Each label sits on its own second: the first and last ones' middles are the lane's two ends. */
+.h-signRuler > span {
+  width: 0;
+  display: flex;
+  justify-content: center;
+}
+.h-signTrack {
+  display: flex;
+  align-items: center;
+  height: 40px;
+}
+.h-signTrackName {
+  flex: 0 0 var(--names);
+  padding-left: 16px;
+  color: var(--ed-muted);
+}
+.h-signLane {
+  position: relative;
+  flex: 1;
+  height: 30px;
+  margin-right: 16px;
+}
+.h-signClip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 1px solid var(--ed-line-strong);
+  border-radius: 4px;
+  background: var(--ed-clip-video);
+}
+.h-signClip img {
+  height: 24px;
+  width: auto;
+  border-radius: 2px;
+}
+.h-signClipText {
+  padding-left: 10px;
+  background: var(--ed-clip-text);
+}
+.h-signScrub {
+  position: absolute;
+  top: 0;
+  right: 16px;
+  bottom: 0;
+  left: var(--names);
+  z-index: 1;
+  cursor: ew-resize;
+  touch-action: none;
+  border-radius: 4px;
+}
+.h-signScrub:focus-visible {
+  outline: 2px solid var(--ed-accent);
+  outline-offset: -2px;
+}
+.h-signPlayhead {
+  --at: 0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-left: 1px solid var(--ed-text);
+  pointer-events: none;
+  translate: calc(var(--at) * (100cqw - 1px)) 0;
+}
+.h-signScrub {
+  container-type: inline-size;
+}
+/* The head, at the top of the ruler: a small pentagon pointing down at the moment. */
+.h-signPlayhead::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: -5.5px;
+  width: 10px;
+  height: 11px;
+  background: var(--ed-text);
+  clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
 }
 .h-signBar {
   --logo-accent: var(--ed-accent);
