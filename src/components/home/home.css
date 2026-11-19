@@ -2634,6 +2634,26 @@ html:has(.h-dock[data-shown]) {
 .h-dock[data-shown] .h-dockPlayhead {
   transition: transform 160ms var(--h-ease);
 }
+/* Held and dragged, it stays right under the pointer rather than gliding after it. */
+.h-dock[data-dragging] .h-dockPlayhead {
+  transition: none;
+}
+/* The playhead's grip: 16 px centred on its line, the whole height of the dock, so it can be held and dragged along
+   the track to scroll the page (page-dock.tsx). It only takes the pointer once the dock shows; elsewhere the clips
+   under the playhead stay links. */
+.h-dockGrip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  width: 16px;
+  cursor: ew-resize;
+  pointer-events: none;
+  touch-action: none;
+}
+.h-dock[data-shown] .h-dockGrip {
+  pointer-events: auto;
+}
 .h-dock:focus-within .h-dockPlayhead {
   height: 56px;
 }

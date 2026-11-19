@@ -12,10 +12,12 @@ import {
   FOLD,
   foldAt,
   HANDOVER,
+  lineAt,
   morphAt,
   PageDock,
   playheadAt,
   readingLine,
+  scrollFor,
   TIMELINE,
 } from "@/components/home/page-dock";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
@@ -553,6 +555,101 @@ describe("page dock", () => {
     expect(dock().hasAttribute("data-aside")).toBe(false);
   });
 
+  it("finds the reading line for a place on the track: as far into a section as the place is into its clip", () => {
+    const spans = [
+      { top: 1000, height: 1000 },
+      { top: 2000, height: 500 },
+      { top: 2600, height: 400 },
+    ];
+    const shares = [0.5, 0.25, 0.25];
+    expect(lineAt(0, spans, shares)).toBe(1000);
+    expect(lineAt(0.25, spans, shares)).toBe(1500);
+    expect(lineAt(0.625, spans, shares)).toBe(2250);
+    expect(lineAt(0.875, spans, shares)).toBe(2800);
+    expect(lineAt(1, spans, shares)).toBe(3000);
+    expect(lineAt(-1, spans, shares)).toBe(1000);
+    expect(lineAt(2, spans, shares)).toBe(3000);
+    // And back again: the playhead lands where it was dragged.
+    for (const at of [0.1, 0.4, 0.6, 0.8, 0.95]) expect(playheadAt(lineAt(at, spans, shares), spans, shares)).toBeCloseTo(at, 9);
+  });
+
+  it("finds the scroll that puts the reading line at a place on the page, the way back from readingLine", () => {
+    // An 800 px window on a page that scrolls 5200 px at most.
+    expect(scrollFor(2900, 800, 5200)).toBe(2500); // the window's middle
+    expect(scrollFor(100, 800, 5200)).toBe(0); // can't scroll above the top
+    expect(scrollFor(9000, 800, 5200)).toBe(5200); // nor past the end
+    for (const line of [1000, 3000, 5100, 5300, 5800]) {
+      const y = scrollFor(line, 800, 5200);
+      expect(readingLine(y, 800, 5200)).toBeCloseTo(line, 9);
+    }
+  });
+
+  it("scrolls the page as its playhead is dragged, at once, and stays put while held", () => {
+    layOut();
+    render(<Page />);
+    runFrames();
+    scrollTo(1200);
+    expect(dock().hasAttribute("data-shown")).toBe(true);
+    const lane = document.querySelector<HTMLElement>(".h-dockLane")!;
+    vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({ left: 100, width: 1000, top: 0, height: 32, right: 1100, bottom: 32, x: 100, y: 0, toJSON() {} } as DOMRect);
+    const scrolled = vi.fn((options: ScrollToOptions) => {
+      Object.defineProperty(window, "scrollY", { value: options.top, configurable: true });
+      fireEvent.scroll(window);
+    });
+    vi.stubGlobal("scrollTo", scrolled);
+    const grip = document.querySelector<HTMLElement>(".h-dockGrip")!;
+    expect(grip.closest(".h-dockPlayhead")).not.toBeNull();
+    grip.setPointerCapture = () => {};
+    grip.hasPointerCapture = () => true;
+
+    // 1900 of the 4500 parts along: half way into Free, whose middle is 2900 px down, the window's middle at 2500.
+    fireEvent.pointerDown(grip, { button: 0, clientX: 100 + (1900 / 4500) * 1000, pointerId: 1 });
+    expect(scrolled).toHaveBeenLastCalledWith({ top: 2500, behavior: "instant" });
+    expect(dock().hasAttribute("data-dragging")).toBe(true);
+    runFrames();
+    const playhead = document.querySelector<HTMLElement>(".h-dockPlayhead")!;
+    expect(playhead.style.transform).toBe(`translateX(${((1900 / 4500) * 100).toFixed(3)}%)`);
+    expect(within(dock()).getByRole("link", { name: "Free" }).getAttribute("aria-current")).toBe("location");
+
+    // To the end of the track: the end of the page, and the dock stays in the window while it's held.
+    fireEvent.pointerMove(grip, { clientX: 1300, pointerId: 1 });
+    expect(scrolled).toHaveBeenLastCalledWith({ top: 5200, behavior: "instant" });
+    runFrames();
+    expect(dock().hasAttribute("data-aside")).toBe(false);
+    // Back to the start of the track: the first section, with the dock still showing.
+    fireEvent.pointerMove(grip, { clientX: 0, pointerId: 1 });
+    expect(scrolled).toHaveBeenLastCalledWith({ top: 600, behavior: "instant" });
+    fireEvent.pointerUp(grip, { pointerId: 1 });
+    expect(dock().hasAttribute("data-dragging")).toBe(false);
+    // Once let go, moving the pointer scrolls nothing.
+    scrolled.mockClear();
+    grip.hasPointerCapture = () => false;
+    fireEvent.pointerMove(grip, { clientX: 600, pointerId: 1 });
+    expect(scrolled).not.toHaveBeenCalled();
+  });
+
+  it("doesn't let its playhead be dragged back into the first screen: the start of the track is where the dock shows", () => {
+    // The first screen's foot 1000 px down: the dock shows from TIMELINE px of scroll short of that.
+    const measured = layOut();
+    const boxOf = measured.getMockImplementation()!;
+    measured.mockImplementation(function (this: Element) {
+      if (!this.classList.contains("h-hero")) return boxOf.call(this);
+      return { top: -window.scrollY, height: 1000, bottom: 1000 - window.scrollY, left: 0, right: 0, width: 0, x: 0, y: -window.scrollY } as DOMRect;
+    });
+    render(<Page />);
+    scrollTo(1500);
+    expect(dock().hasAttribute("data-shown")).toBe(true);
+    const lane = document.querySelector<HTMLElement>(".h-dockLane")!;
+    vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({ left: 100, width: 1000, top: 0, height: 32, right: 1100, bottom: 32, x: 100, y: 0, toJSON() {} } as DOMRect);
+    const scrolled = vi.fn();
+    vi.stubGlobal("scrollTo", scrolled);
+    const grip = document.querySelector<HTMLElement>(".h-dockGrip")!;
+    grip.setPointerCapture = () => {};
+    fireEvent.pointerDown(grip, { button: 0, clientX: 100, pointerId: 1 });
+    // The first section's top (1000) at the window's middle would be 600, but the dock only shows from 1000 - 176.
+    expect(scrolled).toHaveBeenLastCalledWith({ top: 1000 - TIMELINE, behavior: "instant" });
+  });
+
   it("gives a short section a clip wide enough for its name", () => {
     expect(clipShares([1000, 1000, 2000])).toEqual([0.25, 0.25, 0.5]);
     const shares = clipShares([50, 3000, 3000, 3000]);
@@ -649,6 +746,14 @@ describe("page dock styles", () => {
       /\.h-dockClip\[aria-current\]::before,\n\s+\.h-dockClip\[aria-current\]::after \{\n\s+forced-color-adjust: none;\n\s+background: Highlight;/,
     );
     expect(block).toMatch(/\.h-dockPlayhead::after \{\n\s+forced-color-adjust: none;\n\s+background: CanvasText;/);
+  });
+
+  it("lets its playhead be held only once it shows, by a grip on its line, with no glide while it's dragged", () => {
+    expect(rule(".h-dockGrip")).toContain("pointer-events: none;");
+    expect(rule(".h-dockGrip")).toContain("cursor: ew-resize;");
+    expect(rule(".h-dockGrip")).toContain("touch-action: none;");
+    expect(css).toMatch(/\.h-dock\[data-shown\] \.h-dockGrip \{\n\s+pointer-events: auto;/);
+    expect(css).toMatch(/\.h-dock\[data-dragging\] \.h-dockPlayhead \{\n\s+transition: none;/);
   });
 
   it("comes and goes at once with reduced motion, and its playhead jumps instead of gliding", () => {

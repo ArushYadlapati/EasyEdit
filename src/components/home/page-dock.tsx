@@ -103,6 +103,30 @@ export function playheadAt(line: number, spans: Span[], shares: number[]): numbe
   return Math.min(start, 1);
 }
 
+// The way back from playheadAt, for a playhead dragged to `at` (0 to 1): the reading line as far into a section as
+// `at` is into its clip. Before the track's start it is the first section's top, after its end the last one's foot.
+export function lineAt(at: number, spans: Span[], shares: number[]): number {
+  if (spans.length === 0) return 0;
+  let start = 0;
+  for (let i = 0; i < spans.length; i++) {
+    const { top, height } = spans[i];
+    if (at <= start || shares[i] <= 0) return top;
+    if (at < start + shares[i]) return top + (height * (at - start)) / shares[i];
+    start += shares[i];
+  }
+  const end = spans[spans.length - 1];
+  return end.top + end.height;
+}
+
+// The way back from readingLine: how far to scroll a window `height` px tall, on a page that scrolls at most `last`
+// px, for the reading line to be `line` px down the document. While the line is the window's middle that is half a
+// window above it; over the last half a window of scroll the line goes twice as fast as the page.
+export function scrollFor(line: number, height: number, last: number): number {
+  const middle = line - height / 2;
+  const y = middle <= last - height / 2 ? middle : (line + last - height) / 2;
+  return Math.min(last, Math.max(0, y));
+}
+
 // Which clip the playhead is on: the last section whose top the reading line has passed (between two sections the
 // upper one, below the last the last), or -1 while the line is still above the first.
 export function currentAt(line: number, spans: Span[]): number {
@@ -178,6 +202,9 @@ function Dock() {
   const [shown, setShown] = useState(false);
   // Whether it has stepped up out of the window for the page's end.
   const [aside, setAside] = useState(false);
+  const grip = useRef<HTMLSpanElement>(null);
+  // Whether its playhead is held and being dragged.
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     const main = nav.current?.closest("main");
@@ -234,8 +261,47 @@ function Dock() {
       if (playhead.current) playhead.current.style.transform = `translateX(${(at * 100).toFixed(3)}%)`;
       const on = currentAt(line, spans);
       setCurrent(on >= 0 ? sections[on].id : null);
-      setAside(fold >= 1 && asideAt !== null && window.scrollY > asideAt);
+      // While its playhead is held it stays in the window, even dragged to the page's end, and steps aside once let go.
+      setAside(!held && fold >= 1 && asideAt !== null && window.scrollY > asideAt);
     };
+    // Its playhead can be held, by the grip on its line, and dragged along the track: the page scrolls at once to where
+    // the playhead would stand there (lineAt, then scrollFor), so it stays under the pointer. Dragged to the track's
+    // start it goes no further up than where the dock shows (the first screen's foot, folded), and to its end, to the
+    // page's end.
+    let held = false;
+    const dragTo = (clientX: number) => {
+      const lane = nav.current?.querySelector(".h-dockLane")?.getBoundingClientRect();
+      if (!lane || lane.width <= 0) return;
+      const at = (clientX - lane.left) / lane.width;
+      const last = pageHeight - window.innerHeight;
+      const still = motion?.matches ?? false;
+      const top = hero ? heroBottom - (still ? FOLD : TIMELINE) : 0;
+      const y = at >= 1 ? last : scrollFor(lineAt(at, spans, parts), window.innerHeight, last);
+      window.scrollTo({ top: Math.round(Math.min(last, Math.max(top, y))), behavior: "instant" });
+    };
+    const hold = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      grip.current?.setPointerCapture(event.pointerId);
+      held = true;
+      setDragging(true);
+      dragTo(event.clientX);
+    };
+    const drag = (event: PointerEvent) => {
+      if (held && grip.current?.hasPointerCapture(event.pointerId)) dragTo(event.clientX);
+    };
+    const letGo = () => {
+      if (!held) return;
+      held = false;
+      setDragging(false);
+      schedule();
+    };
+    const handle = grip.current;
+    handle?.addEventListener("pointerdown", hold);
+    handle?.addEventListener("pointermove", drag);
+    handle?.addEventListener("pointerup", letGo);
+    handle?.addEventListener("pointercancel", letGo);
+    handle?.addEventListener("lostpointercapture", letGo);
     const schedule = () => {
       if (!frame) frame = window.requestAnimationFrame(draw);
     };
@@ -289,6 +355,11 @@ function Dock() {
       motion?.removeEventListener("change", schedule);
       dock?.removeEventListener("focusin", schedule);
       dock?.removeEventListener("focusout", schedule);
+      handle?.removeEventListener("pointerdown", hold);
+      handle?.removeEventListener("pointermove", drag);
+      handle?.removeEventListener("pointerup", letGo);
+      handle?.removeEventListener("pointercancel", letGo);
+      handle?.removeEventListener("lostpointercapture", letGo);
       // Without the dock (a window narrowed to a phone's width) the timeline is whole again.
       hero?.style.removeProperty("--fold");
     };
@@ -321,6 +392,7 @@ function Dock() {
       data-ui
       data-shown={shown || undefined}
       data-aside={aside || undefined}
+      data-dragging={dragging || undefined}
       hidden={clips.length === 0}
     >
       <span className="h-dockName" aria-hidden="true">
@@ -362,7 +434,10 @@ function Dock() {
           );
         })}
       </ol>
-      <span ref={playhead} className="h-dockPlayhead" aria-hidden="true" />
+      {/* The grip is for a pointer: the clips' links already take the keyboard and a screen reader to each section. */}
+      <span ref={playhead} className="h-dockPlayhead" aria-hidden="true">
+        <span ref={grip} className="h-dockGrip" title="Drag to scroll the page" />
+      </span>
     </nav>
   );
 }
