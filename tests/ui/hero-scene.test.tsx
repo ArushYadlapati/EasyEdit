@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { HeroScene } from "@/components/home/hero-scene";
+import { cssRules } from "../helpers/css-rules";
 import { act, fireEvent, render, screen } from "../helpers/dom";
 
 // A stand-in for the visitor's reduced-motion setting, which a test can change while the page is open.
@@ -304,36 +305,6 @@ describe("home hero scenes", () => {
   });
 });
 
-// The home stylesheet's rules, flattened: each rule's selectors and declarations, and the @media it sits in.
-type Rule = { selectors: string[]; decls: Map<string, string>; media: string | null };
-function cssRules(css: string): Rule[] {
-  const rules: Rule[] = [];
-  const walk = (text: string, media: string | null) => {
-    let at = 0;
-    while (at < text.length) {
-      const open = text.indexOf("{", at);
-      if (open < 0) return;
-      let close = open + 1;
-      for (let depth = 1; depth > 0; close++) depth += text[close] === "{" ? 1 : text[close] === "}" ? -1 : 0;
-      const head = text.slice(at, open).trim();
-      const body = text.slice(open + 1, close - 1);
-      at = close;
-      if (head.startsWith("@media")) walk(body, head);
-      else if (head.startsWith("@supports") || head.startsWith("@container")) walk(body, media);
-      else if (!head.startsWith("@")) {
-        const decls = new Map<string, string>();
-        for (const decl of body.split(";")) {
-          const colon = decl.indexOf(":");
-          if (colon > 0) decls.set(decl.slice(0, colon).trim(), decl.slice(colon + 1).trim().replace(/\s+/g, " "));
-        }
-        rules.push({ selectors: head.split(",").map((s) => s.trim().replace(/\s+/g, " ")), decls, media });
-      }
-    }
-  };
-  walk(css.replace(/\/\*[\s\S]*?\*\//g, ""), null);
-  return rules;
-}
-
 describe("home page under reduced motion (home.css)", () => {
   const rules = cssRules(readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8"));
   const reduced = rules.filter((r) => r.media === "@media (prefers-reduced-motion: reduce)");
@@ -346,9 +317,9 @@ describe("home page under reduced motion (home.css)", () => {
     expect(everything?.decls.get("animation-delay")).toBe("0s !important");
     expect(everything?.decls.get("animation-iteration-count")).toBe("1 !important");
     expect(everything?.decls.get("animation-fill-mode")).toBe("both !important");
-    // The scroll-linked entrances end up where they would be once scrolled in, rather than rising as the page scrolls.
-    expect(everything?.decls.get("animation-timeline")).toBe("auto !important");
     expect(everything?.decls.has("animation")).toBe(false);
+    // Nothing on the page rises in as it scrolls, so no animation runs on the scroll for this to hold back.
+    expect(rules.some((r) => r.decls.has("animation-timeline") || r.decls.has("animation-range"))).toBe(false);
   });
 
   it("keeps every looping animation off, since a loop has no last frame to land on", () => {

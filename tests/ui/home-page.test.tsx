@@ -8,6 +8,7 @@ import { NewProjectForm } from "@/components/home/new-project-form";
 import PrivacyPage from "@/app/privacy/page";
 import TermsPage from "@/app/terms/page";
 import type { CurrentUser } from "@/lib/access-rules";
+import { cssRules } from "../helpers/css-rules";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
 class Redirected extends Error {
@@ -59,9 +60,9 @@ describe("home page", () => {
     render(await Home());
     vi.unstubAllEnvs();
     expect(screen.getByRole("heading", { level: 1, name: "The video editor for AI agents." })).toBeTruthy();
-    // One name for the one action, in the header and in the first screen.
+    // One name for the one action, in the header, the first screen and the page's close.
     const starts = screen.getAllByRole("link", { name: "Start free" });
-    expect(starts).toHaveLength(2);
+    expect(starts).toHaveLength(3);
     for (const a of starts) expect(a.getAttribute("href")).toBe("/login");
     expect(screen.queryByRole("link", { name: "Start editing, free" })).toBeNull();
     for (const a of screen.getAllByRole("link", { name: "Sign in" })) expect(a.getAttribute("href")).toBe("/login");
@@ -182,7 +183,7 @@ describe("home page", () => {
       ["Teams", "/#teams"],
     ]);
     for (const id of ["ai", "free", "teams"]) expect(document.querySelector(`main #${id}`), id).toBeTruthy();
-    expect(document.getElementById("free")?.textContent).toContain("Based in your Drive.");
+    expect(document.getElementById("free")?.textContent).toContain("stay in your Drive.");
     expect(document.getElementById("tools")).toBeNull();
   });
 
@@ -264,7 +265,7 @@ describe("home page", () => {
     expect(names.map((h) => h.textContent)).toEqual([
       "Ask an agent. Watch it edit.",
       "Make your first project.",
-      "Completely free. Based in your Drive.",
+      "Free, and your files stay in your Drive.",
       "Built for teams.",
       "Works with every AI agent.",
     ]);
@@ -314,6 +315,11 @@ describe("home page", () => {
     expect(screen.queryByRole("link", { name: "Start free" })).toBeNull();
     const primary = document.querySelector(".h-heroActions .h-btn");
     expect([primary?.textContent, primary?.getAttribute("href")]).toEqual(["Sign in", "/login"]);
+    // The close at the end of the page is the one white pill, Sign in, too.
+    const close = document.querySelector(".h-close")!;
+    expect([...close.querySelectorAll("a")].map((a) => [a.textContent, a.className, a.getAttribute("href")])).toEqual([
+      ["Sign in", "h-btn", "/login"],
+    ]);
     vi.unstubAllEnvs();
   });
 
@@ -328,6 +334,209 @@ describe("home page", () => {
   it("signed in goes to the dashboard", async () => {
     signedIn.user = ada;
     await expect(Home()).rejects.toMatchObject({ to: "/dashboard" });
+  });
+});
+
+describe("home page free, teams and every agent", () => {
+  it("says what free and in your Drive come to as a list of plain sentences, with the Storage page as the picture", async () => {
+    render(await Home());
+    const free = document.getElementById("free")!;
+    const heading = within(free).getByRole("heading", { level: 2 });
+    expect([...heading.querySelectorAll(".h-line")].map((line) => line.textContent)).toEqual([
+      "Free, and your files",
+      "stay in your Drive.",
+    ]);
+    expect(heading.className).toBe("h-display h-freeTitle");
+    const facts = within(free).getByRole("list");
+    expect(within(facts).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "It costs nothing, teams included.",
+      "It keeps them in a folder of its own.",
+      "It can't see your other files.",
+      "Exports render on your computer.",
+    ]);
+    // Its own layout: the heading, the list right under it, then the picture. No head row, no cards.
+    expect([...free.children].map((el) => el.tagName)).toEqual(["H2", "UL", "DIV"]);
+    expect(free.querySelector("h3, article, .h-sectionHead")).toBeNull();
+    const picture = free.lastElementChild!;
+    expect(picture.classList.contains("h-driveStage")).toBe(true);
+    expect([picture.hasAttribute("data-ui"), picture.getAttribute("aria-hidden")]).toEqual([true, "true"]);
+    expect(picture.textContent).toContain("Stored in maya.lin@gmail.com's Google Drive");
+  });
+
+  it("shows a team as one drawn editor: who is here, each person's selection by name, Undo on a teammate's change", async () => {
+    render(await Home());
+    const teams = document.getElementById("teams")!;
+    // One picture, the shared editor, and no grid of cards.
+    const scenes = teams.querySelectorAll(":scope > [data-ui]");
+    expect(scenes).toHaveLength(1);
+    const scene = scenes[0] as HTMLElement;
+    expect([scene.className, scene.getAttribute("aria-hidden")]).toEqual(["h-tm", "true"]);
+    expect(teams.querySelector("article, .h-teamGrid, .h-teamCard")).toBeNull();
+    // The top bar's dots: you, then a dot with each teammate's initials.
+    expect(scene.querySelector(".h-tmPeople > .h-tmMe")).toBeTruthy();
+    expect([...scene.querySelectorAll(".h-tmDot")].map((dot) => dot.textContent)).toEqual(["SO", "MK"]);
+    // Every selection carries its person's colour and name.
+    const tags = [...scene.querySelectorAll(".h-tmFrame .h-edPeerTag")];
+    expect(tags.map((tag) => tag.textContent)).toEqual(["Mika", "Sam", "You"]);
+    const colours = tags.map((tag) => (tag.parentElement as HTMLElement).style.getPropertyValue("--peer"));
+    expect(colours).toEqual(["var(--ed-peer-2)", "var(--ed-peer-1)", "var(--ed-accent)"]);
+    expect([...scene.querySelectorAll(".h-tmBadge")].map((badge) => badge.textContent)).toEqual(["SO", "MK"]);
+    // Activity, newest first, in the app's wording; a teammate's change is the newest and can be undone.
+    const rows = [...scene.querySelectorAll(".h-tmActivity li")];
+    expect(rows.map((row) => row.firstElementChild?.textContent)).toEqual([
+      "Sam Okafor · Added text",
+      "Mika Kato · Changed a video clip: position and scale",
+      "You · Added an image",
+      "Claude (for Mika Kato) · Split a video clip",
+    ]);
+    for (const row of rows) expect(row.querySelector(".h-tmUndo")?.textContent).toBe("Undo this change");
+    // It is a picture: nothing in it can take the focus.
+    expect(scene.querySelectorAll("a, button, input, [tabindex]")).toHaveLength(0);
+  });
+
+  it("puts a space for each team and one brand kit under the editor, the kit drawn small with its fonts and colours", async () => {
+    render(await Home());
+    const teams = document.getElementById("teams")!;
+    const facts = teams.querySelector(".h-teamFacts")!;
+    expect(teams.querySelector(".h-tm")?.compareDocumentPosition(facts)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(within(facts as HTMLElement).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "A space for each team",
+      "One brand kit",
+    ]);
+    // EasyEdit makes the invite's link; the admin sends it (no email goes out).
+    expect(facts.textContent).toContain("Invite people with a link you send them, pin projects for everyone");
+    expect(facts.textContent).not.toMatch(/email/i);
+    expect(facts.textContent).toContain("New titles start in the team's fonts.");
+    const kit = facts.querySelector(".h-kit")!;
+    expect([kit.hasAttribute("data-ui"), kit.getAttribute("aria-hidden")]).toEqual([true, "true"]);
+    expect([...kit.querySelectorAll(".h-kitFamily")].map((f) => f.textContent)).toEqual(["Bebas Neue", "Montserrat", "Inter"]);
+    expect(kit.querySelectorAll(".h-kitSwatch")).toHaveLength(4);
+    // Every picture in the section is footage inside the drawn editor: no screenshots of the app.
+    const images = [...teams.querySelectorAll("img")];
+    expect(images.length).toBeGreaterThan(0);
+    for (const img of images) {
+      expect(img.getAttribute("src")).toMatch(/^\/home\/still-[\w-]+\.webp$/);
+      expect(img.closest(".h-tm[data-ui]")).toBeTruthy();
+    }
+  });
+
+  it("names the agents once, in the moving row, which screen readers get as a list", async () => {
+    render(await Home());
+    const agents = document.getElementById("agents")!;
+    const heading = within(agents).getByRole("heading", { level: 2 });
+    expect([...heading.querySelectorAll(".h-line")].map((line) => line.textContent)).toEqual(["Works with", "every AI agent."]);
+    expect(heading.className).toBe("h-display");
+    const list = within(agents).getByRole("list", { name: "AI agents" });
+    const names = ["Claude", "ChatGPT", "Claude Code", "Codex", "Cursor", "Gemini CLI", "VS Code Copilot", "OpenAI API"];
+    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(names);
+    expect(list.closest("[aria-hidden]")).toBeNull();
+    // The second copy, which closes the loop, is for the eye only.
+    const copies = agents.querySelectorAll(".h-marqueeList");
+    expect(copies).toHaveLength(2);
+    expect(copies[1].getAttribute("aria-hidden")).toBe("true");
+    // The line under the heading says what connects and where, and lists no names.
+    const line = heading.nextElementSibling!;
+    expect(line.textContent).toBe("Any agent that speaks MCP can edit your projects. Connect one from AI agents in your account menu.");
+    for (const name of names) expect(line.textContent).not.toContain(name);
+  });
+
+  it("ends the page with Start free and Sign in, before the footer", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    render(await Home());
+    vi.unstubAllEnvs();
+    const agents = document.getElementById("agents")!;
+    const close = agents.lastElementChild!;
+    expect(close.className).toBe("h-close");
+    expect(close.hasAttribute("data-dock-end")).toBe(true);
+    expect([...close.querySelectorAll("a")].map((a) => [a.textContent, a.className, a.getAttribute("href")])).toEqual([
+      ["Start free", "h-btn", "/login"],
+      ["Sign in", "h-closeLink", "/login"],
+    ]);
+    // The section is the last one in main, and the footer comes after main.
+    const main = screen.getByRole("main");
+    expect([...main.querySelectorAll(":scope > section")].at(-1)).toBe(agents);
+    expect(main.nextElementSibling).toBe(screen.getByRole("contentinfo"));
+  });
+
+  it("keeps every drawn piece of the app inside a root marked data-ui", async () => {
+    render(await Home());
+    const drawn = [...document.querySelectorAll("main [class*='h-ed'], main [class*='h-ui'], main [class*='h-tm'], main [class*='h-kit'], main [class*='h-shot'], main [class*='h-drive'], main [class*='h-dock']")];
+    expect(drawn.length).toBeGreaterThan(100);
+    for (const el of drawn) expect(el.closest("[data-ui]"), el.className).toBeTruthy();
+    for (const root of [".h-ed", ".h-ui", ".h-tm", ".h-kit", ".h-driveStage", ".h-np"]) {
+      expect(document.querySelector(root)?.hasAttribute("data-ui"), root).toBe(true);
+    }
+  });
+});
+
+describe("home page stylesheet (home.css)", () => {
+  const rules = cssRules(readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8"));
+  // The drawn pieces of the app keep the app's own sizes, colours, edges and dividers.
+  const DRAWN = /^\.h-(ed|ui|tm|kit|shot|drive|dock|np|heroBox|heroHandle|heroTag)/;
+  const own = (selector: string) => !DRAWN.test(selector.replace(/^\.h-(hero|page)(\[[^\]]*\])? /, ""));
+  const pageRules = rules.filter((r) => r.selectors.some(own) && !/^(from|to|\d+%)$/.test(r.selectors[0]));
+
+  it("sets the page's own words in five sizes: display, h2, lead, body and small", () => {
+    const tokens = rules.find((r) => r.media === null && r.selectors.includes(".h-page"))!.decls;
+    for (const size of ["--h-display", "--h-h2", "--h-lead", "--h-body", "--h-small"]) expect(tokens.has(size), size).toBe(true);
+    const sizes = new Set(pageRules.flatMap((r) => (r.decls.has("font-size") ? [r.decls.get("font-size")] : [])));
+    expect([...sizes].sort()).toEqual(["var(--h-body)", "var(--h-display)", "var(--h-h2)", "var(--h-lead)", "var(--h-small)"]);
+    // On a phone the display size changes, to fit the longer line of a two-line headline, and the Free section's
+    // heading and list each step down a size; nothing else changes size.
+    const phone = rules.filter((r) => r.media === "@media (max-width: 860px)" && r.selectors.includes(".h-page"));
+    expect(phone.flatMap((r) => [...r.decls.keys()])).toEqual(["--h-display"]);
+    const resized = rules.filter((r) => r.media !== null && r.selectors.some(own) && r.decls.has("font-size"));
+    expect(resized.map((r) => [r.media, r.selectors.join(", "), r.decls.get("font-size")])).toEqual([
+      ["@media (max-width: 860px)", ".h-freeTitle", "var(--h-h2)"],
+      ["@media (max-width: 860px)", ".h-facts", "var(--h-lead)"],
+    ]);
+  });
+
+  it("leads the Free section from its heading to its list by size and weight, in full ink, each line apart", () => {
+    const rule = (selector: string, media: string | null = null) =>
+      rules.find((r) => r.media === media && r.selectors.includes(selector))!.decls;
+    // A computer: the heading at the display size, the list a size under it and a step lighter, in the same white.
+    expect([rule(".h-display").get("font-size"), rule(".h-display").get("font-weight")]).toEqual(["var(--h-display)", "600"]);
+    const facts = rule(".h-facts");
+    expect([facts.get("font-size"), facts.get("font-weight"), facts.get("color")]).toEqual(["var(--h-h2)", "500", "var(--h-text)"]);
+    // More room under the heading than between the lines, and between the lines than their leading.
+    const em = (value: string | undefined) => Number(/^([\d.]+)em/.exec(value ?? "")?.[1]);
+    expect(em(facts.get("margin"))).toBeGreaterThanOrEqual(1);
+    expect(em(facts.get("gap"))).toBeGreaterThanOrEqual(0.6);
+    expect(em(facts.get("margin"))).toBeGreaterThan(em(facts.get("gap")));
+    // A phone: the heading at h2, the list at the lead size, the same order of room.
+    const phone = rule(".h-facts", "@media (max-width: 860px)");
+    expect(em(phone.get("margin-top"))).toBeGreaterThan(em(phone.get("gap")));
+    expect(em(phone.get("gap"))).toBeGreaterThanOrEqual(0.6);
+  });
+
+  it("puts every section on the one black ground, with no panel greys, shadows, gradients or fades", () => {
+    for (const rule of pageRules) {
+      const where = rule.selectors.join(", ");
+      const fill = rule.decls.get("background") ?? rule.decls.get("background-color");
+      if (fill !== undefined) expect(fill, where).toMatch(/^(#000|currentColor|var\(--tone\)|rgb\(255 255 255 \/ 0\.\d+\))$/);
+      expect(rule.decls.has("box-shadow"), where).toBe(false);
+      expect(rule.decls.has("mask-image"), where).toBe(false);
+    }
+    expect(rules.some((r) => [...r.decls.values()].some((v) => /gradient\(/.test(v)))).toBe(false);
+    // The drawn team, kit and Drive pieces float over nothing either: their edges are the app's 1 px window edge.
+    const pieces = rules.filter((r) => r.selectors.some((s) => /^\.h-(tm|kit|shot|drive)/.test(s)));
+    expect(pieces.length).toBeGreaterThan(30);
+    for (const rule of pieces) expect(rule.decls.has("box-shadow"), rule.selectors.join(", ")).toBe(false);
+  });
+
+  it("runs the agents' row across the whole window, and under reduced motion stands it in rows without its copy", () => {
+    const marquee = rules.find((r) => r.media === null && r.selectors.includes(".h-marquee"))!;
+    expect(marquee.decls.get("margin")).toBe("clamp(48px, 5vw, 72px) calc(50% - 50vw) 0");
+    expect(marquee.decls.has("mask-image")).toBe(false);
+    // Each copy ends with the gap before the next, so half the track's width is exactly one copy.
+    const list = rules.find((r) => r.media === null && r.selectors.includes(".h-marqueeList"))!;
+    expect([list.decls.get("gap"), list.decls.get("padding")]).toEqual(["var(--gap)", "0 var(--gap) 0 0"]);
+    const reduced = rules.filter((r) => r.media === "@media (prefers-reduced-motion: reduce)");
+    const rule = (selector: string) => reduced.find((r) => r.selectors.includes(selector))?.decls;
+    expect(rule(".h-marqueeList[aria-hidden]")?.get("display")).toBe("none");
+    expect(rule(".h-marqueeList")?.get("flex-wrap")).toBe("wrap");
+    expect([rule(".h-marquee")?.get("margin-inline"), rule(".h-marquee")?.get("padding-left")]).toEqual(["0", "0"]);
   });
 });
 

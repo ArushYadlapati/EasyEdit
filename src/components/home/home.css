@@ -5,7 +5,17 @@
    (--h-*), the pill buttons, the header and the footer are the public site's, in components/site/site.css. The page
    sits inside .ed-theme, so the editor's colour roles (--ed-*) are defined here too. */
 
+/* The page's own words come in five sizes: display (the first screen's headline and the page's other big lines), h2
+   (section headings, and anything set as large as one), lead (the line under a heading), body and small. The drawn
+   pieces of the app keep the app's own sizes. A heading's line fits a phone's column at h2 size at every phone width:
+   up to 9.2em, which "Free, and your files" (8.2em) needs. On a phone the Free section steps its heading and its list
+   down a size each (see the end of this file); nothing else changes size there but the display token. */
 .h-page {
+  --h-display: clamp(48px, 7vw, 112px);
+  --h-h2: min(clamp(38px, 5.2vw, 76px), (100vw - 2 * var(--h-pad)) / 9.2);
+  --h-lead: clamp(17px, 1.3vw, 20px);
+  --h-body: 17px;
+  --h-small: 14px;
   width: 100%;
   overflow-x: clip;
   /* Room between the last section and the site's footer. On a computer (94 px or more) the page's dock rests in it at
@@ -37,7 +47,7 @@
   background: rgb(255 255 255 / 0.12);
   color: rgb(255 255 255 / 0.85);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--h-small);
   line-height: 18px;
   cursor: pointer;
   transition: background-color 160ms;
@@ -79,7 +89,7 @@
 .h-heroTitle {
   width: max-content;
   max-width: 100%;
-  font-size: clamp(48px, 7vw, 112px);
+  font-size: var(--h-display);
   font-weight: 600;
   letter-spacing: -0.04em;
   line-height: 1;
@@ -156,7 +166,7 @@
 }
 .h-heroLead {
   max-width: 34em;
-  font-size: clamp(17px, 1.3vw, 20px);
+  font-size: var(--h-lead);
   line-height: 1.5;
   color: var(--h-text);
   text-wrap: pretty;
@@ -168,7 +178,7 @@
 }
 .h-heroNote {
   margin-top: -8px;
-  font-size: 14px;
+  font-size: var(--h-small);
   color: var(--h-muted);
 }
 /* Just above the editor's top right corner: it holds what moves below it. */
@@ -904,174 +914,6 @@
   }
 }
 
-/* ---------- Drawn pieces in the team cards ---------- */
-
-.h-shot {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--ed-bg);
-  color: var(--ed-text);
-  font-size: 12px;
-}
-.h-shotBar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 36px;
-  padding: 0 12px;
-  background: var(--ed-panel);
-  border-bottom: 1px solid var(--ed-line);
-  flex: none;
-}
-.h-shotName {
-  font-weight: 600;
-}
-.h-shotAvatars {
-  display: flex;
-  margin-left: auto;
-}
-.h-shotAvatars > span {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  margin-left: -4px;
-  border-radius: 50%;
-  color: #0a0a0a;
-  font-size: 9px;
-  font-weight: 700;
-  box-shadow: 0 0 0 2px var(--ed-panel);
-}
-.h-shotMuted {
-  color: var(--ed-muted);
-}
-.h-shotNew {
-  margin-left: auto;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: var(--ed-accent);
-  color: #0a0a0a;
-  font-weight: 600;
-}
-.h-shotPreview {
-  position: relative;
-  flex: 1;
-  margin: 14px;
-  overflow: hidden;
-}
-.h-shotPreview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.h-shotSel {
-  position: absolute;
-  outline: 2px solid var(--peer);
-}
-.h-shotSel > span {
-  position: absolute;
-  top: 0;
-  left: 0;
-  padding: 1px 5px;
-  background: var(--peer);
-  color: #0a0a0a;
-  font-size: 11px;
-  font-weight: 600;
-}
-.h-shotSelText {
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-size: clamp(14px, 2.2vw, 22px);
-  font-weight: 700;
-}
-.h-shotBody {
-  padding: 12px;
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-.h-shotFolders {
-  display: flex;
-  gap: 8px;
-}
-.h-shotFolders > span {
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: var(--ed-raised);
-}
-.h-shotGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-.h-shotCard {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  font-size: 11px;
-}
-.h-shotCard img {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: 4px;
-  margin-bottom: 4px;
-}
-.h-shotCard > span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.h-shotPad {
-  padding: 28px;
-  gap: 10px;
-  font-size: 14px;
-}
-.h-shotTitle {
-  font-size: 17px;
-  font-weight: 600;
-}
-.h-shotButton {
-  align-self: flex-start;
-  margin-top: 10px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: var(--ed-accent);
-  color: #0a0a0a;
-  font-weight: 600;
-}
-.h-shotMeter {
-  display: block;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--ed-raised);
-  overflow: hidden;
-}
-.h-shotMeter > span {
-  display: block;
-  height: 100%;
-  background: var(--ed-accent);
-}
-.h-shotFiles {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.h-shotFiles > span {
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: var(--ed-raised);
-  color: var(--ed-muted);
-}
-.h-shotCardName {
-  font-size: 12px;
-  font-weight: 600;
-}
-
 /* ---------- Sections ---------- */
 
 .h-section {
@@ -1079,25 +921,30 @@
   margin: 0 auto;
   padding: clamp(120px, 14vw, 180px) var(--h-pad) 0;
 }
-.h-sectionHead {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 48px;
-  align-items: end;
-  margin-bottom: 56px;
-}
 .h-h2 {
-  font-size: clamp(38px, 5.2vw, 76px);
+  font-size: var(--h-h2);
   font-weight: 600;
   letter-spacing: -0.045em;
   line-height: 1;
   text-wrap: balance;
 }
 .h-lead {
-  font-size: clamp(17px, 1.3vw, 20px);
+  font-size: var(--h-lead);
   line-height: 1.5;
   color: var(--h-muted);
   max-width: 54ch;
+}
+/* The first screen's headline size, for the page's other big lines: the first project, free, and every agent. */
+.h-display {
+  font-size: var(--h-display);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  text-wrap: balance;
+}
+/* A heading set as two lines, a span each. */
+.h-line {
+  display: block;
 }
 
 /* ---------- AI: the live demo ---------- */
@@ -1162,14 +1009,14 @@
   color: var(--h-text);
 }
 .h-demoWords {
-  font-size: clamp(17px, 1.3vw, 20px);
+  font-size: var(--h-lead);
   font-weight: 500;
   letter-spacing: -0.02em;
   line-height: 1.3;
   text-wrap: pretty;
 }
 .h-demoAgent {
-  font-size: 14px;
+  font-size: var(--h-small);
   color: var(--h-muted);
 }
 /* What the chosen request's agent did, just above the requests. All four answers sit in the one grid cell and the
@@ -1522,138 +1369,115 @@
   }
 }
 
-/* ---------- Teams ---------- */
+/* ---------- Free, and your files stay in your Drive ---------- */
 
-.h-teamGrid {
+/* The heading at the display size, then what it comes to, a line each at the h2 size and a step lighter, in the same
+   white: size and weight lead from the heading to the list. More room under the heading than between the lines, and
+   more between the lines than their leading, so each reads as a sentence of its own. Then the app's own Storage page,
+   as the picture. */
+.h-facts {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+  gap: 0.6em;
+  margin: 1em 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--h-h2);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  color: var(--h-text);
 }
-.h-teamCard {
-  padding: 16px 16px 28px;
-  border-radius: 24px;
-  background: var(--h-panel);
-  box-shadow: inset 0 0 0 1px var(--h-line);
-}
-.h-teamShot {
-  border-radius: 14px;
-  overflow: hidden;
-  background: #000;
-  aspect-ratio: 16 / 9;
-}
-.h-teamShot img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: left top;
-  transition: transform 700ms var(--h-ease);
-}
-.h-teamCard:hover .h-teamShot img {
-  transform: scale(1.04);
-}
-.h-teamCard h3 {
-  margin: 24px 8px 0;
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-.h-teamCard p {
-  margin: 8px 8px 0;
-  color: var(--h-muted);
-}
-
-/* ---------- Every agent, and the Drive ---------- */
-
-.h-statement .h-lead {
-  margin-top: 28px;
-}
-.h-giant {
-  font-size: clamp(52px, 9.5vw, 156px);
-  font-weight: 600;
-  letter-spacing: -0.055em;
-  line-height: 0.92;
+.h-facts li {
   text-wrap: balance;
 }
 
-.h-marquee {
-  margin: 64px calc(var(--h-pad) * -1) 0;
-  overflow: hidden;
-  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
-}
-.h-marqueeTrack {
-  display: flex;
-  gap: clamp(40px, 5vw, 72px);
-  width: max-content;
-  animation: h-scroll 36s linear infinite;
-}
-.h-marquee:hover .h-marqueeTrack,
-.h-marqueeTrack[data-paused] {
-  animation-play-state: paused;
-}
-.h-marqueePause {
-  display: block;
-  margin: 20px 0 0 auto;
-}
-.h-agent {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.32em;
-  font-size: clamp(30px, 4.2vw, 60px);
-  font-weight: 600;
-  letter-spacing: -0.04em;
-  color: #8b8b94;
-  white-space: nowrap;
-}
-.h-agentLogo {
-  flex: none;
-  width: 0.92em;
-  height: 0.92em;
-  background: currentColor;
-  mask-size: contain;
-  mask-repeat: no-repeat;
-  mask-position: center;
-}
-@keyframes h-scroll {
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-.h-drive .h-sectionHead {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 28px;
-}
-.h-line {
-  display: block;
-}
-/* The Drive picture: the dashboard window on its Storage settings, the editor dimmed behind it. */
+/* The Storage page: the dashboard window of a team on its Storage settings, with its editor dimmed behind it. Each
+   window has the app's 1 px edge; the one in front covers the other, with no shadow. */
 .h-driveStage {
   position: relative;
   height: 560px;
+  margin-top: clamp(56px, 6vw, 88px);
+}
+.h-shot {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--ed-bg);
+  color: var(--ed-text);
+  font-size: 12px;
+}
+/* The bars and the sidebar are the app's panels, a step lighter than the window, which sets them apart. */
+.h-shotBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--ed-panel);
+  flex: none;
+}
+.h-shotName {
+  font-weight: 600;
+}
+.h-shotMuted {
+  color: var(--ed-muted);
+}
+.h-shotNew {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--ed-accent);
+  color: #0a0a0a;
+  font-weight: 600;
+}
+.h-shotPreview {
+  position: relative;
+  flex: 1;
+  margin: 14px;
+  overflow: hidden;
+}
+.h-shotPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.h-shotTitle {
+  font-size: 17px;
+  font-weight: 600;
+}
+.h-shotMeter {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ed-raised);
+  overflow: hidden;
+}
+.h-shotMeter > span {
+  display: block;
+  height: 100%;
+  background: var(--ed-accent);
+}
+.h-driveBack,
+.h-driveWin {
+  position: absolute;
+  border-radius: 14px;
+  overflow: hidden;
+  outline: 1px solid var(--ed-line-strong); /* the window's own edge, as in the app */
+  outline-offset: -1px;
 }
 .h-driveBack {
-  position: absolute;
   top: 0;
   right: 0;
   width: 58%;
   height: 360px;
-  border-radius: 14px;
-  overflow: hidden;
   opacity: 0.45;
-  box-shadow: 0 0 0 1px var(--ed-line-strong); /* the window's own edge, a 1 px ring as in the app */
 }
 .h-driveWin {
-  position: absolute;
   left: 0;
   bottom: 0;
   width: 76%;
   height: 470px;
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow:
-    0 0 0 1px var(--ed-line-strong),
-    0 40px 100px rgb(0 0 0 / 0.8); /* it floats over the window behind it */
   --logo-accent: var(--ed-accent);
 }
 .h-driveBody {
@@ -1668,7 +1492,6 @@
   gap: 2px;
   padding: 12px 10px;
   background: var(--ed-panel);
-  border-right: 1px solid var(--ed-line);
   color: var(--ed-text);
 }
 .h-driveSide > p {
@@ -1698,7 +1521,6 @@
 .h-driveTabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--ed-line);
   padding-bottom: 8px;
   color: var(--ed-muted);
 }
@@ -1729,16 +1551,477 @@
   background: var(--ed-hover);
 }
 
-/* ---------- Make your first project ---------- */
+/* ---------- Built for teams ---------- */
 
-/* At the hero headline's size: one line on a computer, two on a phone. */
-.h-startTitle {
-  margin-bottom: clamp(40px, 5vw, 64px);
-  font-size: clamp(48px, 7vw, 112px);
+.h-teams > .h-lead {
+  margin-top: 24px;
+  text-wrap: pretty;
+}
+
+/* One project open in the editor with two teammates in it, drawn as the app draws it at the section's full width:
+   the top bar with who is here, the preview with each person's selection, Activity, and the timeline. Its parts
+   are the app's panels on the window's own colour, and a 1 px gap shows the divider colour between them, where the
+   app draws its dividers. */
+.h-tm {
+  display: grid;
+  grid-template-rows: 44px auto auto;
+  gap: 1px;
+  margin-top: clamp(48px, 5vw, 72px);
+  border-radius: 12px;
+  overflow: hidden;
+  outline: 1px solid var(--ed-line-strong); /* the window's own edge, as in the app */
+  outline-offset: -1px;
+  background: var(--ed-line);
+  color: var(--ed-text);
+  font-size: 13px;
+  line-height: 1.35;
+  user-select: none;
+}
+.h-tmBar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 0 16px;
+  background: var(--ed-panel);
+  --logo-accent: var(--ed-accent);
+}
+.h-tmProject {
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* Who is here, as the top bar shows it: a small dot for you, then a dot with each teammate's initials. */
+.h-tmPeople {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.h-tmMe {
+  width: 10px;
+  height: 10px;
+  margin-right: 2px;
+  border-radius: 50%;
+  background: var(--ed-accent);
+}
+.h-tmDot {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--peer);
+  color: #0a0a0a;
+  font-size: 10px;
+  font-weight: 600;
+}
+.h-tmStatus {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ed-muted);
+}
+.h-tmExport {
+  flex: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: var(--ed-accent);
+  color: #0a0a0a;
+  font-weight: 600;
+}
+.h-tmBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 320px);
+  gap: 1px;
+  height: clamp(300px, 32vw, 460px);
+  min-height: 0;
+}
+.h-tmStage {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px;
+  background: var(--ed-bg);
+  container-type: size;
+}
+/* The frame takes the 16:9 that fits the preview, and is a size container too, so the title follows its size. */
+.h-tmFrame {
+  position: relative;
+  width: min(100cqw, 100cqh * 16 / 9);
+  height: min(100cqh, 100cqw * 9 / 16);
+  background: #000;
+  container-type: size;
+}
+.h-tmFrame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* A selection: an edge in its person's colour, with their name tag and handles (.h-edPeerTag, .h-edHandle). */
+.h-tmSel {
+  position: absolute;
+  inset: -4px;
+  outline: 2px solid var(--peer);
+  pointer-events: none;
+}
+/* Mika has the whole clip: the edge runs round the inside of the frame, her name in its top corner. */
+.h-tmSelClip {
+  inset: 0;
+  outline-offset: -2px;
+}
+.h-tmSelClip > .h-edPeerTag {
+  left: 2px;
+  top: 2px;
+  bottom: auto;
+  border-radius: 0 0 3px 0;
+}
+/* The title Sam just added, in the team's title font, up in the dark sky. */
+.h-tmTitle {
+  position: absolute;
+  left: 70%;
+  top: 19%;
+  transform: translate(-50%, -50%);
+  padding: 0 0.08em;
+  color: #fff;
+  font-family: var(--font-bebas-neue), Impact, sans-serif;
+  font-size: clamp(24px, 10cqw, 96px);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* The team's logo in the corner, which you have selected; your tag hangs under it. */
+.h-tmLogo {
+  position: absolute;
+  right: 5%;
+  bottom: 9%;
+  width: clamp(22px, 8cqw, 64px);
+  aspect-ratio: 1;
+}
+.h-tmLogo > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.h-tmLogo .h-edPeerTag {
+  top: calc(100% + 4px);
+  bottom: auto;
+  border-radius: 0 3px 3px 3px;
+}
+/* Activity: the tabs, then the changes, newest first, with the divider colour showing between them. */
+.h-tmSide {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.h-tmSide::after {
+  content: "";
+  flex: 1;
+  background: var(--ed-panel);
+}
+.h-tmTabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px;
+  background: var(--ed-panel);
+  color: var(--ed-muted);
+}
+.h-tmTabs > span {
+  padding: 5px 10px;
+  border-radius: 6px;
+}
+.h-tmTabs > [data-on] {
+  background: var(--ed-accent-weak);
+  color: var(--ed-accent);
+}
+.h-tmActivity {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.h-tmActivity li {
+  display: grid;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--ed-panel);
+}
+.h-tmWhen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ed-muted);
+  font-size: 12px;
+}
+.h-tmUndo {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--ed-raised);
+  color: var(--ed-text);
+}
+.h-tmTimeline {
+  --names: 88px;
+  position: relative;
+  padding-bottom: 12px;
+  background: var(--ed-panel);
+}
+.h-tmRuler {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  margin: 0 16px 0 var(--names);
+  color: var(--ed-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.h-tmTrack {
+  display: flex;
+  align-items: center;
+  height: 42px;
+}
+.h-tmTrackName {
+  flex: 0 0 var(--names);
+  padding-left: 16px;
+  color: var(--ed-muted);
+  font-size: 12px;
+}
+.h-tmLane {
+  position: relative;
+  flex: 1;
+  height: 32px;
+  margin-right: 16px;
+}
+.h-tmClip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  border-radius: 4px;
+  background: var(--ed-clip-video);
+  font-size: 12px;
+}
+.h-tmClip img {
+  width: auto;
+  height: 26px;
+  border-radius: 2px;
+}
+.h-tmClipText {
+  padding-left: 10px;
+  background: var(--ed-clip-text);
+}
+.h-tmClipImage {
+  background: var(--ed-clip-image);
+}
+.h-tmClipLogo {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+}
+/* Someone's selection on a clip: an edge in their colour, and a teammate's initials at its end. */
+.h-tmClip[data-peer] {
+  padding-right: 32px;
+  outline: 2px solid var(--peer);
+  outline-offset: -2px;
+}
+.h-tmBadge {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--peer);
+  color: #0a0a0a;
+  font-size: 9px;
+  font-weight: 700;
+  transform: translateY(-50%);
+}
+.h-tmPlayhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--names) + (100% - var(--names) - 16px) * 0.18);
+  width: 1px;
+  background: var(--ed-text);
+}
+
+/* The two smaller things a team gets, under the editor: a line each, and the brand kit drawn small. */
+.h-teamFacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 40px clamp(32px, 4vw, 64px);
+  margin-top: clamp(40px, 4vw, 56px);
+}
+.h-teamFacts h3 {
+  font-size: var(--h-lead);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.h-teamFacts p {
+  max-width: 46ch;
+  margin-top: 8px;
+  text-wrap: pretty;
+}
+/* The kit as its Brand kit tab lists it, at a size to read: the three fonts by name, the colours, the logo. */
+.h-kit {
+  display: grid;
+  gap: 16px;
+  max-width: 480px;
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: var(--ed-panel);
+  color: var(--ed-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.h-kitFonts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+}
+.h-kitFonts > span {
+  display: grid;
+  gap: 2px;
+}
+.h-kitRole {
+  color: var(--ed-muted);
+  font-size: 12px;
+}
+.h-kitFamily {
+  font-size: 15px;
+  font-weight: 600;
+}
+.h-kitSwatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+}
+.h-kitSwatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ed-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Each colour has the edge a colour chip has in the app, so the dark one still shows on the panel. */
+.h-kitSwatch > span {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  outline: 1px solid var(--ed-field-line);
+  outline-offset: -1px;
+}
+.h-kitLogo {
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+}
+
+/* ---------- Works with every AI agent, and the close ---------- */
+
+.h-agents > .h-lead {
+  margin-top: 28px;
+  text-wrap: pretty;
+}
+/* The agents' names and marks at the h2 size, running across the whole window. The row starts at the page's left
+   edge (the padding) and runs out of sight at the window's edges, with no fade. */
+.h-marquee {
+  margin: clamp(48px, 5vw, 72px) calc(50% - 50vw) 0;
+  padding-left: max(var(--h-pad), 50vw - 640px + var(--h-pad));
+  overflow: hidden;
+}
+.h-marqueeTrack {
+  display: flex;
+  width: max-content;
+  animation: h-scroll 36s linear infinite;
+}
+.h-marquee:hover .h-marqueeTrack,
+.h-marqueeTrack[data-paused] {
+  animation-play-state: paused;
+}
+/* Each copy of the row ends with the gap that comes before the next, so moving the track by half its width puts
+   the copy exactly where the row was. */
+.h-marqueeList {
+  --gap: clamp(40px, 5vw, 72px);
+  display: flex;
+  gap: var(--gap);
+  margin: 0;
+  padding: 0 var(--gap) 0 0;
+  list-style: none;
+}
+.h-marqueePause {
+  display: block;
+  margin: 20px 0 0 auto;
+}
+.h-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32em;
+  font-size: var(--h-h2);
   font-weight: 600;
   letter-spacing: -0.04em;
-  line-height: 1;
-  text-wrap: balance;
+  line-height: 1.2;
+  color: var(--h-faint);
+  white-space: nowrap;
+}
+.h-agentLogo {
+  flex: none;
+  width: 0.92em;
+  height: 0.92em;
+  background: currentColor;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+@keyframes h-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+/* The page's close: the one action again, with Sign in beside it, before the footer. */
+.h-close {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 32px;
+  margin-top: clamp(96px, 11vw, 160px);
+}
+.h-closeLink {
+  font-size: var(--h-body);
+  font-weight: 600;
+  text-underline-offset: 4px;
+}
+.h-closeLink:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Make your first project ---------- */
+
+/* At the display size: one line on a computer, two on a phone. */
+.h-startTitle {
+  margin-bottom: clamp(40px, 5vw, 64px);
 }
 
 /* The real form on the page's black: the picture on the left, as large as the column allows; the fields, then
@@ -1808,7 +2091,7 @@
 }
 .h-npSize {
   text-align: center;
-  font-size: 14px;
+  font-size: var(--h-small);
   color: var(--h-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1822,31 +2105,8 @@
   margin-top: 32px;
 }
 .h-npNote {
-  font-size: 14px;
+  font-size: var(--h-small);
   color: var(--h-muted);
-}
-
-/* ---------- Entrances as each part scrolls in (no script; content shows where unsupported) ---------- */
-
-@keyframes h-rise {
-  from {
-    opacity: 0;
-    transform: translateY(28px);
-  }
-}
-@supports (animation-timeline: view()) {
-  .h-sectionHead > *,
-  .h-teamCard,
-  .h-statement > :is(.h-giant, .h-lead),
-  .h-driveStage {
-    animation: h-rise linear both;
-    animation-timeline: view();
-    animation-range: entry 0% entry 50%;
-  }
-  .h-sectionHead > :nth-child(2),
-  .h-teamCard:nth-child(2n) {
-    animation-range: entry 8% entry 58%;
-  }
 }
 
 /* ---------- The page's timeline, docked at the foot of the window (page-dock.tsx) ---------- */
@@ -2056,8 +2316,7 @@ html:has(.h-dock[data-shown]) {
   /* Nothing moves, and each moment shows how it ends: every one-off animation lands on its last frame at once instead
      of being removed. Many of the hero's pieces are pairs in one spot, where one fades out as the other fades in
      ("Claude is editing…" and "Saved", the title's two fonts, View as: Off and YouTube Shorts, Rendering and ready);
-     without their animations both halves would show on top of each other. The parts that rise in as they scroll
-     into view run on the clock instead of the scroll, so they are simply there. */
+     without their animations both halves would show on top of each other. */
   .h-page *,
   .h-page *::before,
   .h-page *::after {
@@ -2065,7 +2324,6 @@ html:has(.h-dock[data-shown]) {
     animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     animation-fill-mode: both !important;
-    animation-timeline: auto !important;
     transition-duration: 1ms !important;
   }
   /* A loop has no last frame to land on, so the loops stay off: the agent logos and the dots that pulse beside
@@ -2075,11 +2333,21 @@ html:has(.h-dock[data-shown]) {
   .h-page .h-uiDot {
     animation: none !important;
   }
+  /* The agents stand still in rows inside the page's margins, every one drawn whole, and the copy that closes the
+     loop goes. */
+  .h-marquee {
+    margin-inline: 0;
+    padding-left: 0;
+  }
   .h-marqueeTrack {
-    flex-wrap: wrap;
     width: auto;
   }
-  .h-marqueeTrack > .h-agent:nth-child(n + 9) {
+  .h-marqueeList {
+    flex-wrap: wrap;
+    row-gap: 12px;
+    padding-right: 0;
+  }
+  .h-marqueeList[aria-hidden] {
     display: none;
   }
   /* Nothing moves, so there is nothing to pause. */
@@ -2129,11 +2397,20 @@ html:has(.h-dock[data-shown]) {
   .h-edBody > .h-edRight {
     overflow: hidden;
   }
+  /* The team's editor is shorter here too, and its oldest change would be cut in half: it shows the three newest. */
+  .h-tmActivity li:nth-child(n + 4) {
+    display: none;
+  }
 }
 
 /* ---------- Phone and narrow windows ---------- */
 
 @media (max-width: 860px) {
+  /* The display size follows the column, so the longer line of a two-line headline fits it in either face: "The
+     video editor" is 7.04em in Geist and about 7.45em in the stand-in face shown while Geist loads. */
+  .h-page {
+    --h-display: clamp(34px, (100vw - 2 * var(--h-pad)) / 7.5, 96px);
+  }
   /* One column: the headline, the line under it and the pills, then the editor, cut down to its top bar and preview,
      straight after. */
   .h-hero {
@@ -2143,9 +2420,6 @@ html:has(.h-dock[data-shown]) {
   .h-heroBand {
     grid-template-columns: minmax(0, 1fr);
     padding: 16px 0 60px;
-  }
-  .h-heroTitle {
-    font-size: clamp(34px, (100vw - 2 * var(--h-pad)) / 7.5, 96px); /* the longer line fits the column in either face */
   }
   .h-heroSide {
     margin-top: 48px; /* under the name tag */
@@ -2179,8 +2453,18 @@ html:has(.h-dock[data-shown]) {
     aspect-ratio: 16 / 10;
     padding: 12px;
   }
-  .h-shotGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* "Free, and your files" (8.2em) is longer than the display line a phone's column holds, so the Free heading is set
+     at h2 here, and its list a size under it at the lead size: two heading lines, then four short sentences. */
+  .h-freeTitle {
+    font-size: var(--h-h2);
+    letter-spacing: -0.045em;
+  }
+  .h-facts {
+    gap: 0.8em;
+    margin-top: 1.75em;
+    font-size: var(--h-lead);
+    letter-spacing: -0.01em;
+    line-height: 1.45;
   }
   .h-driveStage {
     height: auto;
@@ -2199,17 +2483,36 @@ html:has(.h-dock[data-shown]) {
   .h-driveSide {
     display: none;
   }
+  /* The shared editor keeps its top bar, the preview with everyone's selections, and the two newest changes under it;
+     the status and the timeline go. */
+  .h-tm {
+    grid-template-rows: 44px auto;
+  }
+  .h-tmBar {
+    gap: 12px;
+    padding: 0 12px;
+  }
+  .h-tmStatus,
+  .h-tmTimeline {
+    display: none;
+  }
+  .h-tmBody {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .h-tmStage {
+    aspect-ratio: 16 / 10;
+    padding: 12px;
+  }
+  .h-tmActivity li:nth-child(n + 3) {
+    display: none;
+  }
   .h-driveMain {
     padding: 16px;
   }
-  .h-sectionHead,
   .h-demo,
-  .h-teamGrid {
+  .h-teamFacts {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .h-sectionHead {
-    gap: 20px;
-    margin-bottom: 40px;
   }
   /* One column in the page's own order: the heading and lead, then the editor, what the agent did, and the requests
      under it. With the requests in view the editor is too, so a pick shows its edit landing (the timeline and Undo
@@ -2228,9 +2531,6 @@ html:has(.h-dock[data-shown]) {
   }
   .h-demoRequest {
     padding: 14px 16px;
-  }
-  .h-startTitle {
-    font-size: clamp(34px, (100vw - 2 * var(--h-pad)) / 7.5, 96px); /* the hero headline's phone size */
   }
   /* The fields, the picture they shape, then Create project at full width. */
   .h-np {

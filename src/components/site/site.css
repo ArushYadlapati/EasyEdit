@@ -9,8 +9,6 @@
   --h-text: #fafafa;
   --h-muted: #a1a1aa;
   --h-faint: #8b8b94;
-  --h-panel: #0c0c0e;
-  --h-line: rgb(255 255 255 / 0.08);
   --h-accent: #6ea8ff;
   --h-claude: #f97316; /* Claude's own colour, wherever Claude is the one editing */
   --h-pad: clamp(20px, 3vw, 40px);
@@ -51,7 +49,7 @@
   background: #fff;
   color: #000 !important;
   font: inherit;
-  font-size: 16px;
+  font-size: 17px; /* the body size: the site's words come in five sizes, and a pill's are body text */
   font-weight: 600;
   letter-spacing: -0.01em;
   text-decoration: none;

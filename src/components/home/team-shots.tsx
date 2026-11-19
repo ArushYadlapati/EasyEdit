@@ -1,66 +1,187 @@
+import type { CSSProperties } from "react";
 import { LogoMark } from "@/components/ui/logo";
 
-// Two small drawn pieces of the app for the team cards, in its own colours and wording, with Pexels stills
-// (free to use) as the footage: the editor with teammates' selections, and a team space's All projects page.
+// Drawn pieces of the app for the home page's team and Drive sections, in its own colours and wording, with Pexels
+// stills (free to use) as the footage. They are pictures: aria-hidden, with the section's own words saying what
+// they show.
 
-export function PresenceShot() {
+const peer = (colour: string) => ({ "--peer": colour }) as CSSProperties;
+const SAM = peer("var(--ed-peer-1)");
+const MIKA = peer("var(--ed-peer-2)");
+const YOU = peer("var(--ed-accent)");
+
+// The team's brand kit, as its Brand kit tab lists it: a font for each kind of text, its colours and its logo.
+const KIT_FONTS = [
+  { role: "Title", family: "Bebas Neue" },
+  { role: "Subtitle", family: "Montserrat" },
+  { role: "Body text", family: "Inter" },
+];
+const KIT_COLOURS = ["#ff4d2e", "#ffc53d", "#ffffff", "#1f2a44"];
+
+// The team's logo: a sun on the horizon, in the kit's amber.
+function KitLogo({ className }: { className?: string }) {
   return (
-    <div className="h-shot" data-ui aria-hidden="true">
-      <div className="h-shotBar">
-        <span className="h-shotName">City nights</span>
-        <span className="h-shotAvatars">
-          <span style={{ background: "var(--ed-peer-1)" }}>SO</span>
-          <span style={{ background: "var(--ed-peer-2)" }}>MK</span>
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true" focusable="false">
+      <circle cx="16" cy="16" r="15" fill="#ffc53d" />
+      <rect x="0" y="18" width="32" height="3" fill="#0a0a0a" />
+    </svg>
+  );
+}
+
+// A selection drawn as the editor draws it: an edge in the person's colour, their name, and the corner handles.
+function Selection({ who, style, className = "h-tmSel" }: { who: string; style: CSSProperties; className?: string }) {
+  return (
+    <span className={className} style={style}>
+      <span className="h-edPeerTag">{who}</span>
+      <span className="h-edHandle" data-at="tl" />
+      <span className="h-edHandle" data-at="tr" />
+      <span className="h-edHandle" data-at="bl" />
+      <span className="h-edHandle" data-at="br" />
+    </span>
+  );
+}
+
+// Newest first, in the app's own Activity wording (summarizeOps in lib/editor/activity.ts): every row can be undone,
+// whoever made it.
+const ACTIVITY = [
+  { who: "Sam Okafor", what: "Added text", when: "just now" },
+  { who: "Mika Kato", what: "Changed a video clip: position and scale", when: "1 minute ago" },
+  { who: "You", what: "Added an image", when: "4 minutes ago" },
+  { who: "Claude (for Mika Kato)", what: "Split a video clip", when: "9 minutes ago" },
+];
+
+const RULER = ["0:00", "0:04", "0:08", "0:12", "0:16", "0:20"];
+
+// One project open in the editor with two teammates in it: the top bar's dots say who is here (you, Sam, Mika), each
+// person's selection is drawn in their own colour with their name (Sam on the title, Mika on the video clip, you on
+// the logo), and Activity lists their changes, each with Undo this change. The title is set in the team's title font.
+export function TeamScene() {
+  return (
+    <div className="h-tm" data-ui aria-hidden="true">
+      <div className="h-tmBar">
+        <LogoMark size={16} />
+        <span className="h-tmProject">City nights</span>
+        <span className="h-tmPeople">
+          <span className="h-tmMe" />
+          <span className="h-tmDot" style={SAM}>
+            SO
+          </span>
+          <span className="h-tmDot" style={MIKA}>
+            MK
+          </span>
         </span>
-        <span className="h-shotMuted">Saved</span>
+        <span className="h-tmStatus">2 people are editing…</span>
+        <span className="h-tmExport">Export</span>
       </div>
-      <div className="h-shotPreview">
-        {/* eslint-disable-next-line @next/next/no-img-element -- footage inside a drawn interface */}
-        <img src="/home/still-street.webp" alt="" width={960} height={540} />
-        <span className="h-shotSel" style={{ inset: "8% 46% 30% 6%", "--peer": "var(--ed-peer-1)" } as React.CSSProperties}>
-          <span>Sam</span>
-        </span>
-        <span className="h-shotSel h-shotSelText" style={{ inset: "62% 8% 12% 50%", "--peer": "var(--ed-peer-2)" } as React.CSSProperties}>
-          <span>Mika</span>
-          Night shift
-        </span>
+
+      <div className="h-tmBody">
+        <div className="h-tmStage">
+          <div className="h-tmFrame">
+            {/* eslint-disable-next-line @next/next/no-img-element -- footage inside a drawn interface */}
+            <img src="/home/still-street.webp" alt="" width={960} height={540} loading="lazy" decoding="async" />
+            {/* Mika has the video clip selected, so the whole picture: her name sits inside its top corner. */}
+            <span className="h-tmSel h-tmSelClip" style={MIKA}>
+              <span className="h-edPeerTag">Mika</span>
+            </span>
+            <span className="h-tmTitle">
+              <span>After dark</span>
+              <Selection who="Sam" style={SAM} />
+            </span>
+            <span className="h-tmLogo">
+              <KitLogo />
+              <Selection who="You" style={YOU} />
+            </span>
+          </div>
+        </div>
+
+        <div className="h-tmSide">
+          <div className="h-tmTabs">
+            <span>Inspect</span>
+            <span data-on>Activity</span>
+            <span>Effects</span>
+          </div>
+          <ol className="h-tmActivity">
+            {ACTIVITY.map((row) => (
+              <li key={row.who}>
+                <span>
+                  {row.who} · {row.what}
+                </span>
+                <span className="h-tmWhen">
+                  {row.when}
+                  <span className="h-tmUndo">Undo this change</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+
+      <div className="h-tmTimeline">
+        <div className="h-tmRuler">
+          {RULER.map((t) => (
+            <span key={t}>{t}</span>
+          ))}
+        </div>
+        <div className="h-tmTrack">
+          <span className="h-tmTrackName">Text 1</span>
+          <span className="h-tmLane">
+            <span className="h-tmClip h-tmClipText" style={{ ...SAM, left: "6%", width: "24%" }} data-peer>
+              After dark
+              <span className="h-tmBadge">SO</span>
+            </span>
+          </span>
+        </div>
+        <div className="h-tmTrack">
+          <span className="h-tmTrackName">Image 1</span>
+          <span className="h-tmLane">
+            <span className="h-tmClip h-tmClipImage" style={{ ...YOU, left: "0%", width: "100%" }} data-peer>
+              <KitLogo className="h-tmClipLogo" />
+              logo.png
+            </span>
+          </span>
+        </div>
+        <div className="h-tmTrack">
+          <span className="h-tmTrackName">Video 1</span>
+          <span className="h-tmLane">
+            <span className="h-tmClip" style={{ ...MIKA, left: "0%", width: "42%" }} data-peer>
+              {/* eslint-disable-next-line @next/next/no-img-element -- a clip's thumbnail in a drawn interface */}
+              <img src="/home/still-street.webp" alt="" width={48} height={27} loading="lazy" decoding="async" />
+              city-night.mp4
+              <span className="h-tmBadge">MK</span>
+            </span>
+            <span className="h-tmClip" style={{ left: "42%", width: "58%" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- a clip's thumbnail in a drawn interface */}
+              <img src="/home/still-street.webp" alt="" width={48} height={27} loading="lazy" decoding="async" />
+              city-night.mp4
+            </span>
+          </span>
+        </div>
+        <span className="h-tmPlayhead" />
       </div>
     </div>
   );
 }
 
-const PROJECTS = [
-  { name: "Summer reel", img: "/home/still-dog.webp", meta: "Vertical 9:16", by: "Changed 2 hours ago by Sam Okafor" },
-  { name: "City nights", img: "/home/still-street.webp", meta: "Landscape 16:9", by: "Changed yesterday by you" },
-  { name: "Into the hills", img: "/home/still-misty.webp", meta: "Feed 4:5", by: "Changed 3 days ago by Mika Kato" },
-  { name: "Surf day", img: "/home/still-surf.webp", meta: "Square 1:1", by: "Changed last week by you" },
-];
-
-export function ProjectsShot() {
+// The team's brand kit, as a small drawn panel: its three fonts by name, its colours and its logo.
+export function KitRow() {
   return (
-    <div className="h-shot" data-ui aria-hidden="true">
-      <div className="h-shotBar">
-        <span className="h-shotName">All projects</span>
-        <span className="h-shotNew">+ New project</span>
+    <div className="h-kit" data-ui aria-hidden="true">
+      <div className="h-kitFonts">
+        {KIT_FONTS.map((f) => (
+          <span key={f.role}>
+            <span className="h-kitRole">{f.role}</span>
+            <span className="h-kitFamily">{f.family}</span>
+          </span>
+        ))}
       </div>
-      <div className="h-shotBody">
-        <p className="h-shotMuted">Folders</p>
-        <div className="h-shotFolders">
-          <span>Travel · 2</span>
-          <span>Interviews · 1</span>
-        </div>
-        <p className="h-shotMuted">Projects</p>
-        <div className="h-shotGrid">
-          {PROJECTS.map((p) => (
-            <span key={p.name} className="h-shotCard">
-              {/* eslint-disable-next-line @next/next/no-img-element -- a project thumbnail in a drawn interface */}
-              <img src={p.img} alt="" width={320} height={180} />
-              <span className="h-shotCardName">{p.name}</span>
-              <span className="h-shotMuted">{p.meta}</span>
-              <span className="h-shotMuted">{p.by}</span>
-            </span>
-          ))}
-        </div>
+      <div className="h-kitSwatches">
+        {KIT_COLOURS.map((c) => (
+          <span key={c} className="h-kitSwatch">
+            <span style={{ background: c }} />
+            {c}
+          </span>
+        ))}
+        <KitLogo className="h-kitLogo" />
       </div>
     </div>
   );
@@ -70,8 +191,8 @@ export function ProjectsShot() {
 // lib/storage/messages.ts and the settings tabs), with the editor dimmed behind it, so it reads as the app itself.
 export function DriveShot() {
   return (
-    <div className="h-driveStage" aria-hidden="true">
-      <div className="h-shot h-driveBack" data-ui>
+    <div className="h-driveStage" data-ui aria-hidden="true">
+      <div className="h-shot h-driveBack">
         <div className="h-shotBar">
           <span className="h-shotName">Summer reel</span>
           <span className="h-shotMuted" style={{ marginLeft: "auto" }}>
@@ -81,11 +202,11 @@ export function DriveShot() {
         </div>
         <div className="h-shotPreview">
           {/* eslint-disable-next-line @next/next/no-img-element -- footage inside a drawn interface */}
-          <img src="/home/still-dog.webp" alt="" width={960} height={540} />
+          <img src="/home/still-dog.webp" alt="" width={960} height={540} loading="lazy" decoding="async" />
         </div>
       </div>
 
-      <div className="h-shot h-driveWin" data-ui>
+      <div className="h-shot h-driveWin">
         <div className="h-shotBar">
           <LogoMark size={16} />
           <span className="h-shotName">EasyEdit</span>

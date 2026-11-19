@@ -1,62 +1,18 @@
-import type { ReactNode } from "react";
+import Link from "next/link";
 import { SitePage } from "@/components/site/site-page";
 import { AgentDemo } from "./agent-demo";
-import { AgentMarquee } from "./agent-marquee";
+import { AgentMarquee, type MarqueeAgent } from "./agent-marquee";
 import { HeroScene } from "./hero-scene";
 import { NewProjectForm } from "./new-project-form";
 import { PageDock } from "./page-dock";
-import { DriveShot, PresenceShot, ProjectsShot } from "./team-shots";
+import { DriveShot, KitRow, TeamScene } from "./team-shots";
 import "./home.css";
 
 // The public home page, for anyone who lands on easyedit.arush.dev signed out. Always dark, in the app's own type.
-// The footage in public/home is from Pexels (free to use, no credit required); activity.webp and brand-kit.webp are
-// crops of the real editor from the intro tutorial's recording.
+// The footage in public/home is from Pexels (free to use, no credit required); the pieces of the app in it are drawn.
 
-const TEAM: { shot: ReactNode; title: string; text: string }[] = [
-  {
-    shot: <PresenceShot />,
-    title: "See who's here",
-    text: "Everyone in a project shows in the editor, and a teammate's selection shows in their colour with their name on it. Their changes reach you in seconds.",
-  },
-  {
-    shot: (
-      // eslint-disable-next-line @next/next/no-img-element -- a fixed crop of the real editor, served as is
-      <img
-        src="/home/activity.webp"
-        alt="The Activity list: Sam Okafor added a video clip, and you added 3 clips, each with Undo this change."
-        width={540}
-        height={370}
-        loading="lazy"
-      />
-    ),
-    title: "Undo anyone's change",
-    text: "Activity lists every change and who made it: you, a teammate or an AI agent. Undo any one of them from the list.",
-  },
-  {
-    shot: <ProjectsShot />,
-    title: "A space for each team",
-    text: "A team space holds its projects, folders and media. Invite people by email, pin projects for everyone, and keep a Personal space for yourself.",
-  },
-  {
-    shot: (
-      // eslint-disable-next-line @next/next/no-img-element -- a fixed crop of the real editor, served as is
-      <img
-        src="/home/brand-kit.webp"
-        alt="A team's brand kit: Orbitron for titles, Inter for subtitles and body text, and four brand colours."
-        width={1180}
-        height={820}
-        loading="lazy"
-      />
-    ),
-    title: "One brand kit",
-    text: "Set the team's fonts, colours and logos once. New titles start in the team's fonts, and the kit is a tab away in the editor.",
-  },
-];
-
-const AGENTS = ["Claude", "ChatGPT", "Claude Code", "Codex", "Cursor", "Gemini CLI", "VS Code Copilot", "OpenAI API"];
-
-// The marquee's marks: monochrome icons from LobeHub's icon set (MIT), tinted by CSS.
-const AGENT_LOGOS: { name: string; logo: string }[] = [
+// The agents in the marquee, each with its mark (a file in public/home/logos).
+const AGENTS: MarqueeAgent[] = [
   { name: "Claude", logo: "claude" },
   { name: "ChatGPT", logo: "openai" },
   { name: "Claude Code", logo: "claudecode" },
@@ -65,6 +21,15 @@ const AGENT_LOGOS: { name: string; logo: string }[] = [
   { name: "Gemini CLI", logo: "geminicli" },
   { name: "VS Code Copilot", logo: "githubcopilot" },
   { name: "OpenAI API", logo: "openai" },
+];
+
+// What free and in your Drive come to, one plain sentence each: no cost for anyone, the folder EasyEdit makes in the
+// Drive a space connects (it asks only for the files it makes), and export on your own computer.
+const FREE_FACTS = [
+  "It costs nothing, teams included.",
+  "It keeps them in a folder of its own.",
+  "It can't see your other files.",
+  "Exports render on your computer.",
 ];
 
 // closedBeta: sign-up isn't open (openSignUp() in signup.ts, read on the server), so only invited people get in.
@@ -89,63 +54,75 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
         </section>
 
         <section id="start" className="h-section h-start" aria-labelledby="start-title" data-dock-label="First project">
-          <h2 id="start-title" className="h-startTitle">
+          <h2 id="start-title" className="h-display h-startTitle">
             Make your first project.
           </h2>
           <NewProjectForm />
         </section>
 
-        <section id="free" className="h-section h-drive" aria-labelledby="drive-title" data-dock-label="Free">
-          <div className="h-sectionHead">
-            <h2 id="drive-title" className="h-h2">
-              <span className="h-line">Completely free.</span> <span className="h-line">Based in your Drive.</span>
-            </h2>
-            <p className="h-lead">
-              EasyEdit costs nothing. Connect a Google account, and your videos, images and audio live in a folder EasyEdit
-              makes in that Drive. They stay yours, and EasyEdit can&apos;t see your other files.
-            </p>
-          </div>
+        {/* The heading, then what it comes to as a list a size under it, then the app's Storage page. */}
+        <section id="free" className="h-section h-free" aria-labelledby="free-title" data-dock-label="Free">
+          <h2 id="free-title" className="h-display h-freeTitle">
+            <span className="h-line">Free, and your files</span> <span className="h-line">stay in your Drive.</span>
+          </h2>
+          <ul className="h-facts">
+            {FREE_FACTS.map((fact) => (
+              <li key={fact}>{fact}</li>
+            ))}
+          </ul>
           <DriveShot />
         </section>
 
-        <section id="teams" className="h-section" aria-labelledby="teams-title" data-dock-label="Teams">
-          <div className="h-sectionHead">
-            <h2 id="teams-title" className="h-h2">
-              Built for teams.
-            </h2>
-            <p className="h-lead">
-              Make a team space, invite people by email, and everyone edits the same project at the same time. Nobody
-              waits for a file.
-            </p>
-          </div>
-          <div className="h-teamGrid">
-            {TEAM.map((m) => (
-              <article key={m.title} className="h-teamCard">
-                <div className="h-teamShot">{m.shot}</div>
-                <h3>{m.title}</h3>
-                <p>{m.text}</p>
-              </article>
-            ))}
+        {/* One shared editor, large, then the two smaller things a team gets beside it. */}
+        <section id="teams" className="h-section h-teams" aria-labelledby="teams-title" data-dock-label="Teams">
+          <h2 id="teams-title" className="h-h2">
+            Built for teams.
+          </h2>
+          <p className="h-lead">
+            Everyone edits the same project at the same time. Each person&apos;s selection shows in their colour with
+            their name on it, and anyone can undo any change, a teammate&apos;s too. Nobody waits for a file.
+          </p>
+          <TeamScene />
+          <div className="h-teamFacts">
+            <div>
+              <h3>A space for each team</h3>
+              <p>
+                A team space holds its projects, folders and media. Invite people with a link you send them, pin
+                projects for everyone, and keep a Personal space of your own.
+              </p>
+            </div>
+            <div>
+              <h3>One brand kit</h3>
+              <p>Set the team&apos;s fonts, colours and logos once. New titles start in the team&apos;s fonts.</p>
+              <KitRow />
+            </div>
           </div>
         </section>
 
-        <section id="agents" className="h-section h-statement" aria-labelledby="agents-title" data-dock-label="Every agent">
-          <h2 id="agents-title" className="h-giant">
-            Works with every AI agent.
+        <section id="agents" className="h-section h-agents" aria-labelledby="agents-title" data-dock-label="Every agent">
+          <h2 id="agents-title" className="h-display">
+            <span className="h-line">Works with</span> <span className="h-line">every AI agent.</span>
           </h2>
           <p className="h-lead">
-            {AGENTS.join(", ")} and anything else that speaks MCP. Connect one from AI agents in your account menu.
+            Any agent that speaks MCP can edit your projects. Connect one from AI&nbsp;agents in your account menu.
           </p>
-          {/* The end of the page: the page's dock goes down while it is in view (page-dock.tsx). */}
-          <div data-dock-end>
-            <AgentMarquee>
-              {[...AGENT_LOGOS, ...AGENT_LOGOS].map((a, i) => (
-                <span key={`${a.name}-${i}`} className="h-agent">
-                  <span className="h-agentLogo" style={{ maskImage: `url(/home/logos/${a.logo}.svg)` }} />
-                  {a.name}
-                </span>
-              ))}
-            </AgentMarquee>
+          <AgentMarquee agents={AGENTS} />
+          {/* The page's close, and the end of the page: the page's dock goes down while it is in view (page-dock.tsx). */}
+          <div className="h-close" data-dock-end>
+            {closedBeta ? (
+              <Link href="/login" className="h-btn">
+                Sign in
+              </Link>
+            ) : (
+              <>
+                <Link href="/login" className="h-btn">
+                  Start free
+                </Link>
+                <Link href="/login" className="h-closeLink">
+                  Sign in
+                </Link>
+              </>
+            )}
           </div>
         </section>
 
