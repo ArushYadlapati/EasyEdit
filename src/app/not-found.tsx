@@ -1,30 +1,33 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
-import { LogoMark } from "@/components/ui/logo";
+import { SITE_METADATA, SITE_VIEWPORT, SitePage } from "@/components/site/site-page";
 
-// Every 404 lands here: an address that matches no route, and any page that calls notFound() (a project or space that
-// doesn't exist, or that this person can't see). Without this file Next shows its own bare page, in a system font and
-// pure black or white, with none of EasyEdit's look. Laid out like the login page; "/" sends a signed-in person on to
-// the dashboard and shows everyone else the home page.
-export const metadata: Metadata = { title: "Page not found · EasyEdit" };
+// An address that matches no page lands here, signed in or not. A signed-in page that calls notFound() (a project or
+// space that doesn't exist, or that this person can't see) shows the app's own page instead, with the way back to their
+// projects: see app/(dashboard)/not-found.tsx and app/(editor)/not-found.tsx. Without this file Next shows its own bare
+// page, in a system font and pure black or white, with none of EasyEdit's look. It is a page of the public site, in its
+// frame; "/" sends a signed-in person on to the dashboard and shows everyone else the home page, and the sign-in page
+// sends a signed-in person straight on too.
+export const metadata: Metadata = { ...SITE_METADATA, title: "Page not found · EasyEdit" };
+export const viewport: Viewport = SITE_VIEWPORT;
 
 export default function NotFound() {
   return (
-    <main className="flex flex-1 items-center justify-center px-6 py-24">
-      <div className="flex w-full max-w-sm flex-col items-center gap-6 text-center">
-        <LogoMark size={56} />
-        <div className="flex flex-col gap-2">
-          <p className="font-mono text-sm text-foreground/60">404</p>
-          <h1 className="text-2xl font-semibold tracking-tight">Page not found</h1>
-          <p className="text-balance text-foreground/70">This page doesn&apos;t exist, or you don&apos;t have access to it.</p>
+    <SitePage>
+      <main className="h-plain">
+        <div className="h-plainColumn">
+          <h1 className="h-plainTitle">Page not found</h1>
+          <p className="h-plainLead">There&apos;s no page at this address. Check the link, or start from the home page.</p>
+          <div className="h-plainActions">
+            <Link href="/" className="h-btn">
+              Go to the home page
+            </Link>
+            <Link href="/login" className="h-btn h-btnGhost">
+              Sign in
+            </Link>
+          </div>
         </div>
-        <Link
-          href="/"
-          className="inline-flex h-11 w-full items-center justify-center rounded-full bg-foreground px-5 font-medium text-background transition-opacity hover:opacity-85"
-        >
-          Go to EasyEdit
-        </Link>
-      </div>
-    </main>
+      </main>
+    </SitePage>
   );
 }

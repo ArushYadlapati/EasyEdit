@@ -58,18 +58,76 @@ describe("the login page", () => {
     ]);
     expect(document.querySelector("input, textarea, select")).toBeNull();
   });
+
+  it("with sign-up closed, says sign-in is by invitation, and the header offers no Start free", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "");
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    vi.unstubAllEnvs();
+    expect(screen.getByText("EasyEdit is in closed beta. Sign-in is by invitation only for now.").className).toBe("h-plainLead");
+    expect(screen.queryByText("Sign in or create an account with Google.")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Start free" })).toBeNull();
+    for (const a of screen.getAllByRole("link", { name: "Sign in" })) expect(a.getAttribute("href")).toBe("/login");
+  });
+
+  it("sets both buttons as the site's pills: white for Google, the quieter tint for a passkey", async () => {
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    const google = screen.getByRole("button", { name: "Sign in with Google" });
+    expect(google.className.split(/\s+/)).toEqual(["h-btn", "w-full"]);
+    expect(button().className.split(/\s+/)).toEqual(["h-btn", "h-btnGhost", "w-full"]);
+  });
+
+  it("says a refused sign-in in the danger colour, with no box behind it", async () => {
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({ error: "NOT_ALLOWLISTED" }) }));
+    const alert = screen.getByRole("alert");
+    expect(alert.className).toBe("text-base font-medium text-danger text-pretty");
+  });
 });
 
 describe("the login page with sign-up open", () => {
   type Page = (props: { params: Promise<object>; searchParams: Promise<Record<string, string>> }) => Promise<React.ReactNode>;
   afterEach(() => vi.unstubAllEnvs());
 
-  it("says Google creates an account too, in the page's muted text", async () => {
+  it("says Google creates an account too, in the page's lead line under a real title", async () => {
     vi.stubEnv("OPEN_SIGNUP", "true");
     const page: Page = LoginPage;
     render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
     const line = screen.getByText("Sign in or create an account with Google.");
-    expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(["text-sm", "text-foreground/70"]));
+    expect(line.className.split(/\s+/)).toContain("h-plainLead");
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.textContent).toBe("Sign in");
+    expect(heading.className).toBe("h-plainTitle");
+    expect(screen.queryByText(/closed beta/)).toBeNull();
+  });
+
+  it("is no dead end: the site's header leads home, with the footer under the page", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    expect(screen.getByRole("link", { name: "EasyEdit home" }).getAttribute("href")).toBe("/");
+    expect(screen.getByRole("banner").closest("main")).toBeNull();
+    expect(screen.getByRole("contentinfo").closest("main")).toBeNull();
+  });
+
+  it("leaves out the header's Sign in and Start free, which only lead back to this page, and marks it in the footer", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    const header = screen.getByRole("banner");
+    expect([...header.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["EasyEdit", "/"],
+      ["AI agents", "/#ai"],
+      ["Free", "/#free"],
+      ["Teams", "/#teams"],
+    ]);
+    expect(screen.queryByRole("link", { name: "Start free" })).toBeNull();
+    // One white pill on the page: Google's.
+    expect([...document.querySelectorAll(".h-btn:not(.h-btnGhost)")].map((el) => el.textContent)).toEqual(["Sign in with Google"]);
+    const footerSignIn = screen.getByRole("link", { name: "Sign in" });
+    expect(footerSignIn.closest("footer")).toBe(screen.getByRole("contentinfo"));
+    expect(footerSignIn.getAttribute("aria-current")).toBe("page");
   });
 
   it("an unverified Google email is told so, not about the allowlist", async () => {
@@ -88,12 +146,18 @@ describe("the login page with sign-up open", () => {
 });
 
 describe("the passkey sign-in button", () => {
-  it("reads Sign in with a passkey and is outlined, not filled like the Google button", () => {
+  it("reads Sign in with a passkey and is a light tint, not filled white like the Google button nor outlined", () => {
     render(<PasskeySignInButton />);
     const classes = button().className.split(/\s+/);
-    expect(classes).toEqual(expect.arrayContaining(["h-11", "w-full", "rounded-full", "border", "bg-transparent"]));
+    expect(classes).toEqual(expect.arrayContaining(["h-11", "w-full", "rounded-full", "bg-foreground/15"]));
     expect(classes).not.toContain("bg-foreground");
+    expect(classes).not.toContain("border");
     expect(button().disabled).toBe(false);
+  });
+
+  it("takes the look the page gives it", () => {
+    render(<PasskeySignInButton className="h-btn h-btnGhost w-full" />);
+    expect(button().className).toBe("h-btn h-btnGhost w-full");
   });
 
   it("isn't shown in a browser without passkeys", () => {

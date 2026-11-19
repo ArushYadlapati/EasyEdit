@@ -1,6 +1,5 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
-import { LogoMark } from "@/components/ui/logo";
+import { SitePage } from "@/components/site/site-page";
 import { AgentDemo } from "./agent-demo";
 import { AgentMarquee } from "./agent-marquee";
 import { HeroScene } from "./hero-scene";
@@ -83,101 +82,91 @@ const AGENT_LOGOS: { name: string; logo: string }[] = [
 ];
 
 // closedBeta: sign-up isn't open (openSignUp() in signup.ts, read on the server), so only invited people get in.
+// The site's header and footer go around the page's <main>; the first screen starts under the header.
 export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
   return (
-    <main className="h-page ed-theme">
-      <HeroScene closedBeta={closedBeta} />
+    <SitePage>
+      <main className="h-page ed-theme">
+        <HeroScene closedBeta={closedBeta} />
 
-      <section id="ai" className="h-section" aria-labelledby="ai-title">
-        <div className="h-sectionHead">
-          <h2 id="ai-title" className="h-h2">
-            Ask an agent. Watch it edit.
-          </h2>
-          <p className="h-lead">
-            Connect Claude, ChatGPT, Cursor or any agent that speaks MCP. Say what you want, and the change lands in your
-            project, signed with the agent&apos;s name.
-          </p>
-        </div>
-        <AgentDemo />
-        <ul className="h-points">
-          {AI_POINTS.map((p) => (
-            <li key={p.title}>
-              <h3>{p.title}</h3>
-              <p>{p.text}</p>
-            </li>
-          ))}
-        </ul>
-        <div className="h-statement h-agents">
-          <h2 className="h-giant">Works with every AI agent.</h2>
-          <p className="h-lead">
-            {AGENTS.join(", ")} and anything else that speaks MCP. Connect one from AI agents in your account menu.
-          </p>
-        </div>
-        <AgentMarquee>
-          {[...AGENT_LOGOS, ...AGENT_LOGOS].map((a, i) => (
-            <span key={`${a.name}-${i}`} className="h-agent">
-              <span className="h-agentLogo" style={{ maskImage: `url(/home/logos/${a.logo}.svg)` }} />
-              {a.name}
-            </span>
-          ))}
-        </AgentMarquee>
-      </section>
+        <section id="ai" className="h-section" aria-labelledby="ai-title">
+          <div className="h-sectionHead">
+            <h2 id="ai-title" className="h-h2">
+              Ask an agent. Watch it edit.
+            </h2>
+            <p className="h-lead">
+              Connect Claude, ChatGPT, Cursor or any agent that speaks MCP. Say what you want, and the change lands in your
+              project, signed with the agent&apos;s name.
+            </p>
+          </div>
+          <AgentDemo />
+          <ul className="h-points">
+            {AI_POINTS.map((p) => (
+              <li key={p.title}>
+                <h3>{p.title}</h3>
+                <p>{p.text}</p>
+              </li>
+            ))}
+          </ul>
+          <div className="h-statement h-agents">
+            <h2 className="h-giant">Works with every AI agent.</h2>
+            <p className="h-lead">
+              {AGENTS.join(", ")} and anything else that speaks MCP. Connect one from AI agents in your account menu.
+            </p>
+          </div>
+          <AgentMarquee>
+            {[...AGENT_LOGOS, ...AGENT_LOGOS].map((a, i) => (
+              <span key={`${a.name}-${i}`} className="h-agent">
+                <span className="h-agentLogo" style={{ maskImage: `url(/home/logos/${a.logo}.svg)` }} />
+                {a.name}
+              </span>
+            ))}
+          </AgentMarquee>
+        </section>
 
-      <section id="teams" className="h-section" aria-labelledby="teams-title">
-        <div className="h-sectionHead">
-          <h2 id="teams-title" className="h-h2">
-            Built for teams.
-          </h2>
-          <p className="h-lead">
-            Make a team space, invite people by email, and everyone edits the same project at the same time. Nobody
-            waits for a file.
-          </p>
-        </div>
-        <div className="h-teamGrid">
-          {TEAM.map((m) => (
-            <article key={m.title} className="h-teamCard">
-              <div className="h-teamShot">{m.shot}</div>
-              <h3>{m.title}</h3>
-              <p>{m.text}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+        <section id="teams" className="h-section" aria-labelledby="teams-title">
+          <div className="h-sectionHead">
+            <h2 id="teams-title" className="h-h2">
+              Built for teams.
+            </h2>
+            <p className="h-lead">
+              Make a team space, invite people by email, and everyone edits the same project at the same time. Nobody
+              waits for a file.
+            </p>
+          </div>
+          <div className="h-teamGrid">
+            {TEAM.map((m) => (
+              <article key={m.title} className="h-teamCard">
+                <div className="h-teamShot">{m.shot}</div>
+                <h3>{m.title}</h3>
+                <p>{m.text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
-      <section className="h-section h-drive" aria-labelledby="drive-title">
-        <div className="h-sectionHead">
-          <h2 id="drive-title" className="h-h2">
-            <span className="h-line">Completely free.</span> <span className="h-line">Based in your Drive.</span>
-          </h2>
-          <p className="h-lead">
-            EasyEdit costs nothing. Connect a Google account, and your videos, images and audio live in a folder EasyEdit
-            makes in that Drive. They stay yours, and EasyEdit can&apos;t see your other files.
-          </p>
-        </div>
-        <DriveShot />
-      </section>
+        <section id="free" className="h-section h-drive" aria-labelledby="drive-title">
+          <div className="h-sectionHead">
+            <h2 id="drive-title" className="h-h2">
+              <span className="h-line">Completely free.</span> <span className="h-line">Based in your Drive.</span>
+            </h2>
+            <p className="h-lead">
+              EasyEdit costs nothing. Connect a Google account, and your videos, images and audio live in a folder EasyEdit
+              makes in that Drive. They stay yours, and EasyEdit can&apos;t see your other files.
+            </p>
+          </div>
+          <DriveShot />
+        </section>
 
-      <section id="start" className="h-section h-start" aria-labelledby="start-title">
-        <div className="h-sectionHead">
-          <h2 id="start-title" className="h-wide">
-            Make your first project.
-          </h2>
-        </div>
-        <NewProjectForm />
-      </section>
-
-      <footer className="h-footer">
-        <span className="h-brand">
-          <LogoMark size={20} />
-          <span>EasyEdit</span>
-        </span>
-        <nav aria-label="Footer">
-          <Link href="/login">Sign in</Link>
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/terms">Terms</Link>
-        </nav>
-        <span className="h-footerNote">© 2026 EasyEdit</span>
-      </footer>
-    </main>
+        <section id="start" className="h-section h-start" aria-labelledby="start-title">
+          <div className="h-sectionHead">
+            <h2 id="start-title" className="h-wide">
+              Make your first project.
+            </h2>
+          </div>
+          <NewProjectForm />
+        </section>
+      </main>
+    </SitePage>
   );
 }

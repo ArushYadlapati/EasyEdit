@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { PLAIN_ERROR } from "@/components/ui/cx";
 import { decideConsent } from "@/lib/connector/consent-client";
 
 const BUTTON = "h-11 w-full rounded-full px-5 font-medium transition-opacity disabled:opacity-60";
@@ -25,7 +26,7 @@ export function ConsentButtons({ navigate = (url) => window.location.assign(url)
   return (
     <div className="flex w-full flex-col gap-3">
       {failed && (
-        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+        <p role="alert" className={PLAIN_ERROR}>
           That didn&apos;t work. Go back to your AI agent and connect again.
         </p>
       )}

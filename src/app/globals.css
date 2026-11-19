@@ -4,11 +4,13 @@
   --background: #ffffff;
   --foreground: #171717;
   --logo-accent: #2f6fdb; /* the cut-off half of the logo mark (components/ui/logo.tsx), deep enough to read on white */
+  --danger: #b91c1c; /* an error on a plain page (PLAIN_ERROR in components/ui/cx.ts): 6.5:1 on white */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --color-ed-bg: var(--ed-bg);
@@ -43,6 +45,7 @@
     --background: #0a0a0a;
     --foreground: #ededed;
     --logo-accent: #6ea8ff;
+    --danger: #f26d6d; /* 6.8:1 on the dark background */
   }
 }
 
@@ -55,6 +58,18 @@ html:has(.editor, .ed-theme) {
   --background: #0a0a0a;
   --foreground: #ededed;
   --logo-accent: #6ea8ff; /* the same as --ed-accent */
+  --danger: #f26d6d; /* the same as --ed-danger */
+}
+
+/* The public site (.h-site in components/site/site.css: the home page, sign-in, terms, privacy, page not found) is
+   always dark too, on its own true black, so the page around it and an overscroll match it. After the rule above,
+   which the home page also meets (its sections carry .ed-theme), so this one wins there. */
+html:has(.h-site) {
+  color-scheme: dark;
+  --background: #000;
+  --foreground: #fafafa;
+  --logo-accent: #6ea8ff;
+  --danger: #f26d6d; /* 7.2:1 on black */
 }
 
 /* The editor is always dark. Everything inside .editor uses these roles, and the dashboard (.ed-theme) shares them. */

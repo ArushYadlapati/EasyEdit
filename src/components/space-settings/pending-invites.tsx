@@ -67,7 +67,7 @@ function RenewInvite({ invite, renew }: { invite: PendingInviteRow; renew: (form
   return (
     <>
       {error !== null && (
-        <span role="alert" className="text-xs text-red-500">
+        <span role="alert" className="text-xs text-ed-danger">
           {error}
         </span>
       )}

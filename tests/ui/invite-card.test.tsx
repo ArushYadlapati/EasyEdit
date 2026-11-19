@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import { InviteCard } from "@/components/invite/invite-card";
+import { PLAIN_ERROR } from "@/components/ui/cx";
 import { fireEvent, render, screen, waitFor } from "../helpers/dom";
 
 const signOut = vi.hoisted(() => vi.fn(async () => ({})));
@@ -21,6 +22,8 @@ describe("InviteCard", () => {
   it("signed out after a refused sign-in: shows the notice above the button", () => {
     render(<InviteCard state={{ kind: "signed-out", ...base }} notice="Sign-in didn't finish. Try again." accept={async () => ({})} decline={async () => ({})} />);
     expect(screen.getByRole("alert").textContent).toBe("Sign-in didn't finish. Try again.");
+    // The plain pages' one error look: the danger colour, which follows the page's light or dark, and no box.
+    expect(screen.getByRole("alert").className).toBe(PLAIN_ERROR);
     expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeTruthy();
   });
 

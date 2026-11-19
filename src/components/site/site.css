@@ -1,0 +1,240 @@
+/* The public site: the home page, sign-in, terms, privacy and the page-not-found page. One black ground, the app's own
+   sans (Geist), white pill buttons, and the same header and footer on every page.
+   Plain CSS like home.css (the Turbopack rule in next.config.ts makes every .css file global, so CSS modules don't
+   work here). Every class starts with h-, and the colour roles below (--h-*) are the ones home.css uses for the home
+   page's own sections. The page behind the site is black too: see html:has(.h-site) in globals.css. */
+
+.h-site {
+  --h-bg: #000;
+  --h-text: #fafafa;
+  --h-muted: #a1a1aa;
+  --h-faint: #8b8b94;
+  --h-panel: #0c0c0e;
+  --h-line: rgb(255 255 255 / 0.08);
+  --h-accent: #6ea8ff;
+  --h-claude: #f97316; /* Claude's own colour, wherever Claude is the one editing */
+  --h-pad: clamp(20px, 3vw, 40px);
+  --h-bar: 76px; /* the header's height; the home page's first screen fills the window below it */
+  --h-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--h-bg);
+  color: var(--h-text);
+  color-scheme: dark;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.h-site :focus-visible {
+  outline: 2px solid var(--h-accent);
+  outline-offset: 3px;
+}
+.h-site ::selection {
+  background: var(--h-accent);
+  color: #000;
+}
+
+/* ---------- Pill buttons ---------- */
+
+.h-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  padding: 0 26px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #000 !important;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform 180ms var(--h-ease),
+    background-color 180ms,
+    opacity 180ms;
+}
+.h-btn:not(:disabled):hover {
+  background: #e4e4e7;
+  transform: translateY(-1px);
+}
+.h-btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+/* A button at work (signing in): dimmed, and it no longer answers the pointer. */
+.h-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.h-btnGhost {
+  background: rgb(255 255 255 / 0.14);
+  color: #fff !important;
+}
+.h-btnGhost:not(:disabled):hover {
+  background: rgb(255 255 255 / 0.18);
+}
+.h-btnSmall {
+  height: 38px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+.h-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--h-text);
+}
+
+/* ---------- Header and footer ---------- */
+
+/* Each link in the header sets its own colour (the name, the links, the pill); the footer's take the footer's. */
+.h-bar a,
+.h-footer a {
+  text-decoration: none;
+}
+.h-footer a {
+  color: inherit;
+}
+
+.h-bar {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  height: var(--h-bar);
+  padding: 0 var(--h-pad);
+  font-size: 14px;
+}
+.h-barLinks {
+  display: flex;
+  gap: 28px;
+}
+.h-barActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+/* Each link is as tall as the Start free pill, so it is easy to hit. */
+.h-barLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  color: rgb(255 255 255 / 0.75);
+  transition: color 160ms;
+}
+.h-barLink:hover {
+  color: #fff;
+}
+
+.h-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 32px;
+  margin-top: auto; /* on a short page it sits at the bottom of the window */
+  padding: 40px var(--h-pad);
+  font-size: 14px;
+  color: var(--h-muted);
+}
+.h-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 24px;
+  margin-left: auto;
+}
+.h-footer nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  transition: color 160ms;
+}
+.h-footer nav a:hover,
+.h-footer nav a[aria-current="page"] {
+  color: var(--h-text);
+}
+
+/* ---------- Plain pages: sign-in and page not found ---------- */
+
+/* One column in the middle of the space between the header and the footer, its words set to its left edge. */
+.h-plain {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(48px, 9vh, 112px) var(--h-pad);
+}
+.h-plainColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 36rem;
+}
+.h-plainNarrow {
+  max-width: 24rem;
+}
+/* The page's one heading, at the size of a home section's heading. */
+.h-plainTitle {
+  font-size: clamp(38px, 5.2vw, 76px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  text-wrap: balance;
+}
+.h-plainLead {
+  font-size: clamp(17px, 1.3vw, 20px);
+  color: var(--h-muted);
+  text-wrap: pretty;
+}
+/* A line the page leads with, in full ink rather than muted (the AI agent being connected, on sign-in). */
+.h-plainInk {
+  color: var(--h-text);
+}
+.h-plainActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .h-btn,
+  .h-barLink,
+  .h-footer nav a {
+    transition: none;
+  }
+}
+
+/* ---------- Phone and narrow windows ---------- */
+
+@media (max-width: 860px) {
+  /* The wordmark, Sign in and Start free stay; the home page's section links go. */
+  .h-barLinks {
+    display: none;
+  }
+  .h-bar {
+    gap: 16px;
+  }
+  .h-barActions {
+    gap: 16px;
+  }
+  /* The name, then the links, then the copyright line, one under the other. */
+  .h-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .h-footer nav {
+    margin-left: 0;
+  }
+}

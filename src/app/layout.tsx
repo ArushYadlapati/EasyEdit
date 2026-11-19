@@ -12,9 +12,10 @@ export const metadata: Metadata = {
   openGraph: { title: "EasyEdit", description: DESCRIPTION, siteName: "EasyEdit", type: "website" },
 };
 
-// <meta name="color-scheme">: pages follow the computer's light or dark setting, and the editor and the dashboard
-// override this with "dark". A browser's own "force dark" mode (Chrome's, Edge's, Samsung Internet's) leaves alone a
-// page that says it has dark colors, and the page background in globals.css follows this value too.
+// <meta name="color-scheme">: pages follow the computer's light or dark setting, and the editor, the dashboard and the
+// public site (home, sign-in, terms, privacy, page not found) override this with "dark". A browser's own "force dark"
+// mode (Chrome's, Edge's, Samsung Internet's) leaves alone a page that says it has dark colors, and the page background
+// in globals.css follows this value too.
 export const viewport: Viewport = { colorScheme: "light dark" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

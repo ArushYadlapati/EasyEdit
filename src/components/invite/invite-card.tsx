@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { SignInButton } from "@/app/(auth)/login/sign-in-button";
+import { PLAIN_ERROR } from "@/components/ui/cx";
 import { LogoMark } from "@/components/ui/logo";
 import { authClient } from "@/lib/auth-client";
 import { spacePath } from "@/lib/spaces/paths";
@@ -22,7 +23,6 @@ type Result = { error?: string };
 
 const PRIMARY = "flex h-11 w-full items-center justify-center rounded-full bg-foreground px-5 font-medium text-background transition-opacity disabled:opacity-60";
 const SECONDARY = "flex h-11 w-full items-center justify-center rounded-full border border-foreground/20 px-5 font-medium transition-opacity disabled:opacity-60";
-const ERROR = "rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800";
 
 const invitedLine = (o: Offer) => `${o.invitedBy} invited you to join ${o.teamName} as ${o.roleLabel}.`;
 
@@ -49,7 +49,7 @@ export function InviteCard({ state, notice = null, accept, decline }: { state: I
           <>
             <p>{invitedLine(state)}</p>
             {notice !== null && (
-              <p role="alert" className={ERROR}>
+              <p role="alert" className={PLAIN_ERROR}>
                 {notice}
               </p>
             )}
@@ -60,7 +60,7 @@ export function InviteCard({ state, notice = null, accept, decline }: { state: I
           <>
             <p>{invitedLine(state)}</p>
             {error !== null && (
-              <p role="alert" className={ERROR}>
+              <p role="alert" className={PLAIN_ERROR}>
                 {error}
               </p>
             )}

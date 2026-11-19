@@ -332,28 +332,6 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
       </div>
       <div className="h-heroScrim" />
 
-      <header className="h-nav">
-        <Link href="/" className="h-brand" aria-label="EasyEdit home">
-          <LogoMark size={26} />
-          <span>EasyEdit</span>
-        </Link>
-        <nav aria-label="On this page" className="h-navLinks">
-          <a href="#ai">AI agents</a>
-          <a href="#teams">Teams</a>
-          <a href="#start">Get started</a>
-        </nav>
-        <div className="h-navActions">
-          <Link href="/login" className="h-navSignIn">
-            Sign in
-          </Link>
-          {!closedBeta && (
-            <Link href="/login" className="h-btn h-btnSmall">
-              Start free
-            </Link>
-          )}
-        </div>
-      </header>
-
       <div className="h-heroText">
         <h1 id="home-title" className="h-heroTitle">
           <span className="h-sr">The video editor for AI agents, teams and creators, in your browser</span>

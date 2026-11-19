@@ -1,3 +1,4 @@
+import { PLAIN_ERROR } from "@/components/ui/cx";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
 import { readConsentRequest, type ConsentView } from "@/lib/connector/consent";
@@ -6,8 +7,6 @@ import { agentActorId, displayActor } from "@/lib/projects/display-actor";
 import { listMySpaces } from "@/lib/spaces/service";
 import { canChangeInAnySpace } from "@/lib/spaces/types";
 import { ConsentButtons } from "./consent-buttons";
-
-const WARNING = "rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800";
 
 // Where the code goes after Allow. Always said, so a member can tell when it is not where they started.
 function destinationLine({ destination }: ConsentView): string {
@@ -72,7 +71,7 @@ export default async function ConsentPage({ searchParams }: PageProps<"/consent"
           {source !== null && <p>{source}</p>}
           <p>{destinationLine(view)}</p>
         </div>
-        <p className={WARNING}>
+        <p className={PLAIN_ERROR}>
           {`Only allow this if you just connected EasyEdit in ${nameVerified ? agentName : "an AI agent"} yourself. If someone sent you a link to this page, choose Don't allow.`}
         </p>
         <ConsentButtons />

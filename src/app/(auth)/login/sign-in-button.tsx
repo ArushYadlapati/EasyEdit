@@ -3,7 +3,19 @@
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 
-export function SignInButton({ callbackURL = "/dashboard", errorCallbackURL = "/login" }: { callbackURL?: string; errorCallbackURL?: string }) {
+// A pill in the text colour, which follows the computer's light or dark setting (the invite card). The sign-in page
+// passes the public site's own pill instead, with its hover and disabled looks.
+const DEFAULT_LOOK = "h-11 w-full rounded-full bg-foreground px-5 font-medium text-background transition-opacity disabled:opacity-60";
+
+export function SignInButton({
+  callbackURL = "/dashboard",
+  errorCallbackURL = "/login",
+  className = DEFAULT_LOOK,
+}: {
+  callbackURL?: string;
+  errorCallbackURL?: string;
+  className?: string;
+}) {
   const [pending, setPending] = useState(false);
 
   async function signIn() {
@@ -21,7 +33,7 @@ export function SignInButton({ callbackURL = "/dashboard", errorCallbackURL = "/
       type="button"
       onClick={signIn}
       disabled={pending}
-      className="h-11 w-full rounded-full bg-foreground px-5 font-medium text-background transition-opacity disabled:opacity-60"
+      className={className}
     >
       Sign in with Google
     </button>

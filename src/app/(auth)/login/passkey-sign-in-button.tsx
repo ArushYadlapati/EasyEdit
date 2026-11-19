@@ -1,11 +1,9 @@
 "use client";
 
 import { useRef, useState, useSyncExternalStore } from "react";
+import { PLAIN_ERROR } from "@/components/ui/cx";
 import { authClient } from "@/lib/auth-client";
 import { passkeySignInErrorMessage } from "@/lib/passkey-error-message";
-
-// The login page's error box.
-const ERROR = "rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800";
 
 const noSubscription = () => () => {};
 
@@ -15,8 +13,13 @@ function isRedirect(data: unknown): boolean {
   return typeof data === "object" && data !== null && "redirect" in data && data.redirect === true;
 }
 
-// openSignUp: whether anyone may make an account, as the login page read it on the server.
-export function PasskeySignInButton({ openSignUp = false }: { openSignUp?: boolean } = {}) {
+// The quieter of the login page's two choices: a pill in a light tint of the text colour, under the white Google one.
+const DEFAULT_LOOK =
+  "h-11 w-full rounded-full bg-foreground/15 px-5 font-medium text-foreground transition-[background-color,opacity] hover:bg-foreground/20 disabled:opacity-60";
+
+// openSignUp: whether anyone may make an account, as the login page read it on the server. className: the button's
+// look, which the sign-in page sets to the public site's quieter pill.
+export function PasskeySignInButton({ openSignUp = false, className = DEFAULT_LOOK }: { openSignUp?: boolean; className?: string } = {}) {
   // The server and hydration render without the button; the browser then shows it only if it has WebAuthn.
   const supported = useSyncExternalStore(
     noSubscription,
@@ -53,19 +56,13 @@ export function PasskeySignInButton({ openSignUp = false }: { openSignUp?: boole
   }
 
   if (!supported) return null;
-  // Pulled up to the Google button so the two read as one pair of choices, as the consent page's buttons do.
   return (
-    <div className="-mt-3 flex w-full flex-col gap-3">
-      <button
-        type="button"
-        onClick={signIn}
-        disabled={pending}
-        className="h-11 w-full rounded-full border border-foreground/20 bg-transparent px-5 font-medium text-foreground transition-opacity disabled:opacity-60"
-      >
+    <div className="flex w-full flex-col gap-3">
+      <button type="button" onClick={signIn} disabled={pending} className={className}>
         Sign in with a passkey
       </button>
       {error !== null && (
-        <p role="alert" className={ERROR}>
+        <p role="alert" className={PLAIN_ERROR}>
           {error}
         </p>
       )}

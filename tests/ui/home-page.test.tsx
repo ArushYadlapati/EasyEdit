@@ -8,7 +8,7 @@ import { NewProjectForm } from "@/components/home/new-project-form";
 import PrivacyPage from "@/app/privacy/page";
 import TermsPage from "@/app/terms/page";
 import type { CurrentUser } from "@/lib/access-rules";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
 class Redirected extends Error {
   constructor(readonly to: string) {
@@ -123,17 +123,42 @@ describe("home page", () => {
     expect(track.querySelectorAll(".h-agent")).toHaveLength(16); // the row twice, so the loop has no seam
   });
 
-  it("has the AI, team and get-started sections, linked from the top, and no tools section", async () => {
+  it("has the AI, free and team sections, linked from the site's header, and no tools section", async () => {
     render(await Home());
-    for (const [name, id] of [
-      ["AI agents", "ai"],
-      ["Teams", "teams"],
-      ["Get started", "start"],
-    ]) {
-      expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(`#${id}`);
-      expect(document.getElementById(id)).toBeTruthy();
-    }
+    const header = screen.getByRole("banner");
+    const links = [...header.querySelectorAll("nav a")].map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(links).toEqual([
+      ["AI agents", "/#ai"],
+      ["Free", "/#free"],
+      ["Teams", "/#teams"],
+    ]);
+    for (const id of ["ai", "free", "teams"]) expect(document.querySelector(`main #${id}`), id).toBeTruthy();
+    expect(document.getElementById("free")?.textContent).toContain("Based in your Drive.");
     expect(document.getElementById("tools")).toBeNull();
+  });
+
+  it("puts the site's header and footer around its main, outside it", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    const { container } = render(await Home());
+    vi.unstubAllEnvs();
+    const [header, main, footer] = [...container.firstElementChild!.children];
+    expect(container.firstElementChild?.className).toBe("h-site");
+    expect([header.tagName, main.tagName, footer.tagName]).toEqual(["HEADER", "MAIN", "FOOTER"]);
+    expect(screen.getByRole("banner")).toBe(header);
+    expect(screen.getByRole("contentinfo")).toBe(footer);
+    // The first screen starts under the header, and the old bar inside it is gone.
+    expect(main.firstElementChild?.classList.contains("h-hero")).toBe(true);
+    expect(main.querySelector("header, footer")).toBeNull();
+    // One white pill in the header: Start free. Sign in is a plain link beside it.
+    expect([...header.querySelectorAll(".h-btn")].map((a) => a.textContent)).toEqual(["Start free"]);
+    const footerLinks = [...footer.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(footerLinks).toEqual([
+      ["Sign in", "/login"],
+      ["Privacy", "/privacy"],
+      ["Terms", "/terms"],
+      ["help@arush.dev", "mailto:help@arush.dev"],
+    ]);
+    expect(footer.textContent).toContain("© 2026 EasyEdit");
   });
 
   it("draws its stills and posters from WebP files in public/home, each img sized to its file's shape", async () => {
@@ -298,7 +323,8 @@ describe("terms page", () => {
     expect(text).toContain("You keep ownership");
     expect(text).toContain("provided as is");
     expect(screen.getByRole("link", { name: "privacy page" }).getAttribute("href")).toBe("/privacy");
-    expect(screen.getByRole("link", { name: "help@arush.dev" }).getAttribute("href")).toBe("mailto:help@arush.dev");
+    const article = within(document.querySelector("article")!);
+    expect(article.getByRole("link", { name: "help@arush.dev" }).getAttribute("href")).toBe("mailto:help@arush.dev");
     expect(screen.queryByText(/Draft/)).toBeNull();
   });
 });

@@ -101,7 +101,9 @@ describe("the login page", () => {
     vi.mocked(readConsentRequest).mockResolvedValue({ ok: false });
     await show(LoginPage, signedRequest);
     expect(screen.getByRole("alert").textContent).toBe("This connection request has expired. Go back to your AI agent and connect again.");
-    expect(screen.getByRole("alert").className).toContain("text-red-800");
+    // Said in the danger colour, with no pink box behind it.
+    expect(screen.getByRole("alert").className.split(" ")).toContain("text-danger");
+    expect(screen.getByRole("alert").className).not.toMatch(/\bbg-|\bborder\b/);
     expect(screen.queryByText("Sign in to connect Claude.")).toBeNull();
     expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeTruthy();
   });
@@ -152,7 +154,7 @@ describe("the consent page", () => {
     expect(warning()).toBe(
       "Only allow this if you just connected EasyEdit in Claude yourself. If someone sent you a link to this page, choose Don't allow.",
     );
-    expect(screen.getByText(/^Only allow this if you just connected/).className).toContain("text-red-800");
+    expect(screen.getByText(/^Only allow this if you just connected/).className.split(" ")).toContain("text-danger");
     expect(screen.getByRole("button", { name: "Allow" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Don't allow" })).toBeTruthy();
     expect(vi.mocked(requireUser)).toHaveBeenCalledWith();

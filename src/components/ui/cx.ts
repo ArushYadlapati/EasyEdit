@@ -42,3 +42,7 @@ export const SWATCH_BOX = cx(
 // A small tag beside a name, such as Starter or Soon: the label size, 11 px, which is as small as words to read get. It is
 // the same look as the editor's View only tag, 6 px a side like a key cap.
 export const TAG = "shrink-0 rounded-[4px] border border-ed-line px-1.5 text-[11px] leading-4 font-medium text-ed-muted";
+// An error or warning on a plain page outside the app (sign-in, the passkey button, consent, an invite): the words in
+// the danger colour, with no box behind them. --danger (globals.css) is deep enough to read on a white page and light
+// enough on a dark one, so the same class works on pages that follow the computer's setting and on the dark site.
+export const PLAIN_ERROR = "text-base font-medium text-danger text-pretty";

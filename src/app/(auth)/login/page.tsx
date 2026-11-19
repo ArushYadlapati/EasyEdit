@@ -1,4 +1,7 @@
+import type { Metadata, Viewport } from "next";
 import { redirect } from "next/navigation";
+import { SITE_METADATA, SITE_VIEWPORT, SitePage } from "@/components/site/site-page";
+import { PLAIN_ERROR } from "@/components/ui/cx";
 import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/access";
 import { isConnectorRequest, readConsentRequest } from "@/lib/connector/consent";
@@ -7,9 +10,14 @@ import { openSignUp } from "@/lib/signup";
 import { loginErrorMessage } from "@/lib/login-error-message";
 import { PasskeySignInButton } from "./passkey-sign-in-button";
 import { SignInButton } from "./sign-in-button";
-import { LogoMark } from "@/components/ui/logo";
 
-const ERROR = "rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800";
+// In the public site's frame, always dark like the home page; the header leads back home, and leaves out its own Sign in
+// and Start free, which lead here.
+export const metadata: Metadata = { ...SITE_METADATA, title: "Sign in · EasyEdit" };
+export const viewport: Viewport = SITE_VIEWPORT;
+
+// The home page says the same while sign-up is closed.
+const CLOSED_BETA = "EasyEdit is in closed beta. Sign-in is by invitation only for now.";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const params = await searchParams;
@@ -27,25 +35,29 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const agentName = request?.ok && request.view.nameVerified ? request.view.agentName : "an AI agent";
 
   return (
-    <main className="flex flex-1 items-center justify-center px-6 py-24">
-      <div className="flex w-full max-w-sm flex-col items-center gap-6 text-center">
-        <LogoMark size={56} />
-        <h1 className="text-2xl font-semibold tracking-tight">EasyEdit</h1>
-        {forClaude && !expired && <p>{`Sign in to connect ${agentName}.`}</p>}
-        {expired && (
-          <p role="alert" className={ERROR}>
-            This connection request has expired. Go back to your AI agent and connect again.
-          </p>
-        )}
-        {errorMessage !== null && (
-          <p role="alert" className={ERROR}>
-            {errorMessage}
-          </p>
-        )}
-        {open && <p className="text-sm text-foreground/70">Sign in or create an account with Google.</p>}
-        <SignInButton />
-        <PasskeySignInButton openSignUp={open} />
-      </div>
-    </main>
+    <SitePage current="login">
+      <main className="h-plain">
+        <div className="h-plainColumn h-plainNarrow">
+          <h1 className="h-plainTitle">Sign in</h1>
+          {forClaude && !expired && <p className="h-plainLead h-plainInk">{`Sign in to connect ${agentName}.`}</p>}
+          {expired && (
+            <p role="alert" className={PLAIN_ERROR}>
+              This connection request has expired. Go back to your AI agent and connect again.
+            </p>
+          )}
+          {errorMessage !== null && (
+            <p role="alert" className={PLAIN_ERROR}>
+              {errorMessage}
+            </p>
+          )}
+          <p className="h-plainLead">{open ? "Sign in or create an account with Google." : CLOSED_BETA}</p>
+          {/* The site's own pills: white for Google, the quieter tint for a passkey. */}
+          <div className="flex flex-col gap-3">
+            <SignInButton className="h-btn w-full" />
+            <PasskeySignInButton openSignUp={open} className="h-btn h-btnGhost w-full" />
+          </div>
+        </div>
+      </main>
+    </SitePage>
   );
 }
