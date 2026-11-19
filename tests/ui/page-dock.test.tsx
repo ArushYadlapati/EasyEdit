@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  asideFrom,
+  CLEAR,
   clipShares,
   currentAt,
   DOCK,
@@ -59,7 +61,7 @@ function Page({ heroTimeline = false }: { heroTimeline?: boolean }) {
         <section id="agents" aria-labelledby="agents-title">
           <h2 id="agents-title">Works with every AI agent.</h2>
         </section>
-        <section id="timeline" className="h-close" aria-labelledby="close-title" data-dock-label="One timeline">
+        <section id="timeline" className="h-close" aria-labelledby="close-title" data-dock-label="Start">
           <h2 id="close-title">You and your agent share one timeline.</h2>
           <p>
             <a href="/login">Start free</a>
@@ -158,7 +160,7 @@ describe("page dock", () => {
       ["Free", "#free"],
       ["Teams", "#teams"],
       ["Works with every AI agent", "#agents"], // no data-dock-label: the first sentence of its heading
-      ["One timeline", "#timeline"], // the page's close is the last clip
+      ["Start", "#timeline"], // the page's close is the last clip
     ]);
     // It is drawn UI, in <main> after the last section, so Tab reaches it once it has been through the page.
     expect(dock().hasAttribute("data-ui")).toBe(true);
@@ -182,7 +184,7 @@ describe("page dock", () => {
     expect(current()).toEqual(["Teams"]);
     // The page's last screen: the line has gone on down to the window's foot, past the close, so the close is current.
     scrollTo(5200);
-    expect(current()).toEqual(["One timeline"]);
+    expect(current()).toEqual(["Start"]);
   });
 
   it("gives a section with no id to the clip before it", () => {
@@ -244,6 +246,35 @@ describe("page dock", () => {
     scrollTo(1300 - TIMELINE - FOLD / 4);
     expect(fold()).toEqual(["0.7500", "0.7500"]);
     expect(shown()).toBe(false);
+  });
+
+  it("has the fold done where a link to the first section lands it, a fraction of a px either way", () => {
+    // The first screen's foot is 1300.4 px down the page; the page scrolls by whole px, so a link that puts it a
+    // timeline from the window's top (where the fold ends) leaves it 176.4 px down.
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      const bottom = this.classList.contains("h-hero") ? 1300.4 - window.scrollY : 0;
+      return { top: 0, height: bottom, bottom, left: 0, right: 0, width: 0, x: 0, y: 0 } as DOMRect;
+    });
+    Object.defineProperty(window, "scrollY", { value: 1300 - TIMELINE, configurable: true });
+    render(<Page />);
+    runFrames();
+    expect(dock().style.getPropertyValue("--fold")).toBe("1.0000");
+    expect(dock().hasAttribute("data-shown")).toBe(true);
+  });
+
+  it("with reduced motion, has the dock there where a link to the first section lands it, a fraction of a px either way", () => {
+    // With reduced motion a link to the first section puts the first screen's foot a fold from the window's top,
+    // where all of the timeline has gone past; with that foot 1300.4 px down the page, it is left 120.4 px down.
+    reduce = true;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      const bottom = this.classList.contains("h-hero") ? 1300.4 - window.scrollY : 0;
+      return { top: 0, height: bottom, bottom, left: 0, right: 0, width: 0, x: 0, y: 0 } as DOMRect;
+    });
+    Object.defineProperty(window, "scrollY", { value: 1300 - FOLD, configurable: true });
+    render(<Page />);
+    runFrames();
+    expect(dock().style.getPropertyValue("--fold")).toBe("1.0000");
+    expect(dock().hasAttribute("data-shown")).toBe(true);
   });
 
   it("with reduced motion, holds and folds nothing: the dock is simply there once the timeline has gone past the top", () => {
@@ -421,7 +452,7 @@ describe("page dock", () => {
       "Free",
       "Teams",
       "Works with every AI agent",
-      "One timeline",
+      "Start",
     ]);
 
     const playhead = document.querySelector<HTMLElement>(".h-dockPlayhead")!;
@@ -457,6 +488,69 @@ describe("page dock", () => {
     expect(playheadAt(2550, spans, shares)).toBe(0.75); // between two sections: at the end of the first one's clip
     expect(playheadAt(2800, spans, shares)).toBe(0.875);
     expect(playheadAt(9000, spans, shares)).toBe(1);
+  });
+
+  it("steps up out of the window for the page's end, from the last heading that can come up to it", () => {
+    // A 6000 px page in an 800 px window: at most 5200 px of scroll. Each heading is 180 px into its section. The
+    // agents' heading (4680) is the last one the page can bring up to the dock; the close's (5580) stays 380 px down.
+    const boxes: Record<string, [number, number]> = { ...BOXES, agents: [4500, 900], timeline: [5400, 600] };
+    for (const [id, [top]] of Object.entries(boxes)) boxes[`${id === "timeline" ? "close" : id}-title`] = [top + 180, 150];
+    layOut(boxes);
+    render(<Page />);
+    runFrames();
+    const aside = () => dock().hasAttribute("data-aside");
+    // Mid-page, with the Teams heading under it, it stays: the page scrolls on past that.
+    scrollTo(3480 - DOCK / 2);
+    expect([dock().hasAttribute("data-shown"), aside()]).toEqual([true, false]);
+    // A link to the agents' section puts its top on the dock's foot: the dock is still there, the heading 180 px under it.
+    scrollTo(4500 - DOCK);
+    expect(aside()).toBe(false);
+    // Up to CLEAR px from the dock's foot, the heading keeps the dock there; any nearer, and the dock goes.
+    scrollTo(4680 - DOCK - CLEAR);
+    expect(aside()).toBe(false);
+    scrollTo(4680 - DOCK - CLEAR + 1);
+    expect(aside()).toBe(true);
+    // It stays out to the end, so the end's words are never under it, and comes back as the page goes back up.
+    scrollTo(5200);
+    expect(aside()).toBe(true);
+    expect(within(dock()).getByRole("link", { name: "Start" }).getAttribute("aria-current")).toBe("location");
+    scrollTo(4000);
+    expect(aside()).toBe(false);
+  });
+
+  it("stays over a section the page's end has taken up past it, when the end itself stays clear of it", () => {
+    // A tall window: at the end (5200 px down) the agents' section starts 13 px above the window's top, with its
+    // heading 167 px down, out of the dock's reach, and the Teams section has gone up past the dock. Nothing of the
+    // end comes under the dock, so it stays, through Teams and on to the end.
+    const boxes: Record<string, [number, number]> = { ...BOXES, teams: [3300, 1887], agents: [5187, 413], timeline: [5600, 400] };
+    for (const [id, [top]] of Object.entries(boxes)) boxes[`${id === "timeline" ? "close" : id}-title`] = [top + 180, 150];
+    layOut(boxes);
+    render(<Page />);
+    runFrames();
+    for (const y of [3480 - DOCK - CLEAR + 1, 4400, 5000, 5200]) {
+      scrollTo(y);
+      expect([y, dock().hasAttribute("data-shown"), dock().hasAttribute("data-aside")]).toEqual([y, true, false]);
+    }
+    expect(within(dock()).getByRole("link", { name: "Start" }).getAttribute("aria-current")).toBe("location");
+  });
+
+  it("works out from a heading whether the page can bring it up to the dock, and from where", () => {
+    // At most 5200 px of scroll: a heading 5200 + 56 + 48 px down never comes nearer than CLEAR to the dock's foot.
+    expect(asideFrom(5200 + DOCK + CLEAR, 6000, 5200)).toBeNull();
+    expect(asideFrom(5580, 6000, 5200)).toBeNull();
+    expect(asideFrom(5200 + DOCK + CLEAR - 1, 6000, 5200)).toBe(5200 - 1);
+    expect(asideFrom(4680, 6000, 5200)).toBe(4680 - DOCK - CLEAR);
+    // A section that has gone up past the dock by the page's end (its foot no lower than the dock's foot there) is the
+    // page's middle: its heading doesn't send the dock away.
+    expect(asideFrom(3480, 5200 + DOCK, 5200)).toBeNull();
+    expect(asideFrom(3480, 5200 + DOCK + 1, 5200)).toBe(3480 - DOCK - CLEAR);
+    // With no heading the page can bring up to it (each one low in the last screen), the dock stays to the end.
+    const low: Record<string, [number, number]> = { ...BOXES };
+    for (const id of ["ai", "start", "free", "teams", "agents", "close"]) low[`${id}-title`] = [5400, 40];
+    layOut(low);
+    render(<Page />);
+    scrollTo(5200);
+    expect(dock().hasAttribute("data-aside")).toBe(false);
   });
 
   it("gives a short section a clip wide enough for its name", () => {
@@ -526,8 +620,12 @@ describe("page dock styles", () => {
     expect(rule(".h-dockPlayhead")).toContain("height: calc(56px + (1 - var(--fold, 0)) * 120px);");
     expect(rule(".h-dockPlayhead")).not.toContain("transition");
     expect(rule(".h-dock[data-shown] .h-dockPlayhead")).toContain("transition: transform 160ms var(--h-ease);");
-    // Links reached with Tab stop below it while it shows.
+    // Links reached with Tab stop below it while it shows (home-page.test.tsx has where a link to a section lands).
     expect(rule("html:has(.h-dock[data-shown])")).toContain("scroll-padding-top: 72px;");
+    // For the page's end it goes up out of the window, its edge and the black behind it with it, sliding there and
+    // back; with one of its links focused it stays.
+    expect(rule(".h-dock")).toContain("transition: translate 240ms var(--h-ease);");
+    expect(rule(".h-dock[data-aside]:not(:focus-within)")).toContain("translate: 0 calc(-100% - 2px);");
     // The playhead moves by transform; its box is as wide as the lane.
     expect(rule(".h-dockPlayhead")).toContain("left: var(--names);");
     expect(rule(".h-dockPlayhead")).not.toMatch(/\bleft: calc|\bwidth:/);

@@ -99,7 +99,7 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
 
         {/* The page's close, a beat of its own after the agents and the last clip on the page's dock: you and your agent
             on the same project, then the one action again. */}
-        <section id="timeline" className="h-section h-close" aria-labelledby="close-title" data-dock-label="One timeline">
+        <section id="timeline" className="h-section h-close" aria-labelledby="close-title" data-dock-label="Start">
           <h2 id="close-title" className="h-h2">
             <span className="h-line">You and your agent</span> <span className="h-line">share one timeline.</span>
           </h2>

@@ -11,7 +11,7 @@
    every phone width: up to 9.2em, which "Free, and your files" (8.2em) needs. On a phone nothing changes size but the
    display token. */
 .h-page {
-  --h-display: clamp(48px, 7vw, 112px);
+  --h-display: clamp(48px, 7vw, 96px);
   --h-h2: min(clamp(38px, 5.2vw, 76px), (100vw - 2 * var(--h-pad)) / 9.2);
   --h-lead: clamp(17px, 1.3vw, 20px);
   --h-body: 17px;
@@ -20,10 +20,12 @@
      the height it loses on the way (176 px down to the dock's 56 px), so its foot keeps pace with the page under it.
      page-dock.tsx reads the page with the same numbers. */
   --h-fold: 120px;
-  /* The page's one column: as wide as the first screen's headline band (its headline, 176 px, then the 30rem column
-     beside it), on the page's left margin. On a window up to about 1450 px wide it is the whole width inside the
-     margins; wider, everything but the editor, the dock and the marquee stops at its right edge. */
-  --h-column: calc(var(--h-display) * 7.04 + 176px + 30rem);
+  /* The page's one column, on the page's left margin: as wide as the first screen's headline band would be with its
+     headline at 7vw (7.04 of that, 176 px, then the 30rem column beside it), growing with the window up to 1600 px
+     wide. On a window up to about 1450 px wide it is the whole width inside the margins, so the sections end where
+     the editor, the dock and the header do; wider, everything but the editor, the dock and the marquee stops at its
+     right edge. The headline itself stops growing at 96 px, so the band has a narrower width of its own. */
+  --h-column: calc(clamp(48px, 7vw, 112px) * 7.04 + 176px + 30rem);
   /* Room between the last section and the site's footer (less on a short computer screen: see the close). */
   --h-room: clamp(80px, 11vw, 140px);
   width: 100%;
@@ -87,17 +89,17 @@
 
 /* The headline on the left; the line under it, the two pills and the note on the right, along its foot. The space
    below holds the author's name tag. On a wide window the band stops growing once the room between
-   its two columns reaches 176 px (about what it is at 1440 px): the headline's longer line is 7.04em, so the lead and
-   Start free stay beside the headline they belong to instead of drifting off to the window's far side, while the
-   editor below still runs the whole width. That width is the page's column (--h-column), which every section keeps
-   to as well. */
+   its two columns reaches 176 px (from about 1410 px wide, where the headline has stopped at 96 px): the headline's
+   longer line is 7.04em, so the lead and Start free stay beside the headline they belong to instead of drifting off
+   to the window's far side, while the editor below still runs the whole width. The sections' column (--h-column)
+   goes on growing a little further, so up to about 1450 px wide they still end with the editor. */
 .h-heroBand {
   display: grid;
   grid-template-columns: auto minmax(0, 30rem);
   justify-content: space-between;
   align-items: end;
   column-gap: 48px;
-  max-width: var(--h-column);
+  max-width: calc(var(--h-display) * 7.04 + 176px + 30rem);
   padding: clamp(12px, 2.5vh, 32px) 0 68px;
 }
 /* Two lines at every width: the column is as wide as the longer line, and the size follows the window so that it
@@ -2133,21 +2135,33 @@
 .h-closeLink:hover {
   text-decoration: underline;
 }
-/* On a computer the room above the close is set so that the page's last screen, scrolled to the end, has the
-   agents' row whole under the dock, never part way under it: the window's height, less the dock and 24 px under it
-   (80 px), the row's Pause pill and the gap under it (46 px), the row (1.2 of the h2 size), the close's two-line
-   heading, the room over its 52 px pill, the page's own room before the footer, and the footer (112 px). It stays
-   between 48 px and a section's gap. On a computer screen 800 px tall or less the page keeps less room
-   before the footer, so the close keeps more above it. A window under 710 px tall has no room for all of that, so
-   there the row goes on up under the dock instead: the room above the close is then at least what puts the row's
-   foot on the dock's (the window less the dock, the heading, its pill and the room over it, the page's room and the
-   footer: 220 px and the rest). */
+/* On a computer the room above the close is set from the window's height, so that the page's last screen, scrolled to
+   the end, starts in a gap, with nothing cut at the window's top (the dock has stepped up out of the window by then,
+   page-dock.tsx), and holds the agents' row and the close together.
+   --h-fit is the room that starts the last screen 24 px above the agents' heading, with the whole of their section,
+   the close and the footer under it: the window's height, less those 24 px, the agents' two-line heading, the 28 px
+   over their lead and its two lines, the gap over the row's Pause pill, the pill and the 16 px under it (46 px), the
+   row (1.2 of the h2 size), the close's two-line heading, the room over its 52 px pill, the page's own room before
+   the footer, and the footer (112 px). Where that leaves 48 px or more (from about 1025 px tall on a wide window), it
+   is the room, at most a section's gap; on a taller window the last screen starts higher, in the room above the
+   agents' heading.
+   A shorter window has no room for all of that, so the last screen starts in the gap between the agents' lead and the
+   Pause instead, the Pause 24 px down, the row whole under it, then the close and the footer: the room takes back
+   what the agents' heading, its lead and the gap over the Pause took (--h-lift); at least 48 px. The last term below
+   is all of --h-lift where --h-fit is 48 px or more and nothing where it is less, so it picks one of the two.
+   On a computer screen 800 px tall or less the page keeps less room before the footer, so the close keeps more above
+   it. */
 @media (width > 860px) {
   .h-close {
-    padding-top: clamp(
+    --h-fit: calc(
+      100svh - 262px - var(--h-h2) * 5.2 - var(--h-lead) * 3 - clamp(48px, 5vw, 72px) - clamp(32px, 3.5vw, 48px) -
+        var(--h-room)
+    );
+    --h-lift: calc(var(--h-h2) * 2 + 28px + var(--h-lead) * 3 + clamp(48px, 5vw, 72px));
+    padding-top: max(
       48px,
-      100svh - 290px - var(--h-h2) * 3.2 - clamp(32px, 3.5vw, 48px) - var(--h-room),
-      clamp(120px, 14vw, 180px)
+      min(var(--h-fit), clamp(120px, 14vw, 180px)) + var(--h-lift) -
+        clamp(0px, (var(--h-fit) - 48px) * 1000, var(--h-lift))
     );
   }
 }
@@ -2156,11 +2170,23 @@
     --h-room: 80px;
   }
 }
-@media (width > 860px) and (height < 710px) {
+/* With reduced motion the agents stand in rows, as many as the width makes, with no Pause, so the last screen can't be
+   fitted to them: the room is what it would be at the Pause, at most a section's gap, and the window's top cuts the
+   rows wherever it falls, as anywhere else on the page. */
+@media (width > 860px) and (prefers-reduced-motion: reduce) {
+  .h-close {
+    padding-top: clamp(48px, var(--h-fit) + var(--h-lift), clamp(120px, 14vw, 180px));
+  }
+}
+/* A window under 660 px tall has no room for the row and the close together, so the row goes on up past the window's
+   top instead: the room above the close is then at least what puts the row's foot 24 px above the window's top, and
+   the last screen is the close and the footer (the window and those 24 px, less the heading, its pill and the room
+   over it, the page's room and the footer: 140 px and the rest). */
+@media (width > 860px) and (height < 660px) {
   .h-close {
     padding-top: max(
       clamp(120px, 14vw, 180px),
-      100svh - 220px - var(--h-h2) * 2 - clamp(32px, 3.5vw, 48px) - var(--h-room)
+      100svh - 140px - var(--h-h2) * 2 - clamp(32px, 3.5vw, 48px) - var(--h-room)
     );
   }
 }
@@ -2356,8 +2382,6 @@
 @media (width > 860px) {
   .h-hero + .h-section {
     padding-top: calc(clamp(120px, 14vw, 180px) - var(--h-fold));
-    /* A link to it (See it edit, the header's AI agents) leaves room for the dock above its heading. */
-    scroll-margin-top: 72px;
   }
 }
 
@@ -2366,7 +2390,8 @@
    the dock's track rides on the timeline's video track; from the handover it is drawn there; once the fold is done it
    has its own panel (on ::before), the page's black behind it across the whole window (on ::after), and takes the
    pointer, and the timeline goes on up behind it. It is main's last child, so the keyboard comes to it after the last
-   section, and it shows whenever one of its links has the focus. Only rendered on a computer.
+   section, and it shows whenever one of its links has the focus. Near the page's end it steps up out of the window
+   (page-dock.tsx says from where) and comes back down as the page scrolls back up. Only rendered on a computer.
    --morph is how far its clips have gone from the timeline's video clips to the sections' (0 to 1, over the fold's
    second half), --label how far their names have changed over (0 to 1, over the middle 60% of that), and --taken
    whether it has the track yet (1 from the handover on). */
@@ -2388,6 +2413,11 @@
   font-size: 12px;
   line-height: 16px;
   pointer-events: none;
+  transition: translate 240ms var(--h-ease);
+}
+/* Out of the window, its edge and the black behind it too, unless one of its links has the focus. */
+.h-dock[data-aside]:not(:focus-within) {
+  translate: 0 calc(-100% - 2px);
 }
 .h-dock::before {
   content: "";
@@ -2434,6 +2464,40 @@
 /* While it shows, whatever the browser brings into view (a link reached with Tab) stops below it, not under it. */
 html:has(.h-dock[data-shown]) {
   scroll-padding-top: 72px;
+}
+/* A link to a section (a clip on the dock, the header's AI agents, Free and Teams, See it edit, an address with a
+   section in it) puts the section's top right on the dock's foot, so nothing of the section before it shows between
+   the two, and the section's own room keeps its heading clear of the dock. --h-land is what the section asks for on
+   top of what the browser already leaves: 56 px while the dock isn't showing yet, and 16 px less than its 72 px once
+   it is. The first section's room starts a fold higher, at the first screen's foot, which is empty once the timeline
+   has folded, so its heading lands as far under the dock as every other's. */
+@media (width > 860px) {
+  .h-page {
+    --h-land: 56px;
+  }
+  html:has(.h-dock[data-shown]) .h-page {
+    --h-land: -16px;
+  }
+  .h-section {
+    scroll-margin-top: var(--h-land);
+  }
+  .h-hero + .h-section {
+    scroll-margin-top: calc(var(--h-fold) + var(--h-land));
+  }
+  /* A link to the close goes to the page's very end, wherever the close stands in the last screen: this asks for more
+     than the page can scroll, and the browser stops at the end. Tab stops are the links', so they aren't moved. */
+  .h-close {
+    scroll-margin-top: -100vh;
+  }
+}
+/* With reduced motion the timeline isn't held: it goes up with the page, and the dock is there only once all of it
+   has gone past the window's top, which is when the first screen's foot is a fold (120 px) down. So a link to the
+   first section lands its top there, 56 px higher than it would, and only the first screen's empty foot shows
+   between the dock and the section. */
+@media (width > 860px) and (prefers-reduced-motion: reduce) {
+  .h-hero + .h-section {
+    scroll-margin-top: calc(var(--h-fold) - 56px + var(--h-land));
+  }
 }
 /* Its name comes in over the last quarter of the fold, as the timeline's "Video 1" goes over the third. */
 .h-dockName {

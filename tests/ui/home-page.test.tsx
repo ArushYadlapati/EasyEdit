@@ -478,13 +478,14 @@ describe("home page free, teams and every agent", () => {
     vi.unstubAllEnvs();
     const agents = document.getElementById("agents")!;
     // A beat of its own, the section after the agents and the last clip on the page's dock: you and your agent on one
-    // project, set as two lines, then the action.
+    // project, set as two lines, then the action. It is the page's shortest section, so its clip is the dock's
+    // narrowest (8% of the track, about 70 px at 1024 px wide), and its name is one short word that fits it whole.
     const close = agents.nextElementSibling as HTMLElement;
     expect([close.tagName, close.className, close.id, close.dataset.dockLabel]).toEqual([
       "SECTION",
       "h-section h-close",
       "timeline",
-      "One timeline",
+      "Start",
     ]);
     const heading = within(close).getByRole("heading", { level: 2, name: "You and your agent share one timeline." });
     expect(close.getAttribute("aria-labelledby")).toBe(heading.id);
@@ -531,6 +532,10 @@ describe("home page stylesheet (home.css)", () => {
     // On a phone the display size changes, to fit the longer line of a two-line headline; nothing else changes size.
     const phone = rules.filter((r) => r.media === "@media (max-width: 860px)" && r.selectors.includes(".h-page"));
     expect(phone.flatMap((r) => [...r.decls.keys()])).toEqual(["--h-display"]);
+    // Display type stops at 96 px (6rem) on every window.
+    const displaySizes = rules.filter((r) => r.decls.has("--h-display")).map((r) => r.decls.get("--h-display"));
+    expect(displaySizes).toHaveLength(2);
+    for (const value of displaySizes) expect(value).toMatch(/^clamp\(.*, 96px\)$/);
     const resized = rules.filter((r) => r.media !== null && r.selectors.some(own) && r.decls.has("font-size"));
     expect(resized).toEqual([]);
     // The display size is the first screen's headline's alone; every section heading is h2.
@@ -625,36 +630,115 @@ describe("home page stylesheet (home.css)", () => {
     expect(base(".h-page").get("padding-bottom")).toBe("var(--h-room)");
   });
 
-  it("ends a computer's last screen with the agents' row whole under the dock, or all the way under it", () => {
+  it("ends a computer's last screen in a gap, over the agents' heading or their Pause, with a section's gap at most", () => {
     const at = (media: string, selector: string) => rules.find((r) => r.media === media && r.selectors.includes(selector))?.decls;
-    // Its room above is what is left of the window once the dock (and 24 px), the row's pill (30 + 16), the row (1.2
-    // of h2), the close's heading (2 of h2) with the room over its 52 px pill, the page's room and the 112 px footer
-    // have theirs: between 48 px and a section's gap.
-    expect(at("@media (width > 860px)", ".h-close")?.get("padding-top")).toBe(
-      "clamp( 48px, 100svh - 290px - var(--h-h2) * 3.2 - clamp(32px, 3.5vw, 48px) - var(--h-room), clamp(120px, 14vw, 180px) )",
+    const close = at("@media (width > 860px)", ".h-close")!;
+    // --h-fit starts the last screen 24 px above the agents' heading, with the rest of the page under it: those 24 px,
+    // the two-line heading (2 of h2), 28 px and the lead's two lines (3 of lead), the gap over the Pause, the pill and
+    // the 16 px under it (30 + 16), the row (1.2 of h2), the close's heading (2 of h2) with the room over its 52 px
+    // pill, the page's room and the 112 px footer.
+    expect(close.get("--h-fit")).toBe(
+      "calc( 100svh - 262px - var(--h-h2) * 5.2 - var(--h-lead) * 3 - clamp(48px, 5vw, 72px) - clamp(32px, 3.5vw, 48px) - var(--h-room) )",
     );
-    expect(56 + 24 + 30 + 16 + 52 + 112).toBe(290);
+    expect(24 + 28 + 30 + 16 + 52 + 112).toBe(262);
+    // --h-lift is what the heading, its lead and the gap over the Pause took: without room for them, the last screen
+    // starts 24 px above the Pause instead.
+    expect(close.get("--h-lift")).toBe("calc(var(--h-h2) * 2 + 28px + var(--h-lead) * 3 + clamp(48px, 5vw, 72px))");
+    expect(close.get("padding-top")).toBe(
+      "max( 48px, min(var(--h-fit), clamp(120px, 14vw, 180px)) + var(--h-lift) - clamp(0px, (var(--h-fit) - 48px) * 1000, var(--h-lift)) )",
+    );
+    // Those 24 px are inside the gap between the lead and the Pause at every width (48 px at its least), so no line of
+    // the lead shows.
+    const pause = rules.find((r) => r.media === null && r.selectors.includes(".h-marqueePause"))!.decls;
+    expect(pause.get("margin-top")).toBe("clamp(48px, 5vw, 72px)");
+    expect(24).toBeLessThan(48);
     // A short computer screen keeps less room before the footer, so the close can keep more above it.
     expect(at("@media (width > 860px) and (height <= 800px)", ".h-page")?.get("--h-room")).toBe("80px");
-    // Under 710 px tall there is no room for all of that: the row goes up under the dock instead, its foot on the dock's.
-    expect(at("@media (width > 860px) and (height < 710px)", ".h-close")?.get("padding-top")).toBe(
-      "max( clamp(120px, 14vw, 180px), 100svh - 220px - var(--h-h2) * 2 - clamp(32px, 3.5vw, 48px) - var(--h-room) )",
+    // The room above the close, worked through for a few windows (in px, the window's width and height).
+    const clamp = (lo: number, value: number, hi: number) => Math.min(Math.max(value, lo), hi);
+    const room = (w: number, h: number) => {
+      const h2 = Math.min(clamp(38, 0.052 * w, 76), (w - 2 * clamp(20, 0.03 * w, 40)) / 9.2);
+      const lead = clamp(17, 0.013 * w, 20);
+      const over = clamp(48, 0.05 * w, 72);
+      const page = h <= 800 ? 80 : clamp(80, 0.11 * w, 140);
+      const fit = h - 262 - h2 * 5.2 - lead * 3 - over - clamp(32, 0.035 * w, 48) - page;
+      const lift = h2 * 2 + 28 + lead * 3 + over;
+      return Math.max(48, Math.min(fit, clamp(120, 0.14 * w, 180)) + lift - clamp(0, (fit - 48) * 1000, lift));
+    };
+    // The whole agents' section in the last screen, 24 px of room above its heading; on a taller window a section's
+    // gap at most, the window's top higher in the room above the heading.
+    expect(room(1920, 1080)).toBeCloseTo(102.8, 1);
+    expect(room(1920, 1200)).toBe(180);
+    // No room for the heading as well: the last screen starts 24 px above the Pause, as it did before.
+    expect(room(1920, 1025)).toBeCloseTo(359.8, 1);
+    expect(room(1920, 1026)).toBeCloseTo(48.8, 1);
+    expect(room(1440, 900)).toBeCloseTo(238.4, 1);
+    expect(room(1024, 768)).toBeCloseTo(247.8, 1);
+    // With reduced motion the agents stand in rows, as many as the width makes, with no Pause: the room is what it
+    // would be at the Pause, but never more than a section's gap, so the end opens no hole above the close.
+    const still = "@media (width > 860px) and (prefers-reduced-motion: reduce)";
+    expect(at(still, ".h-close")?.get("padding-top")).toBe(
+      "clamp(48px, var(--h-fit) + var(--h-lift), clamp(120px, 14vw, 180px))",
     );
-    expect(56 + 52 + 112).toBe(220);
-    // The widest window's row and close fit above 710 px: the room left is never under 48 px there.
+    // Under 660 px tall there is no room for the row and the close together: the row goes on up instead, its foot
+    // 24 px over the window's top. It comes after the reduced-motion rule, so a short window takes it either way.
+    const short = "@media (width > 860px) and (height < 660px)";
+    expect(at(short, ".h-close")?.get("padding-top")).toBe(
+      "max( clamp(120px, 14vw, 180px), 100svh - 140px - var(--h-h2) * 2 - clamp(32px, 3.5vw, 48px) - var(--h-room) )",
+    );
+    expect(52 + 112 - 24).toBe(140);
+    const index = (media: string) => rules.findIndex((r) => r.media === media && r.selectors.includes(".h-close"));
+    expect(index(still)).toBeLessThan(index(short));
+    // The widest window's row and close fit from 660 px tall: the room left is never under 48 px there.
     const h2 = 76;
-    expect(710 - 290 - h2 * 3.2 - 48 - 80).toBeGreaterThanOrEqual(48);
+    expect(660 - 234 - h2 * 3.2 - 48 - 80).toBeGreaterThanOrEqual(48);
   });
 
   it("keeps every section on the first screen's left edge, the first one starting a fold nearer the timeline", () => {
     const section = rules.find((r) => r.media === null && r.selectors.includes(".h-section"))!.decls;
     expect(section.has("margin")).toBe(false);
     expect(section.get("max-width")).toBe("calc(var(--h-column) + 2 * var(--h-pad))");
-    const first = rules.find((r) => r.selectors.includes(".h-hero + .h-section"))!;
-    expect(first.media).toBe("@media (width > 860px)");
-    expect(first.decls.get("padding-top")).toBe("calc(clamp(120px, 14vw, 180px) - var(--h-fold))");
-    // A link to it from the first screen or the header leaves the dock's room above it.
-    expect(first.decls.get("scroll-margin-top")).toBe("72px");
+    const first = rules.filter((r) => r.selectors.includes(".h-hero + .h-section"));
+    expect(first.map((r) => r.media)).toEqual([
+      "@media (width > 860px)",
+      "@media (width > 860px)",
+      "@media (width > 860px) and (prefers-reduced-motion: reduce)",
+    ]);
+    expect(first[0].decls.get("padding-top")).toBe("calc(clamp(120px, 14vw, 180px) - var(--h-fold))");
+    expect(first.slice(1).every((r) => [...r.decls.keys()].join() === "scroll-margin-top")).toBe(true);
+  });
+
+  it("lands every section with its top on the dock's foot, so nothing of the one before shows between them", () => {
+    const desktop = "@media (width > 860px)";
+    const decl = (media: string | null, selector: string, name: string) =>
+      rules.find((r) => r.media === media && r.selectors.includes(selector) && r.decls.has(name))?.decls.get(name);
+    // Once the dock shows, the browser stops 72 px down for whatever it brings into view (16 px under the dock);
+    // before that, nothing.
+    const padding = Number.parseFloat(decl(null, "html:has(.h-dock[data-shown])", "scroll-padding-top")!);
+    expect(padding).toBe(72);
+    // A section asks for what puts its top right on the dock's 56 px foot on top of that, either way.
+    const land = (selector: string) => Number.parseFloat(decl(desktop, selector, "--h-land")!);
+    expect(land(".h-page")).toBe(56);
+    expect(padding + land("html:has(.h-dock[data-shown]) .h-page")).toBe(56);
+    expect(decl(desktop, ".h-section", "scroll-margin-top")).toBe("var(--h-land)");
+    // The first section's room starts a fold higher, at the first screen's emptied foot, so its heading lands a
+    // section's gap under the dock, as every other's does.
+    expect(decl(desktop, ".h-hero + .h-section", "scroll-margin-top")).toBe("calc(var(--h-fold) + var(--h-land))");
+    // With reduced motion the timeline goes up with the page, and the dock is there once all of it is past the
+    // window's top, with the first screen's foot a fold down: the first section lands its top there, 120 px down,
+    // whether the dock is showing yet or not, so none of the timeline shows above it and the dock is there.
+    const still = "@media (width > 860px) and (prefers-reduced-motion: reduce)";
+    expect(decl(still, ".h-hero + .h-section", "scroll-margin-top")).toBe("calc(var(--h-fold) - 56px + var(--h-land))");
+    expect(120 - 56 + land(".h-page")).toBe(120);
+    expect(120 - 56 + land("html:has(.h-dock[data-shown]) .h-page") + padding).toBe(120);
+    // A link to the close asks for more than the page can scroll, so it lands on the page's very end, wherever the
+    // close stands in the last screen.
+    expect(decl(desktop, ".h-close", "scroll-margin-top")).toBe("-100vh");
+    // On a phone there is no dock, and nothing changes where a link lands.
+    for (const rule of rules.filter((r) => r.media !== desktop && r.media !== still)) {
+      expect(rule.decls.has("scroll-margin-top"), rule.selectors.join(", ")).toBe(false);
+      expect(rule.decls.has("--h-land"), rule.selectors.join(", ")).toBe(false);
+    }
   });
 });
 

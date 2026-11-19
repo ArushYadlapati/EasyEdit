@@ -487,11 +487,22 @@ describe("home hero (home.css)", () => {
     const band = rules.find((r) => r.media === null && r.selectors.includes(".h-heroBand"))?.decls;
     expect(band?.get("grid-template-columns")).toBe("auto minmax(0, 30rem)");
     expect(band?.get("justify-content")).toBe("space-between");
-    // The page's column: the headline's longer line (7.04em), the most room between the columns, and the side
-    // column. The sections keep to it too, on the same left edge.
-    expect(band?.get("max-width")).toBe("var(--h-column)");
+    // The band's width: the headline's longer line (7.04em), the most room between the columns, and the side column.
+    // The headline stops growing at 96 px (6rem), from a window about 1370 px wide, so the band stops at 1332 px
+    // inside the margins and keeps its 176 px between the columns from there on.
+    expect(band?.get("max-width")).toBe("calc(var(--h-display) * 7.04 + 176px + 30rem)");
     const page = rules.find((r) => r.media === null && r.selectors.includes(".h-page"))?.decls;
-    expect(page?.get("--h-column")).toBe("calc(var(--h-display) * 7.04 + 176px + 30rem)");
+    expect(page?.get("--h-display")).toBe("clamp(48px, 7vw, 96px)");
+    expect(96 / 0.07).toBeCloseTo(1371, 0);
+    expect(96 * 7.04 + 176 + 30 * 16).toBeCloseTo(1332, 0);
+    // The sections keep to the page's column, on the same left edge. It is the band's width with the headline at 7vw,
+    // growing on to 1600 px wide: up to about 1450 px wide it is the whole width inside the margins (40 px a side
+    // there), so the sections end where the editor, the dock and the header do.
+    expect(page?.get("--h-column")).toBe("calc(clamp(48px, 7vw, 112px) * 7.04 + 176px + 30rem)");
+    const column = (w: number) => Math.min(Math.max(48, 0.07 * w), 112) * 7.04 + 176 + 30 * 16;
+    expect(column(1440)).toBeGreaterThan(1440 - 80);
+    expect(Math.abs(column(1450) - (1450 - 80))).toBeLessThan(1);
+    expect(column(1920)).toBeCloseTo(1444.5, 1);
     const section = rules.find((r) => r.media === null && r.selectors.includes(".h-section"))?.decls;
     expect(section?.get("max-width")).toBe("calc(var(--h-column) + 2 * var(--h-pad))");
     expect(section?.has("margin")).toBe(false); // not centred: its left edge is the page's

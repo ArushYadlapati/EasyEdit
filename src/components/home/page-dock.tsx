@@ -11,7 +11,8 @@ import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from
 // its playhead starts where the timeline's stood and moves to where the page is being read. This component draws that track and says how far the fold has gone. A click on a clip goes to its
 // section and puts the keyboard there. The clip under the playhead is marked as the current location, and drawn as
 // your own selection is in the editor. It is the last thing in <main>, so the keyboard comes to it after the last
-// section.
+// section. Near the end of the page it steps up out of the window, so that nothing of the page's end is ever under it
+// (asideFrom).
 // Only on a computer: below 860 px wide the first screen has no timeline and there is no dock. Nothing is drawn on
 // the server, so the page's HTML is the same for every window and the first render in the browser matches it.
 // The clips are read from the page: each <section> with an id straight inside <main>, after the first screen, in
@@ -30,6 +31,24 @@ export const DOCK = 56;
 export const FOLD = TIMELINE - DOCK;
 // How far into the fold the dock takes the timeline's video track and playhead over (home.css swaps them there too).
 export const HANDOVER = 0.5;
+// How near a heading may come to the dock's foot, in px, before the dock steps aside for the page's end.
+export const CLEAR = 48;
+
+// For a section heading `heading` px down the document, in a section whose foot is `foot` px down, on a page that
+// scrolls at most `last` px: how far down the page is scrolled once that heading has come nearer than CLEAR to the
+// dock's foot, or null if the page can't scroll that far. The page's end starts at the last heading that can come
+// that near, of the sections the last screen still shows below the dock: from there the page only ends, so from
+// there on the dock is out of the window, up to the end, and nothing of the end is ever under it, at rest or on the
+// way there. A section that has gone up past the dock by the end (null here too) is the page's middle, and the dock
+// stays over it as it passes: on a tall window the last screen can start in the room above the agents' heading,
+// with nothing under the dock, and the Teams section before it doesn't send the dock away. A link to a heading's
+// section puts the section's top on the dock's foot and its heading a section's room below it, so the dock is still
+// there when the link lands.
+export function asideFrom(heading: number, foot: number, last: number): number | null {
+  if (foot <= last + DOCK) return null;
+  const from = heading - DOCK - CLEAR;
+  return from < last ? from : null;
+}
 
 // How far the fold has gone, from 0 (the timeline whole) to 1 (folded into the dock), when the first screen's foot is
 // `bottom` px from the window's top. With reduced motion the timeline isn't held or folded: it scrolls away with the
@@ -157,6 +176,8 @@ function Dock() {
   const [current, setCurrent] = useState<string | null>(null);
   // Whether the first screen's timeline has folded all the way into the dock, so the dock is the whole strip.
   const [shown, setShown] = useState(false);
+  // Whether it has stepped up out of the window for the page's end.
+  const [aside, setAside] = useState(false);
 
   useEffect(() => {
     const main = nav.current?.closest("main");
@@ -184,6 +205,8 @@ function Dock() {
     let parts: number[] = [];
     let heroBottom = 0;
     let pageHeight = 0;
+    // From how far down the page the dock is out of the window for its end (asideFrom), or null.
+    let asideAt: number | null = null;
     let folded = -1;
     // Where the first screen's playhead stood when the dock took it over, as a share of the track.
     let from: number | null = null;
@@ -211,13 +234,16 @@ function Dock() {
       if (playhead.current) playhead.current.style.transform = `translateX(${(at * 100).toFixed(3)}%)`;
       const on = currentAt(line, spans);
       setCurrent(on >= 0 ? sections[on].id : null);
+      setAside(fold >= 1 && asideAt !== null && window.scrollY > asideAt);
     };
     const schedule = () => {
       if (!frame) frame = window.requestAnimationFrame(draw);
     };
     const measure = () => {
       const y = window.scrollY;
-      if (hero) heroBottom = hero.getBoundingClientRect().bottom + y;
+      // To the whole px, as the page scrolls: a link to the first section lands the first screen's foot right where
+      // the fold ends, and a fraction of a px left over would leave the fold just short of done.
+      if (hero) heroBottom = Math.round(hero.getBoundingClientRect().bottom + y);
       pageHeight = document.documentElement.scrollHeight;
       // A clip runs from its section's top to the foot of the last section it holds.
       spans = sections.map((section) => {
@@ -231,6 +257,16 @@ function Dock() {
         parts = next;
         setShares(next);
       }
+      // Where the page's end starts: the last section heading that can come up to the dock, of the sections still
+      // below it at the end.
+      const last = pageHeight - window.innerHeight;
+      asideAt = null;
+      sections.forEach((section, i) => {
+        const heading = headingOf(section);
+        const foot = spans[i].top + spans[i].height;
+        const at = heading ? asideFrom(heading.getBoundingClientRect().top + y, foot, last) : null;
+        if (at !== null) asideAt = Math.max(asideAt ?? at, at);
+      });
       schedule();
     };
     measure();
@@ -275,9 +311,18 @@ function Dock() {
 
   const starts = offsets(shares);
   return (
-    // Before the fold is done it keeps its links, so the keyboard still reaches them, and it shows while one of them
-    // has focus (home.css). Until the sections are read it has nothing to offer, so it isn't there at all.
-    <nav ref={nav} aria-label="Page" className="h-dock" data-ui data-shown={shown || undefined} hidden={clips.length === 0}>
+    // Before the fold is done, and while it is out of the window for the page's end, it keeps its links, so the
+    // keyboard still reaches them, and it shows while one of them has focus (home.css). Until the sections are read
+    // it has nothing to offer, so it isn't there at all.
+    <nav
+      ref={nav}
+      aria-label="Page"
+      className="h-dock"
+      data-ui
+      data-shown={shown || undefined}
+      data-aside={aside || undefined}
+      hidden={clips.length === 0}
+    >
       <span className="h-dockName" aria-hidden="true">
         On this page
       </span>
