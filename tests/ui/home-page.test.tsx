@@ -43,14 +43,27 @@ beforeEach(() => {
   signedIn.user = null;
 });
 
+// The hero's ending as drawn, and a way to step through its retyping (one keystroke per render).
+const ending = () => document.querySelector(".h-heroClip")?.firstChild?.nodeValue;
+function typeOut() {
+  for (let i = 0; i < 100 && document.querySelector(".h-heroClip[data-typing]"); i++) {
+    act(() => {
+      vi.advanceTimersByTime(40);
+    });
+  }
+}
+
 describe("home page", () => {
   it("signed out shows the headline, the start buttons to /login, and links to /privacy and /terms", async () => {
     vi.stubEnv("OPEN_SIGNUP", "true");
     render(await Home());
     vi.unstubAllEnvs();
-    expect(screen.getByRole("heading", { level: 1, name: "The video editor for AI agents, teams and creators, in your browser" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Start editing, free" }).getAttribute("href")).toBe("/login");
-    expect(screen.getByRole("link", { name: "Start free" }).getAttribute("href")).toBe("/login");
+    expect(screen.getByRole("heading", { level: 1, name: "The video editor for AI agents." })).toBeTruthy();
+    // One name for the one action, in the header and in the first screen.
+    const starts = screen.getAllByRole("link", { name: "Start free" });
+    expect(starts).toHaveLength(2);
+    for (const a of starts) expect(a.getAttribute("href")).toBe("/login");
+    expect(screen.queryByRole("link", { name: "Start editing, free" })).toBeNull();
     for (const a of screen.getAllByRole("link", { name: "Sign in" })) expect(a.getAttribute("href")).toBe("/login");
     expect(screen.getByRole("link", { name: "Privacy" }).getAttribute("href")).toBe("/privacy");
     expect(screen.getByRole("link", { name: "Terms" }).getAttribute("href")).toBe("/terms");
@@ -59,15 +72,50 @@ describe("home page", () => {
   it("changes the headline's ending every few seconds: for AI agents, for teams, for creators, in your browser", async () => {
     vi.useFakeTimers();
     render(await Home());
-    const phrase = () => document.querySelector(".h-heroPhrase [data-on]")?.textContent;
-    expect(phrase()).toBe("for AI agents.");
+    expect(ending()).toBe("for AI agents.");
     for (const next of ["for teams.", "for creators.", "in your browser.", "for AI agents."]) {
       act(() => {
         vi.advanceTimersByTime(9000); // each scene lasts 4 to 8.5 seconds
       });
-      expect(phrase()).toBe(next);
+      typeOut();
+      expect(ending()).toBe(next);
     }
     vi.useRealTimers();
+  });
+
+  it("names each ending's author on its selection: Claude, a teammate, then you", async () => {
+    vi.useFakeTimers();
+    render(await Home());
+    const tag = () => document.querySelector(".h-heroTag")?.textContent;
+    expect(tag()).toBe("Claude");
+    for (const next of ["Sam", "You", "You", "Claude"]) {
+      act(() => {
+        vi.advanceTimersByTime(9000);
+      });
+      expect(tag()).toBe(next);
+      typeOut();
+    }
+    vi.useRealTimers();
+  });
+
+  it("says in the first screen that agents edit, that it's free and that the videos stay in your Drive", async () => {
+    vi.stubEnv("OPEN_SIGNUP", "true");
+    render(await Home());
+    vi.unstubAllEnvs();
+    const hero = document.querySelector(".h-hero") as HTMLElement;
+    const lead = hero.querySelector("p")?.textContent ?? "";
+    expect(lead).toContain("Ask Claude, ChatGPT or Cursor in plain words");
+    expect(lead).toContain("free");
+    expect(lead).toContain("Google Drive");
+    const inHero = within(hero);
+    expect(inHero.getByRole("link", { name: "Start free" }).getAttribute("href")).toBe("/login");
+    expect(inHero.getByRole("link", { name: "See it edit" }).getAttribute("href")).toBe("#ai");
+    // The drawn editor is a picture for sighted visitors, under the words rather than behind them.
+    const editor = hero.querySelector(".h-ed");
+    expect(editor?.getAttribute("aria-hidden")).toBe("true");
+    expect(editor?.hasAttribute("data-ui")).toBe(true);
+    expect(hero.querySelector(".h-heroBand")?.compareDocumentPosition(editor!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(hero.querySelector(".h-heroScrim")).toBeNull();
   });
 
   it("shows the editor's own View as: YouTube Shorts overlay in the creators scene", async () => {
@@ -79,7 +127,7 @@ describe("home page", () => {
         vi.advanceTimersByTime(9000);
       });
     }
-    expect(document.querySelector(".h-heroPhrase [data-on]")?.textContent).toBe("for creators.");
+    expect(document.querySelector<HTMLElement>(".h-hero")?.dataset.scene).toBe("creators");
     expect(document.querySelector('[data-platform-view="youtube-shorts"]')).toBeTruthy();
     expect(document.querySelector(".h-edViewAs")?.textContent).toContain("YouTube Shorts");
     vi.useRealTimers();
@@ -96,7 +144,8 @@ describe("home page", () => {
     act(() => {
       vi.advanceTimersByTime(12000);
     });
-    expect(document.querySelector(".h-heroPhrase [data-on]")?.textContent).toBe("for AI agents.");
+    expect(ending()).toBe("for AI agents.");
+    expect(document.querySelector<HTMLElement>(".h-hero")?.dataset.scene).toBe("ai");
 
     fireEvent.click(button);
     expect(screen.getByRole("button", { name: "Pause" })).toBe(button);
@@ -193,8 +242,9 @@ describe("home page", () => {
     vi.stubEnv("OPEN_SIGNUP", "");
     render(await Home());
     expect(screen.getByText("EasyEdit is in closed beta. Sign-in is by invitation only for now.")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Start editing, free" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Start free" })).toBeNull();
+    const primary = document.querySelector(".h-heroActions .h-btn");
+    expect([primary?.textContent, primary?.getAttribute("href")]).toEqual(["Sign in", "/login"]);
     vi.unstubAllEnvs();
   });
 

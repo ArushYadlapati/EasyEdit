@@ -6,16 +6,25 @@ import { PlatformOverlay } from "@/components/editor/platform-overlay";
 import { LogoMark } from "@/components/ui/logo";
 import { platformViewsFor, type PlatformView } from "@/lib/editor/platform-views";
 
-// The first screen: a full-screen model of the editor, in the editor's own colours, with a headline over it.
-// Every few seconds it moves to the next scene and the headline's ending changes with it: Claude adding a title
-// ("for AI agents"), a teammate's selection ("for teams"), a project going vertical for Reels ("for creators"),
-// an export finishing ("in your browser"). The moments inside a scene are CSS animations that restart because each
-// scene's overlay is keyed by the scene, so the only timer is the one that changes scenes.
+// The first screen: the headline across the top, then a model of the editor, in the editor's own colours, under it.
+// The headline's second line is a text clip with its author's selection around it. Every few seconds the hero moves
+// to the next scene: the next author deletes the old ending and types theirs ("for AI agents." by Claude, "for teams."
+// by a teammate, "for creators." and "in your browser." by you), while the editor below shows that scene: Claude
+// adding a title, a teammate's selection, a project going vertical for Reels, an export finishing. The moments inside
+// a scene are CSS animations that restart because each scene's overlay is keyed by the scene, so the timers are the
+// one that changes scenes and the one that types.
+// Pause holds all of it where it is: the clip, the moments (home.css stops their animations), the typing and the
+// scene's clock, which keeps what is left of the scene so that Play carries on from the same point in each.
 // With reduced motion asked for there is no timer: the hero keeps the scene it shows (the first, for anyone who
-// arrives that way) on its poster, and home.css shows each of that scene's moments as it ends.
+// arrives that way) with its ending in full, its clips on their posters (none is even downloaded), and home.css shows
+// each of the scene's moments as it ends. Allowing motion again starts the shown scene over, its clip, moments and
+// clock together.
 // The footage is from Pexels (free to use, no credit required).
 
-type Scene = { key: string; ms: number; phrase: string; line: string; video: string; poster: string };
+// Who typed a scene's ending, and the colour their selection has in the editor: Claude's orange, a teammate's own
+// colour, or the blue of your own selection.
+type Author = { name: string; tone: "claude" | "peer" | "you" };
+type Scene = { key: string; ms: number; phrase: string; author: Author; video: string; poster: string };
 
 // Each clip is longer than its scene (the city one is slowed to two-thirds speed to make 9 s), and none loops, so a scene never
 // shows its clip jumping back to the start.
@@ -24,7 +33,7 @@ const SCENES: Scene[] = [
     key: "ai",
     ms: 5000,
     phrase: "for AI agents.",
-    line: "Ask Claude, ChatGPT or Cursor in plain words, and watch the edit land in your project.",
+    author: { name: "Claude", tone: "claude" },
     video: "/home/scene-friends.mp4",
     poster: "/home/scene-friends.webp",
   },
@@ -32,7 +41,7 @@ const SCENES: Scene[] = [
     key: "team",
     ms: 8500,
     phrase: "for teams.",
-    line: "Everyone edits the same project at once, and sees who's working on what.",
+    author: { name: "Sam", tone: "peer" },
     video: "/home/scene-city.mp4",
     poster: "/home/scene-city.webp",
   },
@@ -40,7 +49,7 @@ const SCENES: Scene[] = [
     key: "creators",
     ms: 5000,
     phrase: "for creators.",
-    line: "Vertical, square or wide: make it once and shape it for Reels, Shorts, TikTok or YouTube.",
+    author: { name: "You", tone: "you" },
     video: "/home/scene-mountain.mp4",
     poster: "/home/scene-mountain.webp",
   },
@@ -48,11 +57,23 @@ const SCENES: Scene[] = [
     key: "browser",
     ms: 4000,
     phrase: "in your browser.",
-    line: "Nothing to install. Your video renders to an MP4 right on your computer.",
+    author: { name: "You", tone: "you" },
     video: "/home/scene-wave.mp4",
     poster: "/home/scene-wave.webp",
   },
 ];
+
+// How long each letter takes, in ms: deleting goes a little faster than typing, as it does at a keyboard.
+const DELETE_MS = 24;
+const TYPE_MS = 32;
+
+// The next step from what the ending shows to what it should say: delete back to the part the two share ("for "
+// stays when "for AI agents." becomes "for teams."), then type the rest one letter at a time.
+function nextKeystroke(shown: string, target: string): string {
+  let shared = 0;
+  while (shared < shown.length && shared < target.length && shown[shared] === target[shared]) shared++;
+  return shown.length > shared ? shown.slice(0, -1) : target.slice(0, shown.length + 1);
+}
 
 const MEDIA = [
   { name: "bonfire.mp4", img: "/home/scene-friends.webp" },
@@ -84,31 +105,56 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
   // The scene fading out, kept on screen as it ended (its overlay stays mounted, its clip keeps its zoom) for the
   // length of the crossfade, so nothing snaps back while it goes.
   const [leaving, setLeaving] = useState<number | null>(null);
+  // What the headline's ending shows while it is being retyped; null once it says the shown scene's ending in full.
+  const [typed, setTyped] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   // Whether reduced motion is asked for; null until the page has asked the browser, so the timer and the clips wait
   // for the answer instead of starting and then stopping at once.
   const [still, setStill] = useState<boolean | null>(null);
+  // How many times the shown scene has been started over (once each time reduced motion is turned off again). The
+  // editor is keyed by it, so its moments start again from the beginning.
+  const [take, setTake] = useState(0);
   const videos = useRef<(HTMLVideoElement | null)[]>([]);
+  // The scene's clock: which scene and take it is timing, and how many ms of it are left to run.
+  const clock = useRef({ active: -1, take: -1, left: 0 });
+  // The scene and take whose clip was last started from its first frame.
+  const clipFrom = useRef({ active: -1, take: -1 });
 
   useEffect(() => {
     const query = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
-    const update = () => setStill(query?.matches ?? false);
+    let was: boolean | null = null;
+    const update = () => {
+      const reduce = query?.matches ?? false;
+      if (was === true && !reduce) setTake((n) => n + 1);
+      was = reduce;
+      setStill(reduce);
+      if (reduce) setTyped(null); // an ending halfway through being retyped shows in full
+    };
     update();
     if (!query) return;
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
 
+  // A new scene, or the scene started over, gets its full length; after a Pause the timer gets only what was left.
   // Turning reduced motion on while the page is open stops the hero on the scene it shows; a crossfade already under
   // way still finishes, through the leaving timer below.
   useEffect(() => {
     if (paused || still !== false) return;
+    if (clock.current.active !== active || clock.current.take !== take) {
+      clock.current = { active, take, left: SCENES[active].ms };
+    }
+    const started = performance.now();
     const t = window.setTimeout(() => {
       setLeaving(active);
       setActive((active + 1) % SCENES.length);
-    }, SCENES[active].ms);
-    return () => window.clearTimeout(t);
-  }, [active, paused, still]);
+      setTyped((now) => now ?? SCENES[active].phrase); // the new author starts from the old ending
+    }, clock.current.left);
+    return () => {
+      window.clearTimeout(t);
+      clock.current.left = Math.max(0, clock.current.left - (performance.now() - started));
+    };
+  }, [active, take, paused, still]);
 
   useEffect(() => {
     if (leaving === null) return;
@@ -116,26 +162,88 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
     return () => window.clearTimeout(t);
   }, [leaving]);
 
+  // One keystroke at a time. Pause holds the ending where it is, halfway or not.
+  const target = SCENES[active].phrase;
+  useEffect(() => {
+    if (typed === null || paused || still !== false) return;
+    const next = nextKeystroke(typed, target);
+    const deleting = next.length < typed.length;
+    const t = window.setTimeout(() => setTyped(next === target ? null : next), deleting ? DELETE_MS : TYPE_MS);
+    return () => window.clearTimeout(t);
+  }, [typed, target, paused, still]);
+
+  // A scene's clip starts from its first frame when the scene does; Play after a Pause carries on from where it stopped.
   useEffect(() => {
     if (still === null) return;
     videos.current.forEach((video, i) => {
       if (!video) return;
       if (i === active && !paused && !still) {
-        video.currentTime = 0;
+        if (clipFrom.current.active !== active || clipFrom.current.take !== take) {
+          clipFrom.current = { active, take };
+          video.currentTime = 0;
+        }
         video.play()?.catch(() => {}); // a browser that won't autoplay keeps the poster
       } else {
         video.pause();
       }
     });
-  }, [active, paused, still]);
+  }, [active, take, paused, still]);
 
   const scene = SCENES[active];
   const fresh = [...ACTIVITY[scene.key]].reverse(); // newest first, as in the app
+  const ending = still ? target : (typed ?? target);
+  const typing = !still && typed !== null;
 
   return (
-    <section className="h-hero" aria-labelledby="home-title" data-scene={scene.key}>
+    <section className="h-hero" aria-labelledby="home-title" data-scene={scene.key} data-paused={paused || undefined}>
+      <div className="h-heroBand">
+        {/* Screen readers get one sentence that stays put: the first line, then the first ending. The ending drawn
+            on screen, which is retyped scene by scene, is hidden from them. */}
+        <h1 id="home-title" className="h-heroTitle">
+          <span className="h-heroFirst">The video editor</span>
+          <span className="h-sr"> {SCENES[0].phrase}</span>
+          <span className="h-heroEnding" aria-hidden="true">
+            <span className="h-heroClip" data-tone={scene.author.tone} data-typing={typing || undefined}>
+              {ending || "​"}
+              {/* The author's selection around the text clip, as the editor draws it: corner handles and a name tag. */}
+              <span className="h-heroBox" data-ui>
+                <span className="h-heroHandle" data-at="tl" />
+                <span className="h-heroHandle" data-at="tr" />
+                <span className="h-heroHandle" data-at="bl" />
+                <span className="h-heroHandle" data-at="br" />
+                <span className="h-heroTag">{scene.author.name}</span>
+              </span>
+            </span>
+          </span>
+        </h1>
+        <div className="h-heroSide">
+          <p className="h-heroLead">
+            Ask Claude, ChatGPT or Cursor in plain words and watch the edit land. It&apos;s free, and your videos stay in
+            your own Google Drive.
+          </p>
+          <div className="h-heroActions">
+            <Link href="/login" className="h-btn">
+              {closedBeta ? "Sign in" : "Start free"}
+            </Link>
+            <a href="#ai" className="h-btn h-btnGhost">
+              See it edit
+            </a>
+          </div>
+          {closedBeta && <p className="h-heroNote">EasyEdit is in closed beta. Sign-in is by invitation only for now.</p>}
+        </div>
+      </div>
+
+      {/* Its words say what a press does, so, like the agent logos' button, it is not also marked pressed. It holds the
+          scenes, the typing and every moment in the editor below. With reduced motion nothing changes by itself, so
+          there is no button (home.css hides it before the script has run too). */}
+      {!still && (
+        <button type="button" className="h-pause h-heroPause" onClick={() => setPaused((p) => !p)}>
+          {paused ? "Play" : "Pause"}
+        </button>
+      )}
+
       {/* The editor model: decoration for sighted visitors; the headline says what it shows. */}
-      <div className="h-ed" data-ui aria-hidden="true">
+      <div key={take} className="h-ed" data-ui aria-hidden="true">
         <div className="h-edBar">
           <LogoMark size={18} />
           <span className="h-edMenu">Projects</span>
@@ -154,12 +262,14 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
             <span key={scene.key} className="h-edStatus" style={{ "--busy": scene.key === "team" ? "7.2s" : "3.6s" } as React.CSSProperties}>
               {scene.key === "ai" && (
                 <span className="h-edWorking">
-                  <span className="h-edDot" /> Claude is editing…
+                  <span className="h-edDot" />
+                  <span className="h-edWho">Claude is editing…</span>
                 </span>
               )}
               {scene.key === "team" && (
                 <span className="h-edWorking">
-                  <span className="h-edDot" /> Sam Okafor is editing…
+                  <span className="h-edDot" />
+                  <span className="h-edWho">Sam Okafor is editing…</span>
                 </span>
               )}
               <span className="h-edSaved">Saved</span>
@@ -198,11 +308,12 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
                   data-key={s.key}
                   data-on={i === active || undefined}
                   data-leaving={i === leaving || undefined}
-                  src={s.video}
+                  // No clip is fetched until the page knows it may play them: with reduced motion each stays its poster.
+                  src={still === false ? s.video : undefined}
                   poster={s.poster}
                   muted
                   playsInline
-                  preload={i === active || i === (active + 1) % SCENES.length ? "auto" : "metadata"}
+                  preload={i === active || i === (active + 1) % SCENES.length ? "auto" : "none"}
                 />
               ))}
               {[leaving, active]
@@ -323,6 +434,7 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
               </span>
             </span>
           </div>
+          {/* The playhead crosses the scene's own clip over the scene's length. */}
           <span
             key={scene.key}
             className="h-edPlayhead"
@@ -330,39 +442,6 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
           />
         </div>
       </div>
-      <div className="h-heroScrim" />
-
-      <div className="h-heroText">
-        <h1 id="home-title" className="h-heroTitle">
-          <span className="h-sr">The video editor for AI agents, teams and creators, in your browser</span>
-          <span aria-hidden="true">The video editor</span>
-          <span aria-hidden="true" className="h-heroPhrase">
-            {SCENES.map((s, i) => (
-              <span key={s.key} data-on={i === active || undefined}>
-                {s.phrase}
-              </span>
-            ))}
-          </span>
-        </h1>
-        <p className="h-heroLine">{scene.line}</p>
-        <div className="h-heroActions">
-          <Link href="/login" className="h-btn">
-            {closedBeta ? "Sign in" : "Start editing, free"}
-          </Link>
-          <a href="#ai" className="h-btn h-btnGhost">
-            See it work
-          </a>
-        </div>
-        {closedBeta && <p className="h-heroNote">EasyEdit is in closed beta. Sign-in is by invitation only for now.</p>}
-      </div>
-
-      {/* Its words say what a press does, so, like the agent logos' button, it is not also marked pressed. With reduced
-          motion nothing changes by itself, so there is no button (home.css hides it before the script has run too). */}
-      {!still && (
-        <button type="button" className="h-pause h-heroPause" onClick={() => setPaused((p) => !p)}>
-          {paused ? "Play" : "Pause"}
-        </button>
-      )}
     </section>
   );
 }
@@ -404,7 +483,7 @@ function Overlay({ scene }: { scene: string }) {
         <>
           {/* Sam puts the city and the time over the busy middle of the shot. Mika takes the whole clip,
               enlarges it and moves it so the dark sky sits behind the words. Priya changes the font, and Leo
-              lifts the title up the sky, clear of the headline. */}
+              lifts the title up the sky. */}
           <Selection who="Mika" className="h-edMika" />
           <span className="h-edTitle h-edPeerTitle">
             <span className="h-edFontA">Shibuya, 2 a.m.</span>

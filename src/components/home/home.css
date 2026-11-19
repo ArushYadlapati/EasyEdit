@@ -1,4 +1,5 @@
-/* The public home page's own sections: all black, in the app's own sans (Geist), with the editor's blue as the accent.
+/* The public home page's own sections: all black, in the app's own sans (Geist). Colour comes from the footage, the
+   drawn editor's own roles, and whoever made a change: Claude's orange, a teammate's colour, your blue.
    Plain CSS (the Turbopack rule in next.config.ts runs every .css file through Tailwind as global CSS, so CSS modules
    don't work here); every class starts with h- so nothing collides with the app's. The ground, the colour roles
    (--h-*), the pill buttons, the header and the footer are the public site's, in components/site/site.css. The page
@@ -35,7 +36,8 @@
   background: rgb(255 255 255 / 0.12);
   color: rgb(255 255 255 / 0.85);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 18px;
   cursor: pointer;
   transition: background-color 160ms;
 }
@@ -43,26 +45,155 @@
   background: rgb(255 255 255 / 0.22);
 }
 
-/* ---------- First screen: a full-screen model of the editor, with the headline over it ---------- */
+/* ---------- First screen: the headline across the top, the editor under it ---------- */
 
-/* The rest of the window under the site's header (--h-bar, site.css), so the two fill the first screen. */
+/* Two rows: the headline band, then the editor at full width. On a computer the editor fills the rest of the window
+   down to the top of its timeline, which runs on below the first screen; a very tall window stops growing it at a
+   sensible shape. */
 .h-hero {
+  --h-timeline: 176px;
   position: relative;
-  height: calc(100svh - var(--h-bar));
-  min-height: 564px;
-  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(540px, 1fr);
+  min-height: min(calc(100svh - var(--h-bar) + var(--h-timeline)), calc(56vw + 520px));
+  padding: 0 var(--h-pad);
   background: #000;
+}
+
+/* The headline on the left; the line under it, the two pills and the note on the right, along its foot. The space
+   below holds the author's name tag and the Pause pill. */
+.h-heroBand {
+  display: grid;
+  grid-template-columns: auto minmax(0, 30rem);
+  justify-content: space-between;
+  align-items: end;
+  column-gap: 48px;
+  padding: clamp(12px, 2.5vh, 32px) 0 68px;
+}
+/* Two lines at every width: the column is as wide as the longer line, and the size follows the window so that it
+   fits. In Geist "The video editor" is 7.04em and "in your browser." with its selection about 7em; the stand-in face
+   shown while Geist loads sets the first line at about 7.45em, which fits too, so the headline doesn't change shape
+   when Geist arrives. The lines can still wrap: someone who reads with wider letter or word spacing sees the whole
+   headline on more lines instead of having it cut off at the window's edge. */
+.h-heroTitle {
+  width: max-content;
+  max-width: 100%;
+  font-size: clamp(48px, 7vw, 112px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.h-heroFirst,
+.h-heroEnding {
+  display: block;
+  min-height: 1em; /* the second line keeps its height while its ending is deleted back to nothing */
+}
+.h-heroEnding {
+  user-select: none;
+}
+
+/* The ending is a text clip: its words in the headline's own white, its author's selection drawn around them in the
+   author's colour, as the editor draws it. The selection follows the words' width letter by letter. */
+.h-heroClip {
+  position: relative;
+  display: inline-block;
+  white-space: pre-wrap; /* "for " keeps its space while the rest is typed after it */
+  --tone: var(--h-claude);
+}
+.h-heroClip[data-tone="peer"] {
+  --tone: var(--ed-peer-1);
+}
+.h-heroClip[data-tone="you"] {
+  --tone: var(--ed-accent);
+}
+.h-heroBox {
+  position: absolute;
+  inset: 0.05em -0.08em -0.11em -0.06em;
+  border: 2px solid var(--tone);
+  pointer-events: none;
+}
+.h-heroHandle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 2px solid var(--tone);
+}
+.h-heroHandle[data-at="tl"] { left: -6px; top: -6px; }
+.h-heroHandle[data-at="tr"] { right: -6px; top: -6px; }
+.h-heroHandle[data-at="bl"] { left: -6px; bottom: -6px; }
+.h-heroHandle[data-at="br"] { right: -6px; bottom: -6px; }
+/* The name tag hangs under the clip's left corner, in the space under the headline. */
+.h-heroTag {
+  position: absolute;
+  left: -2px;
+  top: calc(100% + 2px);
+  padding: 2px 8px;
+  border-radius: 0 4px 4px 4px;
+  background: var(--tone);
+  color: #0a0a0a;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0;
+}
+/* While its author types, a caret in their colour sits at the end of the words. */
+.h-heroClip[data-typing]::after {
+  content: "";
+  position: absolute;
+  right: -0.03em;
+  top: 0.14em;
+  width: 0.05em;
+  height: 0.8em;
+  background: var(--tone);
+}
+
+.h-heroSide {
+  display: grid;
+  justify-items: start;
+  gap: 24px;
+}
+.h-heroLead {
+  max-width: 34em;
+  font-size: clamp(17px, 1.3vw, 20px);
+  line-height: 1.5;
+  color: var(--h-text);
+  text-wrap: pretty;
+}
+.h-heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.h-heroNote {
+  margin-top: -8px;
+  font-size: 14px;
+  color: var(--h-muted);
+}
+/* Just above the editor's top right corner: it holds what moves below it. */
+.h-heroPause {
+  grid-row: 2;
+  grid-column: 1;
+  justify-self: end;
+  align-self: start;
+  translate: 0 calc(-100% - 12px);
+}
+/* Paused, every moment in the editor holds where it is too. */
+.h-hero[data-paused] .h-ed,
+.h-hero[data-paused] .h-ed * {
+  animation-play-state: paused !important;
 }
 
 /* The editor model. Sizes follow the real editor at 100%. */
 .h-ed {
-  position: absolute;
-  inset: 4px var(--h-pad) 0; /* a big app window just under the site's header */
-  border-radius: 12px 12px 0 0;
+  grid-row: 2;
+  grid-column: 1;
+  position: relative;
+  border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 0 0 1px var(--ed-line-strong); /* the editor window's own edge, a 1 px ring as in the app */
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr) 176px;
+  grid-template-rows: 44px minmax(0, 1fr) var(--h-timeline);
   background: var(--ed-bg);
   color: var(--ed-text);
   font-size: 13px;
@@ -91,6 +222,7 @@
   align-items: center;
   gap: 14px;
   margin-left: auto;
+  min-width: 0;
   color: var(--ed-muted);
 }
 .h-edBar .h-edRight {
@@ -99,6 +231,7 @@
 }
 .h-edAvatar {
   display: grid;
+  flex: none;
   place-items: center;
   width: 26px;
   height: 26px;
@@ -109,17 +242,31 @@
   font-weight: 700;
   animation: h-pop 400ms var(--h-ease) both;
 }
+/* "Someone is editing…" and "Saved" share one spot, each on one line, so neither sets the other's height; both sit
+   against Export, as in the app. Squeezed, the name is cut short with an ellipsis rather than running over the
+   project's name. */
 .h-edStatus {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  text-align: end;
 }
 .h-edStatus > * {
   grid-area: 1 / 1;
+  min-width: 0;
+  white-space: nowrap;
 }
 .h-edWorking {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   animation: h-out 300ms ease var(--busy, 1.6s) both;
+}
+.h-edWho {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .h-edWorking + .h-edSaved {
   animation: h-in 300ms ease calc(var(--busy, 1.6s) + 100ms) both;
@@ -131,6 +278,7 @@
   animation-delay: 2s;
 }
 .h-edDot {
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -138,6 +286,7 @@
   animation: h-pulse 700ms ease-in-out infinite alternate;
 }
 .h-edExport {
+  flex: none;
   padding: 6px 14px;
   border-radius: 6px;
   background: var(--ed-accent);
@@ -145,9 +294,10 @@
   font-weight: 600;
 }
 
+/* The side panels narrow a little with the window, so a small laptop's preview keeps a good size. */
 .h-edBody {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 300px;
+  grid-template-columns: clamp(200px, 18vw, 260px) minmax(0, 1fr) clamp(240px, 21vw, 300px);
   min-height: 0;
 }
 .h-edLeft,
@@ -211,22 +361,22 @@
   min-width: 0;
   container-type: size;
 }
+/* Width and height are each set, rather than one and a shape, so going vertical narrows the frame and grows it
+   together inside the preview instead of jumping to the new shape at the old width. */
 .h-edFrame {
   position: relative;
   width: min(100cqw, 100cqh * 16 / 9);
-  aspect-ratio: 16 / 9;
+  height: min(100cqh, 100cqw * 9 / 16);
   background: #000;
   overflow: hidden;
   /* Waits for the outgoing scene's overlay to fade (350 ms) before changing shape, so nothing is squeezed. */
   transition:
     width 600ms var(--h-ease) 350ms,
-    translate 600ms var(--h-ease) 350ms;
+    height 600ms var(--h-ease) 350ms;
 }
-/* Tall, it moves to the right of the preview, clear of the page's headline. */
 .h-edFrame[data-vertical] {
   width: min(100cqw, 100cqh * 9 / 16);
-  aspect-ratio: 9 / 16;
-  translate: calc((100cqw - min(100cqw, 100cqh * 9 / 16)) / 2 - 24px) 0;
+  height: min(100cqh, 100cqw * 16 / 9);
 }
 .h-edVideo {
   position: absolute;
@@ -284,7 +434,7 @@
     h-popCentered 450ms var(--h-ease) 400ms both,
     h-lift 800ms var(--h-ease) 6.2s forwards;
 }
-/* Leo lifts the title up the dark sky, clear of the page's headline. */
+/* Leo lifts the title up the dark sky. */
 @keyframes h-lift {
   to {
     /* Likewise, on a small frame Leo's name tag, 28 px above the title, stays 4 px inside. */
@@ -484,7 +634,7 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 380px;
+  width: min(380px, 100cqw - 24px); /* inside the preview, on a phone too */
   transform: translate(-50%, -50%);
   padding: 20px;
   border-radius: 12px;
@@ -690,18 +840,22 @@
   font-size: 9px;
   font-weight: 700;
 }
+/* The playhead is the left edge of a box as wide as the lanes, so moving the box by a share of its own width moves
+   the line along the timeline by that share, on the compositor. */
 .h-edPlayhead {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: var(--ed-text);
-  left: calc(var(--names) + (100% - var(--names) - 16px) * var(--from) / 100);
+  left: var(--names);
+  width: calc(100% - var(--names) - 16px);
+  border-left: 1px solid var(--ed-text);
+  pointer-events: none;
+  transform: translateX(calc(var(--from) * 1%));
   animation: h-play 4s linear both;
 }
 @keyframes h-play {
   to {
-    left: calc(var(--names) + (100% - var(--names) - 16px) * var(--to) / 100);
+    transform: translateX(calc(var(--to) * 1%));
   }
 }
 
@@ -747,83 +901,6 @@
     opacity: 0;
     transform: translateY(-8px);
   }
-}
-
-.h-heroScrim {
-  position: absolute;
-  inset: 0;
-  /* Dark only where the headline sits (bottom and bottom-left), so the editor above keeps its true colours. */
-  background:
-    linear-gradient(to top, rgb(0 0 0 / 0.92) 0%, rgb(0 0 0 / 0.55) 38%, rgb(0 0 0 / 0) 60%),
-    radial-gradient(75% 65% at 0% 100%, rgb(0 0 0 / 0.65), rgb(0 0 0 / 0) 70%);
-}
-
-.h-heroText {
-  position: absolute;
-  z-index: 2;
-  left: var(--h-pad);
-  right: var(--h-pad);
-  bottom: clamp(56px, 9vh, 96px);
-  max-width: 1180px;
-}
-.h-heroTitle {
-  display: flex;
-  flex-direction: column;
-  font-size: clamp(44px, 7.4vw, 124px);
-  font-weight: 600;
-  letter-spacing: -0.05em;
-  line-height: 0.95;
-}
-.h-heroPhrase {
-  display: grid;
-  color: var(--h-accent);
-}
-.h-heroPhrase > span {
-  grid-area: 1 / 1;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(0.3em);
-  filter: blur(6px);
-  transition:
-    opacity 300ms var(--h-ease),
-    transform 300ms var(--h-ease),
-    filter 300ms var(--h-ease),
-    visibility 0s 300ms;
-}
-.h-heroPhrase > span[data-on] {
-  opacity: 1;
-  visibility: visible;
-  transform: none;
-  filter: none;
-  transition:
-    opacity 450ms var(--h-ease) 150ms,
-    transform 450ms var(--h-ease) 150ms,
-    filter 450ms var(--h-ease) 150ms,
-    visibility 0s 150ms;
-}
-.h-heroLine {
-  margin-top: 24px;
-  max-width: 52ch;
-  min-height: 3em;
-  font-size: clamp(17px, 1.35vw, 21px);
-  color: rgb(255 255 255 / 0.8);
-}
-.h-heroActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 28px;
-}
-.h-heroNote {
-  margin-top: 16px;
-  font-size: 14px;
-  color: rgb(255 255 255 / 0.7);
-}
-.h-heroPause {
-  position: absolute;
-  z-index: 2;
-  right: var(--h-pad);
-  bottom: 24px;
 }
 
 /* ---------- Drawn pieces in the team cards ---------- */
@@ -1682,16 +1759,6 @@
     transform: translateY(28px);
   }
 }
-.h-heroText > * {
-  animation: h-rise 900ms var(--h-ease) both;
-}
-.h-heroText > :nth-child(2) {
-  animation-delay: 120ms;
-}
-.h-heroText > :nth-child(3) {
-  animation-delay: 220ms;
-}
-
 @supports (animation-timeline: view()) {
   .h-sectionHead > *,
   .h-demoRequests li,
@@ -1757,21 +1824,70 @@
   }
 }
 
+/* ---------- Tablets and small laptops ---------- */
+
+@media (860px < width <= 1180px) {
+  /* Too narrow for both side panels and a preview of a useful size, so the media panel goes and Activity narrows.
+     The editor is then as tall as its preview needs to show the picture at full width, or as the screen has room
+     for under the headline, whichever is less: the picture fills the preview instead of sitting small in a tall,
+     empty one, and on a short screen it still ends above the fold. The first screen grows to fit it. */
+  .h-hero {
+    /* About the headline band's height: the taller of its two columns (the two lines of the headline, or the line
+       under it with the pills), plus its padding. */
+    --h-band: calc(max(14vw, 168px) + clamp(12px, 2.5vh, 32px) + 68px);
+    grid-template-rows: auto auto;
+    min-height: 0;
+  }
+  .h-ed {
+    container-type: inline-size;
+    grid-template-rows: 44px auto var(--h-timeline);
+  }
+  .h-edBody {
+    --side: 240px;
+    grid-template-columns: minmax(0, 1fr) var(--side);
+    height: min(
+      calc((100cqw - var(--side) - 48px) * 9 / 16 + 48px),
+      max(320px, calc(100svh - var(--h-bar) - var(--h-band) - 44px))
+    );
+  }
+  .h-edLeft {
+    display: none;
+  }
+  /* A busy scene's Activity runs longer than the narrower panel; the oldest lines go out of sight at its foot. */
+  .h-edBody > .h-edRight {
+    overflow: hidden;
+  }
+}
+
 /* ---------- Phone and narrow windows ---------- */
 
 @media (max-width: 860px) {
-  .h-heroText {
-    bottom: 104px;
+  /* One column: the headline, the line under it and the pills, then the editor, cut down to its top bar and preview,
+     straight after. */
+  .h-hero {
+    grid-template-rows: auto auto;
+    min-height: 0;
+  }
+  .h-heroBand {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px 0 60px;
   }
   .h-heroTitle {
-    font-size: clamp(40px, 11.5vw, 64px);
+    font-size: clamp(34px, (100vw - 2 * var(--h-pad)) / 7.5, 96px); /* the longer line fits the column in either face */
   }
-  .h-heroPause {
-    bottom: 16px;
+  .h-heroSide {
+    margin-top: 48px; /* under the name tag */
+    gap: 20px;
   }
   .h-ed {
-    inset: 0 12px 0;
-    grid-template-rows: 44px minmax(0, 1fr) 0;
+    grid-template-rows: 44px auto 0;
+  }
+  .h-edBar {
+    gap: 12px;
+    padding: 0 12px;
+  }
+  .h-edBar .h-edRight {
+    gap: 12px;
   }
   .h-edProject {
     margin-left: 0;
@@ -1779,14 +1895,17 @@
   .h-edBody {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* The menus, the side panels, the timeline and the people in the top bar go; Export stays. */
   .h-edLeft,
   .h-edBody > .h-edRight,
   .h-edTimeline,
-  .h-edMenu {
+  .h-edMenu,
+  .h-edBar .h-edAvatar {
     display: none;
   }
   .h-edStage {
-    padding: 12px 12px 45vh;
+    aspect-ratio: 16 / 10;
+    padding: 12px;
   }
   .h-shotGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
