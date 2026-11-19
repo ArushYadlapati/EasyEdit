@@ -210,6 +210,29 @@ describe("home page", () => {
     expect(footer.textContent).toContain("© 2026 EasyEdit");
   });
 
+  it("ends its main with the page's dock: a clip for each section after the first screen, in page order", async () => {
+    render(await Home());
+    const main = screen.getByRole("main");
+    const dock = within(main).getByRole("navigation", { name: "Page" });
+    expect(main.lastElementChild).toBe(dock);
+    const sections = [...main.children].filter((el) => el.tagName === "SECTION" && el.id) as HTMLElement[];
+    expect(sections.length).toBeGreaterThan(3);
+    // Every section names its clip in a few words.
+    for (const section of sections) expect(section.dataset.dockLabel, section.id).toMatch(/^\S+( \S+){0,2}$/);
+    const links = [...dock.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(links).toEqual(sections.map((section) => [section.dataset.dockLabel, `#${section.id}`]));
+    // The page's closing action is marked for the dock, which goes down while it is in view. It is the end of the last
+    // section: marked anywhere higher up, the dock would go down in the middle of the page.
+    const ends = [...main.querySelectorAll("[data-dock-end]")];
+    expect(ends).toHaveLength(1);
+    expect(sections.at(-1)!.contains(ends[0])).toBe(true);
+    expect(within(ends[0] as HTMLElement).getByRole("button", { name: "Create project" })).toBeTruthy();
+    const afterIt = [...sections.at(-1)!.querySelectorAll("*")].filter(
+      (el) => ends[0].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING && !ends[0].contains(el),
+    );
+    expect(afterIt).toEqual([]);
+  });
+
   it("draws its stills and posters from WebP files in public/home, each img sized to its file's shape", async () => {
     render(await Home());
     const images = [...document.querySelectorAll("img")].filter((img) => img.getAttribute("src")?.startsWith("/home/"));

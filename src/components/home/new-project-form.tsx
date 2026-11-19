@@ -84,7 +84,8 @@ export function NewProjectForm() {
           </p>
         </div>
       </div>
-      <div className="h-npFoot">
+      {/* The home page's closing action: the page's dock goes down while it is in view (page-dock.tsx). */}
+      <div className="h-npFoot" data-dock-end>
         <Button variant="primary" type="submit" disabled={!size}>
           Create project
         </Button>

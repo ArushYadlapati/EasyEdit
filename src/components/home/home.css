@@ -8,7 +8,8 @@
 .h-page {
   width: 100%;
   overflow-x: clip;
-  /* Room between the last section and the site's footer. */
+  /* Room between the last section and the site's footer. On a computer (94 px or more) the page's dock rests in it at
+     the end of the page, under the last section; see .h-dock. */
   padding-bottom: clamp(80px, 11vw, 140px);
 }
 
@@ -1787,6 +1788,183 @@
   }
 }
 
+/* ---------- The page's timeline, docked at the foot of the window (page-dock.tsx) ---------- */
+
+/* The first screen's editor timeline, carried on down the page: as wide as the editor, in its Panel Charcoal with its
+   1 px window edge, a track name column as wide as the editor's, and one lane that lines up with the editor's own
+   lanes. It comes up from the foot of the window once the editor's timeline has gone past the top, and goes down again
+   for the end of the page. It is main's last child, held to the foot of the window while its own place is further
+   down: that place is 24 px under the last section, inside the room main leaves before the footer (the -80 px bottom
+   margin gives that room back, so the dock adds nothing to the page's length), and it can never pass over the footer.
+   Down, it still holds its links, so a keyboard reaches them after the last section, and it shows while one of them
+   has focus. Only rendered on a computer. */
+.h-dock {
+  --names: 96px;
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 24px var(--h-pad) -80px;
+  display: flex;
+  align-items: center;
+  height: 56px;
+  border-radius: 12px 12px 0 0;
+  background: var(--ed-panel);
+  box-shadow: 0 0 0 1px var(--ed-line-strong);
+  color: var(--ed-text);
+  font-size: 12px;
+  line-height: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(100% + 1px));
+  transition:
+    transform 200ms var(--h-ease),
+    opacity 200ms var(--h-ease);
+}
+.h-dock[data-shown],
+.h-dock:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+/* Down because the end of the page is in view, a dock that takes the focus shows in its own place under the last
+   section, and the browser scrolls to it there, rather than over the page's closing action at the foot of the window.
+   Off the window's edge, it is a whole panel with all four corners round. */
+.h-dock:not([data-shown]):focus-within {
+  position: relative;
+  border-radius: 12px;
+}
+/* While it shows, whatever the browser brings into view (a link reached with Tab) stops above it, not under it. */
+html:has(.h-dock[data-shown]) {
+  scroll-padding-bottom: 72px;
+}
+.h-dockName {
+  flex: 0 0 var(--names);
+  padding-left: 16px;
+  overflow: hidden;
+  color: var(--ed-muted);
+  white-space: nowrap;
+}
+.h-dockLane {
+  position: relative;
+  flex: 1;
+  height: 32px;
+  margin: 0 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.h-dockLane > li {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+/* Each section is drawn as a video clip on the editor's timeline: the clip fill, a 1 px edge, the name, and trim
+   handles that show under the pointer. The current section's clip is drawn as your own selection is: a Selection
+   Blue edge and tint, with its handles in blue. */
+.h-dockClip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 1px solid var(--ed-line-strong);
+  border-radius: 4px;
+  background: var(--ed-clip-video);
+  transition:
+    background-color 120ms,
+    border-color 120ms;
+}
+.h-dock .h-dockClip:focus-visible {
+  outline-offset: 2px; /* inside the gap between two clips */
+}
+.h-dockClip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.h-dockClip::before,
+.h-dockClip::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--ed-muted);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.h-dockClip::before {
+  left: 0;
+}
+.h-dockClip::after {
+  right: 0;
+}
+.h-dockClip:hover::before,
+.h-dockClip:hover::after {
+  opacity: 1;
+}
+.h-dockClip[aria-current] {
+  border-color: var(--ed-accent);
+  background: color-mix(in srgb, var(--ed-accent) 18%, var(--ed-clip-video));
+}
+.h-dockClip[aria-current]::before,
+.h-dockClip[aria-current]::after {
+  background: var(--ed-accent);
+  opacity: 1;
+}
+/* The playhead, drawn as the editor's is: a 1 px line, its box's left edge, with its head at the top. Its box is as
+   wide as the lane, so moving the box by a share of its own width moves the line along the track by that share.
+   Between one scroll step and the next it glides. The line is a border rather than a fill so that it still shows
+   when the system's high contrast colours replace the page's own. */
+.h-dockPlayhead {
+  position: absolute;
+  top: 0;
+  right: 16px;
+  bottom: 0;
+  left: var(--names);
+  border-left: 1px solid var(--ed-text);
+  pointer-events: none;
+  transition: transform 160ms var(--h-ease);
+}
+/* Centred on the line: the head is placed from inside the border, 1 px to the right of the line. */
+.h-dockPlayhead::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 9px;
+  height: 11px;
+  background: var(--ed-text);
+  clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+}
+/* With the system's high contrast colours, fills become the window's background and shadows go, so the dock would
+   lose its edge, its current clip would look like the others and the playhead's head would vanish. The dock gets a
+   real edge, the current clip a thicker edge and solid handles in the system's selection colour, and the head the
+   system's text colour. */
+@media (forced-colors: active) {
+  .h-dock {
+    border: 1px solid CanvasText;
+  }
+  .h-dockClip[aria-current] {
+    border: 2px solid Highlight;
+  }
+  .h-dockClip[aria-current]::before,
+  .h-dockClip[aria-current]::after {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+  .h-dockPlayhead::after {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}
+/* A section's heading takes the focus when the dock goes to it, so that Tab carries on from there. Like the app's
+   headings that take focus in code, it draws no ring for it. */
+.h-page :is(h2, h3)[tabindex="-1"]:focus {
+  outline: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Nothing moves, and each moment shows how it ends: every one-off animation lands on its last frame at once instead
      of being removed. Many of the hero's pieces are pairs in one spot, where one fades out as the other fades in
@@ -1821,6 +1999,13 @@
   .h-heroPause,
   .h-marqueePause {
     display: none;
+  }
+  /* The dock comes and goes at once, and its playhead jumps to where it stands instead of gliding there. */
+  .h-dock,
+  .h-dock *,
+  .h-dock *::before,
+  .h-dock *::after {
+    transition: none !important;
   }
 }
 

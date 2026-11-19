@@ -4,6 +4,7 @@ import { AgentDemo } from "./agent-demo";
 import { AgentMarquee } from "./agent-marquee";
 import { HeroScene } from "./hero-scene";
 import { NewProjectForm } from "./new-project-form";
+import { PageDock } from "./page-dock";
 import { DriveShot, PresenceShot, ProjectsShot } from "./team-shots";
 import "./home.css";
 
@@ -82,14 +83,15 @@ const AGENT_LOGOS: { name: string; logo: string }[] = [
 ];
 
 // closedBeta: sign-up isn't open (openSignUp() in signup.ts, read on the server), so only invited people get in.
-// The site's header and footer go around the page's <main>; the first screen starts under the header.
+// The site's header and footer go around the page's <main>; the first screen starts under the header. Each section
+// after it is a clip on the page's dock (page-dock.tsx), named by its data-dock-label.
 export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
   return (
     <SitePage>
       <main className="h-page ed-theme">
         <HeroScene closedBeta={closedBeta} />
 
-        <section id="ai" className="h-section" aria-labelledby="ai-title">
+        <section id="ai" className="h-section" aria-labelledby="ai-title" data-dock-label="Ask an agent">
           <div className="h-sectionHead">
             <h2 id="ai-title" className="h-h2">
               Ask an agent. Watch it edit.
@@ -124,7 +126,7 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
           </AgentMarquee>
         </section>
 
-        <section id="teams" className="h-section" aria-labelledby="teams-title">
+        <section id="teams" className="h-section" aria-labelledby="teams-title" data-dock-label="Teams">
           <div className="h-sectionHead">
             <h2 id="teams-title" className="h-h2">
               Built for teams.
@@ -145,7 +147,7 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
           </div>
         </section>
 
-        <section id="free" className="h-section h-drive" aria-labelledby="drive-title">
+        <section id="free" className="h-section h-drive" aria-labelledby="drive-title" data-dock-label="Free">
           <div className="h-sectionHead">
             <h2 id="drive-title" className="h-h2">
               <span className="h-line">Completely free.</span> <span className="h-line">Based in your Drive.</span>
@@ -158,7 +160,7 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
           <DriveShot />
         </section>
 
-        <section id="start" className="h-section h-start" aria-labelledby="start-title">
+        <section id="start" className="h-section h-start" aria-labelledby="start-title" data-dock-label="First project">
           <div className="h-sectionHead">
             <h2 id="start-title" className="h-wide">
               Make your first project.
@@ -166,6 +168,9 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
           </div>
           <NewProjectForm />
         </section>
+
+        {/* After the sections, so the keyboard comes to it once it has been through the page. */}
+        <PageDock />
       </main>
     </SitePage>
   );
