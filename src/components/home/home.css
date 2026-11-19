@@ -72,13 +72,17 @@
 }
 
 /* The headline on the left; the line under it, the two pills and the note on the right, along its foot. The space
-   below holds the author's name tag and the Pause pill. */
+   below holds the author's name tag and the Pause pill. On a wide window the band stops growing once the room between
+   its two columns reaches 176 px (about what it is at 1440 px): the headline's longer line is 7.04em, so the lead and
+   Start free stay beside the headline they belong to instead of drifting off to the window's far side, while the
+   editor below still runs the whole width. */
 .h-heroBand {
   display: grid;
   grid-template-columns: auto minmax(0, 30rem);
   justify-content: space-between;
   align-items: end;
   column-gap: 48px;
+  max-width: calc(var(--h-display) * 7.04 + 176px + 30rem);
   padding: clamp(12px, 2.5vh, 32px) 0 68px;
 }
 /* Two lines at every width: the column is as wide as the longer line, and the size follows the window so that it
@@ -117,11 +121,16 @@
 .h-heroClip[data-tone="you"] {
   --tone: var(--ed-accent);
 }
+/* The box is as wide as the words, so it widens and narrows with each letter. Nothing inside it is placed from its
+   right edge, though: the right-hand handles and the caret sit at its left edge and are carried across by a
+   translate of the box's own width (100cqw), so while the ending is retyped the box changes size but nothing in the
+   headline changes place. */
 .h-heroBox {
   position: absolute;
   inset: 0.05em -0.08em -0.11em -0.06em;
   border: 2px solid var(--tone);
   pointer-events: none;
+  container-type: inline-size;
 }
 .h-heroHandle {
   position: absolute;
@@ -131,9 +140,9 @@
   border: 2px solid var(--tone);
 }
 .h-heroHandle[data-at="tl"] { left: -6px; top: -6px; }
-.h-heroHandle[data-at="tr"] { right: -6px; top: -6px; }
+.h-heroHandle[data-at="tr"] { left: -4px; top: -6px; translate: 100cqw 0; }
 .h-heroHandle[data-at="bl"] { left: -6px; bottom: -6px; }
-.h-heroHandle[data-at="br"] { right: -6px; bottom: -6px; }
+.h-heroHandle[data-at="br"] { left: -4px; bottom: -6px; translate: 100cqw 0; }
 /* The name tag hangs under the clip's left corner, in the space under the headline. */
 .h-heroTag {
   position: absolute;
@@ -148,15 +157,17 @@
   line-height: 20px;
   letter-spacing: 0;
 }
-/* While its author types, a caret in their colour sits at the end of the words. */
-.h-heroClip[data-typing]::after {
+/* While its author types, a caret in their colour sits at the end of the words (0.1em in from the box's right edge,
+   0.03em past the last letter), carried there the same way as the handles. */
+.h-heroClip[data-typing] .h-heroBox::after {
   content: "";
   position: absolute;
-  right: -0.03em;
-  top: 0.14em;
+  left: calc(2px - 0.1em);
+  top: calc(0.09em - 2px);
   width: 0.05em;
   height: 0.8em;
   background: var(--tone);
+  translate: 100cqw 0;
 }
 
 .h-heroSide {
@@ -311,12 +322,17 @@
   grid-template-columns: clamp(200px, 18vw, 260px) minmax(0, 1fr) clamp(240px, 21vw, 300px);
   min-height: 0;
 }
+/* The side panels take the height the editor has and never ask for more (size containment: their contents don't size
+   them). A busy scene's Activity runs past the panel's foot, its oldest lines going out of sight there as a long list
+   does in the app, instead of making the editor taller and pushing the preview and the timeline down mid-scene. */
 .h-edLeft,
 .h-edBody > .h-edRight {
   display: block;
   margin: 0;
   background: var(--ed-panel);
   min-width: 0;
+  contain: size;
+  overflow: hidden;
 }
 .h-edLeft {
   border-right: 1px solid var(--ed-line);
@@ -372,22 +388,23 @@
   min-width: 0;
   container-type: size;
 }
-/* Width and height are each set, rather than one and a shape, so going vertical narrows the frame and grows it
-   together inside the preview instead of jumping to the new shape at the old width. */
+/* The largest 16:9 frame the preview holds. Vertical 9:16 at the same height is the middle of the same picture (each
+   clip fills the frame either way), so going vertical cuts the frame's sides away instead of reshaping it: its box
+   stays where it is, and nothing in the editor moves when the format changes. The cut is 9/16 of the height wide,
+   which is 81/256 of the width, so each side loses half of the other 175/256. */
 .h-edFrame {
+  --cut: 0px;
   position: relative;
   width: min(100cqw, 100cqh * 16 / 9);
   height: min(100cqh, 100cqw * 9 / 16);
   background: #000;
   overflow: hidden;
+  clip-path: inset(0 var(--cut));
   /* Waits for the outgoing scene's overlay to fade (350 ms) before changing shape, so nothing is squeezed. */
-  transition:
-    width 600ms var(--h-ease) 350ms,
-    height 600ms var(--h-ease) 350ms;
+  transition: clip-path 600ms var(--h-ease) 350ms;
 }
 .h-edFrame[data-vertical] {
-  width: min(100cqw, 100cqh * 9 / 16);
-  height: min(100cqh, 100cqw * 16 / 9);
+  --cut: calc(50% * 175 / 256);
 }
 .h-edVideo {
   position: absolute;
@@ -404,6 +421,11 @@
 .h-edOverlay {
   position: absolute;
   inset: 0;
+}
+/* The vertical scene's titles and Shorts view lie over the part of the frame its cut leaves, from the moment it
+   starts, so they come in where they stay while the frame's sides close in around them. */
+.h-edOverlay[data-scene="creators"] {
+  inset: 0 calc(50% * 175 / 256);
 }
 .h-edTitle {
   position: absolute;
@@ -1066,21 +1088,39 @@
   background: var(--ed-panel);
   border-bottom: 1px solid var(--ed-line);
 }
-.h-uiProject {
-  font-weight: 600;
+/* The logo, the project's name and Export keep their size, each on one line. On a narrow phone it is the status that
+   gives way: its words are cut short with an ellipsis and its dot stays, as in the app's own top bar. */
+.h-uiLogo,
+.h-uiExport {
+  flex: none;
 }
+.h-uiProject {
+  flex: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* Every agent's "is editing…" and "Saved" sit in the one grid cell, the ones not in use unseen, so the status is as
+   wide as the longest of them whichever agent is at work, and nothing in the bar moves when one gives way to the
+   next. */
 .h-uiStatus {
   margin-left: auto;
   display: grid;
-  justify-items: end;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   color: var(--ed-muted);
 }
 .h-uiStatus > span {
   grid-area: 1 / 1;
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
+  min-width: 0;
   white-space: nowrap;
+}
+.h-uiStatusText {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .h-uiStatus > :not([data-on]) {
   visibility: hidden;
@@ -1089,6 +1129,7 @@
   animation: none;
 }
 .h-uiDot {
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -1366,6 +1407,17 @@
   }
   .h-uiRuler span:nth-child(even) {
     display: none;
+  }
+}
+/* A narrow phone's bar is too short for "ChatGPT is editing…" in full. A little less room between its parts and on
+   either side of Export keeps the agent's name whole on a 320 px screen ("ChatGPT…"), and as many of the other words
+   as fit. */
+@container (max-width: 340px) {
+  .h-uiBar {
+    gap: 8px;
+  }
+  .h-uiExport {
+    padding-inline: 10px;
   }
 }
 
@@ -2000,13 +2052,15 @@
     transform: translateX(-50%);
   }
 }
-/* The page's close: the one action again, with Sign in beside it, before the footer. */
+/* The page's close: the one action again, with Sign in beside it, before the footer. It follows the agents as closely
+   as the agents follow the lead, so it ends their section, and the page's own room before the footer (as much as
+   between two sections) keeps the footer apart from it. */
 .h-close {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 16px 32px;
-  margin-top: clamp(96px, 11vw, 160px);
+  margin-top: clamp(48px, 5vw, 72px);
 }
 .h-closeLink {
   font-size: var(--h-body);
@@ -2392,10 +2446,6 @@ html:has(.h-dock[data-shown]) {
   }
   .h-edLeft {
     display: none;
-  }
-  /* A busy scene's Activity runs longer than the narrower panel; the oldest lines go out of sight at its foot. */
-  .h-edBody > .h-edRight {
-    overflow: hidden;
   }
   /* The team's editor is shorter here too, and its oldest change would be cut in half: it shows the three newest. */
   .h-tmActivity li:nth-child(n + 4) {

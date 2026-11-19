@@ -561,6 +561,15 @@ describe("home page stylesheet (home.css)", () => {
     expect(rule(".h-marqueeList")?.get("flex-wrap")).toBe("wrap");
     expect([rule(".h-marquee")?.get("margin-inline"), rule(".h-marquee")?.get("padding-left")]).toEqual(["0", "0"]);
   });
+
+  it("closes the last section as closely after the agents as the agents follow its lead, apart from the footer", () => {
+    const base = (selector: string) => rules.find((r) => r.media === null && r.selectors.includes(selector))!.decls;
+    const marqueeTop = base(".h-marquee").get("margin")!.split(" calc(")[0];
+    expect(base(".h-close").get("margin-top")).toBe(marqueeTop);
+    // The page's own room before the footer is a section's gap, much more than that.
+    expect(base(".h-page").get("padding-bottom")).toBe("clamp(80px, 11vw, 140px)");
+    expect(base(".h-section").get("padding")).toBe("clamp(120px, 14vw, 180px) var(--h-pad) 0");
+  });
 });
 
 describe("home page new project form", () => {
@@ -649,14 +658,21 @@ describe("home page agent demo", () => {
     render(<AgentDemo />);
     expect(screen.getByText("Claude (for you) · Added text")).toBeTruthy();
 
-    // The top bar's status holds both of its words in one spot, and shows the one in use.
+    // The top bar's status holds every agent's words and "Saved" in one spot, and shows the one in use.
     const status = (words: RegExp) => screen.getByText(words).closest(".h-uiStatus > span")!;
+    const on = () => [...document.querySelectorAll(".h-uiStatus > [data-on]")].map((s) => s.textContent);
+    expect([...document.querySelectorAll(".h-uiStatus > span")].map((s) => s.textContent)).toEqual([
+      ...REQUESTS.map((r) => `${r.agent} is editing…`),
+      "Saved",
+    ]);
+    expect(on()).toEqual(["Saved"]);
     expect(status(/^Saved$/).hasAttribute("data-on")).toBe(true);
     expect(status(/Claude is editing/).hasAttribute("data-on")).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: /Make it vertical for Reels and TikTok/ }));
     expect(status(/Codex is editing/).hasAttribute("data-on")).toBe(true);
     expect(status(/^Saved$/).hasAttribute("data-on")).toBe(false);
+    expect(on()).toEqual(["Codex is editing…"]);
     // Codex's line already holds its place in Activity, unseen and out of the accessibility tree, while Codex works.
     const line = screen.getByText("Codex (for you) · Changed the format to Vertical 9:16").closest("li")!;
     expect(line.hasAttribute("data-pending")).toBe(true);
@@ -759,6 +775,31 @@ describe("home page agent demo", () => {
       ["Codex", "Codex changes the format for you. Each agent acts as you, in the space you choose."],
       ["Cursor", "Cursor splits the beach clip in two. Connect as many agents as you like."],
     ]);
+  });
+
+  it("keeps the editor's top bar on one line on a narrow phone: the status's words give way, nothing else", () => {
+    const { container } = render(<AgentDemo />);
+    const bar = container.querySelector(".h-uiBar")!;
+    expect([...bar.children].map((k) => k.getAttribute("class"))).toEqual([
+      "h-uiLogo",
+      "h-uiProject",
+      "h-uiStatus",
+      "h-uiExport",
+    ]);
+    // Each agent's words are in a piece of their own, so the dot beside them stays whole when they're cut short.
+    for (const line of bar.querySelectorAll(".h-uiStatus > span:not(:last-child)")) {
+      expect([...line.children].map((k) => k.className)).toEqual(["h-uiDot", "h-uiStatusText"]);
+    }
+
+    const rules = cssRules(readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8"));
+    const decl = (selector: string, property: string) =>
+      rules.find((r) => r.media === null && r.selectors.includes(selector) && r.decls.has(property))?.decls.get(property);
+    for (const fixed of [".h-uiLogo", ".h-uiProject", ".h-uiExport", ".h-uiDot"]) {
+      expect(decl(fixed, "flex"), fixed).toBe("none");
+    }
+    expect(decl(".h-uiProject", "white-space")).toBe("nowrap");
+    expect([decl(".h-uiStatus", "min-width"), decl(".h-uiStatus", "grid-template-columns")]).toEqual(["0", "minmax(0, 1fr)"]);
+    expect([decl(".h-uiStatusText", "overflow"), decl(".h-uiStatusText", "text-overflow")]).toEqual(["hidden", "ellipsis"]);
   });
 
   it("draws the agent's name on a request in the page's own greys, not an accent colour", () => {

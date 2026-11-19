@@ -119,13 +119,17 @@ export function AgentDemo({ children }: { children?: ReactNode }) {
       <figure className="h-demoStage" aria-label="A working model of the editor">
         <div data-ui className="h-ui" data-agent={phase === "done" ? request.agent : undefined}>
           <div className="h-uiBar">
-            <LogoMark size={16} />
+            <LogoMark size={16} className="h-uiLogo" />
             <span className="h-uiProject">Summer trip</span>
-            {/* Both states in one spot, the one not in use unseen, so the status keeps its width when the edit lands. */}
+            {/* Every agent's words and "Saved" in one spot, the ones not in use unseen, so the status keeps one width
+                whichever agent is at work and when its edit lands. */}
             <span className="h-uiStatus">
-              <span data-on={phase === "working" || undefined}>
-                <span className="h-uiDot" /> {request.agent} is editing…
-              </span>
+              {REQUESTS.map((r, i) => (
+                <span key={r.key} data-on={(phase === "working" && i === chosen) || undefined}>
+                  <span className="h-uiDot" />
+                  <span className="h-uiStatusText">{r.agent} is editing…</span>
+                </span>
+              ))}
               <span data-on={phase !== "working" || undefined}>Saved</span>
             </span>
             <span className="h-uiExport">Export</span>

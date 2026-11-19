@@ -194,8 +194,12 @@
 .h-plainNarrow {
   max-width: 24rem;
 }
-/* The page's one heading, at the size of a home section's heading. */
+/* The page's one heading, at the size of a home section's heading. It is as wide as its words, so it may run past the
+   right edge of a narrow reading column ("Terms of service" is wider than the terms' 32rem at 76 px) rather than
+   breaking after its second word; only the window's own margins make it wrap. */
 .h-plainTitle {
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--h-pad));
   font-size: clamp(38px, 5.2vw, 76px);
   font-weight: 600;
   letter-spacing: -0.04em;

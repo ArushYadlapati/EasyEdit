@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import PrivacyPage, { metadata as privacyMetadata, viewport as privacyViewport } from "@/app/privacy/page";
 import TermsPage, { metadata as termsMetadata, viewport as termsViewport } from "@/app/terms/page";
+import { cssRules } from "../helpers/css-rules";
 import { render, screen } from "../helpers/dom";
 
 const classes = (el: Element) => el.className.split(" ");
@@ -59,6 +62,15 @@ describe.each([
     expect(classes(article)).toContain("gap-5");
     for (const heading of headings) expect(classes(heading)).toEqual(expect.arrayContaining(["mt-7", "-mb-2", "text-2xl"]));
   });
+});
+
+it("lets a page's title run past its reading column, so the terms' title isn't broken after its second word", () => {
+  const site = cssRules(readFileSync(join(process.cwd(), "src/components/site/site.css"), "utf8"));
+  const title = site.find((r) => r.media === null && r.selectors.includes(".h-plainTitle"))!.decls;
+  expect(title.get("width")).toBe("max-content");
+  // Only the window's own side margins make it wrap (on a phone).
+  expect(title.get("max-width")).toBe("calc(100vw - 2 * var(--h-pad))");
+  expect(title.get("text-wrap")).toBe("balance");
 });
 
 it("sets the terms' date line small, in the site's own muted grey", () => {

@@ -319,7 +319,12 @@ export function HeroScene({ closedBeta }: { closedBeta: boolean }) {
               {[leaving, active]
                 .filter((i): i is number => i !== null)
                 .map((i) => (
-                  <div key={SCENES[i].key} className="h-edOverlay" data-leaving={i === leaving || undefined}>
+                  <div
+                    key={SCENES[i].key}
+                    className="h-edOverlay"
+                    data-scene={SCENES[i].key}
+                    data-leaving={i === leaving || undefined}
+                  >
                     <Overlay scene={SCENES[i].key} />
                   </div>
                 ))}

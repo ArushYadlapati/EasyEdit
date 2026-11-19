@@ -34,6 +34,10 @@ describe("LogoMark", () => {
 
   it("has a logo accent in every theme the site uses", () => {
     const css = readFileSync("src/app/globals.css", "utf8");
-    expect(css.match(/--logo-accent:/g)).toHaveLength(3); // light pages, dark pages, the always-dark editor and dashboard
+    // light pages, dark pages, the always-dark editor and dashboard, the always-dark public site
+    expect(css.match(/--logo-accent:/g)).toHaveLength(4);
+    // The public site is dark whatever the computer's setting, so it needs the dark accent even on a light computer.
+    const site = css.match(/html:has\(\.h-site\)\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(site).toMatch(/--logo-accent:\s*#6ea8ff;/);
   });
 });

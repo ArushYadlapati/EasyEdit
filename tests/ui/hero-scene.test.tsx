@@ -91,6 +91,32 @@ describe("home hero scenes", () => {
     expect(ending()).toBe("for creators.");
   });
 
+  it("marks each scene's overlay with its scene, so the vertical scene's lies over the part of the frame it keeps", () => {
+    stubReducedMotion(false);
+    render(<HeroScene closedBeta={false} />);
+    const frame = () => document.querySelector<HTMLElement>(".h-edFrame")!;
+    const overlays = () => [...document.querySelectorAll<HTMLElement>(".h-edOverlay")].map((o) => [o.dataset.scene, o.hasAttribute("data-leaving")]);
+    expect(overlays()).toEqual([["ai", false]]);
+    expect(frame().hasAttribute("data-vertical")).toBe(false);
+
+    // Each keystroke typeOut steps through takes 40 ms of the scene, so the next change lands exactly on its time.
+    advance(5000);
+    advance(8500 - 40 * typeOut().length);
+    expect(sceneShown()).toBe("creators");
+    expect(frame().hasAttribute("data-vertical")).toBe(true);
+    expect(overlays()).toEqual([
+      ["team", true],
+      ["creators", false],
+    ]);
+    advance(5000 - 40 * typeOut().length);
+    expect(sceneShown()).toBe("browser");
+    expect(frame().hasAttribute("data-vertical")).toBe(false);
+    expect(overlays()).toEqual([
+      ["creators", true],
+      ["browser", false],
+    ]);
+  });
+
   it("has the next author retype the ending letter by letter: back to the part the two share, then the rest", () => {
     stubReducedMotion(false);
     render(<HeroScene closedBeta={false} />);
@@ -380,6 +406,55 @@ describe("home hero (home.css)", () => {
     expect(base(".h-heroTitle")?.decls.get("max-width")).toBe("100%");
     expect(base(".h-heroClip")?.decls.get("white-space")).toBe("pre-wrap"); // "for " keeps its space
     expect(base(".h-heroEnding")?.decls.get("min-height")).toBe("1em");
+  });
+
+  it("keeps the selection round the ending in place while it is retyped: nothing in it is placed from its right edge", () => {
+    const rule = (selector: string) => rules.find((r) => r.media === null && r.selectors.includes(selector))?.decls;
+    // The box is a container, so the right-hand pieces can be carried across by its own width.
+    expect(rule(".h-heroBox")?.get("container-type")).toBe("inline-size");
+    const handles = rules.filter((r) => r.selectors.some((s) => s.startsWith(".h-heroHandle")));
+    expect(handles.length).toBe(5);
+    for (const handle of handles) expect(handle.decls.has("right"), handle.selectors.join(", ")).toBe(false);
+    for (const at of ["tr", "br"]) {
+      expect(rule(`.h-heroHandle[data-at="${at}"]`)?.get("left"), at).toBe("-4px");
+      expect(rule(`.h-heroHandle[data-at="${at}"]`)?.get("translate"), at).toBe("100cqw 0");
+    }
+    // The caret is drawn by the box too, at its right end the same way, rather than after the words.
+    const caret = rule(".h-heroClip[data-typing] .h-heroBox::after");
+    expect(caret?.get("translate")).toBe("100cqw 0");
+    expect(caret?.has("right")).toBe(false);
+    expect(rules.some((r) => r.selectors.includes(".h-heroClip[data-typing]::after"))).toBe(false);
+  });
+
+  it("never lets what happens inside the editor change its size or move its preview", () => {
+    const rule = (selector: string) => rules.find((r) => r.media === null && r.selectors.includes(selector))?.decls;
+    // The side panels take the height they are given (their contents don't size them) and cut off what runs past it.
+    const panels = rules.find((r) => r.media === null && r.selectors.includes(".h-edLeft") && r.selectors.includes(".h-edBody > .h-edRight"));
+    expect(panels?.decls.get("contain")).toBe("size");
+    expect(panels?.decls.get("overflow")).toBe("hidden");
+    // Going vertical cuts the frame's sides away; its box keeps one size.
+    expect(rule(".h-edFrame")?.get("clip-path")).toBe("inset(0 var(--cut))");
+    expect(rule(".h-edFrame")?.get("transition")).toBe("clip-path 600ms var(--h-ease) 350ms");
+    for (const frame of rules.filter((r) => r.selectors.some((s) => s.startsWith(".h-edFrame")))) {
+      for (const size of ["width", "height", "aspect-ratio"]) {
+        if (frame.selectors.includes(".h-edFrame") && frame.media === null) continue;
+        expect(frame.decls.has(size), `${frame.selectors.join(", ")} ${size}`).toBe(false);
+      }
+    }
+    const cut = rule(".h-edFrame[data-vertical]")?.get("--cut");
+    expect(cut).toBe("calc(50% * 175 / 256)");
+    // What is left is 9:16 at the frame's 16:9 height: 81/256 of its width.
+    expect(1 - 2 * ((0.5 * 175) / 256)).toBeCloseTo((9 / 16) * (9 / 16), 10);
+    // The vertical scene's overlay lies over exactly that part.
+    expect(rule('.h-edOverlay[data-scene="creators"]')?.get("inset")).toBe(`0 ${cut}`);
+  });
+
+  it("keeps the band's lead and pills beside the headline on a wide window instead of at its far side", () => {
+    const band = rules.find((r) => r.media === null && r.selectors.includes(".h-heroBand"))?.decls;
+    expect(band?.get("grid-template-columns")).toBe("auto minmax(0, 30rem)");
+    expect(band?.get("justify-content")).toBe("space-between");
+    // The headline's longer line (7.04em), the most room between the columns, and the side column.
+    expect(band?.get("max-width")).toBe("calc(var(--h-display) * 7.04 + 176px + 30rem)");
   });
 
   it("between a phone and a laptop, drops the media panel and makes the editor as tall as its preview needs", () => {
