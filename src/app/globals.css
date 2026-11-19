@@ -3,7 +3,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --logo-accent: #2f6fdb; /* the cut-off half of the logo mark (components/ui/logo.tsx), deep enough to read on white */
+  /* The logo mark's three blues, front to back (components/ui/logo.tsx). On white they sit one step deeper than on dark. */
+  --logo-1: #6ea8ff;
+  --logo-2: #2f6fdb;
+  --logo-3: #163a85;
   --danger: #b91c1c; /* an error on a plain page (PLAIN_ERROR in components/ui/cx.ts): 6.5:1 on white */
 }
 
@@ -44,7 +47,9 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
-    --logo-accent: #6ea8ff;
+    --logo-1: #b8d4ff;
+    --logo-2: #6ea8ff;
+    --logo-3: #2f6fdb;
     --danger: #f26d6d; /* 6.8:1 on the dark background */
   }
 }
@@ -57,7 +62,9 @@ html:has(.editor, .ed-theme) {
   color-scheme: dark;
   --background: #0a0a0a;
   --foreground: #ededed;
-  --logo-accent: #6ea8ff; /* the same as --ed-accent */
+  --logo-1: #b8d4ff;
+  --logo-2: #6ea8ff; /* the same as --ed-accent */
+  --logo-3: #2f6fdb;
   --danger: #f26d6d; /* the same as --ed-danger */
 }
 
@@ -68,7 +75,9 @@ html:has(.h-site) {
   color-scheme: dark;
   --background: #000;
   --foreground: #fafafa;
-  --logo-accent: #6ea8ff;
+  --logo-1: #b8d4ff;
+  --logo-2: #6ea8ff;
+  --logo-3: #2f6fdb;
   --danger: #f26d6d; /* 7.2:1 on black */
 }
 

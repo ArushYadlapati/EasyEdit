@@ -139,7 +139,7 @@ export function TopBar({
             FADE,
           )}
         >
-          <LogoMark size={16} className="text-ed-text" />
+          <LogoMark size={16} />
           Projects
         </LeaveLink>
         <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
