@@ -1,4 +1,4 @@
-import { soundingClips } from "@/lib/render/clip-sound";
+import { fadeFrames, soundingClips } from "@/lib/render/clip-sound";
 import type { MediaClip, TimelineDoc } from "@/lib/timeline";
 
 // Where each clip sounds on the timeline, in samples, and from where in its file. Every position is worked out from
@@ -12,6 +12,8 @@ export type Voice = {
   in: number; // the first clip's in point, in project frames
   speed: number;
   gain: number;
+  fadeIn: number; // samples the voice rises over at its start, and falls over at its end; never more than it is long
+  fadeOut: number;
 };
 
 export type SoundSchedule = {
@@ -32,15 +34,22 @@ function frameSample(frame: number, fps: number, sampleRate: number): number {
 }
 
 // A clip that picks up exactly where the one before it on its track left off: the next frame, the same file, speed and
-// volume, and the in point the first one reaches, compared exactly.
+// volume, and the in point the first one reaches, compared exactly. A fade at the cut keeps the two apart.
 function continues(clip: MediaClip, next: MediaClip, file: string, nextFile: string): boolean {
   return (
+    fadeFrames(clip).out === 0 &&
+    fadeFrames(next).in === 0 &&
     next.start === clip.start + clip.duration &&
     nextFile === file &&
     next.speed === clip.speed &&
     next.volume === clip.volume &&
     next.in === clip.in + clip.duration * clip.speed
   );
+}
+
+// A length in frames as samples, to the nearest one.
+function frameCount(frames: number, fps: number, sampleRate: number): number {
+  return Math.round((frames * sampleRate) / fps);
 }
 
 // Every clip the export hears that has a file in `sounds` (clipId → fileId), with seamless runs merged into one voice.
@@ -51,9 +60,12 @@ export function soundSchedule(doc: TimelineDoc, sounds: Record<string, string>, 
     const fileId = sounds[clip.id];
     if (fileId === undefined) continue;
     const end = frameSample(clip.start + clip.duration, fps, sampleRate);
+    const fade = fadeFrames(clip);
+    const fadeOut = frameCount(fade.out, fps, sampleRate);
     if (open && open.track === track.id && continues(open.last, clip, open.voice.fileId, fileId)) {
       open.voice.clipIds.push(clip.id);
       open.voice.end = end;
+      open.voice.fadeOut = fadeOut; // the run ends as its last clip does
       open.last = clip;
       continue;
     }
@@ -65,6 +77,8 @@ export function soundSchedule(doc: TimelineDoc, sounds: Record<string, string>, 
       in: clip.in,
       speed: clip.speed,
       gain,
+      fadeIn: frameCount(fade.in, fps, sampleRate),
+      fadeOut,
     };
     voices.push(voice);
     open = { voice, track: track.id, last: clip };

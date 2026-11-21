@@ -1,7 +1,8 @@
-// A block's sound from its voices' parts: each voice's gain and edge ramps, the sum, a hard clamp at ±1 and interleaving.
-// No limiter, no soft clip, no dither.
+// A block's sound from its voices' parts: each voice's gain, fades and edge ramps, the sum, a hard clamp at ±1 and
+// interleaving. No limiter, no soft clip, no dither.
 
 import { AUDIO } from "@/lib/export/presets";
+import { fadeGain } from "@/lib/render/clip-sound";
 
 // 4 ms at the export's rate.
 export const EDGE_RAMP_SAMPLES = AUDIO.sampleRate / 250;
@@ -19,11 +20,18 @@ export function edgeGain(index: number, length: number): number {
 // A voice's samples for [at, at + left.length) of a block.
 export type VoicePart = { at: number; left: Float32Array; right: Float32Array };
 
-// Multiplies the part in place by gain × edgeGain(first + i, length): `first` is the part's first sample within its voice.
-export function applyGain(part: VoicePart, gain: number, first: number, length: number): void {
+// The samples a voice fades over at its start and at its end; 0 for none.
+export type VoiceFade = { in: number; out: number };
+const NO_FADE: VoiceFade = { in: 0, out: 0 };
+
+// Multiplies the part in place by gain × edgeGain(first + i, length) × the fades' gain there, by the rule the preview
+// fades by: `first` is the part's first sample within its voice.
+export function applyGain(part: VoicePart, gain: number, first: number, length: number, fade: VoiceFade = NO_FADE): void {
   const { left, right } = part;
+  const fades = fade.in > 0 || fade.out > 0;
   for (let i = 0; i < left.length; i++) {
-    const g = gain * edgeGain(first + i, length);
+    let g = gain * edgeGain(first + i, length);
+    if (fades) g *= fadeGain(first + i, length, fade.in, fade.out);
     left[i] *= g;
     right[i] *= g;
   }

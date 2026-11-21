@@ -50,10 +50,23 @@ describe("what should be playing at a frame", () => {
     expect(mediaWants(withSpeed(doc, "c1", 4), 45, { playing: true, rate: 4 })[0].rate).toBe(16);
     expect(mediaWants(withSpeed(doc, "c1", 0.05), 45, { playing: true, rate: 1 })[0].rate).toBe(0);
   });
-  it("is silent on a muted track, absent on a hidden one, and never louder than 1", () => {
+  it("is silent on a muted track, absent on a hidden one, and louder than recorded when turned up", () => {
     expect(mediaWants(muted(doc, "a1"), 45, { playing: true, rate: 1 })[2].volume).toBe(0);
     expect(mediaWants(hidden(doc, "v1"), 45, { playing: true, rate: 1 }).map((w) => w.clipId)).toEqual(["i1", "m1"]);
-    expect(mediaWants(withVolume(doc, "m1", 2), 45, { playing: true, rate: 1 })[2].volume).toBe(1);
+    expect(mediaWants(withVolume(doc, "m1", 2), 45, { playing: true, rate: 1 })[2].volume).toBe(2);
+  });
+  it("follows a clip's fades frame by frame, read at the middle of each frame", () => {
+    // m1 runs from frame 0 to 300: a 10-frame fade in and a 20-frame fade out.
+    const faded = withClip(doc, "m1", { fadeIn: 10, fadeOut: 20 } as Partial<Clip>);
+    const at = (frame: number) => mediaWants(faded, frame, { playing: true, rate: 1 }).find((w) => w.clipId === "m1")!.volume;
+    expect(at(0)).toBeCloseTo(0.05 ** 2, 12); // half a frame in, of 10
+    expect(at(4)).toBeCloseTo(0.45 ** 2, 12);
+    expect(at(10)).toBe(1);
+    expect(at(150)).toBe(1);
+    expect(at(289)).toBeCloseTo((10.5 / 20) ** 2, 12);
+    expect(at(299)).toBeCloseTo((0.5 / 20) ** 2, 12);
+    // The fade scales the clip's own volume.
+    expect(mediaWants(withVolume(faded, "m1", 2), 4, { playing: true, rate: 1 }).find((w) => w.clipId === "m1")!.volume).toBeCloseTo(2 * 0.45 ** 2, 12);
   });
   it("wants nothing where there is no clip", () => {
     expect(mediaWants(doc, 400, { playing: true, rate: 1 })).toEqual([]);

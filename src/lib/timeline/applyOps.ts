@@ -38,6 +38,8 @@ const CLIP_FILL: Record<string, () => unknown> = {
   animationOut: () => null,
   emphasis: () => null,
   captions: () => false,
+  fadeIn: () => 0,
+  fadeOut: () => 0,
 };
 
 // A shape's optional fields, each with the value its absence means, filled the same way so the first change to one
@@ -55,14 +57,20 @@ const SHAPE_FILL: Record<string, () => unknown> = {
 // itself instead of transitioning. A placeholder carries what the clip that fills it would: a visual slot the
 // video and image effects (so a template's fade or move survives the fill), an audio slot none.
 const VISUAL_EFFECTS = ["keyframes", "transitionIn", "transitionOut"] as const;
-// A video clip also takes captions; sound takes only that (see CLIP_EFFECTS).
+// What a clip that sounds takes: captions for its speech, and a fade of its sound at either end.
+const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut"] as const;
+// A video clip takes both kinds; sound takes only its own (see CLIP_EFFECTS).
 const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string[]> = {
-  video: [...VISUAL_EFFECTS, "captions"],
+  video: [...VISUAL_EFFECTS, ...SOUND_EFFECTS],
   image: VISUAL_EFFECTS,
-  audio: ["captions"],
+  audio: SOUND_EFFECTS,
   text: ["keyframes", "animationIn", "animationOut", "emphasis"],
   shape: VISUAL_EFFECTS,
 };
+
+// A clip's ways in and out, each with the value that means it has none. A split takes the way out off the left piece
+// and the way in off the right one.
+const WAY_NONE: Record<string, unknown> = { transitionIn: null, transitionOut: null, animationIn: null, animationOut: null, fadeIn: 0, fadeOut: 0 };
 
 type EffectsHolder = Pick<Clip, "type"> & { accepts?: "visual" | "audio" };
 
@@ -507,10 +515,10 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         // The cut is not an end or a start, so the left piece gives up its way out and the right its way in.
         // The undo puts back the left piece's way out; the right piece goes away with whatever it had.
         const leftOut: Record<string, unknown> = {};
-        const outKeys = ["transitionOut", "animationOut"] as const;
+        const outKeys = ["transitionOut", "animationOut", "fadeOut"] as const;
         for (const key of outKeys) {
           const value = (left as Record<string, unknown>)[key];
-          if (value !== undefined && value !== null) leftOut[key] = value;
+          if (value !== undefined && value !== WAY_NONE[key]) leftOut[key] = value;
         }
         const undo: Op[] = [
           { op: "remove_clip", clipId: op.newClipId, expect: { start: op.at, duration: end - op.at } },
@@ -523,7 +531,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           },
         ];
         if (Object.keys(leftOut).length) {
-          const cleared = Object.fromEntries(Object.keys(leftOut).map((key) => [key, null]));
+          const cleared = Object.fromEntries(Object.keys(leftOut).map((key) => [key, WAY_NONE[key]]));
           undo.push({ op: "update_clip", clipId: op.clipId, patch: leftOut, expect: cleared });
         }
         groups.push(undo);
@@ -535,8 +543,8 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (right.keyframes) right.keyframes = shiftKeyframes(right.keyframes, left.start - op.at);
         const l = left as Record<string, unknown>;
         const r = right as Record<string, unknown>;
-        for (const key of outKeys) if (key in l) l[key] = null;
-        for (const key of ["transitionIn", "animationIn"]) if (key in r) r[key] = null;
+        for (const key of outKeys) if (key in l) l[key] = WAY_NONE[key];
+        for (const key of ["transitionIn", "animationIn", "fadeIn"]) if (key in r) r[key] = WAY_NONE[key];
         if ((right.type === "video" && left.type === "video") || (right.type === "audio" && left.type === "audio")) {
           // Counted back from where the clip ends in its source, so the right piece ends there too.
           const sourceEnd = left.in + Math.round(left.duration * left.speed);

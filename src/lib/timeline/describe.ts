@@ -77,6 +77,11 @@ function describeShape(clip: ShapeClip): string {
     .join(" ");
 }
 
+// A sound fade is only worth a word when the clip has one, in frames as update_clip takes them.
+function fadeSuffix(clip: MediaClip): string {
+  return `${(clip.fadeIn ?? 0) > 0 ? ` fadeIn=${clip.fadeIn}` : ""}${(clip.fadeOut ?? 0) > 0 ? ` fadeOut=${clip.fadeOut}` : ""}`;
+}
+
 function describeClip(clip: Clip, fps: number): string {
   const range = `${framesToSeconds(clip.start, fps)}–${framesToSeconds(clip.start + clip.duration, fps)}s`;
   // The slot comes before the effects, on every kind of clip.
@@ -89,7 +94,7 @@ function describeClip(clip: Clip, fps: number): string {
   if (clip.type === "shape") {
     return `  ${clip.id}  shape(${shapeToolOf(clip)})  ${range}  ${clip.stroke ?? clip.fill ?? ""}${describeEffects(clip, fps, false)}`;
   }
-  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${captionsSuffix(clip)}${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
+  return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${fadeSuffix(clip)}${captionsSuffix(clip)}${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
 }
 
 // Scale, stretch, rotation, opacity and crop are only worth a word when they are not the defaults. Audio draws nothing, so its
@@ -127,7 +132,7 @@ function describeClipInDetail(clip: Clip, fps: number): string {
   }
   if (clip.type === "shape") return `${head}  ${describeShape(clip)}  x=${t.x} y=${t.y}` + describeTransformChanges(t, clip.type) + describeEffects(clip, fps, true);
   return (
-    `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}` +
+    `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${fadeSuffix(clip)}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +
     describeTransformChanges(t, clip.type) +
     captionsSuffix(clip) +

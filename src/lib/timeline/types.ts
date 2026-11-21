@@ -121,13 +121,21 @@ const ClipBase = {
   transform: Transform,
 };
 
+// The loudest a clip can be set: four times as recorded, about +12 dB. 1 is as recorded.
+export const VOLUME_MAX = 4;
+
 export const MediaClip = z.object({
   ...ClipBase,
+  // An audio clip may also name a video file, and then plays that file's sound alone.
   type: z.enum(["video", "image", "audio"]),
   assetId: z.string().min(1),
   in: z.number().int().min(0),
   speed: z.number().positive(),
-  volume: z.number().min(0).max(2),
+  volume: z.number().min(0).max(VOLUME_MAX),
+  // Video and audio only (checked in the ops): the frames over which the clip's sound rises from silence at its start
+  // and falls back to it at its end. Absent means 0. Together they never count for more than the clip is long.
+  fadeIn: z.number().int().min(0).optional(),
+  fadeOut: z.number().int().min(0).optional(),
   slot: Slot.optional(),
   // Video and image only; Audio clips are checked where clips are added and changed.
   keyframes: Keyframes.optional(),

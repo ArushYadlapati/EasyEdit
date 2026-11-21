@@ -214,8 +214,8 @@ describe("media through edit_timeline", () => {
     expect((await lines([{ op: "add_clip", trackId: "v1", clip: clip(music) }]))[1]).toBe(
       `Asset "${music}" is audio. Set the clip's "type" to "audio" and put it on a track that takes it.`,
     );
-    expect((await lines([{ op: "add_clip", trackId: "a1", clip: clip(video, { type: "audio" }) }]))[1]).toBe(
-      `Asset "${video}" is a video. Set the clip's "type" to "video" and put it on a track that takes it.`,
+    expect((await lines([{ op: "add_clip", trackId: "v1", clip: clip(music, { type: "image" }) }]))[1]).toBe(
+      `Asset "${music}" is audio. Set the clip's "type" to "audio" and put it on a track that takes it.`,
     );
     // An update_clip is not checked for kind: its clip's type is known only once the project is read.
     expect(await lines([{ op: "update_clip", clipId: "c1", patch: { assetId: music } }])).toEqual([

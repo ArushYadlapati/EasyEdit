@@ -76,12 +76,17 @@ export function assetIdsToCheck(after: TimelineDoc, ops: Op[]): string[] {
   return [...ids];
 }
 
+// A clip plays a file of its own kind. An audio clip can also play a video's sound, apart from its picture.
+export function clipTakes(clipType: AssetKind, assetKind: AssetKind): boolean {
+  return assetKind === clipType || (clipType === "audio" && assetKind === "video");
+}
+
 // What stops one asset from being used by a clip, or null. Without clipType the kind is not checked.
 export function assetTrouble(fact: AssetFact | undefined, clipType?: AssetKind): AssetTrouble | null {
   if (!fact) return "missing";
   if (fact.removed) return "removed";
   if (!fact.ready) return "not_ready";
-  if (clipType !== undefined && fact.kind !== clipType) return "wrong_kind";
+  if (clipType !== undefined && !clipTakes(clipType, fact.kind)) return "wrong_kind";
   return null;
 }
 

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { assetIdsToCheck, assetTrouble, findMediaProblem, mediaProblemMessage, type MediaProblem } from "@/lib/media/refs";
+import { assetIdsToCheck, assetTrouble, clipTakes, findMediaProblem, mediaProblemMessage, type MediaProblem } from "@/lib/media/refs";
 import { openUpload, removeAsset, type AssetFact } from "@/lib/media/service";
 import { applyProjectOps, createProject, getProject } from "@/lib/projects/service";
 import { applyOps, createEmptyDoc, prepareOps, type OpInput, type TimelineDoc } from "@/lib/timeline";
@@ -392,6 +392,11 @@ describe("the media check, with facts and no database", () => {
     expect(assetTrouble(fact("A", { removed: true, ready: false, kind: "image" }), "video")).toBe("removed");
     expect(assetTrouble(fact("A", { ready: false, kind: "image" }), "video")).toBe("not_ready");
     expect(assetTrouble(fact("A", { kind: "image" }), "video")).toBe("wrong_kind");
+    // An audio clip may also play a video's sound, apart from its picture; nothing else crosses kinds.
+    expect(assetTrouble(fact("A", { kind: "video" }), "audio")).toBeNull();
+    expect(assetTrouble(fact("A", { kind: "audio" }), "video")).toBe("wrong_kind");
+    expect(assetTrouble(fact("A", { kind: "image" }), "audio")).toBe("wrong_kind");
+    expect([clipTakes("audio", "video"), clipTakes("video", "audio"), clipTakes("image", "video"), clipTakes("image", "image")]).toEqual([true, false, false, true]);
     expect(assetTrouble(fact("A", { kind: "image" }))).toBeNull();
     expect(assetTrouble(fact("A"), "video")).toBeNull();
     expect(assetTrouble(undefined)).toBe("missing");

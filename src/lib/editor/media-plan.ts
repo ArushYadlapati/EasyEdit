@@ -1,10 +1,12 @@
-import { playsInPreview, soundGain } from "@/lib/render/clip-sound";
+import { clipFadeAt, playsInPreview, soundGain } from "@/lib/render/clip-sound";
 import { tailAt } from "@/lib/render/compositor";
 import { sourceSeconds } from "@/lib/render/source-time";
 import type { MediaClip, TimelineDoc, Track } from "@/lib/timeline";
 
 // What the preview's media should be doing at a frame: which clips show and sound, at what moment of their media,
 // how fast and how loud. Pure, so the pool that drives the browser's elements only has to follow it.
+
+// volume: the gain the clip should sound at right now, its fades counted in. 1 is as recorded, and it can be more.
 
 export type MediaWant = { clipId: string; assetId: string; type: "video" | "image" | "audio"; seconds: number; rate: number; volume: number };
 
@@ -30,7 +32,7 @@ export function mediaWants(doc: TimelineDoc, frame: number, play: { playing: boo
       type: clip.type,
       seconds: sourceSeconds(clip, frame, doc.fps),
       rate,
-      volume: rate === 0 || silent ? 0 : soundGain(track, clip),
+      volume: rate === 0 || silent ? 0 : soundGain(track, clip) * clipFadeAt(clip, frame),
     };
   };
   for (const track of doc.tracks) {

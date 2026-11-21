@@ -1,3 +1,4 @@
+import type { SoundLine } from "@/lib/audio/sound-bus";
 import { PRELOAD_SECONDS, mediaWants, needsSeek, type MediaWant } from "@/lib/editor/media-plan";
 import type { MediaFiles } from "@/lib/media/media-files";
 import { PLACEHOLDER_LABELS, playbackFileFor } from "@/lib/media/playback";
@@ -38,6 +39,9 @@ export type PoolDeps = {
   decodeImage(blob: Blob, maxSide: number): Promise<{ image: CanvasImageSource; width: number; height: number }>;
   objectUrl(blob: Blob): string;
   revokeUrl(url: string): void;
+  // Routes an element's sound into the preview's mix, where its gain can go past 1 and the meter reads it. Without
+  // it an element keeps to its own volume, which stops at 1.
+  line?(el: MediaElement): SoundLine;
   now?: () => number; // default Date.now; times the wait before a failed read is tried again
 };
 
@@ -75,7 +79,8 @@ type Got<T> = { state: "loading" } | { state: "ready"; value: T } | { state: "fa
 type ElementKind = "video" | "audio";
 // An element, the clip it plays for and the file it plays. usedAt: the sync that last wanted it. shown: it has had a
 // frame of this file, which a browser keeps drawing while it seeks.
-type Held = { el: MediaElement; kind: ElementKind; clipId: string; fileId: string; usedAt: number; failed: boolean; shown: boolean };
+// line: its way into the mix, when there is a mix.
+type Held = { el: MediaElement; kind: ElementKind; clipId: string; fileId: string; usedAt: number; failed: boolean; shown: boolean; line: SoundLine | null };
 
 const kindFor = (want: MediaWant): ElementKind => (want.type === "audio" ? "audio" : "video");
 const hasData = (held: Held) => !held.failed && held.el.readyState >= 2;
@@ -144,10 +149,19 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
     return entry;
   }
 
-  function release(el: MediaElement): void {
+  function release({ el, line }: Held): void {
     if (!el.paused) el.pause();
+    line?.close();
     el.removeAttribute("src");
     el.load();
+  }
+
+  // How loud an element sounds: through its line when it has one, else by its own volume, which a browser refuses
+  // above 1.
+  function loud({ el, line }: Held, volume: number): void {
+    if (line) line.setGain(volume);
+    else el.volume = Math.min(volume, 1);
+    el.muted = volume === 0;
   }
 
   // An idle element of this file that has data, for a wanted clip that has none: the one nearest the moment wanted,
@@ -192,7 +206,7 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
     }
     const kind = kindFor(want);
     const el = kind === "audio" ? deps.makeAudio() : deps.makeVideo();
-    const held: Held = { el, kind, clipId: want.clipId, fileId, usedAt: round, failed: false, shown: false };
+    const held: Held = { el, kind, clipId: want.clipId, fileId, usedAt: round, failed: false, shown: false, line: deps.line?.(el) ?? null };
     const mine = () => elements.get(held.clipId) === held; // a released element's events say nothing
     const onData = () => {
       if (!mine()) return;
@@ -214,12 +228,12 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
   // Makes an element do what is wanted of it. What the browser refuses is left as it is, and the rest is still done.
   // A moment at or past the end of the file (a crossfade's tail runs on past its out point) holds the last frame:
   // play() on an ended element starts it over from 0, and seeking past the end again would only loop it there.
-  function follow(el: MediaElement, want: MediaWant): void {
+  function follow(held: Held, want: MediaWant): void {
+    const { el } = held;
     const end = el.duration !== undefined && Number.isFinite(el.duration) ? el.duration : el.ended ? el.currentTime : null;
     if (end !== null && want.seconds >= end) {
       if (!el.paused) el.pause();
-      el.volume = want.volume;
-      el.muted = want.volume === 0;
+      loud(held, want.volume);
       if (!el.ended && el.currentTime < end) el.currentTime = end;
       return;
     }
@@ -239,8 +253,7 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
     } else if (!el.paused) {
       el.pause();
     }
-    el.volume = want.volume;
-    el.muted = want.volume === 0;
+    loud(held, want.volume);
     if (needsSeek(el.currentTime, want)) el.currentTime = want.seconds;
   }
 
@@ -264,7 +277,7 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
         const held = element(want, fileId, got.value, wanted);
         held.usedAt = round;
         followed.add(want.clipId);
-        follow(held.el, want);
+        follow(held, want);
       };
       for (const want of wants) play(want, true);
       for (const want of soon) play(want, false);
@@ -273,7 +286,7 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
       const idle = [...elements].filter(([clipId]) => !following.has(clipId)).sort(([, a], [, b]) => b.usedAt - a.usedAt);
       for (const [, held] of idle) if (!held.el.paused) held.el.pause();
       for (const [clipId, held] of idle.slice(MAX_IDLE_ELEMENTS)) {
-        release(held.el);
+        release(held);
         elements.delete(clipId);
       }
     },
@@ -326,7 +339,7 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
 
     dispose() {
       generation += 1;
-      for (const held of elements.values()) release(held.el);
+      for (const held of elements.values()) release(held);
       for (const got of addresses.values()) if (got.state === "ready") deps.revokeUrl(got.value);
       elements = new Map();
       following = new Set();

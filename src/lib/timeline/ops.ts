@@ -51,6 +51,8 @@ const ClipExpect = z
     transitionIn: MediaClip.shape.transitionIn,
     transitionOut: MediaClip.shape.transitionOut,
     captions: MediaClip.shape.captions,
+    fadeIn: MediaClip.shape.fadeIn,
+    fadeOut: MediaClip.shape.fadeOut,
     animationIn: TextClip.shape.animationIn,
     animationOut: TextClip.shape.animationOut,
     emphasis: TextClip.shape.emphasis,

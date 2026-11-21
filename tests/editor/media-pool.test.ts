@@ -73,7 +73,14 @@ const want = (clipId: string, assetId = "a", over: Partial<MediaWant> = {}): Med
 const clip = (clipId: string, assetId = "a", type: MediaClip["type"] = "video") => video(clipId, 0, 30, { assetId, type }) as MediaClip;
 
 async function setup(
-  options: { assets?: AssetView[]; stored?: string[]; loaded?: boolean; element?: { refuseRate?: boolean; rejectPlay?: boolean }; decoding?: Promise<void> } = {},
+  options: {
+    assets?: AssetView[];
+    stored?: string[];
+    loaded?: boolean;
+    element?: { refuseRate?: boolean; rejectPlay?: boolean };
+    decoding?: Promise<void>;
+    mix?: boolean; // the pool is given the editor's mix, as in the editor
+  } = {},
 ) {
   const assets = new Map((options.assets ?? [videoAsset()]).map((asset) => [asset.id, asset]));
   const blobs = new Map<string, Blob>();
@@ -99,6 +106,13 @@ async function setup(
   const revoked: string[] = [];
   const decodes: [Blob, number][] = [];
   const picture = {} as CanvasImageSource;
+  // Each element's line into the mix: the gains it was set to, and whether it was closed.
+  const lines = new Map<MediaElement, { gains: number[]; closed: boolean }>();
+  const line = (el: MediaElement) => {
+    const kept = { gains: [] as number[], closed: false };
+    lines.set(el, kept);
+    return { setGain: (gain: number) => void kept.gains.push(gain), close: () => void (kept.closed = true) };
+  };
   const make = (kind: "video" | "audio") => () => {
     const el = pretendElement(kind, options.element ?? {});
     made.push(el);
@@ -123,6 +137,7 @@ async function setup(
     },
     revokeUrl: (url) => revoked.push(url),
     now: () => state.clock,
+    ...(options.mix && { line }),
   });
   const changes = vi.fn();
   pool.onChange(changes);
@@ -132,7 +147,7 @@ async function setup(
     await settle();
     pool.sync(wants);
   };
-  return { pool, made, addresses, revoked, decodes, picture, reads, changes, state, assets, put, syncSettled };
+  return { pool, made, addresses, revoked, decodes, picture, reads, changes, state, assets, put, syncSettled, lines };
 }
 
 describe("the media pool", () => {
@@ -165,6 +180,40 @@ describe("the media pool", () => {
     expect(h.made).toHaveLength(2);
     expect(h.addresses).toHaveLength(1);
     expect(h.made.map((el) => el.src)).toEqual([h.addresses[0], h.addresses[0]]);
+  });
+
+  it("without a mix, plays a clip turned up at the loudest an element can be", async () => {
+    const h = await setup();
+    await h.syncSettled([want("c1", "a", { rate: 1, volume: 2.5 })]);
+    expect(h.made[0]).toMatchObject({ volume: 1, muted: false });
+    expect(h.lines.size).toBe(0);
+  });
+
+  it("with a mix, sets each element's gain on its line, past 1 too, and leaves its own volume alone", async () => {
+    const h = await setup({ mix: true });
+    await h.syncSettled([want("c1", "a", { rate: 1, volume: 2.5 })]);
+    const [el] = h.made;
+    const kept = h.lines.get(el)!;
+    expect(kept.gains.at(-1)).toBe(2.5);
+    expect(el).toMatchObject({ volume: 1, muted: false }); // as the element was made
+    h.pool.sync([want("c1", "a", { rate: 1, volume: 0.2 })]);
+    expect(kept.gains.at(-1)).toBe(0.2);
+    // A silent clip is muted as well, so nothing leaks while its gain eases down.
+    h.pool.sync([want("c1", "a", { rate: 0, volume: 0 })]);
+    expect([kept.gains.at(-1), el.muted]).toEqual([0, true]);
+    expect(kept.closed).toBe(false);
+  });
+
+  it("closes an element's line when it lets the element go", async () => {
+    const h = await setup({ mix: true });
+    await h.syncSettled([want("c1", "a", { rate: 1, volume: 1 })]);
+    const kept = h.lines.get(h.made[0])!;
+    h.pool.dispose();
+    expect(kept.closed).toBe(true);
+    // And for an idle element pushed out by newer ones.
+    const many = await setup({ mix: true });
+    for (const n of [1, 2, 3, 4, 5, 6]) await many.syncSettled([want(`c${n}`, "a", { rate: 1, volume: 1 })]);
+    expect([...many.lines.values()].map((l) => l.closed)).toEqual([true, false, false, false, false, false]);
   });
 
   it("plays, pauses, seeks and sets the volume", async () => {

@@ -13,14 +13,45 @@ export function playsInPreview(track: Track, clip: Clip): clip is MediaClip {
   return (clip.type === "video" || clip.type === "image") && !track.hidden;
 }
 
-// The preview's gain: the clip's volume, linear, never above 1. Nothing for an image or text, a clip the preview
+// The clip's gain: its volume, linear, where 1 is as recorded. Nothing for an image or text, a clip the preview
 // does not play, or any clip on a muted track. Speed plays no part: the preview's rate decides that.
 export function soundGain(track: Track, clip: Clip): number {
   if (!playsInPreview(track, clip) || clip.type === "image" || track.muted) return 0;
-  return Math.min(clip.volume, 1);
+  return clip.volume;
 }
 
-// What the export hears: nothing where the preview's gain is 0 or the clip's speed is outside the speeds that sound.
+// How long the clip's fades really are, in frames: the fade in first, as much of it as the clip is long, then the
+// fade out in what is left. So the two never overlap, whatever the clip was trimmed to since they were set.
+export function fadeFrames(clip: Pick<MediaClip, "duration" | "fadeIn" | "fadeOut">): { in: number; out: number } {
+  const fadeIn = Math.min(clip.fadeIn ?? 0, clip.duration);
+  return { in: fadeIn, out: Math.min(clip.fadeOut ?? 0, clip.duration - fadeIn) };
+}
+
+// A fade's gain `t` of the way through it, 0 at silence and 1 at full: the square, which the ear takes as an even
+// rise where a straight line seems to arrive all at once.
+export function fadeCurve(t: number): number {
+  const x = t <= 0 ? 0 : t >= 1 ? 1 : t;
+  return x * x;
+}
+
+// What the fades leave of a sound `at` units after it starts, when it is `length` long and fades over `fadeIn` at its
+// start and `fadeOut` at its end, all in one unit (frames in the preview, samples in the export). 1 where neither reaches.
+export function fadeGain(at: number, length: number, fadeIn: number, fadeOut: number): number {
+  let gain = 1;
+  if (fadeIn > 0 && at < fadeIn) gain = fadeCurve(at / fadeIn);
+  if (fadeOut > 0 && at > length - fadeOut) gain *= fadeCurve((length - at) / fadeOut);
+  return gain;
+}
+
+// The fades' share of a clip's gain while the playhead is on `frame`, read at the middle of the frame so the first
+// frame of a fade in is already heard.
+export function clipFadeAt(clip: MediaClip, frame: number): number {
+  const fade = fadeFrames(clip);
+  if (fade.in === 0 && fade.out === 0) return 1;
+  return fadeGain(frame - clip.start + 0.5, clip.duration, fade.in, fade.out);
+}
+
+// What the export hears: nothing where the clip's gain is 0 or its speed is outside the speeds that sound.
 export function clipSound(track: Track, clip: Clip): { gain: number } | null {
   const gain = soundGain(track, clip);
   if (gain === 0) return null;

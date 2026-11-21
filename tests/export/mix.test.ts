@@ -29,6 +29,29 @@ describe("edges, gain and the sum", () => {
     expect(p.right[300]).toBeCloseTo(-0.4 * edgeGain(47_900, 48_000), 6);
   });
 
+  it("fades a voice by the preview's rule, on top of its gain and its edge ramps", () => {
+    const n = 48_000;
+    const flat = () => ({ at: 0, left: new Float32Array(n).fill(1), right: new Float32Array(n).fill(-1) });
+    const p = flat();
+    applyGain(p, 2, 0, n, { in: 12_000, out: 24_000 });
+    expect(p.left[0]).toBe(0);
+    expect(p.left[6_000]).toBeCloseTo(2 * 0.25, 6); // half way through the fade in
+    expect(p.left[12_000]).toBeCloseTo(2, 6);
+    expect(p.left[20_000]).toBeCloseTo(2, 6);
+    expect(p.right[36_000]).toBeCloseTo(-2 * 0.25, 6); // half way through the fade out
+    expect(p.left[n - 1]).toBe(0);
+    // A part from the middle of the voice is faded by where it sits in the voice.
+    const late = { at: 0, left: new Float32Array(10).fill(1), right: new Float32Array(10).fill(1) };
+    applyGain(late, 1, 36_000, n, { in: 0, out: 24_000 });
+    expect(late.left[0]).toBeCloseTo(0.25, 6);
+    // Without fades nothing changes: as before.
+    const plain = flat();
+    const none = flat();
+    applyGain(plain, 0.5, 0, n);
+    applyGain(none, 0.5, 0, n, { in: 0, out: 0 });
+    expect(none.left).toEqual(plain.left);
+  });
+
   it("sums parts where they sit, clamps at ±1 and interleaves left and right", () => {
     const out = mixParts(4, [part(0, [0.7, 0.7, 0.25], [0, -0.7, -0.7]), part(1, [0.7, 0.1, 0.1], [-0.7, -0.1, 0.2])]);
     expect(rounded(out)).toEqual([0.7, 0, 1, -1, 0.35, -0.8, 0.1, 0.2]);

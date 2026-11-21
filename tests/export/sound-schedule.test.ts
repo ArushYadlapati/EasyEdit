@@ -21,7 +21,7 @@ const ids = (d: TimelineDoc, sounds: Record<string, string>) => soundSchedule(d,
 describe("where each clip sounds", () => {
   it("puts a clip on the samples of its frames and starts its file at its in point", () => {
     const s = soundSchedule(doc([video("c1", 2, 3, { in: 30 })]), { c1: "prev-a" }, 30, S);
-    expect(s.voices).toEqual([{ clipIds: ["c1"], fileId: "prev-a", start: 3_200, end: 8_000, in: 30, speed: 1, gain: 1 }]);
+    expect(s.voices).toEqual([{ clipIds: ["c1"], fileId: "prev-a", start: 3_200, end: 8_000, in: 30, speed: 1, gain: 1, fadeIn: 0, fadeOut: 0 }]);
     const [v] = s.voices;
     expect([sourceAt(s, v, 3_200, 44_100), sourceAt(s, v, 3_200, S), sourceAt(s, v, 3_201, S)]).toEqual([44_100, 48_000, 48_001]);
   });
@@ -90,16 +90,22 @@ describe("which clips sound", () => {
     expect(ids(doc(v1), { c1: "f", i1: "f", c3: "f" })).toEqual([]);
   });
 
-  it("plays at the shared gain, never above 1", () => {
+  it("plays at the shared gain, above 1 for a clip turned up", () => {
     const s = soundSchedule(doc([], [song("m1", 0, 30, { volume: 1.5 }), song("m2", 60, 30, { volume: 0.25 })]), { m1: "f", m2: "f" }, 30, S);
-    expect(s.voices.map((v) => v.gain)).toEqual([1, 0.25]);
+    expect(s.voices.map((v) => v.gain)).toEqual([1.5, 0.25]);
+  });
+
+  it("gives a voice its clip's fades in samples, cut to the clip's length as the preview cuts them", () => {
+    const clips = [song("m1", 0, 30, { fadeIn: 15, fadeOut: 6 }), song("m2", 60, 30, { fadeIn: 45, fadeOut: 10 })];
+    const s = soundSchedule(doc([], clips), { m1: "f", m2: "f" }, 30, S);
+    expect(s.voices.map((v) => [v.fadeIn, v.fadeOut])).toEqual([[24_000, 9_600], [48_000, 0]]);
   });
 });
 
 describe("seamless runs and file lifetimes", () => {
   it("merges a run of clips that continue one another into one voice", () => {
     const split = soundSchedule(doc([video("c1", 0, 30), video("c2", 30, 30, { in: 30 })]), { c1: "prev-a", c2: "prev-a" }, 30, S);
-    expect(split.voices).toEqual([{ clipIds: ["c1", "c2"], fileId: "prev-a", start: 0, end: 96_000, in: 0, speed: 1, gain: 1 }]);
+    expect(split.voices).toEqual([{ clipIds: ["c1", "c2"], fileId: "prev-a", start: 0, end: 96_000, in: 0, speed: 1, gain: 1, fadeIn: 0, fadeOut: 0 }]);
     const fast = [song("m1", 0, 30, { speed: 2 }), song("m2", 30, 30, { in: 60, speed: 2 }), song("m3", 60, 10, { in: 120, speed: 2 })];
     expect(ids(doc([], fast), { m1: "s", m2: "s", m3: "s" })).toEqual([["m1", "m2", "m3"]]);
   });
@@ -110,6 +116,7 @@ describe("seamless runs and file lifetimes", () => {
       ["a gap", video("c2", 31, 30, { in: 31 }), "prev-a"],
       ["another in point", video("c2", 30, 30, { in: 31 }), "prev-a"],
       ["another volume", video("c2", 30, 30, { in: 30, volume: 0.5 }), "prev-a"],
+      ["a fade in at the cut", video("c2", 30, 30, { in: 30, fadeIn: 5 }), "prev-a"],
       ["another speed", video("c2", 30, 30, { in: 30, speed: 2 }), "prev-a"],
       ["another file", video("c2", 30, 30, { in: 30 }), "prev-b"],
     ] as const) {
