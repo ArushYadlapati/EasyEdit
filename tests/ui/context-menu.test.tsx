@@ -221,6 +221,17 @@ it("a press outside, a scroll and a resize close it", () => {
   act(() => happyDOM().setViewport({ width: 900, height: 700 }));
   expect(menus()).toHaveLength(0);
 
+  // A box around what was right-clicked scrolls it away: closed. Some other box scrolling leaves the menu open, as
+  // when the right-click selects a clip and the panel beside the timeline grows shorter and scrolls itself.
+  const around = target.parentElement!;
+  const other = document.body.appendChild(document.createElement("div"));
+  fireEvent.contextMenu(target);
+  fireEvent.scroll(other);
+  expect(menus()).toHaveLength(1);
+  fireEvent.scroll(around);
+  expect(menus()).toHaveLength(0);
+  other.remove();
+
   // Closed, it no longer listens: a press with nothing focused leaves focus where it is.
   target.blur();
   fireEvent.pointerDown(document.body);

@@ -47,10 +47,19 @@ export function placeAtPoint(
   return { top: along(point.y, size.height, view.height), left: along(point.x, size.width, view.width) };
 }
 
-type Shown = { request: ContextMenuRequest; before: Element | null; key: number };
+// anchor: what was right-clicked, as far as it is known.
+type Shown = { request: ContextMenuRequest; before: Element | null; anchor: Element | null; key: number };
+
+// What a request was made on: the element it gives focus back to, else whatever is at its point.
+function anchorOf(request: ContextMenuRequest): Element | null {
+  if (request.returnFocus) return request.returnFocus;
+  return typeof document.elementFromPoint === "function" ? document.elementFromPoint(request.x, request.y) : null;
+}
 
 // Holds the one right-click menu on screen. Each request replaces the menu and draws it afresh. A press outside it,
-// a scroll and a resize close it; a pick or Escape closes it and puts focus back.
+// a resize, and a scroll that moves what was right-clicked close it; a pick or Escape closes it and puts focus back.
+// A scroll of some other part of the window leaves it open: a right-click that selects a clip can change the panel
+// beside it, and a panel that grows shorter scrolls itself.
 export function ContextMenuProvider({ children }: { children: ReactNode }): ReactNode {
   const [shown, setShown] = useState<Shown | null>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -59,7 +68,8 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): Reac
     // The menu being replaced is not what had focus: what had it before that menu still does.
     const active = document.activeElement;
     const fromMenu = list.current?.contains(active) ?? false;
-    setShown((now) => ({ request, before: now && fromMenu ? now.before : active, key: (now?.key ?? 0) + 1 }));
+    const anchor = anchorOf(request);
+    setShown((now) => ({ request, before: now && fromMenu ? now.before : active, anchor, key: (now?.key ?? 0) + 1 }));
   }, []);
 
   const focusBack = useCallback((at: Shown) => {
@@ -78,7 +88,13 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): Reac
       }, 0);
     }
     function onScroll(event: Event) {
-      if (!list.current?.contains(event.target as Node)) setShown(null);
+      const scrolled = event.target;
+      if (list.current?.contains(scrolled as Node)) return;
+      // The page, or a box around what was right-clicked, moves it from under the menu. So does a scroll when it is not
+      // known what was right-clicked, or it is gone.
+      const anchor = shown!.anchor;
+      const elsewhere = scrolled instanceof Element && anchor !== null && anchor.isConnected && !scrolled.contains(anchor);
+      if (!elsewhere) setShown(null);
     }
     function onResize() {
       setShown(null);
