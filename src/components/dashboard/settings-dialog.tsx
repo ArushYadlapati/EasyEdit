@@ -34,10 +34,10 @@ export function DashboardSettingsDialog({ onClose }: { onClose(): void }): React
 
   // Snapping and the safe area and guide switches are the editor store's in a project; here they are kept beside the
   // settings store, and the cookie is written whole from both, as the editor does. Guides and the audio meter have no
-  // switch here; theirs are carried through unchanged.
+  // switch here; theirs, and the meter's width, are carried through unchanged.
   const [{ initial, settings, saveSwitches }] = useState(() => {
     const initial = parsePrefs(readCookie(PREFS_COOKIE));
-    const switches = { snapping: initial.snapping, safeZones: initial.safeZones, guides: initial.guides, meter: initial.meter };
+    const switches = { snapping: initial.snapping, safeZones: initial.safeZones, guides: initial.guides, meter: initial.meter, meterWidth: initial.meterWidth };
     const settings = createSettingsStore(
       { prefs: initial },
       {

@@ -125,6 +125,58 @@ it("reads nothing where there is no mix yet", () => {
   expect(fills()).toEqual(["inset(100.00% 0 0 0)", "inset(100.00% 0 0 0)"]);
 });
 
+it("is as wide as this browser left it, and its left edge drags it wider or narrower", () => {
+  const { store } = show({ now: null }, makeStore());
+  const meter = screen.getByRole("group", { name: "Audio meter" });
+  const edge = screen.getByRole("separator", { name: "Audio meter width" });
+  expect(meter.style.width).toBe("56px");
+  expect([edge.getAttribute("aria-valuenow"), edge.getAttribute("aria-valuemin"), edge.getAttribute("aria-valuemax")]).toEqual(["56", "48", "200"]);
+  expect(edge.getAttribute("aria-controls")).toBe(meter.id);
+
+  // A drag to the left makes it wider: shown as it moves, kept when the pointer lets go.
+  edge.setPointerCapture = () => {};
+  edge.hasPointerCapture = () => true;
+  fireEvent.pointerDown(edge, { pointerId: 1, button: 0, clientX: 1000 });
+  fireEvent.pointerMove(edge, { pointerId: 1, clientX: 940 });
+  expect(meter.style.width).toBe("116px");
+  expect(store.getState().audioMeterWidth).toBe(56); // not kept yet
+  fireEvent.pointerMove(edge, { pointerId: 1, clientX: 100 });
+  expect(meter.style.width).toBe("200px"); // no wider than its widest
+  fireEvent.pointerMove(edge, { pointerId: 1, clientX: 960 });
+  fireEvent.lostPointerCapture(edge, { pointerId: 1 });
+  expect(store.getState().audioMeterWidth).toBe(96);
+  expect(meter.style.width).toBe("96px");
+
+  // Escape during a drag puts it back.
+  fireEvent.pointerDown(edge, { pointerId: 2, button: 0, clientX: 1000 });
+  fireEvent.pointerMove(edge, { pointerId: 2, clientX: 1040 });
+  expect(meter.style.width).toBe("56px");
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect([meter.style.width, store.getState().audioMeterWidth]).toEqual(["96px", 96]);
+
+  // The keys move it too: left is wider, as for the panel on the right; Home and End go to its ends.
+  fireEvent.keyDown(edge, { key: "ArrowLeft" });
+  expect(store.getState().audioMeterWidth).toBe(112);
+  fireEvent.keyDown(edge, { key: "ArrowRight", shiftKey: true });
+  expect(store.getState().audioMeterWidth).toBe(48);
+  fireEvent.keyDown(edge, { key: "End" });
+  expect(store.getState().audioMeterWidth).toBe(200);
+
+  // A double-click puts it back to its first width.
+  fireEvent.doubleClick(edge);
+  expect([meter.style.width, store.getState().audioMeterWidth]).toEqual(["56px", 56]);
+});
+
+it("holds a width set from elsewhere within what it can be", () => {
+  const store = makeStore();
+  store.getState().setAudioMeterWidth(5);
+  expect(store.getState().audioMeterWidth).toBe(48);
+  store.getState().setAudioMeterWidth(133.4);
+  expect(store.getState().audioMeterWidth).toBe(133);
+  store.getState().setAudioMeterWidth(4000);
+  expect(store.getState().audioMeterWidth).toBe(200);
+});
+
 it("hides from its right-click menu", () => {
   const { store } = show();
   fireEvent.contextMenu(screen.getByRole("group", { name: "Audio meter" }), { clientX: 5, clientY: 5 });

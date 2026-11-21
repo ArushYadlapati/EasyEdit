@@ -10,7 +10,7 @@ import { MESSAGES } from "@/lib/editor/messages";
 import { findClip } from "@/lib/editor/store";
 import { DEFAULT_TRANSFORM, isCropped } from "@/lib/timeline";
 import { makeStore, sampleDoc, video } from "../editor/fixtures";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { happyDOM, rect } from "../helpers/layout";
 import { LANE_LEFT, installTimelineStubs, renderTimeline, x, y } from "../helpers/timeline-harness";
 
@@ -595,7 +595,8 @@ describe("the timeline's right-click menus", () => {
     const { st, clip, lane, content, rightClick } = setup(makeStore({ canEdit: false }));
     rightClick(clip("x2"), x(100), y(1));
     expect(labels()).toEqual(["Copy"]);
-    expect(screen.queryAllByRole("separator")).toHaveLength(0);
+    // No line in the menu. (The timeline has a separator of its own: the audio meter's edge.)
+    expect(within(screen.getByRole("menu")).queryAllByRole("separator")).toHaveLength(0);
     expect(st().selection.clipIds).toEqual(["x2"]);
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(rightClick(lane(2), x(200), y(2))).toBe(false);

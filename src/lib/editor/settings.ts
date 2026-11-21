@@ -1,4 +1,5 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
+import { METER_WIDTH, clampMeterWidth } from "@/lib/audio/meter";
 import { DEFAULT_KEYMAP, type Keymap } from "./keymap";
 import { DEFAULT_IMAGE_SECONDS } from "./media-clips";
 import { DEFAULT_TEXT_SECONDS } from "./text-presets";
@@ -23,6 +24,7 @@ export type Prefs = {
   textSeconds: number;
   guides: boolean;
   meter: boolean;
+  meterWidth: number; // px
 };
 
 export const PREFS_COOKIE = "easyedit-prefs";
@@ -36,6 +38,7 @@ export const DEFAULT_PREFS: Readonly<Prefs> = Object.freeze({
   textSeconds: DEFAULT_TEXT_SECONDS,
   guides: true, // a project's guides show until this browser hides them
   meter: true, // the audio meter beside the timeline shows until this browser hides it
+  meterWidth: METER_WIDTH.initial,
 });
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -58,7 +61,7 @@ const flag = (on: boolean) => (on ? "1" : "0");
 // read the same value with no encoding.
 export function formatPrefs(p: Prefs): string {
   const zoom = p.boardZoom === "fill" ? "fill" : clampPercent(p.boardZoom);
-  return `u:${p.units}.sz:${flag(p.safeZones)}.sn:${flag(p.snapping)}.z:${zoom}.st:${tenths(p.stillSeconds)}.tx:${tenths(p.textSeconds)}.gd:${flag(p.guides)}.am:${flag(p.meter)}`;
+  return `u:${p.units}.sz:${flag(p.safeZones)}.sn:${flag(p.snapping)}.z:${zoom}.st:${tenths(p.stillSeconds)}.tx:${tenths(p.textSeconds)}.gd:${flag(p.guides)}.am:${flag(p.meter)}.mw:${clampMeterWidth(p.meterWidth)}`;
 }
 
 // Field by field: an unknown field is ignored, and a missing or bad one takes its default.
@@ -75,6 +78,7 @@ export function parsePrefs(text: string | null | undefined): Prefs {
     else if (key === "sn" && isFlag) prefs.snapping = value === "1";
     else if (key === "gd" && isFlag) prefs.guides = value === "1";
     else if (key === "am" && isFlag) prefs.meter = value === "1";
+    else if (key === "mw" && WHOLE.test(value)) prefs.meterWidth = clampMeterWidth(Number(value));
     else if (key === "z" && value === "fill") prefs.boardZoom = "fill";
     else if (key === "z" && WHOLE.test(value)) prefs.boardZoom = clampPercent(Number(value));
     else if (key === "st" && WHOLE.test(value)) prefs.stillSeconds = clampSeconds(Number(value) / 10);
@@ -100,9 +104,9 @@ export type SettingsState = {
 };
 export type SettingsStore = StoreApi<SettingsState>;
 
-// Snapping and the safe area, guide and audio meter switches live in the editor store, so the caller adds them when
-// it writes the cookie.
-export type SettingsSave = { prefs(p: Omit<Prefs, "snapping" | "safeZones" | "guides" | "meter">): void; keymap(k: Keymap): void };
+// Snapping, the safe area, guide and audio meter switches and the meter's width live in the editor store, so the caller
+// adds them when it writes the cookie.
+export type SettingsSave = { prefs(p: Omit<Prefs, "snapping" | "safeZones" | "guides" | "meter" | "meterWidth">): void; keymap(k: Keymap): void };
 
 // Without a saver, as in tests, every choice is kept in memory only.
 export function createSettingsStore(initial: { prefs: Prefs; keymap?: Keymap }, save?: SettingsSave): SettingsStore {

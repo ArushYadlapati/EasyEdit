@@ -1,3 +1,4 @@
+import { METER_WIDTH, clampMeterWidth } from "@/lib/audio/meter";
 import { nanoid } from "nanoid";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { LIMITS } from "@/lib/limits";
@@ -81,6 +82,7 @@ export type EditorState = {
   guideId: string | null;
   showGuides: boolean; // this browser's choice, from View as
   showAudioMeter: boolean; // this browser's choice, from the View menu: the level meter beside the timeline
+  audioMeterWidth: number; // px, this browser's choice, from dragging the meter's edge
   boardScale: number; // CSS pixels per project pixel on the preview as drawn now, so the zoom menu's Custom… starts there
   exporting: boolean; // an export is running in this tab
   exportHeld: boolean; // a finished export waits in this tab for its Download click
@@ -126,6 +128,7 @@ export type EditorState = {
   selectGuide(guideId: string | null): void; // clears the clip and track selection; a guide not there selects nothing
   setShowGuides(on: boolean): void; // hiding them clears the selected guide and leaves the Guide tool
   setShowAudioMeter(on: boolean): void;
+  setAudioMeterWidth(px: number): void; // held within what the meter can be
   setBoardScale(k: number): void;
   setTextEdit(clipId: string | null, opts?: { selectAll?: boolean }): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
   setExporting(on: boolean): void;
@@ -227,7 +230,7 @@ export function createEditorStore(
   deps: {
     genId?: () => string;
     now?: () => number;
-    view?: { snapping: boolean; showSafeZones: boolean; showGuides?: boolean; showAudioMeter?: boolean };
+    view?: { snapping: boolean; showSafeZones: boolean; showGuides?: boolean; showAudioMeter?: boolean; audioMeterWidth?: number };
   } = {},
 ): EditorStore {
   // Edit ids are sent as request ids, which must be 8 to 64 characters of A-Za-z0-9_-.
@@ -356,6 +359,7 @@ export function createEditorStore(
       showSafeZones: deps.view?.showSafeZones ?? false,
       showGuides: deps.view?.showGuides ?? true,
       showAudioMeter: deps.view?.showAudioMeter ?? true,
+      audioMeterWidth: clampMeterWidth(deps.view?.audioMeterWidth ?? METER_WIDTH.initial),
       tool: "select",
       shapeTool: "rect",
       guideId: null,
@@ -711,6 +715,11 @@ export function createEditorStore(
 
       setShowAudioMeter(on) {
         if (on !== get().showAudioMeter) set({ showAudioMeter: on });
+      },
+
+      setAudioMeterWidth(px) {
+        const width = clampMeterWidth(px);
+        if (width !== get().audioMeterWidth) set({ audioMeterWidth: width });
       },
 
       setTextEdit(clipId, opts) {

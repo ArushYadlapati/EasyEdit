@@ -175,12 +175,12 @@ describe("the account menu", () => {
 
       fireEvent.click(snapping);
       expect(snapping.getAttribute("aria-checked")).toBe("true");
-      expect(kept()).toBe("u:in.sz:0.sn:1.z:150.st:40.tx:30.gd:1.am:1");
+      expect(kept()).toBe("u:in.sz:0.sn:1.z:150.st:40.tx:30.gd:1.am:1.mw:56");
       fireEvent.click(within(dialog).getByRole("switch", { name: "Show safe area" }));
-      expect(kept()).toBe("u:in.sz:1.sn:1.z:150.st:40.tx:30.gd:1.am:1");
+      expect(kept()).toBe("u:in.sz:1.sn:1.z:150.st:40.tx:30.gd:1.am:1.mw:56");
       fireEvent.click(within(dialog).getByRole("radio", { name: "Centimeters" }));
       // The switches chosen here, and the editor's guides switch, stay when another field is saved.
-      expect(kept()).toBe("u:cm.sz:1.sn:1.z:150.st:40.tx:30.gd:1.am:1");
+      expect(kept()).toBe("u:cm.sz:1.sn:1.z:150.st:40.tx:30.gd:1.am:1.mw:56");
     });
   });
 });

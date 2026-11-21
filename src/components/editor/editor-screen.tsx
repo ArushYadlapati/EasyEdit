@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ComponentProps } from "r
 import { useStore } from "zustand";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
+import { METER_WIDTH } from "@/lib/audio/meter";
 import { DEFAULT_LAYOUT, LAYOUT_COOKIE, createLayoutStore, formatLayout, parseLayout, type Layout } from "@/lib/editor/layout";
 import { failureMessage } from "@/lib/export/messages";
 import type { ExportOutcome } from "@/lib/export/protocol";
@@ -99,7 +100,10 @@ export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOU
                 onShowShortcuts={openShortcuts}
                 spaceSlug={spaceSlug}
                 onShowSettings={() => showSettingsAt(lastSection)}
-                onResetLayout={() => layout.getState().reset()}
+                onResetLayout={() => {
+                  layout.getState().reset();
+                  store.getState().setAudioMeterWidth(METER_WIDTH.initial);
+                }}
                 onExport={openExport}
                 onSaveTemplate={spaceId ? () => setTemplateOpen(true) : undefined}
                 onShowSettingsAt={showSettingsAt}

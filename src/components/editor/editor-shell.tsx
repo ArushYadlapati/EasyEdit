@@ -64,18 +64,20 @@ export type EditorSpace = {
 export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; space: EditorSpace; layout?: Layout; prefs?: Prefs }) {
   const [{ store, api, sync, clipboard, media, drop, settings, savePrefs, presenceStore }] = useState(() => {
     const store = createEditorStore(initial, {
-      view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones, showGuides: prefs.guides, showAudioMeter: prefs.meter },
+      view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones, showGuides: prefs.guides, showAudioMeter: prefs.meter, audioMeterWidth: prefs.meterWidth },
     });
     const api = createProjectApi(initial.projectId);
     const presenceStore = createPresenceStore(initial.me.id);
     const presence = { api: createPresenceApi(initial.projectId), store: presenceStore };
     // With the space, a check that finds the project moved to another one stops this tab (see createSync).
     const sync = createSync({ store, api, isVisible: () => document.visibilityState === "visible", presence, spaceId: space.id });
-    // Snapping and the safe area, guide and audio meter switches live in the editor store; the cookie holds them with
-    // the rest.
+    // Snapping, the safe area, guide and audio meter switches and the meter's width live in the editor store; the
+    // cookie holds them with the rest.
     const savePrefs: SettingsSave["prefs"] = (chosen) => {
-      const { snapping, showSafeZones, showGuides, showAudioMeter } = store.getState();
-      writePrefsCookie(formatPrefs({ ...chosen, snapping, safeZones: showSafeZones, guides: showGuides, meter: showAudioMeter }));
+      const { snapping, showSafeZones, showGuides, showAudioMeter, audioMeterWidth } = store.getState();
+      writePrefsCookie(
+        formatPrefs({ ...chosen, snapping, safeZones: showSafeZones, guides: showGuides, meter: showAudioMeter, meterWidth: audioMeterWidth }),
+      );
     };
     const settings = createSettingsStore({ prefs }, { prefs: savePrefs, keymap: (k) => writeKeymap(localStore, k) });
     const media = gateStorage(createMediaServices(space.id), space.storageReady);
@@ -88,25 +90,31 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
     // are the ones last chosen, so they are taken, before the store is watched, so taking them saves nothing.
     const kept = readCookie(PREFS_COOKIE);
     if (kept !== null) {
-      const { units, boardZoom, stillSeconds, textSeconds, snapping, safeZones, guides, meter } = parsePrefs(kept);
+      const { units, boardZoom, stillSeconds, textSeconds, snapping, safeZones, guides, meter, meterWidth } = parsePrefs(kept);
       const now = settings.getState();
       if (now.units !== units || now.boardZoom !== boardZoom || now.stillSeconds !== stillSeconds || now.textSeconds !== textSeconds) {
         settings.setState({ units, boardZoom, stillSeconds, textSeconds });
       }
       const view = store.getState();
-      if (view.snapping !== snapping || view.showSafeZones !== safeZones || view.showGuides !== guides || view.showAudioMeter !== meter) {
-        store.setState({ snapping, showSafeZones: safeZones, showGuides: guides, showAudioMeter: meter });
-      }
+      const differs =
+        view.snapping !== snapping ||
+        view.showSafeZones !== safeZones ||
+        view.showGuides !== guides ||
+        view.showAudioMeter !== meter ||
+        view.audioMeterWidth !== meterWidth;
+      if (differs) store.setState({ snapping, showSafeZones: safeZones, showGuides: guides, showAudioMeter: meter, audioMeterWidth: meterWidth });
     }
     // Read after mount, so the server's render and the first client render agree; loading it twice changes nothing.
     settings.getState().loadKeymap(readKeymap(localStore));
-    // Every toggle of snapping, the safe area, the guides or the audio meter, from any control, is kept.
+    // Every toggle of snapping, the safe area, the guides or the audio meter, from any control, is kept, and so is the
+    // meter's width once a drag of its edge ends.
     return store.subscribe((state, before) => {
       const same =
         state.snapping === before.snapping &&
         state.showSafeZones === before.showSafeZones &&
         state.showGuides === before.showGuides &&
-        state.showAudioMeter === before.showAudioMeter;
+        state.showAudioMeter === before.showAudioMeter &&
+        state.audioMeterWidth === before.audioMeterWidth;
       if (same) return;
       const { units, boardZoom, stillSeconds, textSeconds } = settings.getState();
       savePrefs({ units, boardZoom, stillSeconds, textSeconds });

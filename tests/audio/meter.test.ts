@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
-  FALL_DB_PER_SECOND, HOLD_SECONDS, HOT_DB, METER_FLOOR_DB, METER_TICKS, RESTING_BAR, WARN_DB,
-  advanceBar, barAtRest, dbLabel, fromDb, meterFill, peakOf, toDb,
+  FALL_DB_PER_SECOND, HOLD_SECONDS, HOT_DB, METER_FLOOR_DB, METER_TICKS, METER_WIDTH, RESTING_BAR, WARN_DB,
+  advanceBar, barAtRest, clampMeterWidth, dbLabel, fromDb, meterFill, peakOf, toDb,
 } from "@/lib/audio/meter";
 
 describe("levels and the scale", () => {
   it("keeps its scale", () => {
     expect([METER_FLOOR_DB, FALL_DB_PER_SECOND, HOLD_SECONDS, WARN_DB, HOT_DB]).toEqual([-60, 30, 1.2, -12, -3]);
     expect(METER_TICKS).toEqual([0, -6, -12, -18, -24, -36, -48]);
+  });
+
+  it("can be as narrow as 48 px and as wide as 200, in whole px", () => {
+    expect(METER_WIDTH).toEqual({ initial: 56, min: 48, max: 200 });
+    expect([clampMeterWidth(10), clampMeterWidth(56), clampMeterWidth(120.6), clampMeterWidth(900)]).toEqual([48, 56, 121, 200]);
   });
 
   it("finds the loudest sample of either sign, and skips what is not a number", () => {

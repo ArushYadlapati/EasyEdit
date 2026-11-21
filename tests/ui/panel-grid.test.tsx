@@ -25,9 +25,11 @@ function show({ store = makeStore(), initialLayout }: { store?: EditorStore; ini
   return { store, saveLayout, bar, grid, size, variable, unmount };
 }
 
-it("shows three named separators with their sizes", () => {
+it("shows three named separators with their sizes, beside the audio meter's own", () => {
   const { bar, size } = show();
-  expect(screen.getAllByRole("separator")).toHaveLength(3);
+  expect(screen.getAllByRole("separator").map((el) => el.getAttribute("aria-label"))).toEqual([
+    "Left panel width", "Right panel width", "Timeline height", "Audio meter width",
+  ]);
   expect([size("Left panel width"), size("Right panel width"), size("Timeline height")]).toEqual(["240", "280", "276"]);
   expect(bar("Left panel width").getAttribute("aria-orientation")).toBe("vertical");
   expect(bar("Timeline height").getAttribute("aria-orientation")).toBe("horizontal");
@@ -198,11 +200,13 @@ it("writeLayoutCookie keeps the sizes for editor pages", () => {
   refused.mockRestore();
 });
 
-it("View → Reset panel sizes puts all three edges back and keeps them", () => {
-  const { saveLayout, size } = show({ initialLayout: { left: 260, right: 250, timeline: 300 } });
-  expect([size("Left panel width"), size("Right panel width"), size("Timeline height")]).toEqual(["260", "250", "300"]);
+it("View → Reset panel sizes puts all three edges back and keeps them, and the audio meter's width with them", () => {
+  const { store, saveLayout, size } = show({ initialLayout: { left: 260, right: 250, timeline: 300 } });
+  act(() => store.getState().setAudioMeterWidth(140));
+  expect([size("Left panel width"), size("Right panel width"), size("Timeline height"), size("Audio meter width")]).toEqual(["260", "250", "300", "140"]);
   fireEvent.click(screen.getByRole("button", { name: "View" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Reset panel sizes" }));
-  expect([size("Left panel width"), size("Right panel width"), size("Timeline height")]).toEqual(["240", "280", "276"]);
+  expect([size("Left panel width"), size("Right panel width"), size("Timeline height"), size("Audio meter width")]).toEqual(["240", "280", "276", "56"]);
   expect(saveLayout).toHaveBeenCalledWith({ left: 240, right: 280, timeline: null });
+  expect(store.getState().audioMeterWidth).toBe(56);
 });

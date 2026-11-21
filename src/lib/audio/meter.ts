@@ -5,6 +5,14 @@ export const METER_FLOOR_DB = -60; // the bottom of the scale; anything quieter 
 export const METER_TICKS: readonly number[] = [0, -6, -12, -18, -24, -36, -48]; // the lines the scale is marked at
 export const FALL_DB_PER_SECOND = 30; // how fast a bar drops once the sound under it has gone
 export const HOLD_SECONDS = 1.2; // how long the peak line stays where the loudest moment put it
+// How wide the meter can be dragged, in px. At its narrowest the two bars are still a few px each; the scale beside
+// them keeps its width, so every px more goes to the bars.
+export const METER_WIDTH = { initial: 56, min: 48, max: 200 } as const;
+
+export function clampMeterWidth(px: number): number {
+  return Math.min(METER_WIDTH.max, Math.max(METER_WIDTH.min, Math.round(px)));
+}
+
 export const WARN_DB = -12; // above this the bar is yellow, and from HOT_DB it is red
 export const HOT_DB = -3;
 

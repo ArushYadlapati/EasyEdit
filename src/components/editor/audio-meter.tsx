@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type MouseEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { FOCUS_RING_INSET, cx } from "@/components/ui/cx";
+import { Splitter } from "@/components/ui/splitter";
 import {
   HOT_DB,
   METER_TICKS,
+  METER_WIDTH,
   RESTING_BAR,
   WARN_DB,
   advanceBar,
@@ -15,6 +17,7 @@ import {
   type Bar,
 } from "@/lib/audio/meter";
 import { useEditor, useEditorStore } from "./context";
+import { useMediaDropState } from "./media/media-context";
 import { useToMenuItems } from "./menu-items";
 import { useSoundBus } from "./sound-context";
 
@@ -36,11 +39,21 @@ type Parts = { fill: HTMLDivElement | null; hold: HTMLDivElement | null; over: H
 // red once a side has gone past full scale, where an export is cut flat, until it is clicked or playback starts again.
 // It reads the editor's mix, so it shows what is heard: every clip's volume and fade and every muted track counted in.
 // It repaints only while something is playing or still falling, by writing styles directly, so it never draws React
-// again. Right-click hides it; View > Audio meter brings it back.
+// again. Right-click hides it; View > Audio meter brings it back. Its left edge drags to make it wider or narrower, as
+// the panels' edges do (arrow keys move it too, and a double-click puts it back); the extra width goes to the bars. The
+// width is this browser's, kept once the drag ends.
 export function AudioMeter() {
   const bus = useSoundBus();
   const store = useEditorStore();
   const playing = useEditor((s) => s.playing);
+  const kept = useEditor((s) => s.audioMeterWidth);
+  // The width while its edge is dragged: shown at once, kept only when the drag ends.
+  const [dragged, setDragged] = useState<number | null>(null);
+  const latest = useRef<number | null>(null);
+  const width = dragged ?? kept;
+  const id = useId();
+  // While something is dragged over the window, the edge lets it through to the timeline under it, as the panels' do.
+  const incoming = useMediaDropState((s) => s.incoming !== null, false);
   const menu = useContextMenu();
   const toItems = useToMenuItems();
   const bars = useRef<[Bar, Bar]>([RESTING_BAR, RESTING_BAR]);
@@ -103,14 +116,40 @@ export function AudioMeter() {
     });
   }
 
+  function preview(px: number | null) {
+    latest.current = px;
+    setDragged(px);
+  }
+
   return (
     <div
+      id={id}
       role="group"
       aria-label="Audio meter"
       data-audio-meter
       onContextMenu={onContextMenu}
-      className="flex w-14 shrink-0 flex-col items-stretch gap-1 border-l border-ed-line bg-ed-panel px-1.5 pt-1.5 pb-1 select-none"
+      style={{ width }}
+      className="relative flex shrink-0 flex-col items-stretch gap-1 border-l border-ed-line bg-ed-panel px-1.5 pt-1.5 pb-1 select-none"
     >
+      {/* A 9 px strip centred on the meter's left line (5 px left of the padding box, which starts inside that 1 px
+          line), above the timeline's ruler and its drop tint (z-30). */}
+      <Splitter
+        label="Audio meter width"
+        orientation="vertical"
+        value={width}
+        min={METER_WIDTH.min}
+        max={METER_WIDTH.max}
+        grow={-1}
+        controls={id}
+        onChange={preview}
+        onCommit={() => {
+          if (latest.current !== null) store.getState().setAudioMeterWidth(latest.current);
+          preview(null);
+        }}
+        onReset={() => store.getState().setAudioMeterWidth(METER_WIDTH.initial)}
+        onCancel={() => preview(null)}
+        className={cx("absolute inset-y-0 -left-[5px] z-40 w-[9px]", incoming && "pointer-events-none")}
+      />
       <span ref={readout} aria-hidden className="text-center text-[10px] leading-3 text-ed-muted tabular-nums">
         -∞
       </span>
