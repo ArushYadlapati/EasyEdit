@@ -31,6 +31,7 @@
   --color-ed-danger: var(--ed-danger);
   --color-ed-warn: var(--ed-warn);
   --color-ed-guide: var(--ed-guide);
+  --color-ed-meter: var(--ed-meter);
   --color-ed-clip-video: var(--ed-clip-video);
   --color-ed-clip-image: var(--ed-clip-image);
   --color-ed-clip-text: var(--ed-clip-text);
@@ -105,6 +106,7 @@ html:has(.h-site) {
      space's Google connection breaks. */
   --ed-warn: #e0b341;
   --ed-guide: #2fd3c5;       /* guides placed on the preview, apart from the accent of selection and snapping */
+  --ed-meter: #46c97e;       /* the audio meter's bar while the level is comfortable; warn and danger take over above */
   /* PLACEHOLDER_FILL in src/lib/render/compositor.ts repeats the next two values, because a worker cannot read CSS variables. */
   --ed-clip-video: #2c3d5c;
   --ed-clip-image: #3b3160;

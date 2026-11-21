@@ -18,7 +18,17 @@ it("merges keyframe frames across properties, drops those outside the clip, and 
 });
 
 it("reports no marks for a plain clip", () => {
-  expect(alone(video("c", 0, 30))).toEqual({ keyframes: [], inFrames: 0, outFrames: 0 });
+  expect(alone(video("c", 0, 30))).toEqual({ keyframes: [], inFrames: 0, outFrames: 0, fadeIn: 0, fadeOut: 0, volume: null });
+});
+
+it("reports a sounding clip's fades as heard, and its volume when it is not as recorded", () => {
+  expect(alone(video("c", 0, 30, { fadeIn: 10, fadeOut: 5, volume: 1.5 }))).toMatchObject({ fadeIn: 10, fadeOut: 5, volume: 1.5 });
+  // The fade in comes first, and the fade out gets what is left of the clip.
+  expect(alone(video("c", 0, 30, { fadeIn: 25, fadeOut: 20, volume: 0 }))).toMatchObject({ fadeIn: 25, fadeOut: 5, volume: 0 });
+  expect(alone(video("c", 0, 30, { type: "audio", fadeOut: 40 }))).toMatchObject({ fadeIn: 0, fadeOut: 30, volume: null });
+  // A picture and a text have no sound, whatever their volume field says.
+  expect(alone(video("c", 0, 30, { type: "image", volume: 0.5 }))).toMatchObject({ fadeIn: 0, fadeOut: 0, volume: null });
+  expect(alone(text("t", 0, 30))).toMatchObject({ fadeIn: 0, fadeOut: 0, volume: null });
 });
 
 it("reports transition windows for media and animation windows for text, cut to fit", () => {
@@ -51,5 +61,5 @@ it("marks an empty slot's keyframes and transitions too, since the clip that fil
     transitionOut: { kind: "dip", frames: 5 },
     keyframes: { x: [{ at: 3, value: 0 }, { at: 12, value: 1 }] },
   } as Clip;
-  expect(alone(slot)).toEqual({ keyframes: [3, 12], inFrames: 10, outFrames: 5 });
+  expect(alone(slot)).toEqual({ keyframes: [3, 12], inFrames: 10, outFrames: 5, fadeIn: 0, fadeOut: 0, volume: null });
 });

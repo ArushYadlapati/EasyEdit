@@ -35,6 +35,7 @@ import { clipFrame, kenBurnsOps, toggleKeyframeOps } from "./keyframe-edit";
 import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
+import { muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
 import { findClip, type EditorStore } from "./store";
 import type { BrandFonts } from "@/lib/brand/types";
 import { presetClip, type TextPreset } from "./text-presets";
@@ -226,6 +227,52 @@ export function nudgeSelection(store: EditorStore, deltaFrames: number): void {
   });
   const ops = moveOps(clips, deltaFrames);
   if (ops.length > 0) state.edit(ops, "nudge");
+}
+
+// The selected clips that sound, for a volume command: none selected says how to use it, and only locked ones that the
+// track is locked. Null when there is nothing to change.
+function selectedSound(store: EditorStore): string[] | null {
+  const state = store.getState();
+  if (!state.canEdit) return null;
+  const sounding = soundClipsOf(state.doc, state.selection.clipIds);
+  if (sounding.length === 0) {
+    state.notify("info", MESSAGES.selectSoundClip);
+    return null;
+  }
+  if (sounding.every(({ track }) => track.locked)) {
+    state.notify("error", explainOpError("TRACK_LOCKED"));
+    return null;
+  }
+  return state.selection.clipIds;
+}
+
+// One step louder or quieter for the selected clips, as one change.
+export function stepVolume(store: EditorStore, direction: 1 | -1): void {
+  const ids = selectedSound(store);
+  if (!ids) return;
+  const ops = volumeStepOps(store.getState().doc, ids, direction);
+  if (ops.length > 0) store.getState().edit(ops, "volume change");
+}
+
+// Silences the selected clips, or puts them back to as recorded when all of them are silent already.
+export function toggleMute(store: EditorStore): void {
+  const ids = selectedSound(store);
+  if (!ids) return;
+  const ops = muteOps(store.getState().doc, ids);
+  if (ops.length > 0) store.getState().edit(ops, "volume change");
+}
+
+// Puts each selected video clip's sound on an audio clip of its own and selects those. hasSound: whether a file has
+// sound at all, as the library knows it.
+export function separateAudio(store: EditorStore, hasSound?: (assetId: string) => boolean): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const separated = separateAudioOps(state.doc, state.selection.clipIds, () => nanoid(10), hasSound);
+  if (!separated.ok) {
+    state.notify(separated.why === "room" ? "error" : "info", separated.why === "room" ? MESSAGES.noRoom : MESSAGES.nothingToSeparate);
+    return;
+  }
+  if (state.edit(separated.ops, "separate audio").ok) state.select(separated.clipIds);
 }
 
 // Clips on locked tracks are left out, so a following delete or nudge is not refused as a whole.

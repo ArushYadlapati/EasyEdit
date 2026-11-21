@@ -19,6 +19,7 @@ const BASE: TopMenuInput = {
   canPaste: false,
   snapping: true,
   showSafeZones: true,
+  showAudioMeter: true,
   canZoomIn: true,
   canZoomOut: true,
 };
@@ -78,17 +79,19 @@ it("undo and redo follow their stacks; cut and delete need a selection; paste ne
 it("the View menu shows the two switches and the zoom limits", () => {
   const entries = viewMenu(BASE);
   expect(entries.map((e) => e.label)).toEqual([
-    "Zoom in on the timeline", "Zoom out on the timeline", "Fit the timeline", "Snapping", "Safe area", "Reset panel sizes", "Keyboard shortcuts",
+    "Zoom in on the timeline", "Zoom out on the timeline", "Fit the timeline", "Snapping", "Safe area", "Audio meter", "Reset panel sizes", "Keyboard shortcuts",
   ]);
-  expect(entries.map((e) => e.id)).toEqual(["zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", "safe-zones", "reset-layout", "show-shortcuts"]);
-  expect(entries.map((e) => e.command)).toEqual(["zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", undefined, undefined, "show-shortcuts"]);
+  expect(entries.map((e) => e.id)).toEqual(["zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", "safe-zones", "toggle-audio-meter", "reset-layout", "show-shortcuts"]);
+  expect(entries.map((e) => e.command)).toEqual(["zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", undefined, "toggle-audio-meter", undefined, "show-shortcuts"]);
   expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["toggle-snapping", "reset-layout"]);
-  expect(entries.filter((e) => e.checked !== undefined).map((e) => e.id)).toEqual(["toggle-snapping", "safe-zones"]);
+  expect(entries.filter((e) => e.checked !== undefined).map((e) => e.id)).toEqual(["toggle-snapping", "safe-zones", "toggle-audio-meter"]);
   expect(byId(entries, "toggle-snapping").checked).toBe(true);
   expect(byId(entries, "safe-zones").checked).toBe(true);
-  const off = viewMenu({ ...BASE, snapping: false, showSafeZones: false });
+  expect(byId(entries, "toggle-audio-meter").checked).toBe(true);
+  const off = viewMenu({ ...BASE, snapping: false, showSafeZones: false, showAudioMeter: false });
   expect(byId(off, "toggle-snapping").checked).toBe(false);
   expect(byId(off, "safe-zones").checked).toBe(false);
+  expect(byId(off, "toggle-audio-meter").checked).toBe(false);
   expect(enabled(entries)).toEqual(entries.map((e) => e.id));
   expect(enabled(viewMenu({ ...BASE, canZoomIn: false }))).not.toContain("zoom-in");
   expect(byId(viewMenu({ ...BASE, canZoomIn: false }), "zoom-in").disabled).toBe(true);
@@ -113,6 +116,7 @@ it("topMenuInput reads the store", () => {
     canPaste: false,
     snapping: true,
     showSafeZones: false, // hidden at first
+    showAudioMeter: true, // shown at first
     canZoomIn: true,
     canZoomOut: true,
   });
@@ -195,9 +199,9 @@ it("clipMenu follows the selection and the playhead", () => {
   expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["cut", "duplicate", "split", "edit-text", "crop", "reset-crop", "delete"]);
   // x1 is not cropped.
   expect(enabled(entries)).toEqual(["cut", "copy", "duplicate", "split", "edit-text", "crop", "delete"]);
-  // Two clips keep the original five.
+  // Two clips keep the original five; the video among them adds its sound's two.
   st().select(["c1", "x1"]);
-  expect(clipMenu(st()).map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Delete"]);
+  expect(clipMenu(st()).map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Mute", "Separate audio", "Delete"]);
   st().select(["x1"]);
 
   st().seek(70);
@@ -211,7 +215,32 @@ it("clipMenu follows the selection and the playhead", () => {
   expect(byId(clipMenu(st()), "cut").disabled).toBe(true);
   expect(byId(clipMenu(st()), "delete").disabled).toBe(true);
   st().select(["c1"]);
-  expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "crop", "delete"]);
+  expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "crop", "mute-clip", "separate-audio", "delete"]);
+});
+
+it("clipMenu offers Mute and Separate audio for clips that sound", () => {
+  const store = makeStore();
+  const st = () => store.getState();
+  const sound = () => clipMenu(st()).filter((e) => e.id === "mute-clip" || e.id === "separate-audio");
+  // A text clip has no sound.
+  st().select(["x1"]);
+  expect(sound()).toEqual([]);
+  // A video: both, as commands that edit, with a line above the first.
+  st().select(["c1"]);
+  expect(sound()).toEqual([
+    { id: "mute-clip", label: "Mute", command: "mute-clip", disabled: false, separatorBefore: true, edit: true },
+    { id: "separate-audio", label: "Separate audio", command: "separate-audio", disabled: false, edit: true },
+  ]);
+  // Silent already: Unmute, and nothing left to separate.
+  st().edit([{ op: "update_clip", clipId: "c1", patch: { volume: 0 } }], "volume change");
+  expect(sound().map((e) => [e.label, e.disabled])).toEqual([["Unmute", false], ["Separate audio", true]]);
+  // An audio clip is muted too, but has nothing to separate from.
+  st().edit([{ op: "add_clip", trackId: "a1", clip: video("m9", 0, 30, { type: "audio", assetId: "song" }) }], "add");
+  st().select(["m9"]);
+  expect(sound().map((e) => e.label)).toEqual(["Mute"]);
+  // On a locked track neither runs.
+  lockTrack(store, "a1");
+  expect(sound().map((e) => e.disabled)).toEqual([true]);
 });
 
 it("the clip menu offers Crop for one video, image or text", () => {

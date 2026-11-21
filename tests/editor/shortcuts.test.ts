@@ -64,8 +64,8 @@ describe("matching keys", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
-      "cut", "delete", "duplicate", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "ripple-delete", "split",
-      "tool-crop", "tool-guide", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo",
+      "cut", "delete", "duplicate", "mute-clip", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "ripple-delete",
+      "separate-audio", "split", "tool-crop", "tool-guide", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "volume-down", "volume-up",
     ]);
   });
 
@@ -127,12 +127,17 @@ describe("matching keys", () => {
       ["nudge-right", "Alt+ArrowRight", "Nudge one frame right"],
       ["nudge-left-second", "Alt+Shift+ArrowLeft", "Nudge one second left"],
       ["nudge-right-second", "Alt+Shift+ArrowRight", "Nudge one second right"],
+      ["volume-up", "]", "Make the selected clips louder"],
+      ["volume-down", "[", "Make the selected clips quieter"],
+      ["mute-clip", "M", "Mute or unmute the selected clips"],
+      ["separate-audio", "Shift+S", "Separate a video's audio onto its own clip"],
       ["select-all", "Mod+A", "Select all clips"],
       ["clear-selection", "Escape", "Clear the selection"],
       ["zoom-in", "= +", "Zoom in"],
       ["zoom-out", "-", "Zoom out"],
       ["zoom-fit", "Shift+Z", "Fit the timeline"],
       ["toggle-snapping", "N", "Snapping on or off"],
+      ["toggle-audio-meter", "Shift+M", "Show or hide the audio meter"],
       ["export", "Mod+E", "Export"],
       ["show-shortcuts", "?", "Show shortcuts"],
       ["search", "Mod+K", "Search tools and actions"],
@@ -142,7 +147,7 @@ describe("matching keys", () => {
   it("repeats only the commands where holding the key should keep going", () => {
     expect(SHORTCUTS.filter((s) => s.repeats).map((s) => s.command).sort()).toEqual([
       "frame-back", "frame-forward", "next-edge", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second",
-      "prev-edge", "redo", "second-back", "second-forward", "undo", "zoom-in", "zoom-out",
+      "prev-edge", "redo", "second-back", "second-forward", "undo", "volume-down", "volume-up", "zoom-in", "zoom-out",
     ]);
   });
 
@@ -155,8 +160,9 @@ describe("matching keys", () => {
       "Editing:undo", "Editing:redo", "Editing:split", "Editing:delete", "Editing:ripple-delete",
       "Editing:copy", "Editing:cut", "Editing:paste", "Editing:duplicate",
       "Editing:nudge-left", "Editing:nudge-right", "Editing:nudge-left-second", "Editing:nudge-right-second",
+      "Editing:volume-up", "Editing:volume-down", "Editing:mute-clip", "Editing:separate-audio",
       "Timeline:select-all", "Timeline:clear-selection", "Timeline:zoom-in", "Timeline:zoom-out", "Timeline:zoom-fit",
-      "Timeline:toggle-snapping", "General:export", "General:show-shortcuts", "General:search",
+      "Timeline:toggle-snapping", "Timeline:toggle-audio-meter", "General:export", "General:show-shortcuts", "General:search",
     ]);
   });
 
@@ -168,7 +174,10 @@ describe("matching keys", () => {
     expect(matchShortcut(key("z", { metaKey: true, ctrlKey: true }), MAC)).toBeNull();
     expect(matchShortcut(key("z", { metaKey: true, ctrlKey: true }), PC)).toBeNull();
     expect(matchShortcut(key("s", { altKey: true }), MAC)).toBeNull();
-    expect(matchShortcut(key("S", { shiftKey: true }), MAC)).toBeNull();
+    expect(matchShortcut(key("S", { shiftKey: true }), MAC)).toBe("separate-audio");
+    expect(matchShortcut(key("M", { shiftKey: true }), MAC)).toBe("toggle-audio-meter");
+    expect([matchShortcut(key("m"), MAC), matchShortcut(key("]"), PC), matchShortcut(key("["), PC)]).toEqual(["mute-clip", "volume-up", "volume-down"]);
+    expect(matchShortcut(key("Q", { shiftKey: true }), MAC)).toBeNull();
     expect(shouldIgnoreKey(key("Enter"), { tagName: "A" })).toBe(true);
     expect(shouldIgnoreKey(key(" "), { tagName: "SUMMARY" })).toBe(true);
     expect(shouldIgnoreKey(key("Delete"), { tagName: "A" })).toBe(false);

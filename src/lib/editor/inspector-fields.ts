@@ -1,6 +1,6 @@
 import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
 import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
-import { ArrowHead, ArrowHeads, ShapeDash, isMediaClip, type ShapeClip } from "@/lib/timeline";
+import { ArrowHead, ArrowHeads, ShapeDash, VOLUME_MAX, isMediaClip, type ShapeClip } from "@/lib/timeline";
 import { ARROW_DEFAULTS, CURVED_BEND } from "@/lib/timeline/shapes";
 import { LIMITS } from "@/lib/limits";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
@@ -36,6 +36,10 @@ export type ClipField =
   | "cropBottom"
   | "start"
   | "duration"
+  // A video or audio clip's sound: how loud, in percent of as recorded, and the seconds it fades in and out over.
+  | "volume"
+  | "fadeIn"
+  | "fadeOut"
   // A shape's: its outline (or an arrow's line) colour and width, its fill, dashes and rounding, and an arrow's heads,
   // head look and size, and bend (Path sets it straight or curved; Bend sets how far, in percent of the length).
   | "stroke"
@@ -72,6 +76,9 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   cropBottom: "crop",
   start: "timing change",
   duration: "timing change",
+  volume: "volume change",
+  fadeIn: "fade change",
+  fadeOut: "fade change",
   stroke: "style change",
   strokeWidth: "style change",
   fill: "style change",
@@ -214,6 +221,11 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
       return (clip.start / fps).toFixed(2);
     case "duration":
       return (clip.duration / fps).toFixed(2);
+    case "volume":
+      return clip.type === "video" || clip.type === "audio" ? String(Math.round(clip.volume * 100)) : "";
+    case "fadeIn":
+    case "fadeOut":
+      return clip.type === "video" || clip.type === "audio" ? ((clip[field] ?? 0) / fps).toFixed(2) : "";
   }
   if (clip.type === "shape") return shapeFieldValue(clip, field);
   if (clip.type !== "text") return "";
@@ -391,6 +403,21 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       const maxEnd = !isMediaClip(clip) ? undefined : trimBounds(clip, lengthFrames)?.maxEnd;
       const to = maxEnd === undefined ? clip.start + duration : Math.max(clip.start + 1, Math.min(clip.start + duration, maxEnd));
       return to === clip.start + clip.duration ? [] : [{ op: "trim_clip", clipId: clip.id, edge: "end", to }];
+    }
+    case "volume": {
+      // Whole percents, from silent to VOLUME_MAX times as recorded.
+      const percent = parseNumber(raw);
+      if (percent === null || (clip.type !== "video" && clip.type !== "audio")) return null;
+      const volume = clamp(Math.round(percent), 0, VOLUME_MAX * 100) / 100;
+      return volume === clip.volume ? [] : update({ volume });
+    }
+    case "fadeIn":
+    case "fadeOut": {
+      // Whole frames, and never longer than the clip.
+      const seconds = parseNumber(raw);
+      if (seconds === null || (clip.type !== "video" && clip.type !== "audio")) return null;
+      const frames = clamp(Math.round(seconds * fps), 0, clip.duration);
+      return frames === (clip[field] ?? 0) ? [] : update({ [field]: frames });
     }
     case "x":
     case "y":

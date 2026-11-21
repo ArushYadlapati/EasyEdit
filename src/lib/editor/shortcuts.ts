@@ -3,7 +3,9 @@ export type CommandId =
   | "prev-edge" | "next-edge" | "go-start" | "go-end"
   | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste" | "duplicate"
   | "nudge-left" | "nudge-right" | "nudge-left-second" | "nudge-right-second"
-  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "export" | "show-shortcuts" | "search"
+  | "volume-up" | "volume-down" | "mute-clip" | "separate-audio"
+  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "toggle-audio-meter"
+  | "export" | "show-shortcuts" | "search"
   | "tool-select" | "tool-razor" | "tool-text" | "tool-shape" | "tool-shape-next" | "tool-guide" | "tool-crop";
 
 // edits: the command changes the project, so it does nothing for a viewer. repeats: holding the key
@@ -71,12 +73,17 @@ export const SHORTCUTS: Shortcut[] = [
   row("Editing", "nudge-right", ["Alt+ArrowRight"], "Nudge one frame right", EDITS_REPEATS),
   row("Editing", "nudge-left-second", ["Alt+Shift+ArrowLeft"], "Nudge one second left", EDITS_REPEATS),
   row("Editing", "nudge-right-second", ["Alt+Shift+ArrowRight"], "Nudge one second right", EDITS_REPEATS),
+  row("Editing", "volume-up", ["]"], "Make the selected clips louder", EDITS_REPEATS),
+  row("Editing", "volume-down", ["["], "Make the selected clips quieter", EDITS_REPEATS),
+  row("Editing", "mute-clip", ["M"], "Mute or unmute the selected clips", EDITS),
+  row("Editing", "separate-audio", ["Shift+S"], "Separate a video's audio onto its own clip", EDITS),
   row("Timeline", "select-all", ["Mod+A"], "Select all clips"),
   row("Timeline", "clear-selection", ["Escape"], "Clear the selection"),
   row("Timeline", "zoom-in", ["=", "+"], "Zoom in", REPEATS),
   row("Timeline", "zoom-out", ["-"], "Zoom out", REPEATS),
   row("Timeline", "zoom-fit", ["Shift+Z"], "Fit the timeline"),
   row("Timeline", "toggle-snapping", ["N"], "Snapping on or off"),
+  row("Timeline", "toggle-audio-meter", ["Shift+M"], "Show or hide the audio meter"),
   row("General", "export", ["Mod+E"], "Export"),
   row("General", "show-shortcuts", ["?"], "Show shortcuts"),
   row("General", "search", ["Mod+K"], "Search tools and actions"),

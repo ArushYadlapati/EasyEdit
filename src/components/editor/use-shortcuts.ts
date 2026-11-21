@@ -5,6 +5,7 @@ import { runCommand } from "@/lib/editor/run-command";
 import { keyHint, matchKeys } from "@/lib/editor/keymap";
 import { SHORTCUTS, isPressable, shouldIgnoreKey, type CommandId } from "@/lib/editor/shortcuts";
 import { useClipboard, useEditorStore, useSettings, useSettingsStore } from "./context";
+import { useMedia } from "./media/media-context";
 
 const isMacPlatform = () => navigator.platform.startsWith("Mac");
 const noChanges = () => () => {};
@@ -50,9 +51,14 @@ function hasTextSelection(): boolean {
 export function useCommandRunner(openShortcuts: () => void, openExport?: () => void, openSearch?: () => void): (command: CommandId) => void {
   const store = useEditorStore();
   const clipboard = useClipboard();
+  const { library } = useMedia();
   return useCallback(
-    (command: CommandId) => runCommand(command, { store, clipboard, openShortcuts, openExport, openSearch }),
-    [store, clipboard, openShortcuts, openExport, openSearch],
+    (command: CommandId) => {
+      // A file the library has not heard of yet counts as having sound: only one known to be silent is left out.
+      const hasSound = (assetId: string) => library.getState().assets[assetId]?.hasAudio !== false;
+      runCommand(command, { store, clipboard, openShortcuts, openExport, openSearch, hasSound });
+    },
+    [store, clipboard, library, openShortcuts, openExport, openSearch],
   );
 }
 

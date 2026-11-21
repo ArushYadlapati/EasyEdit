@@ -12,7 +12,8 @@ import { Select } from "@/components/ui/select";
 import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
-import { removeTrack, renameTrack, resetCrop, toggleTrack } from "@/lib/editor/actions";
+import { gainLabel } from "@/lib/audio/loudness";
+import { removeTrack, renameTrack, resetCrop, separateAudio, toggleTrack } from "@/lib/editor/actions";
 import { trackToggles } from "@/lib/editor/geometry";
 import {
   FIELD_LABEL,
@@ -29,13 +30,14 @@ import {
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
+import { soundClipsOf } from "@/lib/editor/sound";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import type { Units } from "@/lib/editor/settings";
 import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { docDuration, isCropped, isMediaClip, type Clip, type KeyframeProp, type ShapeClip, type Track } from "@/lib/timeline";
+import { VOLUME_MAX, docDuration, isCropped, isMediaClip, type Clip, type KeyframeProp, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
 import { SHAPE_COLOR, arrowLook, shapeName } from "@/lib/timeline/shapes";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FontSelect } from "./font-select";
@@ -46,6 +48,7 @@ import { SlotSection } from "./slot-section";
 import { useTextMeasure } from "./text-measure";
 import { Timecode } from "./timecode";
 import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-field-gesture";
+import { useLevelVolume } from "./use-level-volume";
 
 const TEXT = "text-[13px] leading-5";
 const CAPTION = "text-xs font-medium text-ed-muted";
@@ -122,7 +125,11 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
       return { scrub: 0.5, decimals: 1 };
     case "start":
     case "duration":
+    case "fadeIn":
+    case "fadeOut":
       return { scrub: 1 / fps, decimals: 2 };
+    case "volume":
+      return { scrub: 1, decimals: 0 };
     default:
       return null;
   }
@@ -185,6 +192,14 @@ function NumberField(props: {
       const clip = findClip(store.getState().doc, clipId)?.clip;
       return clip ? cropScrubRange(clip, field) : { min: -Infinity, max: Infinity };
     };
+  } else if (field === "fadeIn" || field === "fadeOut") {
+    // A fade is never longer than its clip.
+    scrubRange = () => {
+      const { doc } = store.getState();
+      return { min: 0, max: (findClip(doc, clipId)?.clip.duration ?? 0) / doc.fps };
+    };
+  } else if (field === "volume") {
+    scrubRange = () => ({ min: 0, max: VOLUME_MAX * 100 });
   }
 
   // NumberInput reads the box with Number(), which also takes "0x10" and "1e2"; only plain decimals count.
@@ -550,6 +565,70 @@ function TimingSection({ clipId }: { clipId: string }) {
   );
 }
 
+// A video or audio clip's sound: how loud it is, in percent of as recorded (past 100 turns it up, to four times), how
+// long it fades in and out, and two buttons. Level volume listens to the clip and sets its volume to the level every
+// leveled clip gets; Separate audio, on a video, moves its sound to an audio clip of its own. A video whose file has no
+// sound says so instead.
+function SoundSection({ clip }: { clip: MediaClip }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const hasSound = useLibrary((s) => s.assets[clip.assetId]?.hasAudio !== false);
+  const { level, busy } = useLevelVolume();
+  if (!hasSound) {
+    return (
+      <Section title="Sound">
+        <Hint>This file has no sound.</Hint>
+      </Section>
+    );
+  }
+  return (
+    <Section title="Sound">
+      <div className="grid grid-cols-2 items-end gap-2">
+        <NumberField clipId={clip.id} field="volume" label="Volume" suffix="%" min={0} max={VOLUME_MAX * 100} step={10} />
+        <p className={cx(TEXT, "pb-1 text-ed-muted tabular-nums")}>{clip.volume === 1 ? "As recorded" : gainLabel(clip.volume)}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField clipId={clip.id} field="fadeIn" label="Fade in" suffix="s" min={0} step={0.1} />
+        <NumberField clipId={clip.id} field="fadeOut" label="Fade out" suffix="s" min={0} step={0.1} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button data-edit-control disabled={!canEdit || busy} onClick={() => void level([clip.id])}>
+          {busy ? "Listening…" : "Level volume"}
+        </Button>
+        {clip.type === "video" && (
+          <Button data-edit-control disabled={!canEdit || clip.volume === 0} onClick={() => separateAudio(store)}>
+            Separate audio
+          </Button>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+// Several clips selected: how many, and for the ones that sound, leveling them all to the same loudness at once.
+function ManyClips({ count }: { count: number }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const sounding = useEditor((s) => soundClipsOf(viewDoc(s), s.selection.clipIds).length);
+  const { level, busy } = useLevelVolume();
+  return (
+    <>
+      <p className={cx(TEXT, "font-medium text-ed-text")}>{count} clips selected</p>
+      <Hint>Select one clip to edit it.</Hint>
+      {sounding > 1 && (
+        <Section title="Sound">
+          <Hint>Make these clips equally loud.</Hint>
+          <div>
+            <Button data-edit-control disabled={!canEdit || busy} onClick={() => void level(store.getState().selection.clipIds)}>
+              {busy ? "Listening…" : "Level volume"}
+            </Button>
+          </div>
+        </Section>
+      )}
+    </>
+  );
+}
+
 // What the library knows of a media clip's file. Nothing in it can be changed here.
 function MediaSection({ assetId, kind }: { assetId: string; kind: Exclude<Clip["type"], "text"> }) {
   const asset = useLibrary((s) => s.assets[assetId]);
@@ -594,6 +673,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       )}
       {drawsOnCanvas && <PositionSection clipId={clip.id} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
+      {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
       <TimingSection clipId={clip.id} />
       <SlotSection clip={clip} />
     </>
@@ -706,12 +786,7 @@ export function Inspector() {
   let body: ReactNode;
   if (clip) body = <ClipInspector key={clip.id} clip={clip} />;
   else if (count > 1) {
-    body = (
-      <>
-        <p className={cx(TEXT, "font-medium text-ed-text")}>{count} clips selected</p>
-        <Hint>Select one clip to edit it.</Hint>
-      </>
-    );
+    body = <ManyClips count={count} />;
   } else if (track) body = <TrackSection key={track.id} track={track} />;
   else body = <ProjectSection />;
 

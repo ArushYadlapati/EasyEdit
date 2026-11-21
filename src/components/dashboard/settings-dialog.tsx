@@ -33,11 +33,11 @@ export function DashboardSettingsDialog({ onClose }: { onClose(): void }): React
   const ids = tabIds(idPrefix, section);
 
   // Snapping and the safe area and guide switches are the editor store's in a project; here they are kept beside the
-  // settings store, and the cookie is written whole from both, as the editor does. Guides have no switch here; theirs
-  // is carried through unchanged.
+  // settings store, and the cookie is written whole from both, as the editor does. Guides and the audio meter have no
+  // switch here; theirs are carried through unchanged.
   const [{ initial, settings, saveSwitches }] = useState(() => {
     const initial = parsePrefs(readCookie(PREFS_COOKIE));
-    const switches = { snapping: initial.snapping, safeZones: initial.safeZones, guides: initial.guides };
+    const switches = { snapping: initial.snapping, safeZones: initial.safeZones, guides: initial.guides, meter: initial.meter };
     const settings = createSettingsStore(
       { prefs: initial },
       {

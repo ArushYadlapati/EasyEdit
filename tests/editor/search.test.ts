@@ -12,6 +12,7 @@ const input = (over: Partial<SearchInput> = {}): SearchInput => ({
   canPaste: false,
   snapping: true,
   showSafeZones: false,
+  showAudioMeter: true,
   canZoomIn: true,
   canZoomOut: true,
   leftTabs: [

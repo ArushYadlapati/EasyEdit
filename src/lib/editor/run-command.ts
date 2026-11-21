@@ -8,7 +8,10 @@ import {
   nudgeSelection,
   paste,
   selectAll,
+  separateAudio,
   splitAtPlayhead,
+  stepVolume,
+  toggleMute,
 } from "./actions";
 import type { ClipboardStore } from "./clipboard";
 import { ZOOM_STEP } from "./geometry";
@@ -16,8 +19,15 @@ import { SHORTCUTS, type CommandId } from "./shortcuts";
 import type { EditorState, EditorStore } from "./store";
 
 // openExport and openSearch are left out where neither can be opened (the clip and canvas menus); their keys then do
-// nothing.
-export type CommandContext = { store: EditorStore; clipboard: ClipboardStore; openShortcuts(): void; openExport?(): void; openSearch?(): void };
+// nothing. hasSound: whether a library file has sound, for Separate audio; without it every video counts as having some.
+export type CommandContext = {
+  store: EditorStore;
+  clipboard: ClipboardStore;
+  openShortcuts(): void;
+  openExport?(): void;
+  openSearch?(): void;
+  hasSound?(assetId: string): boolean;
+};
 
 const EDITS = new Set(SHORTCUTS.filter((s) => s.edits).map((s) => s.command));
 
@@ -106,6 +116,14 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return nudgeSelection(store, -fps);
     case "nudge-right-second":
       return nudgeSelection(store, fps);
+    case "volume-up":
+      return stepVolume(store, 1);
+    case "volume-down":
+      return stepVolume(store, -1);
+    case "mute-clip":
+      return toggleMute(store);
+    case "separate-audio":
+      return separateAudio(store, ctx.hasSound);
     case "select-all":
       return selectAll(store);
     case "clear-selection":
@@ -119,6 +137,8 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return state.zoomToFit();
     case "toggle-snapping":
       return state.setSnapping(!state.snapping);
+    case "toggle-audio-meter":
+      return state.setShowAudioMeter(!state.showAudioMeter);
     case "export":
       return ctx.openExport?.();
     case "show-shortcuts":

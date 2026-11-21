@@ -1,6 +1,7 @@
 import { LIMITS } from "@/lib/limits";
 import { docDuration, isCropped, type TrackKind } from "@/lib/timeline";
 import { duplicateTrackOps, reorderTrackOps, splitOps } from "./commands";
+import { soundClipsOf } from "./sound";
 import { zoomLimits } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import { findClip, type EditorState } from "./store";
@@ -29,6 +30,7 @@ export type TopMenuInput = {
   canPaste: boolean;
   snapping: boolean;
   showSafeZones: boolean;
+  showAudioMeter: boolean;
   canZoomIn: boolean;
   canZoomOut: boolean;
 };
@@ -47,6 +49,7 @@ export function topMenuInput(state: EditorState, canPaste: boolean): TopMenuInpu
     canPaste,
     snapping: state.snapping,
     showSafeZones: state.showSafeZones,
+    showAudioMeter: state.showAudioMeter,
     canZoomIn: state.zoom < max,
     canZoomOut: state.zoom > min,
   };
@@ -101,6 +104,7 @@ export function viewMenu(input: TopMenuInput): MenuEntry[] {
     commandEntry(input, { command: "zoom-fit", label: "Fit the timeline" }),
     { ...commandEntry(input, { command: "toggle-snapping", label: "Snapping", separatorBefore: true }), checked: input.snapping },
     { id: "safe-zones", label: "Safe area", checked: input.showSafeZones },
+    { ...commandEntry(input, { command: "toggle-audio-meter", label: "Audio meter" }), checked: input.showAudioMeter },
     { id: "reset-layout", label: "Reset panel sizes", separatorBefore: true },
     commandEntry(input, { command: "show-shortcuts", label: "Keyboard shortcuts" }),
   ];
@@ -149,13 +153,15 @@ export function editBlocked(state: EditorState): boolean {
   return !state.canEdit || state.status === "deleted" || state.gesture !== null;
 }
 
-export type ClipMenuId = "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "delete";
+export type ClipMenuId = "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "mute-clip" | "separate-audio" | "delete";
 
 // A clip's menu (label "Clip actions"), for the selection the right-click made. Cut and Delete are
 // greyed when a selected clip is on a locked track, Split when the playhead crosses none of the
 // selection on an unlocked track. Duplicate also works from a locked track: the copies go elsewhere.
 // Edit text is there for one text clip, and Crop and Reset crop for one video, image or text clip, all greyed on a
-// locked track and Reset crop also when it is not cropped; none is a command, so the menu's opener runs them.
+// locked track and Reset crop also when it is not cropped; none is a command, so the menu's opener runs them. With a
+// video or audio clip selected there are Mute (Unmute when all of them are silent) and, for a video that still has its
+// sound, Separate audio.
 export function clipMenu(state: EditorState): MenuEntry[] {
   const { doc, selection, playhead } = state;
   const selected = new Set(selection.clipIds);
@@ -168,6 +174,10 @@ export function clipMenu(state: EditorState): MenuEntry[] {
   const single = selection.clipIds.length === 1 ? (findClip(doc, selection.clipIds[0])?.clip ?? null) : null;
   const croppable = single !== null && single.type !== "audio" && !(single.type === "placeholder" && single.accepts === "audio");
   const typeable = single !== null && single.type === "text";
+  const sounding = soundClipsOf(doc, selection.clipIds);
+  const audible = sounding.some(({ clip }) => clip.volume > 0);
+  const separable = sounding.some(({ clip, track }) => clip.type === "video" && clip.volume > 0 && !track.locked);
+  const allLocked = sounding.every(({ track }) => track.locked);
   return [
     entry("cut", "Cut", onLocked),
     entry("copy", "Copy", false),
@@ -178,6 +188,12 @@ export function clipMenu(state: EditorState): MenuEntry[] {
       ? [
           { id: "crop", label: "Crop", disabled: blocked || onLocked, edit: true },
           { id: "reset-crop", label: "Reset crop", disabled: blocked || onLocked || !isCropped(single.transform.crop), edit: true },
+        ]
+      : []),
+    ...(sounding.length > 0
+      ? [
+          entry("mute-clip", audible ? "Mute" : "Unmute", allLocked, { separatorBefore: true }),
+          ...(sounding.some(({ clip }) => clip.type === "video") ? [entry("separate-audio", "Separate audio", !separable)] : []),
         ]
       : []),
     entry("delete", "Delete", onLocked, { separatorBefore: true, danger: true }),

@@ -80,6 +80,7 @@ export type EditorState = {
   // The guide picked on the preview, this person's own. Picking a clip or a track clears it; so does its removal.
   guideId: string | null;
   showGuides: boolean; // this browser's choice, from View as
+  showAudioMeter: boolean; // this browser's choice, from the View menu: the level meter beside the timeline
   boardScale: number; // CSS pixels per project pixel on the preview as drawn now, so the zoom menu's Custom… starts there
   exporting: boolean; // an export is running in this tab
   exportHeld: boolean; // a finished export waits in this tab for its Download click
@@ -124,6 +125,7 @@ export type EditorState = {
   setTool(tool: Tool): boolean; // false: a tool that changes the project, for someone who can't edit
   selectGuide(guideId: string | null): void; // clears the clip and track selection; a guide not there selects nothing
   setShowGuides(on: boolean): void; // hiding them clears the selected guide and leaves the Guide tool
+  setShowAudioMeter(on: boolean): void;
   setBoardScale(k: number): void;
   setTextEdit(clipId: string | null, opts?: { selectAll?: boolean }): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
   setExporting(on: boolean): void;
@@ -222,7 +224,11 @@ function isOwnHead(entry: ActivityEntry, head: PendingEdit | undefined, meId: st
 
 export function createEditorStore(
   init: EditorInit,
-  deps: { genId?: () => string; now?: () => number; view?: { snapping: boolean; showSafeZones: boolean; showGuides?: boolean } } = {},
+  deps: {
+    genId?: () => string;
+    now?: () => number;
+    view?: { snapping: boolean; showSafeZones: boolean; showGuides?: boolean; showAudioMeter?: boolean };
+  } = {},
 ): EditorStore {
   // Edit ids are sent as request ids, which must be 8 to 64 characters of A-Za-z0-9_-.
   const genId = deps.genId ?? (() => nanoid(10));
@@ -349,6 +355,7 @@ export function createEditorStore(
       rate: 1,
       showSafeZones: deps.view?.showSafeZones ?? false,
       showGuides: deps.view?.showGuides ?? true,
+      showAudioMeter: deps.view?.showAudioMeter ?? true,
       tool: "select",
       shapeTool: "rect",
       guideId: null,
@@ -700,6 +707,10 @@ export function createEditorStore(
       setShowGuides(on) {
         const state = get();
         if (on !== state.showGuides) set({ showGuides: on, ...(!on && { guideId: null, ...(state.tool === "guide" && { tool: "select" as const }) }) });
+      },
+
+      setShowAudioMeter(on) {
+        if (on !== get().showAudioMeter) set({ showAudioMeter: on });
       },
 
       setTextEdit(clipId, opts) {

@@ -9,13 +9,14 @@ const saver = () => ({ prefs: vi.fn<SettingsSave["prefs"]>(), keymap: vi.fn<Sett
 
 describe("the preferences cookie", () => {
   it("formats and reads the preferences", () => {
-    // the safe area starts hidden, guides start shown
-    expect(formatPrefs(DEFAULT_PREFS)).toBe("u:px.sz:0.sn:1.z:fill.st:30.tx:30.gd:1");
-    const chosen: Prefs = { units: "cm", safeZones: false, snapping: false, boardZoom: 150, stillSeconds: 5, textSeconds: 2.5, guides: false };
-    expect(formatPrefs(chosen)).toBe("u:cm.sz:0.sn:0.z:150.st:50.tx:25.gd:0");
-    expect(parsePrefs("u:cm.sz:0.sn:0.z:150.st:50.tx:25.gd:0")).toEqual(chosen);
-    // A cookie from before guides shows them.
+    // the safe area starts hidden, guides and the audio meter start shown
+    expect(formatPrefs(DEFAULT_PREFS)).toBe("u:px.sz:0.sn:1.z:fill.st:30.tx:30.gd:1.am:1");
+    const chosen: Prefs = { units: "cm", safeZones: false, snapping: false, boardZoom: 150, stillSeconds: 5, textSeconds: 2.5, guides: false, meter: false };
+    expect(formatPrefs(chosen)).toBe("u:cm.sz:0.sn:0.z:150.st:50.tx:25.gd:0.am:0");
+    expect(parsePrefs("u:cm.sz:0.sn:0.z:150.st:50.tx:25.gd:0.am:0")).toEqual(chosen);
+    // A cookie from before guides shows them, and one from before the audio meter shows it.
     expect(parsePrefs("u:cm.sz:0.sn:0.z:150.st:50.tx:25").guides).toBe(true);
+    expect(parsePrefs("u:cm.sz:0.sn:0.z:150.st:50.tx:25.gd:0").meter).toBe(true);
     // An old field such as the aspect lock is ignored.
     expect(parsePrefs("u:in.lk:0")).toEqual({ ...DEFAULT_PREFS, units: "in" });
   });
@@ -41,13 +42,13 @@ describe("the preferences cookie", () => {
     expect([clampSeconds(2.46), clampSeconds(0.2), clampSeconds(61)]).toEqual([2.5, 0.5, 60]);
     // What is written stays plain text that reads back the same.
     const odd: Prefs = { ...DEFAULT_PREFS, boardZoom: 150.4, stillSeconds: 2.46, textSeconds: 100 };
-    expect(formatPrefs(odd)).toBe("u:px.sz:0.sn:1.z:150.st:25.tx:600.gd:1");
+    expect(formatPrefs(odd)).toBe("u:px.sz:0.sn:1.z:150.st:25.tx:600.gd:1.am:1");
     expect(formatPrefs(odd)).toMatch(/^[a-z0-9:.]+$/);
   });
 
   it("the defaults are frozen", () => {
     expect(Object.isFrozen(DEFAULT_PREFS)).toBe(true);
-    expect(DEFAULT_PREFS).toEqual({ units: "px", safeZones: false, snapping: true, boardZoom: "fill", stillSeconds: 3, textSeconds: 3, guides: true });
+    expect(DEFAULT_PREFS).toEqual({ units: "px", safeZones: false, snapping: true, boardZoom: "fill", stillSeconds: 3, textSeconds: 3, guides: true, meter: true });
   });
 });
 

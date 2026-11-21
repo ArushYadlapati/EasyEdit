@@ -84,6 +84,11 @@ const COMMAND_WORDS: Partial<Record<CommandId, string[]>> = {
   "zoom-out": ["smaller", "timeline"],
   "zoom-fit": ["zoom", "whole", "fit"],
   "toggle-snapping": ["snap", "magnet", "align"],
+  "toggle-audio-meter": ["sound", "level", "levels", "volume", "loudness", "vu", "db", "show", "hide"],
+  "volume-up": ["sound", "audio", "loud", "boost", "gain", "increase"],
+  "volume-down": ["sound", "audio", "quiet", "lower", "gain", "decrease"],
+  "mute-clip": ["sound", "audio", "silence", "silent", "volume"],
+  "separate-audio": ["sound", "detach", "unlink", "split", "extract", "voice", "music"],
   export: ["render", "download", "save", "video", "mp4", "share"],
   "show-shortcuts": ["keyboard", "keys", "hotkeys", "keymap"],
 };
@@ -98,6 +103,11 @@ const COMMAND_LABELS: Partial<Record<CommandId, string>> = {
   "tool-guide": "Guide tool",
   "tool-crop": "Crop tool",
   "toggle-snapping": "Snapping",
+  "toggle-audio-meter": "Audio meter",
+  "volume-up": "Volume up",
+  "volume-down": "Volume down",
+  "mute-clip": "Mute or unmute clip",
+  "separate-audio": "Separate audio",
   "show-shortcuts": "Keyboard shortcuts",
   "zoom-in": "Zoom in on the timeline",
   "zoom-out": "Zoom out on the timeline",
@@ -153,6 +163,7 @@ const COMMAND_GROUPS: { group: SearchGroup; commands: CommandId[] }[] = [
     commands: [
       "undo", "redo", "cut", "copy", "paste", "duplicate", "split", "delete", "ripple-delete",
       "nudge-left", "nudge-right", "nudge-left-second", "nudge-right-second", "select-all", "clear-selection",
+      "volume-up", "volume-down", "mute-clip", "separate-audio",
     ],
   },
   {
@@ -162,7 +173,7 @@ const COMMAND_GROUPS: { group: SearchGroup; commands: CommandId[] }[] = [
       "prev-edge", "next-edge", "go-start", "go-end",
     ],
   },
-  { group: "Timeline", commands: ["zoom-in", "zoom-out", "zoom-fit", "toggle-snapping"] },
+  { group: "Timeline", commands: ["zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", "toggle-audio-meter"] },
 ];
 
 const EDITS = new Set(SHORTCUTS.filter((s) => s.edits).map((s) => s.command));
@@ -187,6 +198,10 @@ function commandUnavailable(command: CommandId, input: SearchInput): boolean {
     case "nudge-right":
     case "nudge-left-second":
     case "nudge-right-second":
+    case "volume-up":
+    case "volume-down":
+    case "mute-clip":
+    case "separate-audio":
       return noSelection;
     case "zoom-in":
       return !input.canZoomIn;
@@ -216,7 +231,9 @@ export function searchItems(input: SearchInput): SearchItem[] {
 
   for (const { group, commands } of COMMAND_GROUPS) {
     for (const id of commands) {
-      items.push(id === "toggle-snapping" ? command(group, id, { checked: input.snapping }) : command(group, id));
+      if (id === "toggle-snapping") items.push(command(group, id, { checked: input.snapping }));
+      else if (id === "toggle-audio-meter") items.push(command(group, id, { checked: input.showAudioMeter }));
+      else items.push(command(group, id));
     }
     if (group === "Tools") {
       for (const shape of SHAPE_TOOLS) {

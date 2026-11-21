@@ -1,6 +1,6 @@
 "use client";
 
-import { ImageOff } from "lucide-react";
+import { ImageOff, VolumeX } from "lucide-react";
 import { memo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { splitClipAt } from "@/lib/editor/actions";
@@ -35,6 +35,7 @@ const HATCH = "repeating-linear-gradient(135deg, transparent 0 5px, var(--ed-lin
 const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot", shape: "Shape" };
 
 const MIN_LABEL_PX = 24;
+const MIN_VOLUME_PX = 72; // a narrower clip keeps its room for the name
 export const CLIP_HEIGHT = 32; // the clip's box in its row; the timeline draws a refused drop's outline with the same
 export const CLIP_TOP = (ROW_HEIGHT - CLIP_HEIGHT) / 2;
 const MIN_TRIM_PX = 16; // narrower clips have no trim handles, so they can still be grabbed to move
@@ -167,10 +168,12 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
           style={{ left: frameToPx(razorAt - clip.start, zoom) }}
         />
       )}
+      <SoundFades marks={marks} zoom={zoom} />
       {showLook && pictured && <ClipStill fileId={stillFileId} removed={removed} />}
       {showLook && clip.type === "text" && <TextSample style={clip.style} />}
       {showLook && clip.type === "shape" && <ShapeSample color={clip.stroke ?? clip.fill ?? "#000000"} round={clip.shape === "ellipse"} line={clip.shape === "arrow"} />}
-      {width >= MIN_LABEL_PX && <span className="min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>}
+      {width >= MIN_LABEL_PX && <span className="relative min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>}
+      {marks.volume !== null && width >= MIN_VOLUME_PX && <VolumeBadge volume={marks.volume} />}
       <ClipMarkings marks={marks} zoom={zoom} />
       {dragger && width >= MIN_TRIM_PX && (
         <>
@@ -182,11 +185,37 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
   );
 }, drawsTheSame);
 
+// A clip that is not as loud as recorded says so at its right end: its volume in percent, or a muted mark at 0.
+function VolumeBadge({ volume }: { volume: number }) {
+  return (
+    <span data-clip-volume aria-hidden className="pointer-events-none relative mr-2 ml-auto flex shrink-0 items-center text-[10px] leading-4 text-ed-text tabular-nums">
+      {volume === 0 ? <VolumeX size={12} /> : `${Math.round(volume * 100)}%`}
+    </span>
+  );
+}
+
+// Decoration only: a dark corner cut off each end the clip's sound fades at, as wide as the fade, so the clip's body
+// rises and falls as its sound does. Drawn first, under the clip's still, name and volume.
+function SoundFades({ marks, zoom }: { marks: ClipMarks; zoom: number }) {
+  const corner = "pointer-events-none absolute inset-y-0 bg-ed-bg/60";
+  return (
+    <>
+      {marks.fadeIn > 0 && (
+        <span aria-hidden data-sound-fade="in" className={cx(corner, "left-0 [clip-path:polygon(0_0,100%_0,0_100%)]")} style={{ width: frameToPx(marks.fadeIn, zoom) }} />
+      )}
+      {marks.fadeOut > 0 && (
+        <span aria-hidden data-sound-fade="out" className={cx(corner, "right-0 [clip-path:polygon(0_0,100%_0,100%_100%)]")} style={{ width: frameToPx(marks.fadeOut, zoom) }} />
+      )}
+    </>
+  );
+}
+
 // Decoration only: wedges shade the in and out effect windows, ticks sit on the bottom edge at each keyframe.
 function ClipMarkings({ marks, zoom }: { marks: ClipMarks; zoom: number }) {
   const wedge = "pointer-events-none absolute inset-y-0 from-ed-text/25 to-transparent";
   return (
     <>
+
       {marks.inFrames > 0 && (
         <span aria-hidden data-effect-wedge="in" className={cx(wedge, "left-0 bg-linear-to-r")} style={{ width: frameToPx(marks.inFrames, zoom) }} />
       )}
@@ -212,7 +241,7 @@ function ClipMarkings({ marks, zoom }: { marks: ClipMarks; zoom: number }) {
 function ClipStill({ fileId, removed }: { fileId: string | null; removed: boolean }) {
   const url = usePosterUrl(fileId);
   return (
-    <span data-clip-still aria-hidden className="ml-2 flex h-6 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[2px] bg-ed-raised">
+    <span data-clip-still aria-hidden className="relative ml-2 flex h-6 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[2px] bg-ed-raised">
       {removed ? (
         <ImageOff size={14} className="text-ed-muted" />
       ) : (
@@ -274,7 +303,14 @@ function drawsTheSame(a: ClipViewProps, b: ClipViewProps): boolean {
 function sameMarks(a: ClipViewProps, b: ClipViewProps): boolean {
   const x = clipMarks(a.track, a.clip);
   const y = clipMarks(b.track, b.clip);
-  return x.inFrames === y.inFrames && x.outFrames === y.outFrames && x.keyframes.join() === y.keyframes.join();
+  return (
+    x.inFrames === y.inFrames &&
+    x.outFrames === y.outFrames &&
+    x.fadeIn === y.fadeIn &&
+    x.fadeOut === y.fadeOut &&
+    x.volume === y.volume &&
+    x.keyframes.join() === y.keyframes.join()
+  );
 }
 
 function sameSample(a: Clip, b: Clip): boolean {

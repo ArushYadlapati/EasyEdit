@@ -18,9 +18,11 @@ import { CanvasOverlay } from "./canvas-overlay";
 import { useEditor, useEditorStore, useSettings } from "./context";
 import { decodeImage } from "./media/frame-decode";
 import { useMedia, type MediaServices } from "./media/media-context";
+import type { SoundBus } from "@/lib/audio/sound-bus";
 import { createMediaPool, upcomingWants, type PoolDeps } from "./media/media-pool";
 import { pageFontResolver } from "./page-fonts";
 import { useBoardDrop } from "./use-board-drop";
+import { useSoundBus } from "./sound-context";
 import { usePlayback } from "./use-playback";
 import { PlatformOverlay } from "./platform-overlay";
 
@@ -43,7 +45,8 @@ export function Preview() {
   usePlayback(useCallback(() => drawNow.current?.(), []));
   const store = useEditorStore();
   const media = useMedia();
-  const pool = useMemo(() => createMediaPool(poolDeps(media)), [media]);
+  const bus = useSoundBus();
+  const pool = useMemo(() => createMediaPool(poolDeps(media, bus)), [media, bus]);
   const playing = useEditor((s) => s.playing);
   const rate = useEditor((s) => s.rate);
   const width = useEditor((s) => viewDoc(s).width);
@@ -306,10 +309,11 @@ export function Preview() {
   );
 }
 
-// What the pool needs from this page: the library, elements that are never added to the page, and the browser's
-// image decoder.
-function poolDeps(media: MediaServices): PoolDeps {
+// What the pool needs from this page: the library, elements that are never added to the page, the browser's image
+// decoder, and the editor's mix for the elements' sound when there is one.
+function poolDeps(media: MediaServices, bus: SoundBus | null): PoolDeps {
   return {
+    ...(bus && { line: (el) => bus.line(el) }),
     files: media.files,
     asset: (assetId) => media.library.getState().assets[assetId],
     loaded: () => media.library.getState().loaded,

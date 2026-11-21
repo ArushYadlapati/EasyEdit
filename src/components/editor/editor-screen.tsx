@@ -23,6 +23,7 @@ import { Preview } from "./preview";
 import { RightPanel } from "./right-panel";
 import { spacePath } from "@/lib/spaces/paths";
 import { SettingsDialog, type SettingsSection } from "./settings-dialog";
+import { SoundProvider } from "./sound-context";
 import { Timeline } from "./timeline/timeline";
 import { TopBar } from "./top-bar";
 import { useShortcuts } from "./use-shortcuts";
@@ -87,65 +88,67 @@ export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOU
 
   return (
     <div className="editor relative h-dvh overflow-hidden bg-ed-bg font-sans text-ed-text [--ed-left-w:240px] [--ed-right-w:280px] [--ed-timeline-h:clamp(220px,36vh,360px)]">
-      <ContextMenuProvider>
-        <PanelGrid
-          layout={layout}
-          deleted={deleted}
-          top={
-            <ExportingTopBar
-              exporter={exporter}
-              onShowShortcuts={openShortcuts}
-              spaceSlug={spaceSlug}
-              onShowSettings={() => showSettingsAt(lastSection)}
-              onResetLayout={() => layout.getState().reset()}
-              onExport={openExport}
-              onSaveTemplate={spaceId ? () => setTemplateOpen(true) : undefined}
-              onShowSettingsAt={showSettingsAt}
-              onOpenPanel={openPanel}
-              searchRef={searchRef}
-            />
-          }
-          left={
-            // The rail's width comes out of the left column, so the preview is as wide as without it.
-            <div className="flex h-full min-h-0">
-              <div className="min-w-0 flex-1">
-                <LeftPanel tab={leftTab} onTab={setLeftTab} />
+      <SoundProvider>
+        <ContextMenuProvider>
+          <PanelGrid
+            layout={layout}
+            deleted={deleted}
+            top={
+              <ExportingTopBar
+                exporter={exporter}
+                onShowShortcuts={openShortcuts}
+                spaceSlug={spaceSlug}
+                onShowSettings={() => showSettingsAt(lastSection)}
+                onResetLayout={() => layout.getState().reset()}
+                onExport={openExport}
+                onSaveTemplate={spaceId ? () => setTemplateOpen(true) : undefined}
+                onShowSettingsAt={showSettingsAt}
+                onOpenPanel={openPanel}
+                searchRef={searchRef}
+              />
+            }
+            left={
+              // The rail's width comes out of the left column, so the preview is as wide as without it.
+              <div className="flex h-full min-h-0">
+                <div className="min-w-0 flex-1">
+                  <LeftPanel tab={leftTab} onTab={setLeftTab} />
+                </div>
+                <ToolRail />
               </div>
-              <ToolRail />
-            </div>
-          }
-          center={
-            deleted ? (
+            }
+            center={
+              deleted ? (
+                <>
+                  <p className="text-sm font-semibold">This project was deleted.</p>
+                  <LeaveLink
+                    href={spacePath(spaceSlug)}
+                    className={cx("rounded-[4px] text-[13px] leading-5 text-ed-muted underline underline-offset-2 hover:text-ed-text", FOCUS_RING)}
+                  >
+                    Back to projects
+                  </LeaveLink>
+                </>
+              ) : (
+                <Preview />
+              )
+            }
+            right={<RightPanel tab={rightTab} onTab={setRightTab} />}
+            bottom={<Timeline />}
+            overlay={
               <>
-                <p className="text-sm font-semibold">This project was deleted.</p>
-                <LeaveLink
-                  href={spacePath(spaceSlug)}
-                  className={cx("rounded-[4px] text-[13px] leading-5 text-ed-muted underline underline-offset-2 hover:text-ed-text", FOCUS_RING)}
-                >
-                  Back to projects
-                </LeaveLink>
+                <MovedBanner />
+                <NoticeBar />
               </>
-            ) : (
-              <Preview />
-            )
-          }
-          right={<RightPanel tab={rightTab} onTab={setRightTab} />}
-          bottom={<Timeline />}
-          overlay={
-            <>
-              <MovedBanner />
-              <NoticeBar />
-            </>
-          }
-        />
-        <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center lg:hidden">
-          <p className="text-sm font-semibold">The editor needs a wider window.</p>
-          <p className="text-[13px] leading-5 text-ed-muted">Open this project on a laptop or desktop.</p>
-        </div>
-        <SettingsDialog at={settingsAt} onSection={showSettingsAt} onClose={() => setSettingsAt(null)} />
-        {spaceId && <SaveTemplateDialog open={templateOpen} onClose={() => setTemplateOpen(false)} spaceId={spaceId} spaceSlug={spaceSlug} />}
-        <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} exporter={exporter} />
-      </ContextMenuProvider>
+            }
+          />
+          <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center lg:hidden">
+            <p className="text-sm font-semibold">The editor needs a wider window.</p>
+            <p className="text-[13px] leading-5 text-ed-muted">Open this project on a laptop or desktop.</p>
+          </div>
+          <SettingsDialog at={settingsAt} onSection={showSettingsAt} onClose={() => setSettingsAt(null)} />
+          {spaceId && <SaveTemplateDialog open={templateOpen} onClose={() => setTemplateOpen(false)} spaceId={spaceId} spaceSlug={spaceSlug} />}
+          <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} exporter={exporter} />
+        </ContextMenuProvider>
+      </SoundProvider>
     </div>
   );
 }
