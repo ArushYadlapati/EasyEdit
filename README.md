@@ -40,7 +40,7 @@ EasyEdit is an AI-first video editor built for teams. Everyone on a team works i
 - **Auto captions.** One button listens to a video or audio clip in your browser and gives it captions that follow the clip when it is moved, trimmed or split. Four looks, editable lines, and they show in the preview and the export. English only for now.
 - **Export in the browser.** Renders an H.264/AAC MP4 on your own machine with WebCodecs. Nothing is uploaded, and you can keep editing while it runs.
 - **Shared media library.** Uploads of up to 2 GB go straight from the browser to a Google shared drive and resume after an interruption. Each video gets a 720p preview copy, so phone footage plays smoothly on any laptop.
-- **Formats for every platform.** Short 9:16, Feed 4:5, Square 1:1, Long 16:9, Long 4K, or a custom size, all at 30 fps, with safe-zone guides.
+- **Formats for every platform.** Short 9:16, Feed 4:5, Square 1:1, Long 16:9, Long 4K, or a custom size, at 24, 25, 30, 50 or 60 fps, with safe-zone guides.
 - **AI agents over MCP.** Claude, ChatGPT, Cursor, VS Code, Codex and other MCP clients can list, read, create and edit projects for a signed-in member. Every agent change is listed in Activity and can be undone.
 - **Roles and access control.** Viewers, editors and admins, with an Admin page for managing who can sign in.
 - **Keyboard-first editing.** J/K/L playback, frame stepping, and a full shortcut list behind `?`.

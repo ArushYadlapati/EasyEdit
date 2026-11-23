@@ -49,6 +49,7 @@ const createBody = z.object({
   format: z.string().optional(), // may be left out when a template gives it
   width: z.number().optional(),
   height: z.number().optional(),
+  fps: z.number().optional(), // a blank project's frame rate; 30 when left out
   templateId: z.string().min(1).optional(),
 });
 

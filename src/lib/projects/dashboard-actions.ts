@@ -87,6 +87,7 @@ export function makeDashboardActions(deps: DashboardActionDeps) {
                 format: field(formData, "format"),
                 width: side(formData, "width"),
                 height: side(formData, "height"),
+                fps: side(formData, "fps"),
                 folderId: folder(formData),
               },
         );

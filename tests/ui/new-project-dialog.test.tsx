@@ -505,3 +505,13 @@ it("arrow keys move the Start from choice", () => {
   fireEvent.keyDown(radio("Blank"), { key: "ArrowRight" });
   expect(radio("Quick promo").getAttribute("aria-checked")).toBe("true");
 });
+
+it("a blank project is made at the frame rate picked, 30 unless another is", async () => {
+  render(dialog());
+  const rate = () => screen.getByRole("combobox", { name: "Frame rate" }) as HTMLSelectElement;
+  expect(rate().value).toBe("30");
+  expect([...rate().options].map((o) => o.textContent)).toEqual(["24 fps", "25 fps", "30 fps", "50 fps", "60 fps"]);
+  fireEvent.change(rate(), { target: { value: "60" } });
+  await clickCreate();
+  expect(sent().get("fps")).toBe("60");
+});

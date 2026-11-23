@@ -17,7 +17,7 @@ import {
   type OpsPage,
 } from "@/lib/projects/service";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
-import { DEFAULT_TRANSFORM, FRAME_SIZE_MESSAGE, createEmptyDoc, type OpInput, type TextClip } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, FRAME_RATES, FRAME_RATE_MESSAGE, FRAME_SIZE_MESSAGE, createEmptyDoc, type OpInput, type TextClip } from "@/lib/timeline";
 import { testActor } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
 
@@ -96,6 +96,22 @@ describe("projects service", () => {
     const project = await getProject(db, as("u1"), id);
     expect(project).toMatchObject({ version: 1, updatedBy: "u1" });
     expect(textClips(project!.doc).map((c) => c.id)).toEqual([op.clip.id]);
+  });
+
+  it("createProject makes a blank project at the frame rate asked for, 30 when none is, and refuses any other", async () => {
+    const db = await makeTestDb();
+    const fast = await createProject(db, as("u1"), { name: "Gameplay", format: "long_16x9", fps: 60 });
+    expect((await getProject(db, as("u1"), fast.id))!.doc.fps).toBe(60);
+    expect((await getProject(db, as("u1"), fast.id))!.doc).toEqual(createEmptyDoc("long_16x9", undefined, 60));
+    const film = await createProject(db, as("u1"), { name: "Short film", format: "long_16x9", fps: 24 });
+    expect((await getProject(db, as("u1"), film.id))!.doc.fps).toBe(24);
+    const plain = await createProject(db, as("u1"), { name: "Plain", format: "long_16x9" });
+    expect((await getProject(db, as("u1"), plain.id))!.doc.fps).toBe(30);
+    for (const fps of [0, 23.976, 29, 120, -30]) {
+      await expect(createProject(db, as("u1"), { name: "Odd", format: "long_16x9", fps })).rejects.toMatchObject({ code: "INVALID", message: FRAME_RATE_MESSAGE });
+    }
+    expect(FRAME_RATES).toEqual([24, 25, 30, 50, 60]);
+    expect(FRAME_RATE_MESSAGE).toBe("A project's frame rate is 24, 25, 30, 50 or 60");
   });
 
   it("createProject stores an empty doc at version 0 and getProject returns it", async () => {

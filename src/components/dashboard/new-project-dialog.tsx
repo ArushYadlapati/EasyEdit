@@ -21,7 +21,7 @@ import { UNIT_SUFFIX } from "@/lib/editor/units";
 import type { TemplateSummary } from "@/lib/templates/types";
 import { LIMITS } from "@/lib/limits";
 import type { FormState } from "@/lib/projects/dashboard-actions";
-import { DEFAULT_FPS, FORMAT_PRESETS, FRAME_SIZE_MESSAGE, formatFor, isFrameSize, type FormatId, type FrameSize } from "@/lib/timeline";
+import { DEFAULT_FPS, FORMAT_PRESETS, FRAME_RATES, FRAME_SIZE_MESSAGE, formatFor, isFrameSize, type FormatId, type FrameRate, type FrameSize } from "@/lib/timeline";
 
 export type NewProjectDialogProps = {
   open: boolean;
@@ -87,6 +87,7 @@ function NewProject({ open, onClose, folders, templates = NO_TEMPLATES, folderId
   const [shown, setShown] = useState(DEFAULT_SIZE); // the last size inside the limits, drawn as the frame
   const [templateId, setTemplateId] = useState<string | null>(null); // null is Blank; the format fields keep their values meanwhile
   const [folder, setFolder] = useState(folderId ?? "");
+  const [fps, setFps] = useState<FrameRate>(DEFAULT_FPS); // a project keeps the rate it is made with
 
   const template = templates.find((t) => t.id === templateId) ?? null;
   const size = fitting(draft);
@@ -129,6 +130,7 @@ function NewProject({ open, onClose, folders, templates = NO_TEMPLATES, folderId
       formData.set("width", String(size.width));
       formData.set("height", String(size.height));
     }
+    if (!template) formData.set("fps", String(fps));
     formData.set("folderId", folder);
     startTransition(() => dispatch(formData));
   }
@@ -229,10 +231,23 @@ function NewProject({ open, onClose, folders, templates = NO_TEMPLATES, folderId
             </Select>
           </Field>
 
-          <div className="flex flex-col gap-1">
-            <span className={CAPTION}>Frame rate</span>
-            <p className="text-[13px] text-ed-text">{`${DEFAULT_FPS} fps`}</p>
-          </div>
+          {template ? (
+            // A template brings its own frame rate.
+            <div className="flex flex-col gap-1">
+              <span className={CAPTION}>Frame rate</span>
+              <p className="text-[13px] text-ed-text">Set by the template</p>
+            </div>
+          ) : (
+            <Field label="Frame rate">
+              <Select value={String(fps)} onChange={(event) => setFps(Number(event.target.value) as FrameRate)}>
+                {FRAME_RATES.map((rate) => (
+                  <option key={rate} value={rate}>
+                    {`${rate} fps`}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
         </form>
 
         <div className="flex h-56 flex-col gap-3 rounded-md bg-ed-raised p-6 md:h-full md:min-h-0">

@@ -52,7 +52,7 @@ export function formatLabel(of: { format: FormatId; width?: number; height?: num
   return of.width !== undefined && of.height !== undefined ? `Custom ${of.width} × ${of.height}` : "Custom size";
 }
 
-export const DEFAULT_FPS = 30;
+export const DEFAULT_FPS = 30 as const;
 
 // Each format's safe area before anyone changes it, as shares of the frame: centred sideways, its top edge at `top`.
 // A changed size keeps that top and grows downward. 9:16 follows Meta's published Reels guidance (14% of the top,
@@ -129,14 +129,23 @@ function frameOf(format: FormatId, size: FrameSize | undefined): FrameSize {
   return size;
 }
 
-export function createEmptyDoc(format: FormatId, size?: FrameSize): TimelineDoc {
+// The frame rates a new project can have. A project keeps the one it was made with.
+export const FRAME_RATES = [24, 25, 30, 50, 60] as const;
+export type FrameRate = (typeof FRAME_RATES)[number];
+export const FRAME_RATE_MESSAGE = `A project's frame rate is ${FRAME_RATES.slice(0, -1).join(", ")} or ${FRAME_RATES.at(-1)}`;
+
+export function isFrameRate(fps: unknown): fps is FrameRate {
+  return (FRAME_RATES as readonly unknown[]).includes(fps);
+}
+
+export function createEmptyDoc(format: FormatId, size?: FrameSize, fps: FrameRate = DEFAULT_FPS): TimelineDoc {
   const { width, height } = frameOf(format, size);
   return {
     schemaVersion: 1,
     format,
     width,
     height,
-    fps: DEFAULT_FPS,
+    fps,
     tracks: [
       emptyTrack("v1", "video", "Video 1"),
       emptyTrack("t1", "text", "Text 1"),

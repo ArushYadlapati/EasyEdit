@@ -13,7 +13,7 @@ import { getTemplate } from "@/lib/templates/service";
 import {
   OpError,
   applyOps,
-  createEmptyDoc,
+  DEFAULT_FPS, FRAME_RATE_MESSAGE, createEmptyDoc, isFrameRate,
   prepareOps,
   type FormatId,
   type Op,
@@ -105,7 +105,8 @@ export function isFolderGone(error: unknown): boolean {
 export async function createProject(
   db: DB,
   actor: Actor,
-  input: { name: string; format: string; width?: number; height?: number; folderId?: string | null; templateId?: string },
+  // fps: the frame rate of a blank project, 30 when left out. A template brings its own.
+  input: { name: string; format: string; width?: number; height?: number; fps?: number; folderId?: string | null; templateId?: string },
 ): Promise<{ id: string; version: 0 }> {
   requireRole(actor, "editor");
   const name = projectName.safeParse(input.name);
@@ -117,6 +118,8 @@ export async function createProject(
     ? { format: template.format, width: template.width, height: template.height }
     : projectFrame(input);
   if ("error" in frame) throw new ServiceError("INVALID", 400, frame.error);
+  const fps = input.fps ?? DEFAULT_FPS;
+  if (!template && !isFrameRate(fps)) throw new ServiceError("INVALID", 400, FRAME_RATE_MESSAGE);
 
   const id = newId();
   const folderId = input.folderId ?? null;
@@ -128,7 +131,7 @@ export async function createProject(
       format: frame.format,
       width: frame.width,
       height: frame.height,
-      doc: template ? structuredClone(template.doc) : createEmptyDoc(frame.format, frame),
+      doc: template ? structuredClone(template.doc) : createEmptyDoc(frame.format, frame, isFrameRate(fps) ? fps : DEFAULT_FPS),
       folderId,
       version: 0,
       createdBy: actor.userId,
