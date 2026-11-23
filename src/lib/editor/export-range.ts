@@ -1,7 +1,7 @@
 import { applyOps, docDuration, prepareOps, type OpInput, type TimelineDoc } from "@/lib/timeline";
 
 // Exporting a part of a project: the project as it would be if only that part existed, starting at frame 0. The
-// export then needs to know nothing about ranges.
+// export then needs to know nothing about ranges. Made on the page, before the export starts.
 
 export type Span = { from: number; to: number }; // timeline frames, the end not included
 

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { RANGE_LABEL, rangeDoc, spanOf } from "@/lib/export/range";
+import { RANGE_LABEL, rangeDoc, spanOf } from "@/lib/editor/export-range";
 import { frameCount } from "@/lib/export/schedule";
 import { sourceSeconds } from "@/lib/render/source-time";
 import { docDuration, type MediaClip, type TimelineDoc } from "@/lib/timeline";
-import { sampleDoc, video } from "../editor/fixtures";
+import { sampleDoc, video } from "./fixtures";
 
 // The sample project: v1 holds c1 (0–30) and c2 (30–60); t1 holds x1 (0–60) and x2 (90–120). It is 120 frames long.
 const places = (d: TimelineDoc, track: number) => d.tracks[track].clips.map((c) => [c.id, c.start, c.duration]);

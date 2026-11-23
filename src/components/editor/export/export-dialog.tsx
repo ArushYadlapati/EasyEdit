@@ -14,7 +14,7 @@ import {
 import { planExportMedia } from "@/lib/export/media-sources";
 import { failureMessage, failureOf, frameFailureMessage } from "@/lib/export/messages";
 import { EXPORT_QUALITIES, exportOptions, videoSettings, type ExportPresetId, type ExportQuality } from "@/lib/export/presets";
-import { RANGE_LABEL, rangeDoc, spanOf, type RangeKind } from "@/lib/export/range";
+import { RANGE_LABEL, rangeDoc, spanOf, type RangeKind } from "@/lib/editor/export-range";
 import { frameCount } from "@/lib/export/schedule";
 import { MEMORY_LIMIT_BYTES } from "@/lib/export/sinks";
 import { isBusy, type ExportState } from "@/lib/export/state";

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createStore, type StoreApi } from "zustand";
 import { exportFileName, sameDoc } from "@/lib/export/facts";
 import { exportSize, type ExportPresetId, type ExportQuality } from "@/lib/export/presets";
-import { rangeDoc, type Span } from "@/lib/export/range";
+import { rangeDoc, type Span } from "@/lib/editor/export-range";
 import type { ExportOutcome } from "@/lib/export/protocol";
 import { exportVideo } from "@/lib/export/run";
 import { exportReducer, type ExportEvent, type ExportState } from "@/lib/export/state";
