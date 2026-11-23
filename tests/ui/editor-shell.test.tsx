@@ -22,7 +22,7 @@ import type { UploadItem } from "@/lib/media/types";
 import type { UploadQueue } from "@/lib/media/upload-queue";
 import { sampleDoc } from "../editor/fixtures";
 import { dragEvent } from "../helpers/drag-events";
-import { act, cleanup, fireEvent, render, screen } from "../helpers/dom";
+import { act, cleanup, fireEvent, render, screen, tipOf } from "../helpers/dom";
 import { happyDOM } from "../helpers/layout";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 import { fakeCtx } from "../render/fake-ctx";
@@ -896,9 +896,9 @@ it("a keymap saved in this browser shows once the page has loaded", () => {
   const km = setKeys(DEFAULT_KEYMAP, "split", "Mod+Shift+S");
   localStorage.setItem(KEYMAP_KEY, formatKeymap(km));
   // The server's HTML, and so hydration, has the default hints.
-  expect(renderToString(<EditorShell space={SPACE} initial={initial()} />)).toContain('title="Split (S)"');
+  expect(renderToString(<EditorShell space={SPACE} initial={initial()} />)).toContain('hidden="">Split (S)</span>');
   render(<EditorShell space={SPACE} initial={initial()} />);
-  expect(screen.getByRole("button", { name: "Split" }).getAttribute("title")).toBe("Split (Ctrl+Shift+S)");
+  expect(tipOf(screen.getByRole("button", { name: "Split" }))).toBe("Split (Ctrl+Shift+S)");
 });
 
 it("the browser's menu is off in the editor and on in text fields and links", async () => {

@@ -4,7 +4,7 @@ import { Circle, Crop, Diamond, FoldHorizontal, Hexagon, MousePointer2, MoveUpRi
 import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { useContextMenu } from "@/components/ui/context-menu";
 import { IconButton } from "@/components/ui/icon-button";
-import { BOX_SHAPES, SHAPE_TOOL_NAME, type BoxShape, type ShapeTool } from "@/lib/timeline/shapes";
+import { BOX_SHAPES, LINE_TOOLS, SHAPE_TOOL_NAME, type BoxShape, type LineTool, type ShapeTool } from "@/lib/timeline/shapes";
 import { deleteSelection, splitAtPlayhead } from "@/lib/editor/actions";
 import type { CommandId } from "@/lib/editor/shortcuts";
 import { TOOLS, toolNeedsEdit, type Tool } from "@/lib/editor/tools";
@@ -18,8 +18,7 @@ const TOOL_LOOK: Record<Tool, { label: string; command: CommandId; icon: ReactNo
   razor: { label: "Razor", command: "tool-razor", icon: <Slice /> },
   text: { label: "Text", command: "tool-text", icon: <Type /> },
   shape: { label: "Shape", command: "tool-shape", icon: <Square /> }, // shown with the current shape's icon instead
-  line: { label: "Line", command: "tool-line", icon: <Slash /> },
-  arrow: { label: "Arrow", command: "tool-arrow", icon: <MoveUpRight /> },
+  line: { label: "Line", command: "tool-line", icon: <Slash /> }, // shown as a line or an arrow, whichever it draws
   guide: { label: "Guide", command: "tool-guide", icon: <SeparatorVertical /> },
   crop: { label: "Crop", command: "tool-crop", icon: <Crop /> },
 };
@@ -39,12 +38,16 @@ export const SHAPE_ICON: Record<ShapeTool, ReactNode> = {
 // The strip between the Add panel and the preview: the tools, one of them current, then the clip commands that act at
 // once on the playhead or the selection. One tab stop; the arrow keys, Home and End move between its buttons. Someone
 // who can't edit keeps Selection, and the rest is disabled. In a window too short for every button the strip scrolls.
+// Two of the tools draw more than one thing. Shape keeps a list of shapes; Line draws a line or an arrow. Each shows
+// what it draws now, and a click on it while it is already the tool changes that: Shape opens its list, Line switches
+// to the other of its two.
 export function ToolRail() {
   const store = useEditorStore();
   const tool = useEditor((s) => s.tool);
   const canEdit = useEditor((s) => s.canEdit);
   const hasSelection = useEditor((s) => s.selection.clipIds.length > 0 || s.guideId !== null);
   const shapeTool = useEditor((s) => s.shapeTool);
+  const lineTool = useEditor((s) => s.lineTool);
   const key = useShortcutLabel();
   const menu = useContextMenu();
   const bar = useRef<HTMLDivElement>(null);
@@ -55,29 +58,33 @@ export function ToolRail() {
   const disabledAt = (index: number) => (index >= TOOLS.length ? !canEdit || (index > TOOLS.length && !hasSelection) : toolNeedsEdit(TOOLS[index]) && !canEdit);
   const stop = focusAt !== null && !disabledAt(focusAt) ? focusAt : TOOLS.indexOf(tool);
 
-  // The Shape button's list of shapes, opened beside the rail. Picking one picks the Shape tool with it.
-  function openShapes(button: HTMLElement) {
+  // What the Shape or the Line button draws, as a list opened beside the rail. Picking one picks the tool with it.
+  function openList(button: HTMLElement, of: "shape" | "line") {
     if (!menu || !canEdit) return;
     const box = button.getBoundingClientRect();
+    const [kinds, current]: [readonly ShapeTool[], ShapeTool] = of === "shape" ? [BOX_SHAPES, shapeTool] : [LINE_TOOLS, lineTool];
     menu({
       x: box.right + 4,
       y: box.top,
-      label: "Shapes",
+      label: of === "shape" ? "Shapes" : "Line or arrow",
       returnFocus: button,
-      items: BOX_SHAPES.map((s) => ({ id: s, label: SHAPE_TOOL_NAME[s], radio: true, checked: s === shapeTool })),
+      items: kinds.map((s) => ({ id: s, label: SHAPE_TOOL_NAME[s], radio: true, checked: s === current })),
       onSelect: (id) => {
         const state = store.getState();
-        if (state.setTool("shape")) state.setShapeTool(id as BoxShape);
+        if (!state.setTool(of)) return;
+        if (of === "shape") state.setShapeTool(id as BoxShape);
+        else state.setLineTool(id as LineTool);
       },
     });
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    // ArrowRight on the Shape button opens its list.
-    if (e.key === "ArrowRight" && (e.target as HTMLElement).dataset.tool === "shape") {
+    // ArrowRight on the Shape or the Line button opens its list.
+    const of = (e.target as HTMLElement).dataset.tool;
+    if (e.key === "ArrowRight" && (of === "shape" || of === "line")) {
       e.preventDefault();
       e.stopPropagation();
-      openShapes(e.target as HTMLElement);
+      openList(e.target as HTMLElement, of);
       return;
     }
     const all = buttons();
@@ -98,7 +105,7 @@ export function ToolRail() {
   }
 
   const command = (index: number, label: string, shortcut: string, disabled: boolean, run: () => void, icon: ReactNode) => (
-    <IconButton data-edit-control label={label} shortcut={shortcut} disabled={disabled} tabIndex={stop === index ? 0 : -1} onClick={run}>
+    <IconButton data-edit-control label={label} shortcut={shortcut} tipSide="right" disabled={disabled} tabIndex={stop === index ? 0 : -1} onClick={run}>
       {icon}
     </IconButton>
   );
@@ -116,35 +123,40 @@ export function ToolRail() {
       {TOOLS.map((t, i) => {
         const look = TOOL_LOOK[t];
         const needsEdit = toolNeedsEdit(t);
-        const isShape = t === "shape";
-        // The Shape button shows the shape it draws, a corner mark for its list, and opens the list when clicked
-        // while it is already the tool, or right-clicked.
-        const shapeProps = isShape && {
-          "data-tool": "shape",
+        // A button that draws more than one thing shows what it draws now and a corner mark, and a right-click or
+        // ArrowRight opens its list.
+        const of = t === "shape" || t === "line" ? t : null;
+        const other: LineTool = lineTool === "line" ? "arrow" : "line";
+        const listProps = of && {
+          "data-tool": of,
           "aria-haspopup": "menu" as const,
           className: "relative",
           onContextMenu: (e: MouseEvent<HTMLButtonElement>) => {
             e.preventDefault();
-            openShapes(e.currentTarget);
+            openList(e.currentTarget, of);
           },
         };
         return (
           <IconButton
             key={t}
             {...(needsEdit && { "data-edit-control": true })}
-            label={isShape ? `Shape: ${SHAPE_TOOL_NAME[shapeTool]}` : look.label}
-            shortcut={key(look.command)}
+            label={of === "shape" ? `Shape: ${SHAPE_TOOL_NAME[shapeTool]}` : of === "line" ? SHAPE_TOOL_NAME[lineTool] : look.label}
+            shortcut={key(of === "line" && lineTool === "arrow" ? "tool-arrow" : look.command)}
+            hint={of === "shape" ? "Click again for more shapes" : of === "line" ? `Click again for ${other === "line" ? "a line" : "an arrow"}` : undefined}
+            tipSide="right"
             pressed={tool === t}
             disabled={needsEdit && !canEdit}
             tabIndex={stop === i ? 0 : -1}
             onClick={(e) => {
-              if (isShape && tool === "shape") openShapes(e.currentTarget);
-              else store.getState().setTool(t);
+              const state = store.getState();
+              if (of === "shape" && tool === "shape") openList(e.currentTarget, "shape");
+              else if (of === "line" && tool === "line") state.setLineTool(other);
+              else state.setTool(t);
             }}
-            {...shapeProps}
+            {...listProps}
           >
-            {isShape ? SHAPE_ICON[shapeTool] : look.icon}
-            {isShape && <span aria-hidden className="pointer-events-none absolute right-[3px] bottom-[3px] size-0 border-b-4 border-l-4 border-b-current border-l-transparent opacity-70" />}
+            {of === "shape" ? SHAPE_ICON[shapeTool] : of === "line" ? SHAPE_ICON[lineTool] : look.icon}
+            {of && <span aria-hidden className="pointer-events-none absolute right-[3px] bottom-[3px] size-0 border-b-4 border-l-4 border-b-current border-l-transparent opacity-70" />}
           </IconButton>
         );
       })}

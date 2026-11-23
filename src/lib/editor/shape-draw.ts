@@ -4,7 +4,7 @@ import type { Point, Size } from "./board";
 import { guideLines } from "./guides";
 import { placeClips, type Placement } from "./placement";
 
-// Drawing a shape with the Shape, Line or Arrow tool: a drag from where it was pressed to where the pointer is, in
+// Drawing a shape with the Shape or the Line tool: a drag from where it was pressed to where the pointer is, in
 // project pixels. A box, ellipse or many-sided shape spans the two points (Shift: its even-sided form, a square, a
 // circle, a regular pentagon; centre: the press is its middle); a line or arrow runs from the press (its tail) to the
 // pointer (its tip), Shift keeping its angle to 15° steps.

@@ -261,7 +261,7 @@ describe("an arrow's points on the preview", () => {
 });
 
 // A drag on the preview with a drawing tool, from project (200, 200) to (400, 400): client (516, 156) to (616, 256).
-describe("the Shape, Line and Arrow tools on the preview", () => {
+describe("the Shape and Line tools on the preview", () => {
   function drawWith(pick: (s: ReturnType<EditorStore["getState"]>) => void) {
     const shown = show({ doc: sampleDoc() });
     act(() => {
@@ -277,8 +277,11 @@ describe("the Shape, Line and Arrow tools on the preview", () => {
     return { ...shown, drawn };
   }
 
-  it("the Line tool draws a line from the press to the release, then hands back to Selection", () => {
-    const { st, drawn } = drawWith((s) => s.setTool("line"));
+  it("the Line tool, set to a line, draws one from the press to the release, then hands back to Selection", () => {
+    const { st, drawn } = drawWith((s) => {
+      s.setTool("line");
+      s.setLineTool("line");
+    });
     expect(drawn).toMatchObject({ shape: "arrow", heads: "none", height: 0 });
     expect(drawn!.width).toBeCloseTo(282.84, 1);
     expect(drawn!.transform.rotation).toBe(45);
@@ -289,8 +292,9 @@ describe("the Shape, Line and Arrow tools on the preview", () => {
     expect(grips()).toEqual(["add:0", "tail", "tip"]);
   });
 
-  it("the Arrow tool draws an arrow with a head at its tip", () => {
-    const { drawn } = drawWith((s) => s.setTool("arrow"));
+  it("the Line tool draws an arrow with a head at its tip until it is switched to a line", () => {
+    const { st, drawn } = drawWith((s) => s.setTool("line"));
+    expect(st().lineTool).toBe("arrow");
     expect(drawn).toMatchObject({ shape: "arrow", heads: "end", height: 0 });
   });
 
@@ -303,11 +307,11 @@ describe("the Shape, Line and Arrow tools on the preview", () => {
     expect(drawn!.heads).toBeUndefined();
   });
 
-  it("the Line and Arrow tools show a crosshair over the preview", () => {
+  it("the Line tool shows a crosshair over the preview, for a line and for an arrow", () => {
     const { st } = show({ doc: sampleDoc() });
     act(() => void st().setTool("line"));
     expect(overlay().className).toContain("cursor-crosshair");
-    act(() => void st().setTool("arrow"));
+    act(() => st().setLineTool("line"));
     expect(overlay().className).toContain("cursor-crosshair");
     act(() => void st().setTool("select"));
     expect(overlay().className).not.toContain("cursor-crosshair");
