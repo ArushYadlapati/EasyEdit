@@ -12,13 +12,14 @@ import { ROW_HEIGHT, formatTimecode, frameToPx } from "@/lib/editor/geometry";
 import { SNAP_PX, clipEdges } from "@/lib/editor/snap";
 import { speedBadge } from "@/lib/editor/speed";
 import { posterFileFor } from "@/lib/media/playback";
-import type { Clip, TextStyle, Track } from "@/lib/timeline";
+import type { Clip, MediaClip, TextStyle, Track } from "@/lib/timeline";
 import { isMediaClip, shapeName } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
 import { useLibrary } from "../media/media-context";
 import { usePosterUrl } from "../media/use-poster";
 import { useClipMenu } from "../use-clip-menu";
 import { useIsMac } from "../use-shortcuts";
+import { ClipLook, useClipLook } from "./clip-look";
 import { CLICK_SLOP_PX, useClipDrag } from "./use-clip-drag";
 
 const FILL: Record<Clip["type"], string> = {
@@ -84,6 +85,9 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
   const openClipMenu = useClipMenu();
   const marks = clipMarks(track, clip);
   const showLook = still && width >= MIN_STILL_PX;
+  // A video's frames or a sound's shape across the clip, once this browser has made it from the file. Like the still,
+  // it is read only where it is shown: not on a clip too narrow for it.
+  const look = useClipLook(clip as MediaClip, showLook && (clip.type === "video" || clip.type === "audio"));
   // With the Razor, a press cuts the clip where it lands and the pointer shows where that is; nothing selects or drags.
   const razor = useEditor((s) => s.canEdit && s.tool === "razor") && !locked;
   const [razorAt, setRazorAt] = useState<number | null>(null); // the frame the Razor would cut at, while over the clip
@@ -169,8 +173,9 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
           style={{ left: frameToPx(razorAt - clip.start, zoom) }}
         />
       )}
+      {look && <ClipLook clip={clip as MediaClip} look={look} fps={fps} width={width} height={CLIP_HEIGHT - 2} />}
       <SoundFades marks={marks} zoom={zoom} />
-      {showLook && pictured && <ClipStill fileId={stillFileId} removed={removed} />}
+      {showLook && pictured && !look && <ClipStill fileId={stillFileId} removed={removed} />}
       {showLook && clip.type === "text" && <TextSample style={clip.style} />}
       {showLook && clip.type === "shape" && <ShapeSample color={clip.stroke ?? clip.fill ?? "#000000"} round={clip.shape === "ellipse"} line={clip.shape === "arrow"} />}
       {width >= MIN_LABEL_PX && <span className="relative min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>}
@@ -306,7 +311,7 @@ function drawsTheSame(a: ClipViewProps, b: ClipViewProps): boolean {
     a.clip.start === b.clip.start &&
     a.clip.duration === b.clip.duration &&
     clipLabel(a.clip, undefined) === clipLabel(b.clip, undefined) &&
-    (!("assetId" in a.clip) || !("assetId" in b.clip) || a.clip.assetId === b.clip.assetId) &&
+    (!("assetId" in a.clip) || !("assetId" in b.clip) || (a.clip.assetId === b.clip.assetId && a.clip.in === b.clip.in)) &&
     sameSample(a.clip, b.clip) &&
     sameMarks(a, b)
   );

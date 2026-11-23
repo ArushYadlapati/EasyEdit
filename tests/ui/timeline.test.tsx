@@ -261,8 +261,8 @@ it("a wide video clip shows its asset's still before its name", async () => {
     expect(box.nextElementSibling!.textContent).toBe("intake");
     expect(clip(id).getAttribute("aria-label")).toMatch(/^Video clip "intake", /);
   }
-  expect(get).toHaveBeenCalledTimes(1);
-  expect(get).toHaveBeenCalledWith("post-a");
+  // The still, and the video's own file for its strip of frames: each once, though two clips show them.
+  expect(get.mock.calls.map(([fileId]) => fileId).sort()).toEqual(["post-a", "prev-a"]);
   expect(made).toHaveBeenCalledTimes(1);
   expect(revoked).not.toHaveBeenCalled();
   unmount();
@@ -296,7 +296,7 @@ it("a clip whose still is not made yet, or whose asset is unknown, keeps the emp
   await flush();
   expect(clip("c1").firstElementChild!.hasAttribute("data-clip-still")).toBe(true);
   expect(clip("c1").firstElementChild!.childElementCount).toBe(0);
-  expect(get).not.toHaveBeenCalled();
+  expect(get).not.toHaveBeenCalledWith("post-a");
   // The still arrives: the clip reads it.
   act(() => media.library.getState().put(assetView()));
   await flush();
@@ -370,7 +370,7 @@ it("audio clips show no still", async () => {
   await flush();
   expect(clip("s1").querySelector("[data-clip-still], [data-clip-sample]")).toBeNull();
   expect(clip("s1").firstElementChild!.textContent).toBe("intake");
-  expect(get).toHaveBeenCalledTimes(1); // c1 and c2's still, not the audio clip's
+  expect(get.mock.calls.filter(([fileId]) => fileId === "post-a")).toHaveLength(1); // c1 and c2's still, not the audio clip's
 });
 
 it("a drag across the timeline selects no page text, while a track's rename field still takes a selection", () => {
@@ -409,7 +409,7 @@ it("a clip told to show no still shows none, and a caption row's clips are told 
   expect(timeline.clip("c1").querySelector("[data-clip-still]")).not.toBeNull();
   expect(timeline.clip("k1").querySelector("[data-clip-still]")).toBeNull();
   expect(timeline.clip("k2").querySelector("[data-clip-sample]")).toBeNull();
-  expect(get).toHaveBeenCalledTimes(2); // once for the lone clip, once for the timeline
+  expect(get.mock.calls.filter(([fileId]) => fileId === "post-a")).toHaveLength(2); // once for the lone clip, once for the timeline
 });
 
 it("an empty timeline says where clips come from, and only an editor is told to add them", () => {
