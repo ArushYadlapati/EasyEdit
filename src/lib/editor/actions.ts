@@ -38,7 +38,7 @@ import { clipFrame, kenBurnsOps, toggleKeyframeOps } from "./keyframe-edit";
 import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
-import { muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
+import { duckOps, muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
 import { freezeFrameOps, reverseOps } from "./speed";
 import { findClip, type EditorStore } from "./store";
 import type { BrandFonts } from "@/lib/brand/types";
@@ -279,6 +279,18 @@ export function separateAudio(store: EditorStore, hasSound?: (assetId: string) =
   if (state.edit(separated.ops, "separate audio").ok) state.select(separated.clipIds);
 }
 
+// Turns the selected clips down while other clips are heard over them: music under speech.
+export function duckSelection(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const ducked = duckOps(state.doc, state.selection.clipIds);
+  if (!ducked.ok) {
+    state.notify("info", ducked.why === "nothing" ? MESSAGES.nothingToDuck : MESSAGES.nothingOver);
+    return;
+  }
+  if (state.edit(ducked.ops, "duck").ok) state.notify("info", MESSAGES.ducked(ducked.clips));
+}
+
 // Turns the selected video clips round, so they play backward; a clip that already does plays forward again.
 export function reverseSelection(store: EditorStore): void {
   const state = store.getState();
@@ -395,7 +407,10 @@ export function resetCrop(store: EditorStore, clipId: string): void {
 export function toggleKeyframe(store: EditorStore, clipId: string, prop: KeyframeProp): void {
   const state = store.getState();
   const clip = findClip(state.doc, clipId)?.clip;
-  if (!state.canEdit || state.gesture !== null || !clip || clip.type === "audio") return;
+  if (!state.canEdit || state.gesture !== null || !clip) return;
+  // Only a clip that sounds has a volume to key, and an audio clip has nothing else.
+  const sounds = clip.type === "video" || clip.type === "audio";
+  if (prop === "volume" ? !sounds : clip.type === "audio") return;
   state.edit(toggleKeyframeOps(clip, prop, clipFrame(clip, state.playhead)), "keyframe");
 }
 

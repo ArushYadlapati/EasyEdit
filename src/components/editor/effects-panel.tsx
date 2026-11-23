@@ -14,7 +14,7 @@ import { KEYFRAME_PROPS } from "@/lib/timeline/keyframes";
 import type { Units } from "@/lib/editor/settings";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import { UNIT_SUFFIX, fromUnit, showUnit } from "@/lib/editor/units";
-import type { Clip, Ease, Keyframe, KeyframeProp, OpInput } from "@/lib/timeline";
+import { VOLUME_MAX, type Clip, type Ease, type Keyframe, type KeyframeProp, type OpInput } from "@/lib/timeline";
 import { useEditor, useEditorStore, useSettings } from "./context";
 import { AnimationSection, TransitionsSection } from "./effects-section";
 import { KenBurnsButton, PROP_LABEL } from "./keyframe-button";
@@ -93,6 +93,8 @@ function valueView(prop: KeyframeProp, value: number, units: Units, frame: { wid
       return { shown: round(value, 1), suffix: "°", step: 1, kept: (typed) => typed };
     case "opacity":
       return { shown: round(value * 100, 1), suffix: "%", step: 1, min: 0, max: 100, kept: (typed) => Math.min(1, Math.max(0, round(typed / 100, 4))) };
+    case "volume":
+      return { shown: Math.round(value * 100), suffix: "%", step: 10, min: 0, max: VOLUME_MAX * 100, kept: (typed) => Math.min(VOLUME_MAX, Math.max(0, Math.round(typed) / 100)) };
   }
 }
 
@@ -380,7 +382,9 @@ export function EffectsPanel() {
   let body: ReactNode;
   // Keyed by the clip, so a value typed for one clip never lands on the next one selected.
   if (clip && drawsOnCanvas(clip)) body = <ClipEffects key={clip.id} clip={clip} />;
-  else if (clip) body = <Hint>Audio clips have no visual effects yet.</Hint>;
+  // A sound has no picture to move, but its volume can be keyed.
+  else if (clip?.type === "audio") body = <KeyframesSection key={clip.id} clip={clip} />;
+  else if (clip) body = <Hint>An empty audio slot has no effects.</Hint>;
   else if (count > 1) body = <Hint>Select one clip to see its effects.</Hint>;
   else body = <Hint>Select a clip to see its effects.</Hint>;
 

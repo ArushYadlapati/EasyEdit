@@ -169,12 +169,13 @@ describe("effects: fields that do not fit the clip", () => {
     );
   });
 
-  it("keyframes on an audio clip are refused", () => {
+  it("an audio clip keys its volume and nothing else", () => {
     const d = withClips([{ trackId: "a1", clip: audioClip("s", 0, 60) }]);
     refused(
       () => applyOps(d, [{ op: "update_clip", clipId: "s", patch: { keyframes: { x: [{ at: 0, value: 0 }] } } }]),
-      /"keyframes" is not allowed on a.* audio clip/,
+      /an audio clip takes only volume keyframes/,
     );
+    expect(() => applyOps(d, [{ op: "update_clip", clipId: "s", patch: { keyframes: { volume: [{ at: 0, value: 0.5 }] } } }])).not.toThrow();
   });
 
   it("an animation on a video clip is refused", () => {

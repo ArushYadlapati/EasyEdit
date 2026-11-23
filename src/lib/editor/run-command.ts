@@ -3,6 +3,7 @@ import {
   copySelection,
   cutSelection,
   deleteSelection,
+  duckSelection,
   duplicateSelection,
   freezeFrame,
   goToEdge,
@@ -132,6 +133,8 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return toggleMute(store);
     case "separate-audio":
       return separateAudio(store, ctx.hasSound);
+    case "duck-audio":
+      return duckSelection(store);
     case "reverse-clip":
       return reverseSelection(store);
     case "freeze-frame":

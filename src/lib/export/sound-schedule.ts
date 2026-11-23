@@ -1,5 +1,6 @@
 import { fadeFrames, soundingClips } from "@/lib/render/clip-sound";
-import type { MediaClip, TimelineDoc } from "@/lib/timeline";
+import type { Ease, MediaClip, TimelineDoc } from "@/lib/timeline";
+import { isKeyframed } from "@/lib/timeline/keyframes";
 
 // Where each clip sounds on the timeline, in samples, and from where in its file. Every position is worked out from
 // whole sample and frame numbers each time, never by adding, so ten minutes in is as exact as the first sample.
@@ -14,7 +15,12 @@ export type Voice = {
   gain: number;
   fadeIn: number; // samples the voice rises over at its start, and falls over at its end; never more than it is long
   fadeOut: number;
+  // The clip's volume keyframes, when it has any: `at` in samples from the voice's start (it may lie outside the
+  // voice). The voice's gain is then 1 and these give its volume.
+  envelope?: EnvelopePoint[];
 };
+
+export type EnvelopePoint = { at: number; value: number; ease?: Ease };
 
 export type SoundSchedule = {
   fps: number;
@@ -37,6 +43,8 @@ function frameSample(frame: number, fps: number, sampleRate: number): number {
 // volume, and the in point the first one reaches, compared exactly. A fade at the cut keeps the two apart.
 function continues(clip: MediaClip, next: MediaClip, file: string, nextFile: string): boolean {
   return (
+    !isKeyframed(clip, "volume") &&
+    !isKeyframed(next, "volume") &&
     fadeFrames(clip).out === 0 &&
     fadeFrames(next).in === 0 &&
     next.start === clip.start + clip.duration &&
@@ -79,6 +87,9 @@ export function soundSchedule(doc: TimelineDoc, sounds: Record<string, string>, 
       gain,
       fadeIn: frameCount(fade.in, fps, sampleRate),
       fadeOut,
+      ...(isKeyframed(clip, "volume") && {
+        envelope: clip.keyframes!.volume!.map((k) => ({ at: Math.round((k.at * sampleRate) / fps), value: k.value, ...(k.ease && { ease: k.ease }) })),
+      }),
     };
     voices.push(voice);
     open = { voice, track: track.id, last: clip };

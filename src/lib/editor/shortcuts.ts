@@ -3,7 +3,7 @@ export type CommandId =
   | "prev-edge" | "next-edge" | "go-start" | "go-end"
   | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste" | "duplicate"
   | "nudge-left" | "nudge-right" | "nudge-left-second" | "nudge-right-second"
-  | "volume-up" | "volume-down" | "mute-clip" | "separate-audio" | "reverse-clip" | "freeze-frame"
+  | "volume-up" | "volume-down" | "mute-clip" | "separate-audio" | "duck-audio" | "reverse-clip" | "freeze-frame"
   | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "toggle-audio-meter"
   | "export" | "show-shortcuts" | "search"
   | "tool-select" | "tool-razor" | "tool-text" | "tool-shape" | "tool-shape-next" | "tool-line" | "tool-arrow" | "tool-guide" | "tool-crop";
@@ -79,6 +79,7 @@ export const SHORTCUTS: Shortcut[] = [
   row("Editing", "volume-down", ["["], "Make the selected clips quieter", EDITS_REPEATS),
   row("Editing", "mute-clip", ["M"], "Mute or unmute the selected clips", EDITS),
   row("Editing", "separate-audio", ["Shift+S"], "Separate a video's audio onto its own clip", EDITS),
+  row("Editing", "duck-audio", ["Shift+D"], "Turn the selected clips down while other clips are heard", EDITS),
   row("Editing", "reverse-clip", ["Shift+R"], "Play the selected video clips backward, or forward again", EDITS),
   row("Editing", "freeze-frame", ["Shift+F"], "Freeze the frame under the playhead", EDITS),
   row("Timeline", "select-all", ["Mod+A"], "Select all clips"),

@@ -86,8 +86,10 @@ describe("what Effects says instead", () => {
     const doc = sampleDoc();
     doc.tracks[3].clips = [video("au", 0, 30, { type: "audio" })];
     openEffects(makeStore({ doc }), ["au"]);
-    expect(screen.getByText("Audio clips have no visual effects yet.")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Keyframes" })).toBeNull();
+    // A sound has no picture to move or fade in, but its volume can be keyed.
+    expect(screen.queryByRole("heading", { name: "Transitions" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Keyframes" })).toBeTruthy();
+    expect(screen.getByText("No keyframes yet. Use the ◆ beside a field in Inspect to add one.")).toBeTruthy();
   });
 
   it("for a clip with no keyframes", () => {

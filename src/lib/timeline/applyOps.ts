@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { OpError } from "./errors";
-import { KEYFRAME_PROPS, shiftKeyframes } from "./keyframes";
+import { KEYFRAME_PROPS, TRANSFORM_PROPS, shiftKeyframes } from "./keyframes";
 import type { Op } from "./ops";
 import {
   CUSTOM_SIZE_ONLY,
@@ -18,7 +18,7 @@ import { ADJUST_KEYS } from "./adjust";
 import { ARROW_DEFAULTS } from "./shapes";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
 import { CaptionStyle, CaptionWords, MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
-import type { Clip, FormatId, FrameSize, Guide, TimelineDoc, Track } from "./types";
+import type { Clip, FormatId, FrameSize, Guide, KeyframeProp, TimelineDoc, Track } from "./types";
 
 // update_clip re-validates strictly so a typo'd or foreign key is rejected, not dropped.
 const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).strict();
@@ -70,7 +70,7 @@ const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut"] as const;
 const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string[]> = {
   video: [...VISUAL_EFFECTS, ...SOUND_EFFECTS, ...PICTURE_EFFECTS],
   image: [...VISUAL_EFFECTS, ...PICTURE_EFFECTS],
-  audio: SOUND_EFFECTS,
+  audio: [...SOUND_EFFECTS, "keyframes"], // its volume's only (assertKeyframesFit)
   text: ["keyframes", "animationIn", "animationOut", "emphasis", "blend"],
   shape: [...VISUAL_EFFECTS, "blend"],
 };
@@ -207,6 +207,19 @@ function assertSpeedFits(clip: Clip, opIndex: number, opName: string) {
   if ((clip.type === "audio" || clip.type === "image") && clip.speed <= 0) {
     const kind = clip.type === "audio" ? "an audio" : "an image";
     throw new OpError("INVALID", `${opName}: ${kind} clip's speed must be above 0`, opIndex);
+  }
+}
+
+// A volume is keyed only on a clip that sounds, and a sound has no picture to key.
+function assertKeyframesFit(clip: Clip, opIndex: number, opName: string) {
+  const keys = clip.keyframes;
+  if (!keys) return;
+  const has = (prop: KeyframeProp) => (keys[prop]?.length ?? 0) > 0;
+  if (has("volume") && clip.type !== "video" && clip.type !== "audio") {
+    throw new OpError("INVALID", `${opName}: only a video or audio clip takes volume keyframes`, opIndex);
+  }
+  if (clip.type === "audio" && TRANSFORM_PROPS.some(has)) {
+    throw new OpError("INVALID", `${opName}: an audio clip takes only volume keyframes`, opIndex);
   }
 }
 
@@ -385,6 +398,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         }
         assertAccepts(track, op.clip, opIndex, name);
         assertSpeedFits(op.clip, opIndex, name);
+        assertKeyframesFit(op.clip, opIndex, name);
         // A null is the neutral value, so a clip that spells out "none" for a field it can't use is still fine.
         const carried: Record<string, unknown> = op.clip;
         assertEffectsFit(op.clip, givenKeys(op.clip).filter((key) => carried[key] !== null), opIndex, name);
@@ -654,6 +668,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         }
         assertAccepts(track, result.data, opIndex, name);
         assertSpeedFits(result.data, opIndex, name);
+        assertKeyframesFit(result.data, opIndex, name);
         const before: Record<string, unknown> = current;
         const after: Record<string, unknown> = result.data;
         const undo: Record<string, unknown> = {};

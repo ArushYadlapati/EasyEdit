@@ -1,6 +1,11 @@
 import type { Clip, Ease, Keyframe, KeyframeProp, Keyframes, Transform } from "./types";
 
-export const KEYFRAME_PROPS: readonly KeyframeProp[] = ["x", "y", "scale", "rotation", "opacity"];
+// The properties that move and fade a clip's picture, which are fields of its transform.
+export type TransformProp = Exclude<KeyframeProp, "volume">;
+export const TRANSFORM_PROPS: readonly TransformProp[] = ["x", "y", "scale", "rotation", "opacity"];
+
+// Every property a clip can key: those, and a video's or audio clip's volume.
+export const KEYFRAME_PROPS: readonly KeyframeProp[] = [...TRANSFORM_PROPS, "volume"];
 
 // p runs 0..1 between two keyframes.
 export function ease(kind: Ease, p: number): number {
@@ -37,11 +42,27 @@ export function isKeyframed(clip: Clip, prop: KeyframeProp): boolean {
 // The clip's transform at a timeline frame. Hands back the clip's own object when nothing is keyframed, so callers
 // can tell cheaply that nothing moves.
 export function effectiveTransform(clip: Clip, frame: number): Transform {
-  const keyed = KEYFRAME_PROPS.filter((p) => isKeyframed(clip, p));
+  const keyed = TRANSFORM_PROPS.filter((p) => isKeyframed(clip, p));
   if (keyed.length === 0) return clip.transform;
   const out = { ...clip.transform };
   for (const p of keyed) out[p] = valueAt(clip.keyframes![p]!, frame - clip.start);
   return out;
+}
+
+// How loud a clip is at a timeline frame: its keyframed volume there, else its volume. 0 for a clip with no sound.
+export function volumeAt(clip: Clip, frame: number): number {
+  if (clip.type !== "video" && clip.type !== "audio") return 0;
+  return isKeyframed(clip, "volume") ? valueAt(clip.keyframes!.volume!, frame - clip.start) : clip.volume;
+}
+
+// A property's value at a timeline frame, keyframes counted in.
+export function propValue(clip: Clip, prop: KeyframeProp, frame: number): number {
+  return prop === "volume" ? volumeAt(clip, frame) : effectiveTransform(clip, frame)[prop];
+}
+
+// The update_clip patch that sets a property where it lives when it is not keyframed: the transform, or the volume.
+export function basePatch(prop: KeyframeProp, value: number): Record<string, unknown> {
+  return prop === "volume" ? { volume: value } : { transform: { [prop]: value } };
 }
 
 // False only when the clip is invisible for its whole length, so it can be skipped when drawing.

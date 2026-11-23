@@ -1,5 +1,5 @@
 import type { Clip, Ease, Keyframe, KeyframeProp, OpInput } from "@/lib/timeline";
-import { KEYFRAME_PROPS, effectiveTransform, removeKeyframe } from "@/lib/timeline/keyframes";
+import { KEYFRAME_PROPS, basePatch, propValue, removeKeyframe } from "@/lib/timeline/keyframes";
 
 // A clip's keyframes as list rows for the Effects tab, and the ops that edit them. A keyframe's `at` counts from the
 // clip's start, and may sit outside the clip (a trim can leave those; they still shape the curve).
@@ -34,18 +34,19 @@ export function editKeyframeOps(clip: Clip, prop: KeyframeProp, at: number, patc
   return update(clip, { keyframes: { [prop]: sorted } });
 }
 
-// Removes the keyframe at `at`. Removing the last one puts its value on the transform, so the clip stays where it was.
+// Removes the keyframe at `at`. Removing the last one puts its value on the transform (a volume's on the clip), so the
+// clip stays as it was.
 export function deleteKeyframeOps(clip: Clip, prop: KeyframeProp, at: number): OpInput[] {
   const list = clip.keyframes?.[prop] ?? [];
   if (!list.some((k) => k.at === at)) return [];
   const next = removeKeyframe(list, at);
   const patch: Record<string, unknown> = { keyframes: { [prop]: next } };
-  if (next.length === 0) patch.transform = { [prop]: effectiveTransform(clip, clip.start + at)[prop] };
+  if (next.length === 0) Object.assign(patch, basePatch(prop, propValue(clip, prop, clip.start + at)));
   return update(clip, patch);
 }
 
-// Drops every keyframe of the property, keeping the value shown at the clip's first frame on the transform.
+// Drops every keyframe of the property, keeping its value at the clip's first frame.
 export function clearKeyframesOps(clip: Clip, prop: KeyframeProp): OpInput[] {
   if ((clip.keyframes?.[prop]?.length ?? 0) === 0) return [];
-  return update(clip, { keyframes: { [prop]: [] }, transform: { [prop]: effectiveTransform(clip, clip.start)[prop] } });
+  return update(clip, { keyframes: { [prop]: [] }, ...basePatch(prop, propValue(clip, prop, clip.start)) });
 }

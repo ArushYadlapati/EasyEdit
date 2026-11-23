@@ -1,4 +1,4 @@
-import { clipFadeAt, playsInPreview, soundGain } from "@/lib/render/clip-sound";
+import { clipFadeAt, gainAt, playsInPreview } from "@/lib/render/clip-sound";
 import { tailAt } from "@/lib/render/compositor";
 import { sourceSeconds } from "@/lib/render/source-time";
 import type { MediaClip, TimelineDoc, Track } from "@/lib/timeline";
@@ -32,7 +32,7 @@ export function mediaWants(doc: TimelineDoc, frame: number, play: { playing: boo
       type: clip.type,
       seconds: sourceSeconds(clip, frame, doc.fps),
       rate,
-      volume: rate === 0 || silent ? 0 : soundGain(track, clip) * clipFadeAt(clip, frame),
+      volume: rate === 0 || silent ? 0 : gainAt(track, clip, frame) * clipFadeAt(clip, frame),
     };
   };
   for (const track of doc.tracks) {

@@ -1,4 +1,5 @@
-import { DEFAULT_TRANSFORM, VOLUME_MAX, type Clip, type MediaClip, type OpInput, type TimelineDoc, type Track } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, VOLUME_MAX, type Clip, type Keyframe, type MediaClip, type OpInput, type TimelineDoc, type Track } from "@/lib/timeline";
+import { isKeyframed } from "@/lib/timeline/keyframes";
 import { placeClips } from "./placement";
 
 // Pure builders for the commands that change how clips sound. Each returns ops and never touches the store; an empty
@@ -76,4 +77,87 @@ export function separateAudioOps(doc: TimelineDoc, clipIds: string[], genId: () 
     return { op: "update_clip", clipId: video.id, patch };
   });
   return { ok: true, ops: [...placement.ops, ...silenced], clipIds: placement.clipIds };
+}
+
+export const DUCK_LEVEL = 0.25; // what is left of a ducked clip's volume: a quarter, about 12 dB down
+export const DUCK_RAMP_SECONDS = 0.3; // how long it takes to go down, and to come back
+export const DUCK_GAP_SECONDS = 0.6; // a pause in the speech shorter than this is ducked through
+
+type Span = { from: number; to: number }; // timeline frames, the end not included
+
+// Joins spans that touch, overlap or lie no more than `gap` frames apart.
+function joined(spans: Span[], gap: number): Span[] {
+  const out: Span[] = [];
+  for (const span of [...spans].sort((a, b) => a.from - b.from)) {
+    const last = out.at(-1);
+    if (last && span.from - last.to <= gap) last.to = Math.max(last.to, span.to);
+    else out.push({ ...span });
+  }
+  return out;
+}
+
+// Where a clip is heard speaking, in timeline frames: each word of its file's transcript that it plays, when it has
+// one, so the music comes back in the pauses; else the whole clip.
+function speechSpans(doc: TimelineDoc, clip: MediaClip): Span[] {
+  const whole = { from: clip.start, to: clip.start + clip.duration };
+  const words = doc.captions?.transcripts?.[clip.assetId];
+  if (!words || words.length === 0) return [whole];
+  const spans: Span[] = [];
+  for (const word of words) {
+    const from = clip.start + ((word.s * doc.fps) / 1000 - clip.in) / clip.speed;
+    const to = clip.start + ((word.e * doc.fps) / 1000 - clip.in) / clip.speed;
+    if (to <= whole.from || from >= whole.to) continue;
+    spans.push({ from: Math.max(whole.from, Math.floor(from)), to: Math.min(whole.to, Math.ceil(to)) });
+  }
+  return spans;
+}
+
+export type Ducked = { ok: true; ops: OpInput[]; clips: number } | { ok: false; why: "nothing" | "silent" };
+
+// Turns each selected clip down while other clips are heard over it, and back up after: volume keyframes that fall to
+// DUCK_LEVEL of its volume over DUCK_RAMP_SECONDS before the other sound starts and rise again after it ends. The
+// other sound is every clip that sounds and is not selected; where a file has captions, only its words count. A clip
+// already keyed gets a fresh set. Not ok with no selected clip that sounds on an unlocked track ("nothing"), or when
+// nothing else is heard over any of them ("silent").
+export function duckOps(doc: TimelineDoc, clipIds: string[]): Ducked {
+  const music = unlocked(soundClipsOf(doc, clipIds)).map(({ clip }) => clip).filter((clip) => clip.speed > 0);
+  if (music.length === 0) return { ok: false, why: "nothing" };
+  const chosen = new Set(clipIds);
+  const gap = Math.round(DUCK_GAP_SECONDS * doc.fps);
+  const ramp = Math.max(1, Math.round(DUCK_RAMP_SECONDS * doc.fps));
+  const heard = doc.tracks.flatMap((track) =>
+    track.muted ? [] : track.clips.filter((clip): clip is MediaClip => hasOwnSound(clip) && !chosen.has(clip.id) && clip.speed > 0 && (clip.volume > 0 || isKeyframed(clip, "volume"))),
+  );
+  const speech = joined(heard.flatMap((clip) => speechSpans(doc, clip)), gap);
+  const ops: OpInput[] = [];
+  for (const clip of music) {
+    const end = clip.start + clip.duration;
+    const over = speech.filter((span) => span.to > clip.start && span.from < end);
+    if (over.length === 0) continue;
+    const base = clip.volume;
+    const low = Math.round(base * DUCK_LEVEL * 100) / 100;
+    // Frames from the clip's start. Ramps that would cross are met half way, and nothing is keyed outside the clip.
+    const keys: Keyframe[] = [];
+    const put = (at: number, value: number) => {
+      const frame = Math.min(clip.duration - 1, Math.max(0, at));
+      const last = keys.at(-1);
+      if (last && frame <= last.at) {
+        if (frame === last.at) last.value = Math.min(last.value, value);
+        return;
+      }
+      keys.push({ at: frame, value });
+    };
+    over.forEach((span, i) => {
+      const from = span.from - clip.start;
+      const to = span.to - clip.start;
+      const before = i === 0 ? -Infinity : over[i - 1].to - clip.start;
+      const after = i === over.length - 1 ? Infinity : over[i + 1].from - clip.start;
+      if (from - ramp > before && from - ramp >= 0) put(from - ramp, base);
+      put(from, low);
+      put(Math.max(from, to - 1), low);
+      if (to - 1 + ramp < after - ramp && to - 1 + ramp <= clip.duration - 1) put(to - 1 + ramp, base);
+    });
+    ops.push({ op: "update_clip", clipId: clip.id, patch: { keyframes: { volume: keys } } });
+  }
+  return ops.length === 0 ? { ok: false, why: "silent" } : { ok: true, ops, clips: ops.length };
 }

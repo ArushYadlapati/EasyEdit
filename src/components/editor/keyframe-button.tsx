@@ -9,7 +9,7 @@ import { findClip, viewDoc, type EditorState } from "@/lib/editor/store";
 import type { KeyframeProp } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "./context";
 
-export const PROP_LABEL: Record<KeyframeProp, string> = { x: "X", y: "Y", scale: "Scale", rotation: "Rotation", opacity: "Opacity" };
+export const PROP_LABEL: Record<KeyframeProp, string> = { x: "X", y: "Y", scale: "Scale", rotation: "Rotation", opacity: "Opacity", volume: "Volume" };
 
 function stateOf(s: EditorState, clipId: string, prop: KeyframeProp): KeyState {
   const clip = findClip(viewDoc(s), clipId)?.clip;

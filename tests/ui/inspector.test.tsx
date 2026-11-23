@@ -986,7 +986,7 @@ describe("template slot section", () => {
     expect(screen.getByLabelText("Transition out")).toBeTruthy();
     act(() => store.getState().select(["pa"]));
     expect(screen.queryByLabelText("Transition in")).toBeNull();
-    expect(screen.getByText("Audio clips have no visual effects yet.")).toBeTruthy();
+    expect(screen.getByText("An empty audio slot has no effects.")).toBeTruthy();
     view.unmount();
   });
 

@@ -1,4 +1,5 @@
 import type { Clip, MediaClip, TimelineDoc, Track } from "@/lib/timeline";
+import { isKeyframed, volumeAt } from "@/lib/timeline/keyframes";
 
 // Which clips the preview plays, which of them sound and how loud. The preview's media plan and the export both
 // decide from here, so a file sounds like the editor. Worker-safe.
@@ -13,11 +14,18 @@ export function playsInPreview(track: Track, clip: Clip): clip is MediaClip {
   return (clip.type === "video" || clip.type === "image") && !track.hidden;
 }
 
-// The clip's gain: its volume, linear, where 1 is as recorded. Nothing for an image or text, a clip the preview
-// does not play, or any clip on a muted track. Speed plays no part: the preview's rate decides that.
+// The clip's gain: its volume, linear, where 1 is as recorded, or the loudest its volume keyframes take it. Nothing
+// for an image or text, a clip the preview does not play, or any clip on a muted track. Speed plays no part: the
+// preview's rate decides that.
 export function soundGain(track: Track, clip: Clip): number {
   if (!playsInPreview(track, clip) || clip.type === "image" || track.muted) return 0;
-  return clip.volume;
+  const keys = clip.keyframes?.volume;
+  return keys && keys.length > 0 ? Math.max(...keys.map((k) => k.value)) : clip.volume;
+}
+
+// The clip's gain while the playhead is on `frame`: its volume there, keyframes counted in. 0 where it has no gain.
+export function gainAt(track: Track, clip: Clip, frame: number): number {
+  return soundGain(track, clip) === 0 ? 0 : volumeAt(clip, frame);
 }
 
 // How long the clip's fades really are, in frames: the fade in first, as much of it as the clip is long, then the
@@ -51,12 +59,14 @@ export function clipFadeAt(clip: MediaClip, frame: number): number {
   return fadeGain(frame - clip.start + 0.5, clip.duration, fade.in, fade.out);
 }
 
-// What the export hears: nothing where the clip's gain is 0 or its speed is outside the speeds that sound.
+// What the export hears: nothing where the clip's gain is 0 or its speed is outside the speeds that sound. A clip
+// whose volume is keyframed has a gain of 1 here, and its keyframes shape it sample by sample.
 export function clipSound(track: Track, clip: Clip): { gain: number } | null {
   const gain = soundGain(track, clip);
   if (gain === 0) return null;
   const { speed } = clip as MediaClip; // a clip with a gain is a media clip
-  return speed >= MIN_SOUND_SPEED && speed <= MAX_SOUND_SPEED ? { gain } : null;
+  if (speed < MIN_SOUND_SPEED || speed > MAX_SOUND_SPEED) return null;
+  return { gain: isKeyframed(clip, "volume") ? 1 : gain };
 }
 
 export type SoundingClip = { track: Track; clip: MediaClip; gain: number };

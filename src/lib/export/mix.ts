@@ -3,6 +3,8 @@
 
 import { AUDIO } from "@/lib/export/presets";
 import { fadeGain } from "@/lib/render/clip-sound";
+import { ease } from "@/lib/timeline/keyframes";
+import type { EnvelopePoint } from "./sound-schedule";
 
 // 4 ms at the export's rate.
 export const EDGE_RAMP_SAMPLES = AUDIO.sampleRate / 250;
@@ -26,12 +28,22 @@ const NO_FADE: VoiceFade = { in: 0, out: 0 };
 
 // Multiplies the part in place by gain × edgeGain(first + i, length) × the fades' gain there, by the rule the preview
 // fades by: `first` is the part's first sample within its voice.
-export function applyGain(part: VoicePart, gain: number, first: number, length: number, fade: VoiceFade = NO_FADE): void {
+// envelope: the voice's volume keyframes, in samples from its start; the gain follows them from one to the next.
+export function applyGain(part: VoicePart, gain: number, first: number, length: number, fade: VoiceFade = NO_FADE, envelope?: readonly EnvelopePoint[]): void {
   const { left, right } = part;
   const fades = fade.in > 0 || fade.out > 0;
+  const shaped = envelope !== undefined && envelope.length > 0;
+  let seg = 0; // the keyframe at or before the sample being written; samples only go forward
   for (let i = 0; i < left.length; i++) {
     let g = gain * edgeGain(first + i, length);
     if (fades) g *= fadeGain(first + i, length, fade.in, fade.out);
+    if (shaped) {
+      const at = first + i;
+      while (seg + 1 < envelope.length && envelope[seg + 1].at <= at) seg++;
+      const a = envelope[seg];
+      const b = envelope[seg + 1];
+      g *= at <= a.at || !b ? a.value : a.value + (b.value - a.value) * ease(a.ease ?? "linear", (at - a.at) / (b.at - a.at));
+    }
     left[i] *= g;
     right[i] *= g;
   }

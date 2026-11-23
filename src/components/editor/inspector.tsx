@@ -13,7 +13,7 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { gainLabel } from "@/lib/audio/loudness";
-import { applyLook, freezeFrame, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
+import { applyLook, duckSelection, freezeFrame, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
 import { trackToggles } from "@/lib/editor/geometry";
 import {
   ADJUST_RANGE,
@@ -31,6 +31,7 @@ import {
   type ClipField,
 } from "@/lib/editor/inspector-fields";
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
+import { clipFrame } from "@/lib/editor/keyframe-edit";
 import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
 import { soundClipsOf } from "@/lib/editor/sound";
@@ -43,6 +44,7 @@ import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_ADJUST, VOLUME_MAX, docDuration, isAdjusted, isCropped, isMediaClip, lookOf, type Clip, type KeyframeProp, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
+import { volumeAt } from "@/lib/timeline/keyframes";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FontSelect } from "./font-select";
@@ -661,6 +663,7 @@ function SoundSection({ clip }: { clip: MediaClip }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const hasSound = useLibrary((s) => s.assets[clip.assetId]?.hasAudio !== false);
+  const volume = useEditor((s) => volumeAt(clip, clipFrame(clip, s.playhead))); // what it is at the playhead, keyframes counted in
   const { level, busy } = useLevelVolume();
   if (!hasSound) {
     return (
@@ -672,8 +675,10 @@ function SoundSection({ clip }: { clip: MediaClip }) {
   return (
     <Section title="Sound">
       <div className="grid grid-cols-2 items-end gap-2">
-        <NumberField clipId={clip.id} field="volume" label="Volume" suffix="%" min={0} max={VOLUME_MAX * 100} step={10} />
-        <p className={cx(TEXT, "pb-1 text-ed-muted tabular-nums")}>{clip.volume === 1 ? "As recorded" : gainLabel(clip.volume)}</p>
+        <Keyed clipId={clip.id} prop="volume">
+          <NumberField clipId={clip.id} field="volume" label="Volume" suffix="%" min={0} max={VOLUME_MAX * 100} step={10} />
+        </Keyed>
+        <p className={cx(TEXT, "pb-1 text-ed-muted tabular-nums")}>{volume === 1 ? "As recorded" : gainLabel(volume)}</p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clip.id} field="fadeIn" label="Fade in" suffix="s" min={0} step={0.1} />
@@ -686,6 +691,11 @@ function SoundSection({ clip }: { clip: MediaClip }) {
         {clip.type === "video" && (
           <Button data-edit-control disabled={!canEdit || clip.volume === 0} onClick={() => separateAudio(store)}>
             Separate audio
+          </Button>
+        )}
+        {clip.type === "audio" && (
+          <Button data-edit-control disabled={!canEdit} onClick={() => duckSelection(store)}>
+            Duck under speech
           </Button>
         )}
       </div>

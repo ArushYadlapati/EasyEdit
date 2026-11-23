@@ -91,6 +91,7 @@ const COMMAND_WORDS: Partial<Record<CommandId, string[]>> = {
   "volume-down": ["sound", "audio", "quiet", "lower", "gain", "decrease"],
   "mute-clip": ["sound", "audio", "silence", "silent", "volume"],
   "separate-audio": ["sound", "detach", "unlink", "split", "extract", "voice", "music"],
+  "duck-audio": ["music", "speech", "voice", "lower", "quieter", "under", "sound", "volume", "ducking"],
   "reverse-clip": ["backward", "backwards", "rewind", "speed", "flip", "time"],
   "freeze-frame": ["hold", "still", "pause", "stop", "speed", "time"],
   export: ["render", "download", "save", "video", "mp4", "share"],
@@ -114,6 +115,7 @@ const COMMAND_LABELS: Partial<Record<CommandId, string>> = {
   "volume-down": "Volume down",
   "mute-clip": "Mute or unmute clip",
   "separate-audio": "Separate audio",
+  "duck-audio": "Duck under speech",
   "reverse-clip": "Reverse clip",
   "freeze-frame": "Freeze frame",
   "show-shortcuts": "Keyboard shortcuts",
@@ -174,7 +176,7 @@ const COMMAND_GROUPS: { group: SearchGroup; commands: CommandId[] }[] = [
     commands: [
       "undo", "redo", "cut", "copy", "paste", "duplicate", "split", "delete", "ripple-delete",
       "nudge-left", "nudge-right", "nudge-left-second", "nudge-right-second", "select-all", "clear-selection",
-      "volume-up", "volume-down", "mute-clip", "separate-audio", "reverse-clip", "freeze-frame",
+      "volume-up", "volume-down", "mute-clip", "separate-audio", "duck-audio", "reverse-clip", "freeze-frame",
     ],
   },
   {
@@ -213,6 +215,7 @@ function commandUnavailable(command: CommandId, input: SearchInput): boolean {
     case "volume-down":
     case "mute-clip":
     case "separate-audio":
+    case "duck-audio":
     case "reverse-clip":
     case "freeze-frame":
       return noSelection;

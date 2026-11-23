@@ -66,7 +66,9 @@ export type BlendMode = z.infer<typeof BlendMode>;
 export const Ease = z.enum(["linear", "ease_in", "ease_out", "ease_in_out", "hold"]);
 export type Ease = z.infer<typeof Ease>;
 
-export const KeyframeProp = z.enum(["x", "y", "scale", "rotation", "opacity"]);
+// The first five move and fade a clip's picture. volume is a video's or audio clip's loudness over time (checked in
+// the ops: an audio clip takes no other, and only those two take it).
+export const KeyframeProp = z.enum(["x", "y", "scale", "rotation", "opacity", "volume"]);
 export type KeyframeProp = z.infer<typeof KeyframeProp>;
 
 // `at` counts frames from the clip's start. It may be negative or past the end: a keyframe outside the clip only
@@ -87,8 +89,12 @@ export const Keyframes = z
     scale: KeyframeList.optional(),
     rotation: KeyframeList.optional(),
     opacity: KeyframeList.optional(),
+    volume: KeyframeList.optional(),
   })
   .superRefine((k, ctx) => {
+    if (k.volume?.some((f) => f.value < 0 || f.value > VOLUME_MAX)) {
+      ctx.addIssue({ code: "custom", path: ["volume"], message: `volume keyframes must be between 0 and ${VOLUME_MAX}` });
+    }
     if (k.opacity?.some((f) => f.value < 0 || f.value > 1)) {
       ctx.addIssue({ code: "custom", path: ["opacity"], message: "opacity keyframes must be between 0 and 1" });
     }

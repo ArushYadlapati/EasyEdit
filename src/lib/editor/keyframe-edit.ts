@@ -1,5 +1,5 @@
 import type { Clip, KeyframeProp, MediaClip, OpInput, Transform } from "@/lib/timeline";
-import { KEYFRAME_PROPS, effectiveTransform, isKeyframed, keyframeAt, removeKeyframe, setKeyframe } from "@/lib/timeline/keyframes";
+import { KEYFRAME_PROPS, TRANSFORM_PROPS, basePatch, effectiveTransform, isKeyframed, keyframeAt, propValue, removeKeyframe, setKeyframe } from "@/lib/timeline/keyframes";
 
 // Making and changing a clip's keyframes from the editor. Frames given here are timeline frames; a keyframe's `at`
 // counts from the clip's start.
@@ -23,18 +23,25 @@ export function clipFrame(clip: Clip, playhead: number): number {
 }
 
 // Adds a keyframe at the frame with the value shown there, or removes the one already there. Removing the last one
-// also puts its value on the transform, which the property falls back to, so the clip stays where it was.
+// also puts its value on the transform (or, for volume, on the clip), which the property falls back to, so the clip
+// stays as it was.
 export function toggleKeyframeOps(clip: Clip, prop: KeyframeProp, frame: number): OpInput[] {
   const at = frame - clip.start;
   const list = clip.keyframes?.[prop] ?? [];
-  const value = effectiveTransform(clip, frame)[prop];
+  const value = propValue(clip, prop, frame);
   if (keyState(clip, prop, frame) !== "here") {
     return [{ op: "update_clip", clipId: clip.id, patch: { keyframes: { [prop]: setKeyframe(list, at, value) } } }];
   }
   const next = removeKeyframe(list, at);
   const patch: Record<string, unknown> = { keyframes: { [prop]: next } };
-  if (next.length === 0) patch.transform = { [prop]: value };
+  if (next.length === 0) Object.assign(patch, basePatch(prop, value));
   return [{ op: "update_clip", clipId: clip.id, patch }];
+}
+
+// A clip's volume set at a frame: a keyframe there when its volume is keyframed, else its volume.
+export function writeVolumeOps(clip: MediaClip, frame: number, volume: number): OpInput[] {
+  if (!isKeyframed(clip, "volume")) return [{ op: "update_clip", clipId: clip.id, patch: { volume } }];
+  return [{ op: "update_clip", clipId: clip.id, patch: { keyframes: { volume: setKeyframe(clip.keyframes!.volume!, frame - clip.start, volume) } } }];
 }
 
 // A change to the clip's transform made at a frame: each keyframed property gets a keyframe there, and everything
@@ -43,7 +50,7 @@ export function writeTransformOps(clip: Clip, frame: number, patch: Partial<Tran
   const transform: Record<string, unknown> = {};
   const keyframes: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
-    const prop = KEYFRAME_PROPS.find((p) => p === key);
+    const prop = TRANSFORM_PROPS.find((p) => p === key);
     if (prop && isKeyframed(clip, prop)) keyframes[prop] = setKeyframe(clip.keyframes![prop]!, frame - clip.start, value as number);
     else transform[key] = value;
   }

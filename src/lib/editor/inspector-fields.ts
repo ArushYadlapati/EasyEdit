@@ -5,10 +5,10 @@ import { ARROW_DEFAULTS, CURVED_BEND, arrowThrough, takesRadius } from "@/lib/ti
 import { BACKGROUND_START, hasBackground, hasOutline, hasShadow, outlineStart, shadowStart, textExtras } from "@/lib/timeline/text-style";
 import { straightenOps } from "./arrow-drag";
 import { LIMITS } from "@/lib/limits";
-import { effectiveTransform } from "@/lib/timeline/keyframes";
+import { effectiveTransform, volumeAt } from "@/lib/timeline/keyframes";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
 import { CROP_MIN_SHOWN, clipRects, type Sizer } from "./clip-box";
-import { clipFrame, writeTransformOps } from "./keyframe-edit";
+import { clipFrame, writeTransformOps, writeVolumeOps } from "./keyframe-edit";
 import { trimBounds } from "./media-clips";
 import { SPEED_MAX, SPEED_MIN, hasSpeed, rateOf, roomAfter, speedOps } from "./speed";
 import type { Units } from "./settings";
@@ -310,7 +310,8 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
     case "duration":
       return (clip.duration / fps).toFixed(2);
     case "volume":
-      return clip.type === "video" || clip.type === "audio" ? String(Math.round(clip.volume * 100)) : "";
+      // A keyframed volume shows what it is at the playhead.
+      return saved.type === "video" || saved.type === "audio" ? String(Math.round((ctx.playhead === undefined ? saved.volume : volumeAt(saved, clipFrame(saved, ctx.playhead))) * 100)) : "";
     case "fadeIn":
     case "fadeOut":
       return clip.type === "video" || clip.type === "audio" ? ((clip[field] ?? 0) / fps).toFixed(2) : "";
@@ -628,7 +629,10 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       const percent = parseNumber(raw);
       if (percent === null || (clip.type !== "video" && clip.type !== "audio")) return null;
       const volume = clamp(Math.round(percent), 0, VOLUME_MAX * 100) / 100;
-      return volume === clip.volume ? [] : update({ volume });
+      if (playhead === undefined || saved.type === "image") return volume === clip.volume ? [] : update({ volume });
+      // A keyframed volume is keyed at the playhead, as a keyframed position is.
+      const frame = clipFrame(saved, playhead);
+      return volume === volumeAt(saved, frame) ? [] : writeVolumeOps(saved as MediaClip, frame, volume);
     }
     case "fadeIn":
     case "fadeOut": {
