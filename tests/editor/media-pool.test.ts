@@ -107,11 +107,11 @@ async function setup(
   const decodes: [Blob, number][] = [];
   const picture = {} as CanvasImageSource;
   // Each element's line into the mix: the gains it was set to, and whether it was closed.
-  const lines = new Map<MediaElement, { gains: number[]; closed: boolean }>();
+  const lines = new Map<MediaElement, { gains: number[]; fx: unknown[]; closed: boolean }>();
   const line = (el: MediaElement) => {
-    const kept = { gains: [] as number[], closed: false };
+    const kept = { gains: [] as number[], fx: [] as unknown[], closed: false };
     lines.set(el, kept);
-    return { setGain: (gain: number) => void kept.gains.push(gain), setPan: () => {}, close: () => void (kept.closed = true) };
+    return { setGain: (gain: number) => void kept.gains.push(gain), setPan: () => {}, setFx: (fx: unknown) => void kept.fx.push(fx), close: () => void (kept.closed = true) };
   };
   const make = (kind: "video" | "audio") => () => {
     const el = pretendElement(kind, options.element ?? {});
@@ -187,6 +187,16 @@ describe("the media pool", () => {
     await h.syncSettled([want("c1", "a", { rate: 1, volume: 2.5 })]);
     expect(h.made[0]).toMatchObject({ volume: 1, muted: false });
     expect(h.lines.size).toBe(0);
+  });
+
+  it("with a mix, gives each element's line its clip's sound clean-up, and none where the clip has none", async () => {
+    const h = await setup({ mix: true });
+    const fx = { lowCut: true, gate: 0, bass: 2, mid: 0, treble: 0, compress: 0 };
+    await h.syncSettled([want("c1", "a", { rate: 1, volume: 1, fx })]);
+    const kept = h.lines.get(h.made[0])!;
+    expect(kept.fx.at(-1)).toEqual(fx);
+    h.pool.sync([want("c1", "a", { rate: 1, volume: 1 })]);
+    expect(kept.fx.at(-1)).toBeNull();
   });
 
   it("with a mix, sets each element's gain on its line, past 1 too, and leaves its own volume alone", async () => {

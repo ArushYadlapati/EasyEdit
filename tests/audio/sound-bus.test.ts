@@ -220,3 +220,127 @@ describe("moving a sound left or right", () => {
     expect(() => none.line(element()).setPan(1)).not.toThrow();
   });
 });
+
+describe("the clean-up worklet", () => {
+  // A context whose worklet arrives when `arrive` is called, and cleaners that write down what they are sent.
+  function withWorklet(works = true) {
+    const p = pretendContext();
+    let arrive: () => void = () => {};
+    let fail: () => void = () => {};
+    const addModule = vi.fn(() => new Promise<void>((resolve, reject) => ((arrive = resolve), (fail = () => reject(new Error("no"))))));
+    if (works) Object.assign(p.ctx, { audioWorklet: { addModule } });
+    const cleaners: { id: string; mode: string; sent: unknown[] }[] = [];
+    let ids = 0;
+    const bus = createSoundBus(
+      () => p.ctx as unknown as AudioContext,
+      (_ctx, mode) => {
+        const id = `${mode}${++ids}`;
+        const made = {
+          id,
+          mode,
+          sent: [] as unknown[],
+          connect: (to: { id: string }) => void p.log.push(`${id}>${to.id}`),
+          disconnect: () => void p.log.push(`${id} off`),
+          port: { postMessage: (message: unknown) => void made.sent.push(message) },
+        };
+        cleaners.push(made);
+        return made as never;
+      },
+    );
+    const settle = async () => {
+      arrive();
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+    return { p, bus, cleaners, addModule, settle, fail: async () => (fail(), await Promise.resolve(), await Promise.resolve()) };
+  }
+  const voice = { lowCut: true, gate: 0.3, bass: 0, mid: 3, treble: 0, compress: 0.5 };
+
+  it("is fetched once the mix is set up, and then a limiter sits between the mix and the output and the meter", async () => {
+    const h = withWorklet();
+    h.bus.unlock();
+    expect(h.addModule).toHaveBeenCalledWith("/audio/clean-worklet.js");
+    expect(h.cleaners).toEqual([]);
+    h.p.log.length = 0;
+    await h.settle();
+    expect(h.cleaners.map((c) => c.mode)).toEqual(["limit"]);
+    expect(h.p.log).toEqual(["gain1 off", "gain1>limit1", "limit1>out", "limit1>split2"]);
+    h.bus.unlock();
+    expect(h.addModule).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts a cleaner before a line's gain the first time it is asked to clean, and sends it the settings", async () => {
+    const h = withWorklet();
+    h.bus.unlock();
+    await h.settle();
+    const line = h.bus.line(element());
+    expect(h.cleaners).toHaveLength(1); // only the limiter: a line never cleaned has no cleaner
+    line.setFx(null);
+    expect(h.cleaners).toHaveLength(1);
+    h.p.log.length = 0;
+    line.setFx(voice);
+    expect(h.cleaners[1].mode).toBe("clip");
+    expect(h.p.log).toEqual(["source5 off", "source5>clip2", "clip2>gain6"]);
+    expect(h.cleaners[1].sent).toEqual([voice]);
+  });
+
+  it("sends a change once, says nothing when nothing changed, and turns a cleaner off without taking it out", async () => {
+    const h = withWorklet();
+    h.bus.unlock();
+    await h.settle();
+    const line = h.bus.line(element());
+    line.setFx(voice);
+    line.setFx({ ...voice });
+    line.setFx({ ...voice, bass: 2 });
+    line.setFx(null);
+    line.setFx(null);
+    expect(h.cleaners[1].sent).toEqual([voice, { ...voice, bass: 2 }, { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 }]);
+    expect(h.cleaners).toHaveLength(2);
+  });
+
+  it("asked for before the worklet has arrived, is in place once it has", async () => {
+    const h = withWorklet();
+    const line = h.bus.line(element());
+    line.setFx(voice); // no mix yet
+    h.bus.unlock();
+    expect(h.cleaners).toEqual([]);
+    await h.settle();
+    expect(h.cleaners.map((c) => c.mode)).toEqual(["limit", "clip"]);
+    expect(h.cleaners[1].sent).toEqual([voice]);
+  });
+
+  it("a closed line's cleaner leaves the mix with it", async () => {
+    const h = withWorklet();
+    h.bus.unlock();
+    await h.settle();
+    const line = h.bus.line(element());
+    line.setFx(voice);
+    h.p.log.length = 0;
+    line.close();
+    expect(h.p.log).toContain("clip2 off");
+  });
+
+  it("where the worklet cannot be had, clips sound as recorded and nothing breaks", async () => {
+    const none = withWorklet(false);
+    none.bus.unlock();
+    const line = none.bus.line(element());
+    line.setFx(voice);
+    line.setGain(2);
+    expect(none.cleaners).toEqual([]);
+    const refused = withWorklet();
+    refused.bus.unlock();
+    refused.bus.line(element()).setFx(voice);
+    await refused.fail();
+    expect(refused.cleaners).toEqual([]);
+  });
+
+  it("a worklet that arrives after the mix was let go of touches nothing", async () => {
+    const h = withWorklet();
+    h.bus.unlock();
+    h.bus.close();
+    h.p.log.length = 0;
+    await h.settle();
+    expect(h.cleaners).toEqual([]);
+    expect(h.p.log).toEqual([]);
+  });
+});

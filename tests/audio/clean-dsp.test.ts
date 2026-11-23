@@ -179,25 +179,19 @@ describe("the worklet's copy", () => {
     expect(readFileSync(TARGET, "utf8"), "run: node scripts/make-worklet.mjs").toBe(made());
   });
 
-  it("gives the same sound as the source, sample for sample", async () => {
-    const copy = (await import("../../public/audio/clean-dsp.js")) as typeof import("@/lib/audio/clean-dsp");
-    const settings = fx({ lowCut: true, gate: 0.4, bass: -2, mid: 3, treble: 2, compress: 0.5 });
-    const input = Float32Array.from({ length: 9600 }, (_, i) => 0.6 * Math.sin(i / 5) * Math.sin(i / 700));
-    const theirs = copy.createChain(RATE);
-    theirs.set(settings);
-    const out = Float32Array.from(input);
-    theirs.process(out, Float32Array.from(input));
-    expect(out).toEqual(through(settings, input));
-  });
-
   it("the processor cleans a clip to the settings it is sent, and limits the mix in its other mode", async () => {
     const registered: Record<string, new (options?: unknown) => { port: { onmessage: ((e: { data: FxSettings }) => void) | null }; process(i: Float32Array[][], o: Float32Array[][]): boolean }> = {};
-    Object.assign(globalThis, {
-      sampleRate: RATE,
-      AudioWorkletProcessor: class { port = { onmessage: null }; },
-      registerProcessor: (name: string, made: (typeof registered)[string]) => { registered[name] = made; },
-    });
-    await import("../../public/audio/clean-worklet.js");
+    // The worklet is a plain script that expects the audio engine's own names around it.
+    const { TARGET } = (await import("../../scripts/make-worklet.mjs")) as { TARGET: string };
+    new Function("AudioWorkletProcessor", "registerProcessor", "sampleRate", readFileSync(TARGET, "utf8"))(
+      class {
+        port = { onmessage: null };
+      },
+      (name: string, made: (typeof registered)[string]) => {
+        registered[name] = made;
+      },
+      RATE,
+    );
     const Processor = registered["easyedit-clean"];
     const run = (node: InstanceType<typeof Processor>, input: Float32Array[]) => {
       const output = [new Float32Array(input[0].length), new Float32Array(input[0].length)];
@@ -206,10 +200,12 @@ describe("the worklet's copy", () => {
     };
     const input = tone(60, 0.2, 0.05);
     expect(run(new Processor(), [input, input])[0]).toEqual(input); // no settings sent yet: untouched
+    // The worklet's copy of the clean-up gives the same sound as the source, sample for sample.
+    const all = fx({ lowCut: true, gate: 0.4, bass: 12, mid: 3, treble: 2, compress: 0.5 });
     const clip = new Processor();
-    clip.port.onmessage!({ data: fx({ bass: 12 }) });
+    clip.port.onmessage!({ data: all });
     const lifted = run(clip, [input]);
-    expect(lifted[0]).toEqual(through(fx({ bass: 12 }), input));
+    expect(lifted[0]).toEqual(through(all, input));
     expect(lifted[1]).toEqual(lifted[0]); // a one-sided sound comes out on both
     const limit = new Processor({ processorOptions: { mode: "limit" } });
     const loud = tone(440, 2, 0.05);
