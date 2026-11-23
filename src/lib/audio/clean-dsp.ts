@@ -121,6 +121,10 @@ export function createChain(sampleRate: number): { set(fx: FxSettings): void; pr
   let reduction = 0;
   const compGrabs = settle(0.005, sampleRate);
   const compLetsGo = settle(0.15, sampleRate);
+  // A clip often starts in the middle of a sound (after a cut). For its first hundredth of a second the gate and the
+  // compressor go straight to where the sound puts them, so the start is not let through loud and then pulled down.
+  let age = 0;
+  const warmUp = Math.round(0.01 * sampleRate);
 
   function set(next: FxSettings): void {
     fx = next;
@@ -156,7 +160,8 @@ export function createChain(sampleRate: number): { set(fx: FxSettings): void; pr
         heard = level > heard ? level : heard * heardFall;
         if (isOpen ? heard < gate.close : heard >= gate.open) isOpen = !isOpen;
         const want = isOpen ? 1 : gate.floor;
-        gateGain += (want - gateGain) * (want > gateGain ? gateOpens : gateCloses);
+        if (age < warmUp) gateGain = want;
+        else gateGain += (want - gateGain) * (want > gateGain ? gateOpens : gateCloses);
         l *= gateGain;
         r *= gateGain;
       }
@@ -198,13 +203,15 @@ export function createChain(sampleRate: number): { set(fx: FxSettings): void; pr
         let cutBy = 0;
         if (2 * over > KNEE_DB) cutBy = over * (1 / comp.ratio - 1);
         else if (2 * over > -KNEE_DB) cutBy = ((1 / comp.ratio - 1) * (over + KNEE_DB / 2) * (over + KNEE_DB / 2)) / (2 * KNEE_DB);
-        reduction += (cutBy - reduction) * (cutBy < reduction ? compGrabs : compLetsGo);
+        if (age < warmUp) reduction = Math.min(reduction, cutBy);
+        else reduction += (cutBy - reduction) * (cutBy < reduction ? compGrabs : compLetsGo);
         const gain = Math.pow(10, (reduction + comp.makeup) / 20);
         l *= gain;
         r *= gain;
       }
       left[i] = l;
       right[i] = r;
+      age++;
     }
   }
 

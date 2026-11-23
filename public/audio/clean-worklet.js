@@ -71,6 +71,8 @@ function createChain(sampleRate) {
     let reduction = 0;
     const compGrabs = settle(0.005, sampleRate);
     const compLetsGo = settle(0.15, sampleRate);
+    let age = 0;
+    const warmUp = Math.round(0.01 * sampleRate);
     function set(next) {
         fx = next;
         plain = isPlainFx(next);
@@ -105,7 +107,10 @@ function createChain(sampleRate) {
                 if (isOpen ? heard < gate.close : heard >= gate.open)
                     isOpen = !isOpen;
                 const want = isOpen ? 1 : gate.floor;
-                gateGain += (want - gateGain) * (want > gateGain ? gateOpens : gateCloses);
+                if (age < warmUp)
+                    gateGain = want;
+                else
+                    gateGain += (want - gateGain) * (want > gateGain ? gateOpens : gateCloses);
                 l *= gateGain;
                 r *= gateGain;
             }
@@ -147,13 +152,17 @@ function createChain(sampleRate) {
                     cutBy = over * (1 / comp.ratio - 1);
                 else if (2 * over > -KNEE_DB)
                     cutBy = ((1 / comp.ratio - 1) * (over + KNEE_DB / 2) * (over + KNEE_DB / 2)) / (2 * KNEE_DB);
-                reduction += (cutBy - reduction) * (cutBy < reduction ? compGrabs : compLetsGo);
+                if (age < warmUp)
+                    reduction = Math.min(reduction, cutBy);
+                else
+                    reduction += (cutBy - reduction) * (cutBy < reduction ? compGrabs : compLetsGo);
                 const gain = Math.pow(10, (reduction + comp.makeup) / 20);
                 l *= gain;
                 r *= gain;
             }
             left[i] = l;
             right[i] = r;
+            age++;
         }
     }
     return { set, process };

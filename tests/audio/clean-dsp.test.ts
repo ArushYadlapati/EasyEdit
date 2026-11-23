@@ -109,6 +109,19 @@ describe("the compressor", () => {
   });
 });
 
+describe("a clip that starts in the middle of a sound", () => {
+  it("is not let through loud and then pulled down: the compressor is there from the first moment", () => {
+    const out = through(fx({ compress: 0.5 }), tone(1000, 0.9));
+    const settled = Math.max(...out.subarray(24_000).map(Math.abs));
+    const start = Math.max(...out.subarray(0, 960).map(Math.abs)); // the first 20 ms
+    expect(start).toBeLessThan(settled * 1.15);
+  });
+  it("starts gated when it starts in a quiet stretch", () => {
+    const out = through(fx({ gate: 0.5 }), tone(1000, 0.002));
+    expect(rms(out.subarray(48, 480), 0)).toBeLessThan(0.0005); // from the first millisecond on, not 100 ms later
+  });
+});
+
 describe("a clip's sound given in blocks", () => {
   it("comes out the same as given whole: nothing is forgotten between blocks", () => {
     const settings = fx({ lowCut: true, gate: 0.4, bass: -2, mid: 3, treble: 2, compress: 0.5 });
