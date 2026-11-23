@@ -7,6 +7,7 @@ import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
 import { adjustOf, isAdjusted, type FullAdjust } from "@/lib/timeline/adjust";
 import { adjustFilter, compositeOf, needsLayer, temperatureColor } from "./adjust";
+import { keyOut, type ChromaKey } from "./chroma";
 import { clipLook, effectWindows } from "./effects";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
 import { layoutText, letterSpacingOf, textFont, textRect, type LocalRect, type TextLine } from "./text-layout";
@@ -26,6 +27,8 @@ export type DrawOptions = {
   // A context on a canvas of this size for a picture that is finished on its own before it joins the frame, the
   // same one each time. Default: an OffscreenCanvas; null where there is none.
   makeLayer?: (width: number, height: number) => Ctx2D | null;
+  // The same for a picture whose key colour is being taken out: a context on a canvas of the picture's own size.
+  makeKeyLayer?: (width: number, height: number) => Ctx2D | null;
 };
 
 // Repeats the --ed-clip-video and --ed-clip-image colors from src/app/globals.css, because a worker cannot read CSS variables.
@@ -401,12 +404,47 @@ function drawAdjusted(ctx: Ctx2D, adjust: FullAdjust, box: LocalRect, cutout: bo
   ctx.setTransform(m);
 }
 
+// A second kept canvas, the size of the picture being keyed, apart from the frame's layer: a keyed picture is what
+// that layer is then painted from.
+let sharedKeyLayer: { width: number; height: number; ctx: Ctx2D } | null = null;
+
+function defaultKeyLayer(width: number, height: number): Ctx2D | null {
+  if (sharedKeyLayer && sharedKeyLayer.width === width && sharedKeyLayer.height === height) return sharedKeyLayer.ctx;
+  // Read back every frame, so it is kept where reading is cheap.
+  const ctx = typeof OffscreenCanvas === "undefined" ? null : new OffscreenCanvas(width, height).getContext("2d", { willReadFrequently: true });
+  sharedKeyLayer = ctx ? { width, height, ctx } : null;
+  return ctx;
+}
+
+// The picture with its key colour taken out: drawn at its own size on a canvas of its own, its pixels read, keyed and
+// put back. Everything after (the crop, the flip, the colours) then draws from that canvas. The picture itself where
+// there is no canvas to key on.
+function keyed(source: ResolvedSource, key: ChromaKey, options: DrawOptions): ResolvedSource {
+  const width = Math.max(1, Math.round(source.width));
+  const height = Math.max(1, Math.round(source.height));
+  const layer = (options.makeKeyLayer ?? defaultKeyLayer)(width, height);
+  if (!layer) return source;
+  layer.clearRect(0, 0, width, height);
+  layer.drawImage(source.image, 0, 0, width, height);
+  const pixels = layer.getImageData(0, 0, width, height);
+  keyOut(pixels.data, key);
+  layer.putImageData(pixels, 0, 0);
+  return { image: layer.canvas, width, height };
+}
+
 function drawMedia(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip & { type: "video" | "image" }, frame: number, options: DrawOptions): void {
-  const source = options.resolveSource?.(clip, frame) ?? null;
+  const raw = options.resolveSource?.(clip, frame) ?? null;
+  const source = hasPicture(raw) && clip.chroma ? keyed(raw, clip.chroma, options) : raw;
   const size = mediaSize(doc, clip, source);
   const crop = clip.transform.crop;
   const k = cropRect(centred(size), crop);
   if (hasPicture(source)) {
+    const rounding = clip.rounding ?? 0;
+    if (rounding > 0) {
+      // Rounded corners: everything this clip draws from here on stays inside the rounded box of what is shown.
+      roundedBox(ctx, k, (rounding * Math.min(k.right - k.left, k.bottom - k.top)) / 2);
+      ctx.clip();
+    }
     const { flipH, flipV } = clip.transform;
     if (flipH || flipV) {
       // Mirrored about the middle of what is shown, so a cropped picture stays where it is.
@@ -434,7 +472,8 @@ function drawMedia(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip & { type: "vide
         k.bottom - k.top,
       );
     };
-    if (isAdjusted(clip.adjust)) drawAdjusted(ctx, adjustOf(clip.adjust), k, clip.type === "image", paint, options);
+    // A keyed picture has see-through parts, as an image may.
+    if (isAdjusted(clip.adjust)) drawAdjusted(ctx, adjustOf(clip.adjust), k, clip.type === "image" || !!clip.chroma, paint, options);
     else paint(ctx);
     return;
   }

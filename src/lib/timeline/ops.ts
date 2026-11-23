@@ -58,6 +58,8 @@ const ClipExpect = z
     fadeOut: MediaClip.shape.fadeOut,
     adjust: Adjust,
     blend: BlendMode,
+    chroma: MediaClip.shape.chroma,
+    rounding: MediaClip.shape.rounding,
     animationIn: TextClip.shape.animationIn,
     animationOut: TextClip.shape.animationOut,
     emphasis: TextClip.shape.emphasis,

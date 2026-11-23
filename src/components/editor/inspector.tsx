@@ -140,6 +140,9 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
       return { scrub: 1 / fps, decimals: 2 };
     case "volume":
     case "speed":
+    case "rounding":
+    case "chromaTolerance":
+    case "chromaSoftness":
     case "brightness":
     case "contrast":
     case "saturation":
@@ -242,6 +245,8 @@ function NumberField(props: {
     };
   } else if (field === "speed") {
     scrubRange = () => SPEED_PERCENT;
+  } else if (field === "rounding" || field === "chromaTolerance" || field === "chromaSoftness") {
+    scrubRange = () => ({ min: 0, max: 100 });
   } else if (Object.hasOwn(ADJUST_RANGE, field)) {
     const { min, max } = ADJUST_RANGE[field as keyof typeof ADJUST_RANGE];
     scrubRange = () => ({ min, max });
@@ -297,7 +302,7 @@ function NumberField(props: {
 
 // The native color input previews while the picker moves and saves when it closes. field: a text clip's colour, or a
 // shape's outline or fill.
-type ColorFieldName = "color" | "stroke" | "fill" | "outlineColor" | "shadowColor" | "backgroundColor";
+type ColorFieldName = "color" | "stroke" | "fill" | "outlineColor" | "shadowColor" | "backgroundColor" | "chromaColor";
 
 function ColorField({ clip, canEdit, field = "color", label = "Color" }: { clip: Clip; canEdit: boolean; field?: ColorFieldName; label?: string }) {
   const store = useEditorStore();
@@ -761,7 +766,19 @@ function ColorSection({ clip }: { clip: MediaClip }) {
         {ADJUST_FIELDS.map(({ field, label, suffix }) => (
           <NumberField key={field} clipId={clip.id} field={field} label={label} suffix={suffix} min={ADJUST_RANGE[field].min} max={ADJUST_RANGE[field].max} />
         ))}
+        <NumberField clipId={clip.id} field="rounding" label="Corner rounding" suffix="%" min={0} max={100} />
       </div>
+      {/* A green screen: one colour of the picture goes see-through, so what is under the clip shows there. */}
+      <Toggle label="Green screen" data-edit-control checked={!!clip.chroma} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "chroma", on ? "on" : "off")} />
+      {clip.chroma && (
+        <>
+          <ColorField clip={clip} canEdit={canEdit} field="chromaColor" label="Color to remove" />
+          <div className="grid grid-cols-2 gap-2">
+            <NumberField clipId={clip.id} field="chromaTolerance" label="Tolerance" suffix="%" min={0} max={100} />
+            <NumberField clipId={clip.id} field="chromaSoftness" label="Edge softness" suffix="%" min={0} max={100} />
+          </div>
+        </>
+      )}
     </Section>
   );
 }

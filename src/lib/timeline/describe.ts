@@ -69,6 +69,8 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
     out += ` adjust={${set.join(",")}}`;
   }
   if (clip.type !== "placeholder" && clip.blend && clip.blend !== "normal") out += ` blend=${clip.blend}`;
+  if ((clip.type === "video" || clip.type === "image") && (clip.rounding ?? 0) > 0) out += ` rounding=${clip.rounding}`;
+  if ((clip.type === "video" || clip.type === "image") && clip.chroma) out += ` chroma=${JSON.stringify(clip.chroma)}`;
   const keyed = KEYFRAME_PROPS.filter((p) => (clip.keyframes?.[p]?.length ?? 0) > 0);
   if (detail) for (const p of keyed) out += ` kf.${p}=${keyframeList(clip, p)}`;
   else if (keyed.length > 0) out += ` kf=${keyed.join(",")}`;

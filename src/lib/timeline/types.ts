@@ -58,6 +58,11 @@ export const Adjust = z.strictObject({
 });
 export type Adjust = z.infer<typeof Adjust>;
 
+// A colour taken out of a video or image, as a green screen is: pixels within `tolerance` of it go see-through, and
+// over the next `softness` they fade back in. Both are shares, 0 to 1.
+export const Chroma = z.strictObject({ color: HexColor, tolerance: z.number().min(0).max(1), softness: z.number().min(0).max(1) });
+export type Chroma = z.infer<typeof Chroma>;
+
 // How a clip mixes with what is drawn under it. Absent means "normal".
 export const BlendMode = z.enum(["normal", "multiply", "screen", "overlay", "darken", "lighten", "add", "soft-light", "hard-light", "difference"]);
 export type BlendMode = z.infer<typeof BlendMode>;
@@ -174,6 +179,8 @@ export const MediaClip = z.object({
   // Video and image only (checked in the ops).
   adjust: Adjust.optional(),
   blend: BlendMode.optional(),
+  chroma: Chroma.nullable().optional(), // null or absent: no colour is taken out
+  rounding: z.number().min(0).max(1).optional(), // how round its corners are: 0 square, 1 as round as its short side allows
 });
 export type MediaClip = z.infer<typeof MediaClip>;
 

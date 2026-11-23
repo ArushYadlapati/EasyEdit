@@ -44,6 +44,8 @@ const CLIP_FILL: Record<string, () => unknown> = {
   fadeOut: () => 0,
   adjust: () => ({}),
   blend: () => "normal",
+  chroma: () => null,
+  rounding: () => 0,
 };
 
 // A shape's optional fields, each with the value its absence means, filled the same way so the first change to one
@@ -63,7 +65,7 @@ const SHAPE_FILL: Record<string, () => unknown> = {
 // video and image effects (so a template's fade or move survives the fill), an audio slot none.
 const VISUAL_EFFECTS = ["keyframes", "transitionIn", "transitionOut"] as const;
 // What only a picture takes: its colours, and how it mixes with what is under it.
-const PICTURE_EFFECTS = ["adjust", "blend"] as const;
+const PICTURE_EFFECTS = ["adjust", "blend", "chroma", "rounding"] as const;
 // What a clip that sounds takes: captions for its speech, and a fade of its sound at either end.
 const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut"] as const;
 // A video clip takes both kinds; sound takes only its own (see CLIP_EFFECTS).

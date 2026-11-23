@@ -5,6 +5,7 @@ import { ARROW_DEFAULTS, CURVED_BEND, arrowThrough, takesRadius } from "@/lib/ti
 import { BACKGROUND_START, hasBackground, hasOutline, hasShadow, outlineStart, shadowStart, textExtras } from "@/lib/timeline/text-style";
 import { straightenOps } from "./arrow-drag";
 import { LIMITS } from "@/lib/limits";
+import { CHROMA_START } from "@/lib/render/chroma";
 import { effectiveTransform, volumeAt } from "@/lib/timeline/keyframes";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
 import { CROP_MIN_SHOWN, clipRects, type Sizer } from "./clip-box";
@@ -81,6 +82,13 @@ export type ClipField =
   | "flipH"
   | "flipV"
   | "blend"
+  // How round a video's or image's corners are, in percent, and its green screen: on or off, the colour taken out,
+  // and how near that colour a pixel must be (tolerance) and how softly the edge fades (softness), in percent.
+  | "rounding"
+  | "chroma"
+  | "chromaColor"
+  | "chromaTolerance"
+  | "chromaSoftness"
   // A shape's: its outline (or an arrow's line) colour and width, its fill, dashes and rounding, and an arrow's heads,
   // head look and size, and its path: Path sets it straight or curved, and Bend, on a line with one point, how far to
   // the side that point sits, in percent of the length.
@@ -151,6 +159,11 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   flipH: "flip",
   flipV: "flip",
   blend: "blend change",
+  rounding: "style change",
+  chroma: "green screen",
+  chromaColor: "green screen",
+  chromaTolerance: "green screen",
+  chromaSoftness: "green screen",
   stroke: "style change",
   strokeWidth: "style change",
   fill: "style change",
@@ -347,6 +360,15 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
       return isPicture(clip) ? (clip.transform[field] ? "on" : "off") : "";
     case "blend":
       return clip.type === "audio" || clip.type === "placeholder" ? "" : (clip.blend ?? "normal");
+    case "rounding":
+      return isPicture(clip) ? oneDecimal((clip.rounding ?? 0) * 100) : "";
+    case "chroma":
+      return isPicture(clip) ? (clip.chroma ? "on" : "off") : "";
+    case "chromaColor":
+      return isPicture(clip) ? (clip.chroma?.color ?? "").toLowerCase() : "";
+    case "chromaTolerance":
+    case "chromaSoftness":
+      return isPicture(clip) && clip.chroma ? oneDecimal(clip.chroma[field === "chromaTolerance" ? "tolerance" : "softness"] * 100) : "";
   }
   if (clip.type === "shape") return shapeFieldValue(clip, field);
   if (clip.type !== "text") return "";
@@ -689,6 +711,31 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
     case "flipV": {
       if ((raw !== "on" && raw !== "off") || !isPicture(clip)) return null;
       return (raw === "on") === (clip.transform[field] ?? false) ? [] : update({ transform: { [field]: raw === "on" } });
+    }
+    case "rounding": {
+      const n = parseNumber(raw);
+      if (n === null || !isPicture(clip)) return null;
+      const rounding = round(clamp(n, 0, 100) / 100, 3);
+      return rounding === (clip.rounding ?? 0) ? [] : update({ rounding });
+    }
+    case "chroma": {
+      if ((raw !== "on" && raw !== "off") || !isPicture(clip)) return null;
+      if ((raw === "on") === !!clip.chroma) return [];
+      return update({ chroma: raw === "on" ? { ...CHROMA_START } : null });
+    }
+    case "chromaColor": {
+      const color = raw.trim().toLowerCase();
+      if (!isPicture(clip) || !clip.chroma || !HEX_COLOR.test(color)) return null;
+      return color === clip.chroma.color.toLowerCase() ? [] : update({ chroma: { ...clip.chroma, color } });
+    }
+    case "chromaTolerance":
+    case "chromaSoftness": {
+      const n = parseNumber(raw);
+      if (n === null || !isPicture(clip) || !clip.chroma) return null;
+      const key = field === "chromaTolerance" ? "tolerance" : "softness";
+      const value = round(clamp(n, 0, 100) / 100, 3);
+      // The key is one value: it is sent whole.
+      return value === clip.chroma[key] ? [] : update({ chroma: { ...clip.chroma, [key]: value } });
     }
     case "blend": {
       const blend = BlendMode.safeParse(raw);
