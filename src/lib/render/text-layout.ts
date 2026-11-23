@@ -15,6 +15,24 @@ export function textFont(style: TextStyle, family: string): string {
   return `${style.italic ? "italic " : ""}${style.fontWeight} ${style.fontSize}px ${family}`;
 }
 
+// The room a text adds after each of its characters, in project pixels. A canvas adds it after a line's last
+// character too, where nothing is drawn: a measured line is that much wider than its letters, and a centred or
+// right-aligned one sits that much (or half of it) off its anchor unless it is moved back (alignShift).
+export function trailOf(style: TextStyle): number {
+  return (style.letterSpacing ?? 0) * style.fontSize;
+}
+
+// How far right a line's letters must be moved to sit where its alignment says, given that trailing room.
+export function alignShift(style: TextStyle): number {
+  const trail = trailOf(style);
+  return style.align === "center" ? trail / 2 : style.align === "right" ? trail : 0;
+}
+
+// A measured line's width as its letters take it: without the room after the last one.
+export function lettersWidth(style: TextStyle, text: string, measured: number): number {
+  return text.length === 0 ? measured : Math.max(0, measured - trailOf(style));
+}
+
 // The room a text adds after each of its characters, as a CSS length for a canvas or an element; null when it adds none.
 export function letterSpacingOf(style: TextStyle): string | null {
   const spacing = style.letterSpacing ?? 0;
@@ -77,7 +95,8 @@ export function textRect(clip: TextClip, docWidth: number, measure: (s: string) 
   let left = Infinity;
   let right = -Infinity;
   for (const line of lines) {
-    const w = measure(line.text);
+    // The letters' own width, so the box hugs them where they are drawn.
+    const w = lettersWidth(clip.style, line.text, measure(line.text));
     const start = align === "left" ? line.x : align === "right" ? line.x - w : line.x - w / 2;
     left = Math.min(left, start);
     right = Math.max(right, start + w);

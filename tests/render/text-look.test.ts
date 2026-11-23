@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { drawFrame } from "@/lib/render/compositor";
-import { layoutText, letterSpacingOf, lineHeightOf, textFont, textRect } from "@/lib/render/text-layout";
+import { alignShift, layoutText, letterSpacingOf, lettersWidth, lineHeightOf, textFont, textRect } from "@/lib/render/text-layout";
 import { DEFAULT_TRANSFORM, type Clip, type TextClip, type TimelineDoc } from "@/lib/timeline";
 import { text } from "../editor/fixtures";
 import { docWithCaptions } from "../helpers/docs";
@@ -56,6 +56,24 @@ describe("drawing a text's look", () => {
   it("italic and letter spacing go into the font and the context", () => {
     const calls = draw(styled({ italic: true, letterSpacing: 0.25 }));
     expect(calls.slice(0, 2)).toEqual([["set font", 'italic 700 64px "Geist", sans-serif'], ["set letterSpacing", "16px"]]);
+  });
+
+  it("room between letters does not push a centred or right-aligned line off its anchor", () => {
+    // A canvas adds the room after the last letter too: 16 px here. Centred, the letters are moved back half of it.
+    const centred = draw(styled({ letterSpacing: 0.25 }));
+    expect(centred.slice(0, 2)).toEqual([["set font", '700 64px "Geist", sans-serif'], ["set letterSpacing", "16px"]]);
+    expect(centred).toContainEqual(["translate", 8, 0]);
+    expect(draw(styled({ letterSpacing: 0.25, align: "right" }))).toContainEqual(["translate", 16, 0]);
+    expect(names(draw(styled({ letterSpacing: 0.25, align: "left" })))).not.toContain("translate");
+    expect(names(draw(styled({})))).not.toContain("translate");
+    // The box around the text is as wide as its letters: the fake context measures "hi" 64 wide whatever the spacing,
+    // of which 16 is the room after the "i".
+    const spaced = styled({ letterSpacing: 0.25 });
+    expect(alignShift(spaced.style)).toBe(8);
+    expect(lettersWidth(spaced.style, "hi", 64)).toBe(48);
+    expect(lettersWidth(spaced.style, "", 0)).toBe(0);
+    const rect = textRect(spaced, 1080, () => 64);
+    expect([rect.left, rect.right]).toEqual([-24, 24]);
   });
 
   it("an underline runs under each line, as wide as the line", () => {

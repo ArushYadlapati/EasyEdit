@@ -10,7 +10,7 @@ import { adjustFilter, compositeOf, needsLayer, temperatureColor } from "./adjus
 import { keyOut, type ChromaKey } from "./chroma";
 import { clipLook, effectWindows } from "./effects";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
-import { layoutText, letterSpacingOf, textFont, textRect, type LocalRect, type TextLine } from "./text-layout";
+import { alignShift, layoutText, letterSpacingOf, lettersWidth, textFont, textRect, type LocalRect, type TextLine } from "./text-layout";
 
 export type { LocalRect };
 
@@ -192,7 +192,7 @@ function drawTextPieces(ctx: Ctx2D, clip: TextClip, lines: TextLine[], look: Tex
       ctx.strokeText(text, left, line.y);
       return;
     }
-    if (clip.style.underline) underline(ctx, clip, left, line.y, measure(text));
+    if (clip.style.underline) underline(ctx, clip, left, line.y, lettersWidth(clip.style, text, measure(text)));
     if (look.litWord === null) {
       ctx.fillText(text, left, line.y);
       return;
@@ -290,6 +290,10 @@ function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (fa
     ctx.fillStyle = color;
   }
 
+  // With room between its letters, a line is measured wider than its letters by the room after the last one, and a
+  // canvas centres or right-aligns that whole width: the letters are moved back to where the alignment means them.
+  const shift = spacing === null ? 0 : alignShift(clip.style);
+  if (shift !== 0) ctx.translate(shift, 0);
   const pieces = look.reveal !== null || look.litWord !== null;
   const letters = (outline: boolean) => {
     if (pieces) {
@@ -306,7 +310,7 @@ function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (fa
       }
       if (extras.underline) {
         const width = measure(line.text);
-        underline(ctx, clip, align === "left" ? line.x : align === "right" ? line.x - width : line.x - width / 2, line.y, width);
+        underline(ctx, clip, align === "left" ? line.x : align === "right" ? line.x - width : line.x - width / 2, line.y, lettersWidth(clip.style, line.text, width));
       }
       ctx.fillText(line.text, line.x, line.y);
     }
