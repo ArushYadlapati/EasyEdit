@@ -44,11 +44,13 @@ export function CaptionLines({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
+      {/* The switch sits under the heading, at the panel's full width: beside it, its second name was cut short. */}
+      <div className="flex flex-col gap-2">
         <h2 className="text-sm leading-5 font-semibold text-ed-text">Lines</h2>
         {cues.length > 0 && (
           <Segmented<Mode>
             label="What the lines do"
+            className="w-full"
             value={mode}
             options={[
               { value: "fix", label: "Fix words" },
