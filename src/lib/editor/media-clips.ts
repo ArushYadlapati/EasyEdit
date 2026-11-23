@@ -41,6 +41,14 @@ export function mediaClipFor(
 // that plays backward uses its footage the other way round: its end runs towards the media's start, its start towards
 // the media's end. Undefined for an image, a clip that holds one frame, or an unknown length.
 export function trimBounds(clip: MediaClip, lengthFrames: number | undefined): { minStart: number; maxEnd: number } | undefined {
+  const reach = trimReach(clip, lengthFrames);
+  return reach && { minStart: Math.max(0, clip.start - reach.back), maxEnd: clip.start + reach.longest };
+}
+
+// The same limits as frame counts: how many frames a start trim can add at the clip's head (back), whatever lies
+// before it on the timeline, and the longest the clip can be from where it starts. A ripple trim, which makes its own
+// room, reads these.
+export function trimReach(clip: MediaClip, lengthFrames: number | undefined): { back: number; longest: number } | undefined {
   if (clip.type === "image" || lengthFrames === undefined || clip.speed === 0) return undefined;
   const rate = Math.abs(clip.speed);
   // The frames of media a clip this long uses. Rounded as the engine rounds it, with the speed's sign, so a half frame falls the same way here and there.
@@ -57,5 +65,5 @@ export function trimBounds(clip: MediaClip, lengthFrames: number | undefined): {
   let back = Math.floor((total + 0.5) / rate) - clip.duration;
   while (back > 0 && used(clip.duration + back) > total) back--;
 
-  return { minStart: Math.max(0, clip.start - Math.max(0, back)), maxEnd: clip.start + longest };
+  return { back: Math.max(0, back), longest };
 }

@@ -69,7 +69,7 @@ describe("matching keys", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
-      "cut", "delete", "duck-audio", "duplicate", "freeze-frame", "mute-clip", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "reverse-clip", "ripple-delete",
+      "cut", "delete", "duck-audio", "duplicate", "freeze-frame", "mute-clip", "next-trim-mode", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "reverse-clip", "ripple-delete",
       "separate-audio", "split", "toggle-marker", "tool-arrow", "tool-crop", "tool-guide", "tool-line", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "volume-down", "volume-up",
     ]);
   });
@@ -150,6 +150,7 @@ describe("matching keys", () => {
       ["zoom-out", "-", "Zoom out"],
       ["zoom-fit", "Shift+Z", "Fit the timeline"],
       ["toggle-snapping", "N", "Snapping on or off"],
+      ["next-trim-mode", "W", "What dragging a clip's edge does: trim, ripple trim, roll"],
       ["toggle-audio-meter", "Shift+M", "Show or hide the audio meter"],
       ["export", "Mod+E", "Export"],
       ["show-shortcuts", "?", "Show shortcuts"],
@@ -175,7 +176,7 @@ describe("matching keys", () => {
       "Editing:nudge-left", "Editing:nudge-right", "Editing:nudge-left-second", "Editing:nudge-right-second",
       "Editing:volume-up", "Editing:volume-down", "Editing:mute-clip", "Editing:separate-audio", "Editing:duck-audio", "Editing:reverse-clip", "Editing:freeze-frame",
       "Timeline:toggle-marker", "Timeline:select-all", "Timeline:clear-selection", "Timeline:zoom-in", "Timeline:zoom-out", "Timeline:zoom-fit",
-      "Timeline:toggle-snapping", "Timeline:toggle-audio-meter", "General:export", "General:show-shortcuts", "General:search",
+      "Timeline:toggle-snapping", "Timeline:next-trim-mode", "Timeline:toggle-audio-meter", "General:export", "General:show-shortcuts", "General:search",
     ]);
   });
 

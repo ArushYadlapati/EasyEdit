@@ -19,6 +19,7 @@ import {
   toggleMute,
 } from "./actions";
 import type { ClipboardStore } from "./clipboard";
+import { TRIM_MODES } from "./drag";
 import { ZOOM_STEP } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import type { EditorState, EditorStore } from "./store";
@@ -160,6 +161,8 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return state.zoomToFit();
     case "toggle-snapping":
       return state.setSnapping(!state.snapping);
+    case "next-trim-mode":
+      return state.setTrimMode(TRIM_MODES[(TRIM_MODES.indexOf(state.trimMode) + 1) % TRIM_MODES.length]);
     case "toggle-audio-meter":
       return state.setShowAudioMeter(!state.showAudioMeter);
     case "export":

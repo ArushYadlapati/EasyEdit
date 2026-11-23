@@ -1,9 +1,10 @@
 "use client";
 
-import { Magnet, Plus, UnfoldHorizontal, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowRightToLine, ChevronsLeftRight, Magnet, MoveHorizontal, Plus, UnfoldHorizontal, ZoomIn, ZoomOut } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { addTrack } from "@/lib/editor/actions";
+import { TRIM_MODES, TRIM_MODE_LABEL } from "@/lib/editor/drag";
 import { ZOOM_STEP, zoomLimits } from "@/lib/editor/geometry";
 import { viewDoc } from "@/lib/editor/store";
 import { LIMITS } from "@/lib/limits";
@@ -41,6 +42,8 @@ export function ControlRow({ duration, fps }: { duration: number; fps: number })
   const zoomToFit = useEditor((s) => s.zoomToFit);
   const snapping = useEditor((s) => s.snapping);
   const setSnapping = useEditor((s) => s.setSnapping);
+  const trimMode = useEditor((s) => s.trimMode);
+  const setTrimMode = useEditor((s) => s.setTrimMode);
   const key = useShortcutLabel();
   const { min: minZoom, max: maxZoom } = zoomLimits(duration, fps);
 
@@ -67,6 +70,19 @@ export function ControlRow({ duration, fps }: { duration: number; fps: number })
       <div className="flex shrink-0 items-center gap-1">
         <IconButton label="Snap" shortcut={key("toggle-snapping")} pressed={snapping} onClick={() => setSnapping(!snapping)}>
           <Magnet />
+        </IconButton>
+        {/* What dragging a clip's edge does to its neighbours. Trim is the plain one, so only the other two light up. */}
+        <IconButton
+          label={TRIM_MODE_LABEL[trimMode]}
+          hint="Dragging a clip's edge: trim, ripple trim (what follows moves with it) or roll (the cut between two clips moves)"
+          shortcut={key("next-trim-mode")}
+          data-edit-control
+          data-trim-mode={trimMode}
+          disabled={!canEdit}
+          pressed={trimMode !== "trim"}
+          onClick={() => setTrimMode(TRIM_MODES[(TRIM_MODES.indexOf(trimMode) + 1) % TRIM_MODES.length])}
+        >
+          {trimMode === "roll" ? <ChevronsLeftRight /> : trimMode === "ripple" ? <ArrowRightToLine /> : <MoveHorizontal />}
         </IconButton>
         <IconButton label="Zoom timeline out" shortcut={key("zoom-out")} disabled={zoom <= minZoom} onClick={() => zoomBy(1 / ZOOM_STEP)}>
           <ZoomOut />

@@ -15,6 +15,7 @@ import {
   type Track,
 } from "@/lib/timeline";
 import { canUndoChange, isBeforeMove } from "./activity";
+import type { TrimMode } from "./drag";
 import { clampZoom, fitZoom } from "./geometry";
 import { MESSAGES, explainOpError } from "./messages";
 import { shuttle as nextShuttle } from "./playback";
@@ -58,6 +59,7 @@ export type EditorState = {
   viewportPx: number; // width of the timeline's scrolling area, without the track headers
   fitRequest: number; // counts zoomToFit calls, so the timeline knows to scroll to the start
   snapping: boolean;
+  trimMode: TrimMode; // what dragging a clip's edge does to its neighbours; this person's own, Trim whenever the editor opens
   status: SyncStatus;
   notice: Notice | null;
   undoStack: UndoEntry[]; // newest last, at most UNDO_LIMIT
@@ -103,6 +105,7 @@ export type EditorState = {
   zoomBy(factor: number): void; // zoom × factor, through clampZoom
   zoomToFit(): void; // the whole project in the viewport
   setSnapping(on: boolean): void;
+  setTrimMode(mode: TrimMode): void;
   notify(tone: Notice["tone"], text: string, link?: Notice["link"]): void;
   dismissNotice(): void;
   // called by the sync engine
@@ -349,6 +352,7 @@ export function createEditorStore(
       viewportPx: 1200,
       fitRequest: 0,
       snapping: deps.view?.snapping ?? true, // view: what this browser kept, which the caller read
+      trimMode: "trim",
       status: "saved",
       limitMessage: null,
       notice: null,
@@ -501,6 +505,10 @@ export function createEditorStore(
 
       setSnapping(on) {
         set({ snapping: on });
+      },
+
+      setTrimMode(mode) {
+        set({ trimMode: mode });
       },
 
       notify(tone, text, link) {

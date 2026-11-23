@@ -89,6 +89,7 @@ const COMMAND_WORDS: Partial<Record<CommandId, string[]>> = {
   "zoom-out": ["smaller", "timeline"],
   "zoom-fit": ["zoom", "whole", "fit"],
   "toggle-snapping": ["snap", "magnet", "align"],
+  "next-trim-mode": ["ripple", "roll", "rolling", "trim", "edge", "edit", "gap"],
   "toggle-audio-meter": ["sound", "level", "levels", "volume", "loudness", "vu", "db", "show", "hide"],
   "volume-up": ["sound", "audio", "loud", "boost", "gain", "increase"],
   "volume-down": ["sound", "audio", "quiet", "lower", "gain", "decrease"],
@@ -113,6 +114,7 @@ const COMMAND_LABELS: Partial<Record<CommandId, string>> = {
   "tool-guide": "Guide tool",
   "tool-crop": "Crop tool",
   "toggle-snapping": "Snapping",
+  "next-trim-mode": "Trim mode: trim, ripple, roll",
   "toggle-audio-meter": "Audio meter",
   "volume-up": "Volume up",
   "volume-down": "Volume down",
@@ -190,7 +192,7 @@ const COMMAND_GROUPS: { group: SearchGroup; commands: CommandId[] }[] = [
       "prev-edge", "next-edge", "prev-marker", "next-marker", "go-start", "go-end",
     ],
   },
-  { group: "Timeline", commands: ["toggle-marker", "zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", "toggle-audio-meter"] },
+  { group: "Timeline", commands: ["toggle-marker", "zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", "next-trim-mode", "toggle-audio-meter"] },
 ];
 
 const EDITS = new Set(SHORTCUTS.filter((s) => s.edits).map((s) => s.command));

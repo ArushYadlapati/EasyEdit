@@ -4,7 +4,7 @@ export type CommandId =
   | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste" | "duplicate"
   | "nudge-left" | "nudge-right" | "nudge-left-second" | "nudge-right-second"
   | "volume-up" | "volume-down" | "mute-clip" | "separate-audio" | "duck-audio" | "reverse-clip" | "freeze-frame"
-  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "toggle-audio-meter"
+  | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "next-trim-mode" | "toggle-audio-meter"
   | "export" | "show-shortcuts" | "search"
   | "tool-select" | "tool-razor" | "tool-text" | "tool-shape" | "tool-shape-next" | "tool-line" | "tool-arrow" | "tool-guide" | "tool-crop";
 
@@ -91,6 +91,7 @@ export const SHORTCUTS: Shortcut[] = [
   row("Timeline", "zoom-out", ["-"], "Zoom out", REPEATS),
   row("Timeline", "zoom-fit", ["Shift+Z"], "Fit the timeline"),
   row("Timeline", "toggle-snapping", ["N"], "Snapping on or off"),
+  row("Timeline", "next-trim-mode", ["W"], "What dragging a clip's edge does: trim, ripple trim, roll", EDITS),
   row("Timeline", "toggle-audio-meter", ["Shift+M"], "Show or hide the audio meter"),
   row("General", "export", ["Mod+E"], "Export"),
   row("General", "show-shortcuts", ["?"], "Show shortcuts"),

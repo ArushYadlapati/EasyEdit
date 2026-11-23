@@ -172,7 +172,8 @@ describe("trimming", () => {
   it("an end trim stops at the end of the media", () => {
     const d = mediaDoc();
     const right = beginTrim(d, "m1", "end", 190, lengthOf)!;
-    expect(right.origins).toEqual([{ clipId: "m1", start: 100, duration: 90, trackId: "v1", minStart: 40, maxEnd: 415 }]);
+    // headRoom: the 60 frames of footage before its in point, which a ripple trim can add at its head.
+    expect(right.origins).toEqual([{ clipId: "m1", start: 100, duration: 90, trackId: "v1", minStart: 40, maxEnd: 415, headRoom: 60 }]);
     expect(resolveDrag(d, right, onV1({ frame: 600 }))).toMatchObject({
       ops: [{ op: "trim_clip", clipId: "m1", edge: "end", to: 415 }],
       ghost: [{ clipId: "m1", trackId: "v1", start: 100, duration: 315 }],

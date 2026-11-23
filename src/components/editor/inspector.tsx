@@ -22,6 +22,7 @@ import {
   FONT_SIZE_MIN,
   SPEED_PERCENT,
   lookRange,
+  slipRange,
   weightOptions,
   clipFieldValue,
   cropScrubRange,
@@ -133,6 +134,7 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
       return { scrub: 0.5, decimals: 1 };
     case "start":
     case "duration":
+    case "sourceIn":
     case "fadeIn":
     case "fadeOut":
       return { scrub: 1 / fps, decimals: 2 };
@@ -229,6 +231,15 @@ function NumberField(props: {
     };
   } else if (field === "volume") {
     scrubRange = () => ({ min: 0, max: VOLUME_MAX * 100 });
+  } else if (field === "sourceIn") {
+    // The footage stops slipping where the clip would run out of it.
+    scrubRange = () => {
+      const { doc } = store.getState();
+      const clip = findClip(doc, clipId)?.clip;
+      if (!clip || !isMediaClip(clip)) return { min: 0, max: Infinity };
+      const range = slipRange(clip, mediaLengthFrames(library.getState().assets[clip.assetId], doc.fps));
+      return { min: range.min / doc.fps, max: range.max / doc.fps };
+    };
   } else if (field === "speed") {
     scrubRange = () => SPEED_PERCENT;
   } else if (Object.hasOwn(ADJUST_RANGE, field)) {
@@ -645,12 +656,14 @@ function CropSection({ clipId }: { clipId: string }) {
   );
 }
 
-function TimingSection({ clipId }: { clipId: string }) {
+// slips: a video or audio clip, which can also slip: start from another moment of its file, keeping its place and length.
+function TimingSection({ clipId, slips }: { clipId: string; slips: boolean }) {
   return (
     <Section title="Timing">
       <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clipId} field="start" label="Start" suffix="s" min={0} step={0.1} />
         <NumberField clipId={clipId} field="duration" label="Length" suffix="s" min={0} step={0.1} />
+        {slips && <NumberField clipId={clipId} field="sourceIn" label="Footage from" suffix="s" min={0} step={0.1} />}
       </div>
     </Section>
   );
@@ -887,7 +900,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "audio" && <MixSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}
-      <TimingSection clipId={clip.id} />
+      <TimingSection clipId={clip.id} slips={clip.type === "video" || clip.type === "audio"} />
       <SlotSection clip={clip} />
     </>
   );

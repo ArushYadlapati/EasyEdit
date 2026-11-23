@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { createStore, type StoreApi } from "zustand/vanilla";
-import { beginMove, beginTrim, resolveDrag, type Drag, type DragGhost } from "@/lib/editor/drag";
+import { beginMove, beginTrim, resolveDrag, type Drag, type DragGhost, type DragResult } from "@/lib/editor/drag";
 import { moveTrack } from "@/lib/editor/actions";
 import {
   HEADER_WIDTH,
@@ -49,7 +49,7 @@ type ClipSession = Press & {
   collapse: boolean; // the clip was already selected: a click makes it the only one
   grabFrame: number;
   drag: Drag | null;
-  label: "move" | "trim";
+  label: DragResult["label"];
   sent: { ops: string; doc: TimelineDoc } | null; // what the gesture was last set from
   attempt: OpInput[]; // the ops for where the pointer is
   ok: boolean; // the store took them
@@ -164,6 +164,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
       playhead: state.playhead,
       zoom,
       snapping: state.snapping,
+      trimMode: state.trimMode,
     });
     if (!result) {
       // With a gesture set, the store has already ended it and said why.

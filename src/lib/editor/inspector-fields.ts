@@ -66,6 +66,9 @@ export type ClipField =
   | "fadeOut"
   // How fast a video or audio clip plays, in percent of as recorded, whichever way it runs.
   | "speed"
+  // Where in its file a video or audio clip starts, in seconds: changing it slips the footage under the clip, which
+  // keeps its place and length.
+  | "sourceIn"
   // A video's or image's colours, in percent of their full swing, its hue in degrees and its blur in project pixels;
   // whether it is mirrored ("on" or "off"); and how a clip mixes with what is under it.
   | "brightness"
@@ -137,6 +140,7 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   fadeIn: "fade change",
   fadeOut: "fade change",
   speed: "speed change",
+  sourceIn: "slip",
   brightness: "color change",
   contrast: "color change",
   saturation: "color change",
@@ -195,6 +199,16 @@ export const ADJUST_RANGE: Record<AdjustKey, { min: number; max: number; per: nu
   hue: { min: -180, max: 180, per: 1 },
   blur: { min: 0, max: 200, per: 1 },
 };
+
+// The frames of its file a clip may start on and still fit it, at its length, speed and way round. Without the
+// media's length, any frame from 0.
+export function slipRange(clip: MediaClip, lengthFrames?: number): { min: number; max: number } {
+  if (lengthFrames === undefined) return { min: 0, max: Infinity };
+  const used = Math.abs(Math.round(clip.duration * clip.speed));
+  if (clip.speed > 0) return { min: 0, max: Math.max(0, lengthFrames - used) };
+  if (clip.speed < 0) return { min: Math.max(0, used - 1), max: Math.max(0, lengthFrames - 1) };
+  return { min: 0, max: Math.max(0, lengthFrames - 1) };
+}
 
 // A clip with a picture of its own to colour and mirror: a video or an image.
 function isPicture(clip: Clip): clip is MediaClip & { type: "video" | "image" } {
@@ -317,6 +331,8 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
       return clip.type === "video" || clip.type === "audio" ? ((clip[field] ?? 0) / fps).toFixed(2) : "";
     case "speed":
       return hasSpeed(clip) ? String(Math.round(rateOf(clip) * 100)) : "";
+    case "sourceIn":
+      return hasSpeed(clip) ? (clip.in / fps).toFixed(2) : "";
     case "brightness":
     case "contrast":
     case "saturation":
@@ -647,6 +663,14 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       const percent = parseNumber(raw);
       if (percent === null || !hasSpeed(clip)) return null;
       return speedOps(clip, Math.round(percent) / 100, ctx.room ?? Infinity, lengthFrames);
+    }
+    case "sourceIn": {
+      // Whole frames, kept where the clip still fits its media, when the media's length is known.
+      const seconds = parseNumber(raw);
+      if (seconds === null || seconds < 0 || !hasSpeed(clip)) return null;
+      const range = slipRange(clip, lengthFrames);
+      const sourceIn = clamp(Math.round(seconds * fps), range.min, range.max);
+      return sourceIn === clip.in ? [] : update({ in: sourceIn });
     }
     case "brightness":
     case "contrast":

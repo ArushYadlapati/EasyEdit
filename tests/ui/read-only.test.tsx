@@ -75,7 +75,7 @@ const TOP = [
   "button Razor", "button Text", "button Shape: Rectangle", "button Arrow", "button Guide", "button Crop", "button Split", "button Delete", "button Ripple delete",
 ];
 const TIMELINE = [
-  "button Add track",
+  "button Add track", "button Trim",
   "button Lock track", "button Hide track", "button Track options",
   "button Lock track", "button Hide track", "button Track options",
   "button Lock track", "button Hide track", "button Mute track", "button Track options",
