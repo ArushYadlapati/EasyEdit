@@ -1,4 +1,5 @@
 import { ExportError, errorMessage, readFailure } from "@/lib/export/messages";
+import { createLimiter } from "@/lib/audio/clean-dsp";
 import { mixParts, type VoicePart } from "@/lib/export/mix";
 import { sincKernel } from "@/lib/export/resample";
 import type { AudioBlock } from "@/lib/export/schedule";
@@ -33,6 +34,8 @@ export function createSoundPool(schedule: SoundSchedule, files: Record<string, B
   const silent = new Set<string>(); // fileIds whose file has no sound track
   const opened = new Map<string, SoundFile>(); // fileId → its open file, shared by all its voices
   const players = new Map<Voice, VoicePlayer>();
+  // One limiter for the whole export: blocks come in order, so it carries on from one to the next.
+  const limiter = createLimiter(schedule.sampleRate);
 
   const blobOf = (fileId: string): Blob => {
     const blob = files[fileId];
@@ -88,7 +91,7 @@ export function createSoundPool(schedule: SoundSchedule, files: Record<string, B
           }),
         ),
       );
-      const mix = mixParts(block.sampleCount, parts.filter((part): part is VoicePart => part !== null));
+      const mix = mixParts(block.sampleCount, parts.filter((part): part is VoicePart => part !== null), limiter);
 
       for (const voice of active) {
         if (voice.end > end) continue;

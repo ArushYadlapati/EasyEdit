@@ -63,6 +63,19 @@ export type Adjust = z.infer<typeof Adjust>;
 export const Chroma = z.strictObject({ color: HexColor, tolerance: z.number().min(0).max(1), softness: z.number().min(0).max(1) });
 export type Chroma = z.infer<typeof Chroma>;
 
+// A video's or audio clip's sound clean-up. Each is off, or 0, when absent: a rumble filter, a noise gate and a
+// compressor by how much (0 to 1), and three tone bands in decibels.
+const ToneDb = z.number().min(-12).max(12);
+export const SoundFx = z.strictObject({
+  lowCut: z.boolean().optional(),
+  gate: z.number().min(0).max(1).optional(),
+  bass: ToneDb.optional(),
+  mid: ToneDb.optional(),
+  treble: ToneDb.optional(),
+  compress: z.number().min(0).max(1).optional(),
+});
+export type SoundFx = z.infer<typeof SoundFx>;
+
 // How a clip mixes with what is drawn under it. Absent means "normal".
 export const BlendMode = z.enum(["normal", "multiply", "screen", "overlay", "darken", "lighten", "add", "soft-light", "hard-light", "difference"]);
 export type BlendMode = z.infer<typeof BlendMode>;
@@ -184,6 +197,8 @@ export const MediaClip = z.object({
   blend: BlendMode.optional(),
   // Video and audio only (checked in the ops): where its sound sits between the left side (−1) and the right (1).
   pan: z.number().min(-1).max(1).optional(),
+  // Video and audio only (checked in the ops): its sound's clean-up.
+  sound: SoundFx.optional(),
   chroma: Chroma.nullable().optional(), // null or absent: no colour is taken out
   rounding: z.number().min(0).max(1).optional(), // how round its corners are: 0 square, 1 as round as its short side allows
 });

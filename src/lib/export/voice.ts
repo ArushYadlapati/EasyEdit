@@ -1,4 +1,5 @@
 import type { AudioBlock } from "@/lib/export/schedule";
+import { createChain } from "@/lib/audio/clean-dsp";
 import { applyGain, type VoicePart } from "@/lib/export/mix";
 import { AUDIO } from "@/lib/export/presets";
 import { reach, resampleInto, type SincKernel } from "@/lib/export/resample";
@@ -37,6 +38,12 @@ export function createVoicePlayer(
   // tempo = speed. The voice's output sample k is the stretcher's output k − voice.start.
   const stretcher = voice.speed === 1 ? null : createStretcher(voice.speed, (ch, m) => stage.read(ch, m), voice.end - voice.start);
   const stage = createStage(stretcher ? stretcher.keeps() : 0);
+  // A voice's blocks come in order, so the clean-up carries on from one to the next.
+  let chain: ReturnType<typeof createChain> | null = null;
+  if (voice.fx) {
+    chain = createChain(schedule.sampleRate);
+    chain.set(voice.fx);
+  }
   const readLeft = (j: number) => ring.read(0, j);
   const readRight = (j: number) => ring.read(1, j);
 
@@ -96,6 +103,8 @@ export function createVoicePlayer(
           ring.dropBefore(Math.floor(p(d)) - r);
         }
       }
+      // The clip's clean-up comes first, on the sound as recorded: its volume, fades and pan are set on what is left.
+      chain?.process(part.left, part.right);
       applyGain(part, voice.gain, a - voice.start, voice.end - voice.start, { in: voice.fadeIn, out: voice.fadeOut }, voice.envelope, voice.pan ?? 0);
       return part;
     },

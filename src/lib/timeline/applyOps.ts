@@ -28,7 +28,7 @@ const StrictShapeClip = ShapeClipFields.extend({ transform: Transform.strict() }
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
 // The clip fields whose sub-keys are set, undone and expected one by one. Every other field, a transition or an
 // emphasis included, is one value: a new one replaces the old whole, so no sub-key of the old one is left behind.
-const MERGED_FIELDS: ReadonlySet<string> = new Set(["transform", "style", "keyframes", "adjust"]);
+const MERGED_FIELDS: ReadonlySet<string> = new Set(["transform", "style", "keyframes", "adjust", "sound"]);
 
 // Optional clip fields, each with its neutral value, filled the same way as TRANSFORM_FILL below. A keyframes patch
 // also fills each property it names with an empty list, since keyframes merge one level deep like transform.
@@ -43,6 +43,7 @@ const CLIP_FILL: Record<string, () => unknown> = {
   fadeIn: () => 0,
   fadeOut: () => 0,
   pan: () => 0,
+  sound: () => ({}),
   adjust: () => ({}),
   blend: () => "normal",
   chroma: () => null,
@@ -69,7 +70,7 @@ const VISUAL_EFFECTS = ["keyframes", "transitionIn", "transitionOut"] as const;
 // What only a picture takes: its colours, and how it mixes with what is under it.
 const PICTURE_EFFECTS = ["adjust", "blend", "chroma", "rounding"] as const;
 // What a clip that sounds takes: captions for its speech, and a fade of its sound at either end.
-const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut", "pan"] as const;
+const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut", "pan", "sound"] as const;
 // A video clip takes both kinds; sound takes only its own (see CLIP_EFFECTS).
 const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string[]> = {
   video: [...VISUAL_EFFECTS, ...SOUND_EFFECTS, ...PICTURE_EFFECTS],
@@ -94,6 +95,9 @@ function clipEffects(clip: EffectsHolder): readonly string[] {
 // Optional transform fields, each with its neutral value. update_clip fills a missing one before it is set or
 // expected, so the first change records an undo that goes back to the neutral value.
 const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CROP }), stretch: () => NO_STRETCH, flipH: () => false, flipV: () => false };
+
+// A sound's clean-up with every part off.
+const SOUND_OFF: Record<string, unknown> = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 };
 
 // A text style's optional fields, filled the same way before one is set or expected.
 const STYLE_FILL: ReadonlySet<string> = new Set(TEXT_EXTRA_KEYS);
@@ -628,6 +632,13 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (isPlainObject(adjust)) {
           for (const key of [...givenKeys(op.patch, "adjust"), ...givenKeys(op.expect, "adjust")]) {
             if ((ADJUST_KEYS as readonly string[]).includes(key) && adjust[key] === undefined) adjust[key] = 0;
+          }
+        }
+        // A sound's clean-up merges one level deep as well: each part named starts from off.
+        const sound = fields.sound;
+        if (isPlainObject(sound)) {
+          for (const key of [...givenKeys(op.patch, "sound"), ...givenKeys(op.expect, "sound")]) {
+            if (Object.hasOwn(SOUND_OFF, key) && sound[key] === undefined) sound[key] = SOUND_OFF[key];
           }
         }
         const keyframes = fields.keyframes;

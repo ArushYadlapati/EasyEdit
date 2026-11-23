@@ -1,3 +1,4 @@
+import { NO_FX, isPlainFx, type FxSettings } from "@/lib/audio/clean-dsp";
 import type { Clip, MediaClip, TimelineDoc, Track } from "@/lib/timeline";
 import { isKeyframed, volumeAt } from "@/lib/timeline/keyframes";
 
@@ -26,6 +27,13 @@ export function soundGain(track: Track, clip: Clip): number {
 // How loud the track makes its clips, on top of their own volume.
 export function trackGain(track: Track): number {
   return track.volume ?? 1;
+}
+
+// A clip's sound clean-up with every part given, or null when it has none on: such a clip's sound is not processed.
+export function fxOf(clip: Clip): FxSettings | null {
+  if ((clip.type !== "video" && clip.type !== "audio") || !clip.sound) return null;
+  const fx: FxSettings = { ...NO_FX, ...clip.sound };
+  return isPlainFx(fx) ? null : fx;
 }
 
 // Where a clip's sound sits between left (−1) and right (1); 0 is as recorded.

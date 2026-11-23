@@ -1,5 +1,5 @@
-// A block's sound from its voices' parts: each voice's gain, fades and edge ramps, the sum, a hard clamp at ±1 and
-// interleaving. No limiter, no soft clip, no dither.
+// A block's sound from its voices' parts: each voice's gain, fades and edge ramps, the sum, the mix's limiter where
+// one is given, a hard clamp at ±1 and interleaving. No soft clip, no dither.
 
 import { AUDIO } from "@/lib/export/presets";
 import { fadeGain, panGains } from "@/lib/render/clip-sound";
@@ -60,13 +60,19 @@ export function applyGain(part: VoicePart, gain: number, first: number, length: 
 
 // Sums the parts where they sit, in the order given, clamps each sample to ±1 and interleaves L R L R …,
 // in a fresh array of count × 2 on every call. A NaN becomes 0, so it never reaches the encoder; ±Infinity clamps to ±1.
-export function mixParts(count: number, parts: readonly VoicePart[]): Float32Array {
+// limit: the mix's limiter, which holds a mix that would pass its ceiling; the clamp after it is then only a guard.
+export function mixParts(count: number, parts: readonly VoicePart[], limit?: { processInterleaved(samples: Float32Array): void }): Float32Array {
   const out = new Float32Array(count * 2);
   for (const { at, left, right } of parts) {
     for (let i = 0; i < left.length; i++) {
       out[2 * (at + i)] += left[i];
       out[2 * (at + i) + 1] += right[i];
     }
+  }
+  if (limit) {
+    // A NaN would poison the limiter's memory, so it is made 0 first.
+    for (let i = 0; i < out.length; i++) if (out[i] !== out[i]) out[i] = 0;
+    limit.processInterleaved(out);
   }
   for (let i = 0; i < out.length; i++) {
     const x = out[i];

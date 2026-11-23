@@ -1,4 +1,5 @@
-import { fadeFrames, panOf, soundingClips } from "@/lib/render/clip-sound";
+import type { FxSettings } from "@/lib/audio/clean-dsp";
+import { fadeFrames, fxOf, panOf, soundingClips } from "@/lib/render/clip-sound";
 import type { Ease, MediaClip, TimelineDoc } from "@/lib/timeline";
 import { isKeyframed } from "@/lib/timeline/keyframes";
 
@@ -19,6 +20,7 @@ export type Voice = {
   // voice). The voice's gain is then 1 and these give its volume.
   envelope?: EnvelopePoint[];
   pan?: number; // where the voice sits between left (−1) and right (1), when it is not where it was recorded
+  fx?: FxSettings; // the clip's sound clean-up, when some of it is on
 };
 
 export type EnvelopePoint = { at: number; value: number; ease?: Ease };
@@ -47,6 +49,7 @@ function continues(clip: MediaClip, next: MediaClip, file: string, nextFile: str
     !isKeyframed(clip, "volume") &&
     !isKeyframed(next, "volume") &&
     panOf(clip) === panOf(next) &&
+    JSON.stringify(fxOf(clip)) === JSON.stringify(fxOf(next)) &&
     fadeFrames(clip).out === 0 &&
     fadeFrames(next).in === 0 &&
     next.start === clip.start + clip.duration &&
@@ -90,6 +93,7 @@ export function soundSchedule(doc: TimelineDoc, sounds: Record<string, string>, 
       fadeIn: frameCount(fade.in, fps, sampleRate),
       fadeOut,
       ...(panOf(clip) !== 0 && { pan: panOf(clip) }),
+      ...(fxOf(clip) && { fx: fxOf(clip)! }),
       ...(isKeyframed(clip, "volume") && {
         envelope: clip.keyframes!.volume!.map((k) => ({ at: Math.round((k.at * sampleRate) / fps), value: k.value, ...(k.ease && { ease: k.ease }) })),
       }),
