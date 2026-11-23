@@ -1,0 +1,198 @@
+// Made from src/lib/audio/clean-dsp.ts by scripts/make-worklet.mjs. Change that file, not this one.
+export const NO_FX = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 };
+export function isPlainFx(fx) {
+    return !fx.lowCut && fx.gate <= 0 && fx.bass === 0 && fx.mid === 0 && fx.treble === 0 && fx.compress <= 0;
+}
+export const LOW_CUT_HZ = 80;
+export const BASS_HZ = 200;
+export const MID_HZ = 2500;
+export const TREBLE_HZ = 5000;
+export const LIMIT_CEILING = 0.891;
+const normal = (b0, b1, b2, a0, a1, a2) => [b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0];
+export function highPass(hz, q, sampleRate) {
+    const w = (2 * Math.PI * hz) / sampleRate;
+    const cos = Math.cos(w);
+    const alpha = Math.sin(w) / (2 * q);
+    return normal((1 + cos) / 2, -(1 + cos), (1 + cos) / 2, 1 + alpha, -2 * cos, 1 - alpha);
+}
+export function peak(hz, q, db, sampleRate) {
+    const a = Math.pow(10, db / 40);
+    const w = (2 * Math.PI * hz) / sampleRate;
+    const cos = Math.cos(w);
+    const alpha = Math.sin(w) / (2 * q);
+    return normal(1 + alpha * a, -2 * cos, 1 - alpha * a, 1 + alpha / a, -2 * cos, 1 - alpha / a);
+}
+export function lowShelf(hz, db, sampleRate) {
+    const a = Math.pow(10, db / 40);
+    const w = (2 * Math.PI * hz) / sampleRate;
+    const cos = Math.cos(w);
+    const beta = 2 * Math.sqrt(a) * (Math.sin(w) / 2) * Math.SQRT2;
+    return normal(a * (a + 1 - (a - 1) * cos + beta), 2 * a * (a - 1 - (a + 1) * cos), a * (a + 1 - (a - 1) * cos - beta), a + 1 + (a - 1) * cos + beta, -2 * (a - 1 + (a + 1) * cos), a + 1 + (a - 1) * cos - beta);
+}
+export function highShelf(hz, db, sampleRate) {
+    const a = Math.pow(10, db / 40);
+    const w = (2 * Math.PI * hz) / sampleRate;
+    const cos = Math.cos(w);
+    const beta = 2 * Math.sqrt(a) * (Math.sin(w) / 2) * Math.SQRT2;
+    return normal(a * (a + 1 + (a - 1) * cos + beta), -2 * a * (a - 1 + (a + 1) * cos), a * (a + 1 + (a - 1) * cos - beta), a + 1 - (a - 1) * cos + beta, 2 * (a - 1 - (a + 1) * cos), a + 1 - (a - 1) * cos - beta);
+}
+const settle = (seconds, sampleRate) => 1 - Math.exp(-1 / (seconds * sampleRate));
+const memory = () => ({ l1: 0, l2: 0, r1: 0, r2: 0 });
+function gateOf(amount) {
+    const thresholdDb = -60 + 30 * amount;
+    const open = Math.pow(10, thresholdDb / 20);
+    return { open, close: open * 0.7, floor: Math.pow(10, -(12 + 24 * amount) / 20) };
+}
+function compressorOf(amount) {
+    const threshold = -10 - 20 * amount;
+    const ratio = 2 + 4 * amount;
+    return { threshold, ratio, makeup: (-threshold * (1 - 1 / ratio)) / 2 };
+}
+const KNEE_DB = 6;
+export function createChain(sampleRate) {
+    let fx = NO_FX;
+    let plain = true;
+    let cut = null;
+    let bass = null;
+    let mid = null;
+    let treble = null;
+    const cutM = memory();
+    const bassM = memory();
+    const midM = memory();
+    const trebleM = memory();
+    let gate = gateOf(0);
+    let comp = compressorOf(0);
+    let heard = 0;
+    let isOpen = true;
+    let gateGain = 1;
+    const heardFall = Math.exp(-1 / (0.05 * sampleRate));
+    const gateOpens = settle(0.003, sampleRate);
+    const gateCloses = settle(0.12, sampleRate);
+    let reduction = 0;
+    const compGrabs = settle(0.005, sampleRate);
+    const compLetsGo = settle(0.15, sampleRate);
+    function set(next) {
+        fx = next;
+        plain = isPlainFx(next);
+        cut = next.lowCut ? highPass(LOW_CUT_HZ, Math.SQRT1_2, sampleRate) : null;
+        bass = next.bass !== 0 ? lowShelf(BASS_HZ, next.bass, sampleRate) : null;
+        mid = next.mid !== 0 ? peak(MID_HZ, 0.9, next.mid, sampleRate) : null;
+        treble = next.treble !== 0 ? highShelf(TREBLE_HZ, next.treble, sampleRate) : null;
+        gate = gateOf(next.gate);
+        comp = compressorOf(next.compress);
+    }
+    function process(left, right) {
+        if (plain)
+            return;
+        const gating = fx.gate > 0;
+        const compressing = fx.compress > 0;
+        for (let i = 0; i < left.length; i++) {
+            let l = left[i];
+            let r = right[i];
+            if (cut) {
+                const yl = cut[0] * l + cutM.l1;
+                cutM.l1 = cut[1] * l - cut[3] * yl + cutM.l2;
+                cutM.l2 = cut[2] * l - cut[4] * yl;
+                const yr = cut[0] * r + cutM.r1;
+                cutM.r1 = cut[1] * r - cut[3] * yr + cutM.r2;
+                cutM.r2 = cut[2] * r - cut[4] * yr;
+                l = yl;
+                r = yr;
+            }
+            if (gating) {
+                const level = Math.max(Math.abs(l), Math.abs(r));
+                heard = level > heard ? level : heard * heardFall;
+                if (isOpen ? heard < gate.close : heard >= gate.open)
+                    isOpen = !isOpen;
+                const want = isOpen ? 1 : gate.floor;
+                gateGain += (want - gateGain) * (want > gateGain ? gateOpens : gateCloses);
+                l *= gateGain;
+                r *= gateGain;
+            }
+            if (bass) {
+                const yl = bass[0] * l + bassM.l1;
+                bassM.l1 = bass[1] * l - bass[3] * yl + bassM.l2;
+                bassM.l2 = bass[2] * l - bass[4] * yl;
+                const yr = bass[0] * r + bassM.r1;
+                bassM.r1 = bass[1] * r - bass[3] * yr + bassM.r2;
+                bassM.r2 = bass[2] * r - bass[4] * yr;
+                l = yl;
+                r = yr;
+            }
+            if (mid) {
+                const yl = mid[0] * l + midM.l1;
+                midM.l1 = mid[1] * l - mid[3] * yl + midM.l2;
+                midM.l2 = mid[2] * l - mid[4] * yl;
+                const yr = mid[0] * r + midM.r1;
+                midM.r1 = mid[1] * r - mid[3] * yr + midM.r2;
+                midM.r2 = mid[2] * r - mid[4] * yr;
+                l = yl;
+                r = yr;
+            }
+            if (treble) {
+                const yl = treble[0] * l + trebleM.l1;
+                trebleM.l1 = treble[1] * l - treble[3] * yl + trebleM.l2;
+                trebleM.l2 = treble[2] * l - treble[4] * yl;
+                const yr = treble[0] * r + trebleM.r1;
+                trebleM.r1 = treble[1] * r - treble[3] * yr + trebleM.r2;
+                trebleM.r2 = treble[2] * r - treble[4] * yr;
+                l = yl;
+                r = yr;
+            }
+            if (compressing) {
+                const level = Math.max(Math.abs(l), Math.abs(r), 1e-6);
+                const over = 20 * Math.log10(level) - comp.threshold;
+                let cutBy = 0;
+                if (2 * over > KNEE_DB)
+                    cutBy = over * (1 / comp.ratio - 1);
+                else if (2 * over > -KNEE_DB)
+                    cutBy = ((1 / comp.ratio - 1) * (over + KNEE_DB / 2) * (over + KNEE_DB / 2)) / (2 * KNEE_DB);
+                reduction += (cutBy - reduction) * (cutBy < reduction ? compGrabs : compLetsGo);
+                const gain = Math.pow(10, (reduction + comp.makeup) / 20);
+                l *= gain;
+                r *= gain;
+            }
+            left[i] = l;
+            right[i] = r;
+        }
+    }
+    return { set, process };
+}
+export function createLimiter(sampleRate, ceiling = LIMIT_CEILING) {
+    let gain = 1;
+    const rises = settle(0.08, sampleRate);
+    function gainFor(level) {
+        const most = level > ceiling ? ceiling / level : 1;
+        if (most < gain)
+            gain = most;
+        else if (gain < 1) {
+            gain += (1 - gain) * rises;
+            if (gain > most)
+                gain = most;
+            if (1 - gain < 1e-5)
+                gain = 1;
+        }
+        return gain;
+    }
+    return {
+        gainFor,
+        process(left, right) {
+            for (let i = 0; i < left.length; i++) {
+                const g = gainFor(Math.max(Math.abs(left[i]), Math.abs(right[i])));
+                if (g === 1)
+                    continue;
+                left[i] *= g;
+                right[i] *= g;
+            }
+        },
+        processInterleaved(samples) {
+            for (let i = 0; i + 1 < samples.length; i += 2) {
+                const g = gainFor(Math.max(Math.abs(samples[i]), Math.abs(samples[i + 1])));
+                if (g === 1)
+                    continue;
+                samples[i] *= g;
+                samples[i + 1] *= g;
+            }
+        },
+    };
+}
