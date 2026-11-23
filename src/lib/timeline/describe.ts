@@ -1,5 +1,6 @@
 import { docCues } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
+import { ADJUST_KEYS, isAdjusted } from "./adjust";
 import { captionStyleOf } from "./captions";
 import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
 import { KEYFRAME_PROPS } from "./keyframes";
@@ -63,6 +64,11 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
     if (clip.transitionIn) out += ` in=${transitionToken(clip.transitionIn)} ${framesToSeconds(clip.transitionIn.frames, fps)}s`;
     if (clip.transitionOut) out += ` out=${transitionToken(clip.transitionOut)} ${framesToSeconds(clip.transitionOut.frames, fps)}s`;
   }
+  if ((clip.type === "video" || clip.type === "image") && isAdjusted(clip.adjust)) {
+    const set = ADJUST_KEYS.filter((key) => (clip.adjust?.[key] ?? 0) !== 0).map((key) => `"${key}":${clip.adjust![key]}`);
+    out += ` adjust={${set.join(",")}}`;
+  }
+  if (clip.type !== "placeholder" && clip.blend && clip.blend !== "normal") out += ` blend=${clip.blend}`;
   const keyed = KEYFRAME_PROPS.filter((p) => (clip.keyframes?.[p]?.length ?? 0) > 0);
   if (detail) for (const p of keyed) out += ` kf.${p}=${keyframeList(clip, p)}`;
   else if (keyed.length > 0) out += ` kf=${keyed.join(",")}`;
@@ -106,6 +112,8 @@ function describeTransformChanges(t: Transform, type: Clip["type"]): string {
   if (stretchOf(t) !== NO_STRETCH && type !== "audio") out += ` stretch=${stretchOf(t)}`;
   if (t.rotation !== 0) out += ` rotation=${t.rotation}`;
   if (t.opacity !== 1) out += ` opacity=${t.opacity}`;
+  if (t.flipH && (type === "video" || type === "image")) out += " flipH=true";
+  if (t.flipV && (type === "video" || type === "image")) out += " flipV=true";
   if (t.crop && isCropped(t.crop) && type !== "audio") {
     const { left, top, right, bottom } = t.crop;
     out += ` crop=${JSON.stringify({ left, top, right, bottom })}`;

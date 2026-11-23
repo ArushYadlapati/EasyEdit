@@ -4,6 +4,8 @@ import { LIMITS } from "@/lib/limits";
 import { isStorableText } from "@/lib/text";
 import { OpError } from "./errors";
 import {
+  Adjust,
+  BlendMode,
   CaptionStyle,
   CaptionWord,
   CaptionWords,
@@ -53,6 +55,8 @@ const ClipExpect = z
     captions: MediaClip.shape.captions,
     fadeIn: MediaClip.shape.fadeIn,
     fadeOut: MediaClip.shape.fadeOut,
+    adjust: Adjust,
+    blend: BlendMode,
     animationIn: TextClip.shape.animationIn,
     animationOut: TextClip.shape.animationOut,
     emphasis: TextClip.shape.emphasis,

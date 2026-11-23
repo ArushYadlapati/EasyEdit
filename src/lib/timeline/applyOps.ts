@@ -14,6 +14,7 @@ import {
   trackTakes,
 } from "./presets";
 import { captionStyleOf, captionTrack, defaultCaptionStyle, rewordRun, transcriptOf } from "./captions";
+import { ADJUST_KEYS } from "./adjust";
 import { ARROW_DEFAULTS } from "./shapes";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
 import { CaptionStyle, CaptionWords, MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
@@ -27,7 +28,7 @@ const StrictShapeClip = ShapeClipFields.extend({ transform: Transform.strict() }
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
 // The clip fields whose sub-keys are set, undone and expected one by one. Every other field, a transition or an
 // emphasis included, is one value: a new one replaces the old whole, so no sub-key of the old one is left behind.
-const MERGED_FIELDS: ReadonlySet<string> = new Set(["transform", "style", "keyframes"]);
+const MERGED_FIELDS: ReadonlySet<string> = new Set(["transform", "style", "keyframes", "adjust"]);
 
 // Optional clip fields, each with its neutral value, filled the same way as TRANSFORM_FILL below. A keyframes patch
 // also fills each property it names with an empty list, since keyframes merge one level deep like transform.
@@ -41,6 +42,8 @@ const CLIP_FILL: Record<string, () => unknown> = {
   captions: () => false,
   fadeIn: () => 0,
   fadeOut: () => 0,
+  adjust: () => ({}),
+  blend: () => "normal",
 };
 
 // A shape's optional fields, each with the value its absence means, filled the same way so the first change to one
@@ -59,15 +62,17 @@ const SHAPE_FILL: Record<string, () => unknown> = {
 // itself instead of transitioning. A placeholder carries what the clip that fills it would: a visual slot the
 // video and image effects (so a template's fade or move survives the fill), an audio slot none.
 const VISUAL_EFFECTS = ["keyframes", "transitionIn", "transitionOut"] as const;
+// What only a picture takes: its colours, and how it mixes with what is under it.
+const PICTURE_EFFECTS = ["adjust", "blend"] as const;
 // What a clip that sounds takes: captions for its speech, and a fade of its sound at either end.
 const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut"] as const;
 // A video clip takes both kinds; sound takes only its own (see CLIP_EFFECTS).
 const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string[]> = {
-  video: [...VISUAL_EFFECTS, ...SOUND_EFFECTS],
-  image: VISUAL_EFFECTS,
+  video: [...VISUAL_EFFECTS, ...SOUND_EFFECTS, ...PICTURE_EFFECTS],
+  image: [...VISUAL_EFFECTS, ...PICTURE_EFFECTS],
   audio: SOUND_EFFECTS,
-  text: ["keyframes", "animationIn", "animationOut", "emphasis"],
-  shape: VISUAL_EFFECTS,
+  text: ["keyframes", "animationIn", "animationOut", "emphasis", "blend"],
+  shape: [...VISUAL_EFFECTS, "blend"],
 };
 
 // A clip's ways in and out, each with the value that means it has none. A split takes the way out off the left piece
@@ -83,7 +88,7 @@ function clipEffects(clip: EffectsHolder): readonly string[] {
 
 // Optional transform fields, each with its neutral value. update_clip fills a missing one before it is set or
 // expected, so the first change records an undo that goes back to the neutral value.
-const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CROP }), stretch: () => NO_STRETCH };
+const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CROP }), stretch: () => NO_STRETCH, flipH: () => false, flipV: () => false };
 
 // A text style's optional fields, filled the same way before one is set or expected.
 const STYLE_FILL: ReadonlySet<string> = new Set(TEXT_EXTRA_KEYS);
@@ -595,6 +600,13 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         for (const key of [...givenKeys(op.patch), ...givenKeys(op.expect)]) {
           if (clipEffects(current).includes(key) && fields[key] === undefined) fields[key] = CLIP_FILL[key]();
           if (current.type === "shape" && Object.hasOwn(SHAPE_FILL, key) && fields[key] === undefined) fields[key] = SHAPE_FILL[key]();
+        }
+        // Colour changes merge one level deep too, and each one named starts from 0.
+        const adjust = fields.adjust;
+        if (isPlainObject(adjust)) {
+          for (const key of [...givenKeys(op.patch, "adjust"), ...givenKeys(op.expect, "adjust")]) {
+            if ((ADJUST_KEYS as readonly string[]).includes(key) && adjust[key] === undefined) adjust[key] = 0;
+          }
         }
         const keyframes = fields.keyframes;
         if (isPlainObject(keyframes)) {

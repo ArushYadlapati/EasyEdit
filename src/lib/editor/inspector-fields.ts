@@ -1,6 +1,6 @@
 import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
 import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
-import { ArrowHead, ArrowHeads, ShapeDash, VOLUME_MAX, isMediaClip, type ShapeClip, type TextClip } from "@/lib/timeline";
+import { ArrowHead, ArrowHeads, BlendMode, ShapeDash, VOLUME_MAX, adjustOf, isMediaClip, type AdjustKey, type MediaClip, type ShapeClip, type TextClip } from "@/lib/timeline";
 import { ARROW_DEFAULTS, CURVED_BEND, arrowThrough, takesRadius } from "@/lib/timeline/shapes";
 import { BACKGROUND_START, hasBackground, hasOutline, hasShadow, outlineStart, shadowStart, textExtras } from "@/lib/timeline/text-style";
 import { straightenOps } from "./arrow-drag";
@@ -66,6 +66,18 @@ export type ClipField =
   | "fadeOut"
   // How fast a video or audio clip plays, in percent of as recorded, whichever way it runs.
   | "speed"
+  // A video's or image's colours, in percent of their full swing, its hue in degrees and its blur in project pixels;
+  // whether it is mirrored ("on" or "off"); and how a clip mixes with what is under it.
+  | "brightness"
+  | "contrast"
+  | "saturation"
+  | "temperature"
+  | "vignette"
+  | "hue"
+  | "blur"
+  | "flipH"
+  | "flipV"
+  | "blend"
   // A shape's: its outline (or an arrow's line) colour and width, its fill, dashes and rounding, and an arrow's heads,
   // head look and size, and its path: Path sets it straight or curved, and Bend, on a line with one point, how far to
   // the side that point sits, in percent of the length.
@@ -125,6 +137,16 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   fadeIn: "fade change",
   fadeOut: "fade change",
   speed: "speed change",
+  brightness: "color change",
+  contrast: "color change",
+  saturation: "color change",
+  temperature: "color change",
+  vignette: "color change",
+  hue: "color change",
+  blur: "color change",
+  flipH: "flip",
+  flipV: "flip",
+  blend: "blend change",
   stroke: "style change",
   strokeWidth: "style change",
   fill: "style change",
@@ -162,6 +184,22 @@ export const FONT_SIZE_MAX = 1000;
 const ALIGNS = ["left", "center", "right"] as const;
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 export const SPEED_PERCENT = { min: SPEED_MIN * 100, max: SPEED_MAX * 100 };
+
+// What each colour field takes as typed; per: what one of the document's own units is in typed ones.
+export const ADJUST_RANGE: Record<AdjustKey, { min: number; max: number; per: number }> = {
+  brightness: { min: -100, max: 100, per: 100 },
+  contrast: { min: -100, max: 100, per: 100 },
+  saturation: { min: -100, max: 100, per: 100 },
+  temperature: { min: -100, max: 100, per: 100 },
+  vignette: { min: 0, max: 100, per: 100 },
+  hue: { min: -180, max: 180, per: 1 },
+  blur: { min: 0, max: 200, per: 1 },
+};
+
+// A clip with a picture of its own to colour and mirror: a video or an image.
+function isPicture(clip: Clip): clip is MediaClip & { type: "video" | "image" } {
+  return clip.type === "video" || clip.type === "image";
+}
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
@@ -278,6 +316,20 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
       return clip.type === "video" || clip.type === "audio" ? ((clip[field] ?? 0) / fps).toFixed(2) : "";
     case "speed":
       return hasSpeed(clip) ? String(Math.round(rateOf(clip) * 100)) : "";
+    case "brightness":
+    case "contrast":
+    case "saturation":
+    case "temperature":
+    case "vignette":
+      return isPicture(clip) ? oneDecimal(adjustOf(clip.adjust)[field] * 100) : "";
+    case "hue":
+    case "blur":
+      return isPicture(clip) ? oneDecimal(adjustOf(clip.adjust)[field]) : "";
+    case "flipH":
+    case "flipV":
+      return isPicture(clip) ? (clip.transform[field] ? "on" : "off") : "";
+    case "blend":
+      return clip.type === "audio" || clip.type === "placeholder" ? "" : (clip.blend ?? "normal");
   }
   if (clip.type === "shape") return shapeFieldValue(clip, field);
   if (clip.type !== "text") return "";
@@ -591,6 +643,29 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       const percent = parseNumber(raw);
       if (percent === null || !hasSpeed(clip)) return null;
       return speedOps(clip, Math.round(percent) / 100, ctx.room ?? Infinity, lengthFrames);
+    }
+    case "brightness":
+    case "contrast":
+    case "saturation":
+    case "temperature":
+    case "vignette":
+    case "hue":
+    case "blur": {
+      const n = parseNumber(raw);
+      if (n === null || !isPicture(clip)) return null;
+      const range = ADJUST_RANGE[field];
+      const value = round(clamp(n, range.min, range.max) / range.per, 4);
+      return value === adjustOf(clip.adjust)[field] ? [] : update({ adjust: { [field]: value } });
+    }
+    case "flipH":
+    case "flipV": {
+      if ((raw !== "on" && raw !== "off") || !isPicture(clip)) return null;
+      return (raw === "on") === (clip.transform[field] ?? false) ? [] : update({ transform: { [field]: raw === "on" } });
+    }
+    case "blend": {
+      const blend = BlendMode.safeParse(raw);
+      if (!blend.success || clip.type === "audio" || clip.type === "placeholder") return null;
+      return blend.data === (clip.blend ?? "normal") ? [] : update({ blend: blend.data });
     }
     case "x":
     case "y":

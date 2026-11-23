@@ -5,6 +5,8 @@ import { drawShape } from "./shapes";
 import type { Clip, Crop, MediaClip, TextClip, TimelineDoc, Track, Transform } from "@/lib/timeline";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
+import { adjustOf, isAdjusted, type FullAdjust } from "@/lib/timeline/adjust";
+import { adjustFilter, compositeOf, needsLayer, temperatureColor } from "./adjust";
 import { clipLook, effectWindows } from "./effects";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
 import { layoutText, letterSpacingOf, textFont, textRect, type LocalRect, type TextLine } from "./text-layout";
@@ -21,6 +23,9 @@ export type DrawOptions = {
   resolveFont?: (family: string) => string; // a document font name to a CSS font-family list
   // A clip left out: the preview's in-place text box shows that text instead. Never set for an export.
   hideClipId?: string;
+  // A context on a canvas of this size for a picture that is finished on its own before it joins the frame, the
+  // same one each time. Default: an OffscreenCanvas; null where there is none.
+  makeLayer?: (width: number, height: number) => Ctx2D | null;
 };
 
 // Repeats the --ed-clip-video and --ed-clip-image colors from src/app/globals.css, because a worker cannot read CSS variables.
@@ -334,28 +339,103 @@ function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (fa
   letters(false);
 }
 
+// A canvas the size of the frame being drawn, kept between frames, for a picture that has to be finished on its own
+// before it joins the frame. An OffscreenCanvas, which a page and a worker both have; null where there is none.
+let sharedLayer: { width: number; height: number; ctx: Ctx2D } | null = null;
+
+function defaultLayer(width: number, height: number): Ctx2D | null {
+  if (sharedLayer && sharedLayer.width === width && sharedLayer.height === height) return sharedLayer.ctx;
+  const ctx = typeof OffscreenCanvas === "undefined" ? null : new OffscreenCanvas(width, height).getContext("2d");
+  sharedLayer = ctx ? { width, height, ctx } : null;
+  return ctx;
+}
+
+// A picture with its colour changes. What a canvas filter can do (brightness, contrast, saturation, hue, blur) is set
+// as one. Warming, cooling and a vignette need the picture on a layer of its own first, so they touch nothing under it
+// and nothing outside it; the finished layer is then drawn onto the frame with the clip's own opacity and blend.
+// paint: draws the picture into a context. box: where it lands, in the clip's own pixels. cutout: the picture may
+// have see-through parts (an image), which the warming must leave see-through.
+function drawAdjusted(ctx: Ctx2D, adjust: FullAdjust, box: LocalRect, cutout: boolean, paint: (target: Ctx2D) => void, options: DrawOptions): void {
+  const m = ctx.getTransform();
+  const filter = adjustFilter(adjust, Math.hypot(m.a, m.b));
+  const layer = needsLayer(adjust) ? (options.makeLayer ?? defaultLayer)(ctx.canvas.width, ctx.canvas.height) : null;
+  if (!layer) {
+    if (filter) ctx.filter = filter;
+    paint(ctx);
+    return;
+  }
+  const { width, height } = ctx.canvas;
+  layer.save();
+  layer.setTransform(1, 0, 0, 1, 0, 0);
+  layer.clearRect(0, 0, width, height);
+  layer.setTransform(m);
+  if (filter) layer.filter = filter;
+  paint(layer);
+  if (filter) layer.filter = "none";
+  const w = box.right - box.left;
+  const h = box.bottom - box.top;
+  if (adjust.temperature !== 0) {
+    layer.globalCompositeOperation = "multiply";
+    layer.fillStyle = temperatureColor(adjust.temperature);
+    layer.fillRect(box.left, box.top, w, h);
+    if (cutout) {
+      // The multiply filled the see-through parts too: the picture's own shape cuts them out again.
+      layer.globalCompositeOperation = "destination-in";
+      paint(layer);
+    }
+  }
+  if (adjust.vignette > 0) {
+    const cx = (box.left + box.right) / 2;
+    const cy = (box.top + box.bottom) / 2;
+    const reach = Math.hypot(w, h) / 2;
+    const shade = layer.createRadialGradient(cx, cy, reach * 0.45, cx, cy, reach);
+    shade.addColorStop(0, "rgba(0,0,0,0)");
+    shade.addColorStop(1, `rgba(0,0,0,${adjust.vignette})`);
+    layer.globalCompositeOperation = "source-atop";
+    layer.fillStyle = shade;
+    layer.fillRect(box.left, box.top, w, h);
+  }
+  layer.restore();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(layer.canvas, 0, 0);
+  ctx.setTransform(m);
+}
+
 function drawMedia(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip & { type: "video" | "image" }, frame: number, options: DrawOptions): void {
   const source = options.resolveSource?.(clip, frame) ?? null;
   const size = mediaSize(doc, clip, source);
   const crop = clip.transform.crop;
   const k = cropRect(centred(size), crop);
   if (hasPicture(source)) {
-    if (!crop || !isCropped(crop)) {
-      ctx.drawImage(source.image, -size.width / 2, -size.height / 2, size.width, size.height);
-      return;
+    const { flipH, flipV } = clip.transform;
+    if (flipH || flipV) {
+      // Mirrored about the middle of what is shown, so a cropped picture stays where it is.
+      const cx = (k.left + k.right) / 2;
+      const cy = (k.top + k.bottom) / 2;
+      ctx.translate(cx, cy);
+      ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+      ctx.translate(-cx, -cy);
     }
-    const { width: sw, height: sh } = source;
-    ctx.drawImage(
-      source.image,
-      crop.left * sw,
-      crop.top * sh,
-      sw - crop.left * sw - crop.right * sw,
-      sh - crop.top * sh - crop.bottom * sh,
-      k.left,
-      k.top,
-      k.right - k.left,
-      k.bottom - k.top,
-    );
+    const paint = (target: Ctx2D) => {
+      if (!crop || !isCropped(crop)) {
+        target.drawImage(source.image, -size.width / 2, -size.height / 2, size.width, size.height);
+        return;
+      }
+      const { width: sw, height: sh } = source;
+      target.drawImage(
+        source.image,
+        crop.left * sw,
+        crop.top * sh,
+        sw - crop.left * sw - crop.right * sw,
+        sh - crop.top * sh - crop.bottom * sh,
+        k.left,
+        k.top,
+        k.right - k.left,
+        k.bottom - k.top,
+      );
+    };
+    if (isAdjusted(clip.adjust)) drawAdjusted(ctx, adjustOf(clip.adjust), k, clip.type === "image", paint, options);
+    else paint(ctx);
     return;
   }
   ctx.fillStyle = PLACEHOLDER_FILL[clip.type];
@@ -380,6 +460,8 @@ function drawClip(
   const { t } = draw;
   ctx.save();
   ctx.globalAlpha = draw.alpha;
+  const composite = clip.type === "placeholder" ? null : compositeOf(clip.blend);
+  if (composite) ctx.globalCompositeOperation = composite;
   ctx.translate(t.x * doc.width + draw.dx, t.y * doc.height + draw.dy);
   ctx.rotate((t.rotation * Math.PI) / 180);
   // A stretch widens text glyphs too. Wrapping happens in local units, so it does not change.

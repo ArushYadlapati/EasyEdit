@@ -30,6 +30,9 @@ export const Transform = z.object({
   opacity: z.number().min(0).max(1),
   fit: z.enum(["cover", "contain"]),
   crop: Crop.optional(), // video, image and text; the kept part stays where it was. Audio accepts and ignores it.
+  // A video or image mirrored side to side or top to bottom, in place. Other clips accept and ignore them.
+  flipH: z.boolean().optional(),
+  flipV: z.boolean().optional(),
 });
 export type Transform = z.infer<typeof Transform>;
 
@@ -41,6 +44,23 @@ export const Slot = z.strictObject({
 export type Slot = z.infer<typeof Slot>;
 
 const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "a colour is #rrggbb");
+
+// A video's or image's colour and focus changes (adjust.ts). Each is 0, or absent, when the picture is as recorded.
+const AdjustShare = z.number().min(-1).max(1);
+export const Adjust = z.strictObject({
+  brightness: AdjustShare.optional(),
+  contrast: AdjustShare.optional(),
+  saturation: AdjustShare.optional(),
+  temperature: AdjustShare.optional(), // below 0 cooler, above 0 warmer
+  hue: z.number().min(-180).max(180).optional(), // degrees
+  blur: z.number().min(0).max(200).optional(), // project pixels
+  vignette: z.number().min(0).max(1).optional(),
+});
+export type Adjust = z.infer<typeof Adjust>;
+
+// How a clip mixes with what is drawn under it. Absent means "normal".
+export const BlendMode = z.enum(["normal", "multiply", "screen", "overlay", "darken", "lighten", "add", "soft-light", "hard-light", "difference"]);
+export type BlendMode = z.infer<typeof BlendMode>;
 
 // How a value travels from one keyframe to the next. "hold" stays put until the next keyframe, then jumps.
 export const Ease = z.enum(["linear", "ease_in", "ease_out", "ease_in_out", "hold"]);
@@ -145,6 +165,9 @@ export const MediaClip = z.object({
   transitionOut: TransitionOut.nullable().optional(),
   // Video and audio only (checked in the ops): this clip's speech is captioned. Absent means off.
   captions: z.boolean().optional(),
+  // Video and image only (checked in the ops).
+  adjust: Adjust.optional(),
+  blend: BlendMode.optional(),
 });
 export type MediaClip = z.infer<typeof MediaClip>;
 
@@ -185,6 +208,7 @@ export const TextClip = z.object({
   animationIn: TextAnimationIn.nullable().optional(),
   animationOut: TextAnimationOut.nullable().optional(),
   emphasis: Emphasis.nullable().optional(),
+  blend: BlendMode.optional(),
 });
 export type TextClip = z.infer<typeof TextClip>;
 
@@ -244,6 +268,7 @@ export const ShapeClipFields = z.object({
   keyframes: Keyframes.optional(),
   transitionIn: TransitionOut.nullable().optional(), // no crossfade: a shape has nothing to blend from
   transitionOut: TransitionOut.nullable().optional(),
+  blend: BlendMode.optional(),
 });
 
 export function shapeRules(c: Omit<z.infer<typeof ShapeClipFields>, "id">, ctx: z.RefinementCtx): void {

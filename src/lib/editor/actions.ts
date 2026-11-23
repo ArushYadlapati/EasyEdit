@@ -2,7 +2,10 @@ import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
 import {
   DEFAULT_TRANSFORM,
+  LOOKS,
   NO_CROP,
+  lookOf,
+  lookPatch,
   TRACK_ACCEPTS,
   isCropped,
   isPlaceholder,
@@ -295,6 +298,17 @@ export function freezeFrame(store: EditorStore): void {
     return;
   }
   if (state.edit(frozen.ops, "freeze frame").ok) state.select([frozen.clipId]);
+}
+
+// Gives a video or image a ready-made colour look, or with null takes its colours back to as recorded. Its blur stays.
+export function applyLook(store: EditorStore, clipId: string, lookId: string | null): void {
+  const state = store.getState();
+  const clip = findClip(state.doc, clipId)?.clip;
+  if (!state.canEdit || !clip || (clip.type !== "video" && clip.type !== "image")) return;
+  const look = lookId === null ? null : (LOOKS.find((l) => l.id === lookId) ?? null);
+  if (lookId !== null && !look) return;
+  if (lookOf(clip.adjust) === (look?.id ?? "none")) return;
+  state.edit([{ op: "update_clip", clipId, patch: { adjust: lookPatch(look) } }], "color look");
 }
 
 // Clips on locked tracks are left out, so a following delete or nudge is not refused as a whole.

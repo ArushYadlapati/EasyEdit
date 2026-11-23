@@ -13,9 +13,10 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { gainLabel } from "@/lib/audio/loudness";
-import { freezeFrame, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
+import { applyLook, freezeFrame, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
 import { trackToggles } from "@/lib/editor/geometry";
 import {
+  ADJUST_RANGE,
   FIELD_LABEL,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
@@ -40,7 +41,7 @@ import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { VOLUME_MAX, docDuration, isCropped, isMediaClip, type Clip, type KeyframeProp, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_ADJUST, VOLUME_MAX, docDuration, isAdjusted, isCropped, isMediaClip, lookOf, type Clip, type KeyframeProp, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
@@ -134,6 +135,13 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
       return { scrub: 1 / fps, decimals: 2 };
     case "volume":
     case "speed":
+    case "brightness":
+    case "contrast":
+    case "saturation":
+    case "temperature":
+    case "vignette":
+    case "hue":
+    case "blur":
     case "shadowOpacity":
     case "backgroundOpacity":
     case "backgroundPadding":
@@ -220,6 +228,9 @@ function NumberField(props: {
     scrubRange = () => ({ min: 0, max: VOLUME_MAX * 100 });
   } else if (field === "speed") {
     scrubRange = () => SPEED_PERCENT;
+  } else if (Object.hasOwn(ADJUST_RANGE, field)) {
+    const { min, max } = ADJUST_RANGE[field as keyof typeof ADJUST_RANGE];
+    scrubRange = () => ({ min, max });
   } else {
     const range = lookRange(field);
     if (range) scrubRange = () => range;
@@ -682,6 +693,81 @@ function SoundSection({ clip }: { clip: MediaClip }) {
   );
 }
 
+const ADJUST_FIELDS: { field: keyof typeof ADJUST_RANGE; label: string; suffix: string }[] = [
+  { field: "brightness", label: "Brightness", suffix: "%" },
+  { field: "contrast", label: "Contrast", suffix: "%" },
+  { field: "saturation", label: "Saturation", suffix: "%" },
+  { field: "temperature", label: "Warmth", suffix: "%" },
+  { field: "hue", label: "Hue", suffix: "°" },
+  { field: "vignette", label: "Vignette", suffix: "%" },
+  { field: "blur", label: "Blur", suffix: "px" },
+];
+
+// A video's or image's colours: ready-made looks, each a set of the numbers below them, and the numbers themselves.
+// 0 everywhere is the picture as recorded. Reset takes every one back there, the blur too.
+function ColorSection({ clip }: { clip: MediaClip }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const current = lookOf(clip.adjust);
+  const reset = () => store.getState().edit([{ op: "update_clip", clipId: clip.id, patch: { adjust: { ...NO_ADJUST } } }], "color change");
+  return (
+    <Section
+      title="Color"
+      actions={
+        <Button data-edit-control size="sm" disabled={!canEdit || !isAdjusted(clip.adjust)} onClick={reset}>
+          Reset color
+        </Button>
+      }
+    >
+      <div role="group" aria-label="Looks" className="flex flex-wrap gap-1.5">
+        {[{ id: "none", label: "None" }, ...LOOKS].map((look) => (
+          <Button
+            key={look.id}
+            data-edit-control
+            size="sm"
+            aria-pressed={current === look.id}
+            disabled={!canEdit}
+            onClick={() => applyLook(store, clip.id, look.id === "none" ? null : look.id)}
+          >
+            {look.label}
+          </Button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {ADJUST_FIELDS.map(({ field, label, suffix }) => (
+          <NumberField key={field} clipId={clip.id} field={field} label={label} suffix={suffix} min={ADJUST_RANGE[field].min} max={ADJUST_RANGE[field].max} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+// How a clip mixes with what is under it, and for a video or image whether it is mirrored.
+function MixSection({ clip }: { clip: Exclude<Clip, { type: "placeholder" }> }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const picture = clip.type === "video" || clip.type === "image";
+  return (
+    <Section title="Blend">
+      <Field label="Blend mode">
+        <Select data-edit-control disabled={!canEdit} value={clip.blend ?? "normal"} onChange={(event) => editField(store, clip.id, "blend", event.target.value)}>
+          {BLEND_MODES.map((mode) => (
+            <option key={mode} value={mode}>
+              {BLEND_LABEL[mode]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {picture && (
+        <div className="grid grid-cols-2 gap-2">
+          <Toggle label="Flip sideways" data-edit-control checked={clip.transform.flipH ?? false} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "flipH", on ? "on" : "off")} />
+          <Toggle label="Flip upside down" data-edit-control checked={clip.transform.flipV ?? false} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "flipV", on ? "on" : "off")} />
+        </div>
+      )}
+    </Section>
+  );
+}
+
 // How fast a video or audio clip plays, in percent of as recorded: its length follows, so twice as fast is half as
 // long. A video can also be turned round to play backward, and the frame under the playhead held as a freeze frame; a
 // clip that does either plays without sound, and a held frame has no speed to set.
@@ -786,6 +872,8 @@ function ClipInspector({ clip }: { clip: Clip }) {
       )}
       {drawsOnCanvas && <PositionSection clipId={clip.id} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
+      {(clip.type === "video" || clip.type === "image") && <ColorSection clip={clip} />}
+      {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "audio" && <MixSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}
       <TimingSection clipId={clip.id} />
