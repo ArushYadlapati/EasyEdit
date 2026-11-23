@@ -22,6 +22,7 @@ import { LeaveLink } from "../leave-link";
 import { AssetTile, type AssetAction, type WatchView } from "./asset-tile";
 import { type StorageSetup, useLibrary, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
 import { UploadRow } from "./upload-row";
+import { VoiceoverButton } from "./voiceover-button";
 
 const ACCEPT = ".mp4,.m4v,.mov,.webm,.jpg,.jpeg,.png,.webp,.mp3,.m4a,.wav,.aac";
 
@@ -212,6 +213,7 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
               <Upload />
               Upload
             </Button>
+            <VoiceoverButton canUpload={canUpload} />
             {canUpload && <p className="text-[13px] leading-5 text-ed-muted">You can also drag files here, onto the timeline or onto the preview.</p>}
             <input
               ref={picker}
