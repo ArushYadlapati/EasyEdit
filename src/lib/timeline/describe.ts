@@ -4,7 +4,8 @@ import { captionStyleOf } from "./captions";
 import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
 import { KEYFRAME_PROPS } from "./keyframes";
 import { shapeToolOf } from "./shapes";
-import type { Clip, KeyframeProp, MediaClip, ShapeClip, Slot, Track, TimelineDoc, Transform, Transition } from "./types";
+import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
+import type { Clip, KeyframeProp, MediaClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -112,6 +113,15 @@ function describeTransformChanges(t: Transform, type: Clip["type"]): string {
   return out;
 }
 
+// The optional style fields a text sets to something other than their default, as style keys an update_clip takes.
+function describeTextLook(style: TextStyle): string {
+  const parts = TEXT_EXTRA_KEYS.flatMap((key) => {
+    const value = style[key];
+    return value === undefined || value === TEXT_STYLE_DEFAULTS[key] ? [] : [`${key}=${typeof value === "string" ? `"${value}"` : String(value)}`];
+  });
+  return parts.length ? `  ${parts.join(" ")}` : "";
+}
+
 function describeClipInDetail(clip: Clip, fps: number): string {
   const range = `${framesToSeconds(clip.start, fps)}–${framesToSeconds(clip.start + clip.duration, fps)}s`;
   const frames = `frames ${clip.start}–${clip.start + clip.duration}`;
@@ -125,6 +135,7 @@ function describeClipInDetail(clip: Clip, fps: number): string {
     return (
       `${head}  "${escapeQuoted(clip.text)}"` +
       `  font="${escapeQuoted(s.fontFamily)}" size=${s.fontSize} weight=${s.fontWeight} color="${escapeQuoted(s.color)}" align=${s.align} x=${t.x} y=${t.y}` +
+      describeTextLook(s) +
       describeTransformChanges(t, clip.type) +
       slotSuffix(clip.slot) +
       describeEffects(clip, fps, true)

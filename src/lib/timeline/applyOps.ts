@@ -15,6 +15,7 @@ import {
 } from "./presets";
 import { captionStyleOf, captionTrack, defaultCaptionStyle, rewordRun, transcriptOf } from "./captions";
 import { ARROW_DEFAULTS } from "./shapes";
+import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
 import { CaptionStyle, CaptionWords, MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
 import type { Clip, FormatId, FrameSize, Guide, TimelineDoc, Track } from "./types";
 
@@ -83,6 +84,9 @@ function clipEffects(clip: EffectsHolder): readonly string[] {
 // Optional transform fields, each with its neutral value. update_clip fills a missing one before it is set or
 // expected, so the first change records an undo that goes back to the neutral value.
 const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CROP }), stretch: () => NO_STRETCH };
+
+// A text style's optional fields, filled the same way before one is set or expected.
+const STYLE_FILL: ReadonlySet<string> = new Set(TEXT_EXTRA_KEYS);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -580,6 +584,12 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         const transform: Record<string, unknown> = current.transform;
         for (const key of [...givenKeys(op.patch, "transform"), ...givenKeys(op.expect, "transform")]) {
           if (Object.hasOwn(TRANSFORM_FILL, key) && transform[key] === undefined) transform[key] = TRANSFORM_FILL[key]();
+        }
+        if (current.type === "text") {
+          const style: Record<string, unknown> = current.style;
+          for (const key of [...givenKeys(op.patch, "style"), ...givenKeys(op.expect, "style")]) {
+            if (STYLE_FILL.has(key) && style[key] === undefined) style[key] = TEXT_STYLE_DEFAULTS[key as keyof typeof TEXT_STYLE_DEFAULTS];
+          }
         }
         const fields: Record<string, unknown> = current;
         for (const key of [...givenKeys(op.patch), ...givenKeys(op.expect)]) {

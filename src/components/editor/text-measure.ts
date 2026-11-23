@@ -1,4 +1,5 @@
 import { makeFontResolver } from "@/lib/editor/fonts";
+import { letterSpacingOf, textFont } from "@/lib/render/text-layout";
 import type { TextClip } from "@/lib/timeline";
 
 type Measurer = { ctx: CanvasRenderingContext2D | null; resolveFont: (family: string) => string };
@@ -36,10 +37,11 @@ function cachedCssVar(): (name: string) => string {
 // The width of a line of the clip's text in its own font, as the preview draws it. Without a 2D context (on the
 // server, or where canvas is missing), each character is half the font size wide.
 function measureText(clip: TextClip, s: string): number {
-  const { fontWeight, fontSize, fontFamily } = clip.style;
+  const { fontSize, fontFamily } = clip.style;
   const m = measurer();
   if (!m?.ctx) return (s.length * fontSize) / 2;
-  m.ctx.font = `${fontWeight} ${fontSize}px ${m.resolveFont(fontFamily)}`;
+  m.ctx.font = textFont(clip.style, m.resolveFont(fontFamily));
+  m.ctx.letterSpacing = letterSpacingOf(clip.style) ?? "0px";
   return m.ctx.measureText(s).width;
 }
 

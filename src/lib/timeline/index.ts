@@ -9,3 +9,4 @@ export * from "./slots";
 export * from "./shapes";
 export * from "./captions";
 export * from "./speed";
+export * from "./text-style";

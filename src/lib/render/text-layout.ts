@@ -1,8 +1,25 @@
 import { graphemes } from "@/lib/text";
-import type { TextClip } from "@/lib/timeline";
+import type { TextClip, TextStyle } from "@/lib/timeline";
+import { TEXT_STYLE_DEFAULTS } from "@/lib/timeline/text-style";
 
 export const TEXT_BOX_WIDTH = 0.9; // of the project width
-export const LINE_HEIGHT = 1.2; // × font size
+export const LINE_HEIGHT = TEXT_STYLE_DEFAULTS.lineHeight; // × font size, for a text that sets none of its own
+
+// From one line of a text to the next, as a multiple of its font size.
+export function lineHeightOf(style: TextStyle): number {
+  return style.lineHeight ?? LINE_HEIGHT;
+}
+
+// The canvas font of a text's style. family: its font as a CSS font-family list.
+export function textFont(style: TextStyle, family: string): string {
+  return `${style.italic ? "italic " : ""}${style.fontWeight} ${style.fontSize}px ${family}`;
+}
+
+// The room a text adds after each of its characters, as a CSS length for a canvas or an element; null when it adds none.
+export function letterSpacingOf(style: TextStyle): string | null {
+  const spacing = style.letterSpacing ?? 0;
+  return spacing === 0 ? null : `${spacing * style.fontSize}px`;
+}
 
 // Cuts one word into pieces that each fit maxWidth (at least one grapheme per piece).
 function cutWord(word: string, maxWidth: number, measure: (s: string) => number): string[] {
@@ -46,7 +63,7 @@ export function layoutText(clip: TextClip, docWidth: number, measure: (s: string
   const box = TEXT_BOX_WIDTH * docWidth;
   const lines = wrapLines(clip.text, box, measure);
   const x = clip.style.align === "left" ? -box / 2 : clip.style.align === "right" ? box / 2 : 0;
-  return lines.map((text, i) => ({ text, x, y: (i - (lines.length - 1) / 2) * clip.style.fontSize * LINE_HEIGHT }));
+  return lines.map((text, i) => ({ text, x, y: (i - (lines.length - 1) / 2) * clip.style.fontSize * lineHeightOf(clip.style) }));
 }
 
 // A box in project pixels from the clip's centre, before scale, stretch and rotation.
@@ -56,7 +73,7 @@ export type LocalRect = { left: number; top: number; right: number; bottom: numb
 export function textRect(clip: TextClip, docWidth: number, measure: (s: string) => number): LocalRect {
   const { fontSize, align } = clip.style;
   const lines = layoutText(clip, docWidth, measure);
-  const half = (fontSize * LINE_HEIGHT) / 2;
+  const half = (fontSize * lineHeightOf(clip.style)) / 2;
   let left = Infinity;
   let right = -Infinity;
   for (const line of lines) {

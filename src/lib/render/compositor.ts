@@ -6,7 +6,8 @@ import type { Clip, Crop, MediaClip, TextClip, TimelineDoc, Track, Transform } f
 import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
 import { clipLook, effectWindows } from "./effects";
-import { layoutText, textRect, type LocalRect, type TextLine } from "./text-layout";
+import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
+import { layoutText, letterSpacingOf, textFont, textRect, type LocalRect, type TextLine } from "./text-layout";
 
 export type { LocalRect };
 
@@ -167,7 +168,8 @@ function placeGraphemes(text: string, lines: TextLine[]): Placed[][] {
 
 // Draws a typed-in prefix or one word at a time. Each piece is drawn left-aligned from where the whole line starts,
 // so it lands where it sits in the line, whatever the line's alignment.
-function drawTextPieces(ctx: Ctx2D, clip: TextClip, lines: TextLine[], look: TextLook, measure: (s: string) => number): void {
+// outline: the pieces' outlines are drawn, not the pieces, so every outline can go under every letter.
+function drawTextPieces(ctx: Ctx2D, clip: TextClip, lines: TextLine[], look: TextLook, measure: (s: string) => number, outline = false): void {
   const { color, align } = clip.style;
   ctx.textAlign = "left";
   let style = color;
@@ -177,8 +179,14 @@ function drawTextPieces(ctx: Ctx2D, clip: TextClip, lines: TextLine[], look: Tex
     const left = align === "left" ? line.x : align === "right" ? line.x - width : line.x - width / 2;
     const shown = look.reveal === null ? placed[n] : placed[n].filter((p) => p.at < look.reveal!);
     if (shown.length === 0) return;
+    const text = shown.map((p) => p.g).join("");
+    if (outline) {
+      ctx.strokeText(text, left, line.y);
+      return;
+    }
+    if (clip.style.underline) underline(ctx, clip, left, line.y, measure(text));
     if (look.litWord === null) {
-      ctx.fillText(shown.map((p) => p.g).join(""), left, line.y);
+      ctx.fillText(text, left, line.y);
       return;
     }
     let i = 0;
@@ -201,9 +209,41 @@ function drawTextPieces(ctx: Ctx2D, clip: TextClip, lines: TextLine[], look: Tex
   });
 }
 
+// The line under underlined text: a tenth of the font size below the letters' feet, a fourteenth of it thick.
+function underline(ctx: Ctx2D, clip: TextClip, left: number, y: number, width: number): void {
+  const { fontSize } = clip.style;
+  ctx.fillRect(left, y + fontSize * 0.42, width, Math.max(1, fontSize / 14));
+}
+
+// A #rrggbb colour at an opacity, as a canvas colour.
+function withAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+// A rounded box path made with arcTo, so every canvas can take it.
+function roundedBox(ctx: Ctx2D, box: LocalRect, r: number): void {
+  const { left: l, top: t } = box;
+  const w = box.right - l;
+  const h = box.bottom - t;
+  ctx.beginPath();
+  ctx.moveTo(l + r, t);
+  ctx.arcTo(l + w, t, l + w, t + h, r);
+  ctx.arcTo(l + w, t + h, l, t + h, r);
+  ctx.arcTo(l, t + h, l, t, r);
+  ctx.arcTo(l, t, l + w, t, r);
+  ctx.closePath();
+}
+
 function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (family: string) => string, look: TextLook = PLAIN_TEXT): void {
-  const { fontWeight, fontSize, fontFamily, color, align } = clip.style;
-  ctx.font = `${fontWeight} ${fontSize}px ${resolveFont(fontFamily)}`;
+  const { fontSize, fontFamily, color, align } = clip.style;
+  const extras = textExtras(clip.style);
+  const outlined = hasOutline(extras);
+  const shadowed = hasShadow(extras);
+  const boxed = hasBackground(extras);
+  ctx.font = textFont(clip.style, resolveFont(fontFamily));
+  const spacing = letterSpacingOf(clip.style);
+  if (spacing !== null) ctx.letterSpacing = spacing;
   ctx.fillStyle = color;
   ctx.textAlign = align;
   ctx.textBaseline = "middle";
@@ -211,18 +251,87 @@ function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (fa
   const crop = clip.transform.crop;
   if (crop && isCropped(crop)) {
     const k = cropRect(textRect(clip, doc.width, measure), crop);
-    // An uncut side moves out by the font size, so glyphs wider than their measured advance are not shaved.
-    if (crop.left === 0) k.left -= fontSize;
-    if (crop.top === 0) k.top -= fontSize;
-    if (crop.right === 0) k.right += fontSize;
-    if (crop.bottom === 0) k.bottom += fontSize;
+    // An uncut side moves out by the font size, so glyphs wider than their measured advance are not shaved, and by
+    // whatever else the text draws around itself: its outline, its shadow and its box.
+    const out =
+      fontSize +
+      (outlined ? extras.outlineWidth : 0) +
+      (shadowed ? extras.shadowBlur + Math.max(Math.abs(extras.shadowX), Math.abs(extras.shadowY)) : 0) +
+      (boxed ? extras.backgroundPadding * fontSize : 0);
+    if (crop.left === 0) k.left -= out;
+    if (crop.top === 0) k.top -= out;
+    if (crop.right === 0) k.right += out;
+    if (crop.bottom === 0) k.bottom += out;
     ctx.beginPath();
     ctx.rect(k.left, k.top, k.right - k.left, k.bottom - k.top);
     ctx.clip();
   }
   const lines = layoutText(clip, doc.width, measure);
-  if (look.reveal !== null || look.litWord !== null) drawTextPieces(ctx, clip, lines, look, measure);
-  else for (const line of lines) ctx.fillText(line.text, line.x, line.y);
+
+  if (boxed) {
+    // One box behind all the lines, as much larger than them as its padding, at its own opacity on top of the clip's.
+    const r = textRect(clip, doc.width, measure);
+    const pad = extras.backgroundPadding * fontSize;
+    const box = { left: r.left - pad, top: r.top - pad, right: r.right + pad, bottom: r.bottom + pad };
+    const alpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha * extras.backgroundOpacity;
+    ctx.fillStyle = extras.backgroundColor;
+    roundedBox(ctx, box, Math.min(extras.backgroundRadius * fontSize, (box.right - box.left) / 2, (box.bottom - box.top) / 2));
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+  }
+
+  const pieces = look.reveal !== null || look.litWord !== null;
+  const letters = (outline: boolean) => {
+    if (pieces) {
+      drawTextPieces(ctx, clip, lines, look, measure, outline);
+      // The pieces are drawn from the left and in their own colours; the next pass starts as this one did.
+      ctx.textAlign = align;
+      ctx.fillStyle = color;
+      return;
+    }
+    for (const line of lines) {
+      if (outline) {
+        ctx.strokeText(line.text, line.x, line.y);
+        continue;
+      }
+      if (extras.underline) {
+        const width = measure(line.text);
+        underline(ctx, clip, align === "left" ? line.x : align === "right" ? line.x - width : line.x - width / 2, line.y, width);
+      }
+      ctx.fillText(line.text, line.x, line.y);
+    }
+  };
+  if (!outlined && !shadowed) {
+    // Plain text, the common case: one pass.
+    if (pieces) drawTextPieces(ctx, clip, lines, look, measure);
+    else letters(false);
+    return;
+  }
+  if (outlined) {
+    // Twice the width, since half of a canvas outline falls inside the letters, where the letters cover it.
+    ctx.lineJoin = "round";
+    ctx.lineWidth = extras.outlineWidth * 2;
+    ctx.strokeStyle = extras.outlineColor;
+  }
+  if (shadowed) {
+    // A canvas shadow ignores the drawing scale, so its blur and offsets are scaled by hand to stay the same share of
+    // the picture in the preview, a thumbnail and an export.
+    const m = ctx.getTransform();
+    const k = Math.hypot(m.a, m.b);
+    ctx.shadowColor = withAlpha(extras.shadowColor, extras.shadowOpacity);
+    ctx.shadowBlur = extras.shadowBlur * k;
+    ctx.shadowOffsetX = extras.shadowX * k;
+    ctx.shadowOffsetY = extras.shadowY * k;
+    if (outlined) letters(true);
+    letters(false);
+    ctx.shadowColor = "transparent";
+    // With an outline the letters are drawn again without a shadow, so no letter's shadow lies on an outline.
+    if (!outlined) return;
+  }
+  letters(true);
+  letters(false);
 }
 
 function drawMedia(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip & { type: "video" | "image" }, frame: number, options: DrawOptions): void {

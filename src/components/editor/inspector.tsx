@@ -20,6 +20,7 @@ import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   SPEED_PERCENT,
+  lookRange,
   weightOptions,
   clipFieldValue,
   cropScrubRange,
@@ -41,6 +42,7 @@ import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { VOLUME_MAX, docDuration, isCropped, isMediaClip, type Clip, type KeyframeProp, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
+import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FontSelect } from "./font-select";
 import { FormatFields } from "./format-select";
@@ -132,6 +134,19 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
       return { scrub: 1 / fps, decimals: 2 };
     case "volume":
     case "speed":
+    case "shadowOpacity":
+    case "backgroundOpacity":
+    case "backgroundPadding":
+    case "backgroundRadius":
+    case "letterSpacing":
+      return { scrub: 1, decimals: 0 };
+    case "lineHeight":
+      return { scrub: 0.01, decimals: 2 };
+    case "outlineWidth":
+      return { scrub: 0.5, decimals: 1 };
+    case "shadowBlur":
+    case "shadowX":
+    case "shadowY":
       return { scrub: 1, decimals: 0 };
     default:
       return null;
@@ -205,6 +220,9 @@ function NumberField(props: {
     scrubRange = () => ({ min: 0, max: VOLUME_MAX * 100 });
   } else if (field === "speed") {
     scrubRange = () => SPEED_PERCENT;
+  } else {
+    const range = lookRange(field);
+    if (range) scrubRange = () => range;
   }
 
   // NumberInput reads the box with Number(), which also takes "0x10" and "1e2"; only plain decimals count.
@@ -254,7 +272,9 @@ function NumberField(props: {
 
 // The native color input previews while the picker moves and saves when it closes. field: a text clip's colour, or a
 // shape's outline or fill.
-function ColorField({ clip, canEdit, field = "color", label = "Color" }: { clip: Clip; canEdit: boolean; field?: "color" | "stroke" | "fill"; label?: string }) {
+type ColorFieldName = "color" | "stroke" | "fill" | "outlineColor" | "shadowColor" | "backgroundColor";
+
+function ColorField({ clip, canEdit, field = "color", label = "Color" }: { clip: Clip; canEdit: boolean; field?: ColorFieldName; label?: string }) {
   const store = useEditorStore();
   const swatch = useRef<HTMLInputElement>(null);
   const shown = clipFieldValue(clip, field, fieldContext(viewDoc(store.getState()), clip));
@@ -329,6 +349,11 @@ function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   if (clip.type !== "text") return null;
   const weight = clip.style.fontWeight;
   const weights = weightOptions(clip.style.fontFamily, weight);
+  const look = textExtras(clip.style);
+  const outlined = hasOutline(look);
+  const shadowed = hasShadow(look);
+  const boxed = hasBackground(look);
+  const toggle = (field: ClipField, on: boolean) => editField(store, clip.id, field, on ? "on" : "off");
 
   return (
     <Section title="Text">
@@ -375,6 +400,44 @@ function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
           onChange={(align) => editField(store, clip.id, "align", align)}
         />
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Toggle label="Italic" data-edit-control checked={clip.style.italic ?? false} disabled={!canEdit} onChange={(on) => toggle("italic", on)} />
+        <Toggle label="Underline" data-edit-control checked={clip.style.underline ?? false} disabled={!canEdit} onChange={(on) => toggle("underline", on)} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField clipId={clip.id} field="letterSpacing" label="Letter spacing" suffix="%" min={-20} max={200} />
+        <NumberField clipId={clip.id} field="lineHeight" label="Line height" suffix="×" min={0.5} max={4} step={0.1} />
+      </div>
+      <Toggle label="Outline" data-edit-control checked={outlined} disabled={!canEdit} onChange={(on) => toggle("outline", on)} />
+      {outlined && (
+        <div className="grid grid-cols-2 items-end gap-2">
+          <ColorField clip={clip} canEdit={canEdit} field="outlineColor" label="Outline color" />
+          <NumberField clipId={clip.id} field="outlineWidth" label="Outline width" suffix="px" min={0} max={200} />
+        </div>
+      )}
+      <Toggle label="Shadow" data-edit-control checked={shadowed} disabled={!canEdit} onChange={(on) => toggle("shadow", on)} />
+      {shadowed && (
+        <>
+          <ColorField clip={clip} canEdit={canEdit} field="shadowColor" label="Shadow color" />
+          <div className="grid grid-cols-2 gap-2">
+            <NumberField clipId={clip.id} field="shadowOpacity" label="Shadow opacity" suffix="%" min={0} max={100} />
+            <NumberField clipId={clip.id} field="shadowBlur" label="Shadow blur" suffix="px" min={0} max={400} />
+            <NumberField clipId={clip.id} field="shadowX" label="Shadow X" suffix="px" min={-1000} max={1000} />
+            <NumberField clipId={clip.id} field="shadowY" label="Shadow Y" suffix="px" min={-1000} max={1000} />
+          </div>
+        </>
+      )}
+      <Toggle label="Background" data-edit-control checked={boxed} disabled={!canEdit} onChange={(on) => toggle("background", on)} />
+      {boxed && (
+        <>
+          <ColorField clip={clip} canEdit={canEdit} field="backgroundColor" label="Background color" />
+          <div className="grid grid-cols-3 gap-2">
+            <NumberField clipId={clip.id} field="backgroundOpacity" label="Opacity" suffix="%" min={0} max={100} />
+            <NumberField clipId={clip.id} field="backgroundPadding" label="Padding" suffix="%" min={0} max={300} />
+            <NumberField clipId={clip.id} field="backgroundRadius" label="Rounding" suffix="%" min={0} max={200} />
+          </div>
+        </>
+      )}
     </Section>
   );
 }

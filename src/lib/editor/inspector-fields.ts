@@ -1,7 +1,8 @@
 import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
 import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
-import { ArrowHead, ArrowHeads, ShapeDash, VOLUME_MAX, isMediaClip, type ShapeClip } from "@/lib/timeline";
+import { ArrowHead, ArrowHeads, ShapeDash, VOLUME_MAX, isMediaClip, type ShapeClip, type TextClip } from "@/lib/timeline";
 import { ARROW_DEFAULTS, CURVED_BEND, arrowThrough, takesRadius } from "@/lib/timeline/shapes";
+import { BACKGROUND_START, hasBackground, hasOutline, hasShadow, outlineStart, shadowStart, textExtras } from "@/lib/timeline/text-style";
 import { straightenOps } from "./arrow-drag";
 import { LIMITS } from "@/lib/limits";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
@@ -25,6 +26,27 @@ export type ClipField =
   | "fontWeight"
   | "color"
   | "align"
+  // A text's optional look. Italic, Underline, Outline, Shadow and Background are "on" or "off"; the room between
+  // letters and the background's padding and rounding are percents of the font size, the line height a multiple of it,
+  // and the outline's width and the shadow's blur and offsets project pixels.
+  | "italic"
+  | "underline"
+  | "letterSpacing"
+  | "lineHeight"
+  | "outline"
+  | "outlineColor"
+  | "outlineWidth"
+  | "shadow"
+  | "shadowColor"
+  | "shadowBlur"
+  | "shadowX"
+  | "shadowY"
+  | "shadowOpacity"
+  | "background"
+  | "backgroundColor"
+  | "backgroundOpacity"
+  | "backgroundPadding"
+  | "backgroundRadius"
   | "x"
   | "y"
   | "width"
@@ -68,6 +90,24 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   fontWeight: "style change",
   color: "style change",
   align: "style change",
+  italic: "style change",
+  underline: "style change",
+  letterSpacing: "style change",
+  lineHeight: "style change",
+  outline: "style change",
+  outlineColor: "style change",
+  outlineWidth: "style change",
+  shadow: "style change",
+  shadowColor: "style change",
+  shadowBlur: "style change",
+  shadowX: "style change",
+  shadowY: "style change",
+  shadowOpacity: "style change",
+  background: "style change",
+  backgroundColor: "style change",
+  backgroundOpacity: "style change",
+  backgroundPadding: "style change",
+  backgroundRadius: "style change",
   x: "position change",
   y: "position change",
   width: "size change",
@@ -255,7 +295,116 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
     case "align":
       return clip.style.align;
     default:
+      return textLookValue(clip, field);
+  }
+}
+
+const onOff = (on: boolean) => (on ? "on" : "off");
+
+// A text's optional look, as its fields show it. A colour that is off shows as "".
+function textLookValue(clip: TextClip, field: ClipField): string {
+  const look = textExtras(clip.style);
+  switch (field) {
+    case "italic":
+    case "underline":
+      return onOff(look[field]);
+    case "outline":
+      return onOff(hasOutline(look));
+    case "shadow":
+      return onOff(hasShadow(look));
+    case "background":
+      return onOff(hasBackground(look));
+    case "outlineColor":
+    case "shadowColor":
+    case "backgroundColor":
+      return (look[field] ?? "").toLowerCase();
+    case "letterSpacing":
+    case "shadowOpacity":
+    case "backgroundOpacity":
+    case "backgroundPadding":
+    case "backgroundRadius":
+      return oneDecimal(look[field] * 100);
+    case "lineHeight":
+      return String(Number(look.lineHeight.toFixed(2)));
+    case "outlineWidth":
+    case "shadowBlur":
+    case "shadowX":
+    case "shadowY":
+      return oneDecimal(look[field]);
+    default:
       return "";
+  }
+}
+
+type LookNumber = "letterSpacing" | "lineHeight" | "outlineWidth" | "shadowBlur" | "shadowX" | "shadowY" | "shadowOpacity" | "backgroundOpacity" | "backgroundPadding" | "backgroundRadius";
+
+// What each number of a text's look may be, as it is typed (percents, multiples and pixels); per: what one of the style's
+// own units is in typed ones; places: the decimals the style keeps.
+const LOOK_NUMBERS: Record<LookNumber, { min: number; max: number; per: number; places: number }> = {
+  letterSpacing: { min: -20, max: 200, per: 100, places: 3 },
+  lineHeight: { min: 0.5, max: 4, per: 1, places: 2 },
+  outlineWidth: { min: 0, max: 200, per: 1, places: 1 },
+  shadowBlur: { min: 0, max: 400, per: 1, places: 1 },
+  shadowX: { min: -1000, max: 1000, per: 1, places: 1 },
+  shadowY: { min: -1000, max: 1000, per: 1, places: 1 },
+  shadowOpacity: { min: 0, max: 100, per: 100, places: 3 },
+  backgroundOpacity: { min: 0, max: 100, per: 100, places: 3 },
+  backgroundPadding: { min: 0, max: 300, per: 100, places: 3 },
+  backgroundRadius: { min: 0, max: 200, per: 100, places: 3 },
+};
+
+const isLookNumber = (field: ClipField): field is LookNumber => Object.hasOwn(LOOK_NUMBERS, field);
+
+// The least and most a look number's field takes, as typed; null for any other field.
+export function lookRange(field: ClipField): { min: number; max: number } | null {
+  return isLookNumber(field) ? { min: LOOK_NUMBERS[field].min, max: LOOK_NUMBERS[field].max } : null;
+}
+
+// A text's optional look, set to what was typed or picked. Turning an outline, a shadow or a background on gives it a
+// colour (and, the first time, a size that suits the text); turning it off takes only the colour away, so turning it
+// on again brings the same look back.
+function textLookOps(clip: TextClip, field: ClipField, raw: string): OpInput[] | null {
+  const style = (patch: Record<string, unknown>): OpInput[] => [{ op: "update_clip", clipId: clip.id, patch: { style: patch } }];
+  const look = textExtras(clip.style);
+  if (isLookNumber(field)) {
+    const range = LOOK_NUMBERS[field];
+    const n = parseNumber(raw);
+    if (n === null) return null;
+    const value = round(clamp(n, range.min, range.max) / range.per, range.places);
+    return value === look[field] ? [] : style({ [field]: value });
+  }
+  const on = raw === "on";
+  switch (field) {
+    case "italic":
+    case "underline":
+      if (raw !== "on" && raw !== "off") return null;
+      return on === look[field] ? [] : style({ [field]: on });
+    case "outline":
+      if (raw !== "on" && raw !== "off") return null;
+      if (on === hasOutline(look)) return [];
+      if (!on) return style({ outlineColor: null });
+      return style(look.outlineWidth > 0 ? { outlineColor: outlineStart(clip.style.fontSize).outlineColor } : outlineStart(clip.style.fontSize));
+    case "shadow":
+      if (raw !== "on" && raw !== "off") return null;
+      if (on === hasShadow(look)) return [];
+      if (!on) return style({ shadowColor: null });
+      // A shadow that was never set up gets one that suits the text; one that was keeps its blur and offsets.
+      if (clip.style.shadowBlur === undefined && clip.style.shadowY === undefined) return style(shadowStart(clip.style.fontSize));
+      return style({ shadowColor: "#000000", ...(look.shadowOpacity === 0 && { shadowOpacity: 0.6 }) });
+    case "background":
+      if (raw !== "on" && raw !== "off") return null;
+      if (on === hasBackground(look)) return [];
+      if (!on) return style({ backgroundColor: null });
+      return style(clip.style.backgroundOpacity === undefined || look.backgroundOpacity === 0 ? BACKGROUND_START : { backgroundColor: BACKGROUND_START.backgroundColor });
+    case "outlineColor":
+    case "shadowColor":
+    case "backgroundColor": {
+      const color = raw.trim().toLowerCase();
+      if (!HEX_COLOR.test(color)) return null;
+      return color === look[field] ? [] : style({ [field]: color });
+    }
+    default:
+      return null;
   }
 }
 
@@ -516,6 +665,6 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       return align ? update({ style: { align } }) : null;
     }
     default:
-      return null;
+      return textLookOps(clip, field, raw);
   }
 }

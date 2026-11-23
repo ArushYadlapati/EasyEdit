@@ -8,7 +8,7 @@ import { toOverlay, type PreviewSurface } from "@/lib/editor/canvas-geometry";
 import { makeFontResolver } from "@/lib/editor/fonts";
 import { findClip, viewDoc } from "@/lib/editor/store";
 import { LIMITS } from "@/lib/limits";
-import { LINE_HEIGHT, TEXT_BOX_WIDTH } from "@/lib/render/text-layout";
+import { TEXT_BOX_WIDTH, lineHeightOf } from "@/lib/render/text-layout";
 import { stretchOf } from "@/lib/timeline";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { useEditor, useEditorStore } from "./context";
@@ -29,6 +29,10 @@ type Place = {
   stretch: number;
   fontFamily: string;
   fontWeight: number;
+  italic: boolean;
+  underline: boolean;
+  letterSpacing: number;
+  lineHeight: number;
   color: string;
   align: "left" | "center" | "right";
 };
@@ -78,6 +82,11 @@ export function CanvasTextEditor({ clipId, surface }: { clipId: string; surface:
         stretch: stretchOf(t),
         fontFamily: resolveFont(clip.style.fontFamily),
         fontWeight: clip.style.fontWeight,
+        italic: clip.style.italic ?? false,
+        underline: clip.style.underline ?? false,
+        // The room between letters grows with the size the box shows the text at.
+        letterSpacing: px((clip.style.letterSpacing ?? 0) * shownSize),
+        lineHeight: lineHeightOf(clip.style),
         color: clip.style.color,
         align: clip.style.align,
       };
@@ -146,7 +155,10 @@ export function CanvasTextEditor({ clipId, surface }: { clipId: string; surface:
               fontSize: place.fontSize,
               fontFamily: place.fontFamily,
               fontWeight: place.fontWeight,
-              lineHeight: LINE_HEIGHT,
+              fontStyle: place.italic ? "italic" : "normal",
+              textDecoration: place.underline ? "underline" : "none",
+              letterSpacing: place.letterSpacing,
+              lineHeight: place.lineHeight,
               color: place.color,
               textAlign: place.align,
               transform: `translate(-50%, -50%) rotate(${place.turn}deg) scaleX(${place.stretch})`,

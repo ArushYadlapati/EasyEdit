@@ -148,12 +148,30 @@ export const MediaClip = z.object({
 });
 export type MediaClip = z.infer<typeof MediaClip>;
 
+// The first five are always there. The rest are optional, and absent means the value in TEXT_STYLE_DEFAULTS
+// (text-style.ts): slanted and underlined letters, the room between letters and between lines (as shares of the font
+// size), an outline around the letters, a shadow under them and a box behind the lines.
 export const TextStyle = z.object({
   fontFamily: z.string(),
   fontSize: z.number().positive(),
   fontWeight: z.number().int(),
   color: z.string(),
   align: z.enum(["left", "center", "right"]),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  letterSpacing: z.number().min(-0.2).max(2).optional(),
+  lineHeight: z.number().min(0.5).max(4).optional(),
+  outlineColor: HexColor.nullable().optional(),
+  outlineWidth: z.number().min(0).max(200).optional(), // project pixels
+  shadowColor: HexColor.nullable().optional(),
+  shadowBlur: z.number().min(0).max(400).optional(), // project pixels, like its offsets
+  shadowX: z.number().min(-1000).max(1000).optional(),
+  shadowY: z.number().min(-1000).max(1000).optional(),
+  shadowOpacity: z.number().min(0).max(1).optional(),
+  backgroundColor: HexColor.nullable().optional(),
+  backgroundOpacity: z.number().min(0).max(1).optional(),
+  backgroundPadding: z.number().min(0).max(3).optional(), // × font size
+  backgroundRadius: z.number().min(0).max(2).optional(), // × font size
 });
 export type TextStyle = z.infer<typeof TextStyle>;
 
