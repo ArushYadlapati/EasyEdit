@@ -4,6 +4,7 @@ import { ExportError } from "@/lib/export/messages";
 import { fileTarget, memoryTarget } from "@/lib/export/sinks";
 import type { SupportProbe } from "@/lib/export/support";
 import { createPosting } from "@/lib/social/post-client";
+import { loadMediabunny } from "../media/frame-decode";
 import type { MediaServices } from "../media/media-context";
 import { collectPageFonts } from "../page-fonts";
 import type { ExportDeps, PickedTarget } from "./deps";
@@ -104,7 +105,28 @@ export function exportMediaDeps(media: MediaServices): ExportMediaDeps {
       const got = await media.files.get(fileId);
       return got.ok ? got.blob : null;
     },
+    decodable: canDrawOriginal,
   };
+}
+
+// Whether this browser can draw an original's pictures as they should look: it has a video track the browser's
+// decoder takes, and it is not high dynamic range, which a canvas would draw washed out. A file that cannot be opened
+// at all counts as one it cannot draw.
+async function canDrawOriginal(file: Blob): Promise<boolean> {
+  try {
+    const { ALL_FORMATS, BlobSource, Input } = await loadMediabunny();
+    const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
+    try {
+      const track = await input.getPrimaryVideoTrack();
+      if (!track || !(await track.canDecode())) return false;
+      const hdr = (track as { hasHighDynamicRange?: () => Promise<boolean> }).hasHighDynamicRange;
+      return typeof hdr === "function" ? !(await hdr.call(track)) : true;
+    } finally {
+      input.dispose();
+    }
+  } catch {
+    return false;
+  }
 }
 
 export function browserExportDeps(media: MediaServices): ExportDeps {

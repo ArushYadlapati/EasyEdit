@@ -28,6 +28,7 @@ export type ExportRequest = {
   onProgress(progress: { attempt: number; framesDone: number; totalFrames: number }): void;
   onReading(filesRead: number, totalFiles: number): void;
   sound: boolean; // the file will carry a sound track (Support.audio): only then is sound planned and read
+  originals?: boolean; // full quality: pictures from each video's original file, where this browser can read it
 };
 
 export type RunDeps = {
@@ -224,7 +225,7 @@ async function steps(request: ExportRequest, deps: RunDeps, held: Held): Promise
   };
   let media: ExportMedia;
   try {
-    media = await untilAborted(promised(() => deps.collectMedia(doc, { signal, onReading, sound: request.sound })), signal);
+    media = await untilAborted(promised(() => deps.collectMedia(doc, { signal, onReading, sound: request.sound, originals: request.originals })), signal);
   } catch (error) {
     if (signal.aborted) return CANCELED;
     return { status: "failed", ...failureOf(error, "media") };

@@ -213,8 +213,8 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
               <Upload />
               Upload
             </Button>
-            <RecordButtons canUpload={canUpload} />
             {canUpload && <p className="text-[13px] leading-5 text-ed-muted">You can also drag files here, onto the timeline or onto the preview.</p>}
+            <RecordButtons canUpload={canUpload} />
             <input
               ref={picker}
               type="file"

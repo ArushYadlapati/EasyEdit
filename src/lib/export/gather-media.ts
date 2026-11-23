@@ -11,12 +11,16 @@ export type ExportMediaDeps = {
   library(): Pick<LibraryState, "assets" | "loaded">;
   ensure(ids: string[]): Promise<void>; // asks the server for asset ids the library has not seen; rejects when it got no answer
   readFile(fileId: string): Promise<Blob | null>; // null: it could not be read (offline, missing, refused)
+  // Whether this browser can draw a video file's pictures as they should look: asked of originals only. Without it
+  // every original counts as one it can.
+  decodable?(file: Blob): Promise<boolean>;
 };
 
 export type MediaOptions = {
   signal: AbortSignal;
   onReading(filesRead: number, totalFiles: number): void;
   sound: boolean; // the file will carry a sound track: only then is sound asked for, waited for and read
+  originals?: boolean; // full quality: each video's picture from its original file, where this browser can read it
 };
 
 const canceled = () => new DOMException("The export was canceled.", "AbortError");
@@ -42,15 +46,33 @@ export async function gatherMedia(doc: TimelineDoc, deps: ExportMediaDeps, optio
     }
   }
 
-  const plan = planExportMedia(doc, deps.library(), options.sound);
+  const plan = planExportMedia(doc, deps.library(), options.sound, options.originals);
   refuseWaiting(plan);
+
+  // Each original's preview copy, for an original that cannot be read or drawn here.
+  const fallbacks = new Map<string, string>();
+  for (const clip of Object.values(plan.clips)) if (clip.kind === "use" && clip.fallback) fallbacks.set(clip.fileId, clip.fallback);
 
   const files: Record<string, Blob> = {};
   const total = plan.fileIds.length;
   for (const [index, fileId] of plan.fileIds.entries()) {
     if (options.signal.aborted) throw canceled();
     options.onReading(index, total);
+    if (files[fileId]) continue; // already read as another file's copy
     const file = await deps.readFile(fileId);
+    const copy = fallbacks.get(fileId);
+    if (copy !== undefined && (file === null || !(await (deps.decodable?.(file) ?? true)))) {
+      // This one exports from its copy, as it would without full quality.
+      if (!files[copy]) {
+        const read = await deps.readFile(copy);
+        if (read === null) throw new ExportError("media", copy);
+        files[copy] = read;
+      }
+      for (const clip of Object.values(plan.clips)) {
+        if (clip.kind === "use" && clip.fileId === fileId) Object.assign(clip, { fileId: copy, from: "preview", fallback: undefined });
+      }
+      continue;
+    }
     if (file === null) throw new ExportError("media", fileId);
     files[fileId] = file;
   }

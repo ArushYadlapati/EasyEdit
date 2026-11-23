@@ -56,7 +56,7 @@ Sign-up is open to anyone with a Google account. Everyone has a Personal space, 
 - [x] **A new sign-up flow.** Choose where your videos live and set up AI agents as you join. People invited to a team skip the storage step and land in the team.
 - [x] **Moving projects between spaces.** A project's media is copied to the new space, so a project never ends up half-moved.
 
-Also planned: captions in other languages, transcripts and footage search for AI agents, and full-quality video in exports. See [Project status](docs/status.md) for what works today.
+Also planned: captions in other languages, and transcripts and footage search for AI agents. See [Project status](docs/status.md) for what works today.
 
 ## Tech stack
 

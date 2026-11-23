@@ -8,8 +8,10 @@ import type { ClipMedia } from "./media-schedule";
 // Which file each clip of an export draws from and sounds from: the one the editor plays, or why it must wait, or the
 // preview's placeholder. Runs on the page, before the worker starts.
 
+// fallback: for a video drawn from its original at full quality, the preview copy to draw from instead when this
+// browser cannot read the original.
 export type ClipPlan =
-  | { kind: "use"; fileId: string; from: "preview" | "original" }
+  | { kind: "use"; fileId: string; from: "preview" | "original"; fallback?: string }
   | { kind: "wait"; why: "uploading" | "preparing" | "library" } // library: the asset is not known yet and the library has not loaded
   | { kind: "placeholder"; label: string }; // a PLACEHOLDER_LABELS text
 
@@ -45,10 +47,15 @@ export function exportAssetIds(doc: TimelineDoc, sound = false): string[] {
   return [...new Set([...drawn, ...heard])];
 }
 
-function planClip(clip: MediaClip, library: Library): ClipPlan {
+// originals: a video's picture comes from its original file, where it has a preview copy to fall back on. Without a
+// copy the original is what plays already.
+function planClip(clip: MediaClip, library: Library, originals = false): ClipPlan {
   const asset = library.assets[clip.assetId];
   if (asset === undefined && !library.loaded) return { kind: "wait", why: "library" };
   const file = playbackFileFor(asset);
+  if (originals && clip.type === "video" && file.fileId !== null && file.from === "preview" && asset?.originalFileId) {
+    return { kind: "use", fileId: asset.originalFileId, from: "original", fallback: file.fileId };
+  }
   if (file.fileId !== null) return { kind: "use", fileId: file.fileId, from: file.from };
   if (file.why === "uploading" || file.why === "preparing") return { kind: "wait", why: file.why };
   return { kind: "placeholder", label: PLACEHOLDER_LABELS[file.why] };
@@ -57,13 +64,14 @@ function planClip(clip: MediaClip, library: Library): ClipPlan {
 // The preview's rule for every clip that draws: it plays these files and shows these labels. A removed or missing
 // asset is drawn as its placeholder, never refused. With sound (an export whose file can carry a sound track), the
 // same rule for every clip that sounds; Save frame and thumbnails leave it out. A file the library says has no sound
-// is not heard; one it says has sound may still be silent, and the worker finds that out.
-export function planExportMedia(doc: TimelineDoc, library: Library, sound = false): ExportMediaPlan {
+// is not heard; one it says has sound may still be silent, and the worker finds that out. originals: full quality, where
+// each video's picture is drawn from its original file; its sound still comes from the file the editor plays.
+export function planExportMedia(doc: TimelineDoc, library: Library, sound = false, originals = false): ExportMediaPlan {
   const clips: Record<string, ClipPlan> = {};
   const sounds: Record<string, ClipPlan> = {};
   const fileIds = new Set<string>();
   for (const clip of drawnMediaClips(doc)) {
-    const plan = planClip(clip, library);
+    const plan = planClip(clip, library, originals);
     clips[clip.id] = plan;
     if (plan.kind === "use") fileIds.add(plan.fileId);
   }

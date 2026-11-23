@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
+import { Toggle } from "@/components/ui/toggle";
 import {
   exportNotes, formatBytes, frameFileName, maxBytes, secondsLeft, timeLeftLabel, waitingReason,
 } from "@/lib/export/facts";
@@ -30,7 +31,8 @@ import type { Exporter } from "./use-export";
 type ExportDialogProps = { open: boolean; onClose(): void; exporter: Exporter };
 
 // What the choices need between the body and the footer: this browser's answer and the size the person picked.
-type ChoiceProps = { support: Support | null; selected: ExportPresetId | null };
+// full: Full quality is switched on.
+type ChoiceProps = { support: Support | null; selected: ExportPresetId | null; full: boolean };
 
 const MUTED = "text-ed-muted";
 
@@ -39,6 +41,7 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
   const editor = useEditorStore();
   const [support, setSupport] = useState<Support | null>(null);
   const [selected, setSelected] = useState<ExportPresetId | null>(null);
+  const [full, setFull] = useState(false); // off each time the editor opens: it is slower, so it is asked for
   // Each opening asks this browser again, at the project's size then: an edit can change the size.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
@@ -65,7 +68,7 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
     onClose();
   };
 
-  const choice: ChoiceProps = { support, selected };
+  const choice: ChoiceProps = { support, selected, full };
   return (
     <Dialog
       title="Export"
@@ -74,7 +77,7 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
       onClose={onClose}
       footer={posting ? <PostFooter panel={post} onDone={finish} /> : <ExportFooter exporter={exporter} onDone={finish} post={post} {...choice} />}
     >
-      {posting ? <PostBody panel={post} /> : <ExportBody exporter={exporter} onSelect={setSelected} post={post} {...choice} />}
+      {posting ? <PostBody panel={post} /> : <ExportBody exporter={exporter} onSelect={setSelected} onFull={setFull} post={post} {...choice} />}
     </Dialog>
   );
 }
@@ -108,14 +111,16 @@ function useChoices({ support, selected }: ChoiceProps) {
 
 const choosing = (state: ExportState) => state.phase === "idle" || state.phase === "canceled";
 
-function ExportBody({ exporter, onSelect, post, ...choice }: ChoiceProps & { exporter: Exporter; onSelect(id: ExportPresetId): void; post: PostPanel }) {
+function ExportBody({ exporter, onSelect, onFull, post, ...choice }: ChoiceProps & { exporter: Exporter; onSelect(id: ExportPresetId): void; onFull(on: boolean): void; post: PostPanel }) {
   const state = useStore(exporter.store);
-  if (choosing(state)) return <Choices onSelect={onSelect} canceled={state.phase === "canceled"} {...choice} />;
+  if (choosing(state)) return <Choices onSelect={onSelect} onFull={onFull} canceled={state.phase === "canceled"} {...choice} />;
   return <Progress state={state} post={post} />;
 }
 
-function Choices({ support, selected, onSelect, canceled }: ChoiceProps & { onSelect(id: ExportPresetId): void; canceled: boolean }) {
-  const { doc, plan, options, option, frames, bytes, empty, blocked } = useChoices({ support, selected });
+function Choices({ support, selected, full, onSelect, onFull, canceled }: ChoiceProps & { onSelect(id: ExportPresetId): void; onFull(on: boolean): void; canceled: boolean }) {
+  const { doc, plan, options, option, frames, bytes, empty, blocked } = useChoices({ support, selected, full });
+  // Full quality has something to give only where a video plays from a smaller copy of itself.
+  const hasCopies = Object.values(plan.clips).some((clip) => clip.kind === "use" && clip.from === "preview");
   if (support === null) return <p className={MUTED}>Checking this browser…</p>;
   if (!support.browser) return <p>{failureMessage("unsupported")}</p>;
   if (empty) return <p>{blocked}</p>;
@@ -140,6 +145,14 @@ function Choices({ support, selected, onSelect, canceled }: ChoiceProps & { onSe
           {bytes !== null && <Fact term="File size">{`Up to about ${formatBytes(bytes)}`}</Fact>}
           <Fact term="Format">MP4, H.264 video</Fact>
         </dl>
+      )}
+      {hasCopies && (
+        <div className="flex flex-col gap-1">
+          <Toggle label="Full quality" checked={full} onChange={onFull} />
+          <p className={MUTED}>
+            Draws each video from its original file, not the smaller copy the editor plays. Slower: the originals are downloaded first. A file this browser can&apos;t read exports from its copy.
+          </p>
+        </div>
       )}
       {option && (
         <div className="flex flex-col gap-1">
@@ -278,7 +291,7 @@ function StartButton({ exporter, ...choice }: ChoiceProps & { exporter: Exporter
   const start = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.detail > 1 || !option) return;
     setAlert(null);
-    void exporter.start(option.id, audio).then((answer) => setAlert(answer === "again" ? AGAIN : null));
+    void exporter.start(option.id, audio, choice.full).then((answer) => setAlert(answer === "again" ? AGAIN : null));
   };
   const saveFrame = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.detail > 1 || !option || savingNow.current) return;
