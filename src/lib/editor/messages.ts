@@ -24,6 +24,8 @@ export const MESSAGES = {
   nothingToSeparate: "Select a video clip that has sound to separate its audio.",
   nothingToGroup: "Select two or more clips on unlocked tracks to link them.",
   nothingToUngroup: "None of the selected clips is linked.",
+  nothingToClean: "Select a video or audio clip to clean up its sound.",
+  cleanedUp: (clips: number) => (clips === 1 ? "Cleaned up the voice." : `Cleaned up ${clips} clips.`),
   nothingToDuck: "Select the music or sound to turn down under speech.",
   nothingOver: "Nothing else is heard over that clip, so there is nothing to duck under.",
   ducked: (clips: number) => (clips === 1 ? "Ducked under the other sound." : `Ducked ${clips} clips under the other sound.`),

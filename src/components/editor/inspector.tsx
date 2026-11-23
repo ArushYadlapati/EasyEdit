@@ -13,10 +13,11 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { gainLabel } from "@/lib/audio/loudness";
-import { applyLook, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
+import { applyLook, cleanUpSelection, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
 import { formatClock, trackToggles } from "@/lib/editor/geometry";
 import {
   ADJUST_RANGE,
+  TONE_DB,
   FIELD_LABEL,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
@@ -37,6 +38,7 @@ import { markerAt, sortedMarkers } from "@/lib/editor/markers";
 import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
 import { soundClipsOf } from "@/lib/editor/sound";
+import { fxOf } from "@/lib/render/clip-sound";
 import { rateLabel, rateOf } from "@/lib/editor/speed";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import type { Units } from "@/lib/editor/settings";
@@ -157,6 +159,13 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
     case "backgroundRadius":
     case "letterSpacing":
       return { scrub: 1, decimals: 0 };
+    case "soundGate":
+    case "soundCompress":
+      return { scrub: 1, decimals: 0 };
+    case "soundBass":
+    case "soundMid":
+    case "soundTreble":
+      return { scrub: 0.5, decimals: 1 };
     case "lineHeight":
       return { scrub: 0.01, decimals: 2 };
     case "outlineWidth":
@@ -248,8 +257,10 @@ function NumberField(props: {
     };
   } else if (field === "speed") {
     scrubRange = () => SPEED_PERCENT;
-  } else if (field === "rounding" || field === "chromaTolerance" || field === "chromaSoftness") {
+  } else if (field === "rounding" || field === "chromaTolerance" || field === "chromaSoftness" || field === "soundGate" || field === "soundCompress") {
     scrubRange = () => ({ min: 0, max: 100 });
+  } else if (field === "soundBass" || field === "soundMid" || field === "soundTreble") {
+    scrubRange = () => ({ min: -TONE_DB, max: TONE_DB });
   } else if (Object.hasOwn(ADJUST_RANGE, field)) {
     const { min, max } = ADJUST_RANGE[field as keyof typeof ADJUST_RANGE];
     scrubRange = () => ({ min, max });
@@ -677,6 +688,42 @@ function TimingSection({ clipId, slips }: { clipId: string; slips: boolean }) {
   );
 }
 
+// A clip's sound clean-up: one button that sets it for a voice, and each part on its own. A rumble filter, a noise
+// gate that turns the gaps between words down, a compressor that brings loud and quiet closer together, and three
+// tone bands. It is heard in the preview and is in the export.
+function CleanUp({ clip }: { clip: MediaClip }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const cleaned = fxOf(clip) !== null;
+  return (
+    <div className="flex flex-col gap-2" role="group" aria-label="Clean up">
+      <div className="flex items-center justify-between gap-2">
+        <span className={CAPTION}>Clean up</span>
+        <div className="flex gap-2">
+          {cleaned && (
+            <Button data-edit-control variant="ghost" disabled={!canEdit} onClick={() => cleanUpSelection(store, true)}>
+              Reset
+            </Button>
+          )}
+          <Button data-edit-control disabled={!canEdit} onClick={() => cleanUpSelection(store)}>
+            Clean up voice
+          </Button>
+        </div>
+      </div>
+      <Toggle label="Cut rumble" data-edit-control checked={clip.sound?.lowCut ?? false} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "soundLowCut", on ? "on" : "off")} />
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField clipId={clip.id} field="soundGate" label="Noise gate" suffix="%" min={0} max={100} step={5} />
+        <NumberField clipId={clip.id} field="soundCompress" label="Compressor" suffix="%" min={0} max={100} step={5} />
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <NumberField clipId={clip.id} field="soundBass" label="Bass" suffix="dB" min={-TONE_DB} max={TONE_DB} step={1} />
+        <NumberField clipId={clip.id} field="soundMid" label="Presence" suffix="dB" min={-TONE_DB} max={TONE_DB} step={1} />
+        <NumberField clipId={clip.id} field="soundTreble" label="Treble" suffix="dB" min={-TONE_DB} max={TONE_DB} step={1} />
+      </div>
+    </div>
+  );
+}
+
 // A video or audio clip's sound: how loud it is, in percent of as recorded (past 100 turns it up, to four times), how
 // long it fades in and out, and two buttons. Level volume listens to the clip and sets its volume to the level every
 // leveled clip gets; Separate audio, on a video, moves its sound to an audio clip of its own. A video whose file has no
@@ -722,6 +769,7 @@ function SoundSection({ clip }: { clip: MediaClip }) {
           </Button>
         )}
       </div>
+      <CleanUp clip={clip} />
     </Section>
   );
 }
@@ -861,10 +909,13 @@ function ManyClips({ count }: { count: number }) {
       <Hint>Select one clip to edit it.</Hint>
       {sounding > 1 && (
         <Section title="Sound">
-          <Hint>Make these clips equally loud.</Hint>
-          <div>
+          <Hint>Make these clips equally loud, or clean up the voice on each.</Hint>
+          <div className="flex flex-wrap gap-2">
             <Button data-edit-control disabled={!canEdit || busy} onClick={() => void level(store.getState().selection.clipIds)}>
               {busy ? "Listening…" : "Level volume"}
+            </Button>
+            <Button data-edit-control disabled={!canEdit} onClick={() => cleanUpSelection(store)}>
+              Clean up voice
             </Button>
           </div>
         </Section>

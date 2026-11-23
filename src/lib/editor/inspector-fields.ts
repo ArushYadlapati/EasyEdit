@@ -67,6 +67,14 @@ export type ClipField =
   | "fadeOut"
   // Where the clip's sound sits: −100 all the way left, 0 as recorded, 100 all the way right.
   | "pan"
+  // The clip's sound clean-up: the rumble filter ("on" or "off"), the noise gate and the compressor in percent of
+  // full strength, and three tone bands in decibels.
+  | "soundLowCut"
+  | "soundGate"
+  | "soundCompress"
+  | "soundBass"
+  | "soundMid"
+  | "soundTreble"
   // How fast a video or audio clip plays, in percent of as recorded, whichever way it runs.
   | "speed"
   // Where in its file a video or audio clip starts, in seconds: changing it slips the footage under the clip, which
@@ -150,6 +158,12 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   fadeIn: "fade change",
   fadeOut: "fade change",
   pan: "pan change",
+  soundLowCut: "sound clean-up",
+  soundGate: "sound clean-up",
+  soundCompress: "sound clean-up",
+  soundBass: "sound clean-up",
+  soundMid: "sound clean-up",
+  soundTreble: "sound clean-up",
   speed: "speed change",
   sourceIn: "slip",
   brightness: "color change",
@@ -314,6 +328,10 @@ function lengthPx(clip: Clip, field: "x" | "y" | "width" | "height", ctx: FieldC
   return field === "width" ? ctx.box.width * t.scale * stretchOf(t) : ctx.box.height * t.scale;
 }
 
+// The part of a clip's sound clean-up each number field sets, and how far a tone band turns, in decibels.
+const SOUND_PART = { soundGate: "gate", soundCompress: "compress", soundBass: "bass", soundMid: "mid", soundTreble: "treble" } as const;
+export const TONE_DB = 12;
+
 export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext): string {
   const { fps } = ctx;
   const clip = shownAt(saved, ctx);
@@ -347,6 +365,15 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
       return clip.type === "video" || clip.type === "audio" ? ((clip[field] ?? 0) / fps).toFixed(2) : "";
     case "pan":
       return hasSpeed(clip) ? String(Math.round((clip.pan ?? 0) * 100)) : "";
+    case "soundLowCut":
+      return hasSpeed(clip) ? (clip.sound?.lowCut ? "on" : "off") : "";
+    case "soundGate":
+    case "soundCompress":
+      return hasSpeed(clip) ? String(Math.round((clip.sound?.[SOUND_PART[field]] ?? 0) * 100)) : "";
+    case "soundBass":
+    case "soundMid":
+    case "soundTreble":
+      return hasSpeed(clip) ? oneDecimal(clip.sound?.[SOUND_PART[field]] ?? 0) : "";
     case "speed":
       return hasSpeed(clip) ? String(Math.round(rateOf(clip) * 100)) : "";
     case "sourceIn":
@@ -696,6 +723,29 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       if (percent === null || !hasSpeed(clip)) return null;
       const pan = clamp(Math.round(percent), -100, 100) / 100;
       return pan === (clip.pan ?? 0) ? [] : update({ pan });
+    }
+    case "soundLowCut": {
+      if ((raw !== "on" && raw !== "off") || !hasSpeed(clip)) return null;
+      return (raw === "on") === (clip.sound?.lowCut ?? false) ? [] : update({ sound: { lowCut: raw === "on" } });
+    }
+    case "soundGate":
+    case "soundCompress": {
+      // Whole percents of full strength.
+      const percent = parseNumber(raw);
+      if (percent === null || !hasSpeed(clip)) return null;
+      const part = SOUND_PART[field];
+      const value = clamp(Math.round(percent), 0, 100) / 100;
+      return value === (clip.sound?.[part] ?? 0) ? [] : update({ sound: { [part]: value } });
+    }
+    case "soundBass":
+    case "soundMid":
+    case "soundTreble": {
+      // Tenths of a decibel, up to the most a band can be turned.
+      const db = parseNumber(raw);
+      if (db === null || !hasSpeed(clip)) return null;
+      const part = SOUND_PART[field];
+      const value = round(clamp(db, -TONE_DB, TONE_DB), 1);
+      return value === (clip.sound?.[part] ?? 0) ? [] : update({ sound: { [part]: value } });
     }
     case "sourceIn": {
       // Whole frames, kept where the clip still fits its media, when the media's length is known.

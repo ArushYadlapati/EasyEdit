@@ -64,6 +64,10 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
     if (clip.transitionIn) out += ` in=${transitionToken(clip.transitionIn)} ${framesToSeconds(clip.transitionIn.frames, fps)}s`;
     if (clip.transitionOut) out += ` out=${transitionToken(clip.transitionOut)} ${framesToSeconds(clip.transitionOut.frames, fps)}s`;
   }
+  if ((clip.type === "video" || clip.type === "audio") && clip.sound) {
+    const set = Object.entries(clip.sound).filter(([, value]) => value !== 0 && value !== false).map(([key, value]) => `"${key}":${value}`);
+    if (set.length > 0) out += ` sound={${set.join(",")}}`;
+  }
   if ((clip.type === "video" || clip.type === "image") && isAdjusted(clip.adjust)) {
     const set = ADJUST_KEYS.filter((key) => (clip.adjust?.[key] ?? 0) !== 0).map((key) => `"${key}":${clip.adjust![key]}`);
     out += ` adjust={${set.join(",")}}`;

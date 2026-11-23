@@ -40,7 +40,7 @@ import { neighbourMarker, toggleMarkerOps } from "./markers";
 import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
-import { duckOps, muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
+import { cleanUpOps, duckOps, muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
 import { freezeFrameOps, reverseOps } from "./speed";
 import { findClip, type EditorStore } from "./store";
 import type { BrandFonts } from "@/lib/brand/types";
@@ -279,6 +279,18 @@ export function separateAudio(store: EditorStore, hasSound?: (assetId: string) =
     return;
   }
   if (state.edit(separated.ops, "separate audio").ok) state.select(separated.clipIds);
+}
+
+// Cleans up the voice on the selected clips that sound; with `off`, takes their sound clean-up off again.
+export function cleanUpSelection(store: EditorStore, off = false): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const { ops, count } = cleanUpOps(state.doc, state.selection.clipIds, off);
+  if (count === 0) {
+    if (soundClipsOf(state.doc, state.selection.clipIds).length === 0) state.notify("info", MESSAGES.nothingToClean);
+    return;
+  }
+  if (state.edit(ops, "sound clean-up").ok && !off) state.notify("info", MESSAGES.cleanedUp(count));
 }
 
 // Turns the selected clips down while other clips are heard over them: music under speech.

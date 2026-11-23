@@ -22,6 +22,24 @@ export function soundClipsOf(doc: TimelineDoc, clipIds: string[]): Sounding[] {
 
 const unlocked = (sounding: Sounding[]) => sounding.filter(({ track }) => !track.locked);
 
+// What Clean up voice sets: the rumble under a voice taken out, the gaps between words turned down a little, speech
+// lifted where it is understood, and loud and quiet words brought closer together.
+export const VOICE_CLEANUP = { lowCut: true, gate: 0.25, bass: 0, mid: 3, treble: 1, compress: 0.5 } as const;
+const CLEANUP_OFF = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 } as const;
+
+// Sets the selected sounding clips' clean-up to the voice settings, or with `off` takes all clean-up off them. Clips
+// on a locked track, and clips already there, are left out. count: the clips changed.
+export function cleanUpOps(doc: TimelineDoc, clipIds: string[], off = false): { ops: OpInput[]; count: number } {
+  const want: Record<string, boolean | number> = off ? CLEANUP_OFF : VOICE_CLEANUP;
+  const ops: OpInput[] = [];
+  for (const { clip } of unlocked(soundClipsOf(doc, clipIds))) {
+    const now: Record<string, boolean | number | undefined> = clip.sound ?? {};
+    if (Object.keys(want).every((key) => (now[key] ?? CLEANUP_OFF[key as keyof typeof CLEANUP_OFF]) === want[key])) continue;
+    ops.push({ op: "update_clip", clipId: clip.id, patch: { sound: { ...want } } });
+  }
+  return { ops, count: ops.length };
+}
+
 // One step louder (1) or quieter (-1) for every selected clip that sounds, on tenths of as recorded, from silent to
 // VOLUME_MAX. Clips on a locked track are left out.
 export function volumeStepOps(doc: TimelineDoc, clipIds: string[], direction: 1 | -1): OpInput[] {

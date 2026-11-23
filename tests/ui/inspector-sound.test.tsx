@@ -200,3 +200,58 @@ it("several clips with at most one that sounds offer no leveling", () => {
   expect(screen.queryByRole("button", { name: "Level volume" })).toBeNull();
   act(() => {});
 });
+
+it("Clean up voice sets a clip's sound for a voice in one change, and Reset takes it off again", () => {
+  const { store, clip, field, notices } = show({ select: ["c1"] });
+  expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
+  expect(screen.getByRole("switch", { name: "Cut rumble" }).getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(screen.getByRole("button", { name: "Clean up voice" }));
+  expect(clip("c1").sound).toEqual({ lowCut: true, gate: 0.25, bass: 0, mid: 3, treble: 1, compress: 0.5 });
+  expect(store.getState().queue.at(-1)).toMatchObject({ label: "sound clean-up" });
+  expect(notices).toContain(MESSAGES.cleanedUp(1));
+  expect(screen.getByRole("switch", { name: "Cut rumble" }).getAttribute("aria-checked")).toBe("true");
+  expect([field("Noise gate").value, field("Compressor").value, field("Bass").value, field("Presence").value, field("Treble").value]).toEqual(["25", "50", "0", "3", "1"]);
+  // Pressed again there is nothing to change.
+  const sent = store.getState().queue.length;
+  fireEvent.click(screen.getByRole("button", { name: "Clean up voice" }));
+  expect(store.getState().queue.length).toBe(sent);
+  fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+  expect(clip("c1").sound).toEqual({ lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 });
+  expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
+  // One undo brings the whole clean-up back.
+  store.getState().undo();
+  expect(clip("c1").sound?.compress).toBe(0.5);
+});
+
+it("sets each part of the clean-up on its own, within its range", () => {
+  const { store, clip, field } = show({ select: ["m1"] });
+  fireEvent.click(screen.getByRole("switch", { name: "Cut rumble" }));
+  expect(clip("m1").sound).toEqual({ lowCut: true });
+  const type = (name: string, value: string) => {
+    fireEvent.change(field(name), { target: { value } });
+    fireEvent.blur(field(name));
+  };
+  type("Noise gate", "40");
+  type("Compressor", "250");
+  type("Bass", "-3.5");
+  type("Presence", "20");
+  type("Treble", "-40");
+  expect(clip("m1").sound).toEqual({ lowCut: true, gate: 0.4, compress: 1, bass: -3.5, mid: 12, treble: -12 });
+  expect(store.getState().queue.at(-1)).toMatchObject({ label: "sound clean-up", ops: [{ op: "update_clip", clipId: "m1", patch: { sound: { treble: -12 } } }] });
+  fireEvent.click(screen.getByRole("switch", { name: "Cut rumble" }));
+  expect(clip("m1").sound?.lowCut).toBe(false);
+});
+
+it("cleans up every selected clip that sounds at once, and leaves a viewer's controls off", () => {
+  const { clip } = show({ select: ["c1", "m1", "x1"] });
+  fireEvent.click(screen.getByRole("button", { name: "Clean up voice" }));
+  expect([clip("c1").sound?.lowCut, clip("m1").sound?.lowCut]).toEqual([true, true]);
+});
+
+it("a viewer sees the clean-up and cannot change it", () => {
+  show({ select: ["c1"], canEdit: false, doc: soundDoc((d) => void ((d.tracks[0].clips[0] as MediaClip).sound = { lowCut: true, mid: 2 })) });
+  expect((screen.getByRole("button", { name: "Clean up voice" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("switch", { name: "Cut rumble" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByLabelText("Presence") as HTMLInputElement).value).toBe("2");
+});

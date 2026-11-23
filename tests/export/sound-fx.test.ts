@@ -136,3 +136,26 @@ describe("the limiter on the export's mix", () => {
     expect(mix[20_000]).toBeCloseTo(LIMIT_CEILING, 5);
   });
 });
+
+describe("Clean up voice", () => {
+  it("sets the voice settings on each selected clip that sounds, and skips locked tracks and clips already there", async () => {
+    const { VOICE_CLEANUP, cleanUpOps } = await import("@/lib/editor/sound");
+    const d = songDoc();
+    const first = cleanUpOps(d, ["c1", "m1", "x1"]);
+    expect(first.count).toBe(2);
+    expect(first.ops[0]).toEqual({ op: "update_clip", clipId: "c1", patch: { sound: { ...VOICE_CLEANUP } } });
+    const cleaned = run(d, first.ops).doc;
+    expect(cleanUpOps(cleaned, ["c1", "m1"]).count).toBe(0);
+    expect(cleanUpOps(cleaned, ["c1", "m1"], true).count).toBe(2);
+    expect(cleanUpOps(d, ["c1", "m1"], true).count).toBe(0); // nothing on, nothing to take off
+    d.tracks[3].locked = true;
+    expect(cleanUpOps(d, ["c1", "m1"]).ops.map((op) => (op as { clipId: string }).clipId)).toEqual(["c1"]);
+  });
+
+  it("is told to an agent reading the project, only where some of it is on", async () => {
+    const { describe: describeTimeline } = await import("@/lib/timeline/describe");
+    expect(describeTimeline(songDoc())).not.toContain("sound=");
+    expect(describeTimeline(songDoc({ sound: { lowCut: false, bass: 0 } }))).not.toContain("sound=");
+    expect(describeTimeline(songDoc({ sound: { lowCut: true, gate: 0.25, bass: 0, mid: 3 } }))).toContain('sound={"lowCut":true,"gate":0.25,"mid":3}');
+  });
+});
