@@ -15,6 +15,7 @@ function pretendContext(state: "running" | "suspended" = "running") {
   };
   const gains: { id: string; gain: { value: number; setTargetAtTime: ReturnType<typeof vi.fn> }; channelCount?: number; channelCountMode?: string }[] = [];
   const analysers: { id: string; fftSize: number; fill: number }[] = [];
+  const panners: { id: string; pan: { value: number; setTargetAtTime: ReturnType<typeof vi.fn> } }[] = [];
   const ctx = {
     state,
     currentTime: 12,
@@ -29,6 +30,11 @@ function pretendContext(state: "running" | "suspended" = "running") {
       return g;
     },
     createChannelSplitter: () => node("split"),
+    createStereoPanner: () => {
+      const p = { ...node("pan"), pan: { value: 0, setTargetAtTime: vi.fn() } };
+      panners.push(p);
+      return p;
+    },
     createAnalyser: () => {
       const a = { ...node("meter"), fftSize: 0, fill: 0, getFloatTimeDomainData: (into: Float32Array) => void into.fill(a.fill) };
       analysers.push(a);
@@ -36,7 +42,7 @@ function pretendContext(state: "running" | "suspended" = "running") {
     },
     createMediaElementSource: vi.fn(() => node("source")),
   };
-  return { ctx, log, gains, analysers };
+  return { ctx, log, gains, analysers, panners };
 }
 type Pretend = ReturnType<typeof pretendContext>;
 const busOver = (p: Pretend | null) => createSoundBus(() => (p ? (p.ctx as unknown as AudioContext) : null));
@@ -176,5 +182,41 @@ describe("once the person has pressed something", () => {
     current = pretendContext();
     bus.unlock();
     expect(current.gains).toHaveLength(2); // a new master, and the line again
+  });
+});
+
+describe("moving a sound left or right", () => {
+  it("puts a panner between the line and the mix the first time it is moved, and only then", () => {
+    const p = pretendContext();
+    const bus = busOver(p);
+    bus.unlock();
+    const line = bus.line(element());
+    line.setPan(0);
+    expect(p.panners).toHaveLength(0); // a sound left where it was recorded needs none
+    line.setPan(-0.5);
+    expect(p.panners).toHaveLength(1);
+    expect(p.panners[0].pan.setTargetAtTime).toHaveBeenLastCalledWith(-0.5, 12, expect.any(Number));
+    // The line's gain now feeds the panner, and the panner the mix.
+    expect(p.log.slice(-3)).toEqual([expect.stringMatching(/^gain\d+ off$/), expect.stringMatching(/^gain\d+>pan\d+$/), expect.stringMatching(/^pan\d+>gain\d+$/)]);
+    line.setPan(1);
+    line.setPan(1);
+    expect(p.panners).toHaveLength(1);
+    expect(p.panners[0].pan.setTargetAtTime).toHaveBeenCalledTimes(2);
+    line.setPan(0); // back to the middle through the panner it has
+    expect(p.panners[0].pan.setTargetAtTime).toHaveBeenLastCalledWith(0, 12, expect.any(Number));
+  });
+
+  it("asked for before the mix exists, is in place once it does; without a mix it does nothing", () => {
+    const p = pretendContext();
+    const bus = busOver(p);
+    const line = bus.line(element());
+    line.setPan(0.75);
+    expect(p.panners).toHaveLength(0);
+    bus.unlock();
+    expect(p.panners).toHaveLength(1);
+    expect(p.panners[0].pan.setTargetAtTime).toHaveBeenLastCalledWith(0.75, 12, expect.any(Number));
+    const none = busOver(null);
+    none.unlock();
+    expect(() => none.line(element()).setPan(1)).not.toThrow();
   });
 });

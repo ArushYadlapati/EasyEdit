@@ -111,7 +111,7 @@ async function setup(
   const line = (el: MediaElement) => {
     const kept = { gains: [] as number[], closed: false };
     lines.set(el, kept);
-    return { setGain: (gain: number) => void kept.gains.push(gain), close: () => void (kept.closed = true) };
+    return { setGain: (gain: number) => void kept.gains.push(gain), setPan: () => {}, close: () => void (kept.closed = true) };
   };
   const make = (kind: "video" | "audio") => () => {
     const el = pretendElement(kind, options.element ?? {});

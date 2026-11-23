@@ -1,4 +1,4 @@
-import { fadeFrames, soundingClips } from "@/lib/render/clip-sound";
+import { fadeFrames, panOf, soundingClips } from "@/lib/render/clip-sound";
 import type { Ease, MediaClip, TimelineDoc } from "@/lib/timeline";
 import { isKeyframed } from "@/lib/timeline/keyframes";
 
@@ -18,6 +18,7 @@ export type Voice = {
   // The clip's volume keyframes, when it has any: `at` in samples from the voice's start (it may lie outside the
   // voice). The voice's gain is then 1 and these give its volume.
   envelope?: EnvelopePoint[];
+  pan?: number; // where the voice sits between left (−1) and right (1), when it is not where it was recorded
 };
 
 export type EnvelopePoint = { at: number; value: number; ease?: Ease };
@@ -45,6 +46,7 @@ function continues(clip: MediaClip, next: MediaClip, file: string, nextFile: str
   return (
     !isKeyframed(clip, "volume") &&
     !isKeyframed(next, "volume") &&
+    panOf(clip) === panOf(next) &&
     fadeFrames(clip).out === 0 &&
     fadeFrames(next).in === 0 &&
     next.start === clip.start + clip.duration &&
@@ -87,6 +89,7 @@ export function soundSchedule(doc: TimelineDoc, sounds: Record<string, string>, 
       gain,
       fadeIn: frameCount(fade.in, fps, sampleRate),
       fadeOut,
+      ...(panOf(clip) !== 0 && { pan: panOf(clip) }),
       ...(isKeyframed(clip, "volume") && {
         envelope: clip.keyframes!.volume!.map((k) => ({ at: Math.round((k.at * sampleRate) / fps), value: k.value, ...(k.ease && { ease: k.ease }) })),
       }),

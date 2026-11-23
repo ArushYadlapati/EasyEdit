@@ -36,6 +36,7 @@ const TrackPatch = z.object({
   muted: z.boolean().optional(),
   hidden: z.boolean().optional(),
   locked: z.boolean().optional(),
+  volume: Track.shape.volume,
 });
 
 // The fields update_clip can change, each optional. transform, style and keyframes list only the sub-keys they
@@ -56,6 +57,7 @@ const ClipExpect = z
     captions: MediaClip.shape.captions,
     fadeIn: MediaClip.shape.fadeIn,
     fadeOut: MediaClip.shape.fadeOut,
+    pan: MediaClip.shape.pan,
     adjust: Adjust,
     blend: BlendMode,
     chroma: MediaClip.shape.chroma,

@@ -139,6 +139,7 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
     case "fadeOut":
       return { scrub: 1 / fps, decimals: 2 };
     case "volume":
+    case "pan":
     case "speed":
     case "rounding":
     case "chromaTolerance":
@@ -234,6 +235,8 @@ function NumberField(props: {
     };
   } else if (field === "volume") {
     scrubRange = () => ({ min: 0, max: VOLUME_MAX * 100 });
+  } else if (field === "pan") {
+    scrubRange = () => ({ min: -100, max: 100 });
   } else if (field === "sourceIn") {
     // The footage stops slipping where the clip would run out of it.
     scrubRange = () => {
@@ -702,6 +705,7 @@ function SoundSection({ clip }: { clip: MediaClip }) {
       <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clip.id} field="fadeIn" label="Fade in" suffix="s" min={0} step={0.1} />
         <NumberField clipId={clip.id} field="fadeOut" label="Fade out" suffix="s" min={0} step={0.1} />
+        <NumberField clipId={clip.id} field="pan" label="Pan (left − right +)" suffix="%" min={-100} max={100} step={10} />
       </div>
       <div className="flex flex-wrap gap-2">
         <Button data-edit-control disabled={!canEdit || busy} onClick={() => void level([clip.id])}>
@@ -978,6 +982,25 @@ function TrackSection({ track }: { track: Track }) {
           onChange={() => toggleTrack(store, track.id, field)}
         />
       ))}
+      {(track.kind === "video" || track.kind === "overlay" || track.kind === "audio") && (
+        // How loud the whole track is, on top of each clip's own volume.
+        <Field label="Track volume">
+          <NumberInput
+            ariaLabel="Track volume"
+            data-edit-control
+            disabled={!canEdit}
+            value={Math.round((track.volume ?? 1) * 100)}
+            suffix="%"
+            min={0}
+            max={VOLUME_MAX * 100}
+            step={10}
+            onCommit={(percent) => {
+              const volume = Math.min(VOLUME_MAX, Math.max(0, Math.round(percent) / 100));
+              if (volume !== (track.volume ?? 1)) store.getState().edit([{ op: "update_track", trackId: track.id, patch: { volume } }], "track volume");
+            }}
+          />
+        </Field>
+      )}
       <p className={cx(TEXT, "text-ed-muted")}>
         {TRACK_KIND_LABEL[track.kind]} · {clipCount(track.clips.length)}
       </p>

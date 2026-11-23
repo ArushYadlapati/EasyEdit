@@ -34,7 +34,7 @@ function step(ms = 16) {
 
 // A mix that reads whatever the test says is sounding.
 function pretendBus(levels: { now: Levels | null }) {
-  const bus: SoundBus = { line: () => ({ setGain() {}, close() {} }), unlock: vi.fn(), levels: () => levels.now, close: vi.fn() };
+  const bus: SoundBus = { line: () => ({ setGain() {}, setPan() {}, close() {} }), unlock: vi.fn(), levels: () => levels.now, close: vi.fn() };
   return bus;
 }
 

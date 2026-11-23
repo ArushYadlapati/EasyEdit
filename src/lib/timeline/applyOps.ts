@@ -42,6 +42,7 @@ const CLIP_FILL: Record<string, () => unknown> = {
   captions: () => false,
   fadeIn: () => 0,
   fadeOut: () => 0,
+  pan: () => 0,
   adjust: () => ({}),
   blend: () => "normal",
   chroma: () => null,
@@ -67,7 +68,7 @@ const VISUAL_EFFECTS = ["keyframes", "transitionIn", "transitionOut"] as const;
 // What only a picture takes: its colours, and how it mixes with what is under it.
 const PICTURE_EFFECTS = ["adjust", "blend", "chroma", "rounding"] as const;
 // What a clip that sounds takes: captions for its speech, and a fade of its sound at either end.
-const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut"] as const;
+const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut", "pan"] as const;
 // A video clip takes both kinds; sound takes only its own (see CLIP_EFFECTS).
 const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string[]> = {
   video: [...VISUAL_EFFECTS, ...SOUND_EFFECTS, ...PICTURE_EFFECTS],
@@ -329,9 +330,12 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
 
       case "update_track": {
         const { track } = findTrack(doc, op.trackId, opIndex, name);
+        // A track's volume is 1 until it is set; it is filled in before it is expected or changed, so an undo goes back to 1.
+        if ((op.patch.volume !== undefined || op.expect?.volume !== undefined) && track.volume === undefined) track.volume = 1;
         if (op.expect && !holds(track, op.expect)) throw stale(`track "${op.trackId}"`);
-        const fields = (t: Track) => ({ name: t.name, muted: t.muted, hidden: t.hidden, locked: t.locked });
+        const fields = (t: Track) => ({ name: t.name, muted: t.muted, hidden: t.hidden, locked: t.locked, ...(t.volume !== undefined && { volume: t.volume }) });
         const before = fields(track);
+        if (op.patch.volume !== undefined) track.volume = op.patch.volume;
         if (op.patch.name !== undefined) track.name = op.patch.name;
         if (op.patch.muted !== undefined) track.muted = op.patch.muted;
         if (op.patch.hidden !== undefined) track.hidden = op.patch.hidden;

@@ -96,7 +96,7 @@ export function createVoicePlayer(
           ring.dropBefore(Math.floor(p(d)) - r);
         }
       }
-      applyGain(part, voice.gain, a - voice.start, voice.end - voice.start, { in: voice.fadeIn, out: voice.fadeOut }, voice.envelope);
+      applyGain(part, voice.gain, a - voice.start, voice.end - voice.start, { in: voice.fadeIn, out: voice.fadeOut }, voice.envelope, voice.pan ?? 0);
       return part;
     },
     stop() {

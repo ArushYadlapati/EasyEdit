@@ -20,12 +20,33 @@ export function playsInPreview(track: Track, clip: Clip): clip is MediaClip {
 export function soundGain(track: Track, clip: Clip): number {
   if (!playsInPreview(track, clip) || clip.type === "image" || track.muted) return 0;
   const keys = clip.keyframes?.volume;
-  return keys && keys.length > 0 ? Math.max(...keys.map((k) => k.value)) : clip.volume;
+  return (keys && keys.length > 0 ? Math.max(...keys.map((k) => k.value)) : clip.volume) * trackGain(track);
+}
+
+// How loud the track makes its clips, on top of their own volume.
+export function trackGain(track: Track): number {
+  return track.volume ?? 1;
+}
+
+// Where a clip's sound sits between left (−1) and right (1); 0 is as recorded.
+export function panOf(clip: Clip): number {
+  return clip.type === "video" || clip.type === "audio" ? (clip.pan ?? 0) : 0;
+}
+
+// A stereo sound moved towards one side, as a browser's own panner does it, so the preview and the export agree:
+// towards the left, the right side is folded into the left and fades out; towards the right, the other way round.
+// Returns what each output side takes of each input side.
+export function panGains(pan: number): { ll: number; lr: number; rl: number; rr: number } {
+  const p = Math.max(-1, Math.min(1, pan));
+  if (p === 0) return { ll: 1, lr: 0, rl: 0, rr: 1 };
+  const x = ((p <= 0 ? p + 1 : p) * Math.PI) / 2;
+  // ll: left out from left in; lr: left out from right in; rl: right out from left in; rr: right out from right in.
+  return p <= 0 ? { ll: 1, lr: Math.cos(x), rl: 0, rr: Math.sin(x) } : { ll: Math.cos(x), lr: 0, rl: Math.sin(x), rr: 1 };
 }
 
 // The clip's gain while the playhead is on `frame`: its volume there, keyframes counted in. 0 where it has no gain.
 export function gainAt(track: Track, clip: Clip, frame: number): number {
-  return soundGain(track, clip) === 0 ? 0 : volumeAt(clip, frame);
+  return soundGain(track, clip) === 0 ? 0 : volumeAt(clip, frame) * trackGain(track);
 }
 
 // How long the clip's fades really are, in frames: the fade in first, as much of it as the clip is long, then the
@@ -60,13 +81,13 @@ export function clipFadeAt(clip: MediaClip, frame: number): number {
 }
 
 // What the export hears: nothing where the clip's gain is 0 or its speed is outside the speeds that sound. A clip
-// whose volume is keyframed has a gain of 1 here, and its keyframes shape it sample by sample.
+// whose volume is keyframed has only its track's gain here, and its keyframes shape it sample by sample.
 export function clipSound(track: Track, clip: Clip): { gain: number } | null {
   const gain = soundGain(track, clip);
   if (gain === 0) return null;
   const { speed } = clip as MediaClip; // a clip with a gain is a media clip
   if (speed < MIN_SOUND_SPEED || speed > MAX_SOUND_SPEED) return null;
-  return { gain: isKeyframed(clip, "volume") ? 1 : gain };
+  return { gain: isKeyframed(clip, "volume") ? trackGain(track) : gain };
 }
 
 export type SoundingClip = { track: Track; clip: MediaClip; gain: number };

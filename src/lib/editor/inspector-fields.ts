@@ -65,6 +65,8 @@ export type ClipField =
   | "volume"
   | "fadeIn"
   | "fadeOut"
+  // Where the clip's sound sits: −100 all the way left, 0 as recorded, 100 all the way right.
+  | "pan"
   // How fast a video or audio clip plays, in percent of as recorded, whichever way it runs.
   | "speed"
   // Where in its file a video or audio clip starts, in seconds: changing it slips the footage under the clip, which
@@ -147,6 +149,7 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   volume: "volume change",
   fadeIn: "fade change",
   fadeOut: "fade change",
+  pan: "pan change",
   speed: "speed change",
   sourceIn: "slip",
   brightness: "color change",
@@ -342,6 +345,8 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
     case "fadeIn":
     case "fadeOut":
       return clip.type === "video" || clip.type === "audio" ? ((clip[field] ?? 0) / fps).toFixed(2) : "";
+    case "pan":
+      return hasSpeed(clip) ? String(Math.round((clip.pan ?? 0) * 100)) : "";
     case "speed":
       return hasSpeed(clip) ? String(Math.round(rateOf(clip) * 100)) : "";
     case "sourceIn":
@@ -685,6 +690,12 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       const percent = parseNumber(raw);
       if (percent === null || !hasSpeed(clip)) return null;
       return speedOps(clip, Math.round(percent) / 100, ctx.room ?? Infinity, lengthFrames);
+    }
+    case "pan": {
+      const percent = parseNumber(raw);
+      if (percent === null || !hasSpeed(clip)) return null;
+      const pan = clamp(Math.round(percent), -100, 100) / 100;
+      return pan === (clip.pan ?? 0) ? [] : update({ pan });
     }
     case "sourceIn": {
       // Whole frames, kept where the clip still fits its media, when the media's length is known.

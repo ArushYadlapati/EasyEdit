@@ -13,6 +13,7 @@ type Sounding = { volume: number };
 
 export type SoundLine = {
   setGain(gain: number): void; // 1 is as recorded
+  setPan(pan: number): void; // −1 left, 0 as recorded, 1 right; without a mix the sound stays where it was recorded
   close(): void; // the element is done with: its sound leaves the mix
 };
 
@@ -41,7 +42,8 @@ function browserContext(): AudioContext | null {
 
 type Mix = { ctx: AudioContext; master: GainNode; sides: [AnalyserNode, AnalyserNode]; scratch: Float32Array<ArrayBuffer> };
 // gain: what was last asked for. aimed: what the node was last told to reach, which its own value lags behind.
-type Line = { el: Sounding; gain: number; aimed: number; node: GainNode | null; source: AudioNode | null };
+// pan: what was last asked for; panner: the node that does it, made the first time a line is moved off centre.
+type Line = { el: Sounding; gain: number; aimed: number; node: GainNode | null; source: AudioNode | null; pan: number; panner: StereoPannerNode | null };
 
 export function createSoundBus(makeContext: () => AudioContext | null = browserContext): SoundBus {
   let mix: Mix | null = null;
@@ -65,9 +67,27 @@ export function createSoundBus(makeContext: () => AudioContext | null = browserC
       node.connect(mix.master);
       line.node = node;
       line.source = source;
+      if (line.pan !== 0) placePan(line);
       line.el.volume = 1; // the gain does the work from here on
     } catch {
       // This element stays on its own volume.
+    }
+  }
+
+  // Puts a panner between the line's gain and the mix the first time it is needed, then moves it.
+  function placePan(line: Line): void {
+    if (!mix || !line.node) return;
+    try {
+      if (!line.panner) {
+        const panner = mix.ctx.createStereoPanner();
+        line.node.disconnect();
+        line.node.connect(panner);
+        panner.connect(mix.master);
+        line.panner = panner;
+      }
+      line.panner.pan.setTargetAtTime(line.pan, mix.ctx.currentTime, SMOOTH_SECONDS);
+    } catch {
+      // No panner here: the sound stays where it was recorded.
     }
   }
 
@@ -75,11 +95,13 @@ export function createSoundBus(makeContext: () => AudioContext | null = browserC
     try {
       line.source?.disconnect();
       line.node?.disconnect();
+      line.panner?.disconnect();
     } catch {
       // already apart
     }
     line.node = null;
     line.source = null;
+    line.panner = null;
   }
 
   function setUp(ctx: AudioContext): Mix {
@@ -101,7 +123,7 @@ export function createSoundBus(makeContext: () => AudioContext | null = browserC
 
   return {
     line(el) {
-      const line: Line = { el, gain: 1, aimed: 1, node: null, source: null };
+      const line: Line = { el, gain: 1, aimed: 1, node: null, source: null, pan: 0, panner: null };
       lines.add(line);
       attach(line);
       return {
@@ -115,6 +137,12 @@ export function createSoundBus(makeContext: () => AudioContext | null = browserC
           } else {
             el.volume = Math.min(1, Math.max(0, gain));
           }
+        },
+        setPan(pan) {
+          if (line.pan === pan) return;
+          line.pan = pan;
+          // A line never moved off centre needs no panner at all.
+          if (pan !== 0 || line.panner) placePan(line);
         },
         close() {
           detach(line);

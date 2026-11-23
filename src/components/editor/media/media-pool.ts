@@ -158,9 +158,12 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
 
   // How loud an element sounds: through its line when it has one, else by its own volume, which a browser refuses
   // above 1.
-  function loud({ el, line }: Held, volume: number): void {
-    if (line) line.setGain(volume);
-    else el.volume = Math.min(volume, 1);
+  // pan: where it sits between left and right, which only a line can change.
+  function loud({ el, line }: Held, volume: number, pan = 0): void {
+    if (line) {
+      line.setGain(volume);
+      line.setPan(pan);
+    } else el.volume = Math.min(volume, 1);
     el.muted = volume === 0;
   }
 
@@ -233,7 +236,7 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
     const end = el.duration !== undefined && Number.isFinite(el.duration) ? el.duration : el.ended ? el.currentTime : null;
     if (end !== null && want.seconds >= end) {
       if (!el.paused) el.pause();
-      loud(held, want.volume);
+      loud(held, want.volume, want.pan);
       if (!el.ended && el.currentTime < end) el.currentTime = end;
       return;
     }
@@ -253,7 +256,7 @@ export function createMediaPool(deps: PoolDeps): MediaPool {
     } else if (!el.paused) {
       el.pause();
     }
-    loud(held, want.volume);
+    loud(held, want.volume, want.pan);
     if (needsSeek(el.currentTime, want)) el.currentTime = want.seconds;
   }
 

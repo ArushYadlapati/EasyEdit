@@ -1,4 +1,4 @@
-import { clipFadeAt, gainAt, playsInPreview } from "@/lib/render/clip-sound";
+import { clipFadeAt, gainAt, panOf, playsInPreview } from "@/lib/render/clip-sound";
 import { tailAt } from "@/lib/render/compositor";
 import { sourceSeconds } from "@/lib/render/source-time";
 import type { MediaClip, TimelineDoc, Track } from "@/lib/timeline";
@@ -8,7 +8,8 @@ import type { MediaClip, TimelineDoc, Track } from "@/lib/timeline";
 
 // volume: the gain the clip should sound at right now, its fades counted in. 1 is as recorded, and it can be more.
 
-export type MediaWant = { clipId: string; assetId: string; type: "video" | "image" | "audio"; seconds: number; rate: number; volume: number };
+// pan: where the clip's sound sits between left (−1) and right (1), given only when it is not where it was recorded.
+export type MediaWant = { clipId: string; assetId: string; type: "video" | "image" | "audio"; seconds: number; rate: number; volume: number; pan?: number };
 
 export const MIN_ELEMENT_RATE = 0.0625; // Edge throws when playbackRate is set outside these two
 export const MAX_ELEMENT_RATE = 16;
@@ -33,6 +34,7 @@ export function mediaWants(doc: TimelineDoc, frame: number, play: { playing: boo
       seconds: sourceSeconds(clip, frame, doc.fps),
       rate,
       volume: rate === 0 || silent ? 0 : gainAt(track, clip, frame) * clipFadeAt(clip, frame),
+      ...(panOf(clip) !== 0 && { pan: panOf(clip) }),
     };
   };
   for (const track of doc.tracks) {

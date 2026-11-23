@@ -179,6 +179,8 @@ export const MediaClip = z.object({
   // Video and image only (checked in the ops).
   adjust: Adjust.optional(),
   blend: BlendMode.optional(),
+  // Video and audio only (checked in the ops): where its sound sits between the left side (−1) and the right (1).
+  pan: z.number().min(-1).max(1).optional(),
   chroma: Chroma.nullable().optional(), // null or absent: no colour is taken out
   rounding: z.number().min(0).max(1).optional(), // how round its corners are: 0 square, 1 as round as its short side allows
 });
@@ -330,6 +332,8 @@ export const Track = z.object({
   muted: z.boolean(),
   hidden: z.boolean(),
   locked: z.boolean(),
+  // How loud every clip on the track is, on top of each clip's own volume: 1, or absent, changes nothing.
+  volume: z.number().min(0).max(VOLUME_MAX).optional(),
   clips: z.array(Clip),
 });
 export type Track = z.infer<typeof Track>;
