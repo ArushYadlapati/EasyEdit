@@ -226,12 +226,12 @@ describe("running commands", () => {
     expect(viewer.st().tool).toBe("select");
   });
 
-  it("Line and Arrow are tools of their own, and Next shape steps through the Shape tool's list only", () => {
+  it("Line and Arrow pick the one Line tool, set to each, and Next shape steps through the Shape tool's list only", () => {
     const { st, ctx } = setup();
     runCommand("tool-line", ctx);
-    expect(st().tool).toBe("line");
+    expect([st().tool, st().lineTool]).toEqual(["line", "line"]);
     runCommand("tool-arrow", ctx);
-    expect(st().tool).toBe("arrow");
+    expect([st().tool, st().lineTool]).toEqual(["line", "arrow"]);
     const seen: string[] = [];
     for (let i = 0; i < 7; i++) {
       runCommand("tool-shape-next", ctx);
@@ -241,6 +241,7 @@ describe("running commands", () => {
     expect(seen).toEqual(["ellipse", "triangle", "diamond", "pentagon", "hexagon", "star", "rect"]);
     const viewer = setup(false);
     runCommand("tool-line", viewer.ctx);
+    expect([viewer.st().tool, viewer.st().lineTool]).toEqual(["select", "arrow"]);
     runCommand("tool-arrow", viewer.ctx);
     expect(viewer.st().tool).toBe("select");
   });

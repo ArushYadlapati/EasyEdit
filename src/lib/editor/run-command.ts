@@ -91,9 +91,11 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       if (state.setTool("shape")) state.setShapeTool(BOX_SHAPES[(BOX_SHAPES.indexOf(state.shapeTool) + 1) % BOX_SHAPES.length]);
       return;
     case "tool-line":
-      return void state.setTool("line");
+      if (state.setTool("line")) state.setLineTool("line");
+      return;
     case "tool-arrow":
-      return void state.setTool("arrow");
+      if (state.setTool("line")) state.setLineTool("arrow");
+      return;
     case "tool-guide":
       return void state.setTool("guide");
     case "tool-crop":

@@ -7,7 +7,7 @@ import { DEFAULT_KEYMAP, setKeys, type Keymap } from "@/lib/editor/keymap";
 import { DEFAULT_PREFS, createSettingsStore } from "@/lib/editor/settings";
 import { shortcutFor, shouldIgnoreKey } from "@/lib/editor/shortcuts";
 import { makeStore } from "../editor/fixtures";
-import { act, fireEvent, render, screen, within } from "../helpers/dom";
+import { act, fireEvent, render, screen, tipOf, within } from "../helpers/dom";
 
 const isMac = () => navigator.platform.startsWith("Mac");
 const MOD = () => (isMac() ? { metaKey: true } : { ctrlKey: true });
@@ -232,7 +232,7 @@ it("a clicked button reached again with the keyboard takes Space back", () => {
 
 it("buttons that have a key show it in their tooltip", () => {
   show();
-  const hint = (name: string | RegExp) => screen.getByRole("button", { name }).getAttribute("title");
+  const hint = (name: string | RegExp) => tipOf(screen.getByRole("button", { name }));
   const mac = isMac();
   expect(hint(/^Undo/)).toBe(`Undo (${shortcutFor("undo", mac)})`);
   expect(hint(/^Redo/)).toBe(`Redo (${shortcutFor("redo", mac)})`);
@@ -349,7 +349,7 @@ function showWithKeys(keymap: Keymap) {
   return { settings, st: () => store.getState() };
 }
 
-const titleOf = (name: string) => screen.getByRole("button", { name }).getAttribute("title");
+const titleOf = (name: string) => tipOf(screen.getByRole("button", { name }));
 
 it("a custom key runs its command and the old key no longer does", () => {
   const { st, settings } = showWithKeys(CUSTOM_SPLIT);

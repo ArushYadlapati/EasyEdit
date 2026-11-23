@@ -7,7 +7,7 @@ import { DEFAULT_PREFS, createSettingsStore, type Prefs } from "@/lib/editor/set
 import type { EditorInit } from "@/lib/editor/types";
 import { FRAME_SIZE_MESSAGE } from "@/lib/timeline";
 import { makeStore, sampleDoc } from "../editor/fixtures";
-import { act, fireEvent, render, screen, within } from "../helpers/dom";
+import { act, fireEvent, render, screen, tipOf, within } from "../helpers/dom";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -592,7 +592,7 @@ it("turning all shortcuts off", () => {
   closeSettings();
   expect(press(document.body, " ")).toBe(true);
   expect(st().playing).toBe(false);
-  expect(screen.getByRole("button", { name: "Split" }).getAttribute("title")).toBe("Split");
+  expect(tipOf(screen.getByRole("button", { name: "Split" }))).toBe("Split");
 });
 
 it("Escape stays with Clear the selection", () => {

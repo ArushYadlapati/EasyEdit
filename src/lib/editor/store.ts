@@ -19,7 +19,7 @@ import { clampZoom, fitZoom } from "./geometry";
 import { MESSAGES, explainOpError } from "./messages";
 import { shuttle as nextShuttle } from "./playback";
 import { toolNeedsEdit, type Tool } from "./tools";
-import type { BoxShape } from "@/lib/timeline/shapes";
+import type { BoxShape, LineTool } from "@/lib/timeline/shapes";
 import { foldQueue, sameOps } from "./reconcile";
 import type {
   ActivityEntry,
@@ -78,6 +78,7 @@ export type EditorState = {
   textEditSelectAll: boolean;
   tool: Tool; // the rail's current tool, this person's own
   shapeTool: BoxShape; // the shape the Shape tool draws, this person's own; Rectangle when the editor opens
+  lineTool: LineTool; // what the Line tool draws, a line or an arrow, this person's own; an arrow when the editor opens
   // The guide picked on the preview, this person's own. Picking a clip or a track clears it; so does its removal.
   guideId: string | null;
   showGuides: boolean; // this browser's choice, from View as
@@ -124,6 +125,7 @@ export type EditorState = {
   setName(name: string): void; // only what the editor shows; renameFromEditor saves it
   setCropArmed(clipId: string | null): void;
   setShapeTool(shape: BoxShape): void;
+  setLineTool(line: LineTool): void;
   setTool(tool: Tool): boolean; // false: a tool that changes the project, for someone who can't edit
   selectGuide(guideId: string | null): void; // clears the clip and track selection; a guide not there selects nothing
   setShowGuides(on: boolean): void; // hiding them clears the selected guide and leaves the Guide tool
@@ -362,6 +364,7 @@ export function createEditorStore(
       audioMeterWidth: clampMeterWidth(deps.view?.audioMeterWidth ?? METER_WIDTH.initial),
       tool: "select",
       shapeTool: "rect",
+      lineTool: "arrow",
       guideId: null,
       boardScale: 1,
       viewAs: null,
@@ -688,6 +691,10 @@ export function createEditorStore(
 
       setShapeTool(shape) {
         if (shape !== get().shapeTool) set({ shapeTool: shape });
+      },
+
+      setLineTool(line) {
+        if (line !== get().lineTool) set({ lineTool: line });
       },
 
       setTool(tool) {

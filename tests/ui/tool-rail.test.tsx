@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { ToolRail } from "@/components/editor/tool-rail";
 import { makeStore, sampleDoc } from "../editor/fixtures";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { act, fireEvent, render, screen, tipOf } from "../helpers/dom";
 
 function show(canEdit = true, doc = sampleDoc()) {
   const store = makeStore({ canEdit, doc });
@@ -21,7 +21,7 @@ describe("the tool rail", () => {
     const bar = screen.getByRole("toolbar", { name: "Tools" });
     expect(bar.getAttribute("aria-orientation")).toBe("vertical");
     const names = [...bar.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
-    expect(names).toEqual(["Selection", "Razor", "Text", "Shape: Rectangle", "Line", "Arrow", "Guide", "Crop", "Split", "Delete", "Ripple delete"]);
+    expect(names).toEqual(["Selection", "Razor", "Text", "Shape: Rectangle", "Arrow", "Guide", "Crop", "Split", "Delete", "Ripple delete"]);
   });
 
   it("a click picks a tool and shows it pressed", () => {
@@ -35,32 +35,40 @@ describe("the tool rail", () => {
     expect(button("Split").getAttribute("aria-pressed")).toBeNull();
   });
 
-  it("each button's tooltip names its key", () => {
-    const { button } = show();
-    expect(button("Selection").title).toBe("Selection (V)");
-    expect(button("Razor").title).toBe("Razor (C)");
-    expect(button("Text").title).toBe("Text (T)");
-    expect(button("Shape: Rectangle").title).toBe("Shape: Rectangle (U)");
-    expect(button("Line").title).toBe("Line (Shift+L)");
-    expect(button("Arrow").title).toBe("Arrow (Shift+A)");
-    expect(button("Guide").title).toBe("Guide (G)");
-    expect(button("Crop").title).toBe("Crop (R)");
-    expect(button("Split").title).toBe("Split (S)");
+  it("each button's description names its key, and what a second click does", () => {
+    const { store, button } = show();
+    const told = (name: string) => tipOf(button(name));
+    expect(told("Selection")).toBe("Selection (V)");
+    expect(told("Razor")).toBe("Razor (C)");
+    expect(told("Text")).toBe("Text (T)");
+    expect(told("Shape: Rectangle")).toBe("Shape: Rectangle (U). Click again for more shapes");
+    expect(told("Arrow")).toBe("Arrow (Shift+A). Click again for a line");
+    expect(told("Guide")).toBe("Guide (G)");
+    expect(told("Crop")).toBe("Crop (R)");
+    expect(told("Split")).toBe("Split (S)");
+    act(() => store.getState().setLineTool("line"));
+    expect(told("Line")).toBe("Line (Shift+L). Click again for an arrow");
+    // The browser's own slow tooltip is left to the disabled buttons, which get no hover of their own.
+    expect(button("Selection").title).toBe("");
+    expect(button("Delete").title).toBe("Delete (Del)");
   });
 
-  it("Line and Arrow are tools of their own, beside Shape", () => {
+  it("Line and Arrow are one button: a click picks it, another click switches what it draws", () => {
     const { store, button } = show();
-    fireEvent.click(button("Line"));
-    expect(store.getState().tool).toBe("line");
+    fireEvent.click(button("Arrow"));
+    expect([store.getState().tool, store.getState().lineTool]).toEqual(["line", "arrow"]);
+    expect(button("Arrow").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(button("Arrow"));
+    expect([store.getState().tool, store.getState().lineTool]).toEqual(["line", "line"]);
     expect(button("Line").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("button", { name: "Arrow" })).toBeNull();
+    fireEvent.click(button("Line"));
+    expect([store.getState().tool, store.getState().lineTool]).toEqual(["line", "arrow"]);
+    // Another tool, then back: the first click only picks it, and it still draws what it drew.
+    fireEvent.click(button("Razor"));
     fireEvent.click(button("Arrow"));
-    expect(store.getState().tool).toBe("arrow");
-    expect(button("Line").getAttribute("aria-pressed")).toBe("false");
-    // Neither has a list to open: a second click keeps the tool.
-    expect(button("Arrow").getAttribute("aria-haspopup")).toBeNull();
-    fireEvent.click(button("Arrow"));
-    expect(store.getState().tool).toBe("arrow");
-    // Picking one leaves the Shape tool's own shape as it was.
+    expect([store.getState().tool, store.getState().lineTool]).toEqual(["line", "arrow"]);
+    // It leaves the Shape tool's own shape as it was.
     expect(store.getState().shapeTool).toBe("rect");
   });
 
@@ -83,7 +91,7 @@ describe("the tool rail", () => {
   it("a viewer can only use Selection", () => {
     const { button } = show(false);
     expect(button("Selection").disabled).toBe(false);
-    for (const name of ["Razor", "Text", "Shape: Rectangle", "Line", "Arrow", "Guide", "Crop", "Split", "Delete", "Ripple delete"]) expect(button(name).disabled, name).toBe(true);
+    for (const name of ["Razor", "Text", "Shape: Rectangle", "Arrow", "Guide", "Crop", "Split", "Delete", "Ripple delete"]) expect(button(name).disabled, name).toBe(true);
   });
 
   it("keeps a tab stop when the button it was on is disabled", () => {
@@ -94,7 +102,7 @@ describe("the tool rail", () => {
     expect(document.activeElement).toBe(button("Ripple delete"));
     fireEvent.click(button("Ripple delete"));
     expect(button("Ripple delete").disabled).toBe(true);
-    const stops = ["Selection", "Razor", "Text", "Line", "Arrow", "Guide", "Crop", "Split", "Delete", "Ripple delete"].filter((n) => button(n).tabIndex === 0);
+    const stops = ["Selection", "Razor", "Text", "Arrow", "Guide", "Crop", "Split", "Delete", "Ripple delete"].filter((n) => button(n).tabIndex === 0);
     expect(stops).toEqual(["Selection"]);
   });
 

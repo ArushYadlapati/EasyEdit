@@ -350,7 +350,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     const view = surface.view();
     if (!view) return;
     const state = store.getState();
-    // The Shape, Line and Arrow tools draw wherever they are pressed, over clips and guides alike.
+    // The Shape and Line tools draw wherever they are pressed, over clips and guides alike.
     if (state.canEdit && drawsShape(state.tool)) {
       shapeDraw.press(e);
       return;

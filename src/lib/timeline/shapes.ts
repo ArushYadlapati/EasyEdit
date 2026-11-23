@@ -5,10 +5,12 @@ import type { ArrowHead, ArrowHeads, ArrowPoint, ShapeClip, ShapeKind } from "./
 
 // What the editor offers to draw: every kind of shape, with a line as its own choice (an arrow with no heads).
 export type ShapeTool = Exclude<ShapeKind, "arrow"> | "line" | "arrow";
-// The Shape tool's own list: the shapes with an inside. A line and an arrow each have a tool of their own.
+// The Shape tool's own list: the shapes with an inside. A line and an arrow share the Line tool, which draws either.
 export type BoxShape = Exclude<ShapeKind, "arrow">;
+export type LineTool = "line" | "arrow";
+export const LINE_TOOLS: readonly LineTool[] = ["line", "arrow"];
 export const BOX_SHAPES: readonly BoxShape[] = ["rect", "ellipse", "triangle", "diamond", "pentagon", "hexagon", "star"];
-export const SHAPE_TOOLS: readonly ShapeTool[] = [...BOX_SHAPES, "line", "arrow"];
+export const SHAPE_TOOLS: readonly ShapeTool[] = [...BOX_SHAPES, ...LINE_TOOLS];
 export const SHAPE_TOOL_NAME: Record<ShapeTool, string> = {
   rect: "Rectangle",
   ellipse: "Ellipse",
