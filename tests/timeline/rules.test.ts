@@ -13,7 +13,7 @@ const track = (id: string, kind = "audio") => ({ id, kind, name: id, muted: fals
 
 describe("limits", () => {
   it("holds the agreed values", () => {
-    expect(LIMITS).toEqual({ projectNameChars: 100, textClipChars: 2000, tracksPerProject: 20, guidesPerProject: 50, clipsPerTrack: 1000,
+    expect(LIMITS).toEqual({ projectNameChars: 100, textClipChars: 2000, tracksPerProject: 20, guidesPerProject: 50, markersPerProject: 200, markerNameChars: 80, clipsPerTrack: 1000,
       keyframesPerProperty: 100, shapeStrokeMax: 200, shapeSideMax: 16_384, arrowPoints: 12, arrowPointReach: 10, effectFramesMax: 600,
       docBytes: 2_097_152, opsPerRequest: 500, opsPageDefault: 100, opsPageMax: 500, opLogRowBytes: 1_048_576,
       opsPageBytes: 2_097_152, trackNameChars: 100, slotHintChars: 200, connectorReadChars: 16_000, connectorEchoChars: 6_000,

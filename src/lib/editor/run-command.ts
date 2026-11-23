@@ -7,12 +7,14 @@ import {
   duplicateSelection,
   freezeFrame,
   goToEdge,
+  goToMarker,
   nudgeSelection,
   paste,
   reverseSelection,
   selectAll,
   separateAudio,
   splitAtPlayhead,
+  toggleMarker,
   stepVolume,
   toggleMute,
 } from "./actions";
@@ -74,6 +76,12 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return goToEdge(store, "prev");
     case "next-edge":
       return goToEdge(store, "next");
+    case "prev-marker":
+      return goToMarker(store, "prev");
+    case "next-marker":
+      return goToMarker(store, "next");
+    case "toggle-marker":
+      return toggleMarker(store);
     case "go-start":
       return state.seek(0);
     case "go-end":

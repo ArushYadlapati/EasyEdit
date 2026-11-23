@@ -3,10 +3,11 @@ import type { TimelineDoc } from "@/lib/timeline";
 export const SNAP_PX = 8; // how close, on screen, a dragged edge must come to a target
 export const SECOND_SNAP_MIN_PX = 24; // whole seconds are targets only when one second is at least this wide
 
-// The starts and ends of every clip but the excluded ones, sorted, each once.
+// The starts and ends of every clip but the excluded ones, and the project's markers, sorted, each once: the frames a
+// dragged clip, the Razor and the playhead's jumps stop at.
 export function clipEdges(doc: TimelineDoc, excludeClipIds: string[]): number[] {
   const excluded = new Set(excludeClipIds);
-  const edges = new Set<number>();
+  const edges = new Set<number>((doc.markers ?? []).map((marker) => marker.at));
   for (const track of doc.tracks) {
     for (const clip of track.clips) {
       if (excluded.has(clip.id)) continue;

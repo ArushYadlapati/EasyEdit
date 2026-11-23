@@ -94,7 +94,7 @@ const STATES: [string, (store: EditorStore) => void, string[]][] = [
       "input Start", "input Length", "button Make this a slot",
     ],
   ],
-  ["nothing selected", (store) => store.getState().select([]), ["select Format"]],
+  ["nothing selected", (store) => store.getState().select([]), ["select Format", "button Add at playhead"]],
   ["a track selected", (store) => store.getState().selectTrack("t1"), ["input Name", "button Locked", "button Hidden", "button Remove track"]],
 ];
 

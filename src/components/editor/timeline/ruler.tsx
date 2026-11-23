@@ -2,7 +2,8 @@
 
 import { memo, useMemo, useRef, type PointerEvent } from "react";
 import { HEADER_WIDTH, RULER_HEIGHT, frameToPx, pxToFrame, rulerTicks } from "@/lib/editor/geometry";
-import { useEditorStore } from "../context";
+import { markerLabel, sortedMarkers } from "@/lib/editor/markers";
+import { useEditor, useEditorStore } from "../context";
 import { LANE_GUTTER, PlayheadHead } from "./playhead";
 
 type RulerProps = {
@@ -22,6 +23,8 @@ export const Ruler = memo(function Ruler({ zoom, fps, fromFrame, toFrame, max, e
   const laneRef = useRef<HTMLDivElement>(null);
   const grabOffset = useRef(0);
   const { ticks } = useMemo(() => rulerTicks({ zoom, fps, fromFrame, toFrame }), [zoom, fps, fromFrame, toFrame]);
+  const doc = useEditor((s) => s.doc);
+  const markers = useMemo(() => sortedMarkers(doc).filter((m) => m.at >= fromFrame && m.at <= toFrame), [doc, fromFrame, toFrame]);
 
   // The pointer's distance from frame 0; the gutter before frame 0 is part of the ruler.
   const lanePx = (clientX: number) => clientX - (laneRef.current?.getBoundingClientRect().left ?? 0) - LANE_GUTTER;
@@ -61,6 +64,17 @@ export const Ruler = memo(function Ruler({ zoom, fps, fromFrame, toFrame, max, e
             </div>
           );
         })}
+        {markers.map((marker) => (
+          // A flag on the ruler. A press on it is a press on the ruler, so it seeks there (and the playhead snaps to it).
+          <span
+            key={marker.id}
+            data-marker={marker.id}
+            title={markerLabel(marker)}
+            aria-hidden
+            className="absolute bottom-0 h-3 w-2 -translate-x-1/2 bg-ed-accent [clip-path:polygon(0_0,100%_0,100%_60%,50%_100%,0_60%)]"
+            style={{ left: LANE_GUTTER + frameToPx(marker.at, zoom) }}
+          />
+        ))}
         <PlayheadHead zoom={zoom} fps={fps} max={max} end={end} />
       </div>
     </div>

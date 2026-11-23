@@ -209,6 +209,10 @@ export function describe(doc: TimelineDoc, opts?: { version?: number; detail?: b
     const where = (g: { id: string; axis: "x" | "y"; at: number }) => `${g.id} ${g.axis === "x" ? "vertical" : "horizontal"} at ${Number((g.at * 100).toFixed(1))}%`;
     lines.push(`Guides: ${doc.guides.map(where).join(", ")}`);
   }
+  if (doc.markers?.length) {
+    const sorted = [...doc.markers].sort((a, b) => a.at - b.at);
+    lines.push(`Markers: ${sorted.map((m) => `${m.id} ${framesToSeconds(m.at, doc.fps)}s${m.name ? ` "${escapeQuoted(m.name)}"` : ""}`).join(", ")}`);
+  }
   if (doc.captions?.style || Object.keys(doc.captions?.transcripts ?? {}).length > 0) {
     const c = captionStyleOf(doc);
     lines.push(`Captions: ${c.preset} font="${escapeQuoted(c.fontFamily)}" size=${c.fontSize} weight=${c.fontWeight} color=${c.color} highlight=${c.highlight} y=${c.y}${c.uppercase ? " uppercase" : ""}`);

@@ -1,6 +1,6 @@
 export type CommandId =
   | "play-pause" | "play-forward" | "pause" | "play-reverse" | "frame-back" | "frame-forward" | "second-back" | "second-forward"
-  | "prev-edge" | "next-edge" | "go-start" | "go-end"
+  | "prev-edge" | "next-edge" | "go-start" | "go-end" | "toggle-marker" | "prev-marker" | "next-marker"
   | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste" | "duplicate"
   | "nudge-left" | "nudge-right" | "nudge-left-second" | "nudge-right-second"
   | "volume-up" | "volume-down" | "mute-clip" | "separate-audio" | "duck-audio" | "reverse-clip" | "freeze-frame"
@@ -60,6 +60,8 @@ export const SHORTCUTS: Shortcut[] = [
   row("Playback", "second-forward", ["Shift+ArrowRight"], "Forward one second", REPEATS),
   row("Playback", "prev-edge", ["ArrowUp"], "Previous clip edge", REPEATS),
   row("Playback", "next-edge", ["ArrowDown"], "Next clip edge", REPEATS),
+  row("Playback", "prev-marker", ["Alt+ArrowUp"], "Previous marker", REPEATS),
+  row("Playback", "next-marker", ["Alt+ArrowDown"], "Next marker", REPEATS),
   row("Playback", "go-start", ["Home"], "Go to start"),
   row("Playback", "go-end", ["End"], "Go to end"),
   row("Editing", "undo", ["Mod+Z"], "Undo", EDITS_REPEATS),
@@ -82,6 +84,7 @@ export const SHORTCUTS: Shortcut[] = [
   row("Editing", "duck-audio", ["Shift+D"], "Turn the selected clips down while other clips are heard", EDITS),
   row("Editing", "reverse-clip", ["Shift+R"], "Play the selected video clips backward, or forward again", EDITS),
   row("Editing", "freeze-frame", ["Shift+F"], "Freeze the frame under the playhead", EDITS),
+  row("Timeline", "toggle-marker", ["B"], "Add a marker at the playhead, or remove the one there", EDITS),
   row("Timeline", "select-all", ["Mod+A"], "Select all clips"),
   row("Timeline", "clear-selection", ["Escape"], "Clear the selection"),
   row("Timeline", "zoom-in", ["=", "+"], "Zoom in", REPEATS),

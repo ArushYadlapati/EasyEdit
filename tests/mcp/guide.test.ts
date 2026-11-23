@@ -13,7 +13,10 @@ describe("the op reference", () => {
     const engineOps = OpInput.options.map((o) => o.shape.op.value as string);
     // The caption ops are named in a one-line pointer to the guide's Captions section, not spelled out (the tool list is capped).
     const pointed = ["set_caption_style", "set_transcript", "splice_caption_words"];
-    for (const op of engineOps.filter((name) => name !== "replace_track")) {
+    // The marker ops are not spelled out either: the tool list is at its size limit. A project's description lists
+    // its markers, and the engine takes the ops from an agent that sends them.
+    const unlisted = ["replace_track", "add_marker", "update_marker", "remove_marker"];
+    for (const op of engineOps.filter((name) => !unlisted.includes(name))) {
       expect(OP_REFERENCE, op).toContain(pointed.includes(op) ? op : `"op":"${op}"`);
     }
     expect(OP_REFERENCE).not.toContain("replace_track");

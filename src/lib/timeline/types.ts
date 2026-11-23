@@ -338,6 +338,15 @@ export type SafeArea = z.infer<typeof SafeArea>;
 export const Guide = z.strictObject({ id: z.string().min(1), axis: z.enum(["x", "y"]), at: z.number().min(0).max(1) });
 export type Guide = z.infer<typeof Guide>;
 
+// A named point in time on the timeline, kept with the project for everyone in it: a place to come back to, and one
+// the playhead and clips snap to. at: its frame. An empty name is a marker with no label.
+export const Marker = z.strictObject({
+  id: z.string().min(1),
+  at: z.number().int().min(0),
+  name: z.string().max(LIMITS.markerNameChars).refine(isStorableText, UNSTORABLE_TEXT),
+});
+export type Marker = z.infer<typeof Marker>;
+
 // One spoken word: its text and when it starts and ends, in milliseconds of the media file it was heard in.
 export const CaptionWord = z
   .strictObject({
@@ -396,5 +405,7 @@ export const TimelineDoc = z.object({
   guides: z.array(Guide).optional(),
   // The caption style and the words heard in each media file. Absent until captions are first used.
   captions: Captions.optional(),
+  // In the order they were added. Older projects, and a project whose last marker was removed, have no field.
+  markers: z.array(Marker).optional(),
 });
 export type TimelineDoc = z.infer<typeof TimelineDoc>;

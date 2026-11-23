@@ -3,7 +3,7 @@
 import { Link2, Link2Off } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { SWATCH_BOX, cx } from "@/components/ui/cx";
+import { FOCUS_RING, SWATCH_BOX, cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
 import { IconButton } from "@/components/ui/icon-button";
 import { NumberInput } from "@/components/ui/number-input";
@@ -13,8 +13,8 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { gainLabel } from "@/lib/audio/loudness";
-import { applyLook, duckSelection, freezeFrame, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
-import { trackToggles } from "@/lib/editor/geometry";
+import { applyLook, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
+import { formatClock, trackToggles } from "@/lib/editor/geometry";
 import {
   ADJUST_RANGE,
   FIELD_LABEL,
@@ -32,6 +32,7 @@ import {
 } from "@/lib/editor/inspector-fields";
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { clipFrame } from "@/lib/editor/keyframe-edit";
+import { markerAt, sortedMarkers } from "@/lib/editor/markers";
 import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
 import { soundClipsOf } from "@/lib/editor/sound";
@@ -42,7 +43,7 @@ import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_ADJUST, VOLUME_MAX, docDuration, isAdjusted, isCropped, isMediaClip, lookOf, type Clip, type KeyframeProp, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_ADJUST, VOLUME_MAX, docDuration, isAdjusted, isCropped, isMediaClip, lookOf, type Clip, type KeyframeProp, type Marker, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
 import { volumeAt } from "@/lib/timeline/keyframes";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
@@ -978,8 +979,75 @@ function ProjectSection() {
           Length <Timecode frame={length} fps={fps} />
         </p>
       </Section>
+      <MarkersSection />
       <Hint>Select a clip to edit it.</Hint>
     </>
+  );
+}
+
+// The project's markers in time order: each one's time, which moves the playhead there, its name to type, and a
+// button that removes it. B adds one at the playhead.
+function MarkersSection() {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const fps = useEditor((s) => viewDoc(s).fps);
+  const doc = useEditor((s) => viewDoc(s));
+  const here = useEditor((s) => markerAt(viewDoc(s), s.playhead) !== undefined);
+  const markers = sortedMarkers(doc);
+  return (
+    <Section
+      title="Markers"
+      actions={
+        <Button data-edit-control size="sm" disabled={!canEdit} onClick={() => toggleMarker(store)}>
+          {here ? "Remove at playhead" : "Add at playhead"}
+        </Button>
+      }
+    >
+      {markers.length === 0 ? (
+        <Hint>No markers yet. Press B to mark the playhead&apos;s place.</Hint>
+      ) : (
+        <ol className="flex flex-col gap-1">
+          {markers.map((marker) => (
+            <MarkerRow key={marker.id} marker={marker} fps={fps} canEdit={canEdit} />
+          ))}
+        </ol>
+      )}
+    </Section>
+  );
+}
+
+function MarkerRow({ marker, fps, canEdit }: { marker: Marker; fps: number; canEdit: boolean }) {
+  const store = useEditorStore();
+  const [draft, setDraft] = useState<string | null>(null);
+  const time = formatClock(marker.at, fps);
+  function save() {
+    if (draft !== null && draft !== marker.name) store.getState().edit([{ op: "update_marker", markerId: marker.id, patch: { name: draft } }], "rename marker");
+    setDraft(null);
+  }
+  return (
+    <li className="flex min-w-0 items-center gap-2">
+      <button type="button" className={cx("w-10 shrink-0 rounded-md text-left font-mono text-xs leading-7 text-ed-muted tabular-nums hover:text-ed-text", FOCUS_RING)} onClick={() => store.getState().seek(marker.at)}>
+        {time}
+      </button>
+      <TextInput
+        aria-label={`Marker at ${time}`}
+        data-edit-control
+        disabled={!canEdit}
+        maxLength={LIMITS.markerNameChars}
+        placeholder="Marker"
+        autoComplete="off"
+        value={draft ?? marker.name}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={save}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") save();
+          else if (event.key === "Escape") setDraft(null);
+        }}
+      />
+      <Button data-edit-control size="sm" disabled={!canEdit} aria-label={`Remove the marker at ${time}`} onClick={() => store.getState().edit([{ op: "remove_marker", markerId: marker.id }], "remove marker")}>
+        Remove
+      </Button>
+    </li>
   );
 }
 

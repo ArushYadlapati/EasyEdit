@@ -13,6 +13,7 @@ import {
   FormatId,
   Guide,
   Keyframes,
+  Marker,
   MediaClip,
   PlaceholderClip,
   SafeArea,
@@ -98,6 +99,9 @@ const addClipOp = <T extends z.ZodType>(clipSchema: T) =>
 const splitClipOp = <T extends z.ZodType>(newClipId: T) =>
   z.object({ op: z.literal("split_clip"), clipId: id, at: z.number().int(), newClipId });
 // index: where in the list the guide goes (an undone removal puts it back where it was); the end when left out.
+// index: where in the list the marker goes (an undone removal puts it back where it was); the end when left out.
+const addMarkerOp = <T extends z.ZodType>(markerId: T) =>
+  z.object({ op: z.literal("add_marker"), marker: Marker.extend({ id: markerId }), index: z.number().int().optional() });
 const addGuideOp = <T extends z.ZodType>(guideId: T) =>
   z.object({ op: z.literal("add_guide"), guide: Guide.extend({ id: guideId }), index: z.number().int().optional() });
 
@@ -170,6 +174,15 @@ const sharedOps = [
   z.object({ op: z.literal("move_guide"), guideId: id, at: Guide.shape.at, expect: z.object({ at: Guide.shape.at }).strict().optional() }),
   // expect: the guide as it must be now.
   z.object({ op: z.literal("remove_guide"), guideId: id, expect: z.object({ guide: Guide }).strict().optional() }),
+  // A marker's new frame, name or both; expect: what those must be now.
+  z.object({
+    op: z.literal("update_marker"),
+    markerId: id,
+    patch: Marker.omit({ id: true }).partial().strict(),
+    expect: Marker.omit({ id: true }).partial().strict().optional(),
+  }),
+  // expect: the marker as it must be now.
+  z.object({ op: z.literal("remove_marker"), markerId: id, expect: z.object({ marker: Marker }).strict().optional() }),
   // Some of the caption style's keys, or clear: true to drop the stored style (back to the default); exactly one of the two.
   // expect: the values those keys must have now.
   z
@@ -208,6 +221,7 @@ export const Op = z.discriminatedUnion("op", [
   addClipOp(Clip),
   splitClipOp(id),
   addGuideOp(id),
+  addMarkerOp(id),
   ...sharedOps,
 ]);
 export type Op = z.infer<typeof Op>;
@@ -217,6 +231,7 @@ export const OpInput = z.discriminatedUnion("op", [
   addClipOp(ClipInput),
   splitClipOp(id.optional()),
   addGuideOp(id.optional()),
+  addMarkerOp(id.optional()),
   ...sharedOps,
 ]);
 export type OpInput = z.infer<typeof OpInput>;
@@ -252,6 +267,8 @@ export function prepareOps(ops: OpInput[], genId: () => string = () => nanoid(10
       filled = { ...input, newClipId: input.newClipId ?? genId() };
     } else if (input.op === "add_guide") {
       filled = { ...input, guide: { ...input.guide, id: input.guide.id ?? genId() } };
+    } else if (input.op === "add_marker") {
+      filled = { ...input, marker: { ...input.marker, id: input.marker.id ?? genId() } };
     }
     const checked = Op.safeParse(filled);
     if (!checked.success) {

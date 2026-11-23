@@ -25,6 +25,11 @@ function richCaptions(): TimelineDoc {
   return { ...rich(), captions: { style, transcripts: { a: [{ t: "hi", s: 0, e: 100 }, { t: "there", s: 150, e: 400 }] } } };
 }
 
+// Two markers, so an undone removal has a place to put its marker back.
+function richMarkers(): TimelineDoc {
+  return { ...rich(), markers: [{ id: "k1", at: 10, name: "Start" }, { id: "k2", at: 40, name: "" }] };
+}
+
 function rich(): TimelineDoc {
   const d = docWithCaptions("short_9x16");
   d.tracks[0].clips = [video("c1", 0, 30, { in: 10, speed: 1.5 }), video("c2", 30, 30), video("c3", 60, 30)];
@@ -71,6 +76,9 @@ const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["add_guide", { op: "add_guide", guide: { id: "g9", axis: "x", at: 0.3 } }],
   ["move_guide", { op: "move_guide", guideId: "g2", at: 0.75 }, richGuides],
   ["remove_guide", { op: "remove_guide", guideId: "g1" }, richGuides],
+  ["add_marker", { op: "add_marker", marker: { id: "k9", at: 45, name: "Hook" } }],
+  ["update_marker", { op: "update_marker", markerId: "k2", patch: { at: 50, name: "Later" } }, richMarkers],
+  ["remove_marker", { op: "remove_marker", markerId: "k1" }, richMarkers],
   ["set_caption_style", { op: "set_caption_style", patch: { preset: "word", fontSize: 90 } }, richCaptions],
   ["set_caption_style on a doc with no style", { op: "set_caption_style", patch: { preset: "word" } }],
   ["set_caption_style clear", { op: "set_caption_style", clear: true }, richCaptions],

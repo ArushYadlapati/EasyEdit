@@ -35,6 +35,7 @@ import {
 } from "./commands";
 import type { TimelinePoint } from "./geometry";
 import { clipFrame, kenBurnsOps, toggleKeyframeOps } from "./keyframe-edit";
+import { neighbourMarker, toggleMarkerOps } from "./markers";
 import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
@@ -327,6 +328,21 @@ export function applyLook(store: EditorStore, clipId: string, lookId: string | n
 export function selectAll(store: EditorStore): void {
   const state = store.getState();
   state.select(state.doc.tracks.flatMap((t) => (t.locked ? [] : t.clips.map((c) => c.id))));
+}
+
+// Puts a marker at the playhead, or takes away the one there.
+export function toggleMarker(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const { ops, added } = toggleMarkerOps(state.doc, state.playhead);
+  state.edit(ops, added ? "add marker" : "remove marker");
+}
+
+// Moves the playhead to the nearest marker before or after it; with none that way it stays.
+export function goToMarker(store: EditorStore, direction: "prev" | "next"): void {
+  const state = store.getState();
+  const at = neighbourMarker(state.doc, state.playhead, direction);
+  if (at !== null) state.seek(at);
 }
 
 // Moves the playhead to the nearest clip edge before or after it.

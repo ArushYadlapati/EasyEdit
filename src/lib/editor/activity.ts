@@ -140,6 +140,9 @@ export function summarizeOps(ops: Op[], kindOf: KindOf = () => undefined): strin
   if (only("add_guide")) return count(n, "Added a guide", (k) => `Added ${k} guides`);
   if (only("move_guide")) return count(n, "Moved a guide", (k) => `Moved ${k} guides`);
   if (only("remove_guide")) return count(n, "Removed a guide", (k) => `Removed ${k} guides`);
+  if (only("add_marker")) return count(n, "Added a marker", (k) => `Added ${k} markers`);
+  if (only("update_marker")) return count(n, "Changed a marker", (k) => `Changed ${k} markers`);
+  if (only("remove_marker")) return count(n, "Removed a marker", (k) => `Removed ${k} markers`);
   if (only("set_caption_style")) return "Changed the caption style";
   if (only("set_transcript")) return "Changed the captions";
   if (only("splice_caption_words")) return "Edited caption words";

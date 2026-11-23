@@ -794,6 +794,43 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         break;
       }
 
+      case "add_marker": {
+        const markers = doc.markers ?? [];
+        if (markers.some((m) => m.id === op.marker.id)) {
+          throw new OpError("DUPLICATE_ID", `${name}: marker id "${op.marker.id}" already exists`, opIndex);
+        }
+        if (markers.length + 1 > LIMITS.markersPerProject) {
+          throw new OpError("LIMIT_EXCEEDED", `${name}: a project can have at most ${LIMITS.markersPerProject} markers`, opIndex);
+        }
+        const index = Math.max(0, Math.min(op.index ?? markers.length, markers.length));
+        const marker = { id: op.marker.id, at: op.marker.at, name: op.marker.name };
+        doc.markers = [...markers.slice(0, index), marker, ...markers.slice(index)];
+        groups.push([{ op: "remove_marker", markerId: marker.id, expect: { marker: { ...marker } } }]);
+        break;
+      }
+
+      case "update_marker": {
+        const marker = doc.markers?.find((m) => m.id === op.markerId);
+        if (!marker) throw new OpError("NOT_FOUND", `${name}: marker "${op.markerId}" not found`, opIndex);
+        if (op.expect && !holds(marker, op.expect)) throw stale(`marker "${op.markerId}"`);
+        const { old, now } = diffFields({ at: marker.at, name: marker.name }, { at: op.patch.at ?? marker.at, name: op.patch.name ?? marker.name });
+        if (Object.keys(now).length > 0) groups.push([{ op: "update_marker", markerId: marker.id, patch: old, expect: now }]);
+        Object.assign(marker, now);
+        break;
+      }
+
+      case "remove_marker": {
+        const marker = doc.markers?.find((m) => m.id === op.markerId);
+        if (!marker) throw new OpError("NOT_FOUND", `${name}: marker "${op.markerId}" not found`, opIndex);
+        if (op.expect && !isEqual(op.expect.marker, marker)) throw stale(`marker "${op.markerId}"`);
+        const index = (doc.markers ?? []).indexOf(marker);
+        const rest = (doc.markers ?? []).filter((m) => m.id !== op.markerId);
+        if (rest.length) doc.markers = rest;
+        else delete doc.markers;
+        groups.push([{ op: "add_marker", marker: { ...marker }, index }]);
+        break;
+      }
+
       case "set_caption_style": {
         assertCaptionsUnlocked(doc, opIndex, name);
         if ((op.patch === undefined) === (op.clear === undefined)) {

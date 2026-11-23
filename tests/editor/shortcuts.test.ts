@@ -70,7 +70,7 @@ describe("matching keys", () => {
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
       "cut", "delete", "duck-audio", "duplicate", "freeze-frame", "mute-clip", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "reverse-clip", "ripple-delete",
-      "separate-audio", "split", "tool-arrow", "tool-crop", "tool-guide", "tool-line", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "volume-down", "volume-up",
+      "separate-audio", "split", "toggle-marker", "tool-arrow", "tool-crop", "tool-guide", "tool-line", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "volume-down", "volume-up",
     ]);
   });
 
@@ -119,6 +119,8 @@ describe("matching keys", () => {
       ["second-forward", "Shift+ArrowRight", "Forward one second"],
       ["prev-edge", "ArrowUp", "Previous clip edge"],
       ["next-edge", "ArrowDown", "Next clip edge"],
+      ["prev-marker", "Alt+ArrowUp", "Previous marker"],
+      ["next-marker", "Alt+ArrowDown", "Next marker"],
       ["go-start", "Home", "Go to start"],
       ["go-end", "End", "Go to end"],
       ["undo", "Mod+Z", "Undo"],
@@ -141,6 +143,7 @@ describe("matching keys", () => {
       ["duck-audio", "Shift+D", "Turn the selected clips down while other clips are heard"],
       ["reverse-clip", "Shift+R", "Play the selected video clips backward, or forward again"],
       ["freeze-frame", "Shift+F", "Freeze the frame under the playhead"],
+      ["toggle-marker", "B", "Add a marker at the playhead, or remove the one there"],
       ["select-all", "Mod+A", "Select all clips"],
       ["clear-selection", "Escape", "Clear the selection"],
       ["zoom-in", "= +", "Zoom in"],
@@ -156,8 +159,8 @@ describe("matching keys", () => {
 
   it("repeats only the commands where holding the key should keep going", () => {
     expect(SHORTCUTS.filter((s) => s.repeats).map((s) => s.command).sort()).toEqual([
-      "frame-back", "frame-forward", "next-edge", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second",
-      "prev-edge", "redo", "second-back", "second-forward", "undo", "volume-down", "volume-up", "zoom-in", "zoom-out",
+      "frame-back", "frame-forward", "next-edge", "next-marker", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second",
+      "prev-edge", "prev-marker", "redo", "second-back", "second-forward", "undo", "volume-down", "volume-up", "zoom-in", "zoom-out",
     ]);
   });
 
@@ -166,12 +169,12 @@ describe("matching keys", () => {
       "Tools:tool-select", "Tools:tool-razor", "Tools:tool-text", "Tools:tool-shape", "Tools:tool-shape-next", "Tools:tool-line", "Tools:tool-arrow", "Tools:tool-guide", "Tools:tool-crop",
       "Playback:play-pause", "Playback:play-forward", "Playback:pause", "Playback:play-reverse",
       "Playback:frame-back", "Playback:frame-forward", "Playback:second-back", "Playback:second-forward",
-      "Playback:prev-edge", "Playback:next-edge", "Playback:go-start", "Playback:go-end",
+      "Playback:prev-edge", "Playback:next-edge", "Playback:prev-marker", "Playback:next-marker", "Playback:go-start", "Playback:go-end",
       "Editing:undo", "Editing:redo", "Editing:split", "Editing:delete", "Editing:ripple-delete",
       "Editing:copy", "Editing:cut", "Editing:paste", "Editing:duplicate",
       "Editing:nudge-left", "Editing:nudge-right", "Editing:nudge-left-second", "Editing:nudge-right-second",
       "Editing:volume-up", "Editing:volume-down", "Editing:mute-clip", "Editing:separate-audio", "Editing:duck-audio", "Editing:reverse-clip", "Editing:freeze-frame",
-      "Timeline:select-all", "Timeline:clear-selection", "Timeline:zoom-in", "Timeline:zoom-out", "Timeline:zoom-fit",
+      "Timeline:toggle-marker", "Timeline:select-all", "Timeline:clear-selection", "Timeline:zoom-in", "Timeline:zoom-out", "Timeline:zoom-fit",
       "Timeline:toggle-snapping", "Timeline:toggle-audio-meter", "General:export", "General:show-shortcuts", "General:search",
     ]);
   });

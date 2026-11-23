@@ -5,6 +5,8 @@ export const LIMITS = {
   slotHintChars: 200,
   tracksPerProject: 20,
   guidesPerProject: 50,
+  markersPerProject: 200,
+  markerNameChars: 80,
   clipsPerTrack: 1000,
   keyframesPerProperty: 100,
   shapeStrokeMax: 200, // a shape's outline or an arrow's line, in project pixels

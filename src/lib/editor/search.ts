@@ -65,6 +65,9 @@ const COMMAND_WORDS: Partial<Record<CommandId, string[]>> = {
   "frame-forward": ["next", "step", "right"],
   "prev-edge": ["jump", "cut", "clip"],
   "next-edge": ["jump", "cut", "clip"],
+  "prev-marker": ["jump", "flag", "bookmark", "point"],
+  "next-marker": ["jump", "flag", "bookmark", "point"],
+  "toggle-marker": ["flag", "bookmark", "point", "note", "add", "remove"],
   "go-start": ["beginning", "home", "first"],
   "go-end": ["finish", "last"],
   undo: ["revert", "back", "mistake"],
@@ -119,6 +122,7 @@ const COMMAND_LABELS: Partial<Record<CommandId, string>> = {
   "reverse-clip": "Reverse clip",
   "freeze-frame": "Freeze frame",
   "show-shortcuts": "Keyboard shortcuts",
+  "toggle-marker": "Add or remove marker",
   "zoom-in": "Zoom in on the timeline",
   "zoom-out": "Zoom out on the timeline",
 };
@@ -183,10 +187,10 @@ const COMMAND_GROUPS: { group: SearchGroup; commands: CommandId[] }[] = [
     group: "Playback",
     commands: [
       "play-pause", "play-forward", "pause", "play-reverse", "frame-back", "frame-forward", "second-back", "second-forward",
-      "prev-edge", "next-edge", "go-start", "go-end",
+      "prev-edge", "next-edge", "prev-marker", "next-marker", "go-start", "go-end",
     ],
   },
-  { group: "Timeline", commands: ["zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", "toggle-audio-meter"] },
+  { group: "Timeline", commands: ["toggle-marker", "zoom-in", "zoom-out", "zoom-fit", "toggle-snapping", "toggle-audio-meter"] },
 ];
 
 const EDITS = new Set(SHORTCUTS.filter((s) => s.edits).map((s) => s.command));
