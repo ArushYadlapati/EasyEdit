@@ -6,7 +6,7 @@ export type CommandId =
   | "volume-up" | "volume-down" | "mute-clip" | "separate-audio"
   | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "toggle-audio-meter"
   | "export" | "show-shortcuts" | "search"
-  | "tool-select" | "tool-razor" | "tool-text" | "tool-shape" | "tool-shape-next" | "tool-guide" | "tool-crop";
+  | "tool-select" | "tool-razor" | "tool-text" | "tool-shape" | "tool-shape-next" | "tool-line" | "tool-arrow" | "tool-guide" | "tool-crop";
 
 // edits: the command changes the project, so it does nothing for a viewer. repeats: holding the key
 // down runs it again with each repeat; other commands run once per press.
@@ -45,7 +45,9 @@ export const SHORTCUTS: Shortcut[] = [
   row("Tools", "tool-razor", ["C"], "Razor: click a clip to cut it", EDITS),
   row("Tools", "tool-text", ["T"], "Text: click the preview to add text", EDITS),
   row("Tools", "tool-shape", ["U"], "Shape: drag on the preview to draw one", EDITS),
-  row("Tools", "tool-shape-next", ["Shift+U"], "Next shape: rectangle, ellipse, line, arrow", EDITS),
+  row("Tools", "tool-shape-next", ["Shift+U"], "Next shape: rectangle, ellipse, triangle, star and more", EDITS),
+  row("Tools", "tool-line", ["Shift+L"], "Line: drag on the preview to draw one", EDITS),
+  row("Tools", "tool-arrow", ["Shift+A"], "Arrow: drag on the preview to draw one", EDITS),
   row("Tools", "tool-guide", ["G"], "Guide: drag on the preview to add a guide", EDITS),
   row("Tools", "tool-crop", ["R"], "Crop tool", EDITS),
   row("Playback", "play-pause", ["Space"], "Play or pause"),

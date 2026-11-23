@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEditorStore } from "@/lib/editor/store";
-import { TOOLS, toolNeedsEdit } from "@/lib/editor/tools";
+import { TOOLS, drawsShape, toolNeedsEdit } from "@/lib/editor/tools";
 import { entry, makeStore, sampleDoc } from "./fixtures";
 
 const guided = () => ({ ...sampleDoc(), guides: [{ id: "gd1", axis: "x" as const, at: 0.5 }] });
@@ -8,8 +8,9 @@ const guided = () => ({ ...sampleDoc(), guides: [{ id: "gd1", axis: "x" as const
 describe("the current tool", () => {
   it("starts as Selection and lists the rail's tools in order", () => {
     expect(makeStore().getState().tool).toBe("select");
-    expect(TOOLS).toEqual(["select", "razor", "text", "shape", "guide", "crop"]);
-    expect(TOOLS.filter(toolNeedsEdit)).toEqual(["razor", "text", "shape", "guide", "crop"]);
+    expect(TOOLS).toEqual(["select", "razor", "text", "shape", "line", "arrow", "guide", "crop"]);
+    expect(TOOLS.filter(toolNeedsEdit)).toEqual(["razor", "text", "shape", "line", "arrow", "guide", "crop"]);
+    expect(TOOLS.filter(drawsShape)).toEqual(["shape", "line", "arrow"]);
   });
 
   it("changes for an editor", () => {

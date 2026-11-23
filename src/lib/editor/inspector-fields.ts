@@ -1,7 +1,8 @@
 import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
 import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
 import { ArrowHead, ArrowHeads, ShapeDash, VOLUME_MAX, isMediaClip, type ShapeClip } from "@/lib/timeline";
-import { ARROW_DEFAULTS, CURVED_BEND } from "@/lib/timeline/shapes";
+import { ARROW_DEFAULTS, CURVED_BEND, arrowThrough, takesRadius } from "@/lib/timeline/shapes";
+import { straightenOps } from "./arrow-drag";
 import { LIMITS } from "@/lib/limits";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
@@ -41,7 +42,8 @@ export type ClipField =
   | "fadeIn"
   | "fadeOut"
   // A shape's: its outline (or an arrow's line) colour and width, its fill, dashes and rounding, and an arrow's heads,
-  // head look and size, and bend (Path sets it straight or curved; Bend sets how far, in percent of the length).
+  // head look and size, and its path: Path sets it straight or curved, and Bend, on a line with one point, how far to
+  // the side that point sits, in percent of the length.
   | "stroke"
   | "strokeWidth"
   | "fill"
@@ -266,9 +268,11 @@ function shapeFieldValue(clip: ShapeClip, field: ClipField): string {
     case "headSize":
       return oneDecimal(clip.headSize ?? ARROW_DEFAULTS.headSize);
     case "path":
-      return (clip.bend ?? 0) === 0 ? "straight" : "curved";
-    case "bend":
-      return oneDecimal((clip.bend ?? 0) * 100);
+      return arrowThrough(clip).length === 0 ? "straight" : "curved";
+    case "bend": {
+      const through = arrowThrough(clip);
+      return through.length === 1 ? oneDecimal(through[0].y * 100) : "";
+    }
     default:
       return "";
   }
@@ -303,7 +307,7 @@ function shapeFieldOps(clip: ShapeClip, field: ClipField, raw: string): OpInput[
       return dash.success ? update({ dash: dash.data }) : null;
     }
     case "radius": {
-      if (clip.shape !== "rect") return null;
+      if (!takesRadius(clip.shape)) return null;
       const n = number(0, Math.min(clip.width, clip.height) / 2);
       return n === null ? null : update({ radius: n });
     }
@@ -320,14 +324,18 @@ function shapeFieldOps(clip: ShapeClip, field: ClipField, raw: string): OpInput[
     }
     case "path": {
       if (box || (raw !== "straight" && raw !== "curved")) return null;
-      const straight = (clip.bend ?? 0) === 0;
-      if (raw === "straight") return straight ? [] : update({ bend: 0 });
-      return straight ? update({ bend: CURVED_BEND }) : [];
+      if (raw === "straight") return straightenOps(clip);
+      // Curved gives a straight line its first point, out to one side of its middle; the preview's handles take it from there.
+      return arrowThrough(clip).length === 0 ? update({ points: [{ x: 0, y: CURVED_BEND }] }) : [];
     }
     case "bend": {
-      if (box) return null;
-      const n = number(-50, 50);
-      return n === null ? null : update({ bend: round(n / 100, 3) });
+      // How far to the side the line's one point sits. With more points there is no one number to give.
+      const through = arrowThrough(clip);
+      if (box || through.length !== 1) return null;
+      const reach = LIMITS.arrowPointReach * 100;
+      const n = number(-reach, reach);
+      if (n === null) return null;
+      return update({ points: [{ x: through[0].x, y: round(n / 100, 4) }], ...((clip.bend ?? 0) !== 0 && { bend: 0 }) });
     }
     default:
       return null;

@@ -29,8 +29,9 @@ import { guideAt } from "@/lib/editor/guides";
 import { TEXT_PRESETS } from "@/lib/editor/text-presets";
 import { previewMenu, rightClickEntries } from "@/lib/editor/menus";
 import { clipMarks, type Peer } from "@/lib/editor/presence";
-import { viewDoc, type EditorState } from "@/lib/editor/store";
-import type { TimelineDoc } from "@/lib/timeline";
+import { findClip, viewDoc, type EditorState } from "@/lib/editor/store";
+import { drawsShape } from "@/lib/editor/tools";
+import type { ShapeClip, TimelineDoc } from "@/lib/timeline";
 import { useBrand } from "./brand/brand-context";
 import { CanvasTextEditor } from "./canvas-text-editor";
 import { useClipboard, useEditor, useEditorStore, useSettingsStore } from "./context";
@@ -42,8 +43,9 @@ import { useCanvasDrag } from "./use-canvas-drag";
 import { useGuideDrag } from "./use-guide-drag";
 import { useShapeDraw } from "./use-shape-draw";
 import { useArrowDrag } from "./use-arrow-drag";
-import type { ArrowGrip } from "@/lib/editor/arrow-drag";
-import { arrowPoint } from "@/lib/timeline/shapes";
+import { hasRoomForPoint, readGrip, removePointOps, straightenOps, type ArrowGrip, type ArrowGripKind } from "@/lib/editor/arrow-drag";
+import { segmentPoint } from "@/lib/timeline/arrow-path";
+import { arrowPath } from "@/lib/timeline/shapes";
 import { useClipMenu } from "./use-clip-menu";
 import { useCommandRunner, useIsMac } from "./use-shortcuts";
 
@@ -58,6 +60,8 @@ const HIT_SLOP_PX = 4;
 // no room on any side, it is 36 px inside from n.
 const SQUARE_PX = 8;
 const TARGET_PX = 24;
+// The small handle that adds a point to a line: a 16 px target, so it never covers the handles of the points beside it.
+const ADD_TARGET_PX = 16;
 const SMALL_BOX_PX = 48;
 const EDGE_PX = 12;
 const ROTATE_PX = 24;
@@ -107,8 +111,9 @@ const NO_PEER_MARKS: PeerMarks = { peerOutlines: [], peerLabels: [] };
 type Placed = Guide & { id: string; selected: boolean; removing: boolean; label: string };
 // slots: the empty template slots drawn now, each a dashed box (its polygon) and its name at the box's top-left corner.
 type SlotMark = { clipId: string; name: string; points: string; left: number; top: number };
-// ends: a selected arrow's handles, at its tail, tip and middle (which bends it), in overlay pixels.
-type EndHandle = { grip: ArrowGrip; clipId: string; left: number; top: number };
+// ends: a selected arrow's handles, in overlay pixels: its tail and tip, one on each point its line passes through,
+// and a smaller one between each two of those, which adds a point there when dragged.
+type EndHandle = { grip: ArrowGrip; kind: ArrowGripKind; clipId: string; left: number; top: number };
 type Drawn = { outlines: Outline[]; handles: HandleView[]; ends: EndHandle[]; guides: Guide[]; placed: Placed[]; full: string | null; slots: SlotMark[] } & PeerMarks;
 const NOTHING_DRAWN: Drawn = { outlines: [], handles: [], ends: [], guides: [], placed: [], full: null, slots: [], ...NO_PEER_MARKS };
 
@@ -345,8 +350,8 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     const view = surface.view();
     if (!view) return;
     const state = store.getState();
-    // The Shape tool draws wherever it is pressed, over clips and guides alike.
-    if (state.canEdit && state.tool === "shape") {
+    // The Shape, Line and Arrow tools draw wherever they are pressed, over clips and guides alike.
+    if (state.canEdit && drawsShape(state.tool)) {
       shapeDraw.press(e);
       return;
     }
@@ -438,20 +443,63 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
 
   // A double-click on text, locked or not, opens it for typing; a video or image starts nothing. The press before it
   // has already selected what a press takes. With the Guide tool its presses place guides, so it opens nothing.
+  // A double-click on one of a line's points takes that point off the line.
   function onDoubleClick(e: MouseEvent<HTMLDivElement>) {
     if (inTextEditor(e.target)) return;
     const state = store.getState();
-    if (state.canEdit && (state.tool === "guide" || state.tool === "shape")) return;
+    // A press on a handle keeps the pointer for a drag, so the double-click is told to this layer and not to the
+    // handle: the handle is found by where the pointer is.
+    const end = endOf(e.target) ?? endOf(document.elementFromPoint?.(e.clientX, e.clientY) ?? null);
+    if (end) {
+      const point = readGrip(end.grip);
+      if (point.kind === "point") removePoint(end.clipId, point.index);
+      return;
+    }
+    if (state.canEdit && (state.tool === "guide" || drawsShape(state.tool))) return;
     const view = surface.view();
     if (!view) return;
     const hit = hitAt(state, view, e.clientX, e.clientY, true);
     if (hit) editTextInPlace(store, hit.clipId);
   }
 
+  // The arrow whose handle was pressed, while it can still be changed.
+  function arrowOf(clipId: string): ShapeClip | null {
+    const state = store.getState();
+    const found = findClip(state.doc, clipId);
+    if (!state.canEdit || !found || found.track.locked || found.clip.type !== "shape" || found.clip.shape !== "arrow") return null;
+    return found.clip;
+  }
+
+  function removePoint(clipId: string, index: number) {
+    const clip = arrowOf(clipId);
+    const ops = clip ? removePointOps(clip, index) : [];
+    if (ops.length > 0) store.getState().edit(ops, "bend arrow");
+  }
+
   function onContextMenu(e: MouseEvent<HTMLDivElement>) {
     // The box's own menu is the browser's, as in any text field.
     if (inTextEditor(e.target)) return;
     e.preventDefault();
+    // One of a line's points has a menu of its own.
+    const end = endOf(e.target);
+    const point = end ? readGrip(end.grip) : null;
+    if (end && point?.kind === "point" && menu) {
+      menu({
+        ...menuPoint(e),
+        label: "Point",
+        items: [
+          { id: "remove", label: "Remove point" },
+          { id: "straighten", label: "Straighten line" },
+        ],
+        onSelect: (id) => {
+          if (id === "remove") return removePoint(end.clipId, point.index);
+          const clip = arrowOf(end.clipId);
+          const ops = clip ? straightenOps(clip) : [];
+          if (ops.length > 0) store.getState().edit(ops, "bend arrow");
+        },
+      });
+      return;
+    }
     const grip = gripOf(e.target);
     // On a Mac, Ctrl on a resize handle crops: the right-click its press makes opens nothing.
     if (ctrlCrop.current) {
@@ -488,7 +536,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     <div
       ref={ref}
       data-canvas-overlay
-      className={cx("absolute inset-0 touch-none select-none", tool === "text" && "cursor-text", (tool === "guide" || tool === "shape") && "cursor-crosshair")}
+      className={cx("absolute inset-0 touch-none select-none", tool === "text" && "cursor-text", (tool === "guide" || drawsShape(tool)) && "cursor-crosshair")}
       onPointerDown={onPointerDown}
       onPointerEnter={() => setOver(true)}
       onPointerLeave={() => setOver(false)}
@@ -662,10 +710,18 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
           key={h.grip}
           data-shape-end={h.grip}
           data-clip-id={h.clipId}
-          className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
-          style={{ left: h.left, top: h.top, width: TARGET_PX, height: TARGET_PX, cursor: h.grip === "bend" ? "move" : "crosshair" }}
+          className="group absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+          data-kind={h.kind}
+          title={h.kind === "point" ? "Drag to reshape the line. Double-click to remove this point." : h.kind === "add" ? "Drag to add a point the line passes through." : undefined}
+          style={{ left: h.left, top: h.top, width: h.kind === "add" ? ADD_TARGET_PX : TARGET_PX, height: h.kind === "add" ? ADD_TARGET_PX : TARGET_PX, cursor: h.kind === "end" ? "crosshair" : "move" }}
         >
-          <span className={cx("rounded-full border border-ed-accent", h.grip === "bend" ? "size-2 bg-ed-accent" : "size-2.5 bg-ed-bg")} />
+          <span
+            className={cx(
+              "rounded-full border border-ed-accent",
+              // An end is a ring, a point a filled dot, and the handle that adds a point a smaller ring that fills under the pointer.
+              h.kind === "end" ? "size-2.5 bg-ed-bg" : h.kind === "point" ? "size-2.5 bg-ed-accent" : "size-2 bg-ed-bg group-hover:bg-ed-accent",
+            )}
+          />
         </div>
       ))}
       {textEditId !== null && <CanvasTextEditor key={textEditId} clipId={textEditId} surface={surface} />}
@@ -724,24 +780,31 @@ function gripOf(target: EventTarget): Handle | "rotate" | null {
 const inside = (p: Point, box: Box) => p.x >= box.left && p.x <= box.right && p.y >= box.top && p.y <= box.bottom;
 
 // The arrow end handle a press landed on, if any.
-function endOf(target: EventTarget): { grip: ArrowGrip; clipId: string } | null {
+function endOf(target: EventTarget | null): { grip: ArrowGrip; clipId: string } | null {
   if (!(target instanceof Element)) return null;
   const el = target.closest<HTMLElement>("[data-shape-end]");
   if (!el?.dataset.clipId) return null;
   return { grip: el.dataset.shapeEnd as ArrowGrip, clipId: el.dataset.clipId };
 }
 
-// A selected arrow's three handles, when it is the one clip selected, can be edited and nothing plays: its tail, its
-// tip and its middle (on the curve), each kept inside the visible pane.
+// A selected arrow's handles, when it is the one clip selected, can be edited and nothing plays: its tail and tip, one
+// on each point its line passes through, and, while it has room for another point, a small one in the middle of each
+// stretch of the line. Each is kept inside the visible pane. The small ones come first, so where two meet the handle of
+// a point or an end is the one on top.
 function endsOf(state: EditorState, items: CanvasItem[], view: View, overlay: { left: number; top: number }, visible: Box | null): EndHandle[] {
   const ids = state.selection.clipIds;
   if (ids.length !== 1 || !state.canEdit || state.playing || !visible) return [];
   const item = items.find((i) => i.clipId === ids[0]);
   if (!item?.shape || item.shape.shape !== "arrow" || item.locked) return [];
   const clip = item.shape;
-  const at = (t: number) => clampInto(toOverlay(view, overlay, toWorld(item, arrowPoint(clip, t))), visible, EDGE_PX);
-  const spot = (grip: ArrowGrip, p: Point): EndHandle => ({ grip, clipId: item.clipId, left: px(p.x), top: px(p.y) });
-  return [spot("tail", at(0)), spot("bend", at(0.5)), spot("tip", at(1))];
+  const path = arrowPath(clip);
+  const spot = (grip: ArrowGrip, own: Point): EndHandle => {
+    const p = clampInto(toOverlay(view, overlay, toWorld(item, own)), visible, EDGE_PX);
+    return { grip, kind: readGrip(grip).kind, clipId: item.clipId, left: px(p.x), top: px(p.y) };
+  };
+  const adds = hasRoomForPoint(clip) ? path.map((piece, i) => spot(`add:${i}`, segmentPoint(piece, 0.5))) : [];
+  const points = path.slice(1).map((piece, i) => spot(`point:${i}`, piece.from));
+  return [...adds, spot("tail", path[0].from), ...points, spot("tip", path[path.length - 1].to)];
 }
 
 // The handles of the one selected clip, when it is drawn now, can be edited, is on an unlocked track and nothing

@@ -68,6 +68,7 @@ const ClipExpect = z
     head: ShapeClipFields.shape.head,
     headSize: ShapeClipFields.shape.headSize,
     bend: ShapeClipFields.shape.bend,
+    points: ShapeClipFields.shape.points,
   })
   .partial()
   .strict();

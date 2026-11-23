@@ -51,6 +51,7 @@ const SHAPE_FILL: Record<string, () => unknown> = {
   head: () => ARROW_DEFAULTS.head,
   headSize: () => ARROW_DEFAULTS.headSize,
   bend: () => ARROW_DEFAULTS.bend,
+  points: () => [],
 };
 
 // Which of those fields each kind of clip may carry. Sound has no picture to move or fade, and text animates

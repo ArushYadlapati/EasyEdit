@@ -13,7 +13,7 @@ import type { Point } from "@/lib/editor/board";
 import { useEditorStore } from "./context";
 import { CLICK_SLOP_PX } from "./timeline/use-clip-drag";
 
-// A press with the Shape tool: nothing happens until the pointer passes the click slop, so a click adds nothing. Then
+// A press with the Shape, Line or Arrow tool: nothing happens until the pointer passes the click slop, so a click adds nothing. Then
 // the shape follows the pointer, shown through the store's gesture, its ends snapping to the frame's edges, its centre
 // lines and the guides shown (while snapping is on). Shift keeps a box square or an arrow to 15° steps, Alt (Option)
 // draws a box from its middle. The release adds it as one change, selects it and goes back to Selection. Escape, a
@@ -160,7 +160,7 @@ export function createShapeDraw(store: EditorStore, surface: PreviewSurface, dep
         x0: e.clientX,
         y0: e.clientY,
         from,
-        tool: state.shapeTool,
+        tool: state.tool === "line" || state.tool === "arrow" ? state.tool : state.shapeTool,
         travelled: false,
         ops: null,
         clipId: null,

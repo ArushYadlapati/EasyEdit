@@ -1,10 +1,10 @@
 "use client";
 
-import { Circle, Crop, FoldHorizontal, Minus, MousePointer2, MoveUpRight, Scissors, Slice, SeparatorVertical, Square, Trash2, Type } from "lucide-react";
+import { Circle, Crop, Diamond, FoldHorizontal, Hexagon, MousePointer2, MoveUpRight, Pentagon, Scissors, Slash, Slice, SeparatorVertical, Square, Star, Trash2, Triangle, Type } from "lucide-react";
 import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { useContextMenu } from "@/components/ui/context-menu";
 import { IconButton } from "@/components/ui/icon-button";
-import { SHAPE_TOOLS, SHAPE_TOOL_NAME, type ShapeTool } from "@/lib/timeline/shapes";
+import { BOX_SHAPES, SHAPE_TOOL_NAME, type BoxShape, type ShapeTool } from "@/lib/timeline/shapes";
 import { deleteSelection, splitAtPlayhead } from "@/lib/editor/actions";
 import type { CommandId } from "@/lib/editor/shortcuts";
 import { TOOLS, toolNeedsEdit, type Tool } from "@/lib/editor/tools";
@@ -18,15 +18,27 @@ const TOOL_LOOK: Record<Tool, { label: string; command: CommandId; icon: ReactNo
   razor: { label: "Razor", command: "tool-razor", icon: <Slice /> },
   text: { label: "Text", command: "tool-text", icon: <Type /> },
   shape: { label: "Shape", command: "tool-shape", icon: <Square /> }, // shown with the current shape's icon instead
+  line: { label: "Line", command: "tool-line", icon: <Slash /> },
+  arrow: { label: "Arrow", command: "tool-arrow", icon: <MoveUpRight /> },
   guide: { label: "Guide", command: "tool-guide", icon: <SeparatorVertical /> },
   crop: { label: "Crop", command: "tool-crop", icon: <Crop /> },
 };
 
-export const SHAPE_ICON: Record<ShapeTool, ReactNode> = { rect: <Square />, ellipse: <Circle />, line: <Minus />, arrow: <MoveUpRight /> };
+export const SHAPE_ICON: Record<ShapeTool, ReactNode> = {
+  rect: <Square />,
+  ellipse: <Circle />,
+  triangle: <Triangle />,
+  diamond: <Diamond />,
+  pentagon: <Pentagon />,
+  hexagon: <Hexagon />,
+  star: <Star />,
+  line: <Slash />,
+  arrow: <MoveUpRight />,
+};
 
 // The strip between the Add panel and the preview: the tools, one of them current, then the clip commands that act at
 // once on the playhead or the selection. One tab stop; the arrow keys, Home and End move between its buttons. Someone
-// who can't edit keeps Selection, and the rest is disabled.
+// who can't edit keeps Selection, and the rest is disabled. In a window too short for every button the strip scrolls.
 export function ToolRail() {
   const store = useEditorStore();
   const tool = useEditor((s) => s.tool);
@@ -52,10 +64,10 @@ export function ToolRail() {
       y: box.top,
       label: "Shapes",
       returnFocus: button,
-      items: SHAPE_TOOLS.map((s) => ({ id: s, label: SHAPE_TOOL_NAME[s], radio: true, checked: s === shapeTool })),
+      items: BOX_SHAPES.map((s) => ({ id: s, label: SHAPE_TOOL_NAME[s], radio: true, checked: s === shapeTool })),
       onSelect: (id) => {
         const state = store.getState();
-        if (state.setTool("shape")) state.setShapeTool(id as ShapeTool);
+        if (state.setTool("shape")) state.setShapeTool(id as BoxShape);
       },
     });
   }
@@ -99,7 +111,7 @@ export function ToolRail() {
       aria-orientation="vertical"
       onKeyDown={onKeyDown}
       style={{ width: RAIL_PX }}
-      className="flex h-full shrink-0 flex-col items-center gap-1 border-l border-ed-line bg-ed-panel py-2"
+      className="flex h-full min-h-0 shrink-0 flex-col items-center gap-1 overflow-y-auto border-l border-ed-line bg-ed-panel py-2 [scrollbar-width:none]"
     >
       {TOOLS.map((t, i) => {
         const look = TOOL_LOOK[t];

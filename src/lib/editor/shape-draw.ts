@@ -1,12 +1,13 @@
-import { arrowFromEnds, newShapeClip, type ShapeTool } from "@/lib/timeline/shapes";
+import { arrowFromEnds, newShapeClip, regularAspect, type ShapeTool } from "@/lib/timeline/shapes";
 import type { Clip, Guide, OpInput, ShapeClip, TimelineDoc } from "@/lib/timeline";
 import type { Point, Size } from "./board";
 import { guideLines } from "./guides";
 import { placeClips, type Placement } from "./placement";
 
-// Drawing a shape with the Shape tool: a drag from where it was pressed to where the pointer is, in project pixels.
-// A box or ellipse spans the two points (Shift: a square or circle; centre: the press is its middle); a line or arrow
-// runs from the press (its tail) to the pointer (its tip), Shift keeping its angle to 15° steps.
+// Drawing a shape with the Shape, Line or Arrow tool: a drag from where it was pressed to where the pointer is, in
+// project pixels. A box, ellipse or many-sided shape spans the two points (Shift: its even-sided form, a square, a
+// circle, a regular pentagon; centre: the press is its middle); a line or arrow runs from the press (its tail) to the
+// pointer (its tip), Shift keeping its angle to 15° steps.
 
 export type DrawnGeometry = { x: number; y: number; width: number; height: number; rotation: number };
 
@@ -27,9 +28,11 @@ export function drawnGeometry(tool: ShapeTool, from: Point, to: Point, keys: { s
   let dx = to.x - from.x;
   let dy = to.y - from.y;
   if (keys.shift) {
-    const side = Math.max(Math.abs(dx), Math.abs(dy));
-    dx = (dx < 0 ? -1 : 1) * side;
-    dy = (dy < 0 ? -1 : 1) * side;
+    // The smallest box of the shape's even-sided proportions that holds the drag.
+    const aspect = regularAspect(tool);
+    const across = Math.max(Math.abs(dx), Math.abs(dy) * aspect);
+    dx = (dx < 0 ? -1 : 1) * across;
+    dy = (dy < 0 ? -1 : 1) * (across / aspect);
   }
   const centre = keys.centre ? from : { x: from.x + dx / 2, y: from.y + dy / 2 };
   const width = Math.abs(dx) * (keys.centre ? 2 : 1);

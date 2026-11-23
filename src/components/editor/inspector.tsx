@@ -38,7 +38,7 @@ import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { VOLUME_MAX, docDuration, isCropped, isMediaClip, type Clip, type KeyframeProp, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
-import { SHAPE_COLOR, arrowLook, shapeName } from "@/lib/timeline/shapes";
+import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FontSelect } from "./font-select";
 import { FormatFields } from "./format-select";
@@ -405,13 +405,15 @@ function Choice<T extends string>(props: { label: string; value: T; options: rea
   );
 }
 
-// A shape's look: a box's or ellipse's outline (which can be turned off while it has a fill), its width, dashes and
-// rounding, and its fill; an arrow's or line's colour, width and dashes, its heads, their look and size, and whether
-// it is straight or curved, and how far.
+// A shape's look: its outline (which can be turned off while it has a fill), its width, dashes and corner rounding,
+// and its fill; an arrow's or line's colour, width and dashes, its heads, their look and size, and whether it is
+// straight or curved. A curved line is shaped by its points on the preview; with one point, Bend says how far out.
 function ShapeSection({ clip, canEdit }: { clip: ShapeClip; canEdit: boolean }) {
   const store = useEditorStore();
   const box = clip.shape !== "arrow";
   const look = arrowLook(clip);
+  const through = box ? 0 : arrowThrough(clip).length;
+  const rounds = takesRadius(clip.shape);
   const outlined = clip.stroke !== null;
   const filled = clip.fill != null;
   const edit = (field: ClipField) => (value: string) => editField(store, clip.id, field, value);
@@ -432,12 +434,12 @@ function ShapeSection({ clip, canEdit }: { clip: ShapeClip; canEdit: boolean }) 
           <ColorField clip={clip} canEdit={canEdit} field="stroke" label={box ? "Outline color" : "Color"} />
           <div className="grid grid-cols-2 gap-2">
             <NumberField clipId={clip.id} field="strokeWidth" label={box ? "Outline width" : "Line width"} suffix="px" min={1} max={LIMITS.shapeStrokeMax} />
-            {clip.shape === "rect" && <NumberField clipId={clip.id} field="radius" label="Rounding" suffix="px" min={0} />}
+            {rounds && <NumberField clipId={clip.id} field="radius" label="Rounding" suffix="px" min={0} />}
           </div>
           <Choice label="Style" value={clip.dash} options={DASH_OPTIONS} canEdit={canEdit} onChange={edit("dash")} />
         </>
       )}
-      {!outlined && clip.shape === "rect" && <NumberField clipId={clip.id} field="radius" label="Rounding" suffix="px" min={0} />}
+      {!outlined && rounds && <NumberField clipId={clip.id} field="radius" label="Rounding" suffix="px" min={0} />}
       {box && (
         <>
           <Toggle
@@ -459,8 +461,15 @@ function ShapeSection({ clip, canEdit }: { clip: ShapeClip; canEdit: boolean }) 
               <NumberField clipId={clip.id} field="headSize" label="Head size" suffix="×" min={1} max={8} step={0.5} />
             </>
           )}
-          <Choice label="Path" value={look.bend === 0 ? "straight" : "curved"} options={PATH_OPTIONS} canEdit={canEdit} onChange={edit("path")} />
-          {look.bend !== 0 && <NumberField clipId={clip.id} field="bend" label="Bend" suffix="%" min={-50} max={50} />}
+          <Choice label="Path" value={through === 0 ? "straight" : "curved"} options={PATH_OPTIONS} canEdit={canEdit} onChange={edit("path")} />
+          {through === 1 && (
+            <NumberField clipId={clip.id} field="bend" label="Bend" suffix="%" min={-LIMITS.arrowPointReach * 100} max={LIMITS.arrowPointReach * 100} />
+          )}
+          <p className={cx(TEXT, "text-ed-muted")}>
+            {through === 0
+              ? "Drag the small dot on the line to curve it."
+              : `${through === 1 ? "1 point" : `${through} points`}. Drag a point anywhere and the line passes through it. Drag a small dot to add one; double-click a point to remove it.`}
+          </p>
         </>
       )}
     </Section>

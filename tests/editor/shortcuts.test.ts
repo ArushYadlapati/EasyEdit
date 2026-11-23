@@ -53,6 +53,11 @@ describe("matching keys", () => {
     ["Ctrl+C stays Copy", key("c", { ctrlKey: true }), PC, "copy"],
     ["T", key("t"), MAC, "tool-text"],
     ["G", key("g"), MAC, "tool-guide"],
+    ["U", key("u"), MAC, "tool-shape"],
+    ["Shift+U", key("U", { shiftKey: true }), MAC, "tool-shape-next"],
+    ["Shift+L is the Line tool", key("L", { shiftKey: true }), MAC, "tool-line"],
+    ["L alone still plays forward", key("l"), MAC, "play-forward"],
+    ["Shift+A is the Arrow tool", key("A", { shiftKey: true }), PC, "tool-arrow"],
     ["R", key("r"), MAC, "tool-crop"],
     ["a key with no command", key("q"), MAC, null],
   ])("%s", (_name, event, isMac, command) => {
@@ -65,7 +70,7 @@ describe("matching keys", () => {
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
       "cut", "delete", "duplicate", "mute-clip", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "ripple-delete",
-      "separate-audio", "split", "tool-crop", "tool-guide", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "volume-down", "volume-up",
+      "separate-audio", "split", "tool-arrow", "tool-crop", "tool-guide", "tool-line", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "volume-down", "volume-up",
     ]);
   });
 
@@ -99,7 +104,9 @@ describe("matching keys", () => {
       ["tool-razor", "C", "Razor: click a clip to cut it"],
       ["tool-text", "T", "Text: click the preview to add text"],
       ["tool-shape", "U", "Shape: drag on the preview to draw one"],
-      ["tool-shape-next", "Shift+U", "Next shape: rectangle, ellipse, line, arrow"],
+      ["tool-shape-next", "Shift+U", "Next shape: rectangle, ellipse, triangle, star and more"],
+      ["tool-line", "Shift+L", "Line: drag on the preview to draw one"],
+      ["tool-arrow", "Shift+A", "Arrow: drag on the preview to draw one"],
       ["tool-guide", "G", "Guide: drag on the preview to add a guide"],
       ["tool-crop", "R", "Crop tool"],
       ["play-pause", "Space", "Play or pause"],
@@ -153,7 +160,7 @@ describe("matching keys", () => {
 
   it("lists the commands in the table's order, with their groups", () => {
     expect(SHORTCUTS.map((s) => `${s.group}:${s.command}`)).toEqual([
-      "Tools:tool-select", "Tools:tool-razor", "Tools:tool-text", "Tools:tool-shape", "Tools:tool-shape-next", "Tools:tool-guide", "Tools:tool-crop",
+      "Tools:tool-select", "Tools:tool-razor", "Tools:tool-text", "Tools:tool-shape", "Tools:tool-shape-next", "Tools:tool-line", "Tools:tool-arrow", "Tools:tool-guide", "Tools:tool-crop",
       "Playback:play-pause", "Playback:play-forward", "Playback:pause", "Playback:play-reverse",
       "Playback:frame-back", "Playback:frame-forward", "Playback:second-back", "Playback:second-forward",
       "Playback:prev-edge", "Playback:next-edge", "Playback:go-start", "Playback:go-end",
@@ -216,6 +223,25 @@ describe("running commands", () => {
     expect(st().tool).toBe("select");
     const viewer = setup(false);
     runCommand("tool-text", viewer.ctx);
+    expect(viewer.st().tool).toBe("select");
+  });
+
+  it("Line and Arrow are tools of their own, and Next shape steps through the Shape tool's list only", () => {
+    const { st, ctx } = setup();
+    runCommand("tool-line", ctx);
+    expect(st().tool).toBe("line");
+    runCommand("tool-arrow", ctx);
+    expect(st().tool).toBe("arrow");
+    const seen: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      runCommand("tool-shape-next", ctx);
+      expect(st().tool).toBe("shape");
+      seen.push(st().shapeTool);
+    }
+    expect(seen).toEqual(["ellipse", "triangle", "diamond", "pentagon", "hexagon", "star", "rect"]);
+    const viewer = setup(false);
+    runCommand("tool-line", viewer.ctx);
+    runCommand("tool-arrow", viewer.ctx);
     expect(viewer.st().tool).toBe("select");
   });
 

@@ -2,7 +2,8 @@ import { activeClips, type LocalRect } from "@/lib/render/compositor";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { stretchOf } from "@/lib/timeline/presets";
 import type { ShapeClip, TimelineDoc } from "@/lib/timeline";
-import { arrowPoint, headHalfWidth } from "@/lib/timeline/shapes";
+import { distanceToPath, distanceToStretch } from "@/lib/timeline/arrow-path";
+import { arrowPath, headHalfWidth, shapeCorners } from "@/lib/timeline/shapes";
 import type { Point, Size } from "./board";
 import { clipRects, type Sizer } from "./clip-box";
 
@@ -102,28 +103,30 @@ export function hitTest(items: CanvasItem[], p: Point, slop = 0, opts: HitOption
   return null;
 }
 
-// Whether a point in a shape's own units lands on what it draws, within slop: an arrow's line or heads, a filled box or
-// ellipse anywhere inside, an outline-only one only on its outline, so a box drawn round something leaves its middle to
-// whatever is under it.
+// Whether a point in a shape's own units lands on what it draws, within slop: an arrow's line or heads, wherever its
+// points take it; a filled shape anywhere inside; an outline-only one only on its outline, so a box drawn round
+// something leaves its middle to whatever is under it.
 export function onShape(clip: ShapeClip, p: Point, slop: number): boolean {
   if (clip.shape === "arrow") {
     const reach = Math.max(clip.strokeWidth / 2, headHalfWidth(clip)) + slop;
-    // The curve as 32 straight pieces, each checked by its nearest point.
-    const STEPS = 32;
-    let prev = arrowPoint(clip, 0);
-    for (let i = 1; i <= STEPS; i++) {
-      const next = arrowPoint(clip, i / STEPS);
-      const dx = next.x - prev.x;
-      const dy = next.y - prev.y;
-      const t = Math.max(0, Math.min(1, ((p.x - prev.x) * dx + (p.y - prev.y) * dy) / (dx * dx + dy * dy || 1)));
-      if (Math.hypot(prev.x + t * dx - p.x, prev.y + t * dy - p.y) <= reach) return true;
-      prev = next;
-    }
-    return false;
+    return distanceToPath(arrowPath(clip), p) <= reach;
   }
   const a = clip.width / 2;
   const b = clip.height / 2;
   const band = (clip.stroke ? clip.strokeWidth / 2 : 0) + slop;
+  const corners = shapeCorners(clip);
+  if (corners) {
+    let toSide = Infinity;
+    let inside = false;
+    for (let i = 0, j = corners.length - 1; i < corners.length; j = i++) {
+      const from = corners[j];
+      const to = corners[i];
+      toSide = Math.min(toSide, distanceToStretch(p, from, to));
+      // A ray to the right crosses this side: an odd count of crossings is inside.
+      if (from.y > p.y !== to.y > p.y && p.x < from.x + ((p.y - from.y) / (to.y - from.y)) * (to.x - from.x)) inside = !inside;
+    }
+    return toSide <= band || (inside && clip.fill != null);
+  }
   if (clip.shape === "ellipse") {
     const r = Math.hypot(p.x / a, p.y / b);
     if (clip.fill) return r <= 1 + band / Math.min(a, b);

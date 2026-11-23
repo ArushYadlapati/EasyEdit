@@ -9,6 +9,8 @@ export const LIMITS = {
   keyframesPerProperty: 100,
   shapeStrokeMax: 200, // a shape's outline or an arrow's line, in project pixels
   shapeSideMax: 16_384, // a shape's width, height or an arrow's length, in project pixels
+  arrowPoints: 12, // the points an arrow's line passes through between its tail and its tip
+  arrowPointReach: 10, // how far from an arrow's middle one of them may sit, in arrow lengths
   effectFramesMax: 600, // one transition or text animation, in frames
   docBytes: 2 * 1024 * 1024,
   opsPerRequest: 500,

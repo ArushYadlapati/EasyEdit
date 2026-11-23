@@ -1,5 +1,5 @@
 import { LIMITS } from "@/lib/limits";
-import { SHAPE_TOOLS, SHAPE_TOOL_NAME, type ShapeTool, type TrackKind } from "@/lib/timeline";
+import { BOX_SHAPES, SHAPE_TOOL_NAME, type BoxShape, type TrackKind } from "@/lib/timeline";
 import type { TopMenuInput } from "./menus";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import { TEXT_PRESETS } from "./text-presets";
@@ -14,7 +14,7 @@ export type PanelSide = "left" | "right";
 
 export type SearchAction =
   | { kind: "command"; command: CommandId }
-  | { kind: "shape"; shape: ShapeTool }
+  | { kind: "shape"; shape: BoxShape }
   | { kind: "text"; preset: string }
   | { kind: "track"; track: TrackKind }
   | { kind: "panel"; side: PanelSide; tab: string }
@@ -52,8 +52,10 @@ const COMMAND_WORDS: Partial<Record<CommandId, string[]>> = {
   "tool-select": ["pointer", "arrow", "move", "select"],
   "tool-razor": ["cut", "blade", "split", "slice"],
   "tool-text": ["type", "title", "words", "write"],
-  "tool-shape": ["draw", "rectangle", "square", "ellipse", "circle", "line", "arrow"],
+  "tool-shape": ["draw", "rectangle", "square", "ellipse", "circle", "triangle", "star", "polygon"],
   "tool-shape-next": ["shape", "cycle", "switch"],
+  "tool-line": ["draw", "shape", "stroke", "curve", "path", "underline"],
+  "tool-arrow": ["draw", "shape", "pointer", "point", "curve", "path"],
   "tool-guide": ["ruler", "align", "line"],
   "tool-crop": ["trim", "frame"],
   "play-pause": ["play", "pause", "stop", "start", "preview", "watch"],
@@ -100,6 +102,8 @@ const COMMAND_LABELS: Partial<Record<CommandId, string>> = {
   "tool-text": "Text tool",
   "tool-shape": "Shape tool",
   "tool-shape-next": "Next shape",
+  "tool-line": "Line tool",
+  "tool-arrow": "Arrow tool",
   "tool-guide": "Guide tool",
   "tool-crop": "Crop tool",
   "toggle-snapping": "Snapping",
@@ -113,11 +117,14 @@ const COMMAND_LABELS: Partial<Record<CommandId, string>> = {
   "zoom-out": "Zoom out on the timeline",
 };
 
-const SHAPE_WORDS: Record<ShapeTool, string[]> = {
+const SHAPE_WORDS: Record<BoxShape, string[]> = {
   rect: ["square", "box"],
   ellipse: ["circle", "oval"],
-  line: ["stroke"],
-  arrow: ["pointer"],
+  triangle: ["polygon", "wedge"],
+  diamond: ["rhombus", "polygon"],
+  pentagon: ["polygon", "five"],
+  hexagon: ["polygon", "six"],
+  star: ["favorite", "rating"],
 };
 
 const TRACKS: { kind: TrackKind; label: string }[] = [
@@ -157,7 +164,7 @@ const SETTINGS: { page: SettingsPage; label: string; keywords: string[] }[] = [
 // The commands each group lists, in the order the empty search shows them. Tools, Export and Keyboard shortcuts have
 // groups of their own below.
 const COMMAND_GROUPS: { group: SearchGroup; commands: CommandId[] }[] = [
-  { group: "Tools", commands: ["tool-select", "tool-razor", "tool-text", "tool-shape", "tool-shape-next", "tool-guide", "tool-crop"] },
+  { group: "Tools", commands: ["tool-select", "tool-razor", "tool-text", "tool-shape", "tool-shape-next", "tool-line", "tool-arrow", "tool-guide", "tool-crop"] },
   {
     group: "Edit",
     commands: [
@@ -236,7 +243,7 @@ export function searchItems(input: SearchInput): SearchItem[] {
       else items.push(command(group, id));
     }
     if (group === "Tools") {
-      for (const shape of SHAPE_TOOLS) {
+      for (const shape of BOX_SHAPES) {
         items.push({
           id: `shape:${shape}`,
           label: `${SHAPE_TOOL_NAME[shape]} shape`,

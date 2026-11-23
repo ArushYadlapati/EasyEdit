@@ -40,7 +40,7 @@ describe("the search's list", () => {
     const groups = [...new Set(items.map((i) => i.group))];
     expect(groups).toEqual(["Tools", "Add", "Edit", "Playback", "Timeline", "Panels", "Settings", "Project"]);
     expect(new Set(items.map((i) => i.id)).size).toBe(items.length);
-    for (const label of ["Razor tool", "Arrow shape", "Add title", "Add audio track", "Split at the playhead", "Brand kit", "Effects panel", "General settings", "Export", "Rename project", "Save as template"]) {
+    for (const label of ["Razor tool", "Arrow tool", "Line tool", "Star shape", "Add title", "Add audio track", "Split at the playhead", "Brand kit", "Effects panel", "General settings", "Export", "Rename project", "Save as template"]) {
       expect(items.map((i) => i.label)).toContain(label);
     }
     // Opening the search is not something to search for.

@@ -38,16 +38,16 @@ export const EXAMPLE_ARROW_CLIP = {
   strokeWidth: 12,
   dash: "solid",
   heads: "end",
-  bend: 0.2,
+  points: [{ x: 0, y: 0.2 }],
   transform: { x: 0.5, y: 0.4, scale: 1, rotation: 45, opacity: 1, fit: "contain" },
 } as const;
 
 // Shapes are explained in the editing guide, like effects: the op reference only names them.
 export const SHAPES_REFERENCE = `Shapes and arrows point at things or outline them. A shape clip goes on a "shape" track (add_track kind "shape"); a later track draws on top.
 A shape CLIP: ${JSON.stringify(EXAMPLE_ARROW_CLIP)}
-shape is "rect"|"ellipse"|"arrow". width and height are in project pixels (an arrow's width is its length; its height is 0). transform x, y is the centre, rotation turns it. An arrow points from tail to tip along its rotation: 0 points right, 90 down. Shapes take no stretch or crop; change width and height instead, so the outline keeps its thickness.
-stroke is the outline (an arrow's line) as hex, or null for none on a filled rect or ellipse. strokeWidth 1 to ${LIMITS.shapeStrokeMax} px. dash "solid"|"dashed"|"dotted". fill (rect, ellipse) is hex or null. radius (rect) rounds the corners, in px.
-Arrow only: heads "end"|"start"|"both"|"none" (none is a line), head "triangle"|"open"|"bar", headSize 1 to 8 (times strokeWidth, default 4), bend -0.5 to 0.5 (0 straight; the curve's middle sits bend × length to the arrow's right of the straight line).
+shape is "rect"|"ellipse"|"triangle"|"diamond"|"pentagon"|"hexagon"|"star"|"arrow". width and height are in project pixels (an arrow's width is its length; its height is 0). transform x, y is the centre, rotation turns it. An arrow points from tail to tip along its rotation: 0 points right, 90 down. Shapes take no stretch or crop; change width and height instead, so the outline keeps its thickness.
+stroke is the outline (an arrow's line) as hex, or null for none on a filled rect or ellipse. strokeWidth 1 to ${LIMITS.shapeStrokeMax} px. dash "solid"|"dashed"|"dotted". fill (every shape but an arrow) is hex or null. radius rounds the corners, in px (not for an ellipse or an arrow).
+Arrow only: heads "end"|"start"|"both"|"none" (none is a line), head "triangle"|"open"|"bar", headSize 1 to 8 (times strokeWidth, default 4), points [{"x":0,"y":0.2}] (up to ${LIMITS.arrowPoints}): the line curves smoothly through each in order between tail and tip; x runs along the arrow from -0.5 at the tail to 0.5 at the tip, y is sideways towards the arrow's right, both in arrow lengths, and a point may sit anywhere, past either end too. bend b (-0.5 to 0.5) is the older way to give the one point {"x":0,"y":b}; it is used only while points is empty. For a straight line set points [] and bend 0.
 Change any of these with update_clip (e.g. {"strokeWidth":16,"dash":"dashed"}). Shapes take keyframes and transitions like images, except crossfade.`;
 
 // The crop shown in the op reference. The test applies it to a video clip and a text clip.

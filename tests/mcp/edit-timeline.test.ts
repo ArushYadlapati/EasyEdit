@@ -53,11 +53,19 @@ describe("edit_timeline", () => {
     ]);
     expect(add.isError).toBe(false);
     const arrow = (await project()).doc.tracks.find((t) => t.kind === "shape")!.clips[0];
-    expect(arrow).toMatchObject({ type: "shape", shape: "arrow", bend: 0.2 });
+    expect(arrow).toMatchObject({ type: "shape", shape: "arrow", points: [{ x: 0, y: 0.2 }] });
     const r = await edit(1, [{ op: "update_clip", clipId: arrow.id, patch: { strokeWidth: 16, dash: "dashed", heads: "both" } }]);
     expect(r.isError).toBe(false);
-    expect(r.text).toContain('shape="arrow" width=300 stroke="#FFD400" strokeWidth=16 dash="dashed" heads="both" bend=0.2');
-    expect((await edit(2, [{ op: "update_clip", clipId: arrow.id, patch: { fill: "#000000" } }])).isError).toBe(true);
+    expect(r.text).toContain('shape="arrow" width=300 stroke="#FFD400" strokeWidth=16 dash="dashed" heads="both" points=[{"x":0,"y":0.2}]');
+    // Claude reshapes the line by giving the points it should pass through, and adds a star.
+    const curve = await edit(2, [
+      { op: "update_clip", clipId: arrow.id, patch: { points: [{ x: -0.2, y: 0.4 }, { x: 0.3, y: -0.3 }] } },
+      { op: "add_clip", trackId: "s1", clip: { ...EXAMPLE_ARROW_CLIP, start: 90, shape: "star", height: 280, fill: "#FFD400", heads: undefined, points: undefined } },
+    ]);
+    expect(curve.isError).toBe(false);
+    expect(curve.text).toContain('points=[{"x":-0.2,"y":0.4},{"x":0.3,"y":-0.3}]');
+    expect(curve.text).toContain('shape="star"');
+    expect((await edit(3, [{ op: "update_clip", clipId: arrow.id, patch: { fill: "#000000" } }])).isError).toBe(true);
   });
 
   it("Claude can crop a clip and sees the crop", async () => {

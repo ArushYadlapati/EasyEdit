@@ -13,7 +13,7 @@ function docWith(clip: ShapeClip): TimelineDoc {
   doc.tracks.splice(1, 0, { id: "s1", kind: "shape", name: "Shapes 1", muted: false, hidden: false, locked: false, clips: [clip] });
   return doc;
 }
-const shape = (tool: "rect" | "ellipse" | "line" | "arrow", extra: Partial<ShapeClip> = {}): ShapeClip => ({
+const shape = (tool: "rect" | "ellipse" | "star" | "line" | "arrow", extra: Partial<ShapeClip> = {}): ShapeClip => ({
   id: "sh",
   ...newShapeClip(tool, { start: 0, duration: 60, x: 0.5, y: 0.5, width: 400, height: 200 }, { width: 1080, height: 1920 }),
   ...extra,
@@ -85,14 +85,45 @@ describe("the inspector for a shape", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Both" }));
     fireEvent.click(screen.getByRole("radio", { name: "Open" }));
     fireEvent.click(screen.getByRole("radio", { name: "Curved" }));
-    expect(saved(store)).toMatchObject({ heads: "both", head: "open", bend: 0.25 });
+    // Curved gives the line its first point, a quarter of its length out from its middle.
+    expect(saved(store)).toMatchObject({ heads: "both", head: "open", points: [{ x: 0, y: 0.25 }] });
+    expect(screen.getByText(/1 point\. Drag a point anywhere/)).toBeTruthy();
     const bend = screen.getByLabelText("Bend");
     fireEvent.change(bend, { target: { value: "-40" } });
     fireEvent.keyDown(bend, { key: "Enter" });
-    expect(saved(store).bend).toBe(-0.4);
+    expect(saved(store).points).toEqual([{ x: 0, y: -0.4 }]);
     fireEvent.click(screen.getByRole("radio", { name: "Straight" }));
-    expect(saved(store).bend).toBe(0);
+    expect(saved(store).points).toEqual([]);
     expect(screen.queryByLabelText("Bend")).toBeNull();
+    expect(screen.getByText("Drag the small dot on the line to curve it.")).toBeTruthy();
+  });
+
+  it("a line through several points says how many, and has no one Bend to give", () => {
+    const store = open(shape("arrow", { points: [{ x: -0.2, y: 0.3 }, { x: 0.1, y: -0.2 }, { x: 0.3, y: 0.5 }] }));
+    expect((screen.getByRole("radio", { name: "Curved" }) as HTMLInputElement).getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByLabelText("Bend")).toBeNull();
+    expect(screen.getByText(/^3 points\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: "Straight" }));
+    expect(saved(store).points).toEqual([]);
+  });
+
+  it("an older bent arrow reads as curved, and its Bend moves it over to a point", () => {
+    const store = open(shape("arrow", { bend: 0.3 }));
+    const bend = screen.getByLabelText("Bend") as HTMLInputElement;
+    expect(bend.value).toBe("30");
+    fireEvent.change(bend, { target: { value: "10" } });
+    fireEvent.keyDown(bend, { key: "Enter" });
+    expect(saved(store)).toMatchObject({ points: [{ x: 0, y: 0.1 }], bend: 0 });
+  });
+
+  it("a star has an outline, a fill and corner rounding like a rectangle", () => {
+    const store = open(shape("star"));
+    expect(screen.getByRole("heading", { name: "Star" })).toBeTruthy();
+    const rounding = screen.getByLabelText("Rounding");
+    fireEvent.change(rounding, { target: { value: "12" } });
+    fireEvent.keyDown(rounding, { key: "Enter" });
+    expect(saved(store).radius).toBe(12);
+    expect(screen.queryByText("Heads")).toBeNull();
   });
 
   it("an arrow with no heads is a Line", () => {

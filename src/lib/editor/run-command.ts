@@ -1,4 +1,4 @@
-import { SHAPE_TOOLS, docDuration } from "@/lib/timeline";
+import { BOX_SHAPES, docDuration } from "@/lib/timeline";
 import {
   copySelection,
   cutSelection,
@@ -88,8 +88,12 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
     case "tool-shape":
       return void state.setTool("shape");
     case "tool-shape-next":
-      if (state.setTool("shape")) state.setShapeTool(SHAPE_TOOLS[(SHAPE_TOOLS.indexOf(state.shapeTool) + 1) % SHAPE_TOOLS.length]);
+      if (state.setTool("shape")) state.setShapeTool(BOX_SHAPES[(BOX_SHAPES.indexOf(state.shapeTool) + 1) % BOX_SHAPES.length]);
       return;
+    case "tool-line":
+      return void state.setTool("line");
+    case "tool-arrow":
+      return void state.setTool("arrow");
     case "tool-guide":
       return void state.setTool("guide");
     case "tool-crop":

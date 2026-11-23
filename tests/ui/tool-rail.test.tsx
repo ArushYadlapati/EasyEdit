@@ -21,7 +21,7 @@ describe("the tool rail", () => {
     const bar = screen.getByRole("toolbar", { name: "Tools" });
     expect(bar.getAttribute("aria-orientation")).toBe("vertical");
     const names = [...bar.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
-    expect(names).toEqual(["Selection", "Razor", "Text", "Shape: Rectangle", "Guide", "Crop", "Split", "Delete", "Ripple delete"]);
+    expect(names).toEqual(["Selection", "Razor", "Text", "Shape: Rectangle", "Line", "Arrow", "Guide", "Crop", "Split", "Delete", "Ripple delete"]);
   });
 
   it("a click picks a tool and shows it pressed", () => {
@@ -40,9 +40,28 @@ describe("the tool rail", () => {
     expect(button("Selection").title).toBe("Selection (V)");
     expect(button("Razor").title).toBe("Razor (C)");
     expect(button("Text").title).toBe("Text (T)");
+    expect(button("Shape: Rectangle").title).toBe("Shape: Rectangle (U)");
+    expect(button("Line").title).toBe("Line (Shift+L)");
+    expect(button("Arrow").title).toBe("Arrow (Shift+A)");
     expect(button("Guide").title).toBe("Guide (G)");
     expect(button("Crop").title).toBe("Crop (R)");
     expect(button("Split").title).toBe("Split (S)");
+  });
+
+  it("Line and Arrow are tools of their own, beside Shape", () => {
+    const { store, button } = show();
+    fireEvent.click(button("Line"));
+    expect(store.getState().tool).toBe("line");
+    expect(button("Line").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(button("Arrow"));
+    expect(store.getState().tool).toBe("arrow");
+    expect(button("Line").getAttribute("aria-pressed")).toBe("false");
+    // Neither has a list to open: a second click keeps the tool.
+    expect(button("Arrow").getAttribute("aria-haspopup")).toBeNull();
+    fireEvent.click(button("Arrow"));
+    expect(store.getState().tool).toBe("arrow");
+    // Picking one leaves the Shape tool's own shape as it was.
+    expect(store.getState().shapeTool).toBe("rect");
   });
 
   it("Split and Delete act on the playhead and the selection", () => {
@@ -64,7 +83,7 @@ describe("the tool rail", () => {
   it("a viewer can only use Selection", () => {
     const { button } = show(false);
     expect(button("Selection").disabled).toBe(false);
-    for (const name of ["Razor", "Text", "Shape: Rectangle", "Guide", "Crop", "Split", "Delete", "Ripple delete"]) expect(button(name).disabled, name).toBe(true);
+    for (const name of ["Razor", "Text", "Shape: Rectangle", "Line", "Arrow", "Guide", "Crop", "Split", "Delete", "Ripple delete"]) expect(button(name).disabled, name).toBe(true);
   });
 
   it("keeps a tab stop when the button it was on is disabled", () => {
@@ -75,7 +94,7 @@ describe("the tool rail", () => {
     expect(document.activeElement).toBe(button("Ripple delete"));
     fireEvent.click(button("Ripple delete"));
     expect(button("Ripple delete").disabled).toBe(true);
-    const stops = ["Selection", "Razor", "Text", "Guide", "Crop", "Split", "Delete", "Ripple delete"].filter((n) => button(n).tabIndex === 0);
+    const stops = ["Selection", "Razor", "Text", "Line", "Arrow", "Guide", "Crop", "Split", "Delete", "Ripple delete"].filter((n) => button(n).tabIndex === 0);
     expect(stops).toEqual(["Selection"]);
   });
 

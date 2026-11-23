@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { drawFrame } from "@/lib/render/compositor";
 import { drawShape } from "@/lib/render/shapes";
-import { createEmptyDoc, newShapeClip, type ShapeClip, type TimelineDoc } from "@/lib/timeline";
+import { createEmptyDoc, newShapeClip, type ShapeClip, type ShapeTool, type TimelineDoc } from "@/lib/timeline";
 import { fakeCtx, type Call } from "./fake-ctx";
 
 const frame = { width: 1080, height: 1920 };
-const make = (tool: "rect" | "ellipse" | "line" | "arrow", extra: Partial<ShapeClip> = {}): ShapeClip => ({
+const make = (tool: ShapeTool, extra: Partial<ShapeClip> = {}): ShapeClip => ({
   id: "s",
   ...newShapeClip(tool, { start: 0, duration: 60, x: 0.5, y: 0.5, width: 400, height: 200 }, frame),
   ...extra,
@@ -51,9 +51,9 @@ describe("drawing shapes", () => {
 
   it("an arrow is a line with a filled head at its tip", () => {
     const calls = draw(make("arrow"));
-    const curve = named(calls, "quadraticCurveTo")[0];
-    expect(curve[3]).toBeLessThan(200); // the line stops inside the head
-    expect(curve[4]).toBeCloseTo(0);
+    const curve = named(calls, "bezierCurveTo")[0];
+    expect(curve[5]).toBeCloseTo(200 - 0.8 * 44, 3); // the line stops inside the head: 4 × the 11 px line, less a fifth
+    expect(curve[6]).toBeCloseTo(0);
     expect(named(calls, "fill")).toHaveLength(1);
     expect(named(calls, "lineTo")).toContainEqual(["lineTo", 200, 0]); // the head's tip
   });
@@ -61,15 +61,60 @@ describe("drawing shapes", () => {
   it("a line has no head and runs end to end", () => {
     const calls = draw(make("line"));
     expect(named(calls, "moveTo")[0]).toEqual(["moveTo", -200, 0]);
-    expect(named(calls, "quadraticCurveTo")[0].slice(3)).toEqual([200, 0]);
+    expect(named(calls, "bezierCurveTo")).toHaveLength(1);
+    expect(named(calls, "bezierCurveTo")[0].slice(5)).toEqual([200, 0]);
     expect(named(calls, "fill")).toHaveLength(0);
   });
 
-  it("both heads, open, are two extra strokes; a bend lifts the curve's control point", () => {
+  it("both heads, open, are two extra strokes; a bend carries the line through its middle point", () => {
     const calls = draw(make("arrow", { heads: "both", head: "open", bend: 0.25 }));
     expect(named(calls, "stroke")).toHaveLength(3);
-    const curve = named(calls, "quadraticCurveTo")[0];
-    expect(curve[2]).toBeCloseTo(200); // control y = 2 × 0.25 × 400
+    const pieces = named(calls, "bezierCurveTo");
+    expect(pieces).toHaveLength(2);
+    expect(pieces[0].slice(5)).toEqual([0, 100]); // the middle, 0.25 × 400 out
+    expect(pieces[1].slice(5)).toEqual([200, 0]);
+  });
+
+  it("a line passes through each of its points in order", () => {
+    const calls = draw(make("line", { points: [{ x: -0.25, y: -0.5 }, { x: 0.75, y: 0.25 }] }));
+    expect(named(calls, "moveTo")[0]).toEqual(["moveTo", -200, 0]);
+    expect(named(calls, "bezierCurveTo").map((c) => c.slice(5))).toEqual([[-100, -200], [300, 100], [200, 0]]);
+    expect(named(calls, "stroke")).toHaveLength(1);
+  });
+
+  it("a head points the way its line comes in, not along the straight run between the ends", () => {
+    // The line swings out below the tip and comes back up into it.
+    const calls = draw(make("arrow", { points: [{ x: 0.5, y: 0.5 }] }));
+    const head = named(calls, "lineTo");
+    const tip = head.find((c) => c[1] === 200 && c[2] === 0)!;
+    expect(tip).toBeTruthy();
+    const base = named(calls, "moveTo")[1]; // the head's first corner, behind the tip
+    expect(base[2] as number).toBeGreaterThan(20); // below the tip: the head points up and back, where the line arrives from
+  });
+
+  it("a triangle, a diamond, a pentagon, a hexagon and a star are drawn corner to corner and closed", () => {
+    for (const [tool, corners] of [["triangle", 3], ["diamond", 4], ["pentagon", 5], ["hexagon", 6], ["star", 10]] as const) {
+      const calls = draw(make(tool, { fill: "#112233" }));
+      expect(named(calls, "moveTo"), tool).toHaveLength(1);
+      expect(named(calls, "lineTo"), tool).toHaveLength(corners - 1);
+      expect(named(calls, "closePath"), tool).toHaveLength(1);
+      expect(named(calls, "fill"), tool).toHaveLength(1);
+      expect(named(calls, "stroke"), tool).toHaveLength(1);
+      expect(calls, tool).toContainEqual(["set lineJoin", "miter"]);
+    }
+    expect(named(draw(make("triangle")), "moveTo")[0]).toEqual(["moveTo", 0, -100]); // the top corner of a 400 × 200 box
+  });
+
+  it("a rounded star has an arc at every corner, none wider than its sides allow", () => {
+    const calls = draw(make("star", { radius: 500 }));
+    const arcs = named(calls, "arcTo");
+    expect(arcs).toHaveLength(10);
+    const radii = arcs.map((c) => c[5] as number);
+    expect(radii.every((r) => r > 0 && r < 200)).toBe(true); // far short of the 500 asked for
+    // A tip is a narrow corner and takes a tighter arc than the wide corner between two tips.
+    expect(radii[0]).toBeLessThan(radii[1]);
+    expect(calls).toContainEqual(["set lineJoin", "round"]);
+    expect(named(draw(make("triangle", { radius: 10 })), "arcTo").every((c) => c[5] === 10)).toBe(true);
   });
 
   it("heads on a dashed arrow are drawn solid", () => {

@@ -182,12 +182,16 @@ export const PlaceholderClip = z.object({
 });
 export type PlaceholderClip = z.infer<typeof PlaceholderClip>;
 
-// A drawn shape: a box (rect), an ellipse, or an arrow. An arrow with no heads is a line. Its size is its own, in
-// project pixels, so resizing never thickens its outline; scale (and its keyframes) scales the whole drawing.
+// A drawn shape: a box (rect), an ellipse, a many-sided shape (triangle, diamond, pentagon, hexagon, star), or an
+// arrow. An arrow with no heads is a line. Its size is its own, in project pixels, so resizing never thickens its
+// outline; scale (and its keyframes) scales the whole drawing. A many-sided shape fills its width by height box, its
+// first corner at the top.
 // An arrow lies along its own x-axis from tail (left) to tip (right), centred on the transform's x, y and turned by
-// its rotation; `width` is its length and `height` is unused (0). `bend` pushes the middle of an arrow sideways, as a
-// share of its length (positive bends towards its own +y), making a curve; 0 is straight.
-export const ShapeKind = z.enum(["rect", "ellipse", "arrow"]);
+// its rotation; `width` is its length and `height` is unused (0). Its line passes through each of its `points` on the
+// way, in order, as a smooth curve; with none it is straight. A point is given in shares of the arrow's length from
+// its middle: x along it (−0.5 the tail, 0.5 the tip), y sideways (positive towards its own +y). `bend` is the older
+// way to say one point in the middle, {x: 0, y: bend}; it is read only while the arrow has no points.
+export const ShapeKind = z.enum(["rect", "ellipse", "triangle", "diamond", "pentagon", "hexagon", "star", "arrow"]);
 export type ShapeKind = z.infer<typeof ShapeKind>;
 export const ShapeDash = z.enum(["solid", "dashed", "dotted"]);
 export type ShapeDash = z.infer<typeof ShapeDash>;
@@ -196,6 +200,9 @@ export type ArrowHeads = z.infer<typeof ArrowHeads>;
 export const ArrowHead = z.enum(["triangle", "open", "bar"]);
 export type ArrowHead = z.infer<typeof ArrowHead>;
 const ShapeSide = z.number().min(0).max(LIMITS.shapeSideMax);
+const ArrowReach = z.number().min(-LIMITS.arrowPointReach).max(LIMITS.arrowPointReach);
+export const ArrowPoint = z.strictObject({ x: ArrowReach, y: ArrowReach });
+export type ArrowPoint = z.infer<typeof ArrowPoint>;
 
 // The fields alone, for schemas that extend them (op input, strict update); every use goes through shapeRules.
 export const ShapeClipFields = z.object({
@@ -207,12 +214,13 @@ export const ShapeClipFields = z.object({
   stroke: HexColor.nullable(), // the outline's (an arrow's line's) colour; null: none, for a filled box or ellipse
   strokeWidth: z.number().min(1).max(LIMITS.shapeStrokeMax),
   dash: ShapeDash,
-  fill: HexColor.nullable().optional(), // rect and ellipse; absent or null: see-through
-  radius: z.number().min(0).max(LIMITS.shapeSideMax).optional(), // rect: corner rounding in project pixels; drawn at most half the short side
+  fill: HexColor.nullable().optional(), // every shape but an arrow; absent or null: see-through
+  radius: z.number().min(0).max(LIMITS.shapeSideMax).optional(), // corner rounding in project pixels, for every shape with corners; drawn at most as far as the sides allow
   heads: ArrowHeads.optional(), // arrow: absent = "end"
   head: ArrowHead.optional(), // arrow: absent = "triangle"
   headSize: z.number().min(1).max(8).optional(), // arrow: the head's length as a multiple of strokeWidth; absent = 4
   bend: z.number().min(-0.5).max(0.5).optional(), // arrow: absent = 0, straight
+  points: z.array(ArrowPoint).max(LIMITS.arrowPoints).optional(), // arrow: absent = none
   keyframes: Keyframes.optional(),
   transitionIn: TransitionOut.nullable().optional(), // no crossfade: a shape has nothing to blend from
   transitionOut: TransitionOut.nullable().optional(),
@@ -226,13 +234,15 @@ export function shapeRules(c: Omit<z.infer<typeof ShapeClipFields>, "id">, ctx: 
     if (c.stroke === null) ctx.addIssue({ code: "custom", path: ["stroke"], message: "an arrow needs a stroke colour" });
     if (c.fill != null) ctx.addIssue({ code: "custom", path: ["fill"], message: "an arrow has no fill" });
   } else {
-    if (c.height <= 0) ctx.addIssue({ code: "custom", path: ["height"], message: "a box or ellipse's height must be above 0" });
+    if (c.height <= 0) ctx.addIssue({ code: "custom", path: ["height"], message: "a shape's height must be above 0" });
     if (c.stroke === null && c.fill == null) ctx.addIssue({ code: "custom", path: ["stroke"], message: "a shape needs a stroke or a fill" });
-    for (const key of ["heads", "head", "headSize", "bend"] as const) {
+    for (const key of ["heads", "head", "headSize", "bend", "points"] as const) {
       if (c[key] !== undefined) ctx.addIssue({ code: "custom", path: [key], message: `only an arrow takes ${key}` });
     }
   }
-  if (c.shape !== "rect" && c.radius !== undefined) ctx.addIssue({ code: "custom", path: ["radius"], message: "only a rect takes radius" });
+  if ((c.shape === "ellipse" || c.shape === "arrow") && c.radius !== undefined) {
+    ctx.addIssue({ code: "custom", path: ["radius"], message: `${c.shape === "arrow" ? "an arrow" : "an ellipse"} takes no radius` });
+  }
 }
 
 export const ShapeClip = ShapeClipFields.superRefine(shapeRules);

@@ -70,10 +70,10 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
 
 // Every shape field that is set, as JSON-ish key=value pairs an update_clip patch can copy.
 function describeShape(clip: ShapeClip): string {
-  const keys = ["shape", "width", "height", "stroke", "strokeWidth", "dash", "fill", "radius", "heads", "head", "headSize", "bend"] as const;
+  const keys = ["shape", "width", "height", "stroke", "strokeWidth", "dash", "fill", "radius", "heads", "head", "headSize", "bend", "points"] as const;
   return keys
     .filter((k) => clip[k] !== undefined && !(clip.shape === "arrow" && k === "height"))
-    .map((k) => `${k}=${typeof clip[k] === "string" ? `"${clip[k]}"` : clip[k]}`)
+    .map((k) => `${k}=${typeof clip[k] === "number" ? clip[k] : JSON.stringify(clip[k])}`)
     .join(" ");
 }
 
