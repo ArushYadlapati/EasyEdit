@@ -17,8 +17,8 @@ export type VoiceoverState =
 export type VoiceoverTrouble = "denied" | "no-microphone" | "unsupported" | "empty" | "unreadable";
 
 export const VOICEOVER_MESSAGE: Record<VoiceoverTrouble, string> = {
-  denied: "The browser didn't allow the microphone. Allow it for this site and try again.",
-  "no-microphone": "No microphone was found.",
+  denied: "The browser didn't allow the recording. Allow it for this site and try again.",
+  "no-microphone": "No microphone or camera was found.",
   unsupported: "This browser can't record sound here.",
   empty: "Nothing was recorded.",
   unreadable: "The recording couldn't be read. Try again.",
@@ -38,6 +38,9 @@ export type VoiceoverDeps = {
   drop(file: File, at: TimelinePoint): void;
   now(): number; // milliseconds, for the take's length as it runs
   name(): string; // the file's name, without its extension
+  // For a take that is a picture (the screen or the camera): the recording is kept as the file it is, and nothing is
+  // decoded. The project does not play while it is made: a screen recording would record the editor playing.
+  picture?: boolean;
 };
 
 export type Voiceover = {
@@ -77,7 +80,7 @@ export function createVoiceover(deps: VoiceoverDeps): Voiceover {
       const editor = deps.store.getState();
       state.setState({ stage: "recording", startedAt: deps.now(), frame: editor.playhead }, true);
       // The video plays while you talk over it. A project with nothing to play just records.
-      editor.play();
+      if (!deps.picture) editor.play();
     },
     async stop() {
       const now = state.getState();
@@ -89,6 +92,13 @@ export function createVoiceover(deps: VoiceoverDeps): Voiceover {
       try {
         const blob = await ending.stop();
         if (blob.size === 0) return state.setState({ stage: "failed", why: "empty" }, true);
+        if (deps.picture) {
+          // A browser records video as WebM or, in Safari, MP4: both are files the library takes as they are.
+          const extension = blob.type.includes("mp4") ? "mp4" : "webm";
+          deps.drop(new File([blob], `${deps.name()}.${extension}`, { type: blob.type || `video/${extension}` }), { frame: now.frame, trackId: null });
+          state.setState({ stage: "idle" }, true);
+          return;
+        }
         const sound = await deps.decode(blob);
         if (sound.sides.length === 0 || sound.sides[0].length === 0) return state.setState({ stage: "failed", why: "empty" }, true);
         const file = new File([encodeWav(sound.sides, sound.sampleRate)], `${deps.name()}.wav`, { type: "audio/wav" });
@@ -109,7 +119,15 @@ export function createVoiceover(deps: VoiceoverDeps): Voiceover {
 }
 
 // "Voiceover 14-05-09": a name that tells one take from the next.
-export function voiceoverName(date: Date): string {
+export function voiceoverName(date: Date, what = "Voiceover"): string {
   const two = (n: number) => String(n).padStart(2, "0");
-  return `Voiceover ${two(date.getHours())}-${two(date.getMinutes())}-${two(date.getSeconds())}`;
+  return `${what} ${two(date.getHours())}-${two(date.getMinutes())}-${two(date.getSeconds())}`;
 }
+
+// What can be recorded into a project.
+export type RecordKind = "voice" | "screen" | "camera";
+export const RECORD_LABEL: Record<RecordKind, { start: string; file: string }> = {
+  voice: { start: "Record voiceover", file: "Voiceover" },
+  screen: { start: "Record screen", file: "Screen" },
+  camera: { start: "Record camera", file: "Camera" },
+};

@@ -130,5 +130,21 @@ describe("recording a voiceover", () => {
 
   it("names each take by the time it was made", () => {
     expect(voiceoverName(new Date(2026, 10, 22, 14, 5, 9))).toBe("Voiceover 14-05-09");
+    expect(voiceoverName(new Date(2026, 10, 22, 14, 5, 9), "Screen")).toBe("Screen 14-05-09");
+  });
+
+  it("a screen or camera take is kept as the video file it is, and the project does not play while it is made", async () => {
+    const webm = setup({ picture: true, record: async () => ({ stop: async () => new Blob(["video"], { type: "video/webm;codecs=vp9" }), cancel: () => {} }) });
+    webm.store.getState().seek(30);
+    await webm.voiceover.start();
+    expect(webm.store.getState().playing).toBe(false);
+    await webm.voiceover.stop();
+    expect(webm.deps.decode).not.toHaveBeenCalled();
+    expect(webm.dropped[0].file.name).toBe("Voiceover 14-05-09.webm");
+    expect(webm.dropped[0].at).toEqual({ frame: 30, trackId: null });
+    const mp4 = setup({ picture: true, record: async () => ({ stop: async () => new Blob(["video"], { type: "video/mp4" }), cancel: () => {} }) });
+    await mp4.voiceover.start();
+    await mp4.voiceover.stop();
+    expect(mp4.dropped[0].file.name).toBe("Voiceover 14-05-09.mp4");
   });
 });

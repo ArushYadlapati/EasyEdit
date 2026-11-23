@@ -1,18 +1,27 @@
 "use client";
 
-import { Mic, Square } from "lucide-react";
+import { Mic, MonitorUp, Square, Video } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
 import { formatClock } from "@/lib/editor/geometry";
-import { VOICEOVER_MESSAGE, createVoiceover, voiceoverName, type Take } from "@/lib/editor/voiceover";
+import { RECORD_LABEL, VOICEOVER_MESSAGE, createVoiceover, voiceoverName, type RecordKind, type Take } from "@/lib/editor/voiceover";
 import { useEditorStore, useSettings } from "../context";
 import { useMediaDrop } from "./media-context";
 
-// The browser's part of a take: the microphone, recorded until told to stop.
-async function recordMicrophone(): Promise<Take> {
+// What the browser is asked for: the microphone; the screen (a window or tab, with its sound where the browser offers
+// it); or the camera with the microphone.
+function streamFor(kind: RecordKind): Promise<MediaStream> {
+  const devices = navigator.mediaDevices;
+  if (kind === "screen") return devices.getDisplayMedia({ video: true, audio: true });
+  return devices.getUserMedia(kind === "camera" ? { video: true, audio: true } : { audio: true });
+}
+
+// The browser's part of a take: the stream, recorded until told to stop. A screen share ended from the browser's own
+// bar stops the recorder too, and the take is then saved by the next press of Stop.
+async function recordStream(kind: RecordKind): Promise<Take> {
   if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) throw new Error("no recorder");
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const stream = await streamFor(kind);
   const release = () => stream.getTracks().forEach((track) => track.stop());
   try {
     const recorder = new MediaRecorder(stream);
@@ -22,10 +31,12 @@ async function recordMicrophone(): Promise<Take> {
     return {
       stop: () =>
         new Promise<Blob>((resolve) => {
-          recorder.addEventListener("stop", () => {
+          const done = () => {
             release();
             resolve(new Blob(chunks, { type: recorder.mimeType }));
-          });
+          };
+          if (recorder.state === "inactive") return done(); // the share was already ended from the browser's bar
+          recorder.addEventListener("stop", done);
           recorder.stop();
         }),
       cancel() {
@@ -52,11 +63,26 @@ async function decodeRecording(blob: Blob): Promise<{ sides: Float32Array[]; sam
 
 // The clock, read when a take starts and is named: never while rendering.
 const clockNow = () => Date.now();
-const takeName = () => voiceoverName(new Date());
+
+const ICON: Record<RecordKind, typeof Mic> = { voice: Mic, screen: MonitorUp, camera: Video };
+
+// The three things that can be recorded into the project, each a button of its own.
+export function RecordButtons({ canUpload }: { canUpload: boolean }) {
+  return (
+    <>
+      <RecordButton kind="voice" canUpload={canUpload} />
+      <div className="grid grid-cols-2 gap-2">
+        <RecordButton kind="screen" canUpload={canUpload} />
+        <RecordButton kind="camera" canUpload={canUpload} />
+      </div>
+    </>
+  );
+}
 
 // Record voiceover: the microphone is recorded while the project plays from the playhead; Stop saves the take, uploads
-// it and puts it on an audio track where the recording began. canUpload: someone who can edit, in a space with storage.
-export function VoiceoverButton({ canUpload }: { canUpload: boolean }) {
+// it and puts it on an audio track where the recording began. Record screen and Record camera do the same for a
+// picture, onto a video track, without playing the project. canUpload: someone who can edit, in a space with storage.
+function RecordButton({ kind, canUpload }: { kind: RecordKind; canUpload: boolean }) {
   const store = useEditorStore();
   const drop = useMediaDrop();
   const stillSeconds = useSettings((s) => s.stillSeconds);
@@ -64,14 +90,16 @@ export function VoiceoverButton({ canUpload }: { canUpload: boolean }) {
     () =>
       createVoiceover({
         store,
-        record: recordMicrophone,
+        record: () => recordStream(kind),
         decode: decodeRecording,
         drop: (file, at) => drop?.dropFiles([file], at, { stillSeconds }),
         now: clockNow,
-        name: takeName,
+        name: () => voiceoverName(new Date(), RECORD_LABEL[kind].file),
+        picture: kind !== "voice",
       }),
-    [store, drop, stillSeconds],
+    [store, drop, stillSeconds, kind],
   );
+  const Icon = ICON[kind];
   const state = useStore(voiceover.state);
   // Leaving the panel mid-take lets the microphone go.
   useEffect(() => () => voiceover.cancel(), [voiceover]);
@@ -80,8 +108,8 @@ export function VoiceoverButton({ canUpload }: { canUpload: boolean }) {
   return (
     <div className="flex flex-col gap-1">
       <Button data-edit-control className="w-full" disabled={!canUpload || !drop || busy} onClick={() => void voiceover.start()}>
-        <Mic />
-        {state.stage === "asking" ? "Waiting for the microphone…" : state.stage === "saving" ? "Saving the recording…" : "Record voiceover"}
+        <Icon />
+        {state.stage === "asking" ? "Waiting…" : state.stage === "saving" ? "Saving…" : RECORD_LABEL[kind].start}
       </Button>
       {state.stage === "failed" && (
         <p role="alert" className="text-[13px] leading-5 text-ed-danger">
