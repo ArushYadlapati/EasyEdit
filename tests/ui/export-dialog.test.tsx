@@ -726,3 +726,19 @@ it("Full quality is offered where a video plays from a copy, and the note about 
   expect(d.getByRole("switch", { name: "Full quality" }).getAttribute("aria-checked")).toBe("true");
   expect(d.queryByText(COPIES)).toBeNull();
 });
+
+it("a part of the project can be exported: the selected clips, or from the playhead on", async () => {
+  const { store } = show();
+  act(() => {
+    store.getState().select(["c2"]);
+    store.getState().seek(45);
+  });
+  const d = await openDialog();
+  const what = d.getByRole("combobox", { name: "What to export" }) as HTMLSelectElement;
+  expect([...what.options].map((o) => o.textContent)).toEqual(["Whole project", "Selected clips", "From the playhead"]);
+  expect(d.getByText("0:04:00")).toBeTruthy();
+  await act(async () => { fireEvent.change(what, { target: { value: "selection" } }); });
+  expect(d.getByText("0:01:00")).toBeTruthy(); // c2 is one second long
+  await act(async () => { fireEvent.change(what, { target: { value: "playhead" } }); });
+  expect(d.getByText("0:02:15")).toBeTruthy(); // frame 45 to 120
+});

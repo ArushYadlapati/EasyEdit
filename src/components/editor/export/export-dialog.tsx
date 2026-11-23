@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useStore } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
@@ -13,6 +14,7 @@ import {
 import { planExportMedia } from "@/lib/export/media-sources";
 import { failureMessage, failureOf, frameFailureMessage } from "@/lib/export/messages";
 import { EXPORT_QUALITIES, exportOptions, videoSettings, type ExportPresetId, type ExportQuality } from "@/lib/export/presets";
+import { RANGE_LABEL, rangeDoc, spanOf, type RangeKind } from "@/lib/export/range";
 import { frameCount } from "@/lib/export/schedule";
 import { MEMORY_LIMIT_BYTES } from "@/lib/export/sinks";
 import { isBusy, type ExportState } from "@/lib/export/state";
@@ -33,7 +35,8 @@ type ExportDialogProps = { open: boolean; onClose(): void; exporter: Exporter };
 // What the choices need between the body and the footer: this browser's answer and the size the person picked.
 // full: Full quality is switched on.
 // quality: how many bits the picture gets.
-type ChoiceProps = { support: Support | null; selected: ExportPresetId | null; full: boolean; quality: ExportQuality };
+// range: which part of the project is exported.
+type ChoiceProps = { support: Support | null; selected: ExportPresetId | null; full: boolean; quality: ExportQuality; range: RangeKind };
 
 const MUTED = "text-ed-muted";
 
@@ -44,6 +47,7 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
   const [selected, setSelected] = useState<ExportPresetId | null>(null);
   const [full, setFull] = useState(false); // off each time the editor opens: it is slower, so it is asked for
   const [quality, setQuality] = useState<ExportQuality>("standard");
+  const [range, setRange] = useState<RangeKind>("all");
   // Each opening asks this browser again, at the project's size then: an edit can change the size.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
@@ -70,7 +74,7 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
     onClose();
   };
 
-  const choice: ChoiceProps = { support, selected, full, quality };
+  const choice: ChoiceProps = { support, selected, full, quality, range };
   return (
     <Dialog
       title="Export"
@@ -79,15 +83,21 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
       onClose={onClose}
       footer={posting ? <PostFooter panel={post} onDone={finish} /> : <ExportFooter exporter={exporter} onDone={finish} post={post} {...choice} />}
     >
-      {posting ? <PostBody panel={post} /> : <ExportBody exporter={exporter} onSelect={setSelected} onFull={setFull} onQuality={setQuality} post={post} {...choice} />}
+      {posting ? <PostBody panel={post} /> : <ExportBody exporter={exporter} onSelect={setSelected} onFull={setFull} onQuality={setQuality} onRange={setRange} post={post} {...choice} />}
     </Dialog>
   );
 }
 
 // The project's facts at the picked size, the media plan, and whether Export video may be clicked now.
-function useChoices({ support, selected, quality, full }: ChoiceProps) {
+function useChoices({ support, selected, quality, full, range }: ChoiceProps) {
   const deps = useExportDeps();
-  const doc = useEditor((s) => s.doc);
+  const whole = useEditor((s) => s.doc);
+  const selection = useEditor(useShallow((s) => s.selection.clipIds));
+  const playhead = useEditor((s) => s.playhead);
+  // The parts on offer now, and the project cut down to the one picked: every fact below is about that part.
+  const ranges = useMemo(() => (["all", "selection", "playhead"] as const).filter((kind) => kind === "all" || spanOf(kind, whole, selection, playhead) !== null), [whole, selection, playhead]);
+  const span = useMemo(() => (range === "all" || !ranges.includes(range) ? null : spanOf(range, whole, selection, playhead)), [range, ranges, whole, selection, playhead]);
+  const doc = useMemo(() => (span ? rangeDoc(whole, span) : whole), [whole, span]);
   const assets = useLibrary((s) => s.assets);
   const loaded = useLibrary((s) => s.loaded);
   return useMemo(() => {
@@ -108,22 +118,22 @@ function useChoices({ support, selected, quality, full }: ChoiceProps) {
     // Save frame is off only while the media is not ready: a too-long video is no reason not to save one frame of it.
     // A frame has no sound, so only its pictures' media counts.
     const canSaveFrame = option !== null && !empty && waitingReason(planExportMedia(doc, { assets, loaded })) === null;
-    return { doc, plan, options, option, frames, bytes, empty, blocked, canStart: option !== null && blocked === null, canSaveFrame };
-  }, [doc, assets, loaded, support, selected, quality, full, deps]);
+    return { doc, plan, options, option, frames, bytes, empty, blocked, canStart: option !== null && blocked === null, canSaveFrame, ranges, span };
+  }, [doc, assets, loaded, support, selected, quality, full, deps, ranges, span]);
 }
 
 const choosing = (state: ExportState) => state.phase === "idle" || state.phase === "canceled";
 
-type ChoiceSetters = { onSelect(id: ExportPresetId): void; onFull(on: boolean): void; onQuality(quality: ExportQuality): void };
+type ChoiceSetters = { onSelect(id: ExportPresetId): void; onFull(on: boolean): void; onQuality(quality: ExportQuality): void; onRange(range: RangeKind): void };
 
-function ExportBody({ exporter, onSelect, onFull, onQuality, post, ...choice }: ChoiceProps & ChoiceSetters & { exporter: Exporter; post: PostPanel }) {
+function ExportBody({ exporter, onSelect, onFull, onQuality, onRange, post, ...choice }: ChoiceProps & ChoiceSetters & { exporter: Exporter; post: PostPanel }) {
   const state = useStore(exporter.store);
-  if (choosing(state)) return <Choices onSelect={onSelect} onFull={onFull} onQuality={onQuality} canceled={state.phase === "canceled"} {...choice} />;
+  if (choosing(state)) return <Choices onSelect={onSelect} onFull={onFull} onQuality={onQuality} onRange={onRange} canceled={state.phase === "canceled"} {...choice} />;
   return <Progress state={state} post={post} />;
 }
 
-function Choices({ support, selected, full, quality, onSelect, onFull, onQuality, canceled }: ChoiceProps & ChoiceSetters & { canceled: boolean }) {
-  const { doc, plan, options, option, frames, bytes, empty, blocked } = useChoices({ support, selected, full, quality });
+function Choices({ support, selected, full, quality, range, onSelect, onFull, onQuality, onRange, canceled }: ChoiceProps & ChoiceSetters & { canceled: boolean }) {
+  const { doc, plan, options, option, frames, bytes, empty, blocked, ranges } = useChoices({ support, selected, full, quality, range });
   // Full quality has something to give only where a video plays from a smaller copy of itself.
   const hasCopies = Object.values(plan.clips).some((clip) => clip.kind === "use" && (clip.from === "preview" || clip.fallback !== undefined));
   if (support === null) return <p className={MUTED}>Checking this browser…</p>;
@@ -140,6 +150,17 @@ function Choices({ support, selected, full, quality, onSelect, onFull, onQuality
           ))}
         </Select>
       </Field>
+      {ranges.length > 1 && (
+        <Field label="What to export">
+          <Select value={ranges.includes(range) ? range : "all"} onChange={(event) => onRange(event.target.value as RangeKind)}>
+            {ranges.map((kind) => (
+              <option key={kind} value={kind}>
+                {RANGE_LABEL[kind]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
       <Field label="Quality">
         <Select value={quality} onChange={(event) => onQuality(event.target.value as ExportQuality)}>
           {EXPORT_QUALITIES.map((q) => (
@@ -292,7 +313,7 @@ const AGAIN = "Click Export video again to choose where to save.";
 function StartButton({ exporter, ...choice }: ChoiceProps & { exporter: Exporter }) {
   const deps = useExportDeps();
   const editor = useEditorStore();
-  const { option, frames, canStart, canSaveFrame } = useChoices(choice);
+  const { option, frames, canStart, canSaveFrame, span } = useChoices(choice);
   // The footer's one alert line: a second click wanted, or why a frame wasn't saved. Each click clears it.
   const [alert, setAlert] = useState<string | null>(null);
   // One frame saved at a time. The ref refuses a second click in the same tick, before the button is drawn off.
@@ -305,7 +326,7 @@ function StartButton({ exporter, ...choice }: ChoiceProps & { exporter: Exporter
   const start = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.detail > 1 || !option) return;
     setAlert(null);
-    void exporter.start(option.id, audio, choice.full, choice.quality).then((answer) => setAlert(answer === "again" ? AGAIN : null));
+    void exporter.start(option.id, audio, choice.full, choice.quality, span).then((answer) => setAlert(answer === "again" ? AGAIN : null));
   };
   const saveFrame = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.detail > 1 || !option || savingNow.current) return;

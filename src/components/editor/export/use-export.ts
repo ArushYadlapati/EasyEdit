@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createStore, type StoreApi } from "zustand";
 import { exportFileName, sameDoc } from "@/lib/export/facts";
 import { exportSize, type ExportPresetId, type ExportQuality } from "@/lib/export/presets";
+import { rangeDoc, type Span } from "@/lib/export/range";
 import type { ExportOutcome } from "@/lib/export/protocol";
 import { exportVideo } from "@/lib/export/run";
 import { exportReducer, type ExportEvent, type ExportState } from "@/lib/export/state";
@@ -18,7 +19,8 @@ export type Exporter = {
   // "again": the save dialog could not open; ask for another click. sound: this browser can write the file's sound track.
   // originals: full quality, with each video's picture from its original file.
   // quality: how many bits the picture gets; standard when left out.
-  start(preset: ExportPresetId, sound: boolean, originals?: boolean, quality?: ExportQuality): Promise<"again" | void>;
+  // span: the part of the project to export; all of it when left out.
+  start(preset: ExportPresetId, sound: boolean, originals?: boolean, quality?: ExportQuality, span?: Span | null): Promise<"again" | void>;
   cancel(): void;
   reset(): void; // also drops a held file
   download(): void; // hands a held file to the browser; call it inside a click
@@ -65,13 +67,14 @@ export function useExport(options: ExportOptions = {}): Exporter {
       if (running.current.mounted) store.setState(exportReducer(store.getState(), event), true);
     };
 
-    async function start(preset: ExportPresetId, sound: boolean, originals = false, quality: ExportQuality = "standard"): Promise<"again" | void> {
+    async function start(preset: ExportPresetId, sound: boolean, originals = false, quality: ExportQuality = "standard", span: Span | null = null): Promise<"again" | void> {
       const now = running.current;
       if (now.busy) return;
       now.busy = true;
       try {
         // The snapshot: edits not yet sent are in it, a drag in progress is not.
-        const { doc, name } = editor.getState();
+        const { doc: whole, name } = editor.getState();
+        const doc = span ? rangeDoc(whole, span) : whole;
         const size = exportSize(doc, preset);
         if (!size) return;
         // Asked before anything else is awaited: the browser opens its save dialog only inside the click.
