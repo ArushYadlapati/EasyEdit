@@ -2,7 +2,7 @@ import { maxBytes } from "@/lib/export/facts";
 import type { FontBundle } from "@/lib/export/fonts";
 import type { MediaOptions } from "@/lib/export/gather-media";
 import { ExportError, failureOf } from "@/lib/export/messages";
-import { ACCELERATION_ORDER, videoSettings, type Acceleration, type ExportSize, type VideoSettings } from "@/lib/export/presets";
+import { ACCELERATION_ORDER, videoSettings, type Acceleration, type ExportQuality, type ExportSize, type VideoSettings } from "@/lib/export/presets";
 import type { ExportFailure, ExportMedia, ExportOutcome, FromWorker, ToWorker } from "@/lib/export/protocol";
 import { frameCount } from "@/lib/export/schedule";
 import type { ByteSink, ExportTarget } from "@/lib/export/sinks";
@@ -29,6 +29,7 @@ export type ExportRequest = {
   onReading(filesRead: number, totalFiles: number): void;
   sound: boolean; // the file will carry a sound track (Support.audio): only then is sound planned and read
   originals?: boolean; // full quality: pictures from each video's original file, where this browser can read it
+  quality?: ExportQuality; // how many bits the picture gets; standard when left out
 };
 
 export type RunDeps = {
@@ -206,7 +207,7 @@ async function steps(request: ExportRequest, deps: RunDeps, held: Held): Promise
 
   const frames = frameCount(doc);
   if (frames === 0) return failed("empty", "");
-  const video = videoSettings(size, doc.fps);
+  const video = videoSettings(size, doc.fps, request.quality);
   if (!video) return failed("size", `${size.width}×${size.height} at ${doc.fps} fps`);
   if (target.limit !== null && maxBytes(video, frames) > target.limit) return failed("too-long", `${frames} frames`);
   if (signal.aborted) return CANCELED;

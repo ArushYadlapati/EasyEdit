@@ -28,7 +28,7 @@ const TOO_LONG = "This video is too long to export in this browser. Use Chrome o
 it("shows what will be made, then reads the media, exports, counts frames and names the saved file", async () => {
   const { store, workers, target, picked } = show();
   const d = await openDialog();
-  expect(d.getByRole("combobox").textContent).toBe("Same as project (1080 × 1920)Draft (720 × 1280)");
+  expect(d.getByRole("combobox", { name: "Size" }).textContent).toBe("Same as project (1080 × 1920)Draft (720 × 1280)");
   for (const fact of ["1080 × 1920", "30 fps", "0:04:00", "Up to about 4.1 MB", "MP4, H.264 video", COPIES]) expect(d.getByText(fact)).toBeTruthy();
 
   await click("Export video");
@@ -61,7 +61,7 @@ it("shows what will be made, then reads the media, exports, counts frames and na
 it("exports the size that was picked, under a name that says so", async () => {
   const { workers, picked } = show();
   const d = await openDialog();
-  await act(async () => { fireEvent.change(d.getByRole("combobox"), { target: { value: "draft" } }); });
+  await act(async () => { fireEvent.change(d.getByRole("combobox", { name: "Size" }), { target: { value: "draft" } }); });
   for (const fact of ["720 × 1280", "Up to about 1.3 MB"]) expect(d.getByText(fact)).toBeTruthy();
   expect(d.queryByText(COPIES)).toBeNull(); // a draft is no larger than the preview copies
   await click("Export video");
@@ -71,7 +71,7 @@ it("exports the size that was picked, under a name that says so", async () => {
 
 it("turns off a size this computer cannot encode and starts on one it can", async () => {
   show({ supportProbe: { ...SUPPORTED, canEncode: async (config) => config.width < 1000 } });
-  const select = (await openDialog()).getByRole("combobox") as HTMLSelectElement;
+  const select = (await openDialog()).getByRole("combobox", { name: "Size" }) as HTMLSelectElement;
   expect([...select.querySelectorAll("option")].map((o) => [o.textContent, o.disabled])).toEqual([
     ["Same as project (1080 × 1920) (not supported on this computer)", true], ["Draft (720 × 1280)", false],
   ]);
@@ -313,7 +313,7 @@ it("says up front when a video is too long to hold in a browser without a save d
   const d = await openDialog();
   expect(d.getByText(TOO_LONG)).toBeTruthy();
   expect((d.getByRole("button", { name: "Export video" }) as HTMLButtonElement).disabled).toBe(true);
-  await act(async () => { fireEvent.change(d.getByRole("combobox"), { target: { value: "draft" } }); });
+  await act(async () => { fireEvent.change(d.getByRole("combobox", { name: "Size" }), { target: { value: "draft" } }); });
   expect(d.queryByText(TOO_LONG)).toBeNull();
   expect((d.getByRole("button", { name: "Export video" }) as HTMLButtonElement).disabled).toBe(false);
 });
@@ -490,10 +490,10 @@ it("offers only the sizes it asked this browser about, and asks again at the new
   act(() => {
     store.getState().edit([{ op: "set_format", format: "long_4k" }], "format");
   });
-  expect(d.getByRole("combobox").textContent).toBe("Same as project (3840 × 2160)Draft (1280 × 720)");
+  expect(d.getByRole("combobox", { name: "Size" }).textContent).toBe("Same as project (3840 × 2160)Draft (1280 × 720)");
   await click("Close");
   const again = await openDialog();
-  expect(again.getByRole("combobox").textContent).toBe("Same as project (3840 × 2160)1080p (1920 × 1080)Draft (1280 × 720)");
+  expect(again.getByRole("combobox", { name: "Size" }).textContent).toBe("Same as project (3840 × 2160)1080p (1920 × 1080)Draft (1280 × 720)");
 });
 
 it("is off for a deleted project with no export running, and is no edit control: a viewer exports too", async () => {
@@ -502,7 +502,7 @@ it("is off for a deleted project with no export running, and is no edit control:
   expect([button.disabled, button.hasAttribute("data-edit-control")]).toEqual([false, false]);
   const d = await openDialog();
   expect(d.queryAllByRole("button").filter((b) => b.hasAttribute("data-edit-control"))).toEqual([]);
-  expect(d.getByRole("combobox").hasAttribute("data-edit-control")).toBe(false);
+  expect(d.getByRole("combobox", { name: "Size" }).hasAttribute("data-edit-control")).toBe(false);
   await click("Export video");
   expect(workers).toHaveLength(1);
   expect(d.getByRole("button", { name: "Cancel" }).hasAttribute("data-edit-control")).toBe(false);
@@ -612,7 +612,7 @@ it("saves the frame under the playhead as an image, at the chosen size", async (
   await click("Save frame as image");
   expect(saveFrame).toHaveBeenLastCalledWith(sampleDoc(), 45, { width: 1080, height: 1920 }, "Qual recap frame 000045.png");
   act(() => store.getState().seek(120)); // the end of the project: the last frame is 119
-  await act(async () => { fireEvent.change(d.getByRole("combobox"), { target: { value: "draft" } }); });
+  await act(async () => { fireEvent.change(d.getByRole("combobox", { name: "Size" }), { target: { value: "draft" } }); });
   await click("Save frame as image");
   expect(saveFrame).toHaveBeenLastCalledWith(sampleDoc(), 119, { width: 720, height: 1280 }, "Qual recap frame 000119.png");
 });
@@ -701,4 +701,28 @@ it("keeps Save frame quiet beside Export video, on for a video too long to hold,
   expect(d.getByRole("alert")).toBeTruthy();
   await click("Save frame as image");
   expect(d.queryByRole("alert")).toBeNull();
+});
+
+it("a higher or lower quality changes the size the file may reach", async () => {
+  show();
+  const d = await openDialog();
+  const quality = d.getByRole("combobox", { name: "Quality" }) as HTMLSelectElement;
+  expect(quality.value).toBe("standard");
+  expect([...quality.options].map((o) => o.textContent)).toEqual(["Smaller file", "Standard", "High"]);
+  expect(d.getByText("Up to about 4.1 MB")).toBeTruthy();
+  await act(async () => { fireEvent.change(quality, { target: { value: "high" } }); });
+  expect(d.getByText("Up to about 6.5 MB")).toBeTruthy();
+  await act(async () => { fireEvent.change(quality, { target: { value: "small" } }); });
+  expect(d.getByText("Up to about 2.1 MB")).toBeTruthy();
+});
+
+it("Full quality is offered where a video plays from a copy, and the note about copies goes when it is on", async () => {
+  show();
+  const d = await openDialog();
+  const full = d.getByRole("switch", { name: "Full quality" });
+  expect(full.getAttribute("aria-checked")).toBe("false");
+  expect(d.getByText(COPIES)).toBeTruthy();
+  await act(async () => { fireEvent.click(full); });
+  expect(d.getByRole("switch", { name: "Full quality" }).getAttribute("aria-checked")).toBe("true");
+  expect(d.queryByText(COPIES)).toBeNull();
 });

@@ -109,3 +109,21 @@ describe("reading a full-quality export's media", () => {
     expect(asked).toBe(0);
   });
 });
+
+describe("how many bits the picture gets", () => {
+  it("is the standard for its size unless more or fewer are asked for, and never past what the format allows", async () => {
+    const { EXPORT_QUALITIES, videoSettings } = await import("@/lib/export/presets");
+    const size = { width: 1080, height: 1920 };
+    expect(EXPORT_QUALITIES.map((q) => [q.id, q.label])).toEqual([["small", "Smaller file"], ["standard", "Standard"], ["high", "High"]]);
+    expect(videoSettings(size, 30)!.bitrate).toBe(8_000_000);
+    expect(videoSettings(size, 30, "standard")).toEqual(videoSettings(size, 30));
+    expect(videoSettings(size, 30, "small")!.bitrate).toBe(4_000_000);
+    expect(videoSettings(size, 30, "high")!.bitrate).toBe(12_800_000);
+    // Only the bitrate changes.
+    expect({ ...videoSettings(size, 30, "high"), bitrate: 0 }).toEqual({ ...videoSettings(size, 30), bitrate: 0 });
+    // 720p's level allows 17.5 Mbit/s: high stays under it.
+    expect(videoSettings({ width: 1280, height: 720 }, 30, "high")!.bitrate).toBe(4_000_000);
+    // A 60 fps project picks the level that fits it.
+    expect(videoSettings(size, 60, "high")).toMatchObject({ fps: 60, bitrate: 12_800_000 });
+  });
+});

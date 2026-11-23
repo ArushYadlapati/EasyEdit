@@ -75,17 +75,27 @@ export function videoBitrate(size: ExportSize): number {
 
 export type VideoSettings = { width: number; height: number; fps: number; codec: string; bitrate: number };
 
+// How many bits the picture gets, against the standard for its size: a smaller file, the standard, or more bits for
+// footage with a lot of motion or detail. The size, the frame rate and the format are the same.
+export type ExportQuality = "small" | "standard" | "high";
+export const EXPORT_QUALITIES: readonly { id: ExportQuality; label: string; factor: number }[] = [
+  { id: "small", label: "Smaller file", factor: 0.5 },
+  { id: "standard", label: "Standard", factor: 1 },
+  { id: "high", label: "High", factor: 1.6 },
+];
+
 // The video track for a size, or null when no level fits it. The level stays the lowest that fits,
 // and the bitrate is held under that level's cap.
-export function videoSettings(size: ExportSize, fps: number): VideoSettings | null {
+export function videoSettings(size: ExportSize, fps: number, quality: ExportQuality = "standard"): VideoSettings | null {
   const level = avcLevel(size, fps);
   if (!level) return null;
+  const factor = EXPORT_QUALITIES.find((q) => q.id === quality)?.factor ?? 1;
   return {
     width: size.width,
     height: size.height,
     fps,
     codec: `avc1.6400${level.hex}`,
-    bitrate: Math.min(videoBitrate(size), level.maxBitrate),
+    bitrate: Math.min(Math.round(videoBitrate(size) * factor), level.maxBitrate),
   };
 }
 

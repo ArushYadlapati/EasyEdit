@@ -32,7 +32,7 @@ it("a second Cmd/Ctrl+E while the dialog is open is kept from the browser too, e
   await act(async () => { passedOn = fireEvent.keyDown(document.body, { key: "e", ...MOD() }); }); // focus lost to the page
   expect(passedOn).toBe(false);
   expect(exportDialog()?.open).toBe(true);
-  expect(fireEvent.keyDown(d.getByRole("combobox"), { key: "e", ...MOD() })).toBe(true); // a field keeps the browser's keys
+  expect(fireEvent.keyDown(d.getByRole("combobox", { name: "Size" }), { key: "e", ...MOD() })).toBe(true); // a field keeps the browser's keys
 });
 
 it("a viewer can export: nothing about it is an edit control", async () => {
