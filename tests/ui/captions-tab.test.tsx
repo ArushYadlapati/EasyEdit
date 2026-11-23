@@ -369,3 +369,32 @@ it("a viewer sees the words but cannot pick or cut them", () => {
   expect((screen.getByRole("button", { name: "second" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("button", { name: "Cut pauses" }) as HTMLButtonElement).disabled).toBe(true);
 });
+
+it("captions download as subtitle files once there are lines, and import needs one clip that sounds", () => {
+  const { store } = setup({ doc: captionedDoc() });
+  expect((screen.getByRole("button", { name: "Download .srt" }) as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByRole("button", { name: "Download .vtt" }) as HTMLButtonElement).disabled).toBe(false);
+  const importButton = () => screen.getByRole("button", { name: "Import subtitles" }) as HTMLButtonElement;
+  expect(importButton().disabled).toBe(true);
+  act(() => store.getState().select(["c2"]));
+  expect(importButton().disabled).toBe(false);
+  act(() => store.getState().select(["x1"]));
+  expect(importButton().disabled).toBe(true);
+});
+
+it("a project with no captions has nothing to download", () => {
+  setup();
+  expect((screen.getByRole("button", { name: "Download .srt" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+it("an imported subtitle file becomes the selected clip's captions", async () => {
+  const { store } = setup();
+  act(() => store.getState().select(["c1"]));
+  const file = new File(["1\n00:00:00,000 --> 00:00:00,900\nfrom a file\n"], "subs.srt");
+  fireEvent.change(screen.getByLabelText("Subtitle file"), { target: { files: [file] } });
+  await flush();
+  await flush();
+  expect(clipOf(store.getState().doc, "c1").captions).toBe(true);
+  expect(store.getState().notice?.text).toBe("Imported 1 line of captions.");
+  expect((screen.getByRole("textbox", { name: "Caption at 0:00" }) as HTMLInputElement).value).toBe("from a file");
+});
