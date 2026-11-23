@@ -328,3 +328,44 @@ it("disables every control for a viewer", () => {
   for (const control of controls) expect(control.disabled).toBe(true);
   expect(within(panel).getByRole("button", { name: "Remove captions" }).hasAttribute("disabled")).toBe(true);
 });
+
+it("Cut video turns each line's words into buttons, and the picked words are cut out of the video", () => {
+  const { store } = setup({ doc: captionedDoc() });
+  // Fix words is the first mode: the lines are boxes to retype.
+  expect(screen.getByRole("textbox", { name: "Caption at 0:00" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("radio", { name: "Cut video" }));
+  expect(screen.queryByRole("textbox", { name: "Caption at 0:00" })).toBeNull();
+  const cut = () => screen.getByRole("button", { name: /^Cut (\d+ )?words?$/ }) as HTMLButtonElement;
+  expect(cut().disabled).toBe(true);
+  const second = within(screen.getByRole("group", { name: "Words at 0:01" }));
+  fireEvent.click(second.getByRole("button", { name: "second" }));
+  fireEvent.click(second.getByRole("button", { name: "line" }));
+  expect(second.getByRole("button", { name: "second" }).getAttribute("aria-pressed")).toBe("true");
+  expect(cut().textContent).toBe("Cut 2 words");
+  fireEvent.click(second.getByRole("button", { name: "line" })); // unpicked again
+  expect(cut().textContent).toBe("Cut 1 word");
+  fireEvent.click(cut());
+  // "second" ran from frame 30 to 42 of c1: twelve frames are gone and c2 moved up.
+  const clips = store.getState().doc.tracks[0].clips;
+  expect(clips.map((c) => [c.start, c.duration])).toEqual([[0, 30], [30, 48], [78, 30]]);
+  expect(store.getState().queue.at(-1)).toMatchObject({ label: "cut words" });
+  expect(screen.queryByRole("button", { name: "second" })).toBeNull();
+  expect(cut().disabled).toBe(true);
+});
+
+it("Cut pauses and Cut filler words say so when there is nothing to cut, and a viewer cannot cut", () => {
+  const { store } = setup({ doc: captionedDoc() });
+  fireEvent.click(screen.getByRole("radio", { name: "Cut video" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cut pauses" }));
+  expect(store.getState().notice?.text).toBe("No long pauses to cut.");
+  fireEvent.click(screen.getByRole("button", { name: "Cut filler words" }));
+  expect(store.getState().notice?.text).toBe("No filler words to cut.");
+  expect(store.getState().queue).toHaveLength(0);
+});
+
+it("a viewer sees the words but cannot pick or cut them", () => {
+  setup({ doc: captionedDoc(), canEdit: false });
+  fireEvent.click(screen.getByRole("radio", { name: "Cut video" }));
+  expect((screen.getByRole("button", { name: "second" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Cut pauses" }) as HTMLButtonElement).disabled).toBe(true);
+});
