@@ -9,6 +9,7 @@ import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
 import { CROP_MIN_SHOWN, clipRects, type Sizer } from "./clip-box";
 import { clipFrame, writeTransformOps } from "./keyframe-edit";
 import { trimBounds } from "./media-clips";
+import { SPEED_MAX, SPEED_MIN, hasSpeed, rateOf, roomAfter, speedOps } from "./speed";
 import type { Units } from "./settings";
 import { fromUnit, showUnit } from "./units";
 
@@ -41,6 +42,8 @@ export type ClipField =
   | "volume"
   | "fadeIn"
   | "fadeOut"
+  // How fast a video or audio clip plays, in percent of as recorded, whichever way it runs.
+  | "speed"
   // A shape's: its outline (or an arrow's line) colour and width, its fill, dashes and rounding, and an arrow's heads,
   // head look and size, and its path: Path sets it straight or curved, and Bend, on a line with one point, how far to
   // the side that point sits, in percent of the length.
@@ -81,6 +84,7 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   volume: "volume change",
   fadeIn: "fade change",
   fadeOut: "fade change",
+  speed: "speed change",
   stroke: "style change",
   strokeWidth: "style change",
   fill: "style change",
@@ -117,6 +121,7 @@ export const FONT_SIZE_MIN = 8;
 export const FONT_SIZE_MAX = 1000;
 const ALIGNS = ["left", "center", "right"] as const;
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+export const SPEED_PERCENT = { min: SPEED_MIN * 100, max: SPEED_MAX * 100 };
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
@@ -142,6 +147,7 @@ export type FieldContext = {
   box: { width: number; height: number } | null;
   lockAspect: boolean;
   playhead?: number;
+  room?: number; // the frames from the clip's start to the next clip on its track: how long it can get
 };
 
 export type FieldPrefs = { units: Units; lockAspect: boolean };
@@ -151,6 +157,7 @@ const PX_LOCKED: FieldPrefs = { units: "px", lockAspect: true };
 // The context of a clip in this document. Without prefs, pixels and locked; without a sizer, no box.
 export function fieldContext(doc: TimelineDoc, clip: Clip, prefs: FieldPrefs = PX_LOCKED, sizer: Sizer | null = null, playhead?: number): FieldContext {
   const kept = sizer ? clipRects(doc, clip, sizer)?.kept : undefined;
+  const track = doc.tracks.find((t) => t.clips.some((c) => c.id === clip.id));
   return {
     fps: doc.fps,
     frame: { width: doc.width, height: doc.height },
@@ -158,6 +165,7 @@ export function fieldContext(doc: TimelineDoc, clip: Clip, prefs: FieldPrefs = P
     box: kept ? { width: kept.right - kept.left, height: kept.bottom - kept.top } : null,
     lockAspect: prefs.lockAspect,
     ...(playhead === undefined ? {} : { playhead }),
+    ...(track && { room: roomAfter(track, clip) }),
   };
 }
 
@@ -228,6 +236,8 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
     case "fadeIn":
     case "fadeOut":
       return clip.type === "video" || clip.type === "audio" ? ((clip[field] ?? 0) / fps).toFixed(2) : "";
+    case "speed":
+      return hasSpeed(clip) ? String(Math.round(rateOf(clip) * 100)) : "";
   }
   if (clip.type === "shape") return shapeFieldValue(clip, field);
   if (clip.type !== "text") return "";
@@ -426,6 +436,12 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       if (seconds === null || (clip.type !== "video" && clip.type !== "audio")) return null;
       const frames = clamp(Math.round(seconds * fps), 0, clip.duration);
       return frames === (clip[field] ?? 0) ? [] : update({ [field]: frames });
+    }
+    case "speed": {
+      // Whole percents. The clip's length follows, up to the clip after it and the end of its media.
+      const percent = parseNumber(raw);
+      if (percent === null || !hasSpeed(clip)) return null;
+      return speedOps(clip, Math.round(percent) / 100, ctx.room ?? Infinity, lengthFrames);
     }
     case "x":
     case "y":

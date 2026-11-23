@@ -193,6 +193,14 @@ function assertAccepts(track: Track, clip: Clip, opIndex: number, opName: string
   }
 }
 
+// Only a video runs backward or holds a frame: sound and stills have one way to play.
+function assertSpeedFits(clip: Clip, opIndex: number, opName: string) {
+  if ((clip.type === "audio" || clip.type === "image") && clip.speed <= 0) {
+    const kind = clip.type === "audio" ? "an audio" : "an image";
+    throw new OpError("INVALID", `${opName}: ${kind} clip's speed must be above 0`, opIndex);
+  }
+}
+
 function assertNoOverlap(track: Track, opIndex: number, opName: string) {
   const sorted = [...track.clips].sort((a, b) => a.start - b.start);
   for (let i = 1; i < sorted.length; i++) {
@@ -367,6 +375,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           throw new OpError("DUPLICATE_ID", `${name}: clip id "${op.clip.id}" already exists`, opIndex);
         }
         assertAccepts(track, op.clip, opIndex, name);
+        assertSpeedFits(op.clip, opIndex, name);
         // A null is the neutral value, so a clip that spells out "none" for a field it can't use is still fine.
         const carried: Record<string, unknown> = op.clip;
         assertEffectsFit(op.clip, givenKeys(op.clip).filter((key) => carried[key] !== null), opIndex, name);
@@ -467,6 +476,10 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           duration = op.to - target.start;
         }
         if (duration < 1) throw outOfRange(`would have a duration of ${duration} frames`);
+        // A clip that plays backward runs towards the start of its source, so a longer one can run out of it.
+        if (target.type === "video" && target.speed < 0 && (sourceIn ?? target.in) + Math.round(duration * target.speed) < -1) {
+          throw outOfRange("cannot run back past the start of its source");
+        }
         // An end-trim undo sets the end, so it needs start and duration unchanged. A
         // start-trim undo keeps the current end, so a later end trim by someone else survives it.
         if (op.edge === "end") {
@@ -618,6 +631,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           );
         }
         assertAccepts(track, result.data, opIndex, name);
+        assertSpeedFits(result.data, opIndex, name);
         const before: Record<string, unknown> = current;
         const after: Record<string, unknown> = result.data;
         const undo: Record<string, unknown> = {};

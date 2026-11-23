@@ -111,8 +111,9 @@ describe("position and size in your units", () => {
       units: "in",
       box: { width: 64, height: 76.8 },
       lockAspect: false,
+      room: 90, // x2 starts at frame 90
     });
-    expect(fieldContext(doc, x1)).toEqual({ fps: 30, frame: { width: 1080, height: 1920 }, units: "px", box: null, lockAspect: true });
+    expect(fieldContext(doc, x1)).toEqual({ fps: 30, frame: { width: 1080, height: 1920 }, units: "px", box: null, lockAspect: true, room: 90 });
     const cropped = withTransform(x1, { crop: { left: 0.5, top: 0, right: 0, bottom: 0.25 } });
     const box = fieldContext(doc, cropped, { units: "px", lockAspect: true }, sizer).box!;
     expect(box.width).toBeCloseTo(32, 6);

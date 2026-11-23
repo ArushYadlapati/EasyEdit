@@ -22,6 +22,8 @@ export const MESSAGES = {
   levelSilent: "No sound to measure there.",
   levelUnreadable: "Couldn't read the sound of that file.",
   nothingToSeparate: "Select a video clip that has sound to separate its audio.",
+  nothingToReverse: "Select a video clip to play it backward.",
+  nothingToFreeze: "Select a video clip and put the playhead on the frame to freeze.",
   slotShort: (slot: string) => `${slot}: the clip is shorter than the slot, so there's a gap after it.`,
   mediaNotReady: "This file isn't ready yet.",
   renameFailed: "Couldn't rename the project. Try again.",

@@ -1,5 +1,6 @@
 import type { Clip, Op, TimelineDoc } from "@/lib/timeline";
 import { isMediaClip } from "@/lib/timeline";
+import { fitsMedia } from "@/lib/timeline/speed";
 import { sourceFrames } from "./rules";
 import type { AssetFact } from "./service";
 import type { AssetKind } from "./types";
@@ -120,9 +121,10 @@ export function findMediaProblem(after: TimelineDoc, ops: Op[], facts: Map<strin
     const durationMs = facts.get(clip.assetId)?.durationMs ?? null;
     if (durationMs === null) continue;
     const frames = sourceFrames(durationMs, after.fps);
-    // No frame over is allowed at any speed. A start trim and a split count the new `in` back from where the clip
-    // ends in its media, so a trimmed clip or a right piece ends in its footage exactly where the clip did.
-    if (clip.in + Math.round(clip.duration * clip.speed) > frames) {
+    // No frame over is allowed at any speed, forward or backward. A start trim and a split count the new `in` back
+    // from where the clip ends in its media, so a trimmed clip or a right piece ends in its footage exactly where the
+    // clip did.
+    if (!fitsMedia(clip, frames)) {
       return { code: "past_end", assetId: clip.assetId, opIndex, clipId, frames };
     }
   }

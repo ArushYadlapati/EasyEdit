@@ -1,7 +1,8 @@
 import { LIMITS } from "@/lib/limits";
-import { docDuration, isCropped, type TrackKind } from "@/lib/timeline";
+import { docDuration, isCropped, type MediaClip, type TrackKind } from "@/lib/timeline";
 import { duplicateTrackOps, reorderTrackOps, splitOps } from "./commands";
 import { soundClipsOf } from "./sound";
+import { freezeFrameOps, reverseOps } from "./speed";
 import { zoomLimits } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import { findClip, type EditorState } from "./store";
@@ -153,7 +154,8 @@ export function editBlocked(state: EditorState): boolean {
   return !state.canEdit || state.status === "deleted" || state.gesture !== null;
 }
 
-export type ClipMenuId = "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "mute-clip" | "separate-audio" | "delete";
+export type ClipMenuId =
+  | "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "mute-clip" | "separate-audio" | "reverse-clip" | "freeze-frame" | "delete";
 
 // A clip's menu (label "Clip actions"), for the selection the right-click made. Cut and Delete are
 // greyed when a selected clip is on a locked track, Split when the playhead crosses none of the
@@ -161,7 +163,8 @@ export type ClipMenuId = "cut" | "copy" | "duplicate" | "split" | "edit-text" | 
 // Edit text is there for one text clip, and Crop and Reset crop for one video, image or text clip, all greyed on a
 // locked track and Reset crop also when it is not cropped; none is a command, so the menu's opener runs them. With a
 // video or audio clip selected there are Mute (Unmute when all of them are silent) and, for a video that still has its
-// sound, Separate audio.
+// sound, Separate audio. With a video clip selected there are Reverse (Play forward when all of them play backward) and
+// Freeze frame, greyed when the playhead is on none of them.
 export function clipMenu(state: EditorState): MenuEntry[] {
   const { doc, selection, playhead } = state;
   const selected = new Set(selection.clipIds);
@@ -178,6 +181,7 @@ export function clipMenu(state: EditorState): MenuEntry[] {
   const audible = sounding.some(({ clip }) => clip.volume > 0);
   const separable = sounding.some(({ clip, track }) => clip.type === "video" && clip.volume > 0 && !track.locked);
   const allLocked = sounding.every(({ track }) => track.locked);
+  const videos = doc.tracks.flatMap((t) => t.clips.filter((c) => selected.has(c.id) && c.type === "video")) as MediaClip[];
   return [
     entry("cut", "Cut", onLocked),
     entry("copy", "Copy", false),
@@ -194,6 +198,12 @@ export function clipMenu(state: EditorState): MenuEntry[] {
       ? [
           entry("mute-clip", audible ? "Mute" : "Unmute", allLocked, { separatorBefore: true }),
           ...(sounding.some(({ clip }) => clip.type === "video") ? [entry("separate-audio", "Separate audio", !separable)] : []),
+        ]
+      : []),
+    ...(videos.length > 0
+      ? [
+          entry("reverse-clip", videos.every((clip) => clip.speed < 0) ? "Play forward" : "Reverse", reverseOps(doc, selection.clipIds).length === 0, { separatorBefore: true }),
+          entry("freeze-frame", "Freeze frame", !freezeFrameOps(doc, selection.clipIds, playhead, () => "").ok),
         ]
       : []),
     entry("delete", "Delete", onLocked, { separatorBefore: true, danger: true }),

@@ -8,3 +8,4 @@ export * from "./describe";
 export * from "./slots";
 export * from "./shapes";
 export * from "./captions";
+export * from "./speed";

@@ -37,19 +37,25 @@ export function mediaClipFor(
 
 // How far a clip's edges can go before its media runs out, in timeline frames: exactly what the engine and the
 // server accept. A start trim keeps where the clip ends in its footage (in = end − round(duration × speed)), so the
-// start can go back while that `in` stays at 0 or more; the end can go on while in + round(duration × speed) stays
-// within the media. Undefined for an image or an unknown length.
+// start can go back while that `in` stays inside the media; the end can go on while the clip's last frame does. A clip
+// that plays backward uses its footage the other way round: its end runs towards the media's start, its start towards
+// the media's end. Undefined for an image, a clip that holds one frame, or an unknown length.
 export function trimBounds(clip: MediaClip, lengthFrames: number | undefined): { minStart: number; maxEnd: number } | undefined {
-  if (clip.type === "image" || lengthFrames === undefined) return undefined;
-  const { speed } = clip;
-  const used = (duration: number) => Math.round(duration * speed);
+  if (clip.type === "image" || lengthFrames === undefined || clip.speed === 0) return undefined;
+  const rate = Math.abs(clip.speed);
+  // The frames of media a clip this long uses. Rounded as the engine rounds it, with the speed's sign, so a half frame falls the same way here and there.
+  const way = clip.speed > 0 ? 1 : -1;
+  const used = (duration: number) => way * Math.round(duration * clip.speed);
+  // ahead: the frames of media left from `in` in the way the clip plays. total: the most it may use after a start
+  // trim, counted from where it ends.
+  const ahead = clip.speed > 0 ? lengthFrames - clip.in : clip.in + 1;
+  const total = clip.speed > 0 ? clip.in + used(clip.duration) : lengthFrames - 1 - clip.in + used(clip.duration);
 
-  let longest = Math.floor((lengthFrames - clip.in + 0.5) / speed);
-  while (clip.in + used(longest) > lengthFrames) longest--;
+  let longest = Math.floor((ahead + 0.5) / rate);
+  while (used(longest) > ahead) longest--;
 
-  const end = clip.in + used(clip.duration);
-  let back = Math.floor((end + 0.5) / speed) - clip.duration;
-  while (back > 0 && used(clip.duration + back) > end) back--;
+  let back = Math.floor((total + 0.5) / rate) - clip.duration;
+  while (back > 0 && used(clip.duration + back) > total) back--;
 
   return { minStart: Math.max(0, clip.start - Math.max(0, back)), maxEnd: clip.start + longest };
 }

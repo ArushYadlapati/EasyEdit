@@ -69,7 +69,7 @@ describe("matching keys", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
-      "cut", "delete", "duplicate", "mute-clip", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "ripple-delete",
+      "cut", "delete", "duplicate", "freeze-frame", "mute-clip", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "reverse-clip", "ripple-delete",
       "separate-audio", "split", "tool-arrow", "tool-crop", "tool-guide", "tool-line", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "volume-down", "volume-up",
     ]);
   });
@@ -138,6 +138,8 @@ describe("matching keys", () => {
       ["volume-down", "[", "Make the selected clips quieter"],
       ["mute-clip", "M", "Mute or unmute the selected clips"],
       ["separate-audio", "Shift+S", "Separate a video's audio onto its own clip"],
+      ["reverse-clip", "Shift+R", "Play the selected video clips backward, or forward again"],
+      ["freeze-frame", "Shift+F", "Freeze the frame under the playhead"],
       ["select-all", "Mod+A", "Select all clips"],
       ["clear-selection", "Escape", "Clear the selection"],
       ["zoom-in", "= +", "Zoom in"],
@@ -167,7 +169,7 @@ describe("matching keys", () => {
       "Editing:undo", "Editing:redo", "Editing:split", "Editing:delete", "Editing:ripple-delete",
       "Editing:copy", "Editing:cut", "Editing:paste", "Editing:duplicate",
       "Editing:nudge-left", "Editing:nudge-right", "Editing:nudge-left-second", "Editing:nudge-right-second",
-      "Editing:volume-up", "Editing:volume-down", "Editing:mute-clip", "Editing:separate-audio",
+      "Editing:volume-up", "Editing:volume-down", "Editing:mute-clip", "Editing:separate-audio", "Editing:reverse-clip", "Editing:freeze-frame",
       "Timeline:select-all", "Timeline:clear-selection", "Timeline:zoom-in", "Timeline:zoom-out", "Timeline:zoom-fit",
       "Timeline:toggle-snapping", "Timeline:toggle-audio-meter", "General:export", "General:show-shortcuts", "General:search",
     ]);

@@ -130,7 +130,9 @@ export const MediaClip = z.object({
   type: z.enum(["video", "image", "audio"]),
   assetId: z.string().min(1),
   in: z.number().int().min(0),
-  speed: z.number().positive(),
+  // 1 is as recorded. A video may also run backward (below 0) or hold one frame (0): see speed.ts. Audio and image
+  // clips stay above 0 (checked in the ops).
+  speed: z.number(),
   volume: z.number().min(0).max(VOLUME_MAX),
   // Video and audio only (checked in the ops): the frames over which the clip's sound rises from silence at its start
   // and falls back to it at its end. Absent means 0. Together they never count for more than the clip is long.

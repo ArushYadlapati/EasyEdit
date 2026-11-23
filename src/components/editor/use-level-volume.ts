@@ -49,6 +49,7 @@ export function useLevelVolume(): { level(clipIds: string[]): Promise<void>; bus
         const volumes = new Map<string, number>();
         let unreadable = 0; // the rest that get no volume had nothing but silence to measure
         for (const clip of clips) {
+          if (clip.speed <= 0) continue; // plays backward or holds a frame: it has no sound to measure
           const asset = library.getState().assets[clip.assetId];
           const file = playbackFileFor(asset);
           const sound = file.fileId === null || asset?.hasAudio === false ? null : await read(file.fileId).catch(() => null);

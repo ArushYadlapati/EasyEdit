@@ -10,6 +10,7 @@ import { razorFrame } from "@/lib/editor/commands";
 import { cssFontFamily } from "@/lib/editor/fonts";
 import { ROW_HEIGHT, formatTimecode, frameToPx } from "@/lib/editor/geometry";
 import { SNAP_PX, clipEdges } from "@/lib/editor/snap";
+import { speedBadge } from "@/lib/editor/speed";
 import { posterFileFor } from "@/lib/media/playback";
 import type { Clip, TextStyle, Track } from "@/lib/timeline";
 import { isMediaClip, shapeName } from "@/lib/timeline";
@@ -173,7 +174,8 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
       {showLook && clip.type === "text" && <TextSample style={clip.style} />}
       {showLook && clip.type === "shape" && <ShapeSample color={clip.stroke ?? clip.fill ?? "#000000"} round={clip.shape === "ellipse"} line={clip.shape === "arrow"} />}
       {width >= MIN_LABEL_PX && <span className="relative min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>}
-      {marks.volume !== null && width >= MIN_VOLUME_PX && <VolumeBadge volume={marks.volume} />}
+      {marks.speed !== null && width >= MIN_VOLUME_PX && <SpeedBadge speed={marks.speed} last={marks.volume === null} />}
+      {marks.volume !== null && width >= MIN_VOLUME_PX && <VolumeBadge volume={marks.volume} first={marks.speed === null} />}
       <ClipMarkings marks={marks} zoom={zoom} />
       {dragger && width >= MIN_TRIM_PX && (
         <>
@@ -186,10 +188,20 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
 }, drawsTheSame);
 
 // A clip that is not as loud as recorded says so at its right end: its volume in percent, or a muted mark at 0.
-function VolumeBadge({ volume }: { volume: number }) {
+// first: nothing stands before it at the right end, so it takes the free room on its left.
+function VolumeBadge({ volume, first }: { volume: number; first: boolean }) {
   return (
-    <span data-clip-volume aria-hidden className="pointer-events-none relative mr-2 ml-auto flex shrink-0 items-center text-[10px] leading-4 text-ed-text tabular-nums">
+    <span data-clip-volume aria-hidden className={cx("pointer-events-none relative mr-2 flex shrink-0 items-center text-[10px] leading-4 text-ed-text tabular-nums", first && "ml-auto")}>
       {volume === 0 ? <VolumeX size={12} /> : `${Math.round(volume * 100)}%`}
+    </span>
+  );
+}
+
+// A clip that does not play as recorded says so at its right end, before its volume: how fast, and "Reverse" or "Hold".
+function SpeedBadge({ speed, last }: { speed: number; last: boolean }) {
+  return (
+    <span data-clip-speed aria-hidden className={cx("pointer-events-none relative ml-auto shrink-0 text-[10px] leading-4 text-ed-text tabular-nums", last ? "mr-2" : "mr-1.5")}>
+      {speedBadge(speed)}
     </span>
   );
 }
@@ -309,6 +321,7 @@ function sameMarks(a: ClipViewProps, b: ClipViewProps): boolean {
     x.fadeIn === y.fadeIn &&
     x.fadeOut === y.fadeOut &&
     x.volume === y.volume &&
+    x.speed === y.speed &&
     x.keyframes.join() === y.keyframes.join()
   );
 }

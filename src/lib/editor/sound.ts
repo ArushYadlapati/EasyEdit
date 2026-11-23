@@ -43,10 +43,11 @@ export type Separated = { ok: true; ops: OpInput[]; clipIds: string[] } | { ok: 
 // Takes the sound off each selected video clip and puts it on an audio clip of its own, at the same time and from the
 // same moment of the same file, on an audio track with room (a new one when none has). The video clip goes silent; its
 // volume, fades and captions go with the sound. hasSound says whether a file has any; without it every video counts.
+// A clip that plays backward or holds one frame has no sound to take.
 export function separateAudioOps(doc: TimelineDoc, clipIds: string[], genId: () => string, hasSound: (assetId: string) => boolean = () => true): Separated {
   const videos = unlocked(soundClipsOf(doc, clipIds))
     .map(({ clip }) => clip)
-    .filter((clip) => clip.type === "video" && clip.volume > 0 && hasSound(clip.assetId));
+    .filter((clip) => clip.type === "video" && clip.volume > 0 && clip.speed > 0 && hasSound(clip.assetId));
   if (videos.length === 0) return { ok: false, why: "nothing" };
   const sounds = videos.map((video): MediaClip => {
     const { fadeIn = 0, fadeOut = 0 } = video;

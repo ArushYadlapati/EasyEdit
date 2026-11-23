@@ -30,6 +30,8 @@ export function clipCues(clip: MediaClip, words: readonly CaptionWord[], fps: nu
 }
 
 function build(clip: MediaClip, words: readonly CaptionWord[], fps: number, preset: CaptionPreset): Cue[] {
+  // A clip that plays backward or holds one frame has no sound, so nothing is said in it.
+  if (clip.speed <= 0) return [];
   const clipEnd = clip.start + clip.duration;
   const outFrame = clip.in + clip.duration * clip.speed; // file frame where the clip stops
   const maxChars = preset === "word" ? 0 : CUE_RULES.maxChars[preset];

@@ -13,12 +13,13 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { gainLabel } from "@/lib/audio/loudness";
-import { removeTrack, renameTrack, resetCrop, separateAudio, toggleTrack } from "@/lib/editor/actions";
+import { freezeFrame, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
 import { trackToggles } from "@/lib/editor/geometry";
 import {
   FIELD_LABEL,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
+  SPEED_PERCENT,
   weightOptions,
   clipFieldValue,
   cropScrubRange,
@@ -31,6 +32,7 @@ import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
 import { soundClipsOf } from "@/lib/editor/sound";
+import { rateLabel, rateOf } from "@/lib/editor/speed";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import type { Units } from "@/lib/editor/settings";
 import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
@@ -129,6 +131,7 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
     case "fadeOut":
       return { scrub: 1 / fps, decimals: 2 };
     case "volume":
+    case "speed":
       return { scrub: 1, decimals: 0 };
     default:
       return null;
@@ -200,6 +203,8 @@ function NumberField(props: {
     };
   } else if (field === "volume") {
     scrubRange = () => ({ min: 0, max: VOLUME_MAX * 100 });
+  } else if (field === "speed") {
+    scrubRange = () => SPEED_PERCENT;
   }
 
   // NumberInput reads the box with Number(), which also takes "0x10" and "1e2"; only plain decimals count.
@@ -614,6 +619,42 @@ function SoundSection({ clip }: { clip: MediaClip }) {
   );
 }
 
+// How fast a video or audio clip plays, in percent of as recorded: its length follows, so twice as fast is half as
+// long. A video can also be turned round to play backward, and the frame under the playhead held as a freeze frame; a
+// clip that does either plays without sound, and a held frame has no speed to set.
+function SpeedSection({ clip }: { clip: MediaClip }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const onPlayhead = useEditor((s) => clip.start <= s.playhead && s.playhead < clip.start + clip.duration);
+  const held = clip.speed === 0;
+  const backward = clip.speed < 0;
+  return (
+    <Section title="Speed">
+      {held ? (
+        <Hint>Freeze frame: this clip holds one frame, without sound.</Hint>
+      ) : (
+        <div className="grid grid-cols-2 items-end gap-2">
+          <NumberField clipId={clip.id} field="speed" label="Speed" suffix="%" min={SPEED_PERCENT.min} max={SPEED_PERCENT.max} step={10} />
+          <p className={cx(TEXT, "pb-1 text-ed-muted tabular-nums")}>{rateLabel(rateOf(clip))}</p>
+        </div>
+      )}
+      {clip.type === "video" && !held && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            <Button data-edit-control aria-pressed={backward} disabled={!canEdit} onClick={() => reverseSelection(store)}>
+              {backward ? "Play forward" : "Reverse"}
+            </Button>
+            <Button data-edit-control disabled={!canEdit || !onPlayhead} onClick={() => freezeFrame(store)}>
+              Freeze frame
+            </Button>
+          </div>
+          {backward && <Hint>Plays backward, without sound.</Hint>}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // Several clips selected: how many, and for the ones that sound, leveling them all to the same loudness at once.
 function ManyClips({ count }: { count: number }) {
   const store = useEditorStore();
@@ -683,6 +724,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       {drawsOnCanvas && <PositionSection clipId={clip.id} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
       {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
+      {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}
       <TimingSection clipId={clip.id} />
       <SlotSection clip={clip} />
     </>

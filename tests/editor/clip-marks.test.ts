@@ -18,7 +18,7 @@ it("merges keyframe frames across properties, drops those outside the clip, and 
 });
 
 it("reports no marks for a plain clip", () => {
-  expect(alone(video("c", 0, 30))).toEqual({ keyframes: [], inFrames: 0, outFrames: 0, fadeIn: 0, fadeOut: 0, volume: null });
+  expect(alone(video("c", 0, 30))).toEqual({ keyframes: [], inFrames: 0, outFrames: 0, fadeIn: 0, fadeOut: 0, volume: null, speed: null });
 });
 
 it("reports a sounding clip's fades as heard, and its volume when it is not as recorded", () => {
@@ -61,5 +61,5 @@ it("marks an empty slot's keyframes and transitions too, since the clip that fil
     transitionOut: { kind: "dip", frames: 5 },
     keyframes: { x: [{ at: 3, value: 0 }, { at: 12, value: 1 }] },
   } as Clip;
-  expect(alone(slot)).toEqual({ keyframes: [3, 12], inFrames: 10, outFrames: 5, fadeIn: 0, fadeOut: 0, volume: null });
+  expect(alone(slot)).toEqual({ keyframes: [3, 12], inFrames: 10, outFrames: 5, fadeIn: 0, fadeOut: 0, volume: null, speed: null });
 });

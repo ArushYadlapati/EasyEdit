@@ -36,6 +36,7 @@ import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
+import { freezeFrameOps, reverseOps } from "./speed";
 import { findClip, type EditorStore } from "./store";
 import type { BrandFonts } from "@/lib/brand/types";
 import { presetClip, type TextPreset } from "./text-presets";
@@ -273,6 +274,27 @@ export function separateAudio(store: EditorStore, hasSound?: (assetId: string) =
     return;
   }
   if (state.edit(separated.ops, "separate audio").ok) state.select(separated.clipIds);
+}
+
+// Turns the selected video clips round, so they play backward; a clip that already does plays forward again.
+export function reverseSelection(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const ops = reverseOps(state.doc, state.selection.clipIds);
+  if (ops.length === 0) state.notify("info", MESSAGES.nothingToReverse);
+  else state.edit(ops, "reverse");
+}
+
+// Holds the frame under the playhead on the selected video clip for two seconds, and selects the held clip.
+export function freezeFrame(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const frozen = freezeFrameOps(state.doc, state.selection.clipIds, state.playhead, () => nanoid(10));
+  if (!frozen.ok) {
+    state.notify("info", MESSAGES.nothingToFreeze);
+    return;
+  }
+  if (state.edit(frozen.ops, "freeze frame").ok) state.select([frozen.clipId]);
 }
 
 // Clips on locked tracks are left out, so a following delete or nudge is not refused as a whole.

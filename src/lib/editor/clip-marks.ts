@@ -6,7 +6,8 @@ import type { Clip, Track } from "@/lib/timeline";
 
 // fadeIn, fadeOut: how long the clip's sound fades at each end, as it is heard. volume: its volume when it has sound of
 // its own and is not as recorded, else null.
-export type ClipMarks = { keyframes: number[]; inFrames: number; outFrames: number; fadeIn: number; fadeOut: number; volume: number | null };
+// speed: a video or audio clip's speed when it is not as recorded (below 0 backward, 0 a held frame), else null.
+export type ClipMarks = { keyframes: number[]; inFrames: number; outFrames: number; fadeIn: number; fadeOut: number; volume: number | null; speed: number | null };
 
 // What the timeline draws on a clip: where its keyframes sit (frames from its start, one mark per frame even when
 // several properties are keyed there; keyframes outside the clip are not drawn) and how long its in and out effects run
@@ -27,5 +28,6 @@ export function clipMarks(track: Track, clip: Clip): ClipMarks {
     fadeIn: fade.in,
     fadeOut: fade.out,
     volume: sounds && clip.volume !== 1 ? clip.volume : null,
+    speed: sounds && clip.speed !== 1 ? clip.speed : null,
   };
 }

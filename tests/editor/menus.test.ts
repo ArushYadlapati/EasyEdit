@@ -199,9 +199,9 @@ it("clipMenu follows the selection and the playhead", () => {
   expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["cut", "duplicate", "split", "edit-text", "crop", "reset-crop", "delete"]);
   // x1 is not cropped.
   expect(enabled(entries)).toEqual(["cut", "copy", "duplicate", "split", "edit-text", "crop", "delete"]);
-  // Two clips keep the original five; the video among them adds its sound's two.
+  // Two clips keep the original five; the video among them adds its sound's two and its speed's two.
   st().select(["c1", "x1"]);
-  expect(clipMenu(st()).map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Mute", "Separate audio", "Delete"]);
+  expect(clipMenu(st()).map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Mute", "Separate audio", "Reverse", "Freeze frame", "Delete"]);
   st().select(["x1"]);
 
   st().seek(70);
@@ -215,7 +215,8 @@ it("clipMenu follows the selection and the playhead", () => {
   expect(byId(clipMenu(st()), "cut").disabled).toBe(true);
   expect(byId(clipMenu(st()), "delete").disabled).toBe(true);
   st().select(["c1"]);
-  expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "crop", "mute-clip", "separate-audio", "delete"]);
+  // The playhead is at c1's end, off the clip, so there is no frame of it to freeze.
+  expect(enabled(clipMenu(st()))).toEqual(["cut", "copy", "duplicate", "crop", "mute-clip", "separate-audio", "reverse-clip", "delete"]);
 });
 
 it("clipMenu offers Mute and Separate audio for clips that sound", () => {
