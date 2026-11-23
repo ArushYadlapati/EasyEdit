@@ -86,9 +86,10 @@ describe("separating a video's audio", () => {
           clip: {
             id: "n1", type: "audio", assetId: "clip-b", start: 30, duration: 30, in: 45, speed: 2, volume: 0.6,
             transform: expect.objectContaining({ x: 0.5, y: 0.5 }), fadeIn: 5, fadeOut: 8, captions: true,
+            group: "n2", // the two stay linked
           },
         },
-        { op: "update_clip", clipId: "c2", patch: { volume: 0, fadeIn: 0, fadeOut: 0, captions: false } },
+        { op: "update_clip", clipId: "c2", patch: { volume: 0, group: "n2", fadeIn: 0, fadeOut: 0, captions: false } },
       ],
     });
   });
@@ -100,7 +101,7 @@ describe("separating a video's audio", () => {
       { op: "add_clip", trackId: "n1", clip: { id: "n2", type: "audio", start: 0, duration: 30 } },
       { op: "update_clip", clipId: "c1", patch: { volume: 0 } },
     ]);
-    expect(out.ok && (out.ops[2] as { patch: unknown }).patch).toEqual({ volume: 0 }); // no fades or captions to move
+    expect(out.ok && (out.ops[2] as { patch: unknown }).patch).toEqual({ volume: 0, group: "n3" }); // no fades or captions to move; the link's name
   });
 
   it("separates several at once, and only videos that still have sound to give", () => {

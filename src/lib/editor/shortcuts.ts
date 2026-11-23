@@ -3,6 +3,7 @@ export type CommandId =
   | "prev-edge" | "next-edge" | "go-start" | "go-end" | "toggle-marker" | "prev-marker" | "next-marker"
   | "undo" | "redo" | "split" | "delete" | "ripple-delete" | "copy" | "cut" | "paste" | "duplicate"
   | "nudge-left" | "nudge-right" | "nudge-left-second" | "nudge-right-second"
+  | "group-clips" | "ungroup-clips"
   | "volume-up" | "volume-down" | "mute-clip" | "separate-audio" | "duck-audio" | "reverse-clip" | "freeze-frame"
   | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "next-trim-mode" | "toggle-audio-meter"
   | "export" | "show-shortcuts" | "search"
@@ -77,6 +78,8 @@ export const SHORTCUTS: Shortcut[] = [
   row("Editing", "nudge-right", ["Alt+ArrowRight"], "Nudge one frame right", EDITS_REPEATS),
   row("Editing", "nudge-left-second", ["Alt+Shift+ArrowLeft"], "Nudge one second left", EDITS_REPEATS),
   row("Editing", "nudge-right-second", ["Alt+Shift+ArrowRight"], "Nudge one second right", EDITS_REPEATS),
+  row("Editing", "group-clips", ["Mod+G"], "Link the selected clips, so they are selected and moved together", EDITS),
+  row("Editing", "ungroup-clips", ["Mod+Shift+G"], "Unlink the selected clips", EDITS),
   row("Editing", "volume-up", ["]"], "Make the selected clips louder", EDITS_REPEATS),
   row("Editing", "volume-down", ["["], "Make the selected clips quieter", EDITS_REPEATS),
   row("Editing", "mute-clip", ["M"], "Mute or unmute the selected clips", EDITS),

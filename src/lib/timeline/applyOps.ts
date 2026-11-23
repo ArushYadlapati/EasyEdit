@@ -47,6 +47,7 @@ const CLIP_FILL: Record<string, () => unknown> = {
   blend: () => "normal",
   chroma: () => null,
   rounding: () => 0,
+  group: () => null,
 };
 
 // A shape's optional fields, each with the value its absence means, filled the same way so the first change to one
@@ -84,9 +85,10 @@ const WAY_NONE: Record<string, unknown> = { transitionIn: null, transitionOut: n
 
 type EffectsHolder = Pick<Clip, "type"> & { accepts?: "visual" | "audio" };
 
+// Every kind of clip can be in a group, an empty slot too.
 function clipEffects(clip: EffectsHolder): readonly string[] {
-  if (clip.type === "placeholder") return clip.accepts === "visual" ? VISUAL_EFFECTS : [];
-  return CLIP_EFFECTS[clip.type];
+  if (clip.type === "placeholder") return clip.accepts === "visual" ? [...VISUAL_EFFECTS, "group"] : ["group"];
+  return [...CLIP_EFFECTS[clip.type], "group"];
 }
 
 // Optional transform fields, each with its neutral value. update_clip fills a missing one before it is set or

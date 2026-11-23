@@ -69,8 +69,15 @@ export function separateAudioOps(doc: TimelineDoc, clipIds: string[], genId: () 
   });
   const placement = placeClips(doc, sounds.map((clip) => ({ clip, trackId: null })), genId);
   if (!placement.ok) return { ok: false, why: "room" };
-  const silenced = videos.map((video): OpInput => {
+  // Each video and its sound stay linked, under the group the video already has or a new one, so moving one moves both.
+  const groups = videos.map((video) => video.group ?? genId());
+  for (const op of placement.ops) {
+    const at = op.op === "add_clip" ? placement.clipIds.indexOf(op.clip.id ?? "") : -1;
+    if (op.op === "add_clip" && at !== -1) op.clip.group = groups[at];
+  }
+  const silenced = videos.map((video, i): OpInput => {
     const patch: Record<string, unknown> = { volume: 0 };
+    if (video.group !== groups[i]) patch.group = groups[i];
     if ((video.fadeIn ?? 0) > 0) patch.fadeIn = 0;
     if ((video.fadeOut ?? 0) > 0) patch.fadeOut = 0;
     if (video.captions) patch.captions = false;

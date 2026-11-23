@@ -8,6 +8,7 @@ import {
   freezeFrame,
   goToEdge,
   goToMarker,
+  groupSelection,
   nudgeSelection,
   paste,
   reverseSelection,
@@ -15,6 +16,7 @@ import {
   separateAudio,
   splitAtPlayhead,
   toggleMarker,
+  ungroupSelection,
   stepVolume,
   toggleMute,
 } from "./actions";
@@ -134,6 +136,10 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return nudgeSelection(store, -fps);
     case "nudge-right-second":
       return nudgeSelection(store, fps);
+    case "group-clips":
+      return groupSelection(store);
+    case "ungroup-clips":
+      return ungroupSelection(store);
     case "volume-up":
       return stepVolume(store, 1);
     case "volume-down":

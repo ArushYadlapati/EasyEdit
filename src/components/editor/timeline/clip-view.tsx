@@ -1,6 +1,6 @@
 "use client";
 
-import { ImageOff, VolumeX } from "lucide-react";
+import { ImageOff, Link2, VolumeX } from "lucide-react";
 import { memo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { splitClipAt } from "@/lib/editor/actions";
@@ -9,6 +9,7 @@ import { clipMarks, type ClipMarks } from "@/lib/editor/clip-marks";
 import { razorFrame } from "@/lib/editor/commands";
 import { cssFontFamily } from "@/lib/editor/fonts";
 import { ROW_HEIGHT, formatTimecode, frameToPx } from "@/lib/editor/geometry";
+import { withGroups } from "@/lib/editor/groups";
 import { SNAP_PX, clipEdges } from "@/lib/editor/snap";
 import { speedBadge } from "@/lib/editor/speed";
 import { posterFileFor } from "@/lib/media/playback";
@@ -108,11 +109,13 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
       splitClipAt(store, clip.id, razorFrameAt(e));
       return;
     }
-    const { selection, select } = store.getState();
+    const { selection, select, doc } = store.getState();
     const toggle = e.shiftKey || e.metaKey || e.ctrlKey;
     const keep = !toggle && selection.clipIds.includes(clip.id);
-    if (toggle) select([clip.id], "toggle");
-    else if (!keep) select([clip.id]);
+    // A linked clip brings its group with it; with Alt held it is taken alone.
+    const picked = e.altKey ? [clip.id] : withGroups(doc, [clip.id]);
+    if (toggle) select(picked, "toggle");
+    else if (!keep) select(picked);
     if (dragger) {
       const edge = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-trim-handle]")?.dataset.trimHandle : undefined;
       dragger.pressClip(e, clip.id, edge === "start" || edge === "end" ? edge : "move", keep);
@@ -123,7 +126,7 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
     const pressed = press.current;
     press.current = null;
     if (!pressed || pressed.pointerId !== e.pointerId) return;
-    if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) < CLICK_SLOP_PX) store.getState().select([clip.id]);
+    if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) < CLICK_SLOP_PX) store.getState().select(e.altKey ? [clip.id] : withGroups(store.getState().doc, [clip.id]));
   }
 
   function onContextMenu(e: MouseEvent<HTMLDivElement>) {
@@ -178,6 +181,7 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
       {showLook && pictured && !look && <ClipStill fileId={stillFileId} removed={removed} />}
       {showLook && clip.type === "text" && <TextSample style={clip.style} />}
       {showLook && clip.type === "shape" && <ShapeSample color={clip.stroke ?? clip.fill ?? "#000000"} round={clip.shape === "ellipse"} line={clip.shape === "arrow"} />}
+      {clip.group && width >= MIN_LABEL_PX && <Link2 size={11} aria-hidden data-clip-linked className="relative ml-1.5 shrink-0 text-ed-text" />}
       {width >= MIN_LABEL_PX && <span className="relative min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>}
       {marks.speed !== null && width >= MIN_VOLUME_PX && <SpeedBadge speed={marks.speed} last={marks.volume === null} />}
       {marks.volume !== null && width >= MIN_VOLUME_PX && <VolumeBadge volume={marks.volume} first={marks.speed === null} />}
@@ -310,6 +314,7 @@ function drawsTheSame(a: ClipViewProps, b: ClipViewProps): boolean {
     a.clip.type === b.clip.type &&
     a.clip.start === b.clip.start &&
     a.clip.duration === b.clip.duration &&
+    (a.clip.group ?? null) === (b.clip.group ?? null) &&
     clipLabel(a.clip, undefined) === clipLabel(b.clip, undefined) &&
     (!("assetId" in a.clip) || !("assetId" in b.clip) || (a.clip.assetId === b.clip.assetId && a.clip.in === b.clip.in)) &&
     sameSample(a.clip, b.clip) &&

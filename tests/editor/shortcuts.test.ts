@@ -69,8 +69,8 @@ describe("matching keys", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
-      "cut", "delete", "duck-audio", "duplicate", "freeze-frame", "mute-clip", "next-trim-mode", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "reverse-clip", "ripple-delete",
-      "separate-audio", "split", "toggle-marker", "tool-arrow", "tool-crop", "tool-guide", "tool-line", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "volume-down", "volume-up",
+      "cut", "delete", "duck-audio", "duplicate", "freeze-frame", "group-clips", "mute-clip", "next-trim-mode", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "reverse-clip", "ripple-delete",
+      "separate-audio", "split", "toggle-marker", "tool-arrow", "tool-crop", "tool-guide", "tool-line", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "ungroup-clips", "volume-down", "volume-up",
     ]);
   });
 
@@ -136,6 +136,8 @@ describe("matching keys", () => {
       ["nudge-right", "Alt+ArrowRight", "Nudge one frame right"],
       ["nudge-left-second", "Alt+Shift+ArrowLeft", "Nudge one second left"],
       ["nudge-right-second", "Alt+Shift+ArrowRight", "Nudge one second right"],
+      ["group-clips", "Mod+G", "Link the selected clips, so they are selected and moved together"],
+      ["ungroup-clips", "Mod+Shift+G", "Unlink the selected clips"],
       ["volume-up", "]", "Make the selected clips louder"],
       ["volume-down", "[", "Make the selected clips quieter"],
       ["mute-clip", "M", "Mute or unmute the selected clips"],
@@ -174,7 +176,7 @@ describe("matching keys", () => {
       "Editing:undo", "Editing:redo", "Editing:split", "Editing:delete", "Editing:ripple-delete",
       "Editing:copy", "Editing:cut", "Editing:paste", "Editing:duplicate",
       "Editing:nudge-left", "Editing:nudge-right", "Editing:nudge-left-second", "Editing:nudge-right-second",
-      "Editing:volume-up", "Editing:volume-down", "Editing:mute-clip", "Editing:separate-audio", "Editing:duck-audio", "Editing:reverse-clip", "Editing:freeze-frame",
+      "Editing:group-clips", "Editing:ungroup-clips", "Editing:volume-up", "Editing:volume-down", "Editing:mute-clip", "Editing:separate-audio", "Editing:duck-audio", "Editing:reverse-clip", "Editing:freeze-frame",
       "Timeline:toggle-marker", "Timeline:select-all", "Timeline:clear-selection", "Timeline:zoom-in", "Timeline:zoom-out", "Timeline:zoom-fit",
       "Timeline:toggle-snapping", "Timeline:next-trim-mode", "Timeline:toggle-audio-meter", "General:export", "General:show-shortcuts", "General:search",
     ]);

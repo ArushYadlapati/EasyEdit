@@ -150,6 +150,9 @@ const ClipBase = {
   start: z.number().int().min(0),
   duration: z.number().int().min(1),
   transform: Transform,
+  // Clips that share a group's name are linked: on the timeline they are selected, and so moved and deleted, together.
+  // Null or absent: the clip is on its own.
+  group: z.string().min(1).max(40).nullable().optional(),
 };
 
 // The loudest a clip can be set: four times as recorded, about +12 dB. 1 is as recorded.

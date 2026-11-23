@@ -91,6 +91,8 @@ const COMMAND_WORDS: Partial<Record<CommandId, string[]>> = {
   "toggle-snapping": ["snap", "magnet", "align"],
   "next-trim-mode": ["ripple", "roll", "rolling", "trim", "edge", "edit", "gap"],
   "toggle-audio-meter": ["sound", "level", "levels", "volume", "loudness", "vu", "db", "show", "hide"],
+  "group-clips": ["link", "group", "together", "join", "lock"],
+  "ungroup-clips": ["unlink", "ungroup", "separate", "apart"],
   "volume-up": ["sound", "audio", "loud", "boost", "gain", "increase"],
   "volume-down": ["sound", "audio", "quiet", "lower", "gain", "decrease"],
   "mute-clip": ["sound", "audio", "silence", "silent", "volume"],
@@ -116,6 +118,8 @@ const COMMAND_LABELS: Partial<Record<CommandId, string>> = {
   "toggle-snapping": "Snapping",
   "next-trim-mode": "Trim mode: trim, ripple, roll",
   "toggle-audio-meter": "Audio meter",
+  "group-clips": "Link clips",
+  "ungroup-clips": "Unlink clips",
   "volume-up": "Volume up",
   "volume-down": "Volume down",
   "mute-clip": "Mute or unmute clip",
@@ -182,7 +186,7 @@ const COMMAND_GROUPS: { group: SearchGroup; commands: CommandId[] }[] = [
     commands: [
       "undo", "redo", "cut", "copy", "paste", "duplicate", "split", "delete", "ripple-delete",
       "nudge-left", "nudge-right", "nudge-left-second", "nudge-right-second", "select-all", "clear-selection",
-      "volume-up", "volume-down", "mute-clip", "separate-audio", "duck-audio", "reverse-clip", "freeze-frame",
+      "group-clips", "ungroup-clips", "volume-up", "volume-down", "mute-clip", "separate-audio", "duck-audio", "reverse-clip", "freeze-frame",
     ],
   },
   {
@@ -217,6 +221,8 @@ function commandUnavailable(command: CommandId, input: SearchInput): boolean {
     case "nudge-right":
     case "nudge-left-second":
     case "nudge-right-second":
+    case "group-clips":
+    case "ungroup-clips":
     case "volume-up":
     case "volume-down":
     case "mute-clip":

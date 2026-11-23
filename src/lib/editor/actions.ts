@@ -34,6 +34,7 @@ import {
   type TrackSwitch,
 } from "./commands";
 import type { TimelinePoint } from "./geometry";
+import { groupOps, ungroupOps } from "./groups";
 import { clipFrame, kenBurnsOps, toggleKeyframeOps } from "./keyframe-edit";
 import { neighbourMarker, toggleMarkerOps } from "./markers";
 import { mediaClipFor, mediaLengthFrames } from "./media-clips";
@@ -328,6 +329,24 @@ export function applyLook(store: EditorStore, clipId: string, lookId: string | n
 export function selectAll(store: EditorStore): void {
   const state = store.getState();
   state.select(state.doc.tracks.flatMap((t) => (t.locked ? [] : t.clips.map((c) => c.id))));
+}
+
+// Links the selected clips, so the timeline selects and moves them as one.
+export function groupSelection(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const ops = groupOps(state.doc, state.selection.clipIds, () => nanoid(10));
+  if (!ops) state.notify("info", MESSAGES.nothingToGroup);
+  else state.edit(ops, "link clips");
+}
+
+// Unlinks the selected clips.
+export function ungroupSelection(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const ops = ungroupOps(state.doc, state.selection.clipIds);
+  if (!ops) state.notify("info", MESSAGES.nothingToUngroup);
+  else state.edit(ops, "unlink clips");
 }
 
 // Puts a marker at the playhead, or takes away the one there.

@@ -49,6 +49,7 @@ const ClipExpect = z
     volume: MediaClip.shape.volume,
     text: TextClip.shape.text,
     slot: Slot.nullable(),
+    group: MediaClip.shape.group,
     transform: Transform.partial().strict(),
     style: TextStyle.partial().strict(),
     keyframes: z.strictObject(Keyframes.shape),
