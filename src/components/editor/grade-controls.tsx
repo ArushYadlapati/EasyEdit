@@ -247,25 +247,20 @@ function CurveEditor({ clip, canEdit }: { clip: ColorClip; canEdit: boolean }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <Segmented<CurveKey>
-          label="Curve"
-          data-edit-control
-          className="flex-1"
-          value={key}
-          options={CURVES.map((c) => ({ value: c.key, label: c.label }))}
-          onChange={setKey}
-        />
+        <span className={CAPTION}>Curves</span>
         <Button data-edit-control size="sm" variant="ghost" disabled={!canEdit || !isCurveSet(clip.grade?.[key])} onClick={() => change([])}>
           Reset curve
         </Button>
       </div>
+      {/* The four names need the whole width: beside a button they are cut short. */}
+      <Segmented<CurveKey> label="Curve" data-edit-control value={key} options={CURVES.map((c) => ({ value: c.key, label: c.label }))} onChange={setKey} />
       <svg
         ref={svg}
         role="group"
         aria-label={`${CURVES.find((c) => c.key === key)!.label} curve`}
         viewBox={`0 0 ${SIDE} ${SIDE}`}
         preserveAspectRatio="none"
-        className={cx("aspect-square w-full touch-none rounded-md border border-ed-line bg-ed-raised", canEdit ? "cursor-crosshair" : "opacity-40")}
+        className={cx("aspect-square w-full touch-none overflow-visible rounded-md border border-ed-line bg-ed-raised", canEdit ? "cursor-crosshair" : "opacity-40")}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={end}
@@ -393,10 +388,7 @@ export function GradeControls({ clip, canEdit, number }: { clip: ColorClip; canE
           ))}
         </div>
       </div>
-      <div className="flex flex-col gap-2">
-        <span className={CAPTION}>Curves</span>
-        <CurveEditor clip={clip} canEdit={canEdit} />
-      </div>
+      <CurveEditor clip={clip} canEdit={canEdit} />
       <LutPicker clip={clip} canEdit={canEdit} amount={number("lutAmount", "LUT strength", 0)} />
     </div>
   );
