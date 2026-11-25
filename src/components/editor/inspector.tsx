@@ -153,6 +153,7 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
     case "vignette":
     case "hue":
     case "blur":
+    case "lookStrength":
     case "shadowOpacity":
     case "backgroundOpacity":
     case "backgroundPadding":
@@ -814,6 +815,7 @@ function ColorSection({ clip }: { clip: MediaClip }) {
           </Button>
         ))}
       </div>
+      {current !== null && current !== "none" && <NumberField clipId={clip.id} field="lookStrength" label="Look strength" suffix="%" min={0} max={100} step={5} />}
       <div className="grid grid-cols-2 gap-2">
         {ADJUST_FIELDS.map(({ field, label, suffix }) => (
           <NumberField key={field} clipId={clip.id} field={field} label={label} suffix={suffix} min={ADJUST_RANGE[field].min} max={ADJUST_RANGE[field].max} />

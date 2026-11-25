@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyLook } from "@/lib/editor/actions";
 import { ADJUST_RANGE, clipFieldOps, clipFieldValue, fieldContext, type ClipField } from "@/lib/editor/inspector-fields";
 import { findClip } from "@/lib/editor/store";
-import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_ADJUST, adjustOf, applyOps, describe as describeDoc, isAdjusted, lookOf, lookPatch, prepareOps, type MediaClip, type Op, type OpInput, type TimelineDoc } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_ADJUST, adjustOf, applyOps, describe as describeDoc, isAdjusted, lookMatch, lookOf, lookPatch, prepareOps, type MediaClip, type Op, type OpInput, type TimelineDoc } from "@/lib/timeline";
 import { makeStore, sampleDoc, video } from "../editor/fixtures";
 
 const c1 = (d: TimelineDoc) => findClip(d, "c1")!.clip as MediaClip;
@@ -73,7 +73,7 @@ describe("a picture's colours in the ops", () => {
 
 describe("looks", () => {
   it("each has a name and sets colours within range", () => {
-    expect(LOOKS.map((l) => l.label)).toEqual(["Vivid", "Warm", "Cool", "B&W", "Fade", "Vintage", "Drama"]);
+    expect(LOOKS.map((l) => l.label)).toEqual(["Vivid", "Pop", "Warm", "Golden", "Cool", "Dusk", "Soft", "Fade", "Vintage", "Moody", "Drama", "B&W", "Noir", "Sepia"]);
     for (const look of LOOKS) expect(() => run(sampleDoc(), patch("c1", { adjust: lookPatch(look) }))).not.toThrow();
     expect(new Set(LOOKS.map((l) => l.id)).size).toBe(LOOKS.length);
   });
@@ -97,6 +97,37 @@ describe("looks", () => {
     expect(lookOf({ blur: 30 })).toBe("none");
     expect(lookOf(lookPatch(LOOKS[0]))).toBe("vivid");
     expect(lookOf({ ...lookPatch(LOOKS[0]), brightness: 0.01 })).toBeNull();
+  });
+
+  it("a look at part strength is still that look, and no look is a part of another", () => {
+    for (const look of LOOKS) {
+      for (const strength of [1, 0.75, 0.5, 0.2, 0.05]) {
+        expect(lookMatch(lookPatch(look, strength))).toEqual({ id: look.id, strength });
+      }
+      expect(() => run(sampleDoc(), patch("c1", { adjust: lookPatch(look, 0.33) }))).not.toThrow();
+    }
+    expect(lookMatch(lookPatch(LOOKS[0], 0))).toEqual({ id: "none", strength: 1 });
+    // Past the whole look, or one colour off it, it is nobody's.
+    expect(lookMatch({ contrast: 0.3, saturation: 0.7 })).toBeNull();
+    expect(lookMatch({ ...lookPatch(LOOKS[0], 0.5), vignette: 0.01 })).toBeNull();
+  });
+
+  it("the strength field shows a look's share and sets every colour to it", () => {
+    const d = run(sampleDoc(), patch("c1", { adjust: { ...lookPatch(LOOKS.find((l) => l.id === "vintage")!), blur: 6 } })).doc;
+    expect(shown(d, "lookStrength")).toBe("100");
+    expect(shown(sampleDoc(), "lookStrength")).toBe(""); // no look, no strength
+    expect(shown(d, "lookStrength", "x1")).toBe("");
+    const half = field(d, "lookStrength", "50")!;
+    expect(half).toEqual(patch("c1", { adjust: { brightness: 0, contrast: -0.05, saturation: -0.125, temperature: 0.15, hue: 0, vignette: 0.225 } }));
+    const halved = run(d, half).doc;
+    expect(shown(halved, "lookStrength")).toBe("50");
+    expect(lookOf(c1(halved).adjust)).toBe("vintage");
+    expect(c1(halved).adjust!.blur).toBe(6);
+    expect(field(halved, "lookStrength", "50")).toEqual([]);
+    expect(field(halved, "lookStrength", "250")).toEqual(patch("c1", { adjust: lookPatch(LOOKS.find((l) => l.id === "vintage")!) }));
+    expect(lookOf(c1(run(halved, field(halved, "lookStrength", "0")!).doc).adjust)).toBe("none");
+    expect(field(sampleDoc(), "lookStrength", "50")).toBeNull();
+    expect(field(run(sampleDoc(), patch("c1", { adjust: { hue: 33 } })).doc, "lookStrength", "50")).toBeNull();
   });
 
   it("the same look twice, an unknown look, a clip with no picture or a viewer changes nothing", () => {

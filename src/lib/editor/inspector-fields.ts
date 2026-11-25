@@ -1,6 +1,6 @@
 import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
 import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
-import { ArrowHead, ArrowHeads, BlendMode, ShapeDash, VOLUME_MAX, adjustOf, isMediaClip, type AdjustKey, type MediaClip, type ShapeClip, type TextClip } from "@/lib/timeline";
+import { ArrowHead, ArrowHeads, BlendMode, LOOKS, ShapeDash, VOLUME_MAX, adjustOf, isMediaClip, lookMatch, lookPatch, type AdjustKey, type MediaClip, type ShapeClip, type TextClip } from "@/lib/timeline";
 import { ARROW_DEFAULTS, CURVED_BEND, arrowThrough, takesRadius } from "@/lib/timeline/shapes";
 import { BACKGROUND_START, hasBackground, hasOutline, hasShadow, outlineStart, shadowStart, textExtras } from "@/lib/timeline/text-style";
 import { straightenOps } from "./arrow-drag";
@@ -89,6 +89,8 @@ export type ClipField =
   | "vignette"
   | "hue"
   | "blur"
+  // How much of the picture's look is on, in percent of the whole look. A picture with no look has none.
+  | "lookStrength"
   | "flipH"
   | "flipV"
   | "blend"
@@ -173,6 +175,7 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   vignette: "color change",
   hue: "color change",
   blur: "color change",
+  lookStrength: "color look",
   flipH: "flip",
   flipV: "flip",
   blend: "blend change",
@@ -387,6 +390,10 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
     case "hue":
     case "blur":
       return isPicture(clip) ? oneDecimal(adjustOf(clip.adjust)[field]) : "";
+    case "lookStrength": {
+      const look = isPicture(clip) ? lookMatch(clip.adjust) : null;
+      return look && look.id !== "none" ? oneDecimal(look.strength * 100) : "";
+    }
     case "flipH":
     case "flipV":
       return isPicture(clip) ? (clip.transform[field] ? "on" : "off") : "";
@@ -767,6 +774,15 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       const range = ADJUST_RANGE[field];
       const value = round(clamp(n, range.min, range.max) / range.per, 4);
       return value === adjustOf(clip.adjust)[field] ? [] : update({ adjust: { [field]: value } });
+    }
+    case "lookStrength": {
+      // The look's colours at this share of their own. At 0 nothing of it is left, so the picture has no look.
+      const n = parseNumber(raw);
+      const match = isPicture(clip) ? lookMatch(clip.adjust) : null;
+      const look = match && LOOKS.find((l) => l.id === match.id);
+      if (n === null || !isPicture(clip) || !match || !look) return null;
+      const strength = round(clamp(n, 0, 100) / 100, 3);
+      return strength === match.strength ? [] : update({ adjust: lookPatch(look, strength) });
     }
     case "flipH":
     case "flipV": {
