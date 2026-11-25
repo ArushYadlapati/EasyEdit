@@ -1,6 +1,6 @@
 import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
 import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
-import { ArrowHead, ArrowHeads, BlendMode, LOOKS, ShapeDash, VOLUME_MAX, adjustOf, isMediaClip, lookMatch, lookPatch, type AdjustKey, type MediaClip, type ShapeClip, type TextClip } from "@/lib/timeline";
+import { ArrowHead, ArrowHeads, BlendMode, LOOKS, ShapeDash, VOLUME_MAX, adjustOf, isColorClip, isMediaClip, lookMatch, lookPatch, type AdjustKey, type MediaClip, type ShapeClip, type TextClip } from "@/lib/timeline";
 import { ARROW_DEFAULTS, CURVED_BEND, arrowThrough, takesRadius } from "@/lib/timeline/shapes";
 import { BACKGROUND_START, hasBackground, hasOutline, hasShadow, outlineStart, shadowStart, textExtras } from "@/lib/timeline/text-style";
 import { straightenOps } from "./arrow-drag";
@@ -427,22 +427,22 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
     case "glitch":
     case "vhs":
       // A keyframed one shows what it is at the playhead.
-      return isPicture(saved) ? oneDecimal((ctx.playhead === undefined ? adjustOf(saved.adjust) : adjustAt(saved, clipFrame(saved, ctx.playhead)))[field] * ADJUST_RANGE[field].per) : "";
+      return isColorClip(saved) ? oneDecimal((ctx.playhead === undefined ? adjustOf(saved.adjust) : adjustAt(saved, clipFrame(saved, ctx.playhead)))[field] * ADJUST_RANGE[field].per) : "";
     case "liftLevel":
     case "gammaLevel":
     case "gainLevel":
-      return isPicture(clip) ? oneDecimal(wheelOf(clip.grade, LEVEL_WHEEL[field]).level * 100) : "";
+      return isColorClip(clip) ? oneDecimal(wheelOf(clip.grade, LEVEL_WHEEL[field]).level * 100) : "";
     case "lutAmount":
-      return isPicture(clip) && clip.grade?.lut ? oneDecimal((clip.grade.lutAmount ?? 1) * 100) : "";
+      return isColorClip(clip) && clip.grade?.lut ? oneDecimal((clip.grade.lutAmount ?? 1) * 100) : "";
     case "lookStrength": {
-      const look = isPicture(clip) ? lookMatch(clip.adjust) : null;
+      const look = isColorClip(clip) ? lookMatch(clip.adjust) : null;
       return look && look.id !== "none" ? oneDecimal(look.strength * 100) : "";
     }
     case "flipH":
     case "flipV":
       return isPicture(clip) ? (clip.transform[field] ? "on" : "off") : "";
     case "blend":
-      return clip.type === "audio" || clip.type === "placeholder" ? "" : (clip.blend ?? "normal");
+      return clip.type === "audio" || clip.type === "placeholder" || clip.type === "adjustment" ? "" : (clip.blend ?? "normal");
     case "rounding":
       return isPicture(clip) ? oneDecimal((clip.rounding ?? 0) * 100) : "";
     case "chroma":
@@ -820,10 +820,10 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
     case "glitch":
     case "vhs": {
       const n = parseNumber(raw);
-      if (n === null || !isPicture(clip)) return null;
+      if (n === null || !isColorClip(clip)) return null;
       const range = ADJUST_RANGE[field];
       const value = round(clamp(n, range.min, range.max) / range.per, 4);
-      if (playhead === undefined || !isPicture(saved)) return value === adjustOf(clip.adjust)[field] ? [] : update({ adjust: { [field]: value } });
+      if (playhead === undefined || !isColorClip(saved)) return value === adjustOf(clip.adjust)[field] ? [] : update({ adjust: { [field]: value } });
       // A keyframed one is keyed at the playhead, as a keyframed position is.
       const frame = clipFrame(saved, playhead);
       return value === adjustAt(saved, frame)[field] ? [] : writeAdjustOps(saved, frame, field, value);
@@ -837,7 +837,7 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
     }
     case "lutAmount": {
       const n = parseNumber(raw);
-      if (n === null || !isPicture(clip) || !clip.grade?.lut) return null;
+      if (n === null || !isColorClip(clip) || !clip.grade?.lut) return null;
       const lutAmount = round(clamp(n, 0, 100) / 100, 3);
       return lutAmount === (clip.grade.lutAmount ?? 1) ? [] : update({ grade: { lutAmount } });
     }
@@ -845,9 +845,9 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       // The look's colours at this share of their own. It stops at 1%: at 0 nothing of the look is left to have a
       // strength, and the field would go away under the hand dragging it. None is what takes a look off.
       const n = parseNumber(raw);
-      const match = isPicture(clip) ? lookMatch(clip.adjust) : null;
+      const match = isColorClip(clip) ? lookMatch(clip.adjust) : null;
       const look = match && LOOKS.find((l) => l.id === match.id);
-      if (n === null || !isPicture(clip) || !match || !look) return null;
+      if (n === null || !isColorClip(clip) || !match || !look) return null;
       const strength = round(clamp(n, 1, 100) / 100, 3);
       return strength === match.strength ? [] : update({ adjust: lookPatch(look, strength) });
     }
@@ -883,7 +883,7 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
     }
     case "blend": {
       const blend = BlendMode.safeParse(raw);
-      if (!blend.success || clip.type === "audio" || clip.type === "placeholder") return null;
+      if (!blend.success || clip.type === "audio" || clip.type === "placeholder" || clip.type === "adjustment") return null;
       return blend.data === (clip.blend ?? "normal") ? [] : update({ blend: blend.data });
     }
     case "x":

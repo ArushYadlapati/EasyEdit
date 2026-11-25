@@ -1,5 +1,6 @@
 import { LIMITS } from "@/lib/limits";
 import { docDuration, isCropped, type MediaClip, type TrackKind } from "@/lib/timeline";
+import { addAdjustmentOps } from "./adjustment";
 import { duplicateTrackOps, reorderTrackOps, splitOps } from "./commands";
 import { soundClipsOf } from "./sound";
 import { freezeFrameOps, reverseOps } from "./speed";
@@ -210,7 +211,7 @@ export function clipMenu(state: EditorState): MenuEntry[] {
   ];
 }
 
-export type LaneMenuId = "paste" | "track-duplicate" | "track-remove" | "add-video" | "add-overlay" | "add-text" | "add-audio" | "add-caption" | "add-shape";
+export type LaneMenuId = "paste" | "track-duplicate" | "track-remove" | "adjustment-layer" | "add-video" | "add-overlay" | "add-text" | "add-audio" | "add-caption" | "add-shape";
 
 const ADDABLE: { kind: TrackKind; label: string }[] = [
   { kind: "video", label: "Add video track" },
@@ -246,6 +247,8 @@ export function laneMenu(state: EditorState, canPaste: boolean, trackId: string 
   const hasCaptions = doc.tracks.some((t) => t.kind === "caption");
   const adds = ADDABLE.filter(({ kind }) => kind !== "caption" || !hasCaptions);
   adds.forEach(({ kind, label }, i) => entries.push(entry(`add-${kind}`, label, full, i === 0 ? { separatorBefore: true } : {})));
+  // An adjustment layer goes in at the playhead, in front of every picture: on the top picture track, or a new one.
+  entries.push(entry("adjustment-layer", "Add adjustment layer", !addAdjustmentOps(doc, state.playhead, { clip: "new", track: "new" }).ok, { separatorBefore: true }));
   return entries;
 }
 

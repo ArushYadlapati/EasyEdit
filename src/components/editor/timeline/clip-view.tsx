@@ -30,12 +30,15 @@ const FILL: Record<Clip["type"], string> = {
   audio: "bg-ed-clip-audio",
   placeholder: "bg-ed-raised",
   shape: "bg-ed-clip-shape",
+  adjustment: "bg-ed-clip-adjustment",
 };
 
 // An empty slot's body: diagonal hatching in the line colour, so it reads as a hole to fill.
 const HATCH = "repeating-linear-gradient(135deg, transparent 0 5px, var(--ed-line-strong) 5px 6px)";
 
-const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot", shape: "Shape" };
+const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot", shape: "Shape", adjustment: "Adjustment" };
+
+const ADJUSTMENT_NAME = "Adjustment layer";
 
 const MIN_LABEL_PX = 24;
 const MIN_VOLUME_PX = 72; // a narrower clip keeps its room for the name
@@ -49,6 +52,7 @@ function clipLabel(clip: Clip, assetName: string | undefined): string {
   if (clip.type === "text") return clip.text.split("\n")[0];
   if (clip.type === "placeholder") return `Slot: ${clip.slot.name}`;
   if (clip.type === "shape") return shapeName(clip);
+  if (clip.type === "adjustment") return ADJUSTMENT_NAME;
   return assetName ?? KIND[clip.type];
 }
 
@@ -57,6 +61,7 @@ function clipName(clip: Clip, assetName: string | undefined, fps: number): strin
   if (clip.type === "text") return `Text clip "${clipLabel(clip, undefined)}", ${range}`;
   if (clip.type === "placeholder") return `${clipLabel(clip, undefined)}, ${range}`;
   if (clip.type === "shape") return `${shapeName(clip)} clip, ${range}`;
+  if (clip.type === "adjustment") return `${ADJUSTMENT_NAME}, ${range}`;
   return assetName === undefined ? `${KIND[clip.type]} clip, ${range}` : `${KIND[clip.type]} clip "${assetName}", ${range}`;
 }
 

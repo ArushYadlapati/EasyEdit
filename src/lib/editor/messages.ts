@@ -24,6 +24,7 @@ export const MESSAGES = {
   nothingToSeparate: "Select a video clip that has sound to separate its audio.",
   nothingToGroup: "Select two or more clips on unlocked tracks to link them.",
   nothingToUngroup: "None of the selected clips is linked.",
+  noRoomForLayer: "This project has as many tracks as it can hold. Remove one, or clear room on the top video track, to add an adjustment layer.",
   lutTooLarge: "That file is too large to read as a look-up table.",
   lutsFull: "This project already keeps as many LUTs as it can. Remove one from the project first.",
   nothingToClean: "Select a video or audio clip to clean up its sound.",

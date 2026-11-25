@@ -61,10 +61,10 @@ export function volumeAt(clip: Clip, frame: number): number {
   return isKeyframed(clip, "volume") ? valueAt(clip.keyframes!.volume!, frame - clip.start) : clip.volume;
 }
 
-// A picture's colour changes and stylised effects at a timeline frame: each one's keyframed value there, else the
-// clip's own. Every key is given; a clip with no picture has them all at 0.
+// A picture's or an adjustment layer's colour changes and stylised effects at a timeline frame: each one's keyframed
+// value there, else the clip's own. Every key is given; any other clip has them all at 0.
 export function adjustAt(clip: Clip, frame: number): FullAdjust {
-  if (clip.type !== "video" && clip.type !== "image") return adjustOf(undefined);
+  if (clip.type !== "video" && clip.type !== "image" && clip.type !== "adjustment") return adjustOf(undefined);
   const out = adjustOf(clip.adjust);
   if (!clip.keyframes) return out;
   for (const key of ADJUST_KEYS) {

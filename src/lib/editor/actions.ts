@@ -14,6 +14,7 @@ import {
   type KeyframeProp,
   type OpInput,
   type TrackKind,
+  isColorClip,
 } from "@/lib/timeline";
 import { fillSlots } from "@/lib/templates/fill";
 import { copyClips, pasteItems, type ClipboardStore } from "./clipboard";
@@ -42,6 +43,7 @@ import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { cleanUpOps, duckOps, muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
 import { freezeFrameOps, reverseOps } from "./speed";
+import { addAdjustmentOps } from "./adjustment";
 import { findClip, type EditorStore } from "./store";
 import type { BrandFonts } from "@/lib/brand/types";
 import { presetClip, type TextPreset } from "./text-presets";
@@ -71,6 +73,21 @@ export function addText(
   if (!result.ok) return null;
   state.select(placement.clipIds);
   return placement.clipIds[0] ?? null;
+}
+
+// Puts an adjustment layer at the playhead, in front of every picture, and selects it, so its colours can be set
+// right away. Returns its id.
+export function addAdjustmentLayer(store: EditorStore): string | null {
+  const state = store.getState();
+  if (!state.canEdit) return null;
+  const plan = addAdjustmentOps(state.doc, state.playhead, { clip: nanoid(10), track: nanoid(10) });
+  if (!plan.ok) {
+    state.notify("error", MESSAGES.noRoomForLayer);
+    return null;
+  }
+  if (!state.edit(plan.ops, "add adjustment layer").ok) return null;
+  state.select([plan.clipId]);
+  return plan.clipId;
 }
 
 // Whether the clip is an empty slot that takes this asset: visual for a video or image, audio for audio.
@@ -330,7 +347,7 @@ export function freezeFrame(store: EditorStore): void {
 export function applyLook(store: EditorStore, clipId: string, lookId: string | null): void {
   const state = store.getState();
   const clip = findClip(state.doc, clipId)?.clip;
-  if (!state.canEdit || !clip || (clip.type !== "video" && clip.type !== "image")) return;
+  if (!state.canEdit || !isColorClip(clip)) return;
   const look = lookId === null ? null : (LOOKS.find((l) => l.id === lookId) ?? null);
   if (lookId !== null && !look) return;
   if (lookOf(clip.adjust) === (look?.id ?? "none")) return;

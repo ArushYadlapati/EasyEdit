@@ -3,7 +3,7 @@ import { toggleKeyframeOps, writeAdjustOps } from "@/lib/editor/keyframe-edit";
 import { clipFieldOps, clipFieldValue, fieldContext, type ClipField } from "@/lib/editor/inspector-fields";
 import { findClip } from "@/lib/editor/store";
 import { drawFrame, type ResolvedSource } from "@/lib/render/compositor";
-import { ADJUST_KEYS, KEYFRAME_PROPS, adjustAt, applyOps, basePatch, describe as describeDoc, isAdjustProp, prepareOps, propValue, type MediaClip, type OpInput, type TimelineDoc } from "@/lib/timeline";
+import { ADJUST_KEYS, KEYFRAME_PROPS, adjustAt, applyOps, basePatch, describe as describeDoc, isAdjustProp, prepareOps, propValue, type ColorClip, type MediaClip, type OpInput, type TimelineDoc } from "@/lib/timeline";
 import { sampleDoc, video } from "../editor/fixtures";
 import { docWithCaptions } from "../helpers/docs";
 import { fakeCtx } from "../render/fake-ctx";
@@ -84,7 +84,7 @@ describe("keying a colour from the editor", () => {
     expect(field(d, "brightness", "20", start + 5)).toEqual(patch("c1", { keyframes: { brightness: [{ at: 0, value: 0 }, { at: 5, value: 0.2 }, { at: 10, value: 1 }] } }));
     // One that is not keyed is set on the clip, as before.
     expect(field(d, "contrast", "20", start + 5)).toEqual(patch("c1", { adjust: { contrast: 0.2 } }));
-    expect(writeAdjustOps(c1(d), start + 10, "brightness", 0.4)).toEqual(patch("c1", { keyframes: { brightness: [{ at: 0, value: 0 }, { at: 10, value: 0.4 }] } }));
+    expect(writeAdjustOps(c1(d) as ColorClip, start + 10, "brightness", 0.4)).toEqual(patch("c1", { keyframes: { brightness: [{ at: 0, value: 0 }, { at: 10, value: 0.4 }] } }));
   });
 });
 

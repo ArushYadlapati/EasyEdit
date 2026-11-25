@@ -32,7 +32,7 @@ export type CanvasItem = {
 export function canvasItems(doc: TimelineDoc, frame: number, sizer: Sizer): CanvasItem[] {
   const items: CanvasItem[] = [];
   for (const { track, clip } of activeClips(doc, frame)) {
-    if (clip.type === "audio" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
+    if (clip.type === "audio" || clip.type === "adjustment" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
     const rects = clipRects(doc, clip, sizer);
     if (!rects) continue;
     // Keyframes move the box with the picture. Transitions do not: they play for a moment and the box stays at rest.

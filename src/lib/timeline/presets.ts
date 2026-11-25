@@ -103,8 +103,8 @@ export function stretchOf(t: { stretch?: number }): number {
 }
 
 export const TRACK_ACCEPTS: Record<TrackKind, Clip["type"][]> = {
-  video: ["video", "image"],
-  overlay: ["image", "video"],
+  video: ["video", "image", "adjustment"],
+  overlay: ["image", "video", "adjustment"],
   text: ["text"],
   caption: [],
   audio: ["audio"],

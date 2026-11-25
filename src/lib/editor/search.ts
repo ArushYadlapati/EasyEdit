@@ -17,6 +17,7 @@ export type SearchAction =
   | { kind: "shape"; shape: BoxShape }
   | { kind: "text"; preset: string }
   | { kind: "track"; track: TrackKind }
+  | { kind: "adjustment" }
   | { kind: "panel"; side: PanelSide; tab: string }
   | { kind: "settings"; page: SettingsPage }
   | { kind: "safe-zones" }
@@ -284,6 +285,14 @@ export function searchItems(input: SearchInput): SearchItem[] {
           disabled: editBlocked,
         });
       }
+      items.push({
+        id: "adjustment-layer",
+        label: "Add adjustment layer",
+        group: "Add",
+        keywords: ["filter", "color", "colour", "grade", "look", "lut", "effect", "everything", "all clips"],
+        action: { kind: "adjustment" },
+        disabled: editBlocked,
+      });
       const full = input.trackCount >= LIMITS.tracksPerProject;
       for (const { kind, label } of TRACKS) {
         items.push({

@@ -45,7 +45,7 @@ export function bakeGrade(grade: Grade | undefined, luts: readonly DocLut[] | un
 export function needsFinisher(doc: TimelineDoc): boolean {
   for (const track of doc.tracks) {
     for (const clip of track.clips) {
-      if (clip.type !== "video" && clip.type !== "image") continue;
+      if (clip.type !== "video" && clip.type !== "image" && clip.type !== "adjustment") continue;
       if (bakeGrade(clip.grade, doc.luts)) return true;
       if (STYLE_KEYS.some((key) => (clip.adjust?.[key] ?? 0) !== 0 || clip.keyframes?.[key]?.some((k) => k.value !== 0))) return true;
     }

@@ -16,7 +16,6 @@ import {
   curveOf,
   curveOps,
   importLutOps,
-  isPicture,
   lutOfClip,
   movePoint,
   pickLutOps,
@@ -34,7 +33,7 @@ import {
 import type { ClipField } from "@/lib/editor/inspector-fields";
 import { MESSAGES } from "@/lib/editor/messages";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
-import type { MediaClip, Op, OpInput } from "@/lib/timeline";
+import { isColorClip, type ColorClip, type Op, type OpInput } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "./context";
 
 const CAPTION = "text-xs font-medium text-ed-muted";
@@ -71,7 +70,7 @@ const NUDGE: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight
 
 // One colour wheel. Its puck is dragged towards a colour to push the picture's shadows, middle tones or highlights
 // that way; a double click, or Delete, puts it back in the middle. The arrow keys nudge it.
-function WheelPad({ clip, wheelKey, label, canEdit }: { clip: MediaClip; wheelKey: WheelKey; label: string; canEdit: boolean }) {
+function WheelPad({ clip, wheelKey, label, canEdit }: { clip: ColorClip; wheelKey: WheelKey; label: string; canEdit: boolean }) {
   const store = useEditorStore();
   const live = useLiveEdit(store, LABEL);
   const pad = useRef<HTMLDivElement>(null);
@@ -96,7 +95,7 @@ function WheelPad({ clip, wheelKey, label, canEdit }: { clip: MediaClip; wheelKe
     if (by) {
       event.preventDefault();
       const saved = savedClip(store, clip.id);
-      const now = wheelOf(isPicture(saved) ? saved.grade : undefined, wheelKey);
+      const now = wheelOf(isColorClip(saved) ? saved.grade : undefined, wheelKey);
       const step = event.shiftKey ? 0.2 : 0.05;
       // A nudge out of the middle is a whole step, so the pull to the middle never swallows it.
       const next = puckAt(now.x + by[0] * step, now.y + by[1] * step);
@@ -159,7 +158,7 @@ const GRID = [25, 50, 75];
 // The curve editor: one curve for all three colours and one each for red, green and blue. A press on the line adds a
 // point and drags it; a press on a point drags that one; a double click on a point, or Delete with it in focus, takes
 // it out. Up is brighter: the line starts as the diagonal, which changes nothing.
-function CurveEditor({ clip, canEdit }: { clip: MediaClip; canEdit: boolean }) {
+function CurveEditor({ clip, canEdit }: { clip: ColorClip; canEdit: boolean }) {
   const store = useEditorStore();
   const live = useLiveEdit(store, LABEL);
   const [key, setKey] = useState<CurveKey>("curve");
@@ -177,7 +176,7 @@ function CurveEditor({ clip, canEdit }: { clip: MediaClip; canEdit: boolean }) {
 
   const saved = () => {
     const clipNow = savedClip(store, clip.id);
-    return isPicture(clipNow) ? { clip: clipNow, points: curveOf(clipNow.grade, key) } : null;
+    return isColorClip(clipNow) ? { clip: clipNow, points: curveOf(clipNow.grade, key) } : null;
   };
   function where(event: { clientX: number; clientY: number }) {
     const box = svg.current!.getBoundingClientRect();
@@ -316,7 +315,7 @@ function CurveEditor({ clip, canEdit }: { clip: MediaClip; canEdit: boolean }) {
 
 // The picture's look-up table (LUT): one of the project's, picked from a menu, or a new one read from a .cube file.
 // amount: the field for how much of it is mixed in, shown while the picture has one.
-function LutPicker({ clip, canEdit, amount }: { clip: MediaClip; canEdit: boolean; amount: ReactNode }) {
+function LutPicker({ clip, canEdit, amount }: { clip: ColorClip; canEdit: boolean; amount: ReactNode }) {
   const store = useEditorStore();
   const luts = useEditor((s) => viewDoc(s).luts);
   const current = useEditor((s) => lutOfClip(viewDoc(s), clip));
@@ -380,7 +379,7 @@ function LutPicker({ clip, canEdit, amount }: { clip: MediaClip; canEdit: boolea
 
 // A picture's grade: the three wheels, the curves and a look-up table. number: the inspector's own number field,
 // which the wheels' brightness and the table's amount are.
-export function GradeControls({ clip, canEdit, number }: { clip: MediaClip; canEdit: boolean; number: (field: ClipField, label: string, min: number) => ReactNode }) {
+export function GradeControls({ clip, canEdit, number }: { clip: ColorClip; canEdit: boolean; number: (field: ClipField, label: string, min: number) => ReactNode }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">

@@ -3,7 +3,7 @@
 import { memo, useCallback, useMemo, useRef, type MouseEvent, type PointerEvent } from "react";
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { cx } from "@/components/ui/cx";
-import { addTrack, duplicateTrack, paste, removeTrack } from "@/lib/editor/actions";
+import { addAdjustmentLayer, addTrack, duplicateTrack, paste, removeTrack } from "@/lib/editor/actions";
 import { ROW_HEIGHT, visibleClips } from "@/lib/editor/geometry";
 import { laneMenu, rightClickEntries } from "@/lib/editor/menus";
 import type { Track, TrackKind } from "@/lib/timeline";
@@ -39,6 +39,7 @@ export function useLaneMenu(drag: TimelineDrag | null): (e: MouseEvent<HTMLEleme
           if (id === "paste") paste(store, clipboard, at);
           else if (id === "track-duplicate" && trackId) duplicateTrack(store, trackId);
           else if (id === "track-remove" && trackId) removeTrack(store, trackId);
+          else if (id === "adjustment-layer") addAdjustmentLayer(store);
           else if (id.startsWith("add-")) addTrack(store, id.slice("add-".length) as TrackKind);
         },
       });

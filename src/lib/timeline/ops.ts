@@ -5,6 +5,7 @@ import { isStorableText } from "@/lib/text";
 import { OpError } from "./errors";
 import {
   Adjust,
+  AdjustmentClip,
   BlendMode,
   CaptionStyle,
   CaptionWord,
@@ -95,6 +96,7 @@ const ClipInput = z.discriminatedUnion("type", [
   TextClip.extend(optionalId),
   PlaceholderClip.extend(optionalId),
   ShapeClipFields.extend(optionalId).superRefine(shapeRules),
+  AdjustmentClip.extend(optionalId),
 ]);
 
 const newTrack = { kind: TrackKind, name: TrackName };

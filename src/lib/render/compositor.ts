@@ -2,7 +2,7 @@ import { captionsShow } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
 import { drawCaptions } from "./captions";
 import { drawShape } from "./shapes";
-import type { Clip, Crop, MediaClip, TextClip, TimelineDoc, Track, Transform } from "@/lib/timeline";
+import type { AdjustmentClip, Clip, Crop, Grade, MediaClip, TextClip, TimelineDoc, Track, Transform } from "@/lib/timeline";
 import { adjustAt, effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
 import { STYLE_KEYS, TONE_KEYS, type FullAdjust } from "@/lib/timeline/adjust";
@@ -18,7 +18,7 @@ export type { LocalRect };
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type ResolvedSource = { image: CanvasImageSource; width: number; height: number };
-export type LayerUse = "tone" | "finish";
+export type LayerUse = "tone" | "finish" | "under";
 export type DrawOptions = {
   // The seam where media plugs in. clip: the video or image clip being drawn. frame: the timeline frame being drawn.
   resolveSource?: (clip: MediaClip, frame: number) => ResolvedSource | null;
@@ -29,7 +29,8 @@ export type DrawOptions = {
   hideClipId?: string;
   // A context on a canvas of this size for a picture that is finished on its own before it joins the frame, the
   // same one each time for the same use: "tone" for a picture being warmed, cooled or vignetted, "finish" for one on
-  // its way to the graphics card. Default: an OffscreenCanvas; null where there is none.
+  // its way to the graphics card, "under" for the copy of the frame an adjustment layer works on. Default: an
+  // OffscreenCanvas; null where there is none.
   makeLayer?: (width: number, height: number, use: LayerUse) => Ctx2D | null;
   // What grades a picture and draws its stylised effects (finish-gl.ts). Default: one on the graphics card, shared;
   // null draws every picture without them.
@@ -50,11 +51,24 @@ export function activeClips(doc: TimelineDoc, frame: number): { track: Track; cl
   for (const track of doc.tracks) {
     if (track.hidden) continue;
     for (const clip of track.clips) {
-      if (clip.type === "audio" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
+      // Sound has no picture, and an adjustment layer has none of its own: drawFrame works it in by itself.
+      if (clip.type === "audio" || clip.type === "adjustment" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
       if (clip.start <= frame && frame < clip.start + clip.duration) active.push({ track, clip });
     }
   }
   return active;
+}
+
+// The adjustment layers on at a frame, in track order: each changes what the tracks before its own have drawn.
+export function adjustmentsAt(doc: TimelineDoc, frame: number): { track: Track; clip: AdjustmentClip }[] {
+  const on: { track: Track; clip: AdjustmentClip }[] = [];
+  for (const track of doc.tracks) {
+    if (track.hidden) continue;
+    for (const clip of track.clips) {
+      if (clip.type === "adjustment" && clip.start <= frame && frame < clip.start + clip.duration) on.push({ track, clip });
+    }
+  }
+  return on;
 }
 
 // tail: an outgoing clip drawn on past its cut, under the clip that crossfades in over it.
@@ -423,7 +437,7 @@ let sharedFinisher: Finisher | undefined;
 
 // What the graphics card is to do to a picture: its grade and its stylised effects. Null when it has neither, which
 // is every picture until one is set, so a plain picture never goes near the card.
-function finishOf(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip, adjust: FullAdjust, frame: number): FinishPass | null {
+function finishOf(ctx: Ctx2D, doc: TimelineDoc, clip: { grade?: Grade }, adjust: FullAdjust, frame: number): FinishPass | null {
   const grade = bakeGrade(clip.grade, doc.luts);
   if (!grade && STYLE_KEYS.every((key) => adjust[key] === 0)) return null;
   const { sharpen, grain, pixelate, split, glitch, vhs } = adjust;
@@ -458,6 +472,34 @@ function drawFinished(ctx: Ctx2D, pass: FinishPass, paint: (target: Ctx2D) => vo
   ctx.drawImage(finished, 0, 0);
   ctx.setTransform(m);
   return true;
+}
+
+// An adjustment layer: the frame as drawn so far is copied to a layer, and drawn back over itself with the layer's
+// colour changes, grade and stylised effects, as much of it as the layer's opacity. A layer that changes nothing, or
+// is fully see-through, draws nothing. Without a canvas to copy the frame to, it is left out.
+function drawAdjustment(ctx: Ctx2D, doc: TimelineDoc, clip: AdjustmentClip, frame: number, options: DrawOptions): void {
+  const amount = effectiveTransform(clip, frame).opacity;
+  if (amount <= 0) return;
+  const adjust = adjustAt(clip, frame);
+  const toned = TONE_KEYS.some((key) => adjust[key] !== 0);
+  const pass = finishOf(ctx, doc, clip, adjust, frame);
+  if (!toned && !pass) return;
+  const { width, height } = ctx.canvas;
+  const under = (options.makeLayer ?? defaultLayer)(width, height, "under");
+  if (!under) return;
+  under.save();
+  under.setTransform(1, 0, 0, 1, 0, 0);
+  under.clearRect(0, 0, width, height);
+  under.drawImage(ctx.canvas, 0, 0);
+  under.restore();
+  // The copy fills the frame, in project pixels like every other picture.
+  const paint = (target: Ctx2D) => target.drawImage(under.canvas, 0, 0, doc.width, doc.height);
+  const whole = { left: 0, top: 0, right: doc.width, bottom: doc.height };
+  const tone = (target: Ctx2D) => (toned ? drawAdjusted(target, adjust, whole, false, paint, options) : paint(target));
+  ctx.save();
+  ctx.globalAlpha = amount;
+  if (!pass || !drawFinished(ctx, pass, tone, options)) tone(ctx);
+  ctx.restore();
 }
 
 // A second kept canvas, the size of the picture being keyed, apart from the frame's layer: a keyed picture is what
@@ -558,7 +600,7 @@ function drawClip(
   const { t } = draw;
   ctx.save();
   ctx.globalAlpha = draw.alpha;
-  const composite = clip.type === "placeholder" ? null : compositeOf(clip.blend);
+  const composite = clip.type === "placeholder" || clip.type === "adjustment" ? null : compositeOf(clip.blend);
   if (composite) ctx.globalCompositeOperation = composite;
   ctx.translate(t.x * doc.width + draw.dx, t.y * doc.height + draw.dy);
   ctx.rotate((t.rotation * Math.PI) / 180);
@@ -578,7 +620,25 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
   // Captions sit at their track's place in the stack: after the clips on tracks before it, before those after it.
   const captionAt = captionsShow(doc) ? doc.tracks.findIndex((t) => t.kind === "caption") : -1;
   let captionsDrawn = captionAt < 0;
+  // An adjustment layer is worked in at its own track's place: after everything on the tracks before it.
+  const layers = adjustmentsAt(doc, frame);
+  let nextLayer = 0;
+  const place = (track: Track) => doc.tracks.indexOf(track);
+  const reach = (trackAt: number) => {
+    if (!captionsDrawn && trackAt > captionAt) {
+      drawCaptions(ctx, doc, frame, resolveFont);
+      captionsDrawn = true;
+    }
+  };
+  const adjustUpTo = (trackAt: number) => {
+    while (nextLayer < layers.length && place(layers[nextLayer].track) < trackAt) {
+      const layer = layers[nextLayer++];
+      reach(place(layer.track));
+      if (layer.clip.id !== options.hideClipId) drawAdjustment(ctx, doc, layer.clip, frame, options);
+    }
+  };
   for (const { track, clip, tail } of drawnClips(doc, frame)) {
+    if (layers.length > 0) adjustUpTo(place(track));
     if (!captionsDrawn && doc.tracks.indexOf(track) > captionAt) {
       drawCaptions(ctx, doc, frame, resolveFont);
       captionsDrawn = true;
@@ -605,5 +665,6 @@ export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: 
       ctx.restore();
     }
   }
+  if (layers.length > 0) adjustUpTo(Infinity);
   if (!captionsDrawn) drawCaptions(ctx, doc, frame, resolveFont);
 }

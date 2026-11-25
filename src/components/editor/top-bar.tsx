@@ -7,7 +7,7 @@ import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { LogoMark } from "@/components/ui/logo";
 import { Menu } from "@/components/ui/menu";
-import { addText, addTrack } from "@/lib/editor/actions";
+import { addAdjustmentLayer, addText, addTrack } from "@/lib/editor/actions";
 import { editMenu, topMenuInput, viewMenu, type MenuEntry, type TopMenuInput } from "@/lib/editor/menus";
 import { searchItems, type PanelSide, type SearchItem, type SettingsPage } from "@/lib/editor/search";
 import { TEXT_PRESETS } from "@/lib/editor/text-presets";
@@ -112,6 +112,8 @@ export function TopBar({
       case "track":
         if (state.doc.tracks.length < LIMITS.tracksPerProject) addTrack(store, action.track);
         return;
+      case "adjustment":
+        return void addAdjustmentLayer(store);
       case "panel":
         return onOpenPanel?.(action.side, action.tab);
       case "settings":

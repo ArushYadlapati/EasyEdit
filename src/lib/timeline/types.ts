@@ -409,7 +409,19 @@ export function shapeRules(c: Omit<z.infer<typeof ShapeClipFields>, "id">, ctx: 
 export const ShapeClip = ShapeClipFields.superRefine(shapeRules);
 export type ShapeClip = z.infer<typeof ShapeClip>;
 
-export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip, ShapeClip]);
+// An adjustment layer: a clip with no picture of its own. While it lasts it changes everything drawn under it (the
+// tracks before its own) with the colour changes, stylised effects and grade a video takes. Its transform's opacity
+// is how much of the change shows, so keyframes on opacity fade a filter in; its place, size and turn are unused.
+export const AdjustmentClip = z.object({
+  ...ClipBase,
+  type: z.literal("adjustment"),
+  adjust: Adjust.optional(),
+  grade: Grade.optional(),
+  keyframes: Keyframes.optional(), // opacity and the colours only (checked in the ops)
+});
+export type AdjustmentClip = z.infer<typeof AdjustmentClip>;
+
+export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip, ShapeClip, AdjustmentClip]);
 export type Clip = z.infer<typeof Clip>;
 
 export function isPlaceholder(clip: Clip): clip is PlaceholderClip {
@@ -421,9 +433,15 @@ export function isMediaClip<C extends Pick<Clip, "type">>(clip: C): clip is Extr
   return clip.type === "video" || clip.type === "image" || clip.type === "audio";
 }
 
-// A clip's slot, if it has one. Shapes never do.
+// A clip's slot, if it has one. Shapes and adjustment layers never do.
 export function slotOf(clip: Clip): Slot | undefined {
-  return clip.type === "shape" ? undefined : clip.slot;
+  return clip.type === "shape" || clip.type === "adjustment" ? undefined : clip.slot;
+}
+
+// A clip that takes colour changes, stylised effects and a grade: a video, an image or an adjustment layer.
+export type ColorClip = (MediaClip & { type: "video" | "image" }) | AdjustmentClip;
+export function isColorClip(clip: Clip | undefined): clip is ColorClip {
+  return !!clip && (clip.type === "video" || clip.type === "image" || clip.type === "adjustment");
 }
 
 export const Track = z.object({

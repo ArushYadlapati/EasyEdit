@@ -47,7 +47,7 @@ import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isCropped, isMediaClip, isStyled, isToned, lookOf, type Clip, type KeyframeProp, type Marker, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
 import { volumeAt } from "@/lib/timeline/keyframes";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
@@ -66,7 +66,7 @@ import { useLevelVolume } from "./use-level-volume";
 const TEXT = "text-[13px] leading-5";
 const CAPTION = "text-xs font-medium text-ed-muted";
 
-const MEDIA_TITLE: Record<Exclude<Clip["type"], "text" | "placeholder" | "shape">, string> = {
+const MEDIA_TITLE: Record<Exclude<Clip["type"], "text" | "placeholder" | "shape" | "adjustment">, string> = {
   video: "Video clip",
   image: "Image",
   audio: "Audio clip",
@@ -809,7 +809,7 @@ const STYLE_FIELDS: { field: keyof typeof ADJUST_RANGE; label: string; suffix: s
 // A video's or image's colours: ready-made looks, each a set of the numbers below them, the numbers themselves, and
 // under a fold the grade (wheels, curves and a look-up table). 0 everywhere is the picture as recorded. Reset takes
 // every one back there, the blur and the grade too.
-function ColorSection({ clip }: { clip: MediaClip }) {
+function ColorSection({ clip }: { clip: ColorClip }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const current = lookOf(clip.adjust);
@@ -854,7 +854,7 @@ function ColorSection({ clip }: { clip: MediaClip }) {
             <NumberField clipId={clip.id} field={field} label={label} suffix={suffix} min={ADJUST_RANGE[field].min} max={ADJUST_RANGE[field].max} />
           </Keyed>
         ))}
-        <NumberField clipId={clip.id} field="rounding" label="Corner rounding" suffix="%" min={0} max={100} />
+        {clip.type !== "adjustment" && <NumberField clipId={clip.id} field="rounding" label="Corner rounding" suffix="%" min={0} max={100} />}
       </div>
       <Button size="sm" variant="ghost" className="self-start" aria-expanded={shown} onClick={() => setOpen(!shown)}>
         {shown ? "Hide wheels, curves and LUT" : "Wheels, curves and LUT"}
@@ -867,8 +867,10 @@ function ColorSection({ clip }: { clip: MediaClip }) {
         />
       )}
       {/* A green screen: one colour of the picture goes see-through, so what is under the clip shows there. */}
-      <Toggle label="Green screen" data-edit-control checked={!!clip.chroma} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "chroma", on ? "on" : "off")} />
-      {clip.chroma && (
+      {clip.type !== "adjustment" && (
+        <Toggle label="Green screen" data-edit-control checked={!!clip.chroma} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "chroma", on ? "on" : "off")} />
+      )}
+      {clip.type !== "adjustment" && clip.chroma && (
         <>
           <ColorField clip={clip} canEdit={canEdit} field="chromaColor" label="Color to remove" />
           <div className="grid grid-cols-2 gap-2">
@@ -883,7 +885,7 @@ function ColorSection({ clip }: { clip: MediaClip }) {
 
 // A video's or image's stylised effects, each as how much of it: 0 is off. They are drawn on the graphics card, after
 // the colours, on the picture as it sits in the frame.
-function StylizeSection({ clip }: { clip: MediaClip }) {
+function StylizeSection({ clip }: { clip: ColorClip }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const keyed = STYLE_KEYS.filter((key) => (clip.keyframes?.[key]?.length ?? 0) > 0);
@@ -910,7 +912,7 @@ function StylizeSection({ clip }: { clip: MediaClip }) {
 }
 
 // How a clip mixes with what is under it, and for a video or image whether it is mirrored.
-function MixSection({ clip }: { clip: Exclude<Clip, { type: "placeholder" }> }) {
+function MixSection({ clip }: { clip: Exclude<Clip, { type: "placeholder" | "adjustment" }> }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const picture = clip.type === "video" || clip.type === "image";
@@ -1023,9 +1025,27 @@ function MediaSection({ assetId, kind }: { assetId: string; kind: Exclude<Clip["
   );
 }
 
+// An adjustment layer: how much of it shows, and the colours, grade and effects it puts on everything under it.
+function AdjustmentInspector({ clip }: { clip: AdjustmentClip }) {
+  return (
+    <>
+      <Section title="Adjustment layer">
+        <Hint>Changes every clip on the tracks under it, for as long as it lasts. Pick a look or set the colors below.</Hint>
+        <Keyed clipId={clip.id} prop="opacity">
+          <NumberField clipId={clip.id} field="opacity" label="Amount" suffix="%" min={0} max={100} step={5} />
+        </Keyed>
+      </Section>
+      <ColorSection clip={clip} />
+      <StylizeSection clip={clip} />
+      <TimingSection clipId={clip.id} slips={false} />
+    </>
+  );
+}
+
 function ClipInspector({ clip }: { clip: Clip }) {
   const canEdit = useEditor((s) => s.canEdit);
   const drawsOnCanvas = clip.type !== "audio" && !(clip.type === "placeholder" && clip.accepts === "audio");
+  if (clip.type === "adjustment") return <AdjustmentInspector clip={clip} />;
   return (
     <>
       {clip.type === "text" ? (
@@ -1042,8 +1062,8 @@ function ClipInspector({ clip }: { clip: Clip }) {
       )}
       {drawsOnCanvas && <PositionSection clipId={clip.id} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
-      {(clip.type === "video" || clip.type === "image") && <ColorSection clip={clip} />}
-      {(clip.type === "video" || clip.type === "image") && <StylizeSection clip={clip} />}
+      {isColorClip(clip) && <ColorSection clip={clip} />}
+      {isColorClip(clip) && <StylizeSection clip={clip} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "audio" && <MixSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}

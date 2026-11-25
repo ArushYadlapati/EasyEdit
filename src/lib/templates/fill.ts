@@ -15,7 +15,7 @@ export type ShortSlot = { slot: string; filledFrames: number; slotFrames: number
 type VisualEffects = Pick<MediaClip, "keyframes" | "transitionIn" | "transitionOut">;
 
 function visualEffects(clip: Clip): VisualEffects {
-  if (clip.type === "text" || clip.type === "audio") return {};
+  if (clip.type === "text" || clip.type === "audio" || clip.type === "adjustment") return {};
   const out: VisualEffects = {};
   if (clip.keyframes !== undefined) out.keyframes = clip.keyframes;
   if (clip.transitionIn !== undefined) out.transitionIn = clip.transitionIn;

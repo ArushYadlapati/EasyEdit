@@ -6,6 +6,7 @@ import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./pre
 import { KEYFRAME_PROPS } from "./keyframes";
 import { shapeToolOf } from "./shapes";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
+import { isColorClip } from "./types";
 import type { Clip, Grade, KeyframeProp, MediaClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
@@ -77,7 +78,7 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
     if (clip.animationIn) out += ` anim-in=${clip.animationIn.preset} ${framesToSeconds(clip.animationIn.frames, fps)}s`;
     if (clip.animationOut) out += ` anim-out=${clip.animationOut.preset} ${framesToSeconds(clip.animationOut.frames, fps)}s`;
     if (clip.emphasis) out += ` emphasis=${clip.emphasis.preset}${clip.emphasis.preset === "highlight_word" ? ` ${clip.emphasis.color ?? "#FFD400"}` : ""}`;
-  } else {
+  } else if (clip.type !== "adjustment") {
     if (clip.transitionIn) out += ` in=${transitionToken(clip.transitionIn)} ${framesToSeconds(clip.transitionIn.frames, fps)}s`;
     if (clip.transitionOut) out += ` out=${transitionToken(clip.transitionOut)} ${framesToSeconds(clip.transitionOut.frames, fps)}s`;
   }
@@ -85,12 +86,12 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
     const set = Object.entries(clip.sound).filter(([, value]) => value !== 0 && value !== false).map(([key, value]) => `"${key}":${value}`);
     if (set.length > 0) out += ` sound={${set.join(",")}}`;
   }
-  if ((clip.type === "video" || clip.type === "image") && isAdjusted(clip.adjust)) {
+  if (isColorClip(clip) && isAdjusted(clip.adjust)) {
     const set = ADJUST_KEYS.filter((key) => (clip.adjust?.[key] ?? 0) !== 0).map((key) => `"${key}":${clip.adjust![key]}`);
     out += ` adjust={${set.join(",")}}`;
   }
-  if (clip.type === "video" || clip.type === "image") out += gradeToken(clip.grade);
-  if (clip.type !== "placeholder" && clip.blend && clip.blend !== "normal") out += ` blend=${clip.blend}`;
+  if (isColorClip(clip)) out += gradeToken(clip.grade);
+  if (clip.type !== "placeholder" && clip.type !== "adjustment" && clip.blend && clip.blend !== "normal") out += ` blend=${clip.blend}`;
   if ((clip.type === "video" || clip.type === "image") && (clip.rounding ?? 0) > 0) out += ` rounding=${clip.rounding}`;
   if ((clip.type === "video" || clip.type === "image") && clip.chroma) out += ` chroma=${JSON.stringify(clip.chroma)}`;
   if (clip.group) out += ` group=${escapeQuoted(clip.group)}`;
@@ -126,6 +127,8 @@ function describeClip(clip: Clip, fps: number): string {
   if (clip.type === "shape") {
     return `  ${clip.id}  shape(${shapeToolOf(clip)})  ${range}  ${clip.stroke ?? clip.fill ?? ""}${describeEffects(clip, fps, false)}`;
   }
+  // An adjustment layer changes everything under it; its opacity is how much.
+  if (clip.type === "adjustment") return `  ${clip.id}  adjustment  ${range}  amount=${clip.transform.opacity}${describeEffects(clip, fps, false)}`;
   return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${fadeSuffix(clip)}${captionsSuffix(clip)}${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
 }
 
@@ -175,6 +178,7 @@ function describeClipInDetail(clip: Clip, fps: number): string {
     );
   }
   if (clip.type === "shape") return `${head}  ${describeShape(clip)}  x=${t.x} y=${t.y}` + describeTransformChanges(t, clip.type) + describeEffects(clip, fps, true);
+  if (clip.type === "adjustment") return `${head}  amount=${t.opacity}` + describeEffects(clip, fps, true);
   return (
     `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${fadeSuffix(clip)}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +

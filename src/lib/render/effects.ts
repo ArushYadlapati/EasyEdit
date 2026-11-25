@@ -32,7 +32,7 @@ type Doc = { width: number; height: number; fps: number };
 const VECTORS: Record<Dir, [number, number]> = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
 
 function declared(clip: Clip): { inFrames: number; outFrames: number } {
-  if (clip.type === "audio") return { inFrames: 0, outFrames: 0 };
+  if (clip.type === "audio" || clip.type === "adjustment") return { inFrames: 0, outFrames: 0 };
   if (clip.type === "text") {
     return { inFrames: clip.animationIn?.frames ?? 0, outFrames: clip.animationOut?.frames ?? 0 };
   }
@@ -158,8 +158,9 @@ export function clipLook(clip: Clip, frame: number, doc: Doc): Look {
     litWord: null,
     litColor: null,
   };
-  // Sound has no picture, and an empty slot draws nothing (its effects wait for the clip that fills it).
-  if (clip.type === "audio" || clip.type === "placeholder") return look;
+  // Sound has no picture, an empty slot draws nothing (its effects wait for the clip that fills it), and an
+  // adjustment layer has no way in or out but its opacity's keyframes.
+  if (clip.type === "audio" || clip.type === "placeholder" || clip.type === "adjustment") return look;
 
   const { inFrames, outFrames } = effectWindows(clip);
   const passes: Pass[] = [];

@@ -2,7 +2,7 @@ import { CUBE_BYTES_MAX, CUBE_MESSAGE, lutName, packBytes, parseCube, shrinkCube
 import { NO_WHEEL, RED_ANGLE, isCurveSet, isWheelSet, type CurvePoint, type Wheel } from "@/lib/color/grade";
 import { LIMITS } from "@/lib/limits";
 import { isStorableText } from "@/lib/text";
-import type { Clip, Grade, Lut, MediaClip, OpInput, TimelineDoc } from "@/lib/timeline";
+import { isColorClip, type Clip, type Grade, type Lut, type OpInput, type TimelineDoc } from "@/lib/timeline";
 
 // The editing side of a picture's colour grade: what the wheels, the curve editor and the look-up table menu turn a
 // drag, a click or a file into. Pure, so every rule is tested without a screen.
@@ -21,10 +21,6 @@ export const CURVES: readonly { key: CurveKey; label: string; color: string }[] 
   { key: "curveG", label: "Green", color: "#4cd964" },
   { key: "curveB", label: "Blue", color: "#5aa2ff" },
 ];
-
-export function isPicture(clip: Clip | undefined): clip is MediaClip & { type: "video" | "image" } {
-  return !!clip && (clip.type === "video" || clip.type === "image");
-}
 
 // Whether any part of a grade changes the picture. A table counts while the clip names one, whether or not the
 // project still has it, so Reset can always take the name off.
@@ -54,7 +50,7 @@ export function wheelOf(grade: Grade | undefined, key: WheelKey): Wheel {
 
 // A wheel is one value: it is sent whole.
 export function wheelOps(clip: Clip, key: WheelKey, change: Partial<Wheel>): OpInput[] | null {
-  if (!isPicture(clip)) return null;
+  if (!isColorClip(clip)) return null;
   const now = wheelOf(clip.grade, key);
   const next = { ...now, ...change };
   if (next.x === now.x && next.y === now.y && next.level === now.level) return [];
@@ -130,7 +126,7 @@ export function removePoint(points: readonly CurvePoint[], index: number): Curve
 }
 
 export function curveOps(clip: Clip, key: CurveKey, points: readonly CurvePoint[]): OpInput[] | null {
-  if (!isPicture(clip)) return null;
+  if (!isColorClip(clip)) return null;
   const next = stored(points);
   const now = stored(clip.grade?.[key] ?? []);
   if (JSON.stringify(next) === JSON.stringify(now)) return [];
@@ -139,7 +135,7 @@ export function curveOps(clip: Clip, key: CurveKey, points: readonly CurvePoint[
 
 // The picture's table: the project's own entry, or null when the clip names none or the project no longer has it.
 export function lutOfClip(doc: TimelineDoc, clip: Clip): Lut | null {
-  const id = isPicture(clip) ? clip.grade?.lut : null;
+  const id = isColorClip(clip) ? clip.grade?.lut : null;
   return (id && doc.luts?.find((l) => l.id === id)) || null;
 }
 
@@ -158,7 +154,7 @@ export function readCubeFile(fileName: string, text: string): LutImport {
 // A new table joins the project and the clip takes it, as one change. A table with the same colours is already
 // there: the clip takes that one, and nothing is kept twice. Null when the project is full.
 export function importLutOps(doc: TimelineDoc, clip: Clip, lut: Omit<Lut, "id">, newId: string): OpInput[] | null {
-  if (!isPicture(clip)) return null;
+  if (!isColorClip(clip)) return null;
   const same = doc.luts?.find((l) => l.size === lut.size && l.data === lut.data);
   if (same) return pickLutOps(clip, same.id) ?? [];
   if ((doc.luts?.length ?? 0) >= LIMITS.lutsPerProject) return null;
@@ -169,7 +165,7 @@ export function importLutOps(doc: TimelineDoc, clip: Clip, lut: Omit<Lut, "id">,
 }
 
 export function pickLutOps(clip: Clip, lutId: string | null): OpInput[] | null {
-  if (!isPicture(clip)) return null;
+  if (!isColorClip(clip)) return null;
   if ((clip.grade?.lut ?? null) === lutId) return [];
   return [{ op: "update_clip", clipId: clip.id, patch: { grade: { lut: lutId } } }];
 }
@@ -181,7 +177,7 @@ export function removeLutOps(doc: TimelineDoc, lutId: string): OpInput[] {
   for (const track of doc.tracks) {
     if (track.locked) continue;
     for (const clip of track.clips) {
-      if (isPicture(clip) && clip.grade?.lut === lutId) ops.push({ op: "update_clip", clipId: clip.id, patch: { grade: { lut: null } } });
+      if (isColorClip(clip) && clip.grade?.lut === lutId) ops.push({ op: "update_clip", clipId: clip.id, patch: { grade: { lut: null } } });
     }
   }
   ops.push({ op: "remove_lut", lutId });

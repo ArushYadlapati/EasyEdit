@@ -17,7 +17,7 @@ import { captionStyleOf, captionTrack, defaultCaptionStyle, rewordRun, transcrip
 import { ADJUST_KEYS } from "./adjust";
 import { ARROW_DEFAULTS } from "./shapes";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
-import { CaptionStyle, CaptionWords, MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
+import { AdjustmentClip, CaptionStyle, CaptionWords, MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
 import type { Clip, FormatId, FrameSize, Guide, KeyframeProp, TimelineDoc, Track } from "./types";
 
 // update_clip re-validates strictly so a typo'd or foreign key is rejected, not dropped.
@@ -25,6 +25,7 @@ const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).stri
 const StrictTextClip = TextClip.extend({ transform: Transform.strict(), style: TextStyle.strict() }).strict();
 const StrictPlaceholderClip = PlaceholderClip.extend({ transform: Transform.strict() }).strict();
 const StrictShapeClip = ShapeClipFields.extend({ transform: Transform.strict() }).strict().superRefine(shapeRules);
+const StrictAdjustmentClip = AdjustmentClip.extend({ transform: Transform.strict() }).strict();
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
 // The clip fields whose sub-keys are set, undone and expected one by one. Every other field, a transition or an
 // emphasis included, is one value: a new one replaces the old whole, so no sub-key of the old one is left behind.
@@ -79,6 +80,7 @@ const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string
   audio: [...SOUND_EFFECTS, "keyframes"], // its volume's only (assertKeyframesFit)
   text: ["keyframes", "animationIn", "animationOut", "emphasis", "blend"],
   shape: [...VISUAL_EFFECTS, "blend"],
+  adjustment: ["keyframes", "adjust", "grade"], // its opacity's and colours' keyframes only (assertKeyframesFit)
 };
 
 // A clip's ways in and out, each with the value that means it has none. A split takes the way out off the left piece
@@ -244,8 +246,11 @@ function assertKeyframesFit(clip: Clip, opIndex: number, opName: string) {
   if (clip.type === "audio" && TRANSFORM_PROPS.some(has)) {
     throw new OpError("INVALID", `${opName}: an audio clip takes only volume keyframes`, opIndex);
   }
-  // Colours are keyed where colours are set: on a video or an image (and the slot one will fill).
-  const pictured = clip.type === "video" || clip.type === "image" || clip.type === "placeholder";
+  if (clip.type === "adjustment" && (has("x") || has("y") || has("scale") || has("rotation") || has("volume"))) {
+    throw new OpError("INVALID", `${opName}: an adjustment layer takes only opacity and colour keyframes`, opIndex);
+  }
+  // Colours are keyed where colours are set: on a video, an image (and the slot one will fill) or an adjustment layer.
+  const pictured = clip.type === "video" || clip.type === "image" || clip.type === "placeholder" || clip.type === "adjustment";
   const colour = pictured ? undefined : ADJUST_KEYS.find(has);
   if (colour) throw new OpError("INVALID", `${opName}: only a video or image takes ${colour} keyframes`, opIndex);
 }
@@ -699,6 +704,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           current.type === "text" ? StrictTextClip
           : current.type === "placeholder" ? StrictPlaceholderClip
           : current.type === "shape" ? StrictShapeClip
+          : current.type === "adjustment" ? StrictAdjustmentClip
           : StrictMediaClip;
         const result = schema.safeParse(merged);
         if (!result.success) {

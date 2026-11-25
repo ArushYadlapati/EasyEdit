@@ -21,10 +21,10 @@ export function nextSlotName(doc: TimelineDoc): string {
 
 // What this clip is in a template: nothing, or a slot that gets filled in later. Every change is one update_clip.
 export function SlotSection({ clip }: { clip: Clip }) {
-  return clip.type === "shape" ? null : <SlotFields clip={clip} />;
+  return clip.type === "shape" || clip.type === "adjustment" ? null : <SlotFields clip={clip} />;
 }
 
-function SlotFields({ clip }: { clip: Exclude<Clip, { type: "shape" }> }) {
+function SlotFields({ clip }: { clip: Exclude<Clip, { type: "shape" | "adjustment" }> }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const locked = useEditor((s) => s.doc.tracks.some((t) => t.locked && t.clips.some((c) => c.id === clip.id)));

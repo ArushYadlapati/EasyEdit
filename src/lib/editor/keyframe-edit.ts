@@ -1,4 +1,4 @@
-import type { AdjustKey, Clip, KeyframeProp, MediaClip, OpInput, Transform } from "@/lib/timeline";
+import type { AdjustKey, Clip, ColorClip, KeyframeProp, MediaClip, OpInput, Transform } from "@/lib/timeline";
 import { KEYFRAME_PROPS, TRANSFORM_PROPS, basePatch, effectiveTransform, isKeyframed, keyframeAt, propValue, removeKeyframe, setKeyframe } from "@/lib/timeline/keyframes";
 
 // Making and changing a clip's keyframes from the editor. Frames given here are timeline frames; a keyframe's `at`
@@ -46,7 +46,7 @@ export function writeVolumeOps(clip: MediaClip, frame: number, volume: number): 
 
 // One of a picture's colour changes or stylised effects set at a frame: a keyframe there when it is keyframed, else
 // the clip's own value.
-export function writeAdjustOps(clip: MediaClip, frame: number, key: AdjustKey, value: number): OpInput[] {
+export function writeAdjustOps(clip: ColorClip, frame: number, key: AdjustKey, value: number): OpInput[] {
   if (!isKeyframed(clip, key)) return [{ op: "update_clip", clipId: clip.id, patch: { adjust: { [key]: value } } }];
   return [{ op: "update_clip", clipId: clip.id, patch: { keyframes: { [key]: setKeyframe(clip.keyframes![key]!, frame - clip.start, value) } } }];
 }

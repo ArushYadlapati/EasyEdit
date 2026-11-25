@@ -254,3 +254,24 @@ it("every colour and effect has a keyframe diamond: a keyed one is typed at the 
   expect(clip().adjust!.grain).toBe(0);
   expect(field("Film grain").value).toBe("0");
 });
+
+it("an adjustment layer shows its amount, the colours, the effects and its timing, and nothing a picture alone has", () => {
+  const d = sampleDoc();
+  d.tracks.splice(1, 0, { id: "o1", kind: "overlay", name: "Overlay 1", muted: false, hidden: false, locked: false, clips: [{ id: "adj", type: "adjustment", start: 0, duration: 60, transform: { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, fit: "cover" } }] });
+  const { store, field, type } = show({ doc: d, select: ["adj"] });
+  const layer = () => findClip(store.getState().doc, "adj")!.clip as { adjust?: Record<string, number>; transform: { opacity: number } };
+  expect(screen.getByRole("heading", { name: "Adjustment layer" })).toBeTruthy();
+  expect(["Color", "Stylize", "Timing"].map((name) => !!screen.queryByRole("heading", { name }))).toEqual([true, true, true]);
+  expect(["Blend", "Position", "Crop", "Sound", "Speed"].map((name) => !!screen.queryByRole("heading", { name }))).toEqual([false, false, false, false, false]);
+  expect([screen.queryByLabelText("Corner rounding"), screen.queryByRole("switch", { name: "Green screen" })]).toEqual([null, null]);
+  expect(field("Amount").value).toBe("100");
+  type("Amount", "40");
+  expect(layer().transform.opacity).toBe(0.4);
+  expect(screen.getByRole("button", { name: "Add Opacity keyframe" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Vintage" }));
+  expect(layer().adjust).toMatchObject({ temperature: 0.3, vignette: 0.45 });
+  type("VHS", "50");
+  expect(layer().adjust).toMatchObject({ vhs: 0.5 });
+  openGrade();
+  expect(screen.getByRole("slider", { name: "Shadows color" })).toBeTruthy();
+});
