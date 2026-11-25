@@ -14,6 +14,10 @@ export const LIMITS = {
   arrowPoints: 12, // the points an arrow's line passes through between its tail and its tip
   arrowPointReach: 10, // how far from an arrow's middle one of them may sit, in arrow lengths
   effectFramesMax: 600, // one transition or text animation, in frames
+  curvePoints: 16, // the points one colour curve passes through
+  lutsPerProject: 8, // colour look-up tables kept in one project, about 20 KB each
+  lutSize: 17, // the steps along each colour of a kept look-up table
+  lutNameChars: 60,
   docBytes: 2 * 1024 * 1024,
   opsPerRequest: 500,
   opsPageDefault: 100,

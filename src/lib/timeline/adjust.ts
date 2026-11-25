@@ -3,11 +3,47 @@ import { BlendMode, type Adjust } from "./types";
 // A picture's colour and focus changes. Every one is 0 when the picture is as recorded: brightness, contrast,
 // saturation and temperature run from −1 to 1 (temperature: cooler to warmer), hue is degrees round the colour wheel,
 // blur is project pixels and vignette how dark the corners get, 0 to 1.
-export const ADJUST_KEYS = ["brightness", "contrast", "saturation", "temperature", "hue", "blur", "vignette"] as const;
+export const TONE_KEYS = ["brightness", "contrast", "saturation", "temperature", "hue", "blur", "vignette"] as const;
+// The stylised effects: how sharp, how grainy, how far red and blue are pulled apart, how glitchy and how much like a
+// worn video tape, each 0 to 1, and the side of a pixelated picture's blocks in project pixels.
+export const STYLE_KEYS = ["sharpen", "grain", "pixelate", "split", "glitch", "vhs"] as const;
+export const ADJUST_KEYS = [...TONE_KEYS, ...STYLE_KEYS] as const;
 export type AdjustKey = (typeof ADJUST_KEYS)[number];
+export type StyleKey = (typeof STYLE_KEYS)[number];
 export type FullAdjust = Record<AdjustKey, number>;
 
-export const NO_ADJUST: Readonly<FullAdjust> = Object.freeze({ brightness: 0, contrast: 0, saturation: 0, temperature: 0, hue: 0, blur: 0, vignette: 0 });
+export const NO_ADJUST: Readonly<FullAdjust> = Object.freeze({
+  brightness: 0,
+  contrast: 0,
+  saturation: 0,
+  temperature: 0,
+  hue: 0,
+  blur: 0,
+  vignette: 0,
+  sharpen: 0,
+  grain: 0,
+  pixelate: 0,
+  split: 0,
+  glitch: 0,
+  vhs: 0,
+});
+
+// The least and most each may be.
+export const ADJUST_LIMITS: Record<AdjustKey, { min: number; max: number }> = {
+  brightness: { min: -1, max: 1 },
+  contrast: { min: -1, max: 1 },
+  saturation: { min: -1, max: 1 },
+  temperature: { min: -1, max: 1 },
+  hue: { min: -180, max: 180 },
+  blur: { min: 0, max: 200 },
+  vignette: { min: 0, max: 1 },
+  sharpen: { min: 0, max: 1 },
+  grain: { min: 0, max: 1 },
+  pixelate: { min: 0, max: 200 },
+  split: { min: 0, max: 1 },
+  glitch: { min: 0, max: 1 },
+  vhs: { min: 0, max: 1 },
+};
 
 // Every key given its value.
 export function adjustOf(adjust: Adjust | undefined): FullAdjust {
@@ -17,6 +53,19 @@ export function adjustOf(adjust: Adjust | undefined): FullAdjust {
 export function isAdjusted(adjust: Adjust | undefined): boolean {
   return adjust !== undefined && ADJUST_KEYS.some((key) => (adjust[key] ?? 0) !== 0);
 }
+
+// Whether any colour or focus change is on (what a canvas draws), and whether any stylised effect is (what the
+// graphics card draws).
+export function isToned(adjust: Adjust | undefined): boolean {
+  return adjust !== undefined && TONE_KEYS.some((key) => (adjust[key] ?? 0) !== 0);
+}
+export function isStyled(adjust: Adjust | undefined): boolean {
+  return adjust !== undefined && STYLE_KEYS.some((key) => (adjust[key] ?? 0) !== 0);
+}
+
+// Each kind's keys at 0, as an update_clip patch that takes that kind off.
+export const NO_TONE = Object.freeze(Object.fromEntries(TONE_KEYS.map((key) => [key, 0]))) as Readonly<Record<(typeof TONE_KEYS)[number], number>>;
+export const NO_STYLE = Object.freeze(Object.fromEntries(STYLE_KEYS.map((key) => [key, 0]))) as Readonly<Record<StyleKey, number>>;
 
 // The colour keys a look sets. Blur is a focus change, so a look leaves it alone.
 export const LOOK_KEYS = ["brightness", "contrast", "saturation", "temperature", "hue", "vignette"] as const;

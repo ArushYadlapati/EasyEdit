@@ -143,6 +143,10 @@ export function summarizeOps(ops: Op[], kindOf: KindOf = () => undefined): strin
   if (only("add_marker")) return count(n, "Added a marker", (k) => `Added ${k} markers`);
   if (only("update_marker")) return count(n, "Changed a marker", (k) => `Changed ${k} markers`);
   if (only("remove_marker")) return count(n, "Removed a marker", (k) => `Removed ${k} markers`);
+  if (only("add_lut")) return count(n, "Added a LUT", (k) => `Added ${k} LUTs`);
+  if (only("remove_lut")) return count(n, "Removed a LUT", (k) => `Removed ${k} LUTs`);
+  if (ops.some((o) => o.op === "add_lut") && ops.every((o) => o.op === "add_lut" || o.op === "update_clip")) return "Imported a LUT";
+  if (ops.some((o) => o.op === "remove_lut") && ops.every((o) => o.op === "remove_lut" || o.op === "update_clip")) return "Removed a LUT";
   if (only("set_caption_style")) return "Changed the caption style";
   if (only("set_transcript")) return "Changed the captions";
   if (only("splice_caption_words")) return "Edited caption words";

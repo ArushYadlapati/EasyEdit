@@ -11,8 +11,11 @@ import {
   CaptionWords,
   Clip,
   FormatId,
+  Grade,
   Guide,
   Keyframes,
+  LUT_FITS,
+  LutFields,
   Marker,
   MediaClip,
   PlaceholderClip,
@@ -26,6 +29,7 @@ import {
   TrackKind,
   TrackName,
   Transform,
+  lutFits,
   shapeRules,
 } from "./types";
 
@@ -62,6 +66,7 @@ const ClipExpect = z
     pan: MediaClip.shape.pan,
     sound: SoundFx,
     adjust: Adjust,
+    grade: Grade,
     blend: BlendMode,
     chroma: MediaClip.shape.chroma,
     rounding: MediaClip.shape.rounding,
@@ -111,6 +116,11 @@ const addMarkerOp = <T extends z.ZodType>(markerId: T) =>
   z.object({ op: z.literal("add_marker"), marker: Marker.extend({ id: markerId }), index: z.number().int().optional() });
 const addGuideOp = <T extends z.ZodType>(guideId: T) =>
   z.object({ op: z.literal("add_guide"), guide: Guide.extend({ id: guideId }), index: z.number().int().optional() });
+
+// A colour look-up table joins the project. index: where in the list it goes (an undone removal puts it back where it
+// was); the end when left out.
+const addLutOp = <T extends z.ZodType>(lutId: T) =>
+  z.object({ op: z.literal("add_lut"), lut: z.strictObject({ ...LutFields.shape, id: lutId }).refine(lutFits, LUT_FITS), index: z.number().int().optional() });
 
 // Ops with no optional ids: one definition, shared by Op and OpInput.
 const sharedOps = [
@@ -190,6 +200,9 @@ const sharedOps = [
   }),
   // expect: the marker as it must be now.
   z.object({ op: z.literal("remove_marker"), markerId: id, expect: z.object({ marker: Marker }).strict().optional() }),
+  // A table leaves the project. Clips that name it keep the name, and are drawn without it until it is back (an undo).
+  // expect: the name it must have now.
+  z.object({ op: z.literal("remove_lut"), lutId: id, expect: z.object({ name: LutFields.shape.name }).strict().optional() }),
   // Some of the caption style's keys, or clear: true to drop the stored style (back to the default); exactly one of the two.
   // expect: the values those keys must have now.
   z
@@ -229,6 +242,7 @@ export const Op = z.discriminatedUnion("op", [
   splitClipOp(id),
   addGuideOp(id),
   addMarkerOp(id),
+  addLutOp(LutFields.shape.id),
   ...sharedOps,
 ]);
 export type Op = z.infer<typeof Op>;
@@ -239,6 +253,7 @@ export const OpInput = z.discriminatedUnion("op", [
   splitClipOp(id.optional()),
   addGuideOp(id.optional()),
   addMarkerOp(id.optional()),
+  addLutOp(LutFields.shape.id.optional()),
   ...sharedOps,
 ]);
 export type OpInput = z.infer<typeof OpInput>;
@@ -276,6 +291,8 @@ export function prepareOps(ops: OpInput[], genId: () => string = () => nanoid(10
       filled = { ...input, guide: { ...input.guide, id: input.guide.id ?? genId() } };
     } else if (input.op === "add_marker") {
       filled = { ...input, marker: { ...input.marker, id: input.marker.id ?? genId() } };
+    } else if (input.op === "add_lut") {
+      filled = { ...input, lut: { ...input.lut, id: input.lut.id ?? genId() } };
     }
     const checked = Op.safeParse(filled);
     if (!checked.success) {

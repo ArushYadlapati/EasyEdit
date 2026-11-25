@@ -28,7 +28,7 @@ const StrictShapeClip = ShapeClipFields.extend({ transform: Transform.strict() }
 const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
 // The clip fields whose sub-keys are set, undone and expected one by one. Every other field, a transition or an
 // emphasis included, is one value: a new one replaces the old whole, so no sub-key of the old one is left behind.
-const MERGED_FIELDS: ReadonlySet<string> = new Set(["transform", "style", "keyframes", "adjust", "sound"]);
+const MERGED_FIELDS: ReadonlySet<string> = new Set(["transform", "style", "keyframes", "adjust", "grade", "sound"]);
 
 // Optional clip fields, each with its neutral value, filled the same way as TRANSFORM_FILL below. A keyframes patch
 // also fills each property it names with an empty list, since keyframes merge one level deep like transform.
@@ -45,6 +45,7 @@ const CLIP_FILL: Record<string, () => unknown> = {
   pan: () => 0,
   sound: () => ({}),
   adjust: () => ({}),
+  grade: () => ({}),
   blend: () => "normal",
   chroma: () => null,
   rounding: () => 0,
@@ -68,7 +69,7 @@ const SHAPE_FILL: Record<string, () => unknown> = {
 // video and image effects (so a template's fade or move survives the fill), an audio slot none.
 const VISUAL_EFFECTS = ["keyframes", "transitionIn", "transitionOut"] as const;
 // What only a picture takes: its colours, and how it mixes with what is under it.
-const PICTURE_EFFECTS = ["adjust", "blend", "chroma", "rounding"] as const;
+const PICTURE_EFFECTS = ["adjust", "grade", "blend", "chroma", "rounding"] as const;
 // What a clip that sounds takes: captions for its speech, and a fade of its sound at either end.
 const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut", "pan", "sound"] as const;
 // A video clip takes both kinds; sound takes only its own (see CLIP_EFFECTS).
@@ -98,6 +99,19 @@ const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CRO
 
 // A sound's clean-up with every part off.
 const SOUND_OFF: Record<string, unknown> = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 };
+
+// A grade with every part off: wheels at rest, straight curves, no look-up table and, for one, all of it.
+const GRADE_OFF: Record<string, () => unknown> = {
+  lift: () => ({ x: 0, y: 0, level: 0 }),
+  gamma: () => ({ x: 0, y: 0, level: 0 }),
+  gain: () => ({ x: 0, y: 0, level: 0 }),
+  curve: () => [],
+  curveR: () => [],
+  curveG: () => [],
+  curveB: () => [],
+  lut: () => null,
+  lutAmount: () => 1,
+};
 
 // A text style's optional fields, filled the same way before one is set or expected.
 const STYLE_FILL: ReadonlySet<string> = new Set(TEXT_EXTRA_KEYS);
@@ -230,6 +244,10 @@ function assertKeyframesFit(clip: Clip, opIndex: number, opName: string) {
   if (clip.type === "audio" && TRANSFORM_PROPS.some(has)) {
     throw new OpError("INVALID", `${opName}: an audio clip takes only volume keyframes`, opIndex);
   }
+  // Colours are keyed where colours are set: on a video or an image (and the slot one will fill).
+  const pictured = clip.type === "video" || clip.type === "image" || clip.type === "placeholder";
+  const colour = pictured ? undefined : ADJUST_KEYS.find(has);
+  if (colour) throw new OpError("INVALID", `${opName}: only a video or image takes ${colour} keyframes`, opIndex);
 }
 
 function assertNoOverlap(track: Track, opIndex: number, opName: string) {
@@ -641,6 +659,13 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
             if (Object.hasOwn(SOUND_OFF, key) && sound[key] === undefined) sound[key] = SOUND_OFF[key];
           }
         }
+        // So does a grade: each part named starts from off, and is then set, undone and expected whole.
+        const grade = fields.grade;
+        if (isPlainObject(grade)) {
+          for (const key of [...givenKeys(op.patch, "grade"), ...givenKeys(op.expect, "grade")]) {
+            if (Object.hasOwn(GRADE_OFF, key) && grade[key] === undefined) grade[key] = GRADE_OFF[key]();
+          }
+        }
         const keyframes = fields.keyframes;
         if (isPlainObject(keyframes)) {
           for (const key of [...givenKeys(op.patch, "keyframes"), ...givenKeys(op.expect, "keyframes")]) {
@@ -847,6 +872,33 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (rest.length) doc.markers = rest;
         else delete doc.markers;
         groups.push([{ op: "add_marker", marker: { ...marker }, index }]);
+        break;
+      }
+
+      case "add_lut": {
+        const luts = doc.luts ?? [];
+        if (luts.some((l) => l.id === op.lut.id)) {
+          throw new OpError("DUPLICATE_ID", `${name}: look-up table id "${op.lut.id}" already exists`, opIndex);
+        }
+        if (luts.length + 1 > LIMITS.lutsPerProject) {
+          throw new OpError("LIMIT_EXCEEDED", `${name}: a project can have at most ${LIMITS.lutsPerProject} look-up tables`, opIndex);
+        }
+        const index = Math.max(0, Math.min(op.index ?? luts.length, luts.length));
+        const lut = { id: op.lut.id, name: op.lut.name, size: op.lut.size, data: op.lut.data };
+        doc.luts = [...luts.slice(0, index), lut, ...luts.slice(index)];
+        groups.push([{ op: "remove_lut", lutId: lut.id, expect: { name: lut.name } }]);
+        break;
+      }
+
+      case "remove_lut": {
+        const lut = doc.luts?.find((l) => l.id === op.lutId);
+        if (!lut) throw new OpError("NOT_FOUND", `${name}: look-up table "${op.lutId}" not found`, opIndex);
+        if (op.expect && op.expect.name !== lut.name) throw stale(`look-up table "${op.lutId}"`);
+        const index = (doc.luts ?? []).indexOf(lut);
+        const rest = (doc.luts ?? []).filter((l) => l.id !== op.lutId);
+        if (rest.length) doc.luts = rest;
+        else delete doc.luts;
+        groups.push([{ op: "add_lut", lut: { ...lut }, index }]);
         break;
       }
 

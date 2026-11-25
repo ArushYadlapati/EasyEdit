@@ -6,7 +6,7 @@ import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./pre
 import { KEYFRAME_PROPS } from "./keyframes";
 import { shapeToolOf } from "./shapes";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
-import type { Clip, KeyframeProp, MediaClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
+import type { Clip, Grade, KeyframeProp, MediaClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -54,6 +54,23 @@ function keyframeList(clip: Clip, prop: KeyframeProp): string {
   return keys.map((k) => `${k.at}:${Number(k.value.toFixed(4))}${k.ease && k.ease !== "linear" ? `~${k.ease}` : ""}`).join(",");
 }
 
+// A grade's parts that change the picture, as the JSON an update_clip patch takes: a wheel off its rest, a curve with
+// points, a look-up table's id and how much of it when that is not all.
+function gradeToken(grade: Grade | undefined): string {
+  if (!grade) return "";
+  const set: Record<string, unknown> = {};
+  for (const key of ["lift", "gamma", "gain"] as const) {
+    const wheel = grade[key];
+    if (wheel && (wheel.x !== 0 || wheel.y !== 0 || wheel.level !== 0)) set[key] = wheel;
+  }
+  for (const key of ["curve", "curveR", "curveG", "curveB"] as const) if ((grade[key]?.length ?? 0) > 0) set[key] = grade[key];
+  if (grade.lut != null) {
+    set.lut = grade.lut;
+    if ((grade.lutAmount ?? 1) !== 1) set.lutAmount = grade.lutAmount;
+  }
+  return Object.keys(set).length > 0 ? ` grade=${JSON.stringify(set)}` : "";
+}
+
 function describeEffects(clip: Clip, fps: number, detail: boolean): string {
   let out = "";
   if (clip.type === "text") {
@@ -72,6 +89,7 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
     const set = ADJUST_KEYS.filter((key) => (clip.adjust?.[key] ?? 0) !== 0).map((key) => `"${key}":${clip.adjust![key]}`);
     out += ` adjust={${set.join(",")}}`;
   }
+  if (clip.type === "video" || clip.type === "image") out += gradeToken(clip.grade);
   if (clip.type !== "placeholder" && clip.blend && clip.blend !== "normal") out += ` blend=${clip.blend}`;
   if ((clip.type === "video" || clip.type === "image") && (clip.rounding ?? 0) > 0) out += ` rounding=${clip.rounding}`;
   if ((clip.type === "video" || clip.type === "image") && clip.chroma) out += ` chroma=${JSON.stringify(clip.chroma)}`;
@@ -220,6 +238,7 @@ export function describe(doc: TimelineDoc, opts?: { version?: number; detail?: b
     const sorted = [...doc.markers].sort((a, b) => a.at - b.at);
     lines.push(`Markers: ${sorted.map((m) => `${m.id} ${framesToSeconds(m.at, doc.fps)}s${m.name ? ` "${escapeQuoted(m.name)}"` : ""}`).join(", ")}`);
   }
+  if (doc.luts?.length) lines.push(`LUTs: ${doc.luts.map((l) => `${l.id} "${escapeQuoted(l.name)}"`).join(", ")}`);
   if (doc.captions?.style || Object.keys(doc.captions?.transcripts ?? {}).length > 0) {
     const c = captionStyleOf(doc);
     lines.push(`Captions: ${c.preset} font="${escapeQuoted(c.fontFamily)}" size=${c.fontSize} weight=${c.fontWeight} color=${c.color} highlight=${c.highlight} y=${c.y}${c.uppercase ? " uppercase" : ""}`);

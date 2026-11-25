@@ -39,6 +39,7 @@ function setup(over: Partial<PipelineIO> = {}, outOver: Partial<PipelineOutput> 
     sound: fakeSoundIO({ ...sound, log: soundLog }),
     loadFace: async (spec) => { log.push(`face ${spec.family}`); return true; },
     measure: (_font, t) => t.length * 50,
+    canFinish: () => true,
     canEncode: async (_video, acceleration) => { log.push(`can ${acceleration}`); return true; },
     canEncodeAudio: async () => true,
     open: async (options) => { log.push(`open ${options.acceleration} audio=${options.audio}`); return out; },
@@ -123,6 +124,21 @@ describe("what stops an export before the first frame", () => {
     const { io, log, control } = setup(over as Partial<PipelineIO>);
     expect(await runPipeline(job(4), io, control)).toMatchObject({ type: "failed", code });
     expect(log.filter((l) => l.startsWith("draw") || l.startsWith("frame") || l === "finish")).toEqual([]);
+  });
+
+  it("a graded or stylised project stops where there is no graphics card to draw it; a plain one never asks", async () => {
+    for (const extra of [{ adjust: { grain: 0.5 } }, { grade: { gain: { x: 0, y: 0, level: 0.3 } } }, { keyframes: { vhs: [{ at: 0, value: 0 }, { at: 3, value: 1 }] } }]) {
+      const graded = job(4);
+      graded.doc.tracks[0].clips = [video("v", 0, 4, extra)];
+      const without = setup({ canFinish: () => false });
+      expect(await runPipeline(graded, without.io, without.control)).toEqual({ type: "failed", code: "effects", detail: "" });
+      expect(without.log.filter((l) => l.startsWith("draw") || l.startsWith("open"))).toEqual([]);
+    }
+    // Colours a canvas draws itself, a grade that changes nothing and an effect at 0 need no card.
+    const plain = job(4);
+    plain.doc.tracks[1].clips.push(text("b", 10, 4));
+    const never = setup({ canFinish: () => { throw new Error("asked"); } });
+    expect(await runPipeline(plain, never.io, never.control)).toMatchObject({ type: "done" });
   });
 
   it("names the font, carries on without a face that only points at an installed font, and refuses an empty project", async () => {

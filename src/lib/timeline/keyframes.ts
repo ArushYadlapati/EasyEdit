@@ -1,11 +1,17 @@
+import { ADJUST_KEYS, adjustOf, type AdjustKey, type FullAdjust } from "./adjust";
 import type { Clip, Ease, Keyframe, KeyframeProp, Keyframes, Transform } from "./types";
 
 // The properties that move and fade a clip's picture, which are fields of its transform.
-export type TransformProp = Exclude<KeyframeProp, "volume">;
+export type TransformProp = "x" | "y" | "scale" | "rotation" | "opacity";
 export const TRANSFORM_PROPS: readonly TransformProp[] = ["x", "y", "scale", "rotation", "opacity"];
 
-// Every property a clip can key: those, and a video's or audio clip's volume.
-export const KEYFRAME_PROPS: readonly KeyframeProp[] = [...TRANSFORM_PROPS, "volume"];
+// Every property a clip can key: those, a video's or audio clip's volume, and a picture's colour changes and
+// stylised effects.
+export const KEYFRAME_PROPS: readonly KeyframeProp[] = [...TRANSFORM_PROPS, "volume", ...ADJUST_KEYS];
+
+export function isAdjustProp(prop: KeyframeProp): prop is AdjustKey {
+  return (ADJUST_KEYS as readonly string[]).includes(prop);
+}
 
 // p runs 0..1 between two keyframes.
 export function ease(kind: Ease, p: number): number {
@@ -55,14 +61,30 @@ export function volumeAt(clip: Clip, frame: number): number {
   return isKeyframed(clip, "volume") ? valueAt(clip.keyframes!.volume!, frame - clip.start) : clip.volume;
 }
 
-// A property's value at a timeline frame, keyframes counted in.
-export function propValue(clip: Clip, prop: KeyframeProp, frame: number): number {
-  return prop === "volume" ? volumeAt(clip, frame) : effectiveTransform(clip, frame)[prop];
+// A picture's colour changes and stylised effects at a timeline frame: each one's keyframed value there, else the
+// clip's own. Every key is given; a clip with no picture has them all at 0.
+export function adjustAt(clip: Clip, frame: number): FullAdjust {
+  if (clip.type !== "video" && clip.type !== "image") return adjustOf(undefined);
+  const out = adjustOf(clip.adjust);
+  if (!clip.keyframes) return out;
+  for (const key of ADJUST_KEYS) {
+    const list = clip.keyframes[key];
+    if (list && list.length > 0) out[key] = valueAt(list, frame - clip.start);
+  }
+  return out;
 }
 
-// The update_clip patch that sets a property where it lives when it is not keyframed: the transform, or the volume.
+// A property's value at a timeline frame, keyframes counted in.
+export function propValue(clip: Clip, prop: KeyframeProp, frame: number): number {
+  if (prop === "volume") return volumeAt(clip, frame);
+  return isAdjustProp(prop) ? adjustAt(clip, frame)[prop] : effectiveTransform(clip, frame)[prop];
+}
+
+// The update_clip patch that sets a property where it lives when it is not keyframed: the transform, the volume, or
+// the colour changes.
 export function basePatch(prop: KeyframeProp, value: number): Record<string, unknown> {
-  return prop === "volume" ? { volume: value } : { transform: { [prop]: value } };
+  if (prop === "volume") return { volume: value };
+  return isAdjustProp(prop) ? { adjust: { [prop]: value } } : { transform: { [prop]: value } };
 }
 
 // False only when the clip is invisible for its whole length, so it can be skipped when drawing.

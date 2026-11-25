@@ -8,7 +8,7 @@ import { cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { NumberInput } from "@/components/ui/number-input";
 import { Select } from "@/components/ui/select";
-import { parseNumber } from "@/lib/editor/inspector-fields";
+import { ADJUST_RANGE, parseNumber } from "@/lib/editor/inspector-fields";
 import { clearKeyframesOps, deleteKeyframeOps, editKeyframeOps, keyframeRows } from "@/lib/editor/keyframe-list";
 import { KEYFRAME_PROPS } from "@/lib/timeline/keyframes";
 import type { Units } from "@/lib/editor/settings";
@@ -95,6 +95,12 @@ function valueView(prop: KeyframeProp, value: number, units: Units, frame: { wid
       return { shown: round(value * 100, 1), suffix: "%", step: 1, min: 0, max: 100, kept: (typed) => Math.min(1, Math.max(0, round(typed / 100, 4))) };
     case "volume":
       return { shown: Math.round(value * 100), suffix: "%", step: 10, min: 0, max: VOLUME_MAX * 100, kept: (typed) => Math.min(VOLUME_MAX, Math.max(0, Math.round(typed) / 100)) };
+    default: {
+      // A colour change or a stylised effect, shown as its Inspect field shows it: percent, degrees or pixels.
+      const range = ADJUST_RANGE[prop];
+      const suffix = range.per === 100 ? "%" : prop === "hue" ? "°" : "px";
+      return { shown: round(value * range.per, 1), suffix, step: 1, min: range.min, max: range.max, kept: (typed) => round(Math.min(range.max, Math.max(range.min, typed)) / range.per, 4) };
+    }
   }
 }
 

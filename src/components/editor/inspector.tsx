@@ -15,6 +15,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { gainLabel } from "@/lib/audio/loudness";
 import { applyLook, cleanUpSelection, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
 import { formatClock, trackToggles } from "@/lib/editor/geometry";
+import { NO_GRADE, isGraded } from "@/lib/editor/grade";
 import {
   ADJUST_RANGE,
   TONE_DB,
@@ -46,7 +47,7 @@ import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_ADJUST, VOLUME_MAX, docDuration, isAdjusted, isCropped, isMediaClip, lookOf, type Clip, type KeyframeProp, type Marker, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isCropped, isMediaClip, isStyled, isToned, lookOf, type Clip, type KeyframeProp, type Marker, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
 import { volumeAt } from "@/lib/timeline/keyframes";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
@@ -57,6 +58,7 @@ import { KeyframeButton, KeyframeSteps } from "./keyframe-button";
 import { useLibrary, useMedia } from "./media/media-context";
 import { SlotSection } from "./slot-section";
 import { useTextMeasure } from "./text-measure";
+import { GradeControls } from "./grade-controls";
 import { Timecode } from "./timecode";
 import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-field-gesture";
 import { useLevelVolume } from "./use-level-volume";
@@ -153,7 +155,17 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
     case "vignette":
     case "hue":
     case "blur":
+    case "sharpen":
+    case "grain":
+    case "pixelate":
+    case "split":
+    case "glitch":
+    case "vhs":
     case "lookStrength":
+    case "liftLevel":
+    case "gammaLevel":
+    case "gainLevel":
+    case "lutAmount":
     case "shadowOpacity":
     case "backgroundOpacity":
     case "backgroundPadding":
@@ -785,18 +797,38 @@ const ADJUST_FIELDS: { field: keyof typeof ADJUST_RANGE; label: string; suffix: 
   { field: "blur", label: "Blur", suffix: "px" },
 ];
 
-// A video's or image's colours: ready-made looks, each a set of the numbers below them, and the numbers themselves.
-// 0 everywhere is the picture as recorded. Reset takes every one back there, the blur too.
+const STYLE_FIELDS: { field: keyof typeof ADJUST_RANGE; label: string; suffix: string }[] = [
+  { field: "sharpen", label: "Sharpen", suffix: "%" },
+  { field: "grain", label: "Film grain", suffix: "%" },
+  { field: "pixelate", label: "Pixelate", suffix: "px" },
+  { field: "split", label: "Color split", suffix: "%" },
+  { field: "glitch", label: "Glitch", suffix: "%" },
+  { field: "vhs", label: "VHS", suffix: "%" },
+];
+
+// A video's or image's colours: ready-made looks, each a set of the numbers below them, the numbers themselves, and
+// under a fold the grade (wheels, curves and a look-up table). 0 everywhere is the picture as recorded. Reset takes
+// every one back there, the blur and the grade too.
 function ColorSection({ clip }: { clip: MediaClip }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const current = lookOf(clip.adjust);
-  const reset = () => store.getState().edit([{ op: "update_clip", clipId: clip.id, patch: { adjust: { ...NO_ADJUST } } }], "color change");
+  const graded = isGraded(clip.grade);
+  // The grade's controls take a lot of room, so they stay folded away until asked for, or until the picture has one.
+  const [open, setOpen] = useState<boolean | null>(null);
+  const shown = open ?? graded;
+  const keyed = TONE_KEYS.filter((key) => (clip.keyframes?.[key]?.length ?? 0) > 0);
+  // Back to as recorded for the whole clip: the colours, their keyframes and the grade.
+  const reset = () =>
+    store.getState().edit(
+      [{ op: "update_clip", clipId: clip.id, patch: { adjust: { ...NO_TONE }, ...(graded && { grade: { ...NO_GRADE } }), ...(keyed.length > 0 && { keyframes: Object.fromEntries(keyed.map((key) => [key, []])) }) } }],
+      "color change",
+    );
   return (
     <Section
       title="Color"
       actions={
-        <Button data-edit-control size="sm" disabled={!canEdit || !isAdjusted(clip.adjust)} onClick={reset}>
+        <Button data-edit-control size="sm" disabled={!canEdit || (!isToned(clip.adjust) && !graded && keyed.length === 0)} onClick={reset}>
           Reset color
         </Button>
       }
@@ -815,13 +847,25 @@ function ColorSection({ clip }: { clip: MediaClip }) {
           </Button>
         ))}
       </div>
-      {current !== null && current !== "none" && <NumberField clipId={clip.id} field="lookStrength" label="Look strength" suffix="%" min={0} max={100} step={5} />}
+      {current !== null && current !== "none" && <NumberField clipId={clip.id} field="lookStrength" label="Look strength" suffix="%" min={1} max={100} step={5} />}
       <div className="grid grid-cols-2 gap-2">
         {ADJUST_FIELDS.map(({ field, label, suffix }) => (
-          <NumberField key={field} clipId={clip.id} field={field} label={label} suffix={suffix} min={ADJUST_RANGE[field].min} max={ADJUST_RANGE[field].max} />
+          <Keyed key={field} clipId={clip.id} prop={field}>
+            <NumberField clipId={clip.id} field={field} label={label} suffix={suffix} min={ADJUST_RANGE[field].min} max={ADJUST_RANGE[field].max} />
+          </Keyed>
         ))}
         <NumberField clipId={clip.id} field="rounding" label="Corner rounding" suffix="%" min={0} max={100} />
       </div>
+      <Button size="sm" variant="ghost" className="self-start" aria-expanded={shown} onClick={() => setOpen(!shown)}>
+        {shown ? "Hide wheels, curves and LUT" : "Wheels, curves and LUT"}
+      </Button>
+      {shown && (
+        <GradeControls
+          clip={clip}
+          canEdit={canEdit}
+          number={(field, label, min) => <NumberField clipId={clip.id} field={field} label={label} suffix="%" min={min} max={100} step={5} />}
+        />
+      )}
       {/* A green screen: one colour of the picture goes see-through, so what is under the clip shows there. */}
       <Toggle label="Green screen" data-edit-control checked={!!clip.chroma} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "chroma", on ? "on" : "off")} />
       {clip.chroma && (
@@ -833,6 +877,34 @@ function ColorSection({ clip }: { clip: MediaClip }) {
           </div>
         </>
       )}
+    </Section>
+  );
+}
+
+// A video's or image's stylised effects, each as how much of it: 0 is off. They are drawn on the graphics card, after
+// the colours, on the picture as it sits in the frame.
+function StylizeSection({ clip }: { clip: MediaClip }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const keyed = STYLE_KEYS.filter((key) => (clip.keyframes?.[key]?.length ?? 0) > 0);
+  const reset = () =>
+    store.getState().edit([{ op: "update_clip", clipId: clip.id, patch: { adjust: { ...NO_STYLE }, ...(keyed.length > 0 && { keyframes: Object.fromEntries(keyed.map((key) => [key, []])) }) } }], "effect change");
+  return (
+    <Section
+      title="Stylize"
+      actions={
+        <Button data-edit-control size="sm" disabled={!canEdit || (!isStyled(clip.adjust) && keyed.length === 0)} onClick={reset}>
+          Reset effects
+        </Button>
+      }
+    >
+      <div className="grid grid-cols-2 gap-2">
+        {STYLE_FIELDS.map(({ field, label, suffix }) => (
+          <Keyed key={field} clipId={clip.id} prop={field}>
+            <NumberField clipId={clip.id} field={field} label={label} suffix={suffix} min={ADJUST_RANGE[field].min} max={ADJUST_RANGE[field].max} step={suffix === "%" ? 5 : 1} />
+          </Keyed>
+        ))}
+      </div>
     </Section>
   );
 }
@@ -971,6 +1043,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       {drawsOnCanvas && <PositionSection clipId={clip.id} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
       {(clip.type === "video" || clip.type === "image") && <ColorSection clip={clip} />}
+      {(clip.type === "video" || clip.type === "image") && <StylizeSection clip={clip} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "audio" && <MixSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}

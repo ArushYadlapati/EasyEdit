@@ -47,6 +47,7 @@ const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "a colour is #rrggbb");
 
 // A video's or image's colour and focus changes (adjust.ts). Each is 0, or absent, when the picture is as recorded.
 const AdjustShare = z.number().min(-1).max(1);
+const AdjustAmount = z.number().min(0).max(1);
 export const Adjust = z.strictObject({
   brightness: AdjustShare.optional(),
   contrast: AdjustShare.optional(),
@@ -55,8 +56,68 @@ export const Adjust = z.strictObject({
   hue: z.number().min(-180).max(180).optional(), // degrees
   blur: z.number().min(0).max(200).optional(), // project pixels
   vignette: z.number().min(0).max(1).optional(),
+  // Stylised effects, drawn on the graphics card (render/finish-gl.ts). Each is how much, 0 to 1, but pixelate, which
+  // is the side of its blocks in project pixels.
+  sharpen: AdjustAmount.optional(),
+  grain: AdjustAmount.optional(),
+  pixelate: z.number().min(0).max(200).optional(),
+  split: AdjustAmount.optional(), // red and blue pulled apart
+  glitch: AdjustAmount.optional(),
+  vhs: AdjustAmount.optional(),
 });
 export type Adjust = z.infer<typeof Adjust>;
+
+const Unit = z.number().min(0).max(1);
+export const CurvePoint = z.strictObject({ x: Unit, y: Unit });
+export type CurvePoint = z.infer<typeof CurvePoint>;
+// A curve from what a channel is (x) to what it becomes (y), through its points from left to right. None, or absent,
+// is the straight line, which changes nothing; one point alone says nothing, so there are two or more.
+export const Curve = z
+  .array(CurvePoint)
+  .max(LIMITS.curvePoints)
+  .refine((points) => points.length !== 1, "a curve has two points or more, or none")
+  .refine((points) => points.every((p, i) => i === 0 || p.x > points[i - 1].x), "a curve's points go from left to right, one per place");
+export type Curve = z.infer<typeof Curve>;
+
+// One colour wheel: where its puck sits inside the circle (x right, y up; the colour it pushes towards) and its
+// brightness slider, −1 to 1. All 0 changes nothing.
+const WheelSide = z.number().min(-1).max(1);
+export const Wheel = z
+  .strictObject({ x: WheelSide, y: WheelSide, level: WheelSide })
+  .refine((w) => Math.hypot(w.x, w.y) <= 1.0001, "a wheel's puck stays inside its circle");
+export type Wheel = z.infer<typeof Wheel>;
+
+// A video's or image's colour grade (color/grade.ts), worked in this order: the wheels for its shadows (lift), middle
+// tones (gamma) and highlights (gain); the curves, one for all three channels and one for each; and a look-up table
+// of the project's (TimelineDoc.luts) by id, mixed in by lutAmount (absent: all of it). A table the project no longer
+// has changes nothing.
+export const Grade = z.strictObject({
+  lift: Wheel.optional(),
+  gamma: Wheel.optional(),
+  gain: Wheel.optional(),
+  curve: Curve.optional(),
+  curveR: Curve.optional(),
+  curveG: Curve.optional(),
+  curveB: Curve.optional(),
+  lut: z.string().min(1).max(64).nullable().optional(),
+  lutAmount: Unit.optional(),
+});
+export type Grade = z.infer<typeof Grade>;
+
+// A colour look-up table kept with the project: `size` steps along each of red, green and blue, each colour three
+// bytes, as base64 text (color/cube.ts). Read from a .cube file and sampled down to at most 17 steps a side.
+// The fields alone, for the op that adds one (its id may be left out there); every use checks lutFits.
+export const LutFields = z.strictObject({
+  id: z.string().min(1).max(64),
+  name: z.string().min(1).max(LIMITS.lutNameChars).refine(isStorableText, UNSTORABLE_TEXT),
+  size: z.number().int().min(2).max(LIMITS.lutSize),
+  data: z.string().regex(/^[A-Za-z0-9+/]*$/, "a table is base64 text"),
+});
+// Three bytes a colour is four characters of base64, with nothing left over.
+export const lutFits = (lut: { size: number; data: string }) => lut.data.length === lut.size ** 3 * 4;
+export const LUT_FITS = "a table has size × size × size colours";
+export const Lut = LutFields.refine(lutFits, LUT_FITS);
+export type Lut = z.infer<typeof Lut>;
 
 // A colour taken out of a video or image, as a green screen is: pixels within `tolerance` of it go see-through, and
 // over the next `softness` they fade back in. Both are shares, 0 to 1.
@@ -84,9 +145,11 @@ export type BlendMode = z.infer<typeof BlendMode>;
 export const Ease = z.enum(["linear", "ease_in", "ease_out", "ease_in_out", "hold"]);
 export type Ease = z.infer<typeof Ease>;
 
-// The first five move and fade a clip's picture. volume is a video's or audio clip's loudness over time (checked in
-// the ops: an audio clip takes no other, and only those two take it).
-export const KeyframeProp = z.enum(["x", "y", "scale", "rotation", "opacity", "volume"]);
+// The first five move and fade a clip's picture. volume is a video's or audio clip's loudness over time, and the rest
+// are a video's or image's colour changes and stylised effects (the keys of Adjust), so a filter can fade in or
+// change as the clip plays. Which kind of clip takes which is checked in the ops.
+const ADJUST_PROPS = ["brightness", "contrast", "saturation", "temperature", "hue", "blur", "vignette", "sharpen", "grain", "pixelate", "split", "glitch", "vhs"] as const;
+export const KeyframeProp = z.enum(["x", "y", "scale", "rotation", "opacity", "volume", ...ADJUST_PROPS]);
 export type KeyframeProp = z.infer<typeof KeyframeProp>;
 
 // `at` counts frames from the clip's start. It may be negative or past the end: a keyframe outside the clip only
@@ -99,7 +162,7 @@ const KeyframeList = z
   .max(LIMITS.keyframesPerProperty)
   .refine((list) => list.every((k, i) => i === 0 || k.at > list[i - 1].at), "keyframes must be in time order, one per frame");
 
-// A property with no list, or an empty one, is not keyframed and uses the clip's transform value.
+// A property with no list, or an empty one, is not keyframed and uses the clip's own value.
 export const Keyframes = z
   .strictObject({
     x: KeyframeList.optional(),
@@ -108,6 +171,19 @@ export const Keyframes = z
     rotation: KeyframeList.optional(),
     opacity: KeyframeList.optional(),
     volume: KeyframeList.optional(),
+    brightness: KeyframeList.optional(),
+    contrast: KeyframeList.optional(),
+    saturation: KeyframeList.optional(),
+    temperature: KeyframeList.optional(),
+    hue: KeyframeList.optional(),
+    blur: KeyframeList.optional(),
+    vignette: KeyframeList.optional(),
+    sharpen: KeyframeList.optional(),
+    grain: KeyframeList.optional(),
+    pixelate: KeyframeList.optional(),
+    split: KeyframeList.optional(),
+    glitch: KeyframeList.optional(),
+    vhs: KeyframeList.optional(),
   })
   .superRefine((k, ctx) => {
     if (k.volume?.some((f) => f.value < 0 || f.value > VOLUME_MAX)) {
@@ -118,6 +194,12 @@ export const Keyframes = z
     }
     if (k.scale?.some((f) => f.value <= 0)) {
       ctx.addIssue({ code: "custom", path: ["scale"], message: "scale keyframes must be above 0" });
+    }
+    // A colour keyframe takes what the colour itself takes.
+    for (const key of ADJUST_PROPS) {
+      if (k[key]?.some((f) => !Adjust.shape[key].safeParse(f.value).success)) {
+        ctx.addIssue({ code: "custom", path: [key], message: `${key} keyframes must be in ${key}'s own range` });
+      }
     }
   });
 export type Keyframes = z.infer<typeof Keyframes>;
@@ -194,6 +276,7 @@ export const MediaClip = z.object({
   captions: z.boolean().optional(),
   // Video and image only (checked in the ops).
   adjust: Adjust.optional(),
+  grade: Grade.optional(),
   blend: BlendMode.optional(),
   // Video and audio only (checked in the ops): where its sound sits between the left side (−1) and the right (1).
   pan: z.number().min(-1).max(1).optional(),
@@ -436,5 +519,8 @@ export const TimelineDoc = z.object({
   captions: Captions.optional(),
   // In the order they were added. Older projects, and a project whose last marker was removed, have no field.
   markers: z.array(Marker).optional(),
+  // Colour look-up tables read from files, in the order they were added, for clips' grades to name. Older projects,
+  // and a project whose last table was removed, have no field.
+  luts: z.array(Lut).max(LIMITS.lutsPerProject).optional(),
 });
 export type TimelineDoc = z.infer<typeof TimelineDoc>;

@@ -6,10 +6,11 @@ import { BACKGROUND_START, hasBackground, hasOutline, hasShadow, outlineStart, s
 import { straightenOps } from "./arrow-drag";
 import { LIMITS } from "@/lib/limits";
 import { CHROMA_START } from "@/lib/render/chroma";
-import { effectiveTransform, volumeAt } from "@/lib/timeline/keyframes";
+import { wheelOf, wheelOps } from "./grade";
+import { adjustAt, effectiveTransform, volumeAt } from "@/lib/timeline/keyframes";
 import { NO_CROP, stretchOf } from "@/lib/timeline/presets";
 import { CROP_MIN_SHOWN, clipRects, type Sizer } from "./clip-box";
-import { clipFrame, writeTransformOps, writeVolumeOps } from "./keyframe-edit";
+import { clipFrame, writeAdjustOps, writeTransformOps, writeVolumeOps } from "./keyframe-edit";
 import { trimBounds } from "./media-clips";
 import { SPEED_MAX, SPEED_MIN, hasSpeed, rateOf, roomAfter, speedOps } from "./speed";
 import type { Units } from "./settings";
@@ -89,6 +90,19 @@ export type ClipField =
   | "vignette"
   | "hue"
   | "blur"
+  // Its stylised effects, in percent of full strength, and the side of a pixelated picture's blocks in project pixels.
+  | "sharpen"
+  | "grain"
+  | "pixelate"
+  | "split"
+  | "glitch"
+  | "vhs"
+  // Its grade: each colour wheel's brightness slider, −100 to 100, and how much of its look-up table is mixed in, in
+  // percent.
+  | "liftLevel"
+  | "gammaLevel"
+  | "gainLevel"
+  | "lutAmount"
   // How much of the picture's look is on, in percent of the whole look. A picture with no look has none.
   | "lookStrength"
   | "flipH"
@@ -175,7 +189,17 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   vignette: "color change",
   hue: "color change",
   blur: "color change",
+  sharpen: "effect change",
+  grain: "effect change",
+  pixelate: "effect change",
+  split: "effect change",
+  glitch: "effect change",
+  vhs: "effect change",
   lookStrength: "color look",
+  liftLevel: "color grade",
+  gammaLevel: "color grade",
+  gainLevel: "color grade",
+  lutAmount: "color grade",
   flipH: "flip",
   flipV: "flip",
   blend: "blend change",
@@ -231,6 +255,12 @@ export const ADJUST_RANGE: Record<AdjustKey, { min: number; max: number; per: nu
   vignette: { min: 0, max: 100, per: 100 },
   hue: { min: -180, max: 180, per: 1 },
   blur: { min: 0, max: 200, per: 1 },
+  sharpen: { min: 0, max: 100, per: 100 },
+  grain: { min: 0, max: 100, per: 100 },
+  pixelate: { min: 0, max: 200, per: 1 },
+  split: { min: 0, max: 100, per: 100 },
+  glitch: { min: 0, max: 100, per: 100 },
+  vhs: { min: 0, max: 100, per: 100 },
 };
 
 // The frames of its file a clip may start on and still fit it, at its length, speed and way round. Without the
@@ -244,6 +274,8 @@ export function slipRange(clip: MediaClip, lengthFrames?: number): { min: number
 }
 
 // A clip with a picture of its own to colour and mirror: a video or an image.
+const LEVEL_WHEEL = { liftLevel: "lift", gammaLevel: "gamma", gainLevel: "gain" } as const;
+
 function isPicture(clip: Clip): clip is MediaClip & { type: "video" | "image" } {
   return clip.type === "video" || clip.type === "image";
 }
@@ -386,10 +418,22 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
     case "saturation":
     case "temperature":
     case "vignette":
-      return isPicture(clip) ? oneDecimal(adjustOf(clip.adjust)[field] * 100) : "";
     case "hue":
     case "blur":
-      return isPicture(clip) ? oneDecimal(adjustOf(clip.adjust)[field]) : "";
+    case "sharpen":
+    case "grain":
+    case "pixelate":
+    case "split":
+    case "glitch":
+    case "vhs":
+      // A keyframed one shows what it is at the playhead.
+      return isPicture(saved) ? oneDecimal((ctx.playhead === undefined ? adjustOf(saved.adjust) : adjustAt(saved, clipFrame(saved, ctx.playhead)))[field] * ADJUST_RANGE[field].per) : "";
+    case "liftLevel":
+    case "gammaLevel":
+    case "gainLevel":
+      return isPicture(clip) ? oneDecimal(wheelOf(clip.grade, LEVEL_WHEEL[field]).level * 100) : "";
+    case "lutAmount":
+      return isPicture(clip) && clip.grade?.lut ? oneDecimal((clip.grade.lutAmount ?? 1) * 100) : "";
     case "lookStrength": {
       const look = isPicture(clip) ? lookMatch(clip.adjust) : null;
       return look && look.id !== "none" ? oneDecimal(look.strength * 100) : "";
@@ -768,20 +812,43 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
     case "temperature":
     case "vignette":
     case "hue":
-    case "blur": {
+    case "blur":
+    case "sharpen":
+    case "grain":
+    case "pixelate":
+    case "split":
+    case "glitch":
+    case "vhs": {
       const n = parseNumber(raw);
       if (n === null || !isPicture(clip)) return null;
       const range = ADJUST_RANGE[field];
       const value = round(clamp(n, range.min, range.max) / range.per, 4);
-      return value === adjustOf(clip.adjust)[field] ? [] : update({ adjust: { [field]: value } });
+      if (playhead === undefined || !isPicture(saved)) return value === adjustOf(clip.adjust)[field] ? [] : update({ adjust: { [field]: value } });
+      // A keyframed one is keyed at the playhead, as a keyframed position is.
+      const frame = clipFrame(saved, playhead);
+      return value === adjustAt(saved, frame)[field] ? [] : writeAdjustOps(saved, frame, field, value);
+    }
+    case "liftLevel":
+    case "gammaLevel":
+    case "gainLevel": {
+      const n = parseNumber(raw);
+      if (n === null) return null;
+      return wheelOps(clip, LEVEL_WHEEL[field], { level: round(clamp(n, -100, 100) / 100, 3) });
+    }
+    case "lutAmount": {
+      const n = parseNumber(raw);
+      if (n === null || !isPicture(clip) || !clip.grade?.lut) return null;
+      const lutAmount = round(clamp(n, 0, 100) / 100, 3);
+      return lutAmount === (clip.grade.lutAmount ?? 1) ? [] : update({ grade: { lutAmount } });
     }
     case "lookStrength": {
-      // The look's colours at this share of their own. At 0 nothing of it is left, so the picture has no look.
+      // The look's colours at this share of their own. It stops at 1%: at 0 nothing of the look is left to have a
+      // strength, and the field would go away under the hand dragging it. None is what takes a look off.
       const n = parseNumber(raw);
       const match = isPicture(clip) ? lookMatch(clip.adjust) : null;
       const look = match && LOOKS.find((l) => l.id === match.id);
       if (n === null || !isPicture(clip) || !match || !look) return null;
-      const strength = round(clamp(n, 0, 100) / 100, 3);
+      const strength = round(clamp(n, 1, 100) / 100, 3);
       return strength === match.strength ? [] : update({ adjust: lookPatch(look, strength) });
     }
     case "flipH":

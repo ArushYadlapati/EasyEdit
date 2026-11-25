@@ -3,10 +3,12 @@ import { graphemes } from "@/lib/text";
 import { drawCaptions } from "./captions";
 import { drawShape } from "./shapes";
 import type { Clip, Crop, MediaClip, TextClip, TimelineDoc, Track, Transform } from "@/lib/timeline";
-import { effectiveTransform } from "@/lib/timeline/keyframes";
+import { adjustAt, effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
-import { adjustOf, isAdjusted, type FullAdjust } from "@/lib/timeline/adjust";
+import { STYLE_KEYS, TONE_KEYS, type FullAdjust } from "@/lib/timeline/adjust";
 import { adjustFilter, compositeOf, needsLayer, temperatureColor } from "./adjust";
+import { createFinisher, type FinishPass, type Finisher } from "./finish-gl";
+import { bakeGrade } from "./grade";
 import { keyOut, type ChromaKey } from "./chroma";
 import { clipLook, effectWindows } from "./effects";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
@@ -16,6 +18,7 @@ export type { LocalRect };
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type ResolvedSource = { image: CanvasImageSource; width: number; height: number };
+export type LayerUse = "tone" | "finish";
 export type DrawOptions = {
   // The seam where media plugs in. clip: the video or image clip being drawn. frame: the timeline frame being drawn.
   resolveSource?: (clip: MediaClip, frame: number) => ResolvedSource | null;
@@ -25,8 +28,12 @@ export type DrawOptions = {
   // A clip left out: the preview's in-place text box shows that text instead. Never set for an export.
   hideClipId?: string;
   // A context on a canvas of this size for a picture that is finished on its own before it joins the frame, the
-  // same one each time. Default: an OffscreenCanvas; null where there is none.
-  makeLayer?: (width: number, height: number) => Ctx2D | null;
+  // same one each time for the same use: "tone" for a picture being warmed, cooled or vignetted, "finish" for one on
+  // its way to the graphics card. Default: an OffscreenCanvas; null where there is none.
+  makeLayer?: (width: number, height: number, use: LayerUse) => Ctx2D | null;
+  // What grades a picture and draws its stylised effects (finish-gl.ts). Default: one on the graphics card, shared;
+  // null draws every picture without them.
+  finish?: Finisher | null;
   // The same for a picture whose key colour is being taken out: a context on a canvas of the picture's own size.
   makeKeyLayer?: (width: number, height: number) => Ctx2D | null;
 };
@@ -346,14 +353,17 @@ function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (fa
   letters(false);
 }
 
-// A canvas the size of the frame being drawn, kept between frames, for a picture that has to be finished on its own
-// before it joins the frame. An OffscreenCanvas, which a page and a worker both have; null where there is none.
-let sharedLayer: { width: number; height: number; ctx: Ctx2D } | null = null;
+// Canvases the size of the frame being drawn, kept between frames, one for each use, for a picture that has to be
+// finished on its own before it joins the frame. OffscreenCanvases, which a page and a worker both have; null where
+// there are none.
+const sharedLayers = new Map<LayerUse, { width: number; height: number; ctx: Ctx2D }>();
 
-function defaultLayer(width: number, height: number): Ctx2D | null {
-  if (sharedLayer && sharedLayer.width === width && sharedLayer.height === height) return sharedLayer.ctx;
+function defaultLayer(width: number, height: number, use: LayerUse): Ctx2D | null {
+  const kept = sharedLayers.get(use);
+  if (kept && kept.width === width && kept.height === height) return kept.ctx;
   const ctx = typeof OffscreenCanvas === "undefined" ? null : new OffscreenCanvas(width, height).getContext("2d");
-  sharedLayer = ctx ? { width, height, ctx } : null;
+  if (ctx) sharedLayers.set(use, { width, height, ctx });
+  else sharedLayers.delete(use);
   return ctx;
 }
 
@@ -365,7 +375,7 @@ function defaultLayer(width: number, height: number): Ctx2D | null {
 function drawAdjusted(ctx: Ctx2D, adjust: FullAdjust, box: LocalRect, cutout: boolean, paint: (target: Ctx2D) => void, options: DrawOptions): void {
   const m = ctx.getTransform();
   const filter = adjustFilter(adjust, Math.hypot(m.a, m.b));
-  const layer = needsLayer(adjust) ? (options.makeLayer ?? defaultLayer)(ctx.canvas.width, ctx.canvas.height) : null;
+  const layer = needsLayer(adjust) ? (options.makeLayer ?? defaultLayer)(ctx.canvas.width, ctx.canvas.height, "tone") : null;
   if (!layer) {
     if (filter) ctx.filter = filter;
     paint(ctx);
@@ -406,6 +416,48 @@ function drawAdjusted(ctx: Ctx2D, adjust: FullAdjust, box: LocalRect, cutout: bo
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(layer.canvas, 0, 0);
   ctx.setTransform(m);
+}
+
+// The finisher every frame shares unless a caller brings its own: made the first time a picture needs one.
+let sharedFinisher: Finisher | undefined;
+
+// What the graphics card is to do to a picture: its grade and its stylised effects. Null when it has neither, which
+// is every picture until one is set, so a plain picture never goes near the card.
+function finishOf(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip, adjust: FullAdjust, frame: number): FinishPass | null {
+  const grade = bakeGrade(clip.grade, doc.luts);
+  if (!grade && STYLE_KEYS.every((key) => adjust[key] === 0)) return null;
+  const { sharpen, grain, pixelate, split, glitch, vhs } = adjust;
+  return {
+    style: { sharpen, grain, pixelate, split, glitch, vhs },
+    grade,
+    project: { width: doc.width, height: doc.height },
+    scale: ctx.canvas.width / doc.width,
+    time: frame / doc.fps,
+  };
+}
+
+// A picture that is graded or stylised: painted on a layer of its own, the size of the frame, handed to the
+// graphics card, and the finished frame-sized picture drawn onto the frame with the clip's own opacity and blend.
+// The effects work on the picture as it sits in the frame, so a grain speck or a pixelated block is the same size
+// however the clip is scaled. False when there is no layer to paint on: the caller then draws the picture plain.
+// Where there is a layer but no graphics card, the picture is drawn from the layer as it is.
+function drawFinished(ctx: Ctx2D, pass: FinishPass, paint: (target: Ctx2D) => void, options: DrawOptions): boolean {
+  const { width, height } = ctx.canvas;
+  const layer = (options.makeLayer ?? defaultLayer)(width, height, "finish");
+  if (!layer) return false;
+  const finisher = options.finish === undefined ? (sharedFinisher ??= createFinisher()) : options.finish;
+  const m = ctx.getTransform();
+  layer.save();
+  layer.setTransform(1, 0, 0, 1, 0, 0);
+  layer.clearRect(0, 0, width, height);
+  layer.setTransform(m);
+  paint(layer);
+  layer.restore();
+  const finished = finisher?.(layer.canvas, width, height, pass) ?? layer.canvas;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(finished, 0, 0);
+  ctx.setTransform(m);
+  return true;
 }
 
 // A second kept canvas, the size of the picture being keyed, apart from the frame's layer: a keyed picture is what
@@ -476,9 +528,12 @@ function drawMedia(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip & { type: "vide
         k.bottom - k.top,
       );
     };
+    const adjust = adjustAt(clip, frame);
+    const toned = TONE_KEYS.some((key) => adjust[key] !== 0);
     // A keyed picture has see-through parts, as an image may.
-    if (isAdjusted(clip.adjust)) drawAdjusted(ctx, adjustOf(clip.adjust), k, clip.type === "image" || !!clip.chroma, paint, options);
-    else paint(ctx);
+    const tone = (target: Ctx2D) => (toned ? drawAdjusted(target, adjust, k, clip.type === "image" || !!clip.chroma, paint, options) : paint(target));
+    const pass = finishOf(ctx, doc, clip, adjust, frame);
+    if (!pass || !drawFinished(ctx, pass, tone, options)) tone(ctx);
     return;
   }
   ctx.fillStyle = PLACEHOLDER_FILL[clip.type];

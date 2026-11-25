@@ -9,6 +9,7 @@ export const EXPORT_MESSAGES: Record<ExportFailure, string> = {
   empty: "This project is empty. Add a clip, then export.",
   font: "A font didn't load, so the export was stopped. Check your connection, reload the page and try again.",
   "font-mismatch": "Text would not look the same as in the preview, so the export was stopped. Reload the page and try again.",
+  effects: "This browser can't draw the project's color grading and effects in an export, so the export was stopped. Use a recent version of Chrome or Edge.",
   waiting: "Some media is still uploading or being prepared. Export once it's ready.",
   media: "A media file couldn't be read, so the export was stopped. Check your connection and try again.",
   decode: "A video clip couldn't be decoded in this browser, so the export was stopped.",

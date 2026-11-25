@@ -24,6 +24,8 @@ export const MESSAGES = {
   nothingToSeparate: "Select a video clip that has sound to separate its audio.",
   nothingToGroup: "Select two or more clips on unlocked tracks to link them.",
   nothingToUngroup: "None of the selected clips is linked.",
+  lutTooLarge: "That file is too large to read as a look-up table.",
+  lutsFull: "This project already keeps as many LUTs as it can. Remove one from the project first.",
   nothingToClean: "Select a video or audio clip to clean up its sound.",
   cleanedUp: (clips: number) => (clips === 1 ? "Cleaned up the voice." : `Cleaned up ${clips} clips.`),
   nothingToDuck: "Select the music or sound to turn down under speech.",

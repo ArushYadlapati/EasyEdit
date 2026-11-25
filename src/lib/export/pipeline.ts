@@ -1,3 +1,4 @@
+import { needsFinisher } from "@/lib/render/grade";
 import { createDecodePool, type DecodePool, type MediaIO } from "@/lib/export/decode-pool";
 import { mismatchedProbe, type FontFaceSpec } from "@/lib/export/fonts";
 import { mediaSchedule } from "@/lib/export/media-schedule";
@@ -29,6 +30,7 @@ export type PipelineIO = {
   supported(): boolean; // OffscreenCanvas, VideoEncoder, VideoFrame and a font set exist in this scope
   loadFace(spec: FontFaceSpec): Promise<boolean>; // true once the face is loaded and registered
   measure(font: string, text: string): number;
+  canFinish(): boolean; // whether the graphics card is there to grade and stylise a picture (render/finish-gl.ts)
   canEncode(video: VideoSettings, acceleration: Acceleration): Promise<boolean>;
   canEncodeAudio(): Promise<boolean>;
   media: MediaIO;
@@ -89,6 +91,10 @@ async function steps(job: ExportJob, io: PipelineIO, control: PipelineControl, h
   // 4. The text measures here as it did on the page.
   const mismatch = mismatchedProbe(job.fonts.probes, (font, text) => io.measure(font, text));
   if (mismatch) return failed("font-mismatch", mismatch.font);
+
+  // 4b. A project with a grade or a stylised effect needs the graphics card: without it the video would come out
+  // plain where the preview is not, so the export stops instead.
+  if (needsFinisher(job.doc) && !io.canFinish()) return failed("effects");
 
   // 5. This computer can encode this size.
   if (!(await io.canEncode(video, acceleration))) return failed("size");

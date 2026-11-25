@@ -20,6 +20,7 @@ import { canEncodeAac } from "@/lib/export/aac";
 import { CHUNK_BYTES, type ChunkBridge } from "@/lib/export/chunk-bridge";
 import { fileGone, type MediaIO } from "@/lib/export/decode-pool";
 import { jobFontResolver, type FontFaceSpec } from "@/lib/export/fonts";
+import { createFinisher } from "@/lib/render/finish-gl";
 import { exportPlaceholderLabel } from "@/lib/export/media-schedule";
 import { runPipeline, type OpenOptions, type PipelineIO, type PipelineOutput } from "@/lib/export/pipeline";
 import { AUDIO, KEYFRAME_SECONDS, encoderConfig, type Acceleration, type VideoSettings } from "@/lib/export/presets";
@@ -54,6 +55,18 @@ async function loadFace(spec: FontFaceSpec): Promise<boolean> {
 }
 
 let measuring: OffscreenCanvasRenderingContext2D | null = null;
+
+// The worker's own finisher: the one every frame of the export is graded and stylised with.
+const finisher = createFinisher();
+
+// Whether it works here, found by finishing a blank picture two pixels a side.
+function canFinish(): boolean {
+  if (typeof OffscreenCanvas === "undefined") return false;
+  const blank = new OffscreenCanvas(2, 2);
+  if (!blank.getContext("2d")) return false;
+  const none = { sharpen: 0, grain: 0, pixelate: 0, split: 0, glitch: 0, vhs: 0 };
+  return finisher(blank, 2, 2, { style: none, grade: null, project: { width: 2, height: 2 }, scale: 1, time: 0 }) !== null;
+}
 
 function measure(font: string, text: string): number {
   measuring ??= new OffscreenCanvas(1, 1).getContext("2d");
@@ -191,7 +204,7 @@ async function open(job: ExportJob, options: OpenOptions, bridge: ChunkBridge): 
 
   return {
     draw: (frame, sources) =>
-      drawFrame(ctx, job.doc, frame, { resolveFont, placeholderLabel, resolveSource: (clip) => sources.get(clip.id) ?? null }),
+      drawFrame(ctx, job.doc, frame, { resolveFont, placeholderLabel, finish: finisher, resolveSource: (clip) => sources.get(clip.id) ?? null }),
     addFrame: (_frame, seconds, duration, keyFrame) => picture.add(seconds, duration, { keyFrame }),
     async addSound(startSample, _sampleCount, data) {
       const sample = new AudioSample({
@@ -216,7 +229,7 @@ async function open(job: ExportJob, options: OpenOptions, bridge: ChunkBridge): 
 
 // The PipelineIO for one job.
 function makeIO(job: ExportJob, bridge: ChunkBridge): PipelineIO {
-  return { supported, loadFace, measure, canEncode, canEncodeAudio: canEncodeAac, media, sound: soundIO, open: (options) => open(job, options, bridge) };
+  return { supported, loadFace, measure, canFinish, canEncode, canEncodeAudio: canEncodeAac, media, sound: soundIO, open: (options) => open(job, options, bridge) };
 }
 
 const session = createWorkerSession(

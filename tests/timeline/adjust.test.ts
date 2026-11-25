@@ -125,7 +125,8 @@ describe("looks", () => {
     expect(c1(halved).adjust!.blur).toBe(6);
     expect(field(halved, "lookStrength", "50")).toEqual([]);
     expect(field(halved, "lookStrength", "250")).toEqual(patch("c1", { adjust: lookPatch(LOOKS.find((l) => l.id === "vintage")!) }));
-    expect(lookOf(c1(run(halved, field(halved, "lookStrength", "0")!).doc).adjust)).toBe("none");
+    // It stops at 1%: None is what takes a look off.
+    expect(shown(run(halved, field(halved, "lookStrength", "0")!).doc, "lookStrength")).toBe("1");
     expect(field(sampleDoc(), "lookStrength", "50")).toBeNull();
     expect(field(run(sampleDoc(), patch("c1", { adjust: { hue: 33 } })).doc, "lookStrength", "50")).toBeNull();
   });

@@ -29,7 +29,7 @@ const RAMP = keyed([{ at: 0, value: 1 }, { at: 100, value: 0 }]);
 
 describe("a volume that changes over a clip", () => {
   it("is one of the properties a clip can key, apart from those of its picture", () => {
-    expect(KEYFRAME_PROPS).toEqual(["x", "y", "scale", "rotation", "opacity", "volume"]);
+    expect(KEYFRAME_PROPS.slice(0, 6)).toEqual(["x", "y", "scale", "rotation", "opacity", "volume"]); // then a picture's colours
     expect(TRANSFORM_PROPS).toEqual(["x", "y", "scale", "rotation", "opacity"]);
   });
 

@@ -30,6 +30,21 @@ function richMarkers(): TimelineDoc {
   return { ...rich(), markers: [{ id: "k1", at: 10, name: "Start" }, { id: "k2", at: 40, name: "" }] };
 }
 
+function richLuts(): TimelineDoc {
+  return { ...rich(), luts: [{ id: "l1", name: "Teal", size: 2, data: "B".repeat(32) }, { id: "l2", name: "Bleach", size: 2, data: "C".repeat(32) }] };
+}
+
+// A clip that already has every part the grade case changes: an undo puts values back, never takes a field away.
+function richGraded(): TimelineDoc {
+  const d = richLuts();
+  Object.assign(d.tracks[0].clips[1], {
+    adjust: { grain: 0.1 },
+    grade: { lift: { x: 0, y: 0, level: 0.3 }, curve: [{ x: 0, y: 0 }, { x: 0.5, y: 0.6 }, { x: 1, y: 1 }], lut: "l2", lutAmount: 1 },
+    keyframes: { blur: [{ at: 5, value: 1 }] },
+  });
+  return d;
+}
+
 function rich(): TimelineDoc {
   const d = docWithCaptions("short_9x16");
   d.tracks[0].clips = [video("c1", 0, 30, { in: 10, speed: 1.5 }), video("c2", 30, 30), video("c3", 60, 30)];
@@ -79,6 +94,10 @@ const CASES: [string, Op, (() => TimelineDoc)?][] = [
   ["add_marker", { op: "add_marker", marker: { id: "k9", at: 45, name: "Hook" } }],
   ["update_marker", { op: "update_marker", markerId: "k2", patch: { at: 50, name: "Later" } }, richMarkers],
   ["remove_marker", { op: "remove_marker", markerId: "k1" }, richMarkers],
+  ["add_lut", { op: "add_lut", lut: { id: "l9", name: "Film", size: 2, data: "A".repeat(32) } }],
+  ["add_lut between two", { op: "add_lut", lut: { id: "l9", name: "Film", size: 2, data: "A".repeat(32) }, index: 1 }, richLuts],
+  ["remove_lut", { op: "remove_lut", lutId: "l1" }, richLuts],
+  ["update_clip grade and effects on a graded clip", { op: "update_clip", clipId: "c2", patch: { grade: { lift: { x: 0.2, y: 0.1, level: 0 }, curve: [{ x: 0, y: 0.1 }, { x: 1, y: 1 }], lut: "l1", lutAmount: 0.5 }, adjust: { grain: 0.3 }, keyframes: { blur: [{ at: 0, value: 4 }] } } }, richGraded],
   ["set_caption_style", { op: "set_caption_style", patch: { preset: "word", fontSize: 90 } }, richCaptions],
   ["set_caption_style on a doc with no style", { op: "set_caption_style", patch: { preset: "word" } }],
   ["set_caption_style clear", { op: "set_caption_style", clear: true }, richCaptions],
