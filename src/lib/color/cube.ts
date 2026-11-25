@@ -32,7 +32,8 @@ export function parseCube(text: string): ParsedCube | { error: CubeError } {
   const max = [1, 1, 1];
   let values: Float32Array | null = null;
   let count = 0;
-  for (const raw of text.split(/\r\n|\n|\r/)) {
+  // Some programs save the file with a byte-order mark in front, which is not part of its first line.
+  for (const raw of text.replace(/^\uFEFF/, "").split(/\r\n|\n|\r/)) {
     const line = raw.trim();
     if (line === "" || line[0] === "#") continue;
     const first = line.charCodeAt(0);

@@ -494,7 +494,7 @@ describe("the timeline's right-click menus", () => {
     copyC2();
     expect(fireEvent.contextMenu(lane(2), { clientX: x(200), clientY: y(2), button: 2 })).toBe(false);
     expect(screen.getByRole("menu", { name: "Timeline" })).toBeTruthy();
-    expect(labels()).toEqual(["Paste", "Duplicate track", "Remove track", "Add video track", "Add overlay track", "Add text track", "Add shapes track", "Add audio track"]);
+    expect(labels()).toEqual(["Paste", "Duplicate track", "Remove track", "Add video track", "Add overlay track", "Add text track", "Add shapes track", "Add audio track", "Add adjustment layer"]);
     pick("Paste");
     const v1 = st().doc.tracks.find((t) => t.id === "v1")!;
     expect(v1.clips.map((c) => c.start)).toEqual([0, 30, 200]);
@@ -541,7 +541,7 @@ describe("the timeline's right-click menus", () => {
     expect(fireEvent.contextMenu(content, { clientX: x(200), clientY: BELOW, button: 2 })).toBe(false);
     expect(screen.getByRole("menu", { name: "Timeline" })).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: "Remove track" })).toBeNull();
-    expect(labels()).toEqual(["Paste", "Add video track", "Add overlay track", "Add text track", "Add shapes track", "Add audio track"]);
+    expect(labels()).toEqual(["Paste", "Add video track", "Add overlay track", "Add text track", "Add shapes track", "Add audio track", "Add adjustment layer"]);
     pick("Paste");
     expect(st().doc.tracks.find((t) => t.id === "v1")!.clips.map((c) => c.start)).toEqual([0, 30, 200]);
     // Left of the lanes in view, it is their first frame in view.

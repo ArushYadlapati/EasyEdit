@@ -492,8 +492,13 @@ function drawAdjustment(ctx: Ctx2D, doc: TimelineDoc, clip: AdjustmentClip, fram
   under.clearRect(0, 0, width, height);
   under.drawImage(ctx.canvas, 0, 0);
   under.restore();
-  // The copy fills the frame, in project pixels like every other picture.
-  const paint = (target: Ctx2D) => target.drawImage(under.canvas, 0, 0, doc.width, doc.height);
+  // The copy goes back pixel for pixel: it is already the size of the canvas, so nothing is scaled and nothing softens.
+  const paint = (target: Ctx2D) => {
+    target.save();
+    target.setTransform(1, 0, 0, 1, 0, 0);
+    target.drawImage(under.canvas, 0, 0);
+    target.restore();
+  };
   const whole = { left: 0, top: 0, right: doc.width, bottom: doc.height };
   const tone = (target: Ctx2D) => (toned ? drawAdjusted(target, adjust, whole, false, paint, options) : paint(target));
   ctx.save();

@@ -16,6 +16,14 @@ describe("reading a .cube file", () => {
     expect(cube.size).toBe(2);
     expect([...cube.values]).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1]);
   });
+  it("reads a file saved with a byte-order mark, tabs between numbers and keywords it has no use for", () => {
+    const text = `\uFEFFLUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 0.0 1.0\n${cubeText(2, (r, g, b) => [r, g, b]).split("\n").slice(1).join("\n").replace(/ /g, "\t")}`;
+    const cube = parsed(text);
+    expect(cube.size).toBe(2);
+    expect([...cube.values].slice(3, 6)).toEqual([1, 0, 0]);
+    expect(parsed("LUT_3D_SIZE 2\n0 0 0\n1e0 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1.0e+0").values[3]).toBe(1);
+  });
+
   it("fits the file's own range to 0–1", () => {
     const cube = parsed(cubeText(2, (r, g, b) => [r * 1023, g * 1023, b * 1023], "DOMAIN_MIN 0 0 0\nDOMAIN_MAX 1023 1023 1023\n"));
     expect([...cube.values].slice(3, 6)).toEqual([1, 0, 0]);

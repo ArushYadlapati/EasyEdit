@@ -136,17 +136,18 @@ describe("drawing an adjustment layer", () => {
     const { frame, layers, canvas } = draw({ adjust: { brightness: 0.5 }, transform: { ...DEFAULT_TRANSFORM, opacity: 0.4 } });
     expect(layers.under!.calls).toEqual([["save"], ["setTransform", 1, 0, 0, 1, 0, 0], ["clearRect", 0, 0, 1080, 1920], ["drawImage", canvas, 0, 0], ["restore"]]);
     const underCanvas = (layers.under!.ctx as unknown as { canvas: unknown }).canvas;
-    const tail = frame.slice(-5);
-    expect(tail).toEqual([["save"], ["set globalAlpha", 0.4], ["set filter", "brightness(1.5)"], ["drawImage", underCanvas, 0, 0, 1080, 1920], ["restore"]]);
+    const tail = frame.slice(-8);
+    // Drawn back pixel for pixel, so the frame is not scaled a second time.
+    expect(tail).toEqual([["save"], ["set globalAlpha", 0.4], ["set filter", "brightness(1.5)"], ["save"], ["setTransform", 1, 0, 0, 1, 0, 0], ["drawImage", underCanvas, 0, 0], ["restore"], ["restore"]]);
     // The video under it was drawn first.
-    expect(names(frame).indexOf("drawImage")).toBeLessThan(frame.length - 5);
+    expect(names(frame).indexOf("drawImage")).toBeLessThan(frame.length - 8);
   });
   it("sends a grade or a stylised effect through the finisher, the whole frame at once", () => {
     const { frame, layers, passes } = draw({ adjust: { vhs: 1 }, grade: { gain: { x: 0, y: 0, level: 0.5 } } });
     expect(passes).toHaveLength(1);
     expect(passes[0].style.vhs).toBe(1);
     expect(passes[0].grade!.wheels!.gain).toEqual([1.25, 1.25, 1.25]);
-    expect(layers.finish!.calls).toContainEqual(["drawImage", (layers.under!.ctx as unknown as { canvas: unknown }).canvas, 0, 0, 1080, 1920]);
+    expect(layers.finish!.calls).toContainEqual(["drawImage", (layers.under!.ctx as unknown as { canvas: unknown }).canvas, 0, 0]);
     expect(frame.at(-3)).toEqual(["drawImage", { tag: "finished" }, 0, 0]);
   });
   it("uses its keyframed colours and opacity at the frame", () => {

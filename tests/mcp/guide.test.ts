@@ -15,7 +15,9 @@ describe("the op reference", () => {
     const pointed = ["set_caption_style", "set_transcript", "splice_caption_words"];
     // The marker ops are not spelled out either: the tool list is at its size limit. A project's description lists
     // its markers, and the engine takes the ops from an agent that sends them.
-    const unlisted = ["replace_track", "add_marker", "update_marker", "remove_marker"];
+    // Nor are the look-up table ops, for the same reason: a table is a file read in the editor (about 20 KB of
+    // packed colours), and a project's description lists the ones it has for a clip's grade to name.
+    const unlisted = ["replace_track", "add_marker", "update_marker", "remove_marker", "add_lut", "remove_lut"];
     for (const op of engineOps.filter((name) => !unlisted.includes(name))) {
       expect(OP_REFERENCE, op).toContain(pointed.includes(op) ? op : `"op":"${op}"`);
     }
