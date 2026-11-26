@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { socialConnection, socialPost } from "@/db/schema";
+import { socialConnection, socialPost, styleReference } from "@/db/schema";
 import { channelAccess, disconnectYoutube, dropChannel, findConnection, saveYoutubeConnection } from "@/lib/social/connections";
 import { seal } from "@/lib/storage/secret-box";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
@@ -30,7 +30,16 @@ async function setup() {
     await joinSpace(db, { id: "u1" }, "admin", id);
     return id;
   };
-  return { db, cfg, google, revoke, save, team };
+  // A style reference from the space's channel, and a link pasted by hand, which isn't from the channel.
+  const references = async (spaceId: string = SEED_TEAM_ID) => {
+    const link = { kind: "link" as const, spaceId, createdBy: "u2" };
+    await db.insert(styleReference).values([
+      { ...link, id: `ch_${spaceId}`, title: "Match day", url: "https://www.youtube.com/watch?v=aaaaaaaaaa1", provider: "channel" },
+      { ...link, id: `yt_${spaceId}`, title: "Paper planes", url: "https://www.youtube.com/watch?v=aaaaaaaaaa2", provider: "youtube" },
+    ]);
+  };
+  const referenceIds = async () => (await db.select({ id: styleReference.id }).from(styleReference)).map((row) => row.id).sort();
+  return { db, cfg, google, revoke, save, team, references, referenceIds };
 }
 
 describe("saveYoutubeConnection", () => {
@@ -78,6 +87,43 @@ describe("saveYoutubeConnection", () => {
     await save({ spaceId: "team_b", googleSub: "g-yt-3", refreshToken: "1//yt-refresh-e" });
     // team_b went g-yt-1 → g-drive → g-yt-3: g-yt-1 was revoked (nothing else used it by then), g-drive was not.
     expect(revoke.mock.calls).toEqual([["1//yt-refresh-1"]]);
+  });
+
+  it("another channel taking this one's place drops what the space's style kept from the old one", async () => {
+    const { save, references, referenceIds } = await setup();
+    await save();
+    await references();
+    // The same channel again keeps them, even through another Google account that manages it.
+    await save({ refreshToken: "1//yt-refresh-2" });
+    await save({ googleSub: "g-yt-2", email: "manager@gmail.com", refreshToken: "1//yt-refresh-3" });
+    expect(await referenceIds()).toEqual([`ch_${SEED_TEAM_ID}`, `yt_${SEED_TEAM_ID}`]);
+    // Another channel doesn't.
+    await save({ channel: { id: "UC999", title: "Solvers B" } });
+    expect(await referenceIds()).toEqual([`yt_${SEED_TEAM_ID}`]);
+  });
+
+  it("a reconnect whose channel couldn't be read may be any channel, so it drops them too", async () => {
+    const { db, save, references, referenceIds } = await setup();
+    await save();
+    await references();
+    await save({ channel: null });
+    expect(await referenceIds()).toEqual([`yt_${SEED_TEAM_ID}`]);
+    // Nor does a channel read again after one that couldn't be: the one before it is unknown.
+    await db.delete(styleReference);
+    await references();
+    await save();
+    expect(await referenceIds()).toEqual([`yt_${SEED_TEAM_ID}`]);
+  });
+
+  it("another Google account with another channel drops them, in that space only", async () => {
+    const { save, team, references, referenceIds } = await setup();
+    await save();
+    const other = await team("team_b");
+    await save({ spaceId: other });
+    await references();
+    await references(other);
+    await save({ googleSub: "g-yt-2", email: "other@gmail.com", channel: { id: "UC456", title: "Other" }, refreshToken: "1//yt-refresh-9" });
+    expect(await referenceIds()).toEqual([`ch_${other}`, `yt_${SEED_TEAM_ID}`, `yt_${other}`].sort());
   });
 });
 
@@ -136,6 +182,17 @@ describe("disconnectYoutube", () => {
     expect(revoke).toHaveBeenCalledExactlyOnceWith("1//yt-refresh-1");
   });
 
+  it("deletes what the space's style kept from the channel, and only that", async () => {
+    const { db, cfg, save, revoke, team, references, referenceIds } = await setup();
+    await save();
+    const other = await team("team_b");
+    await save({ spaceId: other });
+    await references();
+    await references(other);
+    await disconnectYoutube(db, cfg, { spaceId: SEED_TEAM_ID, byUserId: "u1" }, { revoke });
+    expect(await referenceIds()).toEqual([`ch_${other}`, `yt_${SEED_TEAM_ID}`, `yt_${other}`].sort());
+  });
+
   it("is for the space's admins only, and reads as no such space to anyone else", async () => {
     const { db, cfg, save, revoke } = await setup();
     await save();
@@ -180,12 +237,15 @@ describe("disconnectYoutube", () => {
   });
 
   it("dropChannel can be held to the person who connected it", async () => {
-    const { db, cfg, save, revoke } = await setup();
+    const { db, cfg, save, revoke, references, referenceIds } = await setup();
     await save();
+    await references();
     expect(await dropChannel(db, cfg, { spaceId: SEED_TEAM_ID, onlyConnectedBy: "u2" }, { revoke })).toBe(false);
     expect(await db.select().from(socialConnection)).toHaveLength(1);
+    expect(await referenceIds()).toHaveLength(2); // the channel stays, so what was learned from it does
     expect(await dropChannel(db, cfg, { spaceId: SEED_TEAM_ID, onlyConnectedBy: "u1" }, { revoke })).toBe(true);
     expect(await db.select().from(socialConnection)).toEqual([]);
+    expect(await referenceIds()).toEqual([`yt_${SEED_TEAM_ID}`]);
     expect(await dropChannel(db, null, { spaceId: SEED_TEAM_ID })).toBe(false);
   });
 

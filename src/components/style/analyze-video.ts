@@ -34,6 +34,10 @@ const SHEET_TRIES: readonly { tile: number; quality: number }[] = [
 ];
 const SCAN_SHARE = 0.9; // of the "shots" step, the part that is reading every frame; the strip is the rest
 
+// The longest video whose sound is measured, in seconds. decodeSound holds a file's whole sound in memory at once, so
+// a longer video gets no sound facts rather than a browser tab that runs out of memory.
+export const SOUND_MAX_SECONDS = 60 * 60;
+
 // The steps a look-over goes through. analyzeVideo reports shots and listening; saving is the caller sending what was
 // found, so a page can say all three in the same words.
 export type AnalyzeStage = "shots" | "listening" | "saving";
@@ -358,11 +362,11 @@ async function listen(
 }
 
 // Looks over one of the space's own videos: one pass over its frames at 64 px for where it cuts and its colours; the
-// strip of frames from the middles of its shots; how loud it is; and, unless listen is false, what is said. Reads the
-// file it plays from, falling back to its original as Auto captions does. Reports where it has got to. Answers the
-// facts, checked as a style keeps them, and the strip (a JPEG, or null when none could be drawn, and then the facts
-// have no strip either). Rejects with an AnalyzeError when the video can't be looked over at all, and with an
-// AbortError once the signal aborts.
+// strip of frames from the middles of its shots; how loud it is (when it runs no longer than SOUND_MAX_SECONDS); and,
+// unless listen is false, what is said. Reads the file it plays from, falling back to its original as Auto captions
+// does. Reports where it has got to. Answers the facts, checked as a style keeps them, and the strip (a JPEG, or null
+// when none could be drawn, and then the facts have no strip either). Rejects with an AnalyzeError when the video
+// can't be looked over at all, and with an AbortError once the signal aborts.
 export async function analyzeVideo(
   asset: AssetView,
   deps: AnalyzeDeps,
@@ -410,7 +414,7 @@ export async function analyzeVideo(
 
   // Sound and words are read from the file looked at, then from the original when that was the preview.
   const tries = ids.length;
-  const sound = asset.hasAudio ? await measureSound(deps, read, index, tries, signal) : null;
+  const sound = asset.hasAudio && seconds <= SOUND_MAX_SECONDS ? await measureSound(deps, read, index, tries, signal) : null;
   if (signal?.aborted) throw canceled();
   const speech = listening && asset.hasAudio ? await listen(deps, asset, read, index, tries, seconds, signal, (done) => step("listening", done)) : null;
   if (signal?.aborted) throw canceled();

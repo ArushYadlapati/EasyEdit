@@ -257,8 +257,10 @@ describe("the guide's skills", () => {
     SKILL_TOPICS.forEach((topic, i) => {
       expect(skillIndexLines()[i].startsWith(`- ${topic.id}: ${topic.title}. When `), topic.id).toBe(true);
       expect(skillIndexLines()[i].endsWith("."), topic.id).toBe(true);
+      // Short, since the guide is read before every edit: the topic itself says the rest.
+      expect(skillIndexLines()[i].length, topic.id).toBeLessThanOrEqual(90);
     });
-    expect(skillIndexLines()[0]).toBe("- hooks: Open strong. When you are shaping the first 1–3 seconds of a short video.");
+    expect(skillIndexLines()[0]).toBe("- hooks: Open strong. When you shape the first 1–3 seconds of a short video.");
   });
 
   it("come back in full by topic, forgiving case, spaces and a file name", async () => {

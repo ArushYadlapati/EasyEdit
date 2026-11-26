@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MediaServices } from "@/components/editor/media/media-context";
 import {
   AnalyzeError,
+  SOUND_MAX_SECONDS,
   analyzeVideo,
   browserAnalyzeDeps,
   failureReason,
@@ -275,11 +276,28 @@ describe("looking over a video", () => {
     const { analysis } = await analyzeVideo(long, deps);
     expect(deps.transcribe).not.toHaveBeenCalled();
     expect(analysis.speech).toBeNull();
-    expect(analysis.sound).not.toBeNull();
 
     const saved = fakeDeps();
     saved.deps.fetchSavedTranscript.mockResolvedValue(WORDS);
     expect((await analyzeVideo(long, saved.deps)).analysis.speech).toEqual(speechStats(WORDS, long.durationMs! / 1000));
+  });
+
+  it("measures the sound of a video up to an hour long, and not of a longer one, whose sound would be held in memory whole", async () => {
+    expect(SOUND_MAX_SECONDS).toBe(60 * 60);
+    const hour = fakeDeps();
+    const { analysis: measured } = await analyzeVideo(assetView({ ...VIDEO, durationMs: SOUND_MAX_SECONDS * 1000 }), hour.deps);
+    expect(hour.deps.decodeSound).toHaveBeenCalledOnce();
+    expect(measured.sound).toEqual({ loudnessDb: -20, peakDb: -20 });
+
+    const longer = fakeDeps();
+    longer.deps.fetchSavedTranscript.mockResolvedValue(WORDS);
+    const { analysis } = await analyzeVideo(assetView({ ...VIDEO, durationMs: (SOUND_MAX_SECONDS + 1) * 1000 }), longer.deps);
+    expect(longer.deps.decodeSound).not.toHaveBeenCalled();
+    expect(analysis.sound).toBeNull();
+    // Everything else is still measured.
+    expect(analysis.speech).toEqual(speechStats(WORDS, SOUND_MAX_SECONDS + 1));
+    expect(analysis.shots.count).toBe(3);
+    expect(VideoAnalysis.parse(analysis)).toEqual(analysis);
   });
 
   it("reports each step from 0 to 1, in order", async () => {

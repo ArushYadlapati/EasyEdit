@@ -40,7 +40,7 @@ export const STYLE_WORDS = {
     missing: "This video isn't in your media anymore.",
     notReady: "This video is still uploading. Try again once it's ready.",
     tooLong: "This video is longer than 4 hours, which is more than we can look at. Try a shorter one.",
-    unreadable: "We couldn't open this video. Check your connection, then try again.",
+    unreadable: "We couldn't open this video. If it's kept on another computer, open this page there, or try again.",
     noPicture: "We couldn't see any frames in this video. Try uploading it again.",
     unknown: "Something went wrong while we looked at this video. Try again.",
   },

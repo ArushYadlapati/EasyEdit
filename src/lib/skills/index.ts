@@ -15,17 +15,29 @@ export function skillTopic(id: string): SkillTopic | undefined {
   return TOPICS.find((topic) => topic.id === id);
 }
 
-// When to read a topic, in a few words: its "Read this when …" line up to the first colon, as "When …".
-function whenToRead(summary: string): string {
-  const rest = summary.replace(/^Read this /, "");
-  const colon = rest.indexOf(": ");
-  const short = (colon < 0 ? rest : rest.slice(0, colon)).replace(/\.$/, "");
-  return `${short.charAt(0).toUpperCase()}${short.slice(1)}.`;
-}
+// When to read each topic, in a few words, for the guide's index. The topics' own "Read this when …" lines run long,
+// and the guide is read before every edit, so these keep each index line to about 90 characters. A new topic needs a
+// line here before the code builds.
+const WHEN_TO_READ: Record<SkillTopicId, string> = {
+  hooks: "When you shape the first 1–3 seconds of a short video.",
+  pacing: "When you set shot lengths, tighten talking or cut on a beat.",
+  captions: "When you turn on, style, place or fix captions.",
+  "on-screen-text": "When you add or restyle words on screen.",
+  "b-roll": "When you lay other footage over someone talking.",
+  "music-and-sound": "When you add music, set levels or clean up sound.",
+  "transitions-and-motion": "When you add transitions or zooms.",
+  "color-and-looks": "When you change how footage looks or match clips.",
+  "story-shapes": "When you plan which beats go where, short or long.",
+  platforms: "When you fit a video to its platform.",
+  "your-style": "When you edit for a space with a saved Style.",
+  "learn-a-style": "When you learn someone's style and save it.",
+  accessibility: "When you check a video works for everyone.",
+  "final-check": "When the edit is done and needs a last pass.",
+};
 
 // The guide's index of the skill: one line per topic, "- <id>: <title>. When …".
 export function skillIndexLines(): string[] {
-  return TOPICS.map((topic) => `- ${topic.id}: ${topic.title}. ${whenToRead(topic.summary)}`);
+  return TOPICS.map((topic) => `- ${topic.id}: ${topic.title}. ${WHEN_TO_READ[topic.id]}`);
 }
 
 // The skill's files as an installed copy lays them out: <name>/SKILL.md, then <name>/references/<id>.md in topic order.

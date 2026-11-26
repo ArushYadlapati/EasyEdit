@@ -7,6 +7,7 @@ import { ServiceError } from "@/lib/service-error";
 import { roleIn } from "@/lib/spaces/service";
 import { ConnectionBrokenError, refreshAccess, revokeGrant } from "@/lib/storage/google-oauth";
 import { open, SecretBoxError, seal } from "@/lib/storage/secret-box";
+import { dropChannelReferences } from "@/lib/style/channel-references";
 import type { SocialConfig } from "./config";
 import { cancelUpload, type Channel } from "./youtube-api";
 
@@ -65,8 +66,16 @@ async function revokeQuietly(cfg: SocialConfig, sealed: string, revoke: (refresh
 
 export type ConnectionDeps = { revoke?: (refreshToken: string) => Promise<void>; fetch?: typeof fetch };
 
+// Whether a new connection may be another channel than the one it replaces. Only the same channel id, read both times,
+// counts as the same: a reconnect whose channel couldn't be read, or that left out the permission to see it, may be
+// any channel (and EasyEdit may no longer see the old one's videos at all).
+function isAnotherChannel(before: Row, channel: Channel | null): boolean {
+  return before.channelId === null || channel === null || before.channelId !== channel.id;
+}
+
 // One channel per space: connecting again replaces the one it had (and mends a broken one). The account it replaces
-// is revoked at Google when it is a different one that nothing else uses.
+// is revoked at Google when it is a different one that nothing else uses. Unless it is surely the same channel, what
+// the space's style kept from the old one goes.
 export async function saveYoutubeConnection(
   db: DB,
   cfg: SocialConfig,
@@ -91,6 +100,7 @@ export async function saveYoutubeConnection(
       set: { ...values, brokenAt: null, brokenReason: null, updatedAt: sql`now()` },
     })
     .returning();
+  if (before && isAnotherChannel(before, input.channel)) await dropChannelReferences(db, input.spaceId);
   if (before && before.googleSub !== input.googleSub && !(await accountUsedElsewhere(db, before.googleSub, row.id))) {
     await revokeQuietly(cfg, before.refreshTokenEnc, deps.revoke ?? ((token) => revokeGrant(token)));
   }
@@ -162,9 +172,10 @@ export async function channelAccess(db: DB, cfg: SocialConfig, spaceId: string, 
   }
 }
 
-// The space's channel goes: its uploads still open are ended, the row is deleted, and EasyEdit's access to the
-// Google account is revoked unless something else of this app still uses that account. `onlyConnectedBy`: only when
-// that person connected it. Returns whether a channel was removed. Videos already posted stay on YouTube.
+// The space's channel goes: its uploads still open are ended, the row is deleted, what the space's style kept from the
+// channel is deleted, and EasyEdit's access to the Google account is revoked unless something else of this app still
+// uses that account. `onlyConnectedBy`: only when that person connected it. Returns whether a channel was removed.
+// Videos already posted stay on YouTube.
 export async function dropChannel(db: DB, cfg: SocialConfig | null, input: { spaceId: string; onlyConnectedBy?: string }, deps: ConnectionDeps = {}): Promise<boolean> {
   const fetchFn = deps.fetch ?? fetch;
   const [gone] = await db
@@ -178,6 +189,7 @@ export async function dropChannel(db: DB, cfg: SocialConfig | null, input: { spa
     )
     .returning();
   if (!gone) return false;
+  await dropChannelReferences(db, input.spaceId);
   // Uploads still open are ended: the posts recorded as stopped, and their sessions closed at YouTube (best effort),
   // so nothing started before the channel went lands on it afterwards.
   const stopped = await db

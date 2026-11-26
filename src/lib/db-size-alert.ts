@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { isCronCall } from "@/lib/cron-secret";
 
 // Neon's Free plan caps a project's storage at 1 GB, counted as the logical size of all its branches together, and
 // sends no warning: at the cap every save fails (nothing is deleted), so saving stops for everyone. A daily check
@@ -84,8 +84,6 @@ export async function sendPush(topic: string, note: Push, fetchFn: typeof fetch 
   if (!answer.ok) throw new Error(`ntfy answered ${answer.status}`);
 }
 
-const sameSecret = (a: string, b: string) => timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
-
 const REQUIRED = ["NTFY_TOPIC", "NEON_API_KEY", "NEON_PROJECT_ID"] as const;
 
 // The cron route's handler. Vercel calls it with `Authorization: Bearer <CRON_SECRET>`; anything else is refused, and
@@ -96,9 +94,7 @@ export function makeDbSizeCron(deps: {
   push: (topic: string, note: Push) => Promise<void>;
 }) {
   return async (req: Request): Promise<Response> => {
-    const secret = deps.env.CRON_SECRET;
-    const given = req.headers.get("authorization") ?? "";
-    if (!secret || !sameSecret(given, `Bearer ${secret}`)) return Response.json({ error: "Unauthorized" }, { status: 401 });
+    if (!isCronCall(req, deps.env.CRON_SECRET)) return Response.json({ error: "Unauthorized" }, { status: 401 });
     const missing = REQUIRED.filter((name) => !deps.env[name]);
     if (missing.length > 0) {
       const error = `Not set: ${missing.join(", ")}.`;

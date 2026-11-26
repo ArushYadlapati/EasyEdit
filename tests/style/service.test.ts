@@ -22,8 +22,10 @@ import {
   spaceOfReference,
   styleForAgents,
   trimStaleChannelFacts,
+  trimStaleChannelReferences,
   updateStyle,
 } from "@/lib/style/service";
+import { dropChannelReferences } from "@/lib/style/channel-references";
 import { parseVideoLink, type VideoLink } from "@/lib/style/links";
 import { DEFAULT_STYLE, type StyleReference, type VideoAnalysis } from "@/lib/style/types";
 import { DEFAULT_TRANSFORM, createEmptyDoc, type Clip, type TimelineDoc } from "@/lib/timeline";
@@ -488,30 +490,67 @@ describe("the connected channel's uploads", () => {
     await expect(addChannelReference(db, ada, { url: "https://vimeo.com/76979871", title: "x" })).rejects.toMatchObject({ code: "INVALID", message: STYLE_MESSAGES.badLink });
   });
 
-  it(`after ${CHANNEL_FACTS_DAYS} days, only the title and link are kept`, async () => {
+  it(`after ${CHANNEL_FACTS_DAYS} days, only the video's address is kept`, async () => {
     const { db } = await setup();
     const added = await addChannelReference(db, ada, upload);
     expect(await listReferences(db, ada, new Date(Date.now() + (CHANNEL_FACTS_DAYS - 1) * DAY))).toEqual([added]);
 
     const later = new Date(Date.now() + (CHANNEL_FACTS_DAYS + 1) * DAY);
     const [trimmed] = await listReferences(db, ada, later);
+    // YouTube's title goes too: the address stands in for it.
     expect(trimmed).toEqual({
       id: added.id,
       kind: "link",
-      title: "Match day",
+      title: upload.url,
       status: "ready",
       provider: "channel",
       url: upload.url,
-      analysis: { kind: "link", provider: "channel", title: "Match day", fetchedAt: (added.analysis as { fetchedAt: string }).fetchedAt },
+      analysis: { kind: "link", provider: "channel", title: upload.url, fetchedAt: (added.analysis as { fetchedAt: string }).fetchedAt },
       hasSheet: false,
       createdAt: added.createdAt,
     });
     // Dropped for good, not only hidden.
     const [row] = await db.select().from(styleReference).where(eq(styleReference.id, added.id));
-    expect(row).toMatchObject({ author: null, thumbnailUrl: null, analysis: trimmed.analysis });
+    expect(row).toMatchObject({ title: upload.url, author: null, thumbnailUrl: null, analysis: trimmed.analysis });
     expect(await listReferences(db, ada)).toEqual([trimmed]);
+    expect((await styleForAgents(db, ada.spaceId)).references).toEqual([trimmed]);
     // Refreshing brings the facts back.
-    expect(await addChannelReference(db, ada, upload)).toMatchObject({ author: "Seattle Solvers", analysis: { tags: ["robots"] } });
+    expect(await addChannelReference(db, ada, upload)).toMatchObject({ title: "Match day", author: "Seattle Solvers", analysis: { title: "Match day", tags: ["robots"] } });
+  });
+
+  it("a row trimmed before keeps nothing but its address", async () => {
+    const { db } = await setup();
+    const added = await addChannelReference(db, ada, upload);
+    // As the trim used to leave it: YouTube's title kept beside the address.
+    await db
+      .update(styleReference)
+      .set({ author: null, thumbnailUrl: null, analysis: { kind: "link", provider: "channel", title: "Match day", fetchedAt: "2026-01-01T00:00:00.000Z" }, fetchedAt: new Date("2026-01-01T00:00:00.000Z") })
+      .where(eq(styleReference.id, added.id));
+    expect((await listReferences(db, ada, new Date("2026-11-25T10:00:00.000Z")))[0]).toMatchObject({ title: upload.url, analysis: { title: upload.url } });
+    const [row] = await db.select().from(styleReference).where(eq(styleReference.id, added.id));
+    expect(row).toMatchObject({ title: upload.url, analysis: { title: upload.url } });
+  });
+
+  it("are cut back by the daily clean-up in every space, even when nobody reads the style", async () => {
+    const { db } = await setup();
+    const old = new Date(Date.now() - (CHANNEL_FACTS_DAYS + 1) * DAY);
+    const stale = await addChannelReference(db, ada, upload, old);
+    const elsewhere = await addChannelReference(db, mine, { ...upload, url: youtube(3) }, old);
+    const fresh = await addChannelReference(db, ada, { ...upload, url: youtube(4) });
+    const pasted = await addLinkReference(db, ada, youtube(2), fakeSite().fetchFn);
+    expect(await trimStaleChannelReferences(db)).toBe(2);
+
+    const rows = new Map((await db.select().from(styleReference)).map((row) => [row.id, row]));
+    for (const id of [stale.id, elsewhere.id]) {
+      const row = rows.get(id)!;
+      expect(row).toMatchObject({ title: row.url, author: null, thumbnailUrl: null });
+      expect(row.analysis).toEqual({ kind: "link", provider: "channel", title: row.url, fetchedAt: old.toISOString() });
+    }
+    expect(rows.get(fresh.id)).toMatchObject({ title: "Match day", author: "Seattle Solvers" });
+    expect(rows.get(pasted.id)).toMatchObject({ title: "Match day recap", author: "Seattle Solvers" });
+    // Nothing is left to cut back the next day, and the Style page shows what the clean-up left.
+    expect(await trimStaleChannelReferences(db)).toBe(0);
+    expect((await listReferences(db, ada)).find((reference) => reference.id === stale.id)).toMatchObject({ title: upload.url, analysis: { title: upload.url } });
   });
 
   it("the trim leaves other references alone", () => {
@@ -531,9 +570,21 @@ describe("the connected channel's uploads", () => {
     expect(trimStaleChannelFacts(link, now)).toBe(link);
     const unknownAge: StyleReference = { ...link, provider: "channel", analysis: null };
     // A channel reference whose age can't be told counts as old.
-    expect(trimStaleChannelFacts(unknownAge, now)).toEqual({ id: "r1", kind: "link", title: "Old", status: "ready", provider: "channel", url: youtube(1), analysis: null, hasSheet: false, createdAt: link.createdAt });
+    expect(trimStaleChannelFacts(unknownAge, now)).toEqual({ id: "r1", kind: "link", title: youtube(1), status: "ready", provider: "channel", url: youtube(1), analysis: null, hasSheet: false, createdAt: link.createdAt });
     const fresh: StyleReference = { ...link, provider: "channel", analysis: { ...link.analysis!, provider: "channel", fetchedAt: "2026-11-20T00:00:00.000Z" } as StyleReference["analysis"] };
     expect(trimStaleChannelFacts(fresh, now)).toBe(fresh);
+  });
+
+  it("go when the channel does, and links pasted by hand stay", async () => {
+    const { db } = await setup();
+    const fromChannel = await addChannelReference(db, ada, upload);
+    const pasted = await addLinkReference(db, ada, youtube(2), fakeSite().fetchFn);
+    const elsewhere = await addChannelReference(db, mine, { ...upload, url: youtube(3) });
+    await dropChannelReferences(db, ada.spaceId);
+    expect((await listReferences(db, ada)).map((r) => r.id)).toEqual([pasted.id]);
+    expect((await listReferences(db, mine)).map((r) => r.id)).toEqual([elsewhere.id]);
+    const [gone] = await db.select().from(styleReference).where(eq(styleReference.id, fromChannel.id));
+    expect(gone).toBeUndefined();
   });
 });
 

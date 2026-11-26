@@ -1,6 +1,6 @@
 # Roles, formats and limits
 
-The rules for each role, the video formats a project can use, and the limits on uploaded media. For what works today, see [status.md](status.md).
+The rules for each role, the video formats a project can use, and the limits on posting, uploaded media and a space's style. For what works today, see [status.md](status.md).
 
 ## Who can do what
 
@@ -52,3 +52,15 @@ All projects run at 30 frames per second. Times in the timeline are whole frames
 - The preview plays the 720p copy. Playing backward is silent, and a volume above 100% sounds like 100% in the preview.
 - Auto captions run in the browser and take English speech only. A file longer than 60 minutes is refused. One caption word is at most 80 characters, a file keeps at most 10,000 words, and a project keeps words for at most 50 files.
 - The browser keeps about 2 GB of playback files, so footage you played before does not download again.
+
+## Style limits
+
+- A space's style learns from up to 12 videos, links and past projects in all. The Style page offers the space's 20 most recent projects to pick from, and the 25 newest videos of its YouTube channel.
+- Anyone in the space can read its style. Editors and admins change it and what it learns from.
+- The summary (In a sentence or two) can be up to 600 characters, and the notes for AI agents up to 2,000. How you open and Voice and tone can be up to 200 characters each.
+- Always and Never hold up to 8 things each, and each thing can be up to 140 characters.
+- A typical length is from 1 to 3,600 seconds, and a typical shot from 0.2 to 60 seconds.
+- A video the style learns from can be up to 4 hours long. Its words are heard and its loudness measured only when it runs 60 minutes or less; a longer one is looked at without them. Its strip of frames holds up to 12 frames and 300 KB.
+- A link gives only what its site shares: the title, the author and the picture, and from Vimeo also the length and the description. Instagram links can't be read.
+- Details from the space's YouTube channel are cut back to the video's address after 30 days (a daily clean-up does it), and **Refresh** reads them again. They are deleted when the channel is disconnected or another channel takes its place.
+- Through an agent, `save_style` adds up to 5 links at a time. Saving a style doesn't count toward an agent's changes a minute or a day.

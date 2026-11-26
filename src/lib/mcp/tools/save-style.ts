@@ -155,7 +155,8 @@ export async function saveStyleTool(base: ToolContext, input: SaveStyleInput): P
     const notesChanged = after.notes !== before.notes;
     if (set.length > 0) lines.push("Changed:", ...set.map((line) => `- ${line}`));
     if (cleared.length > 0) lines.push(`Cleared: ${cleared.join(", ")}.`);
-    if (notesChanged) lines.push(...(after.notes === "" ? ["Notes: cleared."] : notesLines(after.notes)));
+    // What was saved, said back plainly: the guide's longer intro is for agents reading the style before they edit.
+    if (notesChanged) lines.push(...(after.notes === "" ? ["Notes: cleared."] : notesLines(after.notes, "Notes")));
     changed = set.length > 0 || cleared.length > 0 || notesChanged;
     fieldsUnchanged = !changed;
   }

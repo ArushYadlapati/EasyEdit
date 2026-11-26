@@ -456,19 +456,25 @@ describe("learning from the YouTube channel", () => {
   });
 
   it("reads a channel video's details again once YouTube's 30 days are up", async () => {
+    // After 30 days only the video's address is kept, and it stands in for the title.
+    const url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
     const old = linkReference("r1", {
       provider: "channel",
+      title: url,
       author: undefined,
       thumbnailUrl: undefined,
-      analysis: { kind: "link", provider: "channel", title: "Paper planes", fetchedAt: "2026-10-01T00:00:00.000Z" },
+      analysis: { kind: "link", provider: "channel", title: url, fetchedAt: "2026-10-01T00:00:00.000Z" },
     });
     const fresh = linkReference("r1", { provider: "channel", analysis: { kind: "link", provider: "channel", title: "Paper planes", author: "Paper Planes Club", fetchedAt: NOW.toISOString() } });
     const api = fakeApi({ addChannelVideo: vi.fn(async () => fresh) });
     page({ channelOn: true, api, references: [old] });
     expect(screen.getByText(STYLE_WORDS.learn.channelStale)).toBeTruthy();
+    expect(within(learn()).getByRole("link", { name: url }).getAttribute("href")).toBe(url);
+    expect(within(learn()).queryByText("Paper planes")).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Refresh" })));
     expect(api.addChannelVideo).toHaveBeenCalledWith(SEED_TEAM_ID, "dQw4w9WgXcQ");
     expect(screen.queryByText(STYLE_WORDS.learn.channelStale)).toBeNull();
+    expect(within(learn()).getByRole("link", { name: "Paper planes" })).toBeTruthy();
     expect(screen.getByText("Your YouTube channel · Paper Planes Club")).toBeTruthy();
   });
 

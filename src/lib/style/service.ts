@@ -45,8 +45,8 @@ const invalid = (message: string) => new ServiceError("INVALID", 400, message);
 const referenceGone = () => new ServiceError("NOT_FOUND", 404, STYLE_MESSAGES.referenceGone);
 const alreadyAdded = () => invalid(STYLE_MESSAGES.alreadyAdded);
 
-// How long facts read from the space's connected YouTube channel are kept before they are cut back to a title and a
-// link: YouTube's rules say data from it must be refreshed or dropped within 30 days.
+// How long facts read from the space's connected YouTube channel are kept before they are cut back to the video's
+// address: YouTube's rules say data from it must be refreshed or dropped within 30 days.
 export const CHANNEL_FACTS_DAYS = 30;
 const CHANNEL_FACTS_MS = CHANNEL_FACTS_DAYS * 24 * 60 * 60 * 1000;
 
@@ -240,13 +240,15 @@ export function hasStaleChannelFacts(reference: StyleReference, now: Date): bool
   return !(now.getTime() - fetched <= CHANNEL_FACTS_MS);
 }
 
-// A reference as it may be shown: one whose channel facts are stale is cut back to its title and link (its author,
-// picture, length, description and tags go), and keeps when its facts were read, so the page can offer to refresh
-// them. Anything else is answered as it is. Pure.
+// A reference as it may be shown: one whose channel facts are stale is cut back to the video's address, which becomes
+// its title too (YouTube's title, author, picture, length, description and tags go). It keeps when its facts were
+// read, so the page can offer to refresh them. Anything else is answered as it is. Pure.
 export function trimStaleChannelFacts(reference: StyleReference, now: Date): StyleReference {
   if (!hasStaleChannelFacts(reference, now)) return reference;
-  const analysis = reference.analysis?.kind === "link" ? { kind: "link" as const, provider: "channel" as const, title: reference.title, fetchedAt: reference.analysis.fetchedAt } : null;
-  const trimmed: StyleReference = { ...reference, analysis };
+  // A link always has its address (the table insists on it); the title only stands in for one that somehow doesn't.
+  const address = reference.url ?? reference.title;
+  const analysis = reference.analysis?.kind === "link" ? { kind: "link" as const, provider: "channel" as const, title: address, fetchedAt: reference.analysis.fetchedAt } : null;
+  const trimmed: StyleReference = { ...reference, title: address, analysis };
   delete trimmed.author;
   delete trimmed.thumbnailUrl;
   return trimmed;
@@ -255,26 +257,56 @@ export function trimStaleChannelFacts(reference: StyleReference, now: Date): Sty
 // Whether a row still holds more of a channel's facts than a trimmed reference shows.
 function holdsMore(row: ReferenceRow, trimmed: StyleReference): boolean {
   const kept = new Set(Object.keys(trimmed.analysis ?? {}));
-  return row.author !== null || row.thumbnailUrl !== null || Object.keys(row.analysis ?? {}).some((key) => !kept.has(key));
+  return row.title !== trimmed.title || row.author !== null || row.thumbnailUrl !== null || Object.keys(row.analysis ?? {}).some((key) => !kept.has(key));
 }
 
-// Answers the references as they may be shown, and drops for good what stale channel facts still hold beyond a
-// title and a link. A row whose facts were refreshed since it was read is left alone.
+// Channel rows read more than CHANNEL_FACTS_DAYS before `now`, or at a time that isn't known.
+const staleChannelRow = (now: Date): SQL =>
+  and(eq(styleReference.provider, "channel"), or(isNull(styleReference.fetchedAt), lt(styleReference.fetchedAt, new Date(now.getTime() - CHANNEL_FACTS_MS))))!;
+
+// A row as it may be shown, with what stale channel facts still hold beyond the video's address dropped for good.
+// A row whose facts were refreshed since it was read is left alone. Answers whether the row was cut back just now.
+async function trimRow(db: DB, row: ReferenceRow, now: Date): Promise<{ shown: StyleReference; cut: boolean }> {
+  const reference = toReference(row);
+  const shown = trimStaleChannelFacts(reference, now);
+  if (shown === reference || !holdsMore(row, shown)) return { shown, cut: false };
+  const updated = await db
+    .update(styleReference)
+    .set({ title: shown.title, author: null, thumbnailUrl: null, analysis: shown.analysis ?? {} })
+    .where(and(eq(styleReference.id, row.id), staleChannelRow(now)))
+    .returning({ id: styleReference.id });
+  return { shown, cut: updated.length > 0 };
+}
+
+// Answers the references as they may be shown, cutting back stale channel facts as trimRow does.
 async function shownReferences(db: DB, rows: ReferenceRow[], now: Date): Promise<StyleReference[]> {
   const shown: StyleReference[] = [];
-  const staleBefore = new Date(now.getTime() - CHANNEL_FACTS_MS);
-  for (const row of rows) {
-    const reference = toReference(row);
-    const trimmed = trimStaleChannelFacts(reference, now);
-    if (trimmed !== reference && holdsMore(row, trimmed)) {
-      await db
-        .update(styleReference)
-        .set({ author: null, thumbnailUrl: null, analysis: trimmed.analysis ?? {} })
-        .where(and(eq(styleReference.id, row.id), or(isNull(styleReference.fetchedAt), lt(styleReference.fetchedAt, staleBefore))));
-    }
-    shown.push(trimmed);
-  }
+  for (const row of rows) shown.push((await trimRow(db, row, now)).shown);
   return shown;
+}
+
+// The daily clean-up: in every space, the videos from a connected YouTube channel whose facts are more than
+// CHANNEL_FACTS_DAYS old are cut back to their address, so YouTube's data isn't kept past then even when nobody opens
+// the Style page or asks an agent to read the style. Only rows that still hold more than their address are read.
+// Answers how many were cut back. No role check: it is nobody's change.
+export async function trimStaleChannelReferences(db: DB, now: Date = new Date()): Promise<number> {
+  const rows = await db
+    .select(REFERENCE_COLUMNS)
+    .from(styleReference)
+    .where(
+      and(
+        staleChannelRow(now),
+        or(
+          isNotNull(styleReference.author),
+          isNotNull(styleReference.thumbnailUrl),
+          sql`${styleReference.title} is distinct from ${styleReference.url}`,
+          sql`(${styleReference.analysis} - 'kind' - 'provider' - 'title' - 'fetchedAt') <> '{}'::jsonb`,
+        ),
+      ),
+    );
+  let cut = 0;
+  for (const row of rows) if ((await trimRow(db, row, now)).cut) cut++;
+  return cut;
 }
 
 // Any member's view of what their space's style learns from, newest first.

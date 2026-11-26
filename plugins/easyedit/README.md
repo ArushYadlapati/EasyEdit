@@ -43,11 +43,13 @@ For the connector, open **Settings → Connectors → Add custom connector**, na
 
 ## Already connected? You're set
 
-An agent connected to EasyEdit gets the same topics with nothing to install. It calls `get_editing_guide` with a topic, such as "hooks", and EasyEdit sends that topic back. Installing the skill means your agent knows them before it connects, and knows when to reach for each one.
+An agent connected to EasyEdit gets the same topics with nothing to install. It calls `get_editing_guide` with a topic, such as "hooks", and EasyEdit sends that topic back. Each topic is also a prompt (a slash command in Claude Code) and a resource at `easyedit://skills/<topic>`. Installing the skill means your agent knows them before it connects, and knows when to reach for each one.
 
 ## Your style
 
-Each space can save a Style: how your videos usually look, sound and move. Set it up in EasyEdit under **Settings → Style**. Add videos from your media, paste links, pick past projects and fill in the fields. Or ask your agent to learn it for you. It shows you what it found, and saves it only when you say yes.
+Each space can save a Style: how your videos usually look, sound and move. Set it up in EasyEdit in the space's settings, under **Style**. Add videos from your media (EasyEdit looks at them in your browser), paste YouTube, Vimeo or TikTok links (it reads only their public title and picture), pick past projects, or add videos from your YouTube channel where posting is set up. Then fill in the fields, or press **Fill in from my videos**.
+
+Or ask your agent to learn it for you: the **learn-my-style** prompt does that. It shows you what it found, and saves it only when you say yes. To edit in your style, ask "Edit my latest project in the <space> style." or use the **edit-in-my-style** prompt. The agent reads the style with `get_editing_guide` and your space, before its first edit.
 
 ## Privacy
 
