@@ -8,6 +8,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { LogoMark } from "@/components/ui/logo";
 import { Menu } from "@/components/ui/menu";
 import { addAdjustmentLayer, addText, addTrack } from "@/lib/editor/actions";
+import { addGuideInMiddle } from "@/lib/editor/add-centred";
 import { editMenu, topMenuInput, viewMenu, type MenuEntry, type TopMenuInput, guideLinkOf, helpMenu, type GuideLink } from "@/lib/editor/menus";
 import { searchItems, type PanelSide, type SearchItem, type SettingsPage } from "@/lib/editor/search";
 import { TEXT_PRESETS } from "@/lib/editor/text-presets";
@@ -151,6 +152,8 @@ export function TopBar({
         return onShowSettingsAt ? onShowSettingsAt(action.page) : onShowSettings?.();
       case "guide":
         return openLesson(action.path);
+      case "guide-line":
+        return void addGuideInMiddle(store, action.axis);
       case "safe-zones":
         return state.toggleSafeZones();
       case "reset-layout":

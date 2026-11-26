@@ -79,6 +79,12 @@ describe("the search's list", () => {
     expect(enabled).toEqual(["reset-layout", "settings:project", "settings:general", "settings:shortcuts", "command:show-shortcuts", "command:export", "agents"]);
   });
 
+  it("adds a guide down or across the middle without a drag, and greys both for a viewer", () => {
+    expect(labels("guide")).toEqual(expect.arrayContaining(["Add a guide down the middle", "Add a guide across the middle"]));
+    expect(item("guide-line:x")?.action).toEqual({ kind: "guide-line", axis: "x" });
+    expect(item("guide-line:y", { canEdit: false })?.disabled).toBe(true);
+  });
+
   it("says whether the switches are on", () => {
     expect(item("command:toggle-snapping")?.checked).toBe(true);
     expect(item("safe-zones", { showSafeZones: true })?.checked).toBe(true);

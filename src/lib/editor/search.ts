@@ -27,7 +27,8 @@ export type SearchAction =
   | { kind: "save-template" }
   | { kind: "timeline-file"; mode: "import" | "export" }
   | { kind: "rename" }
-  | { kind: "guide"; path: string }; // a page of help (a lesson, the AI agents page), opened in a tab of its own
+  | { kind: "guide"; path: string } // a page of help (a lesson, the AI agents page), opened in a tab of its own
+  | { kind: "guide-line"; axis: "x" | "y" }; // a guide down (x) or across (y) the middle of the frame
 
 // command: its key is shown as the result's hint. checked: a switch, shown as on or off. names: other names for the
 // label (another spelling, the word people use), matched as the label is, so "colour" finds Color first. note: why a
@@ -330,6 +331,17 @@ export function searchItems(input: SearchInput): SearchItem[] {
       else items.push(command(group, id));
     }
     if (group === "Tools") {
+      // Guides without a drag: one down or across the middle, which the inspector then moves.
+      for (const [axis, label] of [["x", "Add a guide down the middle"], ["y", "Add a guide across the middle"]] as const) {
+        items.push({
+          id: `guide-line:${axis}`,
+          label,
+          group: "Tools",
+          keywords: ["guide", "line", "middle", "centre", "center", axis === "x" ? "vertical" : "horizontal"],
+          action: { kind: "guide-line", axis },
+          disabled: editBlocked,
+        });
+      }
       for (const shape of BOX_SHAPES) {
         items.push({
           id: `shape:${shape}`,
