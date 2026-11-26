@@ -43,6 +43,7 @@ import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { cleanUpOps, duckOps, muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
+import { angleSoundOps, anglesOf, cutToAngleOps } from "./multicam";
 import { nestOps, unnestOps } from "./nest";
 import { freezeFrameOps, rampOps, reverseOps, type RampId } from "./speed";
 import { CROP_PROPS } from "@/lib/timeline/keyframes";
@@ -458,6 +459,25 @@ export function duplicateSelection(store: EditorStore): void {
   }
   const result = state.edit(placement.ops, "duplicate");
   if (result.ok) state.select(placement.clipIds);
+}
+
+// Multicam: cuts to one of the selected cameras at the playhead, as one change. The clips the cut makes join the
+// selection, so the cameras stay selected for the next cut.
+export function cutToAngle(store: EditorStore, trackId: string): void {
+  const state = store.getState();
+  if (!state.canEdit || state.gesture !== null) return;
+  const angles = anglesOf(state.doc, state.selection.clipIds);
+  const cut = cutToAngleOps(state.doc, angles, trackId, state.playhead, () => nanoid(10));
+  if (!cut.ok) return void state.notify(cut.why === "already" ? "info" : "error", MESSAGES.angleRefused[cut.why]);
+  if (state.edit(cut.ops, "cut to camera").ok) state.select([...state.selection.clipIds, ...cut.newClipIds]);
+}
+
+// Multicam: takes the sound from one of the selected cameras and silences the others, as one change.
+export function soundFromAngle(store: EditorStore, trackId: string): void {
+  const state = store.getState();
+  if (!state.canEdit || state.gesture !== null) return;
+  const ops = angleSoundOps(state.doc, state.selection.clipIds, anglesOf(state.doc, state.selection.clipIds), trackId);
+  if (ops.length > 0) state.edit(ops, "sound from camera");
 }
 
 // Makes the selected clips one nest, as one change, and selects it.

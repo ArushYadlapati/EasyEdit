@@ -2,6 +2,7 @@
 
 import { Link2, Link2Off } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { FOCUS_RING, SWATCH_BOX, cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
@@ -13,7 +14,8 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { gainLabel } from "@/lib/audio/loudness";
-import { applyLook, cleanUpSelection, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack, rampSelection, nestSelection, unnestSelection } from "@/lib/editor/actions";
+import { applyLook, cleanUpSelection, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack, rampSelection, nestSelection, unnestSelection, cutToAngle, soundFromAngle } from "@/lib/editor/actions";
+import { anglesOf, shownAngle, soundAngle } from "@/lib/editor/multicam";
 import { formatClock, trackToggles } from "@/lib/editor/geometry";
 import { NO_GRADE, isGraded } from "@/lib/editor/grade";
 import {
@@ -1204,6 +1206,42 @@ function SpeedRamp({ canEdit }: { canEdit: boolean }) {
   );
 }
 
+// Multicam: with videos on two or more tracks selected, each track is a camera. A button for each cuts to it at the
+// playhead (also while playing), and the sound can be taken from one of them.
+function MulticamSection() {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const doc = useEditor(viewDoc);
+  const selection = useEditor(useShallow((s) => s.selection.clipIds));
+  const playhead = useEditor((s) => s.playhead);
+  const angles = anglesOf(doc, selection);
+  if (angles.length < 2) return null;
+  const showing = shownAngle(doc, angles, playhead);
+  const heard = soundAngle(doc, selection, angles);
+  return (
+    <Section title="Multicam">
+      <Hint>Each track is a camera. Line them up first (Sync by sound, below), then cut to a camera at the playhead: it shows until the next cut. This works while playing too.</Hint>
+      <div className="flex flex-col gap-1" role="group" aria-label="Cut to a camera">
+        {angles.map((angle, i) => (
+          <Button key={angle.trackId} data-edit-control className="justify-start" aria-pressed={showing === angle.trackId} disabled={!canEdit} onClick={() => cutToAngle(store, angle.trackId)}>
+            {`Cut to ${i + 1}: ${angle.name}`}
+          </Button>
+        ))}
+      </div>
+      <Field label="Sound from">
+        <Select data-edit-control disabled={!canEdit} value={heard ?? ""} onChange={(event) => event.target.value && soundFromAngle(store, event.target.value)}>
+          {heard === null && <option value="">Every camera</option>}
+          {angles.map((angle, i) => (
+            <option key={angle.trackId} value={angle.trackId}>
+              {`${i + 1}: ${angle.name}`}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    </Section>
+  );
+}
+
 // Several clips selected: how many, and for the ones that sound, leveling them all to the same loudness at once.
 function ManyClips({ count }: { count: number }) {
   const store = useEditorStore();
@@ -1215,6 +1253,7 @@ function ManyClips({ count }: { count: number }) {
     <>
       <p className={cx(TEXT, "font-medium text-ed-text")}>{count} clips selected</p>
       <Hint>Select one clip to edit it.</Hint>
+      <MulticamSection />
       <Section title="Nest">
         <Hint>Make these clips one, to move, trim, fade and color them as a whole.</Hint>
         <Button data-edit-control className="self-start" disabled={!canEdit} onClick={() => nestSelection(store)}>

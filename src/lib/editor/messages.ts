@@ -24,6 +24,12 @@ export const MESSAGES = {
   nothingToSeparate: "Select a video clip that has sound to separate its audio.",
   nothingToGroup: "Select two or more clips on unlocked tracks to link them.",
   nothingToUngroup: "None of the selected clips is linked.",
+  angleRefused: {
+    "one-angle": "Select videos on two or more tracks to cut between them.",
+    locked: "One of those cameras is on a locked track.",
+    "nothing-here": "That camera has no footage at the playhead.",
+    already: "That camera is already the one showing here.",
+  },
   steadyTooLong: "That clip is too long to stabilize at once: split it into parts of five minutes or less.",
   steadyUnreadable: "Couldn't read that video to stabilize it.",
   steadyUnsure: "Couldn't make out how the camera moved in this clip: too much of the picture is flat or dark. Nothing was changed.",
