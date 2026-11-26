@@ -50,6 +50,7 @@ import { CROP_PROPS } from "@/lib/timeline/keyframes";
 import { addAdjustmentOps } from "./adjustment";
 import { findClip, type EditorStore } from "./store";
 import type { BrandFonts } from "@/lib/brand/types";
+import { stickerClip, type Sticker } from "./stickers";
 import { presetClip, type TextPreset } from "./text-presets";
 
 // Puts a text preset at the playhead, on the selected text track when it has room, and selects it. The length in
@@ -75,6 +76,23 @@ export function addText(
   }
   const result = state.edit(placement.ops, "add text");
   if (!result.ok) return null;
+  state.select(placement.clipIds);
+  return placement.clipIds[0] ?? null;
+}
+
+// Adds a sticker at the playhead, on the selected text track when there is one, and selects it. seconds: how long it
+// shows (Settings' length for a new text), else the default.
+export function addSticker(store: EditorStore, sticker: Sticker, seconds?: number): string | null {
+  const state = store.getState();
+  if (!state.canEdit) return null;
+  const selected = state.doc.tracks.find((t) => t.id === state.selection.trackId);
+  const trackId = selected?.kind === "text" ? selected.id : null;
+  const placement = placeClips(state.doc, [{ clip: stickerClip(sticker, state.playhead, state.doc, seconds), trackId }], () => nanoid(10));
+  if (!placement.ok) {
+    state.notify("error", MESSAGES.noRoom);
+    return null;
+  }
+  if (!state.edit(placement.ops, "add sticker").ok) return null;
   state.select(placement.clipIds);
   return placement.clipIds[0] ?? null;
 }
