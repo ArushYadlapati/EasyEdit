@@ -475,7 +475,42 @@ export const AdjustmentClip = z.object({
 });
 export type AdjustmentClip = z.infer<typeof AdjustmentClip>;
 
-export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip, ShapeClip, AdjustmentClip]);
+// A nest: several clips made into one. It holds a small timeline of its own (tracks of clips, starting at frame 0)
+// and plays `duration` frames of it from frame `in`, at the speed it was made. On the frame it is one picture: its
+// tracks are drawn together first, then placed, faded, graded and masked as a whole. Its sound is its clips' sound.
+// A nest holds every kind of clip but an empty slot and another nest. Its clips' ids are its own: two nests (the
+// halves of a split one, say) can hold clips of the same ids. See nest.ts.
+const NestedClip = z.discriminatedUnion("type", [MediaClip, TextClip, ShapeClip, AdjustmentClip]);
+export type NestedClip = z.infer<typeof NestedClip>;
+export const NestTrack = z.object({
+  id: z.string().min(1),
+  kind: TrackKind.exclude(["caption"]),
+  name: TrackName,
+  muted: z.boolean(),
+  hidden: z.boolean(),
+  locked: z.boolean(),
+  volume: z.number().min(0).max(VOLUME_MAX).optional(),
+  clips: z.array(NestedClip),
+});
+export type NestTrack = z.infer<typeof NestTrack>;
+export const NestClip = z.object({
+  ...ClipBase,
+  type: z.literal("nest"),
+  name: z.string().max(LIMITS.nestNameChars).refine(isStorableText, UNSTORABLE_TEXT).nullable().optional(), // null or absent: named for what it holds
+  in: z.number().int().min(0),
+  volume: z.number().min(0).max(VOLUME_MAX), // on top of each of its clips' own
+  tracks: z.array(NestTrack).min(1).max(LIMITS.tracksPerProject),
+  keyframes: Keyframes.optional(), // its place, size, turn and opacity, and its colours (checked in the ops)
+  transitionIn: Transition.nullable().optional(),
+  transitionOut: TransitionOut.nullable().optional(),
+  adjust: Adjust.optional(),
+  grade: Grade.optional(),
+  blend: BlendMode.optional(),
+  mask: Mask.nullable().optional(),
+});
+export type NestClip = z.infer<typeof NestClip>;
+
+export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip, ShapeClip, AdjustmentClip, NestClip]);
 export type Clip = z.infer<typeof Clip>;
 
 export function isPlaceholder(clip: Clip): clip is PlaceholderClip {
@@ -487,15 +522,15 @@ export function isMediaClip<C extends Pick<Clip, "type">>(clip: C): clip is Extr
   return clip.type === "video" || clip.type === "image" || clip.type === "audio";
 }
 
-// A clip's slot, if it has one. Shapes and adjustment layers never do.
+// A clip's slot, if it has one. Shapes, adjustment layers and nests never do.
 export function slotOf(clip: Clip): Slot | undefined {
-  return clip.type === "shape" || clip.type === "adjustment" ? undefined : clip.slot;
+  return clip.type === "shape" || clip.type === "adjustment" || clip.type === "nest" ? undefined : clip.slot;
 }
 
-// A clip that takes colour changes, stylised effects and a grade: a video, an image or an adjustment layer.
-export type ColorClip = (MediaClip & { type: "video" | "image" }) | AdjustmentClip;
+// A clip that takes colour changes, stylised effects and a grade: a video, an image, an adjustment layer or a nest.
+export type ColorClip = (MediaClip & { type: "video" | "image" }) | AdjustmentClip | NestClip;
 export function isColorClip(clip: Clip | undefined): clip is ColorClip {
-  return !!clip && (clip.type === "video" || clip.type === "image" || clip.type === "adjustment");
+  return !!clip && (clip.type === "video" || clip.type === "image" || clip.type === "adjustment" || clip.type === "nest");
 }
 
 export const Track = z.object({

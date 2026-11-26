@@ -7,6 +7,7 @@ import { IMAGE_MAX_SIDE } from "@/lib/media/preview-spec";
 import type { AssetView } from "@/lib/media/types";
 import type { ResolvedSource } from "@/lib/render/compositor";
 import type { MediaClip, TimelineDoc } from "@/lib/timeline";
+import { expandNests } from "@/lib/timeline/nest";
 
 // The preview's video, audio and pictures: the browser elements that play the clips under the playhead, and those of
 // the clips that start soon, made to do what mediaWants says, and what the compositor draws from them.
@@ -66,7 +67,7 @@ const RETRY_MS = 10_000; // a read that failed is tried again when its clip is w
 export function upcomingWants(doc: TimelineDoc, frame: number): MediaWant[] {
   const ahead = frame + PRELOAD_SECONDS * doc.fps;
   const wants: MediaWant[] = [];
-  for (const track of doc.tracks) {
+  for (const track of expandNests(doc).tracks) {
     for (const clip of track.clips) {
       if (clip.start <= frame || clip.start > ahead) continue;
       wants.push(...mediaWants(doc, clip.start, { playing: false, rate: 1 }).filter((want) => want.clipId === clip.id));

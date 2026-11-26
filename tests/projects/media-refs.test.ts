@@ -96,6 +96,24 @@ describe("a project's media must exist", () => {
     await expect(send(removed.inverse, 2)).rejects.toMatchObject({ code: "INVALID" });
   });
 
+  it("3. a nest's clips are checked when the nest is added, and keep their files in use", async () => {
+    const { ctx, video, send } = await setup();
+    const nest = (held: Record<string, unknown>, id = "n1") => ({
+      id, type: "nest", start: 0, duration: 30, in: 0, volume: 1, transform: T,
+      tracks: [{ id: "v1", kind: "video", name: "Video 1", muted: false, hidden: false, locked: false, clips: [mediaClip(video.id, { id: "inner", type: "video", start: 0, duration: 30, ...held })] }],
+    });
+    // A file that is not in the library, and a clip that plays past the end of its file (375 frames).
+    await expect(send([add(nest({ assetId: "nope" }))], 0)).rejects.toMatchObject({ code: "INVALID" });
+    await expect(send([add(nest({ in: 360 }))], 0)).rejects.toMatchObject({ code: "TRIM_OUT_OF_RANGE", message: expect.stringContaining('clip "inner" would run past the end of its media') });
+    expect((await send([add(nest({}))], 0)).version).toBe(1);
+    // The file is in use, though no clip on a track of the project names it: only the nest's does.
+    await expect(removeAsset(ctx.deps, ctx.ada, video.id)).rejects.toMatchObject({ code: "CONFLICT" });
+    const removed = await send([{ op: "remove_clip", clipId: "n1" }], 1);
+    await expect(removeAsset(ctx.deps, ctx.ada, video.id)).resolves.toBeUndefined();
+    // And with its file gone, the nest cannot be brought back.
+    await expect(send(removed.inverse, 2)).rejects.toMatchObject({ code: "INVALID" });
+  });
+
   it("3. a deleted track comes back with its clips, even one whose media is removed", async () => {
     const { ctx, video, id, send } = await setup();
     await send([add(clip("video", video.id))], 0);
@@ -203,7 +221,7 @@ describe("a project's media must exist: more of each rule", () => {
     await made.send([add(clip("video", made.video.id, { duration: 375 }))], 0);
     await made.send([{ op: "trim_clip", clipId: "c1", edge: "end", to: duration }, { op: "update_clip", clipId: "c1", patch: { speed } }], 1); // the whole 375 frames, re-timed
     const clips = async () => (await getProject(made.ctx.db, made.ctx.ada, made.id))!.doc.tracks.flatMap((t) => t.clips);
-    const uses = async () => (await clips()).map((c) => ("in" in c ? c.in + Math.round(c.duration * c.speed) : 0));
+    const uses = async () => (await clips()).map((c) => ("speed" in c ? c.in + Math.round(c.duration * c.speed) : 0));
     return { ...made, clips, uses };
   };
 
@@ -254,7 +272,7 @@ describe("a project's media must exist: more of each rule", () => {
     expect((await send([{ op: "split_clip", clipId: "c1", at: 10, newClipId: "c2" }], 3)).version).toBe(4);
     const [, right] = await clips();
     expect(right).toMatchObject({ id: "c2", start: 10, duration: 35, in: 350 });
-    expect("in" in right && right.in + Math.round(right.duration * right.speed)).toBeLessThanOrEqual(375);
+    expect("speed" in right && right.in + Math.round(right.duration * right.speed)).toBeLessThanOrEqual(375);
     const shorter = await send([{ op: "trim_clip", clipId: "c2", edge: "end", to: 35 }], 4); // in by 10 frames
     expect(shorter.version).toBe(5);
     expect((await send(shorter.inverse, 5)).version).toBe(6);

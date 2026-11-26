@@ -4,6 +4,7 @@ import { soundingClips } from "@/lib/render/clip-sound";
 import type { MediaClip, TimelineDoc } from "@/lib/timeline";
 import { mayShow } from "@/lib/timeline/keyframes";
 import type { ClipMedia } from "./media-schedule";
+import { expandNests } from "@/lib/timeline/nest";
 
 // Which file each clip of an export draws from and sounds from: the one the editor plays, or why it must wait, or the
 // preview's placeholder. Runs on the page, before the worker starts.
@@ -28,7 +29,7 @@ export type ExportMediaPlan = {
 // hidden track or invisible for its whole length draws nothing; audio is not drawn.
 function drawnMediaClips(doc: TimelineDoc): MediaClip[] {
   const clips: MediaClip[] = [];
-  for (const track of doc.tracks) {
+  for (const track of expandNests(doc).tracks) {
     if (track.hidden) continue;
     for (const clip of track.clips) {
       if (clip.type !== "video" && clip.type !== "image") continue;

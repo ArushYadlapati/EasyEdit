@@ -415,19 +415,22 @@ export async function updateAsset(db: DB, actor: Actor, assetId: string, patch: 
   return viewOf(db, row);
 }
 
-// A project of the asset's space that is not deleted and has a clip of this asset on any of its tracks.
+// Where a project's or a template's clips are: on its tracks, and on the tracks of its nests.
+const CLIPS_OF_ASSET = sql.raw(`'$.tracks[*].clips[*] ? (@.assetId == $id || @.tracks[*].clips[*].assetId == $id)'`);
+
+// A project of the asset's space that is not deleted and has a clip of this asset on any of its tracks, or in a nest.
 const usedBy = (assetId: string, spaceId: string) =>
   and(
     eq(projects.spaceId, spaceId),
     isNull(projects.deletedAt),
-    sql`jsonb_path_exists(${projects.doc}, '$.tracks[*].clips[*] ? (@.assetId == $id)', jsonb_build_object('id', ${assetId}::text))`,
+    sql`jsonb_path_exists(${projects.doc}, ${CLIPS_OF_ASSET}, jsonb_build_object('id', ${assetId}::text))`,
   );
 
 // A template of the asset's space with a clip of this asset (an intro sting or logo that is not a slot).
 const usedByTemplate = (assetId: string, spaceId: string) =>
   and(
     eq(templates.spaceId, spaceId),
-    sql`jsonb_path_exists(${templates.doc}, '$.tracks[*].clips[*] ? (@.assetId == $id)', jsonb_build_object('id', ${assetId}::text))`,
+    sql`jsonb_path_exists(${templates.doc}, ${CLIPS_OF_ASSET}, jsonb_build_object('id', ${assetId}::text))`,
   );
 
 // A connection Google no longer honours counts as Drive's answer here too (the routes say so on the next request).

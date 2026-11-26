@@ -43,6 +43,7 @@ import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { cleanUpOps, duckOps, muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
+import { nestOps, unnestOps } from "./nest";
 import { freezeFrameOps, rampOps, reverseOps, type RampId } from "./speed";
 import { CROP_PROPS } from "@/lib/timeline/keyframes";
 import { addAdjustmentOps } from "./adjustment";
@@ -457,6 +458,25 @@ export function duplicateSelection(store: EditorStore): void {
   }
   const result = state.edit(placement.ops, "duplicate");
   if (result.ok) state.select(placement.clipIds);
+}
+
+// Makes the selected clips one nest, as one change, and selects it.
+export function nestSelection(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit || state.gesture !== null) return;
+  const nesting = nestOps(state.doc, state.selection.clipIds, () => nanoid(10));
+  if (!nesting.ok) return void state.notify(nesting.why === "nothing" ? "info" : "error", MESSAGES.nestRefused[nesting.why]);
+  if (state.edit(nesting.ops, "nest clips").ok) state.select([nesting.clipId]);
+}
+
+// Takes the one selected nest apart, as one change, and selects the clips that come out of it.
+export function unnestSelection(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit || state.gesture !== null) return;
+  const [clipId, ...rest] = state.selection.clipIds;
+  const unnesting = clipId === undefined || rest.length > 0 ? ({ ok: false, why: "not-a-nest" } as const) : unnestOps(state.doc, clipId, () => nanoid(10));
+  if (!unnesting.ok) return void state.notify(unnesting.why === "not-a-nest" ? "info" : "error", MESSAGES.unnestRefused[unnesting.why]);
+  if (state.edit(unnesting.ops, "unnest").ok) state.select(unnesting.clipIds);
 }
 
 // Turns the one selected clip into a speed ramp, in one change, and selects its pieces. A clip that cannot be one

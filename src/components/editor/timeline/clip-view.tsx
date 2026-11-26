@@ -14,7 +14,7 @@ import { SNAP_PX, clipEdges } from "@/lib/editor/snap";
 import { speedBadge } from "@/lib/editor/speed";
 import { posterFileFor } from "@/lib/media/playback";
 import type { Clip, MediaClip, TextStyle, Track } from "@/lib/timeline";
-import { isMediaClip, shapeName } from "@/lib/timeline";
+import { isMediaClip, nestName, shapeName } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
 import { useLibrary } from "../media/media-context";
 import { usePosterUrl } from "../media/use-poster";
@@ -31,14 +31,16 @@ const FILL: Record<Clip["type"], string> = {
   placeholder: "bg-ed-raised",
   shape: "bg-ed-clip-shape",
   adjustment: "bg-ed-clip-adjustment",
+  nest: "bg-ed-clip-nest",
 };
 
 // An empty slot's body: diagonal hatching in the line colour, so it reads as a hole to fill.
 const HATCH = "repeating-linear-gradient(135deg, transparent 0 5px, var(--ed-line-strong) 5px 6px)";
 
-const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot", shape: "Shape", adjustment: "Adjustment" };
+const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot", shape: "Shape", adjustment: "Adjustment", nest: "Nest" };
 
 const ADJUSTMENT_NAME = "Adjustment layer";
+
 
 const MIN_LABEL_PX = 24;
 const MIN_VOLUME_PX = 72; // a narrower clip keeps its room for the name
@@ -53,6 +55,7 @@ function clipLabel(clip: Clip, assetName: string | undefined): string {
   if (clip.type === "placeholder") return `Slot: ${clip.slot.name}`;
   if (clip.type === "shape") return shapeName(clip);
   if (clip.type === "adjustment") return ADJUSTMENT_NAME;
+  if (clip.type === "nest") return nestName(clip);
   return assetName ?? KIND[clip.type];
 }
 
@@ -62,6 +65,7 @@ function clipName(clip: Clip, assetName: string | undefined, fps: number): strin
   if (clip.type === "placeholder") return `${clipLabel(clip, undefined)}, ${range}`;
   if (clip.type === "shape") return `${shapeName(clip)} clip, ${range}`;
   if (clip.type === "adjustment") return `${ADJUSTMENT_NAME}, ${range}`;
+  if (clip.type === "nest") return `${nestName(clip)}, ${range}`;
   return assetName === undefined ? `${KIND[clip.type]} clip, ${range}` : `${KIND[clip.type]} clip "${assetName}", ${range}`;
 }
 

@@ -13,7 +13,7 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { gainLabel } from "@/lib/audio/loudness";
-import { applyLook, cleanUpSelection, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack, rampSelection } from "@/lib/editor/actions";
+import { applyLook, cleanUpSelection, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack, rampSelection, nestSelection, unnestSelection } from "@/lib/editor/actions";
 import { formatClock, trackToggles } from "@/lib/editor/geometry";
 import { NO_GRADE, isGraded } from "@/lib/editor/grade";
 import {
@@ -46,7 +46,7 @@ import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type OpInput, type ShapeClip, type TextClip, type Track } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, nestClips, nestLength, nestName, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type NestClip, type OpInput, type ShapeClip, type TextClip, type Track } from "@/lib/timeline";
 import { colorStretchOps, plainStretchOps, stretchLook, toggleStretchOps } from "@/lib/editor/text-spans";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
 import { CROP_PROPS, volumeAt } from "@/lib/timeline/keyframes";
@@ -70,7 +70,7 @@ import { useSyncSound } from "./use-sync-sound";
 const TEXT = "text-[13px] leading-5";
 const CAPTION = "text-xs font-medium text-ed-muted";
 
-const MEDIA_TITLE: Record<Exclude<Clip["type"], "text" | "placeholder" | "shape" | "adjustment">, string> = {
+const MEDIA_TITLE: Record<Exclude<Clip["type"], "text" | "placeholder" | "shape" | "adjustment" | "nest">, string> = {
   video: "Video clip",
   image: "Image",
   audio: "Audio clip",
@@ -769,6 +769,29 @@ function TimingSection({ clipId, slips }: { clipId: string; slips: boolean }) {
   );
 }
 
+// A nest: several clips as one. What it holds, how loud it is on top of its clips' own volumes, and taking it apart.
+function NestSection({ clip, canEdit }: { clip: NestClip; canEdit: boolean }) {
+  const store = useEditorStore();
+  const fps = useEditor((s) => s.doc.fps);
+  const held = nestClips(clip).length;
+  const seconds = (frames: number) => `${(frames / fps).toFixed(1)} s`;
+  return (
+    <>
+      <h2 className="text-sm leading-5 font-semibold text-ed-text">{nestName(clip)}</h2>
+      <Section title="Nest">
+        <Hint>
+          {`${held} ${held === 1 ? "clip" : "clips"} on ${clip.tracks.length} ${clip.tracks.length === 1 ? "track" : "tracks"}, drawn together as one picture. It plays ${seconds(clip.duration)} of the ${seconds(nestLength(clip))} it holds.`}
+        </Hint>
+        <NumberField clipId={clip.id} field="volume" label="Volume" suffix="%" min={0} max={VOLUME_MAX * 100} step={5} />
+        <Button data-edit-control className="self-start" disabled={!canEdit} onClick={() => unnestSelection(store)}>
+          Unnest
+        </Button>
+        <Hint>Unnest puts its clips back on the timeline where they play. What is set on the nest itself goes with it.</Hint>
+      </Section>
+    </>
+  );
+}
+
 // Footage that came in already edited: find where it cuts from one shot to the next, and split the clip there.
 function ScenesSection({ clipId }: { clipId: string }) {
   const canEdit = useEditor((s) => s.canEdit);
@@ -960,10 +983,10 @@ function ColorSection({ clip }: { clip: ColorClip }) {
         />
       )}
       {/* A green screen: one colour of the picture goes see-through, so what is under the clip shows there. */}
-      {clip.type !== "adjustment" && (
+      {(clip.type === "video" || clip.type === "image") && (
         <Toggle label="Green screen" data-edit-control checked={!!clip.chroma} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "chroma", on ? "on" : "off")} />
       )}
-      {clip.type !== "adjustment" && clip.chroma && (
+      {(clip.type === "video" || clip.type === "image") && clip.chroma && (
         <>
           <ColorField clip={clip} canEdit={canEdit} field="chromaColor" label="Color to remove" />
           <div className="grid grid-cols-2 gap-2">
@@ -1142,6 +1165,12 @@ function ManyClips({ count }: { count: number }) {
     <>
       <p className={cx(TEXT, "font-medium text-ed-text")}>{count} clips selected</p>
       <Hint>Select one clip to edit it.</Hint>
+      <Section title="Nest">
+        <Hint>Make these clips one, to move, trim, fade and color them as a whole.</Hint>
+        <Button data-edit-control className="self-start" disabled={!canEdit} onClick={() => nestSelection(store)}>
+          Nest clips
+        </Button>
+      </Section>
       {sounding > 1 && (
         <Section title="Sound">
           <Hint>Make these clips equally loud, or clean up the voice on each.</Hint>
@@ -1218,6 +1247,8 @@ function ClipInspector({ clip }: { clip: Clip }) {
         <h2 className="text-sm leading-5 font-semibold text-ed-text">Slot: {clip.slot.name}</h2>
       ) : clip.type === "shape" ? (
         <ShapeSection clip={clip} canEdit={canEdit} />
+      ) : clip.type === "nest" ? (
+        <NestSection clip={clip} canEdit={canEdit} />
       ) : (
         <>
           <h2 className="text-sm leading-5 font-semibold text-ed-text">{MEDIA_TITLE[clip.type]}</h2>
@@ -1225,7 +1256,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
         </>
       )}
       {drawsOnCanvas && <PositionSection clipId={clip.id} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
-      {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
+      {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && clip.type !== "nest" && <CropSection clipId={clip.id} />}
       {isColorClip(clip) && <ColorSection clip={clip} />}
       {isColorClip(clip) && <StylizeSection clip={clip} />}
       {isColorClip(clip) && <MaskSection clip={clip} />}

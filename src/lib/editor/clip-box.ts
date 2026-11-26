@@ -25,8 +25,8 @@ export function clipRects(doc: TimelineDoc, clip: Clip, sizer: Sizer): { full: L
   const full =
     clip.type === "text"
       ? textRect(clip, doc.width, (s) => sizer.measure(clip, s), sizer.measureSpan ? (s, span) => sizer.measureSpan!(clip, s, span) : undefined)
-      : clip.type === "placeholder"
-        ? centred(doc) // an empty slot is as large as the frame before its transform
+      : clip.type === "placeholder" || clip.type === "nest"
+        ? centred(doc) // an empty slot, and a nest's picture, is as large as the frame before its transform
         : clip.type === "shape"
           ? shapeBox(clip) // a shape takes no crop
           : centred(mediaSize(doc, clip, sizer.source(clip)));

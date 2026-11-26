@@ -6,6 +6,7 @@ export const MOVE_MESSAGES = {
   noStorageAskAdmin: (space: string) => `${space} has no storage yet. Ask an admin of ${space} to set it up.`,
   storageBroken: (space: string) => `${space}'s Google Drive needs reconnecting before anything can be copied into it.`,
   notReady: (name: string) => `"${name}" hasn't finished uploading yet. Try again once it has.`,
+  hasNests: "This project has nested clips, which can't move between spaces yet. Unnest them, then try again.",
   onAComputer: (name: string) => `"${name}" is kept in a folder on a computer, not in Google Drive, so it can't move with the project. Upload it to Drive, or take it off the timeline, then try again.`,
   notInProject: "That media is not used by this project.",
   gone: "This move was canceled or has already finished.",

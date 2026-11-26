@@ -4,6 +4,7 @@ import { graphemes } from "@/lib/text";
 import type { TextClip, TimelineDoc } from "@/lib/timeline";
 import { captionStyleOf } from "@/lib/timeline/captions";
 import { mayShow } from "@/lib/timeline/keyframes";
+import { expandNests } from "@/lib/timeline/nest";
 
 // The fonts an export needs: the page's @font-face rules turned into faces the worker can build, the font string
 // for each family the text uses, and one measured line per font so the worker can prove it draws the same text.
@@ -110,7 +111,7 @@ export function strictFontRequest(request: FontRequest, rules: FontRule[]): Font
 // The text clips that draw: on tracks that are shown, and visible at some point (a fade in from opacity 0 counts).
 function drawnTextClips(doc: TimelineDoc): TextClip[] {
   const clips: TextClip[] = [];
-  for (const track of doc.tracks) {
+  for (const track of expandNests(doc).tracks) {
     if (track.hidden) continue;
     for (const clip of track.clips) if (clip.type === "text" && mayShow(clip)) clips.push(clip);
   }

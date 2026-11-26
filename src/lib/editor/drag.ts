@@ -1,5 +1,5 @@
-import type { OpInput, TimelineDoc } from "@/lib/timeline";
-import { isMediaClip } from "@/lib/timeline";
+import type { NestClip, OpInput, TimelineDoc } from "@/lib/timeline";
+import { isMediaClip, isNest, nestLength } from "@/lib/timeline";
 import { moveOps } from "./commands";
 import { trimBounds, trimReach } from "./media-clips";
 import { clipEdges, snap } from "./snap";
@@ -57,7 +57,7 @@ export function beginMove(doc: TimelineDoc, clipId: string, selection: string[],
   const drag: Drag = { type: "move", grabFrame, primary: clipId, origins };
   if (origins.length === 1 && lengthOf) {
     const { prev, next } = touchingClips(doc, grabbed);
-    const bounds = (clip: typeof prev) => (clip && isMediaClip(clip) ? trimBounds(clip, lengthOf(clip.assetId)) : undefined);
+    const bounds = (clip: typeof prev) => (clip && isMediaClip(clip) ? trimBounds(clip, lengthOf(clip.assetId)) : isNest(clip) ? nestBounds(clip) : undefined);
     drag.reach = { prevMaxEnd: bounds(prev)?.maxEnd, nextMinStart: bounds(next)?.minStart };
   }
   return drag;
@@ -104,9 +104,15 @@ export function beginTrim(
   if (origins.length === 0) return null;
   const clip = doc.tracks.find((t) => t.id === origins[0].trackId)?.clips.find((c) => c.id === clipId);
   const length = clip && isMediaClip(clip) && lengthOf ? lengthOf(clip.assetId) : undefined;
-  const bounds = clip && isMediaClip(clip) ? trimBounds(clip, length) : undefined;
-  const headRoom = clip && isMediaClip(clip) ? trimReach(clip, length)?.back : undefined;
+  // A nest is trimmed through its own timeline, which is as long as what it holds.
+  const bounds = clip && isMediaClip(clip) ? trimBounds(clip, length) : isNest(clip) ? nestBounds(clip) : undefined;
+  const headRoom = clip && isMediaClip(clip) ? trimReach(clip, length)?.back : isNest(clip) ? clip.in : undefined;
   return { type: "trim", edge, grabFrame, primary: clipId, origins: [bounds ? { ...origins[0], ...bounds, headRoom } : origins[0]] };
+}
+
+// How far a nest's edges can go before what it holds runs out: back by what it has skipped, on to its end.
+function nestBounds(nest: NestClip): { minStart: number; maxEnd: number } {
+  return { minStart: Math.max(0, nest.start - nest.in), maxEnd: nest.start + (nestLength(nest) - nest.in) };
 }
 
 function existingClipIds(doc: TimelineDoc): Set<string> {

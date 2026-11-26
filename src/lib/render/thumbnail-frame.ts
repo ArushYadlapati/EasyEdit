@@ -1,5 +1,6 @@
 import type { Clip, TimelineDoc } from "@/lib/timeline";
 import { mayShow } from "@/lib/timeline/keyframes";
+import { expandNests } from "@/lib/timeline/nest";
 
 // A clip that puts something in the picture: a video, image or text clip visible at some point (a fade in from
 // opacity 0 counts), and text that is not blank.
@@ -13,7 +14,7 @@ function shows(clip: Clip): boolean {
 // order. Frame 0 when nothing shows.
 export function thumbnailFrame(doc: TimelineDoc): number {
   let first: Clip | null = null;
-  for (const track of doc.tracks) {
+  for (const track of expandNests(doc).tracks) {
     if (track.hidden) continue;
     for (const clip of track.clips) {
       if (shows(clip) && (first === null || clip.start < first.start)) first = clip;

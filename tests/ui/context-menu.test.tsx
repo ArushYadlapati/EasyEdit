@@ -356,7 +356,7 @@ describe("the timeline's right-click menus", () => {
     const { clip } = setup();
     expect(fireEvent.contextMenu(clip("x2"), { clientX: 300, clientY: 200, button: 2 })).toBe(false);
     const menu = screen.getByRole("menu", { name: "Clip actions" });
-    expect(labels()).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Edit text", "Crop", "Reset crop", "Delete"]);
+    expect(labels()).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Edit text", "Crop", "Reset crop", "Nest", "Delete"]);
     expect(document.activeElement).toBe(screen.getAllByRole("menuitem")[0]);
     // Hints follow the keys.
     expect(menu.querySelector("[data-shortcut]")?.textContent).toBe("Ctrl+X");

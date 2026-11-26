@@ -15,7 +15,7 @@ import { clipRects, type Sizer } from "./clip-box";
 export type CanvasItem = {
   clipId: string;
   trackId: string;
-  type: "video" | "image" | "text" | "placeholder" | "shape";
+  type: "video" | "image" | "text" | "placeholder" | "shape" | "nest";
   slot?: string; // an empty slot's name
   shape?: ShapeClip; // a shape's clip, which picking and an arrow's end handles read
   locked: boolean;

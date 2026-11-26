@@ -140,6 +140,21 @@ describe("copies", () => {
     expect(checkNew).toHaveBeenCalledTimes(2);
   });
 
+  it("does not start for a project with a nest: its clips could not be pointed at their copies", async () => {
+    const x = await world();
+    const [project] = await x.w.db.select().from(projects).where(eq(projects.id, "p1"));
+    const doc = structuredClone(project.doc);
+    const held = doc.tracks.flatMap((t) => t.clips).find((c) => c.type === "video")!;
+    const home = doc.tracks.find((t) => t.clips.includes(held))!;
+    home.clips = home.clips.map((c) =>
+      c !== held
+        ? c
+        : ({ id: "n1", type: "nest", start: c.start, duration: c.duration, in: 0, volume: 1, transform: c.transform, tracks: [{ id: "v", kind: "video", name: "V", muted: false, hidden: false, locked: false, clips: [{ ...c, start: 0 }] }] } as never),
+    );
+    await x.w.db.update(projects).set({ doc }).where(eq(projects.id, "p1"));
+    await fails(startMove(x.deps, x.actor, { projectId: "p1", toSpaceId: x.w.personal }), "INVALID", 400, MOVE_MESSAGES.hasNests);
+  });
+
   it("refuses an asset the project does not use", async () => {
     const x = await started();
     const other = await insertAsset(x.w.db, { name: "Other" });

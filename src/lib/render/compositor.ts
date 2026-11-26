@@ -2,7 +2,8 @@ import { captionsShow } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
 import { drawCaptions } from "./captions";
 import { drawShape } from "./shapes";
-import type { AdjustmentClip, Clip, Crop, Grade, Mask, MediaClip, TextClip, TextSpan, TimelineDoc, Track, Transform } from "@/lib/timeline";
+import type { AdjustmentClip, Clip, Crop, Grade, Mask, MediaClip, NestClip, TextClip, TextSpan, TimelineDoc, Track, Transform } from "@/lib/timeline";
+import { nestFrame, nestTracks } from "@/lib/timeline/nest";
 import { adjustAt, effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
 import { STYLE_KEYS, TONE_KEYS, type FullAdjust } from "@/lib/timeline/adjust";
@@ -18,7 +19,7 @@ export type { LocalRect };
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type ResolvedSource = { image: CanvasImageSource; width: number; height: number };
-export type LayerUse = "tone" | "finish" | "under" | "mask";
+export type LayerUse = "tone" | "finish" | "under" | "mask" | "nest";
 export type DrawOptions = {
   // The seam where media plugs in. clip: the video or image clip being drawn. frame: the timeline frame being drawn.
   resolveSource?: (clip: MediaClip, frame: number) => ResolvedSource | null;
@@ -30,7 +31,8 @@ export type DrawOptions = {
   // A context on a canvas of this size for a picture that is finished on its own before it joins the frame, the
   // same one each time for the same use: "tone" for a picture being warmed, cooled or vignetted, "finish" for one on
   // its way to the graphics card, "under" for the copy of the frame an adjustment layer works on, "mask" for a
-  // picture being cut to its mask. Default: an OffscreenCanvas; null where there is none.
+  // picture being cut to its mask, "nest" for a nest's clips drawn together before the nest is placed. Default: an
+  // OffscreenCanvas; null where there is none.
   makeLayer?: (width: number, height: number, use: LayerUse) => Ctx2D | null;
   // What grades a picture and draws its stylised effects (finish-gl.ts). Default: one on the graphics card, shared;
   // null draws every picture without them.
@@ -708,6 +710,8 @@ function drawClip(
   resolveFont: (family: string) => string,
 ): void {
   const { t } = draw;
+  // A nest's clips are drawn where they sit on the frame, before the nest itself is placed.
+  const frameTransform = clip.type === "nest" ? ctx.getTransform() : null;
   // A keyed crop is part of the transform at this frame: the clip is drawn as if it were its own.
   const shown = t.crop === clip.transform.crop ? clip : ({ ...clip, transform: { ...clip.transform, crop: t.crop } } as Clip);
   ctx.save();
@@ -721,14 +725,43 @@ function drawClip(
   if (shown.type === "text") drawText(ctx, doc, shown, resolveFont, draw.text);
   else if (shown.type === "shape") drawShape(ctx, shown);
   else if (shown.type === "video" || shown.type === "image") drawMedia(ctx, doc, shown as MediaClip & { type: "video" | "image" }, frame, options);
+  else if (shown.type === "nest" && frameTransform) drawNest(ctx, doc, shown, frame, options, frameTransform);
   ctx.restore();
+}
+
+// A nest: its tracks are drawn together, at the frame of its own timeline that shows now, on a layer of their own
+// with nothing behind them; that layer is then the nest's picture, and is placed, faded, coloured and masked as any
+// picture is. Its clips' media is asked for under their nested names (nestTracks). With no layer to draw on, the
+// nest draws nothing.
+function drawNest(ctx: Ctx2D, doc: TimelineDoc, nest: NestClip, frame: number, options: DrawOptions, frameTransform: DOMMatrix): void {
+  const { width, height } = ctx.canvas;
+  const layer = (options.makeLayer ?? defaultLayer)(width, height, "nest");
+  if (!layer) return;
+  layer.save();
+  layer.setTransform(1, 0, 0, 1, 0, 0);
+  layer.clearRect(0, 0, width, height);
+  layer.setTransform(frameTransform);
+  layer.globalAlpha = 1;
+  layer.globalCompositeOperation = "source-over";
+  const inner: TimelineDoc = { ...doc, tracks: nestTracks(nest), captions: undefined };
+  drawTracks(layer, inner, nestFrame(nest, frame), { ...options, hideClipId: undefined }, options.resolveFont ?? defaultResolveFont);
+  layer.restore();
+  const picture: ResolvedSource = { image: layer.canvas as CanvasImageSource, width, height };
+  // From here on it is a picture like any other: one that fills the frame.
+  const asPicture = { ...nest, type: "image", assetId: nest.id, in: 0, speed: 1, volume: 0 } as unknown as MediaClip & { type: "image" };
+  drawMedia(ctx, doc, asPicture, frame, { ...options, resolveSource: () => picture });
 }
 
 // Draws in project pixels and never reads the canvas size: a caller that wants a smaller canvas scales the context first.
 export function drawFrame(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: DrawOptions = {}): void {
-  const resolveFont = options.resolveFont ?? defaultResolveFont;
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, doc.width, doc.height);
+  drawTracks(ctx, doc, frame, options, options.resolveFont ?? defaultResolveFont);
+}
+
+// Everything a project's tracks draw at a frame, over whatever the context holds: the frame's black for a project,
+// nothing for a nest's own tracks.
+function drawTracks(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: DrawOptions, resolveFont: (family: string) => string): void {
   // Captions sit at their track's place in the stack: after the clips on tracks before it, before those after it.
   const captionAt = captionsShow(doc) ? doc.tracks.findIndex((t) => t.kind === "caption") : -1;
   let captionsDrawn = captionAt < 0;

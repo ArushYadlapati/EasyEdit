@@ -2,7 +2,7 @@
 
 import { useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
-import { armCrop, editTextInPlace, resetCrop } from "@/lib/editor/actions";
+import { armCrop, editTextInPlace, nestSelection, resetCrop, unnestSelection } from "@/lib/editor/actions";
 import { clipMenu, rightClickEntries } from "@/lib/editor/menus";
 import { useEditorStore } from "./context";
 import { useToMenuItems } from "./menu-items";
@@ -40,6 +40,8 @@ export function useClipMenu(): (e: ReactMouseEvent, clipId: string, returnFocus?
           if (id === "edit-text") return editTextInPlace(store, clipId);
           if (id === "crop") return armCrop(store, clipId, isMac);
           if (id === "reset-crop") return resetCrop(store, clipId);
+          if (id === "nest") return nestSelection(store);
+          if (id === "unnest") return unnestSelection(store);
           const command = entries.find((entry) => entry.id === id)?.command;
           if (command) run(command);
         },

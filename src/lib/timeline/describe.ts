@@ -4,10 +4,11 @@ import { ADJUST_KEYS, isAdjusted } from "./adjust";
 import { captionStyleOf } from "./captions";
 import { NO_STRETCH, docDuration, isCropped, safeAreaOf, stretchOf } from "./presets";
 import { KEYFRAME_PROPS } from "./keyframes";
+import { nestClips, nestLength } from "./nest";
 import { shapeToolOf } from "./shapes";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
 import { isColorClip } from "./types";
-import type { Clip, Grade, Keyframe, KeyframeProp, MediaClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
+import type { Clip, Grade, Keyframe, KeyframeProp, MediaClip, NestClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -134,6 +135,8 @@ function describeClip(clip: Clip, fps: number): string {
   }
   // An adjustment layer changes everything under it; its opacity is how much.
   if (clip.type === "adjustment") return `  ${clip.id}  adjustment  ${range}  amount=${clip.transform.opacity}${describeEffects(clip, fps, false)}`;
+  // A nest is several clips as one; what it holds is listed with the project's details.
+  if (clip.type === "nest") return `  ${clip.id}  nest  ${range}  ${nestSummary(clip, fps)}${describeEffects(clip, fps, false)}`;
   return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${fadeSuffix(clip)}${captionsSuffix(clip)}${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
 }
 
@@ -163,6 +166,13 @@ function describeTextLook(style: TextStyle): string {
   return parts.length ? `  ${parts.join(" ")}` : "";
 }
 
+// What a nest holds and plays, in a few words: how many clips, the part of its own timeline it plays, how loud.
+function nestSummary(clip: NestClip, fps: number): string {
+  const count = nestClips(clip).length;
+  const name = clip.name ? `"${escapeQuoted(clip.name)}" ` : "";
+  return `${name}${count} ${count === 1 ? "clip" : "clips"} in=${framesToSeconds(clip.in, fps)}s of ${framesToSeconds(nestLength(clip), fps)}s vol=${clip.volume}`;
+}
+
 function describeClipInDetail(clip: Clip, fps: number): string {
   const range = `${framesToSeconds(clip.start, fps)}–${framesToSeconds(clip.start + clip.duration, fps)}s`;
   const frames = `frames ${clip.start}–${clip.start + clip.duration}`;
@@ -184,6 +194,11 @@ function describeClipInDetail(clip: Clip, fps: number): string {
   }
   if (clip.type === "shape") return `${head}  ${describeShape(clip)}  x=${t.x} y=${t.y}` + describeTransformChanges(t, clip.type) + describeEffects(clip, fps, true);
   if (clip.type === "adjustment") return `${head}  amount=${t.opacity}` + describeEffects(clip, fps, true);
+  if (clip.type === "nest") {
+    // Its own line, then what it holds, each clip as it is on the nest's own timeline (which starts at 0).
+    const inner = clip.tracks.flatMap((track) => track.clips.map((held) => `\n      in ${track.kind} "${track.name}": ${describeClipInDetail(held, fps).trimStart()}`));
+    return `${head}  ${nestSummary(clip, fps)}  x=${t.x} y=${t.y}` + describeTransformChanges(t, clip.type) + describeEffects(clip, fps, true) + inner.join("");
+  }
   return (
     `${head}  asset="${escapeQuoted(clip.assetId)}" in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${fadeSuffix(clip)}` +
     `  x=${t.x} y=${t.y} fit=${t.fit}` +

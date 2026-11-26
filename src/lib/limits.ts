@@ -1,6 +1,7 @@
 export const LIMITS = {
   projectNameChars: 100,
   textClipChars: 2000,
+  nestNameChars: 80,
   textSpansPerClip: 40, // stretches of one text clip with a look of their own
   trackNameChars: 100,
   slotHintChars: 200,
@@ -9,6 +10,7 @@ export const LIMITS = {
   markersPerProject: 200,
   markerNameChars: 80,
   clipsPerTrack: 1000,
+  clipsPerNest: 200, // clips inside one nest, over all its tracks
   keyframesPerProperty: 100,
   shapeStrokeMax: 200, // a shape's outline or an arrow's line, in project pixels
   shapeSideMax: 16_384, // a shape's width, height or an arrow's length, in project pixels

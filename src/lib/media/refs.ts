@@ -1,5 +1,5 @@
-import type { Clip, Op, TimelineDoc } from "@/lib/timeline";
-import { isMediaClip } from "@/lib/timeline";
+import type { Clip, MediaClip, Op, TimelineDoc } from "@/lib/timeline";
+import { isMediaClip, isNest, nestClips } from "@/lib/timeline";
 import { fitsMedia } from "@/lib/timeline/speed";
 import { sourceFrames } from "./rules";
 import type { AssetFact } from "./service";
@@ -34,6 +34,13 @@ function namedAsset(op: Op): { assetId: string; clipId: string } | null {
   if (op.op === "add_clip" && isMediaClip(op.clip)) return { assetId: op.clip.assetId, clipId: op.clip.id };
   if (op.op === "update_clip" && typeof op.patch.assetId === "string") return { assetId: op.patch.assetId, clipId: op.clipId };
   return null;
+}
+
+// The media clips a new nest brings with it: each names an asset as a clip added on its own would. What a nest holds
+// is set once, when it is added, so this is the only place its clips are checked.
+function nestedMedia(op: Op): MediaClip[] {
+  if (op.op !== "add_clip" || !isNest(op.clip)) return [];
+  return nestClips(op.clip).filter((clip): clip is MediaClip => isMediaClip(clip));
 }
 
 // The clip whose use of its media each op can change, or null, by op index. A split copies what earlier ops of the
@@ -71,6 +78,7 @@ export function assetIdsToCheck(after: TimelineDoc, ops: Op[]): string[] {
   ops.forEach((op, opIndex) => {
     const named = namedAsset(op);
     if (named) ids.add(named.assetId);
+    for (const held of nestedMedia(op)) ids.add(held.assetId);
     const clip = touches[opIndex] === null ? undefined : clips.get(touches[opIndex]);
     if (clip && isMediaClip(clip)) ids.add(clip.assetId);
   });
@@ -112,6 +120,17 @@ export function findMediaProblem(after: TimelineDoc, ops: Op[], facts: Map<strin
       const code = assetTrouble(fact, clipType);
       if (code === "wrong_kind") return { code, ...named, opIndex, assetKind: fact?.kind, clipType };
       if (code) return { code, ...named, opIndex };
+    }
+    // A nest's clips: each one's asset, and that it does not play past the end of it.
+    for (const held of nestedMedia(op)) {
+      const fact = facts.get(held.assetId);
+      const code = assetTrouble(fact, held.type);
+      if (code === "wrong_kind") return { code, assetId: held.assetId, clipId: held.id, opIndex, assetKind: fact?.kind, clipType: held.type };
+      if (code) return { code, assetId: held.assetId, clipId: held.id, opIndex };
+      const durationMs = fact?.durationMs ?? null;
+      if (held.type === "image" || durationMs === null) continue;
+      const frames = sourceFrames(durationMs, after.fps);
+      if (!fitsMedia(held, frames)) return { code: "past_end", assetId: held.assetId, opIndex, clipId: held.id, frames };
     }
 
     const clipId = touches[opIndex];

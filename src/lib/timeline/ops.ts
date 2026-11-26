@@ -19,6 +19,7 @@ import {
   LutFields,
   Marker,
   MediaClip,
+  NestClip,
   PlaceholderClip,
   SafeArea,
   ShapeClipFields,
@@ -76,6 +77,7 @@ const ClipExpect = z
     animationOut: TextClip.shape.animationOut,
     emphasis: TextClip.shape.emphasis,
     spans: TextClip.shape.spans,
+    name: NestClip.shape.name,
     shape: ShapeClipFields.shape.shape,
     width: ShapeClipFields.shape.width,
     height: ShapeClipFields.shape.height,
@@ -99,6 +101,7 @@ const ClipInput = z.discriminatedUnion("type", [
   PlaceholderClip.extend(optionalId),
   ShapeClipFields.extend(optionalId).superRefine(shapeRules),
   AdjustmentClip.extend(optionalId),
+  NestClip.extend(optionalId),
 ]);
 
 const newTrack = { kind: TrackKind, name: TrackName };

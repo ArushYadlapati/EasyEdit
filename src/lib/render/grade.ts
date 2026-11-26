@@ -2,6 +2,7 @@ import { readLut } from "@/lib/color/cube";
 import { curveTable, isBaked, isWheelSet, wheelNumbers, type Baked, type Lut } from "@/lib/color/grade";
 import { STYLE_KEYS } from "@/lib/timeline/adjust";
 import type { Grade, Lut as DocLut, TimelineDoc } from "@/lib/timeline/types";
+import { expandNests } from "@/lib/timeline/nest";
 
 // A clip's grade made ready to draw: the wheels as numbers, the curves as a table and its look-up table unpacked.
 // Each is worked out once and kept for as long as the clip's grade and the project's tables are the same objects, so
@@ -43,9 +44,10 @@ export function bakeGrade(grade: Grade | undefined, luts: readonly DocLut[] | un
 // Whether any picture in the project is graded or stylised, at any time: such a project cannot be drawn right
 // without the graphics card.
 export function needsFinisher(doc: TimelineDoc): boolean {
-  for (const track of doc.tracks) {
+  // A nest's own grade counts, and so does that of every clip in it.
+  for (const track of expandNests(doc).tracks) {
     for (const clip of track.clips) {
-      if (clip.type !== "video" && clip.type !== "image" && clip.type !== "adjustment") continue;
+      if (clip.type !== "video" && clip.type !== "image" && clip.type !== "adjustment" && clip.type !== "nest") continue;
       if (bakeGrade(clip.grade, doc.luts)) return true;
       if (STYLE_KEYS.some((key) => (clip.adjust?.[key] ?? 0) !== 0 || clip.keyframes?.[key]?.some((k) => k.value !== 0))) return true;
     }

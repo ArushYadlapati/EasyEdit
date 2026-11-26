@@ -427,6 +427,8 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
       return (clip.duration / fps).toFixed(2);
     case "volume":
       // A keyframed volume shows what it is at the playhead.
+      // A nest's volume is one number, on top of each of its clips' own.
+      if (saved.type === "nest") return String(Math.round(saved.volume * 100));
       return saved.type === "video" || saved.type === "audio" ? String(Math.round((ctx.playhead === undefined ? saved.volume : volumeAt(saved, clipFrame(saved, ctx.playhead))) * 100)) : "";
     case "fadeIn":
     case "fadeOut":
@@ -794,8 +796,9 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
     case "volume": {
       // Whole percents, from silent to VOLUME_MAX times as recorded.
       const percent = parseNumber(raw);
-      if (percent === null || (clip.type !== "video" && clip.type !== "audio")) return null;
+      if (percent === null || (clip.type !== "video" && clip.type !== "audio" && clip.type !== "nest")) return null;
       const volume = clamp(Math.round(percent), 0, VOLUME_MAX * 100) / 100;
+      if (clip.type === "nest") return volume === clip.volume ? [] : update({ volume });
       if (playhead === undefined || saved.type === "image") return volume === clip.volume ? [] : update({ volume });
       // A keyframed volume is keyed at the playhead, as a keyframed position is.
       const frame = clipFrame(saved, playhead);

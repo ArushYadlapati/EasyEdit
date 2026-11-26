@@ -61,8 +61,8 @@ describe("timeline presets", () => {
 
   it("track accept rules", () => {
     expect(TRACK_ACCEPTS).toEqual({
-      video: ["video", "image", "adjustment"],
-      overlay: ["image", "video", "adjustment"],
+      video: ["video", "image", "adjustment", "nest"],
+      overlay: ["image", "video", "adjustment", "nest"],
       text: ["text"],
       caption: [],
       audio: ["audio"],

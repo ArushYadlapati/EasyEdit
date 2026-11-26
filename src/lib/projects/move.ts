@@ -24,6 +24,7 @@ import type { Op, TimelineDoc } from "@/lib/timeline";
 import { isMediaClip } from "@/lib/timeline";
 import { MOVE_MESSAGES } from "./move-messages";
 import { MAX_WRITE_ATTEMPTS } from "./service";
+import { everyClip, hasNests } from "@/lib/timeline/nest";
 
 export type MoveRow = typeof projectMove.$inferSelect;
 
@@ -52,10 +53,11 @@ export type MovePlan = { moveId: string; projectId: string; to: { id: string; na
 const notFound = () => new ServiceError("NOT_FOUND", 404, "Not found");
 const goneMove = () => new ServiceError("NOT_FOUND", 404, MOVE_MESSAGES.gone);
 
-// Every media clip's asset id, each once, in track and clip order. Text clips and empty slots have none.
+// Every media clip's asset id, each once, in track and clip order, a nest's clips after the nest. Text clips and
+// empty slots have none.
 export function usedAssetIds(doc: TimelineDoc): string[] {
   const ids = new Set<string>();
-  for (const track of doc.tracks) for (const clip of track.clips) if (isMediaClip(clip)) ids.add(clip.assetId);
+  for (const clip of everyClip(doc)) if (isMediaClip(clip)) ids.add(clip.assetId);
   return [...ids];
 }
 
@@ -168,6 +170,10 @@ export async function startMove(deps: MoveDeps, actor: Actor, input: { projectId
     if (!(error instanceof ConnectionBrokenError)) throw error;
     throw new ServiceError("NO_STORAGE", 409, MOVE_MESSAGES.storageBroken(to.name));
   }
+
+  // A move points each clip at the copy of its file with an edit of that clip, and a nest's clips cannot be edited
+  // where they are: a project with a nest is taken apart first.
+  if (hasNests(project.doc)) throw new ServiceError("INVALID", 400, MOVE_MESSAGES.hasNests);
 
   // Every asset the project uses is in this space and finished.
   const ids = usedAssetIds(project.doc);

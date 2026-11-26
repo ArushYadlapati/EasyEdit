@@ -39,7 +39,7 @@ export type ClipKind = Clip["type"];
 // Says what kind of clip an id is, when that is known.
 export type KindOf = (clipId: string) => ClipKind | undefined;
 
-const KIND_NOUN: Record<ClipKind, string> = { text: "text", video: "a video clip", image: "an image", audio: "an audio clip", placeholder: "an empty slot", shape: "a shape", adjustment: "an adjustment layer" };
+const KIND_NOUN: Record<ClipKind, string> = { text: "text", video: "a video clip", image: "an image", audio: "an audio clip", placeholder: "an empty slot", shape: "a shape", adjustment: "an adjustment layer", nest: "a nest" };
 const nounFor = (kind: ClipKind | undefined) => (kind ? KIND_NOUN[kind] : "a clip");
 
 // What an update_clip patch touches, in the order it is listed.

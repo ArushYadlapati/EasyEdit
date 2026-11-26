@@ -3,6 +3,7 @@ import { clipFadeAt, fxOf, gainAt, panOf, playsInPreview } from "@/lib/render/cl
 import { tailAt } from "@/lib/render/compositor";
 import { sourceSeconds } from "@/lib/render/source-time";
 import type { MediaClip, TimelineDoc, Track } from "@/lib/timeline";
+import { expandNests } from "@/lib/timeline/nest";
 
 // What the preview's media should be doing at a frame: which clips show and sound, at what moment of their media,
 // how fast and how loud. Pure, so the pool that drives the browser's elements only has to follow it.
@@ -40,7 +41,8 @@ export function mediaWants(doc: TimelineDoc, frame: number, play: { playing: boo
       ...(fxOf(clip) && { fx: fxOf(clip)! }),
     };
   };
-  for (const track of doc.tracks) {
+  // A nest's clips play as clips of their own, where the nest plays them.
+  for (const track of expandNests(doc).tracks) {
     for (const clip of track.clips) {
       if (!playsInPreview(track, clip) || !under(clip, frame)) continue;
       const tail = tailAt(track, clip, frame);
@@ -55,7 +57,7 @@ export function mediaWants(doc: TimelineDoc, frame: number, play: { playing: boo
 export function upcomingAssetIds(doc: TimelineDoc, frame: number): string[] {
   const ahead = frame + PRELOAD_SECONDS * doc.fps;
   const ids = new Set<string>();
-  for (const track of doc.tracks) {
+  for (const track of expandNests(doc).tracks) {
     for (const clip of track.clips) {
       if (playsInPreview(track, clip) && clip.start <= ahead && frame < clip.start + clip.duration) ids.add(clip.assetId);
     }

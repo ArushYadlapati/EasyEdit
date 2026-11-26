@@ -1,8 +1,9 @@
 import { LIMITS } from "@/lib/limits";
-import { docDuration, isCropped, type MediaClip, type TrackKind } from "@/lib/timeline";
+import { docDuration, isCropped, isNest, type MediaClip, type TrackKind } from "@/lib/timeline";
 import { addAdjustmentOps } from "./adjustment";
 import { duplicateTrackOps, reorderTrackOps, splitOps } from "./commands";
 import { soundClipsOf } from "./sound";
+import { nestOps } from "./nest";
 import { freezeFrameOps, reverseOps } from "./speed";
 import { zoomLimits } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
@@ -162,7 +163,7 @@ export function editBlocked(state: EditorState): boolean {
 }
 
 export type ClipMenuId =
-  | "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "mute-clip" | "separate-audio" | "reverse-clip" | "freeze-frame" | "delete";
+  | "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "mute-clip" | "separate-audio" | "reverse-clip" | "freeze-frame" | "nest" | "unnest" | "delete";
 
 // A clip's menu (label "Clip actions"), for the selection the right-click made. Cut and Delete are
 // greyed when a selected clip is on a locked track, Split when the playhead crosses none of the
@@ -213,6 +214,10 @@ export function clipMenu(state: EditorState): MenuEntry[] {
           entry("freeze-frame", "Freeze frame", !freezeFrameOps(doc, selection.clipIds, playhead, () => "").ok),
         ]
       : []),
+    // Several clips made one, which is then placed, faded and graded as a whole; and a nest taken apart again.
+    ...(single !== null && isNest(single)
+      ? [{ id: "unnest", label: "Unnest", disabled: blocked || onLocked, edit: true, separatorBefore: true }]
+      : [{ id: "nest", label: selection.clipIds.length === 1 ? "Nest" : "Nest clips", disabled: blocked || onLocked || !nestOps(doc, selection.clipIds, () => "").ok, edit: true, separatorBefore: true }]),
     entry("delete", "Delete", onLocked, { separatorBefore: true, danger: true }),
   ];
 }

@@ -1,6 +1,7 @@
 import { NO_FX, isPlainFx, type FxSettings } from "@/lib/audio/clean-dsp";
 import type { Clip, MediaClip, TimelineDoc, Track } from "@/lib/timeline";
 import { isKeyframed, volumeAt } from "@/lib/timeline/keyframes";
+import { expandNests } from "@/lib/timeline/nest";
 
 // Which clips the preview plays, which of them sound and how loud. The preview's media plan and the export both
 // decide from here, so a file sounds like the editor. Worker-safe.
@@ -103,7 +104,8 @@ export type SoundingClip = { track: Track; clip: MediaClip; gain: number };
 // Every clip the export hears, tracks in order, each track's clips in order.
 export function soundingClips(doc: TimelineDoc): SoundingClip[] {
   const sounding: SoundingClip[] = [];
-  for (const track of doc.tracks) {
+  // A nest's clips sound as clips of their own, as loud as the nest and its track make them.
+  for (const track of expandNests(doc).tracks) {
     for (const clip of track.clips) {
       const sound = clipSound(track, clip);
       if (sound) sounding.push({ track, clip: clip as MediaClip, gain: sound.gain });

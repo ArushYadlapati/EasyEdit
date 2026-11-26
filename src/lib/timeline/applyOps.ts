@@ -16,9 +16,10 @@ import {
 import { captionStyleOf, captionTrack, defaultCaptionStyle, rewordRun, transcriptOf } from "./captions";
 import { ADJUST_KEYS } from "./adjust";
 import { ARROW_DEFAULTS } from "./shapes";
+import { nestClips, nestLength, nestProblem } from "./nest";
 import { remapSpans, spansProblem } from "./spans";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
-import { AdjustmentClip, CaptionStyle, CaptionWords, MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
+import { AdjustmentClip, CaptionStyle, CaptionWords, MediaClip, NestClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
 import type { Clip, FormatId, FrameSize, Guide, KeyframeProp, TextSpan, TimelineDoc, Track } from "./types";
 
 // update_clip re-validates strictly so a typo'd or foreign key is rejected, not dropped.
@@ -27,7 +28,9 @@ const StrictTextClip = TextClip.extend({ transform: Transform.strict(), style: T
 const StrictPlaceholderClip = PlaceholderClip.extend({ transform: Transform.strict() }).strict();
 const StrictShapeClip = ShapeClipFields.extend({ transform: Transform.strict() }).strict().superRefine(shapeRules);
 const StrictAdjustmentClip = AdjustmentClip.extend({ transform: Transform.strict() }).strict();
-const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration"];
+const StrictNestClip = NestClip.extend({ transform: Transform.strict() }).strict();
+// tracks: what a nest holds is set when it is made, and changed by taking it apart and nesting again.
+const FROZEN_CLIP_KEYS = ["id", "type", "start", "duration", "tracks"];
 // The clip fields whose sub-keys are set, undone and expected one by one. Every other field, a transition or an
 // emphasis included, is one value: a new one replaces the old whole, so no sub-key of the old one is left behind.
 const MERGED_FIELDS: ReadonlySet<string> = new Set(["transform", "style", "keyframes", "adjust", "grade", "sound"]);
@@ -53,6 +56,7 @@ const CLIP_FILL: Record<string, () => unknown> = {
   mask: () => null,
   rounding: () => 0,
   spans: () => null,
+  name: () => null,
   group: () => null,
 };
 
@@ -84,6 +88,7 @@ const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string
   text: ["keyframes", "animationIn", "animationOut", "emphasis", "blend", "spans"],
   shape: [...VISUAL_EFFECTS, "blend"],
   adjustment: ["keyframes", "adjust", "grade", "mask"], // its opacity's and colours' keyframes only (assertKeyframesFit)
+  nest: [...VISUAL_EFFECTS, "adjust", "grade", "blend", "mask", "name"], // one picture: placed, faded, graded and masked whole
 };
 
 // A clip's ways in and out, each with the value that means it has none. A split takes the way out off the left piece
@@ -241,6 +246,20 @@ function assertSpeedFits(clip: Clip, opIndex: number, opName: string) {
   }
 }
 
+// A nest is sound as a whole (nest.ts), and so is each clip in it, by the rules for a clip of its kind anywhere.
+function assertNestFits(clip: Clip, opIndex: number, opName: string) {
+  if (clip.type !== "nest") return;
+  const problem = nestProblem(clip);
+  if (problem) throw new OpError("INVALID", `${opName}: nest "${clip.id}" is invalid: ${problem}`, opIndex);
+  for (const inner of nestClips(clip)) {
+    const carried: Record<string, unknown> = inner;
+    assertEffectsFit(inner, givenKeys(inner).filter((key) => carried[key] !== null), opIndex, opName);
+    assertSpeedFits(inner, opIndex, opName);
+    assertKeyframesFit(inner, opIndex, opName);
+    assertSpansFit(inner, opIndex, opName);
+  }
+}
+
 // A text's styled spans lie inside its words, in order.
 function assertSpansFit(clip: Clip, opIndex: number, opName: string) {
   if (clip.type !== "text" || !clip.spans) return;
@@ -263,11 +282,11 @@ function assertKeyframesFit(clip: Clip, opIndex: number, opName: string) {
     throw new OpError("INVALID", `${opName}: an adjustment layer takes only opacity and colour keyframes`, opIndex);
   }
   // A crop is keyed where a crop can be set: a video, an image, text, and the slot one will fill.
-  if ((clip.type === "shape" || clip.type === "audio") && CROP_PROPS.some(has)) {
-    throw new OpError("INVALID", `${opName}: ${clip.type === "shape" ? "a shape" : "an audio clip"} takes no crop keyframes`, opIndex);
+  if ((clip.type === "shape" || clip.type === "audio" || clip.type === "nest") && CROP_PROPS.some(has)) {
+    throw new OpError("INVALID", `${opName}: ${clip.type === "shape" ? "a shape" : clip.type === "nest" ? "a nest" : "an audio clip"} takes no crop keyframes`, opIndex);
   }
   // Colours are keyed where colours are set: on a video, an image (and the slot one will fill) or an adjustment layer.
-  const pictured = clip.type === "video" || clip.type === "image" || clip.type === "placeholder" || clip.type === "adjustment";
+  const pictured = clip.type === "video" || clip.type === "image" || clip.type === "placeholder" || clip.type === "adjustment" || clip.type === "nest";
   const colour = pictured ? undefined : ADJUST_KEYS.find(has);
   if (colour) throw new OpError("INVALID", `${opName}: only a video or image takes ${colour} keyframes`, opIndex);
 }
@@ -452,6 +471,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         assertSpeedFits(op.clip, opIndex, name);
         assertKeyframesFit(op.clip, opIndex, name);
         assertSpansFit(op.clip, opIndex, name);
+        assertNestFits(op.clip, opIndex, name);
         // A null is the neutral value, so a clip that spells out "none" for a field it can't use is still fine.
         const carried: Record<string, unknown> = op.clip;
         assertEffectsFit(op.clip, givenKeys(op.clip).filter((key) => carried[key] !== null), opIndex, name);
@@ -522,7 +542,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         assertUnlocked(track, opIndex, name);
         const target = track.clips[clipIndex];
         if (op.expect && !holds(target, op.expect)) throw stale(`clip "${op.clipId}"`);
-        if (op.in !== undefined && (op.edge !== "start" || !isMediaClip(target))) {
+        if (op.in !== undefined && (op.edge !== "start" || !(isMediaClip(target) || target.type === "nest"))) {
           throw new OpError(
             "INVALID",
             `${name}: "in" is only allowed when trimming the start of a media clip`,
@@ -547,11 +567,18 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
             const sourceEnd = target.in + Math.round(target.duration * target.speed);
             sourceIn = sourceEnd - Math.round(duration * target.speed);
             if (sourceIn < 0) throw outOfRange("cannot start before the start of its source");
+          } else if (target.type === "nest") {
+            // A nest plays its own timeline frame for frame: its start moves through it as far as the trim does.
+            sourceIn = target.in + delta;
+            if (sourceIn < 0) throw outOfRange("cannot start before the start of what it holds");
           }
         } else {
           duration = op.to - target.start;
         }
         if (duration < 1) throw outOfRange(`would have a duration of ${duration} frames`);
+        if (target.type === "nest" && (sourceIn ?? target.in) + duration > nestLength(target)) {
+          throw outOfRange("cannot play past the end of what it holds");
+        }
         // A clip that plays backward runs towards the start of its source, so a longer one can run out of it.
         if (target.type === "video" && target.speed < 0 && (sourceIn ?? target.in) + Math.round(duration * target.speed) < -1) {
           throw outOfRange("cannot run back past the start of its source");
@@ -561,7 +588,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (op.edge === "end") {
           const to = target.start + target.duration;
           groups.push([{ op: "trim_clip", clipId: op.clipId, edge: "end", to, expect: { start, duration } }]);
-        } else if (sourceIn === undefined || !isMediaClip(target)) {
+        } else if (sourceIn === undefined || !(isMediaClip(target) || target.type === "nest")) {
           groups.push([{ op: "trim_clip", clipId: op.clipId, edge: "start", to: target.start, expect: { start } }]);
         } else {
           groups.push([
@@ -580,7 +607,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         if (target.keyframes && start !== target.start) target.keyframes = shiftKeyframes(target.keyframes, target.start - start);
         target.start = start;
         target.duration = duration;
-        if ((target.type === "video" || target.type === "audio" || target.type === "image") && sourceIn !== undefined) target.in = sourceIn;
+        if ((target.type === "video" || target.type === "audio" || target.type === "image" || target.type === "nest") && sourceIn !== undefined) target.in = sourceIn;
         sortTrack(track);
         assertNoOverlap(track, opIndex, name);
         break;
@@ -641,6 +668,9 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           right.in = sourceEnd - Math.round(right.duration * left.speed);
         } else if (right.type === "image" && left.type === "image") {
           right.in = left.in + Math.floor((op.at - left.start) * left.speed);
+        } else if (right.type === "nest" && left.type === "nest") {
+          // Both halves hold the whole of what the nest held; the right one plays on from where the cut falls in it.
+          right.in = left.in + (op.at - left.start);
         }
         left.duration = op.at - left.start;
         track.clips.push(right);
@@ -729,6 +759,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           : current.type === "placeholder" ? StrictPlaceholderClip
           : current.type === "shape" ? StrictShapeClip
           : current.type === "adjustment" ? StrictAdjustmentClip
+          : current.type === "nest" ? StrictNestClip
           : StrictMediaClip;
         const result = schema.safeParse(merged);
         if (!result.success) {
@@ -744,6 +775,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         assertSpeedFits(result.data, opIndex, name);
         assertKeyframesFit(result.data, opIndex, name);
         assertSpansFit(result.data, opIndex, name);
+        assertNestFits(result.data, opIndex, name);
         const before: Record<string, unknown> = current;
         const after: Record<string, unknown> = result.data;
         const undo: Record<string, unknown> = {};

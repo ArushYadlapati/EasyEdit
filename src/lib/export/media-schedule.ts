@@ -2,6 +2,7 @@ import { crossfadeFrames, crossfadeInto } from "@/lib/render/compositor";
 import { sourceSeconds } from "@/lib/render/source-time";
 import type { MediaClip, TimelineDoc } from "@/lib/timeline";
 import { mayShow } from "@/lib/timeline/keyframes";
+import { expandNests } from "@/lib/timeline/nest";
 
 // Which moment of which file each drawn clip of an export needs at each frame, and the last frame each file is used,
 // so the worker knows when to open a decoder and when it may let go of it.
@@ -26,7 +27,7 @@ export type MediaSchedule = { clips: ScheduledClip[]; lastUse: Record<string, nu
 export function mediaSchedule(doc: TimelineDoc, clips: Record<string, ClipMedia>): MediaSchedule {
   const scheduled: ScheduledClip[] = [];
   const lastUse: Record<string, number> = {};
-  for (const track of doc.tracks) {
+  for (const track of expandNests(doc).tracks) {
     if (track.hidden) continue;
     for (const clip of track.clips) {
       if (clip.type !== "video" && clip.type !== "image") continue;

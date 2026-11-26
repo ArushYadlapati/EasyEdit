@@ -3,6 +3,7 @@ import { noLargerThan, type PictureSize } from "@/lib/render/decode-image";
 import { ZOOM_TRANSITION_SCALE } from "@/lib/render/effects";
 import type { MediaClip, TimelineDoc, Transform } from "@/lib/timeline";
 import { stretchOf } from "@/lib/timeline/presets";
+import { expandNests } from "@/lib/timeline/nest";
 
 // The size each clip's picture is decoded at for an export: as large as the frame draws it, so no source pixel is
 // stretched over more than one export pixel, and no larger, so a small picture in picture holds small canvases.
@@ -53,7 +54,8 @@ export function peakTransform(clip: MediaClip): Transform {
 // (never, for a schedule made from the same doc) keeps the old rule, the output's long side.
 export function clipSizes(doc: TimelineDoc, output: PictureSize): (clipId: string, source: PictureSize) => PictureSize {
   const transforms = new Map<string, Transform>();
-  for (const track of doc.tracks) {
+  // A nest's clips are drawn at their own sizes before the nest is placed.
+  for (const track of expandNests(doc).tracks) {
     for (const clip of track.clips) if (clip.type === "video" || clip.type === "image") transforms.set(clip.id, peakTransform(clip));
   }
   const fallback = noLargerThan(Math.max(output.width, output.height));
