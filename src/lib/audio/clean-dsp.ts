@@ -182,8 +182,8 @@ export function createDenoiser(sampleRate: number): { set(amount: number): void;
   const size = DENOISE_FRAME;
   const fft = createFft(size);
   // Each piece is faded in and out before and after, so the overlapping pieces add up to the sound again.
-  const window = new Float32Array(size);
-  for (let i = 0; i < size; i++) window[i] = Math.sqrt(0.5 - 0.5 * Math.cos((2 * Math.PI * i) / size));
+  const taper = new Float32Array(size);
+  for (let i = 0; i < size; i++) taper[i] = Math.sqrt(0.5 - 0.5 * Math.cos((2 * Math.PI * i) / size));
   const inL = new Float32Array(size);
   const inR = new Float32Array(size);
   const outL = new Float32Array(size);
@@ -211,8 +211,8 @@ export function createDenoiser(sampleRate: number): { set(amount: number): void;
   function frame(): void {
     for (let i = 0; i < size; i++) {
       const from = (at + i) % size; // oldest first
-      lRe[i] = inL[from] * window[i];
-      rRe[i] = inR[from] * window[i];
+      lRe[i] = inL[from] * taper[i];
+      rRe[i] = inR[from] * taper[i];
       lIm[i] = 0;
       rIm[i] = 0;
     }
@@ -253,8 +253,8 @@ export function createDenoiser(sampleRate: number): { set(amount: number): void;
     // Four pieces overlap at every sample, and their fades add up to two.
     for (let i = 0; i < size; i++) {
       const to = (at + i) % size;
-      outL[to] += lRe[i] * window[i] * 0.5;
-      outR[to] += rRe[i] * window[i] * 0.5;
+      outL[to] += lRe[i] * taper[i] * 0.5;
+      outR[to] += rRe[i] * taper[i] * 0.5;
     }
     frames++;
     if (++inSpan >= spanFrames) {
