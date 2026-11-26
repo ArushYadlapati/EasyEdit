@@ -27,7 +27,7 @@ function clipOf(asset: AssetView, start: number, fps: number, stillSeconds: numb
 
 // The drop frame: the point's frame, with the item's start or end snapped to a clip edge (or the playhead, or a whole
 // second, as a dragged clip does) when snapping is on. A snap that would start it before frame 0 is not taken.
-function landingFrame(state: EditorState, at: TimelinePoint, length: number | null): { frame: number; guide: number | null } {
+export function landingFrame(state: EditorState, at: TimelinePoint, length: number | null): { frame: number; guide: number | null } {
   if (!state.snapping) return { frame: at.frame, guide: null };
   const candidates = length === null ? [at.frame] : [at.frame, at.frame + length];
   const hit = snap(candidates, { edges: clipEdges(state.doc, []), playhead: state.playhead, fps: state.doc.fps, zoom: state.zoom });

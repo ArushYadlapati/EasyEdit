@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_CONTENT_PX, ROW_HEIGHT, clampZoom, clipsInBox, contentFrames, displayRows, fitZoom, formatClock, formatTimecode,
-  frameToPx, pxToFrame, revealScroll, rowAt, rulerTicks, trackDropSlot, trackToggles, visibleClips, zoomAt,
+  frameToPx, pxToFrame, revealScroll, rowAt, rulerTicks, shownFrames, trackDropSlot, trackToggles, visibleClips, zoomAt,
 } from "@/lib/editor/geometry";
 import { makeStore, sampleDoc, video } from "./fixtures";
 
@@ -45,6 +45,28 @@ describe("frames, pixels and zoom", () => {
     expect(store.getState().zoom).toBe(40);
     store.getState().zoomBy(0.000001);
     expect(store.getState().zoom).toBe(0.02);
+  });
+});
+
+describe("zoomed out past the end of the project", () => {
+  const fiveMinutes = 5 * 60 * 30;
+
+  it("the timeline shows as many frames as fill its lanes, not only the project and its 30 seconds", () => {
+    // 1,160 px of lanes at the lowest zoom is 58,000 frames, a little over 32 minutes at 30 fps.
+    expect(shownFrames(fiveMinutes, 30, 0.02, 1160)).toBe(58_000);
+    expect(shownFrames(fiveMinutes, 30, 0.02, 1160)).toBeGreaterThan(contentFrames(fiveMinutes, 30));
+    // A part of a frame still counts, so the last pixel of the lanes is never left bare.
+    expect(shownFrames(fiveMinutes, 30, 0.03, 1000)).toBe(33_334);
+  });
+
+  it("zoomed in, the project and its run-on are what it shows", () => {
+    expect(shownFrames(fiveMinutes, 30, 2, 1160)).toBe(contentFrames(fiveMinutes, 30));
+    expect(shownFrames(0, 30, 40, 1160)).toBe(60 * 30);
+  });
+
+  it("lanes that are not measured yet, or a zoom of nothing, ask for no more than the project", () => {
+    expect(shownFrames(fiveMinutes, 30, 0.02, 0)).toBe(contentFrames(fiveMinutes, 30));
+    expect(shownFrames(fiveMinutes, 30, 0, 1160)).toBe(contentFrames(fiveMinutes, 30));
   });
 });
 
