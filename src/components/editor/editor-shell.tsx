@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPresenceApi, createProjectApi } from "@/lib/editor/api";
 import { createClipboard } from "@/lib/editor/clipboard";
+import { holdsEdit, watchHeldEdits } from "@/lib/editor/held-edit";
 import type { Layout } from "@/lib/editor/layout";
 import { carriesFiles, createMediaDrop } from "@/lib/editor/media-drop";
 import { createPresenceStore } from "@/lib/editor/presence";
@@ -170,11 +171,15 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS, gui
       lastActivity = now;
       sync.noteActivity();
     };
-    // Closing the page now would lose edits not yet sent, stop uploads part way, stop the export that is running, or
-    // drop a finished export not yet downloaded.
-    const unsaved = () =>
-      store.getState().queue.length > 0 || queue.active() > 0 || store.getState().exporting || store.getState().exportHeld;
+    // Closing the page now would lose edits not yet sent (a held edit, such as words still being typed, included), stop
+    // uploads part way, stop the export that is running, or drop a finished export not yet downloaded.
+    const unsaved = () => {
+      const state = store.getState();
+      return state.queue.length > 0 || holdsEdit(state) || queue.active() > 0 || state.exporting || state.exportHeld;
+    };
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      // A held edit is sent now, so it is on its way whether the person stays or leaves.
+      store.getState().saveHeldEdit();
       if (unsaved()) event.preventDefault();
     };
     // Listened for only while something would be lost: a beforeunload listener keeps the browser from
@@ -224,6 +229,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS, gui
     const stopDrop = drop.start();
     const stopWatching = watchDrags(window, drop, allowed);
     sync.start();
+    const stopHeldEdits = watchHeldEdits(store);
     quietly(library.getState().refresh("open"));
     quietly(library.getState().ensure(docAssetIds(store.getState().doc)));
     // The library is fetched again while the tab is visible; it fetches only while a visible preview is being made.
@@ -263,6 +269,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS, gui
       window.removeEventListener("pageshow", onPageShow);
       unsubscribe();
       unsubscribeLibrary();
+      stopHeldEdits();
       guardUnload(false);
       // Leaving inside the app (a link, the Back button) unmounts the editor without unloading
       // the page, so the edits still queued are sent first. Uploads stop where they are: an unfinished

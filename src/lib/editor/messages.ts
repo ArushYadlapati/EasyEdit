@@ -150,9 +150,11 @@ export function explainOpError(code: OpErrorCode): string {
 }
 
 // The top bar's save status. A viewer has nothing to save, so "Saved" reads as "Up to date".
-export function saveStatusLabel(status: SyncStatus, pending: number, canEdit: boolean, limitMessage?: string | null): string {
+// held: a live edit is on screen and not sent yet (held-edit.ts), so "Saved" would not be true.
+export function saveStatusLabel(status: SyncStatus, pending: number, canEdit: boolean, limitMessage?: string | null, held = false): string {
   switch (status) {
     case "saved":
+      if (held && canEdit) return "Not saved yet";
       return canEdit ? "Saved" : "Up to date";
     case "saving":
       return "Saving…";

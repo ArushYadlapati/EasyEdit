@@ -52,7 +52,9 @@ export type EditorState = {
   server: { doc: TimelineDoc; version: number }; // what the server is known to hold
   queue: PendingEdit[]; // local edits not yet confirmed, oldest first
   doc: TimelineDoc; // server.doc with every queued edit applied
-  gesture: { ops: Op[]; doc: TimelineDoc | null } | null; // a drag or a field being typed in; doc is null while it cannot apply
+  // A drag or a field being typed in; doc is null while it cannot apply. A labelled one is a held edit (held-edit.ts):
+  // it is saved under its label after a pause, and when the page hides or goes away.
+  gesture: { ops: Op[]; doc: TimelineDoc | null; label?: string } | null;
   selection: Selection;
   playhead: number;
   zoom: number; // pixels per frame
@@ -95,8 +97,9 @@ export type EditorState = {
   redo(): void;
   undoChange(entry: ActivityEntry): void; // "Undo this change" in the activity list
   loadActivity(entries: ActivityEntry[]): void; // merges a fetched page
-  setGesture(ops: OpInput[] | null): boolean; // true when the gesture applies right now
+  setGesture(ops: OpInput[] | null, label?: string): boolean; // true when the gesture applies right now
   commitGesture(label: string): EditResult;
+  saveHeldEdit(): void; // saves a held edit that applies now, under its own label; anything else is left as it is
   select(clipIds: string[], mode?: "replace" | "toggle" | "add"): void;
   selectTrack(trackId: string | null): void;
   seek(frame: number): void; // rounds, never below 0
@@ -255,14 +258,14 @@ export function createEditorStore(
       const gesture = state.gesture;
       if (gesture) {
         try {
-          patch.gesture = { ops: gesture.ops, doc: applyOps(doc, gesture.ops).doc };
+          patch.gesture = { ...gesture, doc: applyOps(doc, gesture.ops).doc };
         } catch (err) {
           if (err instanceof OpError && err.code === "NOT_FOUND") {
             patch.gesture = null;
             const guide = gesture.ops.every((op) => op.op === "add_guide" || op.op === "move_guide" || op.op === "remove_guide");
             patch.notice = makeNotice("error", guide ? MESSAGES.guideGone : MESSAGES.clipGone);
           } else {
-            patch.gesture = { ops: gesture.ops, doc: null };
+            patch.gesture = { ...gesture, doc: null };
           }
         }
       }
@@ -429,7 +432,7 @@ export function createEditorStore(
         if (merged !== activity) set({ activity: merged });
       },
 
-      setGesture(ops) {
+      setGesture(ops, label) {
         const state = get();
         if (!state.canEdit) return false;
         if (ops === null) {
@@ -445,11 +448,11 @@ export function createEditorStore(
           return false;
         }
         try {
-          set({ gesture: { ops: prepared, doc: applyOps(state.doc, prepared).doc } });
+          set({ gesture: { ops: prepared, doc: applyOps(state.doc, prepared).doc, ...(label !== undefined && { label }) } });
           return true;
         } catch (err) {
           if (!(err instanceof OpError)) throw err;
-          set({ gesture: { ops: prepared, doc: null } });
+          set({ gesture: { ops: prepared, doc: null, ...(label !== undefined && { label }) } });
           return false;
         }
       },
@@ -459,6 +462,12 @@ export function createEditorStore(
         if (!gesture) return { ok: true };
         set({ gesture: null });
         return get().edit(gesture.ops, label);
+      },
+
+      saveHeldEdit() {
+        const { gesture } = get();
+        if (gesture?.label === undefined || gesture.doc === null) return;
+        get().commitGesture(gesture.label);
       },
 
       select(ids, mode = "replace") {

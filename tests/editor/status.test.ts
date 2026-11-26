@@ -16,3 +16,9 @@ it("the limit sentence is whole in the label the top bar puts in its title", () 
   const text = "Today's limit for saved changes is used up (20 MB a day). It frees up over the next 24 hours.";
   expect(saveStatusLabel("limited", 3, true, text)).toBe(text);
 });
+
+it("a held edit is not called saved", () => {
+  expect(saveStatusLabel("saved", 1, true, null, true)).toBe("Not saved yet");
+  expect(saveStatusLabel("saving", 2, true, null, true)).toBe("Saving…");
+  expect(saveStatusLabel("offline", 1, true, null, true)).toBe("Offline. Changes will save when you reconnect.");
+});

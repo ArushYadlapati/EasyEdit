@@ -279,6 +279,31 @@ describe("a gesture in progress", () => {
   });
 });
 
+describe("a held edit", () => {
+  it("keeps its label through a teammate's change, and saves under it when it applies", () => {
+    const { st } = fresh();
+    st().setGesture(retext("Hello"), "text");
+    st().applyRemote([entry(6, [{ op: "move_clip", clipId: "x2", start: 200 }])]);
+    expect(st().gesture).toMatchObject({ label: "text" });
+    st().saveHeldEdit();
+    expect(st().gesture).toBeNull();
+    expect(st().queue).toMatchObject([{ label: "text", ops: retext("Hello") }]);
+    expect(st().undoStack).toHaveLength(1);
+  });
+
+  it("a gesture without a label, or one that does not apply, is left as it is", () => {
+    const { st } = fresh();
+    st().setGesture(move(150));
+    st().saveHeldEdit();
+    expect(st().gesture).not.toBeNull();
+    st().setGesture(move(30), "move");
+    st().saveHeldEdit();
+    expect(st().gesture).toMatchObject({ doc: null, label: "move" });
+    expect(st().queue).toEqual([]);
+    expect(st().notice).toBeNull();
+  });
+});
+
 describe("selection and playhead", () => {
   it("replaces, toggles and adds; clips and a track are never selected together", () => {
     const { st } = fresh();
