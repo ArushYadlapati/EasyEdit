@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrandKitEditor } from "@/components/brand/brand-kit-editor";
 import { BrandProvider, useBrand, withLibrary, type BrandApi } from "@/components/editor/brand/brand-context";
 import { LogoPicker } from "@/components/editor/brand/logo-picker";
-import { MediaProvider, createMediaServices, gateStorage, useLibrary, type MediaServices } from "@/components/editor/media/media-context";
+import { MediaProvider, createMediaServices, gateStorage, keepsLocalFolder, useLibrary, type MediaServices } from "@/components/editor/media/media-context";
 import { cx } from "@/components/ui/cx";
 import { fetchBrandKit, saveBrandKit } from "@/lib/brand/client";
 import type { BrandKit } from "@/lib/brand/types";
+import type { SpaceKind } from "@/lib/spaces/types";
 
 const TEXT = "text-[13px] leading-5";
 
@@ -44,8 +45,10 @@ function Kit({ problem }: { problem: string | null }) {
 
 // The dashboard's Brand kit page: the same kit the editor's Brand kit tab shows, full width. The space's media library
 // is loaded here too, for the logos' pictures and to pick or upload a new one. services and api: tests give their own.
+// spaceKind: a Personal space's new files go to its media folder on this computer when one is open, as in the editor.
 export function BrandKitPage({
   spaceId,
+  spaceKind,
   canEdit,
   initial,
   storageReady,
@@ -53,13 +56,17 @@ export function BrandKitPage({
   api,
 }: {
   spaceId: string;
+  spaceKind?: SpaceKind;
   canEdit: boolean;
   initial: BrandKit;
   storageReady: boolean;
   services?: MediaServices;
   api?: BrandApi;
 }): ReactNode {
-  const media = useMemo(() => services ?? gateStorage(createMediaServices(spaceId), storageReady), [services, spaceId, storageReady]);
+  const media = useMemo(
+    () => services ?? gateStorage(createMediaServices(spaceId, { localFolder: keepsLocalFolder(spaceKind) }), storageReady),
+    [services, spaceId, spaceKind, storageReady],
+  );
   const [problem, setProblem] = useState<string | null>(null);
   // A save the server takes clears the line a failed one left, so it doesn't stay after the kit is saved again.
   const brandApi = useMemo<BrandApi>(() => {

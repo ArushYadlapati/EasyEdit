@@ -23,5 +23,5 @@ export default async function BrandKitSettingsPage({ params }: PageProps<"/s/[sp
   if (!actor) notFound();
   const kit = await getBrandKit(db, actor);
   const storage = await storageState(db, space.id);
-  return <BrandKitPage spaceId={space.id} canEdit={meetsRole(actor.role, "editor")} initial={kit} storageReady={storage.ready} />;
+  return <BrandKitPage spaceId={space.id} spaceKind={space.kind} canEdit={meetsRole(actor.role, "editor")} initial={kit} storageReady={storage.ready} />;
 }

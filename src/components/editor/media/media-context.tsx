@@ -18,19 +18,27 @@ import { createOpfsStore, createSettledStore } from "./media-cache";
 
 // What one open editor uses of the media library. dispose: for leaving the editor; it stops the uploads that run
 // (removing nothing on the server) and ends the worker. The services stay usable afterwards.
-// local: the folder on this computer that takes new media in Drive's place, once the person has chosen one.
+// local: the folder on this computer that takes new media in Drive's place, once the person has chosen one. Only a
+// Personal space has one (createMediaServices' localFolder); anywhere else it is never opened and takes no file.
 export type MediaServices = { library: LibraryStore; queue: UploadQueue; files: MediaFiles; local: LocalFolder; dispose(): void };
+
+// A memory that keeps nothing, for services that never open a folder.
+const NO_MEMORY: HandleMemory = { load: async () => null, save: async () => {} };
 
 // A wait between tries of an upload's piece. It always resolves.
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // The real ones for one open editor: the API client, the worker, the token source and the browser's file storage.
 // Nothing is asked of the server, the worker or the storage until it is first used.
-export function createMediaServices(spaceId: string): MediaServices {
+// localFolder: whether media may be kept in a folder on this computer, which is so in a Personal space only (the
+// server refuses it elsewhere). Without it the folder this browser may remember for the space is not looked for, and
+// every new file goes to Drive.
+export function createMediaServices(spaceId: string, options: { localFolder?: boolean } = {}): MediaServices {
+  const keepsLocal = options.localFolder === true;
   const api = createMediaApi(spaceId);
   const library = createLibraryStore({ api });
-  const local = createLocalFolder(folderMemory(spaceId));
-  void local.restore();
+  const local = createLocalFolder(keepsLocal ? folderMemory(spaceId) : NO_MEMORY);
+  if (keepsLocal) void local.restore();
   const files = withLocalFiles(
     createMediaFiles({
       tokens: createReadTokens({ api }),
@@ -50,7 +58,7 @@ export function createMediaServices(spaceId: string): MediaServices {
     onPreviewFile: (fileId, blob) => void files.put(fileId, blob),
     event: () => library.getState().uploadEvent,
     // With a media folder open, new files stay on this computer.
-    local: () => (local.state() === "ready" ? local : null),
+    local: () => (keepsLocal && local.state() === "ready" ? local : null),
   });
   return {
     library,
@@ -72,9 +80,6 @@ export function gateStorage(services: MediaServices, storageReady: boolean): Med
   if (storageReady) return services;
   return { ...services, queue: { ...services.queue, add: (files) => (services.local.state() === "ready" ? services.queue.add(files) : []) } };
 }
-
-// A memory that keeps nothing, for services that never open a folder.
-const NO_MEMORY: HandleMemory = { load: async () => null, save: async () => {} };
 
 // Without a provider, as in tests of other parts of the editor: a library that never loads, a queue that takes
 // nothing, and files that cannot be read.
@@ -124,6 +129,7 @@ export type StorageProblem = "none" | "broken" | null;
 // What the Media tab's setup card needs to know of a space without storage: its kind and address, whether the person
 // runs it (only admins set storage up or reconnect it), and what stops this server setting storage up (block); for a
 // broken connection, whether the person made it (only they can reconnect it) and, if not, who did (ownerEmail).
+// The kind also says whether a folder on this computer is offered: in a Personal space only (keepsLocalFolder).
 export type StorageSetup = { kind: SpaceKind; slug: string; isAdmin: boolean; block: StorageBlock; ownsConnection: boolean; ownerEmail: string | null };
 
 // The space the library belongs to, whether it has storage to upload to, and if not, why, and who can set it up.
@@ -185,6 +191,11 @@ export function MediaProvider({
 export function useMediaSpace(): MediaSpace {
   return useContext(MediaSpaceContext);
 }
+
+// Whether a space of this kind may keep media in a folder on the person's computer: a Personal space, where the
+// person is the only one who needs the files. A team's media is in its Drive, where every member can play it. A space
+// whose kind is not known is treated as a team.
+export const keepsLocalFolder = (kind: SpaceKind | null | undefined): boolean => kind === "personal";
 
 export function useMedia(): MediaServices {
   return useContext(MediaContext) ?? IDLE;
