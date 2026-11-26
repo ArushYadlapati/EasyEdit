@@ -43,10 +43,10 @@ describe("templates service", () => {
     await saveTemplate(db, ed, { projectId: id, name: "Zed" });
     await saveTemplate(db, ed, { projectId: id, name: "alpha" });
     const list = await listTemplates(db, viewer);
-    expect(list.map((t) => t.name)).toEqual(["Match Recap", "Robot Reveal", "Season Recap", "alpha", "Zed"]);
-    expect(list.slice(0, 3).every((t) => t.builtIn)).toBe(true);
-    expect(list[3]).toMatchObject({ builtIn: false, format: "short_9x16", width: 1080, height: 1920 });
-    expect(list[3].slots.map((s) => s.name)).toEqual(["hero", "title"]);
+    expect(list.map((t) => t.name)).toEqual(["Talking Head", "Product Teaser", "Trip Recap", "Match Recap", "Robot Reveal", "Season Recap", "alpha", "Zed"]);
+    expect(list.slice(0, 6).every((t) => t.builtIn)).toBe(true);
+    expect(list[6]).toMatchObject({ builtIn: false, format: "short_9x16", width: 1080, height: 1920 });
+    expect(list[6].slots.map((s) => s.name)).toEqual(["hero", "title"]);
   });
 
   it("save turns slot clips into placeholders and keeps a plain clip with a deleted asset", async () => {
