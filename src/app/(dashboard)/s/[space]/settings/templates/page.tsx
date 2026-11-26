@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { TemplatesPage } from "@/components/dashboard/templates-page";
@@ -8,6 +9,8 @@ import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace } from "@/lib/spaces/service";
 import { listTemplates } from "@/lib/templates/service";
+
+export const metadata: Metadata = { title: "Templates" };
 
 // A space's templates, for every member; editors and admins can edit and delete the saved ones. Anyone else gets a
 // plain 404. The page checks for itself: a layout is not run again on a client navigation.

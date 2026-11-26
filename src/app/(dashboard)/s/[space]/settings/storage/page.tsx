@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { StorageSettings } from "@/components/storage/storage-settings";
@@ -8,6 +9,8 @@ import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace } from "@/lib/spaces/service";
 import { storageSettings } from "@/lib/storage/settings-view";
 import { disconnectStorageAction } from "./actions";
+
+export const metadata: Metadata = { title: "Storage" };
 
 // Where a space keeps its videos, and the ways to change it, for its admins (a personal space's owner is one).
 // Anyone else gets a plain 404. ?storage=<note> is what connecting a Google account came back with; ?first=1, a team

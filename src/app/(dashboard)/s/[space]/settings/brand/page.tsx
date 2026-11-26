@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { BrandKitPage } from "@/components/dashboard/brand-kit-page";
@@ -9,6 +10,8 @@ import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace } from "@/lib/spaces/service";
 import { storageState } from "@/lib/spaces/storage";
+
+export const metadata: Metadata = { title: "Brand kit" };
 
 // A space's brand kit, for every member; editors and admins can change it. Anyone else gets a plain 404. The page
 // checks for itself: a layout is not run again on a client navigation.

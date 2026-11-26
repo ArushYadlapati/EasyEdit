@@ -1,24 +1,24 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { PersonalSoon } from "@/components/dashboard/personal-soon";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
+import { myActor, myFolders, mySpace, spaceLabel } from "@/lib/dashboard/page-data";
 import { SECTIONS_COOKIE } from "@/lib/dashboard/sidebar-sections";
 import { STORAGE_LATER_COOKIE } from "@/lib/onboarding/storage-later";
 import { ALL_VIEW, RECENT_VIEW, recentProjects, resolveView } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
 import { actorUserId, displayActor } from "@/lib/projects/display-actor";
-import { listFolders } from "@/lib/projects/folders";
 import { listRecentProjectIds } from "@/lib/projects/opens";
 import { listPinnedIds } from "@/lib/projects/pins";
 import { listProjects } from "@/lib/projects/service";
 import { getUserNames } from "@/lib/projects/user-names";
-import { actorIn } from "@/lib/spaces/access";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
-import { findMySpace, listMySpaces, rememberSpace } from "@/lib/spaces/service";
+import { listMySpaces, rememberSpace } from "@/lib/spaces/service";
 import { slugFor } from "@/lib/spaces/paths";
 import { storageState } from "@/lib/spaces/storage";
 import { listTemplates } from "@/lib/templates/service";
@@ -39,6 +39,22 @@ import {
   renameProjectAction,
   unpinProjectAction,
 } from "@/app/(dashboard)/dashboard/actions";
+
+// The browser tab names the view and the space: "Recent · Robots", "All projects · Robots", "Season 2026 · Robots", or
+// just the space on its bare address (the dashboard layout adds "· EasyEdit"). Nothing for a space the person isn't in.
+export async function generateMetadata({ params, searchParams }: PageProps<"/s/[space]">): Promise<Metadata> {
+  const slug = (await params).space;
+  const space = await mySpace(slug);
+  if (!space) return {};
+  const label = spaceLabel(space);
+  const { folder, view } = await searchParams;
+  if (typeof folder === "string") {
+    const named = (await myFolders(slug)).find((f) => f.id === folder);
+    if (named) return { title: `${named.name} · ${label}` };
+  }
+  const shown = view === "recent" ? "Recent" : view === "all" ? "All projects" : null;
+  return { title: shown ? `${shown} · ${label}` : label };
+}
 
 // The server actions with this space already bound as their first argument.
 const actionsFor = (spaceId: string): DashboardActions => ({
@@ -63,9 +79,10 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   // The page checks for itself: a layout renders alongside its page and is not run again on a client navigation.
   const user = await requireUser();
   const db = getDb();
-  const space = await findMySpace(db, user.id, (await params).space);
+  const slugAsked = (await params).space;
+  const space = await mySpace(slugAsked);
   if (!space) notFound();
-  const actor = await actorIn(db, user, space.id);
+  const actor = await myActor(slugAsked);
   if (!actor) notFound();
   // Personal spaces are not offered yet: the page says so and lists what the person already made here. The space is not
   // remembered, so the dashboard's old address keeps leading to a team.
@@ -77,7 +94,7 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   const canEdit = meetsRole(actor.role, "editor");
   const [projects, folders, recentIds, pinnedIds, templates] = await Promise.all([
     listProjects(db, actor),
-    listFolders(db, actor),
+    myFolders(slugAsked),
     listRecentProjectIds(db, actor, LIMITS.dashboardRecent),
     listPinnedIds(db, actor),
     listTemplates(db, actor),

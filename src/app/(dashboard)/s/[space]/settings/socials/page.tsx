@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { SocialsSettings } from "@/components/socials/socials-settings";
@@ -9,6 +10,8 @@ import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace } from "@/lib/spaces/service";
 import { disconnectYoutubeAction } from "./actions";
+
+export const metadata: Metadata = { title: "Socials" };
 
 // The YouTube channel a space posts to, for its admins (a personal space's owner is one). Anyone else gets a plain
 // 404, and so does everyone on a server where posting is not set up. ?youtube=<note> is what connecting a channel

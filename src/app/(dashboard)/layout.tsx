@@ -24,7 +24,8 @@ import { hasSeenTutorial } from "@/lib/tutorial/seen";
 
 // The dashboard is always dark, in the editor's colors. This asks the Dark Reader browser extension to leave it alone,
 // and the color scheme tells the browser's own dark mode the same (and darkens the page behind it, see globals.css).
-export const metadata: Metadata = { other: { "darkreader-lock": "true" } };
+// Every page here names itself in the browser tab, and the product follows: "AI agents · EasyEdit".
+export const metadata: Metadata = { title: { template: "%s · EasyEdit", default: "EasyEdit" }, other: { "darkreader-lock": "true" } };
 export const viewport: Viewport = { colorScheme: "dark" };
 
 // The dashboard's own frame: a header with the person's account menu, and the page filling the rest of the window.
