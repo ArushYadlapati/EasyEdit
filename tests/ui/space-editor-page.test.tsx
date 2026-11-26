@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import EditorPage, { metadata, viewport } from "@/app/(editor)/s/[space]/editor/[id]/page";
+import EditorPage, { viewport } from "@/app/(editor)/s/[space]/editor/[id]/page";
 import { EditorShell } from "@/components/editor/editor-shell";
 import type { CurrentUser } from "@/lib/access-rules";
 import { createEmptyDoc } from "@/lib/timeline";
@@ -43,8 +43,7 @@ afterEach(() => {
 });
 
 describe("the editor page", () => {
-  it("is always dark, and says so to Dark Reader and to the browser's own dark mode", () => {
-    expect(metadata.other).toEqual({ "darkreader-lock": "true" });
+  it("is always dark, and says so to the browser's own dark mode (the Dark Reader lock is in its generated metadata)", () => {
     expect(viewport).toEqual({ colorScheme: "dark" });
   });
 

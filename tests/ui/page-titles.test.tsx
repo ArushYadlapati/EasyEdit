@@ -81,13 +81,15 @@ describe("browser tab titles", () => {
 
   it("the editor names the project, only for a member, and not once it is deleted", async () => {
     const project = await createProject(testDb, as(), { name: "Summer trip", format: "short_9x16" });
-    expect((await editorTitle(props(SEED_TEAM_SLUG, {}, project.id))).title).toBe("Summer trip · EasyEdit");
+    const named = await editorTitle(props(SEED_TEAM_SLUG, {}, project.id));
+    expect(named.title).toBe("Summer trip · EasyEdit");
+    expect(named.other).toEqual({ "darkreader-lock": "true" });
     // The wrong space in the address, or someone not in it: the plain title.
-    expect(await editorTitle(props("personal", {}, project.id))).toEqual({});
+    expect((await editorTitle(props("personal", {}, project.id))).title).toBeUndefined();
     signedIn.user = vic;
-    expect(await editorTitle(props(SEED_TEAM_SLUG, {}, project.id))).toEqual({});
+    expect((await editorTitle(props(SEED_TEAM_SLUG, {}, project.id))).title).toBeUndefined();
     signedIn.user = ada;
     await deleteProject(testDb, as(), project.id);
-    expect(await editorTitle(props(SEED_TEAM_SLUG, {}, project.id))).toEqual({});
+    expect((await editorTitle(props(SEED_TEAM_SLUG, {}, project.id))).title).toBeUndefined();
   });
 });

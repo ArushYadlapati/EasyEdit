@@ -23,15 +23,16 @@ import { editorGuide } from "@/lib/tutorial/guide";
 // The editor is always dark. This asks the Dark Reader browser extension to leave the page alone: on a screen that
 // is already dark it darkens the few light elements, and the playhead all but disappears. The color scheme tells the
 // browser's own dark mode the same (and darkens the page behind the editor, see globals.css).
-export const metadata: Metadata = { other: { "darkreader-lock": "true" } };
+const DARK_READER_LOCK: Metadata = { other: { "darkreader-lock": "true" } };
 export const viewport: Viewport = { colorScheme: "dark" };
 
-// The browser tab names the project: "Summer trip · EasyEdit". The darkreader lock above still applies (metadata merges).
+// The browser tab names the project: "Summer trip · EasyEdit", with the darkreader lock above (a page may export
+// metadata or generateMetadata, not both).
 export async function generateMetadata({ params }: PageProps<"/s/[space]/editor/[id]">): Promise<Metadata> {
   const user = await requireUser();
   const { space: slug, id } = await params;
   const name = await projectNameFor(getDb(), user.id, slug, id);
-  return name === null ? {} : { title: `${name} · EasyEdit` };
+  return name === null ? DARK_READER_LOCK : { ...DARK_READER_LOCK, title: `${name} · EasyEdit` };
 }
 
 // The editor fills the window on its own: the (editor) group has no layout, so the site header is not drawn.
