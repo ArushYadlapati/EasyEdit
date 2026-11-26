@@ -58,6 +58,7 @@ import { useLibrary, useMedia } from "./media/media-context";
 import { SlotSection } from "./slot-section";
 import { useTextMeasure } from "./text-measure";
 import { GradeControls } from "./grade-controls";
+import { Scopes } from "./scopes";
 import { Timecode } from "./timecode";
 import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-field-gesture";
 import { useLevelVolume } from "./use-level-volume";
@@ -827,6 +828,8 @@ function ColorSection({ clip }: { clip: ColorClip }) {
   // The grade's controls take a lot of room, so they stay folded away until asked for, or until the picture has one.
   const [open, setOpen] = useState<boolean | null>(null);
   const shown = open ?? graded;
+  // Scopes read the preview as it is drawn, so they are counted only while someone looks at them.
+  const [scopes, setScopes] = useState(false);
   const keyed = TONE_KEYS.filter((key) => (clip.keyframes?.[key]?.length ?? 0) > 0);
   // Back to as recorded for the whole clip: the colours, their keyframes and the grade.
   const reset = () =>
@@ -866,9 +869,15 @@ function ColorSection({ clip }: { clip: ColorClip }) {
         ))}
         {clip.type !== "adjustment" && <NumberField clipId={clip.id} field="rounding" label="Corner rounding" suffix="%" min={0} max={100} />}
       </div>
-      <Button size="sm" variant="ghost" className="self-start" aria-expanded={shown} onClick={() => setOpen(!shown)}>
-        {shown ? "Hide wheels, curves and LUT" : "Wheels, curves and LUT"}
-      </Button>
+      <div className="flex flex-wrap gap-1">
+        <Button size="sm" variant="ghost" aria-expanded={shown} onClick={() => setOpen(!shown)}>
+          {shown ? "Hide wheels, curves and LUT" : "Wheels, curves and LUT"}
+        </Button>
+        <Button size="sm" variant="ghost" aria-expanded={scopes} onClick={() => setScopes(!scopes)}>
+          {scopes ? "Hide scopes" : "Scopes"}
+        </Button>
+      </div>
+      {scopes && <Scopes />}
       {shown && (
         <GradeControls
           clip={clip}

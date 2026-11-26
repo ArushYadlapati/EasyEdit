@@ -291,3 +291,15 @@ it("a mask is off until switched on, then shows its shape, place, size, soft edg
   expect(clip().mask).toBeNull();
   expect(screen.queryByLabelText("Mask width")).toBeNull();
 });
+
+it("scopes are counted only while shown, and name which one is on", () => {
+  show();
+  expect(screen.queryByRole("img", { name: /of the frame in the preview/ })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Scopes" }));
+  expect(screen.getByRole("img", { name: "Histogram of the frame in the preview" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("radio", { name: "Vectorscope" }));
+  expect(screen.getByRole("img", { name: "Vectorscope of the frame in the preview" })).toBeTruthy();
+  expect(screen.getByText(/grey is the middle/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Hide scopes" }));
+  expect(screen.queryByRole("img", { name: /of the frame in the preview/ })).toBeNull();
+});

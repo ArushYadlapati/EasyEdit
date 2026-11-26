@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { cx } from "@/components/ui/cx";
 import { boardLayout, boardScale, centreOf, scrollFor, type BoardLayout, type Size } from "@/lib/editor/board";
 import { canvasItems, createPreviewSurface, viewOf, visibleBox } from "@/lib/editor/canvas-geometry";
+import { frameTapOf } from "@/lib/editor/frame-tap";
 import type { Sizer } from "@/lib/editor/clip-box";
 import { mediaWants, upcomingAssetIds } from "@/lib/editor/media-plan";
 import { previewSize } from "@/lib/editor/preview-size";
@@ -152,6 +153,10 @@ export function Preview() {
     let raf = 0;
     let disposed = false;
 
+    // The scopes read this canvas after each draw.
+    const tap = frameTapOf(store);
+    tap.set(canvas);
+
     const draw = () => {
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
@@ -167,6 +172,7 @@ export function Preview() {
       const hidden = s.textEditId !== null ? { hideClipId: s.textEditId } : {};
       drawFrame(ctx, doc, s.playhead, { resolveFont, resolveSource: pool.resolveSource, placeholderLabel: pool.label, ...hidden });
       surface.changed();
+      tap.drawn();
     };
     // A frame asked for is skipped if a draw came first: the playback loop draws in its own animation frame.
     const schedule = () => {
