@@ -38,6 +38,7 @@ import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { clipFrame } from "@/lib/editor/keyframe-edit";
 import { markerAt, sortedMarkers } from "@/lib/editor/markers";
 import type { CutoutStep } from "@/lib/editor/cutout";
+import { reframePlan } from "@/lib/editor/reframe";
 import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
 import { soundClipsOf } from "@/lib/editor/sound";
@@ -73,6 +74,7 @@ import { useLevelVolume } from "./use-level-volume";
 import { useFollow } from "./use-follow";
 import { useSceneSplit } from "./use-scene-split";
 import { useCutout } from "./use-cutout";
+import { useReframe } from "./use-reframe";
 import { useSteady } from "./use-steady";
 import { useSyncSound } from "./use-sync-sound";
 
@@ -811,6 +813,26 @@ function StabilizeSection({ clip }: { clip: MediaClip }) {
   );
 }
 
+// Reframe: for a video whose shape is not the frame's (a wide shot in an upright project). It fills the frame and
+// follows the movement. Not shown for a clip that already has the frame's shape.
+function ReframeSection({ clipId, assetId }: { clipId: string; assetId: string }) {
+  const canEdit = useEditor((s) => s.canEdit);
+  const doc = useEditor(viewDoc);
+  const width = useLibrary((s) => s.assets[assetId]?.width ?? null);
+  const height = useLibrary((s) => s.assets[assetId]?.height ?? null);
+  const { run, busy } = useReframe();
+  const plan = reframePlan(doc, clipId, width && height ? { width, height } : null);
+  if (!plan.ok && (plan.why === "fits" || plan.why === "no-size" || plan.why === "not-a-video")) return null;
+  return (
+    <Section title="Reframe">
+      <Hint>{`This video is ${width && height && width >= height ? "wider" : "taller"} than the frame. Reframing fills the frame with it and moves it to keep what moves in view. It follows movement, not faces.`}</Hint>
+      <Button data-edit-control className="self-start" disabled={!canEdit || busy} onClick={() => void run(clipId)}>
+        {busy ? "Looking at the movement…" : "Reframe to follow the action"}
+      </Button>
+    </Section>
+  );
+}
+
 // Remove background: the person in a picture is kept and the rest made see-through, so the picture can sit over a
 // video. The model runs in this browser; the picture goes nowhere.
 function cutoutStatus(step: CutoutStep): string {
@@ -1388,6 +1410,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       <TimingSection clipId={clip.id} slips={clip.type === "video" || clip.type === "audio"} />
       {clip.type === "video" && clip.speed !== 0 && <StabilizeSection clip={clip} />}
       {clip.type === "video" && clip.speed > 0 && <ScenesSection clipId={clip.id} />}
+      {clip.type === "video" && <ReframeSection clipId={clip.id} assetId={clip.assetId} />}
       {clip.type === "image" && <CutoutSection clipId={clip.id} />}
       {(clip.type === "text" || clip.type === "shape" || clip.type === "image") && <FollowSection clipId={clip.id} />}
       <SlotSection clip={clip} />
