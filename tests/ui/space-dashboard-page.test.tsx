@@ -17,7 +17,7 @@ import {
 } from "@/app/(dashboard)/dashboard/actions";
 import type { DashboardProps } from "@/components/dashboard/dashboard";
 import type { DB } from "@/db";
-import { user } from "@/db/schema";
+import { oauthClient, oauthConsent, user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { createFolder } from "@/lib/projects/folders";
 import { recordOpen } from "@/lib/projects/opens";
@@ -209,6 +209,35 @@ describe("the dashboard page", () => {
     expect(screen.getByRole("button", { name: "Account" }).textContent).toContain("ada@gmail.com");
     expect(metadata.other).toEqual({ "darkreader-lock": "true" });
     expect(viewport).toEqual({ colorScheme: "dark" });
+  });
+});
+
+describe("AI agents in the dashboard's header", () => {
+  const frame = async () => render(await DashboardLayout({ children: <p>x</p> } as never));
+
+  beforeEach(() => {
+    signedIn.user = ada;
+    at.path = "/s/seattle-solvers";
+  });
+
+  it("is always there beside Learn, marked Connect until an agent is connected", async () => {
+    const first = await frame();
+    const link = screen.getByRole("link", { name: /^AI agents/ });
+    expect(link.getAttribute("href")).toBe("/agents");
+    expect(link.textContent).toContain("Connect");
+    expect(link.textContent).toContain("(none connected yet)");
+    first.unmount();
+    await testDb.insert(oauthClient).values([{ id: "c1", clientId: "claude-doc", name: "Claude", redirectUris: ["https://claude.ai/api/mcp/auth_callback"] }]);
+    const at_ = new Date("2026-11-01T10:00:00Z");
+    await testDb.insert(oauthConsent).values([{ id: "k1", clientId: "claude-doc", userId: ada.id, scopes: ["openid"], createdAt: at_, updatedAt: at_ }]);
+    await frame();
+    expect(screen.getByRole("link", { name: "AI agents" }).textContent).toBe("AI agents");
+  });
+
+  it("is marked as the page you're on, on the AI agents page", async () => {
+    at.path = "/agents";
+    await frame();
+    expect(screen.getByRole("link", { name: /^AI agents/ }).getAttribute("aria-current")).toBe("page");
   });
 });
 

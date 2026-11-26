@@ -165,6 +165,8 @@ describe("the dashboard", () => {
     const editor = renderDashboard({ projects: [] });
     expect(screen.getByText("No projects yet.")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "New project" })).toHaveLength(2);
+    // An agent can make the first one too.
+    expect(screen.getByRole("link", { name: "ask your AI agent to make one" }).getAttribute("href")).toBe("/agents");
     editor.unmount();
     // In a space with no projects, Recent says the same, not "projects you open".
     const recentEditor = renderDashboard({ projects: [], view: { kind: "recent" } });
@@ -174,6 +176,7 @@ describe("the dashboard", () => {
     const viewer = renderDashboard({ projects: [], canEdit: false });
     expect(screen.getByText("No projects yet.")).toBeTruthy();
     expect(screen.queryAllByRole("button", { name: "New project" })).toHaveLength(0);
+    expect(screen.queryByRole("link", { name: "ask your AI agent to make one" })).toBeNull();
     viewer.unmount();
     const folderEditor = renderDashboard({ view: { kind: "folder", folderId: "f2" } });
     expect(

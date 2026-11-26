@@ -209,7 +209,18 @@ export function Dashboard({ projects, folders, templates, recentIds, pinnedIds =
     return (
       <div className="flex flex-col items-start gap-3">
         <p className={EMPTY}>No projects yet.</p>
-        {canEdit && newProjectButton()}
+        {canEdit && (
+          <>
+            {newProjectButton()}
+            <p className={EMPTY}>
+              Or{" "}
+              <Link href="/agents" className={cx("rounded-sm font-medium text-ed-accent hover:underline", FOCUS_RING, FADE)}>
+                ask your AI agent to make one
+              </Link>
+              .
+            </p>
+          </>
+        )}
       </div>
     );
   }

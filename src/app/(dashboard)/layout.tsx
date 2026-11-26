@@ -4,6 +4,7 @@ import { createTeamAction } from "@/app/(dashboard)/s/new/actions";
 import { markTutorialSeenAction } from "@/app/(dashboard)/tutorial/actions";
 import { AccountMenu } from "@/components/dashboard/account-menu";
 import { AdminLink } from "@/components/dashboard/admin-link";
+import { AgentsLink } from "@/components/dashboard/agents-link";
 import { LearnLink } from "@/components/dashboard/learn-link";
 import { SpacesProvider } from "@/components/dashboard/space-switcher";
 import { KeepSignedIn } from "@/components/keep-signed-in";
@@ -11,6 +12,7 @@ import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { LogoMark } from "@/components/ui/logo";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
+import { hasConnectedAgent } from "@/lib/connector/has-agent";
 import { canCreateTeam } from "@/lib/spaces/create-team-access";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { listMyInvites } from "@/lib/spaces/invites";
@@ -27,7 +29,7 @@ export const viewport: Viewport = { colorScheme: "dark" };
 
 // The dashboard's own frame: a header with the person's account menu, and the page filling the rest of the window.
 // Admin shares this frame; sign-in keeps the (auth) look. The person's spaces reach the header too, which shows Admin
-// only in Seattle Solvers (AdminLink). When the server has the guide's videos, the account menu is told whether this
+// only in Seattle Solvers (AdminLink). The header always links to AI agents, marked Connect while nothing is connected. When the server has the guide's videos, the account menu is told whether this
 // person has yet to be welcomed with its first lesson; the menu opens it for them once (and is handed that lesson
 // only then), and the header's Learn link and the menu's Learn lead to the guide's own page.
 export default async function DashboardLayout({ children }: LayoutProps<"/">) {
@@ -36,10 +38,12 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   const video = guideVideo();
   // The tutorial is an extra: if its marks cannot be read (the setting was switched on before the table was made),
   // the dashboard opens without the welcome rather than not at all.
-  const [spaces, myInvites, seenTutorial] = await Promise.all([
+  // Whether an agent is connected only shapes the header's AI agents link; if it can't be read, the link stays plain.
+  const [spaces, myInvites, seenTutorial, agentConnected] = await Promise.all([
     listMySpaces(db, user.id),
     listMyInvites(db, user.email),
     video ? hasSeenTutorial(db, user.id).catch(() => true) : true,
+    hasConnectedAgent(db, user.id).catch(() => null),
   ]);
   // Only what the sidebar shows of each invite: where it leads and the team's name.
   const invites = myInvites.map(({ id, teamName }) => ({ id, teamName }));
@@ -60,6 +64,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
             EasyEdit
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-2">
+            <AgentsLink connected={agentConnected} />
             {tutorial && <LearnLink />}
             {user.allowlistRole === "admin" && <AdminLink />}
             <AccountMenu name={user.name || user.email} image={user.image ?? null} openSignUp={openSignUp()} tutorial={tutorial} />
