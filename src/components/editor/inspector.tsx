@@ -13,7 +13,7 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { gainLabel } from "@/lib/audio/loudness";
-import { applyLook, cleanUpSelection, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack } from "@/lib/editor/actions";
+import { applyLook, cleanUpSelection, duckSelection, freezeFrame, toggleMarker, removeTrack, renameTrack, resetCrop, reverseSelection, separateAudio, toggleTrack, rampSelection } from "@/lib/editor/actions";
 import { formatClock, trackToggles } from "@/lib/editor/geometry";
 import { NO_GRADE, isGraded } from "@/lib/editor/grade";
 import {
@@ -39,7 +39,7 @@ import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
 import { soundClipsOf } from "@/lib/editor/sound";
 import { fxOf } from "@/lib/render/clip-sound";
-import { rateLabel, rateOf } from "@/lib/editor/speed";
+import { rateLabel, rateOf, RAMPS, type RampId } from "@/lib/editor/speed";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import type { Units } from "@/lib/editor/settings";
 import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
@@ -1026,7 +1026,34 @@ function SpeedSection({ clip }: { clip: MediaClip }) {
           {backward && <Hint>Plays backward, without sound.</Hint>}
         </>
       )}
+      {!held && !backward && <SpeedRamp canEdit={canEdit} />}
     </Section>
+  );
+}
+
+// A speed ramp for the selected clip: pick how its speed changes, then Apply. The clip becomes a row of short linked
+// pieces, each at its own speed, and what follows it on the track moves to fit.
+function SpeedRamp({ canEdit }: { canEdit: boolean }) {
+  const store = useEditorStore();
+  const [ramp, setRamp] = useState<RampId>("slow_down");
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+        <Field label="Speed ramp">
+          <Select data-edit-control disabled={!canEdit} value={ramp} onChange={(event) => setRamp(event.target.value as RampId)}>
+            {RAMPS.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Button data-edit-control disabled={!canEdit} onClick={() => rampSelection(store, ramp)}>
+          Apply ramp
+        </Button>
+      </div>
+      <Hint>{RAMPS.find((r) => r.id === ramp)!.says}</Hint>
+    </div>
   );
 }
 

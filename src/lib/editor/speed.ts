@@ -115,3 +115,69 @@ export function freezeFrameOps(doc: TimelineDoc, clipIds: string[], playhead: nu
 export function hasVideo(doc: TimelineDoc, clipIds: string[]): boolean {
   return videosOf(doc, clipIds).length > 0;
 }
+
+// Speed ramps: a clip that changes speed as it plays. A clip has one speed, so a ramp is the clip cut into short
+// pieces, each a little faster or slower than the one before, linked so they are moved as one. Ten pieces at thirty
+// frames a second read as one smooth change.
+
+// How fast each part of the clip plays, as a multiple of its own speed, at share p (0 to 1) of the way through its
+// footage.
+export type RampId = "speed_up" | "slow_down" | "hero" | "bullet" | "flash_in" | "flash_out";
+const smooth = (p: number) => p * p * (3 - 2 * p);
+const between = (a: number, b: number, p: number) => a + (b - a) * smooth(Math.min(1, Math.max(0, p)));
+export const RAMPS: readonly { id: RampId; label: string; says: string; at(p: number): number }[] = [
+  { id: "speed_up", label: "Speed up", says: "Starts as it is and ends three times as fast.", at: (p) => between(1, 3, p) },
+  { id: "slow_down", label: "Slow down", says: "Starts as it is and ends at a third of the speed.", at: (p) => between(1, 1 / 3, p) },
+  { id: "hero", label: "Hero", says: "Fast, slow in the middle, fast again.", at: (p) => between(0.4, 2.5, Math.abs(p - 0.5) * 2) },
+  { id: "bullet", label: "Bullet", says: "As it is, with a moment of slow motion in the middle.", at: (p) => between(0.25, 1, (Math.abs(p - 0.5) - 0.1) / 0.2) },
+  { id: "flash_in", label: "Flash in", says: "Rushes in four times as fast, then settles.", at: (p) => between(4, 1, p / 0.35) },
+  { id: "flash_out", label: "Flash out", says: "Plays as it is, then rushes out four times as fast.", at: (p) => between(1, 4, (p - 0.65) / 0.35) },
+];
+
+export const RAMP_PIECES = 10;
+
+export type Ramped = { ok: true; ops: OpInput[]; clipIds: string[] } | { ok: false; why: "not-a-clip" | "too-short" | "no-room" };
+
+// The ops that turn one forward video or audio clip into a ramp: its footage in up to RAMP_PIECES equal parts, each
+// at its own speed. The whole gets longer or shorter with it, so every later clip on the track moves by the
+// difference and nothing is covered or left as a gap. The first piece keeps the clip's id and its way in, the last
+// its way out; the pieces share a link. ids: a new id each call. clipsCap: the most clips a track holds.
+export function rampOps(doc: TimelineDoc, clipId: string, rampId: RampId, ids: () => string, clipsCap = Infinity): Ramped {
+  const track = doc.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+  const clip = track?.clips.find((c) => c.id === clipId);
+  const ramp = RAMPS.find((r) => r.id === rampId);
+  if (!track || track.locked || !clip || !ramp || !hasSpeed(clip) || clip.speed <= 0) return { ok: false, why: "not-a-clip" };
+  const used = Math.round(clip.duration * clip.speed); // frames of footage
+  const pieces = Math.min(RAMP_PIECES, Math.floor(used / 2));
+  if (pieces < 3) return { ok: false, why: "too-short" };
+  if (track.clips.length + pieces - 1 > clipsCap) return { ok: false, why: "no-room" };
+
+  const group = clip.group ?? ids();
+  const made: Record<string, unknown>[] = [];
+  let at = clip.start;
+  let from = 0; // each piece starts on the frame of footage after the one before ended on, so nothing is skipped
+  for (let i = 0; i < pieces; i++) {
+    const footage = Math.round((used * (i + 1)) / pieces) - from;
+    // Two places, as the Speed field keeps, and never past what a clip may be set to.
+    const speed = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(clip.speed * ramp.at((i + 0.5) / pieces) * 100) / 100));
+    // As long as its footage lasts at that speed, and never a frame more than the footage has.
+    const duration = Math.max(1, Math.floor(footage / speed + 1e-9));
+    const piece: Record<string, unknown> = { ...structuredClone(clip), id: i === 0 ? clip.id : ids(), start: at, duration, in: clip.in + from, speed, group };
+    // A way in belongs to the first piece and a way out to the last; the cuts between pieces are plain.
+    if (i > 0) for (const key of ["transitionIn", "fadeIn"]) delete piece[key];
+    if (i < pieces - 1) for (const key of ["transitionOut", "fadeOut"]) delete piece[key];
+    // Keyframes count from each clip's own start: the pieces carry on where the one before left off.
+    if (clip.keyframes) piece.keyframes = Object.fromEntries(Object.entries(clip.keyframes).map(([prop, list]) => [prop, list?.map((k) => ({ ...k, at: k.at - (at - clip.start) }))]));
+    made.push(piece);
+    at += duration;
+    from += Math.round(duration * speed);
+  }
+  const by = at - (clip.start + clip.duration);
+  const later = track.clips.filter((c) => c.id !== clip.id && c.start >= clip.start + clip.duration).sort((a, b) => a.start - b.start);
+  const shift = (order: typeof later): OpInput[] => order.map((c) => ({ op: "move_clip", clipId: c.id, start: c.start + by }));
+  const add: OpInput[] = made.map((piece) => ({ op: "add_clip", trackId: track.id, clip: piece }) as OpInput);
+  const remove: OpInput = { op: "remove_clip", clipId: clip.id };
+  // Longer: what follows makes room first, the last clip going first. Shorter: the pieces go in, then what follows closes up.
+  const ops = by > 0 ? [...shift([...later].reverse()), remove, ...add] : [remove, ...add, ...(by < 0 ? shift(later) : [])];
+  return { ok: true, ops, clipIds: made.map((piece) => piece.id as string) };
+}

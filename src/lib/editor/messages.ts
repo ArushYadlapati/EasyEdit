@@ -24,6 +24,12 @@ export const MESSAGES = {
   nothingToSeparate: "Select a video clip that has sound to separate its audio.",
   nothingToGroup: "Select two or more clips on unlocked tracks to link them.",
   nothingToUngroup: "None of the selected clips is linked.",
+  rampNeedsOne: "Select one video or audio clip to ramp its speed.",
+  rampRefused: {
+    "not-a-clip": "A speed ramp needs a video or audio clip that plays forward, on an unlocked track.",
+    "too-short": "That clip is too short to ramp: it needs a few frames for each change of speed.",
+    "no-room": "That track holds as many clips as it can. A speed ramp cuts a clip into several.",
+  },
   noRoomForLayer: "This project has as many tracks as it can hold. Remove one, or clear room on the top video track, to add an adjustment layer.",
   lutTooLarge: "That file is too large to read as a look-up table.",
   lutsFull: "This project already keeps as many LUTs as it can. Remove one from the project first.",

@@ -303,3 +303,18 @@ it("scopes are counted only while shown, and name which one is on", () => {
   fireEvent.click(screen.getByRole("button", { name: "Hide scopes" }));
   expect(screen.queryByRole("img", { name: /of the frame in the preview/ })).toBeNull();
 });
+
+it("a speed ramp is picked by name, says what it does, and is applied to the clip in one change", () => {
+  const { store } = show();
+  const menu = screen.getByLabelText("Speed ramp") as HTMLSelectElement;
+  expect([...menu.options].map((o) => o.text)).toEqual(["Speed up", "Slow down", "Hero", "Bullet", "Flash in", "Flash out"]);
+  expect(screen.getByText("Starts as it is and ends at a third of the speed.")).toBeTruthy();
+  fireEvent.change(menu, { target: { value: "hero" } });
+  expect(screen.getByText("Fast, slow in the middle, fast again.")).toBeTruthy();
+  const before = store.getState().doc;
+  fireEvent.click(screen.getByRole("button", { name: "Apply ramp" }));
+  expect(store.getState().selection.clipIds.length).toBeGreaterThan(2);
+  expect(store.getState().queue.at(-1)).toMatchObject({ label: "speed ramp" });
+  act(() => store.getState().undo());
+  expect(store.getState().doc).toEqual(before);
+});

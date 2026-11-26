@@ -1,3 +1,4 @@
+import { LIMITS } from "@/lib/limits";
 import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
 import {
@@ -42,7 +43,7 @@ import { mediaClipFor, mediaLengthFrames } from "./media-clips";
 import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { cleanUpOps, duckOps, muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
-import { freezeFrameOps, reverseOps } from "./speed";
+import { freezeFrameOps, rampOps, reverseOps, type RampId } from "./speed";
 import { CROP_PROPS } from "@/lib/timeline/keyframes";
 import { addAdjustmentOps } from "./adjustment";
 import { findClip, type EditorStore } from "./store";
@@ -456,6 +457,18 @@ export function duplicateSelection(store: EditorStore): void {
   }
   const result = state.edit(placement.ops, "duplicate");
   if (result.ok) state.select(placement.clipIds);
+}
+
+// Turns the one selected clip into a speed ramp, in one change, and selects its pieces. A clip that cannot be one
+// (backward, held, too short, on a full or locked track) gets a notice saying why.
+export function rampSelection(store: EditorStore, rampId: RampId): void {
+  const state = store.getState();
+  if (!state.canEdit || state.gesture !== null) return;
+  const [clipId, ...rest] = state.selection.clipIds;
+  if (clipId === undefined || rest.length > 0) return void state.notify("info", MESSAGES.rampNeedsOne);
+  const ramped = rampOps(state.doc, clipId, rampId, () => nanoid(10), LIMITS.clipsPerTrack);
+  if (!ramped.ok) return void state.notify("info", MESSAGES.rampRefused[ramped.why]);
+  if (state.edit(ramped.ops, "speed ramp").ok) state.select(ramped.clipIds);
 }
 
 // Shows the whole of a cropped clip again, in one change labeled "crop". Nothing to do for an uncropped clip, or while
