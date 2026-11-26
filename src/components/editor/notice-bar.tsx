@@ -14,15 +14,23 @@ const isInternalPath = (href: string) => href.startsWith("/") && !href.startsWit
 
 // The looks shared by everything said over the preview: this bar, and the moved banner at the top. The layer spans the
 // preview between the side panels and lets clicks through around the notice; each one adds its own top or bottom.
-export const NOTICE_LAYER =
-  "pointer-events-none absolute right-[calc(var(--ed-right-w)+1px)] left-[calc(var(--ed-left-w)+1px)] z-10 flex justify-center px-4";
+// Below the lg width the panels are stacked, so their widths say nothing about where the preview is: there the layer
+// takes the preview's own grid row, across the window with 8 px a side, and each one adds its NOTICE_PHONE_* place in it.
+export const NOTICE_LAYER = cx(
+  "pointer-events-none absolute right-[calc(var(--ed-right-w)+1px)] left-[calc(var(--ed-left-w)+1px)] z-10 flex justify-center px-4",
+  "max-lg:right-0 max-lg:left-0 max-lg:row-start-2 max-lg:row-end-3 max-lg:px-2",
+);
+// On a phone the notice sits at the foot of the preview, just above the Timeline / Add / Details switch; the moved
+// banner at its top.
+export const NOTICE_PHONE_BOTTOM = "max-lg:bottom-2";
+export const NOTICE_PHONE_TOP = "max-lg:top-2";
 export const NOTICE_ROW = "flex max-w-full min-w-0 items-center text-[13px] leading-5 text-ed-text";
 // The frame: one raised line with a hairline edge. A tone, such as an error, colors the words or a small mark beside
 // them, never a stripe down the side.
 export const NOTICE_FRAME = "pointer-events-auto rounded-md border border-ed-line bg-ed-raised pl-3";
 export const NOTICE_LINK = cx("ml-2 shrink-0 rounded-[4px] font-medium underline underline-offset-2", FOCUS_RING);
 
-// The latest notice, centered over the preview just above the timeline. An info notice goes away after five seconds,
+// The latest notice, centered over the preview just above the timeline (on a phone, just above the switch). An info notice goes away after five seconds,
 // counted again in full for every new notice. The count waits while the pointer is over the notice or focus is in it,
 // so the words, and a link in them, don't go while someone reads them or reaches for them; it starts again from the
 // top once both have left. An error stays until it is dismissed or a newer notice takes its place.
@@ -89,7 +97,7 @@ export function NoticeBar() {
   // same as the one still showing, such as a retry that is refused again, is announced too. The
   // bar's frame and the Dismiss button appear only with a notice.
   return (
-    <div className={cx(NOTICE_LAYER, "bottom-[calc(var(--ed-timeline-h)+9px)]")}>
+    <div className={cx(NOTICE_LAYER, "bottom-[calc(var(--ed-timeline-h)+9px)]", NOTICE_PHONE_BOTTOM)}>
       <div ref={row} className={cx(NOTICE_ROW, notice && cx(NOTICE_FRAME, "py-1 pr-1"))}>
         {/* An error is said in the danger color, as everywhere else in the app. */}
         <p role="alert" className="min-w-0 text-ed-danger">

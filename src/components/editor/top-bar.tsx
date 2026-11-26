@@ -1,7 +1,7 @@
 "use client";
 
 import { Keyboard, Redo2, SettingsIcon, Undo2 } from "lucide-react";
-import { useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
@@ -24,6 +24,7 @@ import { spacePath } from "@/lib/spaces/paths";
 import { ProjectName } from "./project-name";
 import { RIGHT_TABS } from "./right-panel";
 import { SaveStatus } from "./save-status";
+import { PeopleCount, SaveMark } from "./top-bar-compact";
 import { TimelineFileDialog, type TimelineFileMode } from "./timeline-file-dialog";
 import { useCommandRunner, useShortcutLabel } from "./use-shortcuts";
 
@@ -81,6 +82,21 @@ export function TopBar({
   const redo = useEditor((s) => s.redo);
   const keyFor = useShortcutLabel();
   const toItems = useToMenuItems();
+  // Undo that takes the last change (or Redo the last undone one) turns itself off, and focus would drop to the
+  // page; it goes to the other button instead, which that same press has just turned on.
+  const undoButton = useRef<HTMLButtonElement>(null);
+  const redoButton = useRef<HTMLButtonElement>(null);
+  const handOver = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    const to = handOver.current;
+    handOver.current = null;
+    if (to && !to.disabled) to.focus();
+  }, [undoLabel, redoLabel]);
+  function pressThenHandOver(e: MouseEvent<HTMLButtonElement>, run: () => void, stack: "undoStack" | "redoStack", other: RefObject<HTMLButtonElement | null>) {
+    const focused = e.currentTarget === document.activeElement;
+    run();
+    if (focused && store.getState()[stack].length === 0) handOver.current = other.current;
+  }
 
   const itemsOf = (menu: (input: TopMenuInput) => MenuEntry[]) => () =>
     toItems(menu(topMenuInput(store.getState(), clipboard.read() !== null)));
@@ -148,10 +164,11 @@ export function TopBar({
 
   return (
     // The middle column keeps its width while the sides can give way: the project name first, as before.
-    // Below the lg width (a phone) the search, the save status and the keyboard list give way: the name, undo, redo
-    // and Export stay.
-    <header className="grid min-w-0 items-center gap-3 bg-ed-panel px-3 max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:gap-1 max-lg:px-1.5 lg:col-span-3 lg:grid-cols-[minmax(0,1fr)_minmax(9rem,clamp(12rem,28vw,24rem))_minmax(max-content,1fr)]">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+    // Below the lg width (a phone, a narrow window) everything stays but in a smaller form: the search folds to its
+    // mark and opens across the bar, the save status is a mark (with a word when something needs knowing), who else
+    // is here is one count, and the keyboard list gives way. The search key opens the search at every width.
+    <header className="relative grid min-w-0 items-center gap-3 bg-ed-panel px-3 max-lg:grid-cols-[minmax(0,1fr)_auto_auto] max-lg:gap-1 max-lg:px-1.5 lg:col-span-3 lg:grid-cols-[minmax(0,1fr)_minmax(9rem,clamp(12rem,28vw,24rem))_minmax(max-content,1fr)]">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden max-lg:gap-1">
         <LeaveLink
           href={spacePath(spaceSlug)}
           className={cx(
@@ -183,23 +200,26 @@ export function TopBar({
           </span>
         )}
       </div>
-      <div className="contents max-lg:hidden">
-        <FeatureSearch items={searchList} onRun={runFound} inputRef={searchRef ?? ownSearch} />
-      </div>
+      <FeatureSearch items={searchList} onRun={runFound} inputRef={searchRef ?? ownSearch} fold />
       <TimelineFileDialog mode={timelineFile} onClose={() => setTimelineFile(null)} />
       <div className="flex items-center justify-end gap-2 max-lg:gap-0.5">
-        <div className="contents max-lg:hidden">
+        {/* One of each at every width, so what a screen reader hears never doubles; below the lg width the dots and
+            the words are kept for it and the count and mark beside them are what shows. */}
+        <div className="contents max-lg:[&>[role=group]]:hidden max-lg:[&>[role=status]]:sr-only">
           <EditingIndicator />
-          <div className="shrink-0">
-            <SaveStatus />
-          </div>
+        </div>
+        <PeopleCount className="lg:hidden" />
+        <SaveMark className="lg:hidden" />
+        <div className="shrink-0 max-lg:[&_[role=status]]:sr-only">
+          <SaveStatus />
         </div>
         <IconButton
           data-edit-control
           label={undoLabel ? `Undo ${undoLabel}` : "Undo"}
           shortcut={keyFor("undo")}
           disabled={!canEdit || deleted || undoLabel === undefined}
-          onClick={() => undo()}
+          ref={undoButton}
+          onClick={(e) => pressThenHandOver(e, () => undo(), "undoStack", redoButton)}
         >
           <Undo2 />
         </IconButton>
@@ -208,7 +228,8 @@ export function TopBar({
           label={redoLabel ? `Redo ${redoLabel}` : "Redo"}
           shortcut={keyFor("redo")}
           disabled={!canEdit || deleted || redoLabel === undefined}
-          onClick={() => redo()}
+          ref={redoButton}
+          onClick={(e) => pressThenHandOver(e, () => redo(), "redoStack", undoButton)}
         >
           <Redo2 />
         </IconButton>

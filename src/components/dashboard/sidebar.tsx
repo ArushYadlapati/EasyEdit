@@ -4,7 +4,7 @@ import { Pin, Plus } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { DROP_OVER, useProjectDrop } from "@/components/dashboard/use-project-drop";
-import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
+import { CHOSEN_EDGE, FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import { ALL_VIEW, RECENT_VIEW, folderOf, viewQuery, type DashboardFolder, type DashboardView } from "@/lib/dashboard/view";
 import { CollapsedSectionsProvider, SidebarSection } from "@/components/dashboard/sidebar-section";
@@ -42,7 +42,7 @@ function SidebarLink({ href, current, folderId, takesDrops, onDropProject, child
       aria-current={current ? "page" : undefined}
       className={cx(
         "flex h-7 shrink-0 items-center justify-between gap-3 rounded-md px-2 text-xs font-medium whitespace-nowrap",
-        current ? "bg-ed-accent-weak text-ed-accent" : "text-ed-text hover:bg-ed-hover",
+        current ? cx("bg-ed-accent-weak text-ed-accent", CHOSEN_EDGE.on) : "text-ed-text hover:bg-ed-hover",
         DROP_OVER,
         FOCUS_RING_INSET,
         FADE,

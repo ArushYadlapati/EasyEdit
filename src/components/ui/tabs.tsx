@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, type KeyboardEvent } from "react";
-import { FADE, FOCUS_RING, cx } from "./cx";
+import { CHOSEN_EDGE, FADE, FOCUS_RING, cx } from "./cx";
 
 export type TabsProps = {
   label: string;
@@ -66,6 +66,7 @@ export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected
             wrap ? "whitespace-nowrap" : "truncate",
             dense ? "px-1.5" : compact ? "px-2" : "px-3",
             "aria-selected:bg-ed-accent-weak aria-selected:text-ed-accent aria-selected:hover:bg-ed-accent-weak aria-selected:hover:text-ed-accent",
+            CHOSEN_EDGE.selected,
             FOCUS_RING,
             FADE,
           )}

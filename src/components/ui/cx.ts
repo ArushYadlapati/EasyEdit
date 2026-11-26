@@ -10,6 +10,17 @@ export const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-
 export const FOCUS_RING_INSET = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ed-accent";
 export const FADE = "transition-[color,background-color,border-color,opacity] duration-120 motion-reduce:transition-none";
 export const DISABLED = "disabled:cursor-not-allowed disabled:opacity-40";
+// The chosen one of a set (a tab, a pressed toggle, a checked segment, the current page) is told apart by more than
+// its tint and blue words, which differ from the rest mostly in hue: it also takes a 1 px Selection Blue edge drawn
+// inside it, 7.07:1 against the panel, which takes no room from its words. With the system's high contrast colours,
+// where fills and shadows are dropped, the edge is 2 px in the system's selection colour instead. Each keys on the
+// state's own attribute; CHOSEN_EDGE.on is for a control that is already known to be the chosen one.
+export const CHOSEN_EDGE = {
+  selected: "aria-selected:inset-ring aria-selected:inset-ring-ed-accent forced-colors:aria-selected:border-2 forced-colors:aria-selected:border-[Highlight]",
+  pressed: "aria-pressed:inset-ring aria-pressed:inset-ring-ed-accent forced-colors:aria-pressed:border-2 forced-colors:aria-pressed:border-[Highlight]",
+  checked: "aria-checked:inset-ring aria-checked:inset-ring-ed-accent forced-colors:aria-checked:border-2 forced-colors:aria-checked:border-[Highlight]",
+  on: "inset-ring inset-ring-ed-accent forced-colors:border-2 forced-colors:border-[Highlight]",
+} as const;
 // A boxed text field: 13 px text, raised fill and a field edge. The fill is barely lighter than a panel, so the edge is
 // what shows where an empty field is. Single-line fields add h-7 (28 px).
 export const FIELD_BOX = cx(

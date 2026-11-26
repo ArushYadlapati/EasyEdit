@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, type ComponentProps, type KeyboardEvent } from "react";
-import { DISABLED, FADE, FOCUS_RING, cx } from "./cx";
+import { CHOSEN_EDGE, DISABLED, FADE, FOCUS_RING, cx } from "./cx";
 
 export type SegmentedProps<T extends string> = Omit<ComponentProps<"button">, "value" | "onChange" | "children" | "aria-label"> & {
   label: string;
@@ -69,7 +69,7 @@ export function Segmented<T extends string>({
             "flex-1 truncate rounded-[4px] px-2 text-xs font-medium text-ed-muted select-none",
             "enabled:hover:bg-ed-hover enabled:hover:text-ed-text",
             "aria-checked:bg-ed-accent-weak aria-checked:text-ed-accent enabled:aria-checked:hover:bg-ed-accent-weak enabled:aria-checked:hover:text-ed-accent",
-            "aria-checked:inset-ring aria-checked:inset-ring-ed-accent",
+            CHOSEN_EDGE.checked,
             FOCUS_RING,
             FADE,
             DISABLED,

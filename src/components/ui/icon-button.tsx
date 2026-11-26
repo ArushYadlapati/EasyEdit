@@ -13,7 +13,7 @@ export type IconButtonProps = Omit<ComponentProps<"button">, "children" | "aria-
   children: ReactNode; // the icon
 };
 
-// A 28 × 28 button with a 16 px icon. The icon itself is hidden from screen readers; the label names the button, and
+// A 28 × 28 button with a 16 px icon; pressed, it takes the weak blue fill, blue icon and a Selection Blue edge. The icon itself is hidden from screen readers; the label names the button, and
 // the shortcut and hint describe it, from a line of text nobody sees. Its tooltip is the app's own, so it shows
 // quickly. A disabled button gets no pointer events in some browsers, so it keeps the browser's title tooltip.
 export function IconButton({
@@ -60,7 +60,9 @@ export function IconButton({
       className={cx(
         "inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-transparent text-ed-muted select-none",
         "enabled:hover:bg-ed-hover enabled:hover:text-ed-text",
-        "aria-pressed:bg-ed-accent-weak aria-pressed:text-ed-accent enabled:aria-pressed:hover:bg-ed-accent-weak",
+        // Pressed, the transparent edge turns Selection Blue (see CHOSEN_EDGE), so the state is more than a tint.
+        "aria-pressed:border-ed-accent aria-pressed:bg-ed-accent-weak aria-pressed:text-ed-accent enabled:aria-pressed:hover:bg-ed-accent-weak",
+        "forced-colors:aria-pressed:border-2 forced-colors:aria-pressed:border-[Highlight]",
         "[&>svg]:pointer-events-none [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:stroke-[1.75]",
         FOCUS_RING,
         FADE,

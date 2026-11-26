@@ -145,8 +145,51 @@ export function Timeline() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [store]);
 
+  // Two fingers spread or pinched on the timeline zoom it around the point between them, as Ctrl with the wheel does,
+  // and the page itself is not zoomed (the scroller's touch-action leaves the browser one-finger panning only). A drag
+  // or a box the first finger began gives way to the pinch. The listeners are added by hand to be allowed to stop the
+  // browser's own handling of the gesture.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let pinch: { spread: number; zoom: number } | null = null;
+    const spreadOf = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) {
+        pinch = null;
+        return;
+      }
+      if (e.cancelable) e.preventDefault();
+      drag.cancel();
+      pinch = { spread: Math.max(1, spreadOf(e.touches)), zoom: store.getState().zoom };
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      if (e.cancelable) e.preventDefault();
+      const { zoom: current, doc: d, setZoom } = store.getState();
+      const next = clampZoom(pinch.zoom * (spreadOf(e.touches) / pinch.spread), docDuration(d), d.fps);
+      if (next === current) return;
+      const middle = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      wheelAnchor.current = Math.max(0, middle - el.getBoundingClientRect().left - headerWidthNow());
+      setZoom(next);
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinch = null;
+    };
+    el.addEventListener("touchstart", onStart, { passive: false });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [store, drag]);
+
   // After a zoom, before the frame is painted, scroll so the right thing stays put: the frame under the
-  // pointer for the wheel, else the playhead when it is in view, else the left edge.
+  // pointer for the wheel or between the fingers for a pinch, else the playhead when it is in view, else the left edge.
   const shownZoom = useRef(zoom);
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -223,7 +266,9 @@ export function Timeline() {
             onScroll={onScroll}
             onDoubleClick={onDoubleClick}
             {...dropHandlers}
-            className={cx("absolute inset-0 overflow-auto overscroll-contain select-none", DRAG_CURSOR)}
+            // One finger pans the timeline; two zoom it (above), never the page. Clips, the ruler and the playhead
+            // take the pointer for themselves (touch-none).
+            className={cx("absolute inset-0 touch-pan-x touch-pan-y overflow-auto overscroll-contain select-none", DRAG_CURSOR)}
           >
             <div className="relative min-h-full" style={{ width }} onContextMenu={onContentContextMenu}>
               <Ruler zoom={zoom} fps={fps} fromFrame={fromFrame} toFrame={toFrame} max={frames} end={duration} onScrub={onScrub} />

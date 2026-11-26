@@ -268,3 +268,14 @@ describe("how long a notice stays", () => {
     expect(store.getState().notice).toBeNull();
   });
 });
+
+it("below the lg width the notice takes the preview's grid row across the window, not the strip between the desktop panels", () => {
+  const store = makeStore();
+  const { container } = render(<EditorProvider store={store}><NoticeBar /></EditorProvider>);
+  act(() => store.getState().notify("info", "Nothing to split at the playhead."));
+  const layer = (container.firstElementChild as HTMLElement).className.split(" ");
+  // The desktop place stays as it was; the phone's overrides it from the preview's row: across, with 8 px a side,
+  // at the foot of the preview, just above the Timeline / Add / Details switch.
+  expect(layer).toEqual(expect.arrayContaining(["left-[calc(var(--ed-left-w)+1px)]", "bottom-[calc(var(--ed-timeline-h)+9px)]"]));
+  expect(layer).toEqual(expect.arrayContaining(["max-lg:left-0", "max-lg:right-0", "max-lg:row-start-2", "max-lg:row-end-3", "max-lg:px-2", "max-lg:bottom-2"]));
+});

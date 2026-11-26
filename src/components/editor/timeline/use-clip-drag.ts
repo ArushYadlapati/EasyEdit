@@ -24,6 +24,13 @@ import { headerWidthNow } from "./header-width";
 export const CLICK_SLOP_PX = 3; // a press that travels further is a drag, not a click
 const EDGE_ZONE_PX = 32; // a pointer this close to either side of the lanes, or to the rows' top or bottom, scrolls them
 const AUTOSCROLL_PX = 12; // per animation frame
+// On narrow lanes (a phone's) the side zones are 8% of the lanes' width, but never under 16 px. A drag's pointer must
+// stay in one for 250 ms before the lanes scroll, and they scroll faster the deeper it is in, from a quarter speed at
+// the zone's inner edge, so a clip held near the side is not carried far away.
+const EDGE_ZONE_SHARE = 0.08;
+const MIN_EDGE_ZONE_PX = 16;
+const EDGE_WAIT_MS = 250;
+const MIN_SPEED_SHARE = 0.25;
 
 // What the timeline draws on top of the rows while a drag or a box selection is under way. Frames
 // are along the lanes; y is from the top of the first row.
@@ -73,6 +80,7 @@ export type TimelineDrag = {
   pressTrack(e: ReactPointerEvent | PointerEvent, trackId: string): void;
   pointAt(clientX: number, clientY: number): TimelinePoint;
   scrollNear(clientX: number): void; // one step of the sideways autoscroll, for a pointer near either side of the lanes
+  cancel(): void; // ends a press or drag as Escape does, as when a second finger turns it into a pinch
   dispose(): void;
 };
 
@@ -91,6 +99,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
   let frameId: number | null = null;
   let unsubscribe: (() => void) | null = null;
   let pointerSource: EventTarget | null = null; // where the press's pointer events are listened for
+  let edgeSince: number | null = null; // when a drag's pointer came into a side zone, while it stays there
 
   // In the rows the lane's left edge is frame 0; the gutter before it gives a negative x.
   const laneLeft = () => rows?.querySelector("[data-lane]")?.getBoundingClientRect().left ?? 0;
@@ -118,17 +127,31 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     const s = session;
     if (!s?.started) return;
     // A track drag never scrolls the lanes sideways, only the rows up and down.
-    const scrolling = s.kind === "track" ? autoscrollRows(s.y) : autoscroll(s.x);
+    const scrolling = s.kind === "track" ? autoscrollRows(s.y) : autoscroll(s.x, true);
     resolve(s);
     if (scrolling && session === s) schedule();
   }
 
-  // Scrolls one step when the pointer is near either side of the lanes. False at either end.
-  function autoscroll(clientX: number): boolean {
+  // Scrolls one step when the pointer is near either side of the lanes. False at either end. paced: a drag's pointer,
+  // which waits in the zone before the first step and goes faster deeper in; while it waits this is true, so the
+  // frames go on.
+  function autoscroll(clientX: number, paced = false): boolean {
     if (!scroller) return false;
     const { left, right } = scroller.getBoundingClientRect();
-    const step = clientX < left + headerWidthNow() + EDGE_ZONE_PX ? -AUTOSCROLL_PX : clientX > right - EDGE_ZONE_PX ? AUTOSCROLL_PX : 0;
-    if (step === 0) return false;
+    const lanesLeft = left + headerWidthNow();
+    const zone = Math.min(EDGE_ZONE_PX, Math.max(MIN_EDGE_ZONE_PX, (right - lanesLeft) * EDGE_ZONE_SHARE));
+    const depth = clientX < lanesLeft + zone ? clientX - (lanesLeft + zone) : clientX > right - zone ? clientX - (right - zone) : 0;
+    if (depth === 0) {
+      edgeSince = null;
+      return false;
+    }
+    let step = Math.sign(depth) * AUTOSCROLL_PX;
+    if (paced) {
+      const now = performance.now();
+      edgeSince ??= now;
+      if (now - edgeSince < EDGE_WAIT_MS) return true;
+      step = Math.sign(depth) * Math.max(1, Math.round(AUTOSCROLL_PX * Math.min(1, Math.max(MIN_SPEED_SHARE, Math.abs(depth) / zone))));
+    }
     const before = scroller.scrollLeft;
     scroller.scrollLeft = before + step;
     return scroller.scrollLeft !== before;
@@ -338,6 +361,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     end(false);
     if (!scroller) return;
     session = s;
+    edgeSince = null;
     if (s.kind !== "track") capture(s.pointerId);
     pointerSource = s.kind === "track" ? window : scroller;
     pointerSource.addEventListener("pointermove", onMove as EventListener);
@@ -452,6 +476,11 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     // A drag from outside the timeline sends dragover over and over, so each one is a step.
     scrollNear(clientX) {
       autoscroll(clientX);
+    },
+    cancel() {
+      const s = session;
+      if (s?.kind === "box" && s.started) store.getState().select(s.base);
+      end(false);
     },
     dispose() {
       end(false);

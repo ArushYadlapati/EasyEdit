@@ -66,6 +66,17 @@ const SMALL_BOX_PX = 48;
 const EDGE_PX = 12;
 const ROTATE_PX = 24;
 const ROTATE_FAR_PX = 36;
+// By touch (a coarse pointer, or the last press was a finger) every handle is a 40 px target round the same 8 px
+// square, and a press lands on a clip up to 12 px outside its box. A box under 80 px a side has no room for those
+// targets and a place to move it from, so it shows its four corners only, each drawn just outside its corner: a touch
+// anywhere in the box moves it. The rotate handle sits 40 px past the top edge.
+const TOUCH_TARGET_PX = 40;
+const TOUCH_SLOP_PX = 12;
+const TOUCH_ROOM_PX = 80;
+const TOUCH_ROTATE_PX = 40;
+const CORNERS: Handle[] = ["nw", "ne", "se", "sw"];
+const COARSE = "(pointer: coarse)";
+const coarseQuery = () => (typeof window === "undefined" || typeof window.matchMedia !== "function" ? null : window.matchMedia(COARSE));
 
 // The order handles are placed in; a later one clamped onto an earlier one's spot is the one left out.
 const PLACING: Handle[] = ["nw", "ne", "se", "sw", "n", "e", "s", "w"];
@@ -161,6 +172,9 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   // A Mac Ctrl press on a resize handle, whose right-click must open nothing, wherever the browser aims it.
   const ctrlCrop = useRef(false);
   const pointerOver = useRef(false);
+  // Whether the handles are laid out for a finger: on a coarse pointer, and after a touch press on any screen, until
+  // a mouse or pen press says otherwise.
+  const touch = useRef(coarseQuery()?.matches ?? false);
   const refreshRef = useRef<() => void>(() => {});
   const drag = useCanvasDrag(surface, pane);
   const guideDrag = useGuideDrag(surface);
@@ -212,7 +226,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         next = {
           // An arrow showing its end handles needs no box round it.
           outlines: outlinesOf(framed.filter((i) => !ends.some((e) => e.clipId === i.clipId)), state.selection.clipIds, view, box),
-          handles: handlesOf(state, framed, view, box, visible, followed, marks),
+          handles: handlesOf(state, framed, view, box, visible, followed, marks, touch.current),
           ends,
           guides: guidesOf(drag.guides.getState(), viewDoc(state), view, box),
           placed: state.showGuides ? placedOf(viewDoc(state), state.guideId, guideDrag.removing.getState().guideId, view, box) : [],
@@ -290,6 +304,18 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     };
   }, [handlesShown]);
 
+  // A pointer that turns coarse or fine (a tablet's keyboard folded away, a mouse plugged in) lays the handles out again.
+  useEffect(() => {
+    const query = coarseQuery();
+    if (!query?.addEventListener) return;
+    const onChange = () => {
+      touch.current = query.matches;
+      refreshRef.current();
+    };
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
   function setCtrl(down: boolean) {
     if (ctrlDown.current === down) return;
     ctrlDown.current = down;
@@ -322,17 +348,27 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     drag.press(e, grip, shown.clipId, at);
   }
 
-  // The clip under a client point, with the slop and frame rule every press and right-click uses.
-  function hitAt(state: EditorState, view: View, clientX: number, clientY: number, includeLocked: boolean): CanvasItem | null {
+  // The clip under a client point, with the slop and frame rule every press and right-click uses; a finger's press
+  // passes the wider touch slop.
+  function hitAt(state: EditorState, view: View, clientX: number, clientY: number, includeLocked: boolean, slopPx = HIT_SLOP_PX): CanvasItem | null {
     const doc = viewDoc(state);
-    return hitTest(surface.items(), fromScreen(view, clientX, clientY), HIT_SLOP_PX / view.k, {
+    return hitTest(surface.items(), fromScreen(view, clientX, clientY), slopPx / view.k, {
       includeLocked,
       frame: { width: doc.width, height: doc.height },
       keep: state.selection.clipIds,
     });
   }
 
+  // A finger's press lays the handles out for touch, a mouse's or pen's for a pointer; one of no known kind changes
+  // nothing. The press itself is taken as the handles were drawn when it landed, and the new layout drawn after it.
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
+    const was = touch.current;
+    touch.current = e.pointerType === "touch" ? true : e.pointerType === "mouse" || e.pointerType === "pen" ? false : was;
+    pressDown(e);
+    if (touch.current !== was) refreshRef.current();
+  }
+
+  function pressDown(e: PointerEvent<HTMLDivElement>) {
     // A Text press whose release went elsewhere is forgotten, so it never adds text later.
     textPress.current = null;
     if (inTextEditor(e.target)) return;
@@ -373,7 +409,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
       guideDrag.press(e, null);
       return;
     }
-    const hit = hitAt(state, view, e.clientX, e.clientY, false);
+    const hit = hitAt(state, view, e.clientX, e.clientY, false, touch.current ? TOUCH_SLOP_PX : HIT_SLOP_PX);
     if (!hit) {
       state.select([]);
       return;
@@ -809,7 +845,7 @@ function endsOf(state: EditorState, items: CanvasItem[], view: View, overlay: { 
 
 // The handles of the one selected clip, when it is drawn now, can be edited, is on an unlocked track and nothing
 // plays, in the overlay's pixels; the rotate handle is placed last, clear of the rest. followed: a dragged clamped
-// handle drawn at the pointer. marks: whether a clip's handles show as crop marks.
+// handle drawn at the pointer. marks: whether a clip's handles show as crop marks. touch: laid out for a finger.
 function handlesOf(
   state: EditorState,
   items: CanvasItem[],
@@ -818,6 +854,7 @@ function handlesOf(
   visible: Box | null,
   followed: { grip: Handle; at: Point } | null,
   marks: (clipId: string) => boolean,
+  touch = false,
 ): HandleView[] {
   const ids = state.selection.clipIds;
   if (ids.length !== 1 || !state.canEdit || state.playing || !visible) return [];
@@ -828,10 +865,26 @@ function handlesOf(
   const k = view.k;
   const width = (item.rect.right - item.rect.left) * item.sx * k;
   const height = (item.rect.bottom - item.rect.top) * item.sy * k;
-  const size = Math.min(width, height) < SMALL_BOX_PX ? SQUARE_PX : TARGET_PX;
-  const push = { ew: height < TARGET_PX ? EDGE_PX / k : 0, ns: width < TARGET_PX ? EDGE_PX / k : 0 };
-  const rotateOffset = { ns: (push.ns > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k, ew: (push.ew > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k };
+  // By touch, a box with too little room keeps only its corners, each moved out past its corner along the box's own
+  // axes by half a target, so no target covers the box.
+  const cornersOnly = touch && Math.min(width, height) < TOUCH_ROOM_PX;
+  const size = touch ? TOUCH_TARGET_PX : Math.min(width, height) < SMALL_BOX_PX ? SQUARE_PX : TARGET_PX;
+  const push = touch ? { ew: 0, ns: 0 } : { ew: height < TARGET_PX ? EDGE_PX / k : 0, ns: width < TARGET_PX ? EDGE_PX / k : 0 };
+  const rotateOffset = touch
+    ? { ns: TOUCH_ROTATE_PX / k, ew: TOUCH_ROTATE_PX / k }
+    : { ns: (push.ns > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k, ew: (push.ew > 0 ? ROTATE_FAR_PX : ROTATE_PX) / k };
   const at = new Map(handlePoints(item, rotateOffset.ns, push).map((p) => [p.grip, toOverlay(view, overlay, p.at)]));
+  if (cornersOnly) {
+    const nw = at.get("nw")!;
+    const across = unit(nw, at.get("ne")!, item.rotation);
+    const down = unit(nw, at.get("sw")!, item.rotation + 90);
+    const out = TOUCH_TARGET_PX / 2;
+    for (const grip of CORNERS) {
+      const { hx, hy } = HANDLE_SIGNS[grip];
+      const p = at.get(grip)!;
+      at.set(grip, { x: p.x + (hx * across.x + hy * down.x) * out, y: p.y + (hx * across.y + hy * down.y) * out });
+    }
+  }
 
   const look = marks(item.clipId) && !item.shape ? "crop" : "resize"; // a shape takes no crop
   const placed: HandleView[] = [];
@@ -846,7 +899,7 @@ function handlesOf(
     ...(grip !== "rotate" && { look }),
     turn: item.rotation,
   });
-  for (const grip of PLACING) {
+  for (const grip of cornersOnly ? CORNERS : PLACING) {
     const raw = at.get(grip)!;
     const isFollowed = followed?.grip === grip;
     const p = clampInto(isFollowed ? followed.at : raw, visible, EDGE_PX);
@@ -875,6 +928,17 @@ function handlesOf(
   placed.push(shownAs("rotate", rotate, false, "grab"));
 
   return placed.map((h) => ({ ...h, left: px(h.left), top: px(h.top) }));
+}
+
+// The way from one point to another as a unit vector; for two points in the same place (a box with no width or height
+// on screen), the way the clip's turn gives.
+function unit(from: Point, to: Point, degrees: number): Point {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length > 0.001) return { x: dx / length, y: dy / length };
+  const a = (degrees * Math.PI) / 180;
+  return { x: Math.cos(a), y: Math.sin(a) };
 }
 
 // The lines a moved clip is snapped to, across the frame, in the overlay's pixels.
