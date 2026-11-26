@@ -783,3 +783,35 @@ it("a second finger turns a clip drag into a pinch: the drag is dropped and the 
   expect(startOf("x2")).toBe(90);
   expect(st().queue).toHaveLength(0);
 });
+
+it("near the side of narrow lanes a dragged clip waits 250 ms before they scroll, then they scroll slower nearer the zone's inner edge", () => {
+  let now = 1000;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const { clip, scroller, press, move, release, frame } = renderTimeline();
+  // A phone's timeline: 390 px wide.
+  scroller.getBoundingClientRect = () => new DOMRect(0, 0, 390, 400);
+  press(clip("x2"), x(94), T1);
+  move(386, T1); // 4 px from the right edge: deep in the 16 px zone
+  frame();
+  expect(scroller.scrollLeft).toBe(0);
+  now += 200;
+  frame();
+  expect(scroller.scrollLeft).toBe(0);
+  now += 60;
+  frame();
+  const deep = scroller.scrollLeft;
+  expect(deep).toBeGreaterThan(0);
+  move(376, T1); // 2 px inside the zone: a quarter speed
+  frame();
+  const shallow = scroller.scrollLeft - deep;
+  expect(shallow).toBeGreaterThan(0);
+  expect(shallow).toBeLessThan(deep);
+  // Out of the zone and back in: the wait starts again.
+  move(320, T1); // the lanes start after the track names, at 240
+  frame();
+  const held = scroller.scrollLeft;
+  move(386, T1);
+  frame();
+  expect(scroller.scrollLeft).toBe(held);
+  release(386, T1);
+});
