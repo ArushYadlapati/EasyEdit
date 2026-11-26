@@ -48,6 +48,7 @@ import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, nestClips, nestLength, nestName, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type NestClip, type OpInput, type ShapeClip, type TextClip, type Track } from "@/lib/timeline";
 import { colorStretchOps, plainStretchOps, stretchLook, toggleStretchOps } from "@/lib/editor/text-spans";
+import type { SteadyStrength } from "@/lib/media/steady";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
 import { CROP_PROPS, volumeAt } from "@/lib/timeline/keyframes";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
@@ -66,6 +67,7 @@ import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-f
 import { useLevelVolume } from "./use-level-volume";
 import { useFollow } from "./use-follow";
 import { useSceneSplit } from "./use-scene-split";
+import { useSteady } from "./use-steady";
 import { useSyncSound } from "./use-sync-sound";
 
 const TEXT = "text-[13px] leading-5";
@@ -770,6 +772,39 @@ function TimingSection({ clipId, slips }: { clipId: string; slips: boolean }) {
   );
 }
 
+// Stabilize: the camera's shake taken out of a video clip. How strongly, the button, and taking it off again.
+function StabilizeSection({ clip }: { clip: MediaClip }) {
+  const canEdit = useEditor((s) => s.canEdit);
+  const { run, off, busy } = useSteady();
+  const [strength, setStrength] = useState<SteadyStrength>("normal");
+  return (
+    <Section title="Stabilize">
+      {clip.steady ? (
+        <Hint>{`Stabilized: the picture is moved against the camera's shake, and drawn ${Math.round((clip.steady.zoom - 1) * 100)}% larger so its edges never show.`}</Hint>
+      ) : (
+        <Hint>Takes a hand-held camera&apos;s shake out. The picture is drawn a little larger to make room.</Hint>
+      )}
+      <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+        <Field label="How steady">
+          <Select data-edit-control disabled={!canEdit || busy} value={strength} onChange={(event) => setStrength(event.target.value as SteadyStrength)}>
+            <option value="light">Light: keeps the camera&apos;s own moves</option>
+            <option value="normal">Normal</option>
+            <option value="strong">Strong: as if on a tripod</option>
+          </Select>
+        </Field>
+        <Button data-edit-control disabled={!canEdit || busy} onClick={() => void run(clip.id, strength)}>
+          {busy ? "Looking at the motion…" : clip.steady ? "Stabilize again" : "Stabilize"}
+        </Button>
+      </div>
+      {clip.steady && (
+        <Button data-edit-control variant="ghost" className="self-start" disabled={!canEdit || busy} onClick={() => off(clip.id)}>
+          Remove stabilizing
+        </Button>
+      )}
+    </Section>
+  );
+}
+
 // Follow: a text, a shape or an image kept on something in the video under it.
 function FollowSection({ clipId }: { clipId: string }) {
   const canEdit = useEditor((s) => s.canEdit);
@@ -1279,6 +1314,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}
       <TimingSection clipId={clip.id} slips={clip.type === "video" || clip.type === "audio"} />
+      {clip.type === "video" && clip.speed !== 0 && <StabilizeSection clip={clip} />}
       {clip.type === "video" && clip.speed > 0 && <ScenesSection clipId={clip.id} />}
       {(clip.type === "text" || clip.type === "shape" || clip.type === "image") && <FollowSection clipId={clip.id} />}
       <SlotSection clip={clip} />

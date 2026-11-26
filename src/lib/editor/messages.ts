@@ -24,6 +24,11 @@ export const MESSAGES = {
   nothingToSeparate: "Select a video clip that has sound to separate its audio.",
   nothingToGroup: "Select two or more clips on unlocked tracks to link them.",
   nothingToUngroup: "None of the selected clips is linked.",
+  steadyTooLong: "That clip is too long to stabilize at once: split it into parts of five minutes or less.",
+  steadyUnreadable: "Couldn't read that video to stabilize it.",
+  steadyUnsure: "Couldn't make out how the camera moved in this clip: too much of the picture is flat or dark. Nothing was changed.",
+  steadyAlready: "This clip is steady already: there was no shake to take out.",
+  steadied: (zoom: number) => `Stabilized. The picture is drawn ${Math.round((zoom - 1) * 100)}% larger so its edges never show.`,
   followRefused: {
     "not-a-follower": "Select one text, shape or image, with the playhead on it, to make it follow something.",
     "no-video": "There's no video under it at the playhead to follow.",

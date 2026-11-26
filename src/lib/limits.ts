@@ -10,6 +10,7 @@ export const LIMITS = {
   markersPerProject: 200,
   markerNameChars: 80,
   clipsPerTrack: 1000,
+  steadyFrames: 9000, // frames of one clip's steadying: five minutes at 30 a second, 48 KB as kept
   clipsPerNest: 200, // clips inside one nest, over all its tracks
   keyframesPerProperty: 100,
   shapeStrokeMax: 200, // a shape's outline or an arrow's line, in project pixels

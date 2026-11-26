@@ -16,6 +16,7 @@ import {
 import { captionStyleOf, captionTrack, defaultCaptionStyle, rewordRun, transcriptOf } from "./captions";
 import { ADJUST_KEYS } from "./adjust";
 import { ARROW_DEFAULTS } from "./shapes";
+import { packedFrames } from "@/lib/media/steady";
 import { nestClips, nestLength, nestProblem } from "./nest";
 import { remapSpans, spansProblem } from "./spans";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
@@ -55,6 +56,7 @@ const CLIP_FILL: Record<string, () => unknown> = {
   chroma: () => null,
   mask: () => null,
   rounding: () => 0,
+  steady: () => null,
   spans: () => null,
   name: () => null,
   group: () => null,
@@ -82,7 +84,7 @@ const PICTURE_EFFECTS = ["adjust", "grade", "blend", "chroma", "mask", "rounding
 const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut", "pan", "sound"] as const;
 // A video clip takes both kinds; sound takes only its own (see CLIP_EFFECTS).
 const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string[]> = {
-  video: [...VISUAL_EFFECTS, ...SOUND_EFFECTS, ...PICTURE_EFFECTS],
+  video: [...VISUAL_EFFECTS, ...SOUND_EFFECTS, ...PICTURE_EFFECTS, "steady"], // only a video has a camera's shake to take out
   image: [...VISUAL_EFFECTS, ...PICTURE_EFFECTS],
   audio: [...SOUND_EFFECTS, "keyframes"], // its volume's only (assertKeyframesFit)
   text: ["keyframes", "animationIn", "animationOut", "emphasis", "blend", "spans"],
@@ -257,6 +259,16 @@ function assertNestFits(clip: Clip, opIndex: number, opName: string) {
     assertSpeedFits(inner, opIndex, opName);
     assertKeyframesFit(inner, opIndex, opName);
     assertSpansFit(inner, opIndex, opName);
+    assertSteadyFits(inner, opIndex, opName);
+  }
+}
+
+// A video's steadying holds whole frames of moves, and no more than a clip may.
+function assertSteadyFits(clip: Clip, opIndex: number, opName: string) {
+  if (clip.type !== "video" || !clip.steady) return;
+  const frames = packedFrames(clip.steady.data);
+  if (frames === null || frames > LIMITS.steadyFrames) {
+    throw new OpError("INVALID", `${opName}: clip "${clip.id}" steady is invalid: its data must be whole frames of moves, at most ${LIMITS.steadyFrames}`, opIndex);
   }
 }
 
@@ -471,6 +483,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         assertSpeedFits(op.clip, opIndex, name);
         assertKeyframesFit(op.clip, opIndex, name);
         assertSpansFit(op.clip, opIndex, name);
+        assertSteadyFits(op.clip, opIndex, name);
         assertNestFits(op.clip, opIndex, name);
         // A null is the neutral value, so a clip that spells out "none" for a field it can't use is still fine.
         const carried: Record<string, unknown> = op.clip;
@@ -775,6 +788,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         assertSpeedFits(result.data, opIndex, name);
         assertKeyframesFit(result.data, opIndex, name);
         assertSpansFit(result.data, opIndex, name);
+        assertSteadyFits(result.data, opIndex, name);
         assertNestFits(result.data, opIndex, name);
         const before: Record<string, unknown> = current;
         const after: Record<string, unknown> = result.data;

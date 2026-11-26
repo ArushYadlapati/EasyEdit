@@ -73,6 +73,7 @@ const ClipExpect = z
     chroma: MediaClip.shape.chroma,
     mask: MediaClip.shape.mask,
     rounding: MediaClip.shape.rounding,
+    steady: MediaClip.shape.steady,
     animationIn: TextClip.shape.animationIn,
     animationOut: TextClip.shape.animationOut,
     emphasis: TextClip.shape.emphasis,

@@ -291,6 +291,17 @@ const ClipBase = {
 // The loudest a clip can be set: four times as recorded, about +12 dB. 1 is as recorded.
 export const VOLUME_MAX = 4;
 
+// A video clip's steadying: how far each frame of its file is moved back to take the camera's shake out, and how much
+// larger the picture is drawn so the moves never show its edges. from: the file's frame, counted at the project's
+// frame rate, of the first move. data: two signed 16-bit numbers a frame (across, down; in 20,000ths of the picture's
+// width and height), in base64. See media/steady.ts.
+export const Steady = z.strictObject({
+  from: z.number().int().min(0),
+  zoom: z.number().min(1).max(1.25),
+  data: z.string().max(Math.ceil((LIMITS.steadyFrames * 4) / 3) * 4 + 4),
+});
+export type Steady = z.infer<typeof Steady>;
+
 export const MediaClip = z.object({
   ...ClipBase,
   // An audio clip may also name a video file, and then plays that file's sound alone.
@@ -323,6 +334,7 @@ export const MediaClip = z.object({
   chroma: Chroma.nullable().optional(), // null or absent: no colour is taken out
   mask: Mask.nullable().optional(), // video and image only (checked in the ops); null or absent: all of it shows
   rounding: z.number().min(0).max(1).optional(), // how round its corners are: 0 square, 1 as round as its short side allows
+  steady: Steady.nullable().optional(), // video only (checked in the ops); null or absent: drawn as recorded
 });
 export type MediaClip = z.infer<typeof MediaClip>;
 

@@ -100,6 +100,8 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
   if ((clip.type === "video" || clip.type === "image") && (clip.rounding ?? 0) > 0) out += ` rounding=${clip.rounding}`;
   if ((clip.type === "video" || clip.type === "image") && clip.chroma) out += ` chroma=${JSON.stringify(clip.chroma)}`;
   if (isColorClip(clip) && clip.mask) out += ` mask=${JSON.stringify(clip.mask)}`;
+  // Steadied: said, with how much larger it is drawn; the moves themselves are of no use to read.
+  if (clip.type === "video" && clip.steady) out += ` steady(zoom ${clip.steady.zoom})`;
   if (clip.group) out += ` group=${escapeQuoted(clip.group)}`;
   const keyed = KEYFRAME_PROPS.filter((p) => (clip.keyframes?.[p]?.length ?? 0) > 0);
   if (detail) for (const p of keyed) out += ` kf.${p}=${keyframeList(clip, p)}`;

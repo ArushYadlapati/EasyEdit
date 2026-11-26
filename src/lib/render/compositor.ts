@@ -4,6 +4,7 @@ import { drawCaptions } from "./captions";
 import { drawShape } from "./shapes";
 import type { AdjustmentClip, Clip, Crop, Grade, Mask, MediaClip, NestClip, TextClip, TextSpan, TimelineDoc, Track, Transform } from "@/lib/timeline";
 import { nestFrame, nestTracks } from "@/lib/timeline/nest";
+import { moveAt } from "@/lib/media/steady";
 import { adjustAt, effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
 import { STYLE_KEYS, TONE_KEYS, type FullAdjust } from "@/lib/timeline/adjust";
@@ -651,6 +652,16 @@ function drawMedia(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip & { type: "vide
       // Rounded corners: everything this clip draws from here on stays inside the rounded box of what is shown.
       roundedBox(ctx, k, (rounding * Math.min(k.right - k.left, k.bottom - k.top)) / 2);
       ctx.clip();
+    }
+    if (clip.type === "video" && clip.steady) {
+      // Steadied: the picture is moved back by this frame's share of the camera's shake, and drawn a little larger
+      // so that never shows an edge. What is shown stays where it is: the move happens inside the picture's own box.
+      const move = moveAt(clip.steady, clip.in + (frame - clip.start) * clip.speed);
+      ctx.beginPath();
+      ctx.rect(k.left, k.top, k.right - k.left, k.bottom - k.top);
+      ctx.clip();
+      ctx.translate(move.dx * size.width, move.dy * size.height);
+      ctx.scale(clip.steady.zoom, clip.steady.zoom);
     }
     const { flipH, flipV } = clip.transform;
     if (flipH || flipV) {
