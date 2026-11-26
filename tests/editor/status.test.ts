@@ -22,3 +22,9 @@ it("a held edit is not called saved", () => {
   expect(saveStatusLabel("saving", 2, true, null, true)).toBe("Saving…");
   expect(saveStatusLabel("offline", 1, true, null, true)).toBe("Offline. Changes will save when you reconnect.");
 });
+
+it("a save that fails while the browser is online is EasyEdit not answering, not the person's connection", () => {
+  expect(saveStatusLabel("offline", 2, true, null, false, true)).toBe("Can't reach EasyEdit. Your changes are kept here and will save when it answers.");
+  expect(saveStatusLabel("offline", 0, true, null, false, true)).toBe("Can't reach EasyEdit");
+  expect(saveStatusLabel("offline", 2, true, null, false, false)).toBe("Offline. Changes will save when you reconnect.");
+});

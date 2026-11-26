@@ -150,8 +150,16 @@ export function explainOpError(code: OpErrorCode): string {
 }
 
 // The top bar's save status. A viewer has nothing to save, so "Saved" reads as "Up to date".
-// held: a live edit is on screen and not sent yet (held-edit.ts), so "Saved" would not be true.
-export function saveStatusLabel(status: SyncStatus, pending: number, canEdit: boolean, limitMessage?: string | null, held = false): string {
+// held: a live edit is on screen and not sent yet (held-edit.ts), so "Saved" would not be true. online: the browser
+// says it is connected, so a save that fails is EasyEdit not answering, not the person's own connection.
+export function saveStatusLabel(
+  status: SyncStatus,
+  pending: number,
+  canEdit: boolean,
+  limitMessage?: string | null,
+  held = false,
+  online = false,
+): string {
   switch (status) {
     case "saved":
       if (held && canEdit) return "Not saved yet";
@@ -159,6 +167,7 @@ export function saveStatusLabel(status: SyncStatus, pending: number, canEdit: bo
     case "saving":
       return "Saving…";
     case "offline":
+      if (online) return pending > 0 ? "Can't reach EasyEdit. Your changes are kept here and will save when it answers." : "Can't reach EasyEdit";
       return pending > 0 ? "Offline. Changes will save when you reconnect." : "Offline";
     case "limited":
       return limitMessage ?? "Changes are waiting to save."; // the server's own sentence
