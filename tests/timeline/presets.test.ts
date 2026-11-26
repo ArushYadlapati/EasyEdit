@@ -26,7 +26,7 @@ function TextClipSchemaFixture(overrides: Record<string, unknown>) {
     duration: 30,
     transform: DEFAULT_TRANSFORM,
     text: "hi",
-    style: { fontFamily: "Inter", fontSize: 64, fontWeight: 700, color: "#fff", align: "center" },
+    style: { fontFamily: "Geist", fontSize: 64, fontWeight: 700, color: "#fff", align: "center" },
     ...overrides,
   });
 }
@@ -80,7 +80,7 @@ describe("timeline presets", () => {
       duration: 45,
       transform: DEFAULT_TRANSFORM,
       text: "hi",
-      style: { fontFamily: "Inter", fontSize: 64, fontWeight: 700, color: "#fff", align: "center" },
+      style: { fontFamily: "Geist", fontSize: 64, fontWeight: 700, color: "#fff", align: "center" },
     });
     expect(docDuration(d)).toBe(75);
   });

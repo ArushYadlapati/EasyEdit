@@ -161,7 +161,7 @@ describe("drawing an adjustment layer", () => {
     d.tracks[0].clips = [video("c", 0, 60)];
     d.tracks.splice(1, 0, { id: "o1", kind: "overlay", name: "Overlay 1", muted: false, hidden: false, locked: false, clips: [layer("adj", 0, 30, { adjust: { brightness: 0.5 } })] });
     const textAt = d.tracks.findIndex((t) => t.kind === "text");
-    d.tracks[textAt].clips = [{ id: "x", type: "text", start: 0, duration: 30, text: "HI", transform: { ...DEFAULT_TRANSFORM }, style: { fontFamily: "Inter", fontSize: 80, fontWeight: 700, color: "#ffffff", align: "center" } }];
+    d.tracks[textAt].clips = [{ id: "x", type: "text", start: 0, duration: 30, text: "HI", transform: { ...DEFAULT_TRANSFORM }, style: { fontFamily: "Geist", fontSize: 80, fontWeight: 700, color: "#ffffff", align: "center" } }];
     const frameCtx = fake();
     const under = fake();
     drawFrame(frameCtx.ctx, d, 10, { resolveSource: () => PICTURE, makeLayer: () => under.ctx, finish: null });
