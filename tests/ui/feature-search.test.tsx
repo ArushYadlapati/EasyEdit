@@ -181,3 +181,18 @@ it("the search key focuses the field from anywhere in the editor, and the panels
   key(field, "Enter");
   expect(screen.getByRole("tab", { name: "Media" }).getAttribute("aria-selected")).toBe("true");
 });
+
+it("a part of a clip's panel says what it needs, and with a clip selected opens the tab that holds it", () => {
+  const { store, field, props } = setup();
+  act(() => field.focus());
+  act(() => type(field, "mask"));
+  expect(options()[0]).toBe("MaskSelect a clip firstInspect");
+  act(() => key(field, "Enter"));
+  expect(props.onOpenPanel).not.toHaveBeenCalled();
+
+  act(() => store.getState().select(["x1"]));
+  act(() => type(field, "masks"));
+  expect(options()[0]).toBe("MaskInspect");
+  act(() => key(field, "Enter"));
+  expect(props.onOpenPanel).toHaveBeenCalledWith("right", "inspect");
+});

@@ -502,14 +502,18 @@ it("Help lists the guide's lessons by name, then the keyboard shortcuts under a 
   expect(entries.map((e) => [e.id, e.label, e.separatorBefore ?? false])).toEqual([
     ["guide:0", "The basics", false],
     ["guide:1", "Sound", false],
-    ["show-shortcuts", "Keyboard shortcuts", true],
+    ["help:agents", "AI agents", true],
+    ["show-shortcuts", "Keyboard shortcuts", false],
   ]);
+  // Without the guide, Help still leads to the AI agents page and the shortcuts.
+  expect(helpMenu(BASE, []).map((e) => [e.id, e.separatorBefore ?? false])).toEqual([["help:agents", false], ["show-shortcuts", false]]);
   // Opening a lesson changes nothing in the project, so a viewer and a deleted project's editor have it too.
   expect(helpMenu({ ...BASE, canEdit: false, deleted: true }, LESSONS).every((e) => !e.disabled)).toBe(true);
 });
 
 it("a Help entry leads to its lesson, and nothing else is taken for one", () => {
   expect(guideLinkOf("guide:1", LESSONS)).toBe(LESSONS[1]);
+  expect(guideLinkOf("help:agents", [])).toMatchObject({ title: "AI agents", path: "/agents" });
   for (const id of ["guide:2", "guide:", "guide:x", "undo", "xguide:0", "guide:0 "]) expect(guideLinkOf(id, LESSONS)).toBeUndefined();
 });
 

@@ -144,7 +144,21 @@ describe("remote edits", () => {
     st().applyRemote([entry(6, [{ op: "remove_clip", clipId: "x2" }])]);
     expect(st().queue).toEqual([]);
     expect(findClip(st().doc, "x2")).toBeNull();
-    expect(st().notice).toMatchObject({ tone: "error", text: MESSAGES.rebaseDropped });
+    expect(st().notice).toMatchObject({
+      tone: "error",
+      text: "Grace removed the clip you were changing, so your change was dropped. Undo theirs in Activity to get the clip back.",
+    });
+  });
+
+  it("a dropped edit says who got there first, an agent by its own name, and stays general when several did", () => {
+    const { st } = fresh();
+    st().edit(move(150), "move");
+    st().applyRemote([entry(6, [{ op: "add_clip", trackId: "t1", clip: text("r1", 150, 30) }], "claude:u2", "Claude (for Grace)")]);
+    expect(st().notice?.text).toBe("Claude changed this first, so your change no longer fit and was dropped. Their change is in Activity.");
+
+    st().edit([{ op: "move_clip", clipId: "x1", start: 300 }], "move");
+    st().applyRemote([entry(7, [{ op: "remove_clip", clipId: "x1" }]), entry(8, [{ op: "move_clip", clipId: "x2", start: 400 }], "u3", "Katherine")]);
+    expect(st().notice?.text).toBe(MESSAGES.rebaseDropped);
   });
 
   it("my own edit coming back in the log confirms the sent edit and is not applied twice", () => {
@@ -276,6 +290,31 @@ describe("a gesture in progress", () => {
     expect(st().gesture).toBeNull();
     expect(st().notice).toMatchObject({ tone: "error", text: MESSAGES.clipGone });
     expect(st().queue).toEqual([]);
+  });
+});
+
+describe("a held edit", () => {
+  it("keeps its label through a teammate's change, and saves under it when it applies", () => {
+    const { st } = fresh();
+    st().setGesture(retext("Hello"), "text");
+    st().applyRemote([entry(6, [{ op: "move_clip", clipId: "x2", start: 200 }])]);
+    expect(st().gesture).toMatchObject({ label: "text" });
+    st().saveHeldEdit();
+    expect(st().gesture).toBeNull();
+    expect(st().queue).toMatchObject([{ label: "text", ops: retext("Hello") }]);
+    expect(st().undoStack).toHaveLength(1);
+  });
+
+  it("a gesture without a label, or one that does not apply, is left as it is", () => {
+    const { st } = fresh();
+    st().setGesture(move(150));
+    st().saveHeldEdit();
+    expect(st().gesture).not.toBeNull();
+    st().setGesture(move(30), "move");
+    st().saveHeldEdit();
+    expect(st().gesture).toMatchObject({ doc: null, label: "move" });
+    expect(st().queue).toEqual([]);
+    expect(st().notice).toBeNull();
   });
 });
 

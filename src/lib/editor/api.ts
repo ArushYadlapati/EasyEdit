@@ -27,6 +27,8 @@ export type ProjectApi = {
 export type SpaceOf = { spaceId?: string };
 
 export const REQUEST_TIMEOUT_MS = 15_000;
+// Browsers hold at most 64 KB of keepalive bodies in flight at once; this leaves room for the presence leave.
+export const KEEPALIVE_MAX_BYTES = 48_000;
 
 const NETWORK: ApiFailure = { ok: false, kind: "network" };
 
@@ -120,9 +122,12 @@ export function createProjectApi(projectId: string, fetchFn?: typeof fetch): Pro
 
   return {
     postOps({ baseVersion, ops, requestId }) {
+      const body = JSON.stringify({ baseVersion, ops, requestId });
       return request(
         `${base}/ops`,
-        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ baseVersion, ops, requestId }) },
+        // keepalive lets a change saved as the page goes away (a held edit, on pagehide) still reach the server. The
+        // browser takes it only for a small body, so a large change is sent the ordinary way.
+        { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: new TextEncoder().encode(body).length <= KEEPALIVE_MAX_BYTES },
         (b) => (typeof b.version === "number" && Array.isArray(b.inverse) ? { version: b.version, inverse: b.inverse as Op[] } : null),
       );
     },

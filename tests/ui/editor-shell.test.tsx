@@ -7,6 +7,8 @@ import { browserExportDeps } from "@/components/editor/export/browser-deps";
 import { createMediaServices, type MediaServices } from "@/components/editor/media/media-context";
 import { browserThumbnailDeps } from "@/components/editor/thumbnail-deps";
 import { formatTimecode } from "@/lib/editor/geometry";
+import { ANNOUNCE_QUIET_MS } from "@/lib/editor/announce";
+import { HELD_EDIT_PAUSE_MS } from "@/lib/editor/held-edit";
 import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
 import { DEFAULT_KEYMAP, KEYMAP_KEY, formatKeymap, setKeys, setOff } from "@/lib/editor/keymap";
 import { DEFAULT_LAYOUT } from "@/lib/editor/layout";
@@ -152,6 +154,46 @@ it("asks before the page unloads only while edits are unsent", async () => {
   const later = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(later);
   expect(later.defaultPrevented).toBe(false);
+});
+
+it("words typed and not yet sent are not called saved: the browser asks before leaving, and a pause sends them", async () => {
+  const server = stubServer();
+  render(<EditorShell space={SPACE} initial={initial()} />);
+  await addTitle();
+  await flush();
+  expect(server.posts()).toBe(1);
+  const box = screen.getAllByLabelText("Text").find((el) => el instanceof HTMLTextAreaElement)!;
+  act(() => fireEvent.change(box, { target: { value: "Summer trip" } }));
+  expect(screen.getByText("Not saved yet")).toBeTruthy();
+  const unload = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  await flush();
+  expect(server.posts()).toBe(2); // asking to leave sent it, so it lands whether the person stays or goes
+
+  act(() => fireEvent.change(box, { target: { value: "Summer trip 2026" } }));
+  await after(HELD_EDIT_PAUSE_MS - 100);
+  expect(server.posts()).toBe(2);
+  await after(100);
+  expect(server.posts()).toBe(3);
+  expect(screen.getByText("Saved")).toBeTruthy();
+  act(() => fireEvent.blur(box));
+  await flush();
+  expect(server.posts()).toBe(3); // nothing left to save when the box is left
+});
+
+it("tells a screen reader what an edit did, once the burst of changes is over", async () => {
+  stubServer();
+  render(<EditorShell space={SPACE} initial={initial()} />);
+  const region = () => document.querySelector<HTMLElement>("[aria-live='polite'].sr-only")!;
+  expect(region().textContent).toBe("");
+  await addTitle();
+  await after(ANNOUNCE_QUIET_MS);
+  expect(region().textContent).toBe("Added text “Your title”.\u00a0");
+  // The same words again are still said: the region's text changes.
+  await addTitle();
+  await after(ANNOUNCE_QUIET_MS);
+  expect(region().textContent).toBe("Added text “Your title”.");
 });
 
 it("leaving the editor with edits still queued sends them all, then stops", async () => {

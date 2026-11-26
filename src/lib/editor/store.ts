@@ -14,7 +14,7 @@ import {
   type TimelineDoc,
   type Track,
 } from "@/lib/timeline";
-import { canUndoChange, isBeforeMove } from "./activity";
+import { canUndoChange, isBeforeMove, shortActorName } from "./activity";
 import type { TrimMode } from "./drag";
 import { clampZoom, fitZoom } from "./geometry";
 import { MESSAGES, explainOpError } from "./messages";
@@ -52,7 +52,9 @@ export type EditorState = {
   server: { doc: TimelineDoc; version: number }; // what the server is known to hold
   queue: PendingEdit[]; // local edits not yet confirmed, oldest first
   doc: TimelineDoc; // server.doc with every queued edit applied
-  gesture: { ops: Op[]; doc: TimelineDoc | null } | null; // a drag or a field being typed in; doc is null while it cannot apply
+  // A drag or a field being typed in; doc is null while it cannot apply. A labelled one is a held edit (held-edit.ts):
+  // it is saved under its label after a pause, and when the page hides or goes away.
+  gesture: { ops: Op[]; doc: TimelineDoc | null; label?: string } | null;
   selection: Selection;
   playhead: number;
   zoom: number; // pixels per frame
@@ -65,7 +67,7 @@ export type EditorState = {
   undoStack: UndoEntry[]; // newest last, at most UNDO_LIMIT
   redoStack: UndoEntry[];
   activity: ActivityEntry[]; // oldest first, at most ACTIVITY_LIMIT
-  remote: { names: string[]; at: number } | null; // who else just edited, and when
+  remote: { names: string[]; actors: string[]; at: number } | null; // who else just edited (names and actor ids), and when
   playing: boolean;
   rate: number; // negative when playing backward
   showSafeZones: boolean;
@@ -95,8 +97,9 @@ export type EditorState = {
   redo(): void;
   undoChange(entry: ActivityEntry): void; // "Undo this change" in the activity list
   loadActivity(entries: ActivityEntry[]): void; // merges a fetched page
-  setGesture(ops: OpInput[] | null): boolean; // true when the gesture applies right now
+  setGesture(ops: OpInput[] | null, label?: string): boolean; // true when the gesture applies right now
   commitGesture(label: string): EditResult;
+  saveHeldEdit(): void; // saves a held edit that applies now, under its own label; anything else is left as it is
   select(clipIds: string[], mode?: "replace" | "toggle" | "add"): void;
   selectTrack(trackId: string | null): void;
   seek(frame: number): void; // rounds, never below 0
@@ -255,14 +258,14 @@ export function createEditorStore(
       const gesture = state.gesture;
       if (gesture) {
         try {
-          patch.gesture = { ops: gesture.ops, doc: applyOps(doc, gesture.ops).doc };
+          patch.gesture = { ...gesture, doc: applyOps(doc, gesture.ops).doc };
         } catch (err) {
           if (err instanceof OpError && err.code === "NOT_FOUND") {
             patch.gesture = null;
             const guide = gesture.ops.every((op) => op.op === "add_guide" || op.op === "move_guide" || op.op === "remove_guide");
             patch.notice = makeNotice("error", guide ? MESSAGES.guideGone : MESSAGES.clipGone);
           } else {
-            patch.gesture = { ops: gesture.ops, doc: null };
+            patch.gesture = { ...gesture, doc: null };
           }
         }
       }
@@ -282,17 +285,22 @@ export function createEditorStore(
       return { patch: { server, queue: kept, ...history, ...settle(state, doc) }, dropped };
     }
 
+    // by: the one person (or agent) whose changes came in, when that is known, so a dropped edit can say who.
     function rebaseAndTell(
       state: EditorState,
       server: EditorState["server"],
       queue: PendingEdit[],
       stacks: Stacks = stacksOf(state),
       extra: Partial<EditorState> = {},
+      by: string | null = null,
     ) {
       const { patch, dropped } = rebase(state, server, queue, stacks);
       // A dropped undo or redo says what the server would say had it refused it.
       const first = dropped[0];
-      const text = !first ? null : first.kind === "edit" ? MESSAGES.rebaseDropped : refusalMessage(first.kind, "STALE");
+      const doc = patch.doc ?? state.doc;
+      const clipRemoved = !!first && first.ops.some((op) => "clipId" in op && typeof op.clipId === "string" && !findClip(doc, op.clipId));
+      const dropMessage = by === null ? MESSAGES.rebaseDropped : MESSAGES.rebaseDroppedBy(by, clipRemoved);
+      const text = !first ? null : first.kind === "edit" ? dropMessage : refusalMessage(first.kind, "STALE");
       const notice = text ? { notice: makeNotice("error", text) } : {};
       set({ ...patch, ...extra, ...notice });
     }
@@ -429,7 +437,7 @@ export function createEditorStore(
         if (merged !== activity) set({ activity: merged });
       },
 
-      setGesture(ops) {
+      setGesture(ops, label) {
         const state = get();
         if (!state.canEdit) return false;
         if (ops === null) {
@@ -445,11 +453,11 @@ export function createEditorStore(
           return false;
         }
         try {
-          set({ gesture: { ops: prepared, doc: applyOps(state.doc, prepared).doc } });
+          set({ gesture: { ops: prepared, doc: applyOps(state.doc, prepared).doc, ...(label !== undefined && { label }) } });
           return true;
         } catch (err) {
           if (!(err instanceof OpError)) throw err;
-          set({ gesture: { ops: prepared, doc: null } });
+          set({ gesture: { ops: prepared, doc: null, ...(label !== undefined && { label }) } });
           return false;
         }
       },
@@ -459,6 +467,12 @@ export function createEditorStore(
         if (!gesture) return { ok: true };
         set({ gesture: null });
         return get().edit(gesture.ops, label);
+      },
+
+      saveHeldEdit() {
+        const { gesture } = get();
+        if (gesture?.label === undefined || gesture.doc === null) return;
+        get().commitGesture(gesture.label);
       },
 
       select(ids, mode = "replace") {
@@ -603,8 +617,9 @@ export function createEditorStore(
           // A change by an AI agent on my behalf has actor "claude:<my id>" or "agent:<kind>:<my id>", so it counts as someone else.
           const others = applied.filter((e) => e.actor !== state.me.id);
           const extra: Partial<EditorState> = { activity: mergeActivity(state.activity, applied) };
-          if (others.length > 0) extra.remote = { names: [...new Set(others.map((e) => e.actorName))], at: now() };
-          rebaseAndTell(state, server, queue, stacks, extra);
+          const names = [...new Set(others.map((e) => e.actorName))];
+          if (others.length > 0) extra.remote = { names, actors: [...new Set(others.map((e) => e.actor))], at: now() };
+          rebaseAndTell(state, server, queue, stacks, extra, names.length === 1 ? shortActorName(names[0]) : null);
         }
         return complete;
       },

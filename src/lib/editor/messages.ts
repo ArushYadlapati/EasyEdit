@@ -5,6 +5,11 @@ export const MESSAGES = {
   undoRefused: "Can't undo. This was changed afterwards.",
   redoRefused: "Can't redo. This was changed afterwards.",
   rebaseDropped: "A change of yours no longer fits and was removed.",
+  // The same, when one person's change (a teammate's or an AI agent's) is why.
+  rebaseDroppedBy: (who: string, clipRemoved: boolean) =>
+    clipRemoved
+      ? `${who} removed the clip you were changing, so your change was dropped. Undo theirs in Activity to get the clip back.`
+      : `${who} changed this first, so your change no longer fit and was dropped. Their change is in Activity.`,
   clipGone: "That clip was removed by someone else.",
   trackGone: "That track was removed by someone else.",
   guideGone: "That guide was removed by someone else.",
@@ -150,13 +155,24 @@ export function explainOpError(code: OpErrorCode): string {
 }
 
 // The top bar's save status. A viewer has nothing to save, so "Saved" reads as "Up to date".
-export function saveStatusLabel(status: SyncStatus, pending: number, canEdit: boolean, limitMessage?: string | null): string {
+// held: a live edit is on screen and not sent yet (held-edit.ts), so "Saved" would not be true. online: the browser
+// says it is connected, so a save that fails is EasyEdit not answering, not the person's own connection.
+export function saveStatusLabel(
+  status: SyncStatus,
+  pending: number,
+  canEdit: boolean,
+  limitMessage?: string | null,
+  held = false,
+  online = false,
+): string {
   switch (status) {
     case "saved":
+      if (held && canEdit) return "Not saved yet";
       return canEdit ? "Saved" : "Up to date";
     case "saving":
       return "Saving…";
     case "offline":
+      if (online) return pending > 0 ? "Can't reach EasyEdit. Your changes are kept here and will save when it answers." : "Can't reach EasyEdit";
       return pending > 0 ? "Offline. Changes will save when you reconnect." : "Offline";
     case "limited":
       return limitMessage ?? "Changes are waiting to save."; // the server's own sentence

@@ -184,6 +184,7 @@ export function FeatureSearch({ items, onRun, inputRef, className, fold = false 
                   <span className="min-w-0 truncate">{item.label}</span>
                   {item.checked !== undefined && <span className="text-ed-muted">{item.checked ? "On" : "Off"}</span>}
                   <span className="ml-auto flex shrink-0 items-center gap-3 pl-4 text-ed-muted">
+                    {item.disabled && item.note && <span>{item.note}</span>}
                     {!grouped && <span>{item.group}</span>}
                     {shortcut && <span aria-hidden>{shortcut}</span>}
                   </span>

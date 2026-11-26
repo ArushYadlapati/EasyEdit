@@ -90,7 +90,23 @@ it("the dots show with no recent edit, and 'is editing…' still shows beside th
   const { store } = renderWith([peer("u2", "Grace Hopper")]);
   expect(group()).not.toBeNull();
   expect(screen.queryByRole("status")).toBeNull();
-  act(() => store.setState({ remote: { names: ["Grace Hopper"], at: Date.now() } }));
+  act(() => store.setState({ remote: { names: ["Grace Hopper"], actors: ["u2"], at: Date.now() } }));
   expect(screen.getByRole("status").textContent).toBe("Grace Hopper is editing…");
   expect(group()).not.toBeNull();
+});
+
+it("an agent's 'is editing…' is in the agent's own colour, and a teammate's dot in theirs", () => {
+  const { store } = renderWith([peer("u2", "Grace Hopper")]);
+  act(() => store.setState({ remote: { names: ["Claude (for Grace Hopper)"], actors: ["claude:u2"], at: Date.now() } }));
+  const status = screen.getByRole("status");
+  expect(status.textContent).toBe("Claude is editing…");
+  expect(status.querySelector(".text-ed-agent-claude")).not.toBeNull();
+  expect(status.querySelector(".bg-ed-agent-claude")).not.toBeNull();
+
+  act(() => store.setState({ remote: { names: ["Grace Hopper"], actors: ["u2"], at: Date.now() } }));
+  expect(screen.getByRole("status").querySelector("[class*='bg-ed-peer-']")).not.toBeNull();
+  expect(screen.getByRole("status").querySelector("[class*='text-ed-peer']")).toBeNull();
+
+  act(() => store.setState({ remote: { names: ["Grace Hopper", "Claude (for Ada)"], actors: ["u2", "claude:u1"], at: Date.now() } }));
+  expect(screen.getByRole("status").querySelector(".bg-ed-text")).not.toBeNull();
 });

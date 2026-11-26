@@ -145,7 +145,7 @@ describe("confirmation and lost edits", () => {
     st().applyRemote([entry(6, [{ op: "remove_clip", clipId: "x2" }])]);
     expect(st().queue).toEqual([]);
     expect(st().undoStack).toEqual([]);
-    expect(st().notice).toMatchObject({ text: MESSAGES.rebaseDropped });
+    expect(st().notice).toMatchObject({ text: MESSAGES.rebaseDroppedBy("Grace", true) });
   });
 
   it("a queued undo that a teammate's change makes stale is dropped with the undo message", () => {
@@ -258,7 +258,7 @@ describe("the activity log", () => {
     expect(st().remote).toBeNull();
     st().applyRemote([entry(7, retext("GO")), entry(8, retext("GO!"), "u3", "Katherine")]);
     expect(st().activity.map((e) => e.version)).toEqual([6, 7, 8]);
-    expect(st().remote).toEqual({ names: ["Grace", "Katherine"], at: 1_000 });
+    expect(st().remote).toEqual({ names: ["Grace", "Katherine"], actors: ["u2", "u3"], at: 1_000 });
   });
 
   it("merges loaded pages without duplicates and keeps the newest 200", () => {

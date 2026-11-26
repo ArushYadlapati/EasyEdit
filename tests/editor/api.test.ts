@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { REQUEST_TIMEOUT_MS, createPresenceApi, createProjectApi } from "@/lib/editor/api";
+import { KEEPALIVE_MAX_BYTES, REQUEST_TIMEOUT_MS, createPresenceApi, createProjectApi } from "@/lib/editor/api";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 function apiWith(respond: (url: string) => Response) {
@@ -16,6 +16,15 @@ describe("project api", () => {
     expect(url).toBe("/api/projects/p1/ops");
     expect(init).toMatchObject({ method: "POST", headers: { "content-type": "application/json" } });
     expect(JSON.parse(String(init!.body))).toEqual({ baseVersion: 5, ops: [{ op: "remove_clip", clipId: "x1" }] });
+  });
+
+  it("a small post of edits is sent with keepalive, so one saved as the page goes away still lands; a large one is not", async () => {
+    const { api, fetchFn } = apiWith(() => json(200, { version: 6, ops: [], inverse: [] }));
+    await api.postOps({ baseVersion: 5, ops: [{ op: "remove_clip", clipId: "x1" }] });
+    expect(fetchFn.mock.calls[0][1]!.keepalive).toBe(true);
+    const long = "é".repeat(KEEPALIVE_MAX_BYTES / 2); // two bytes each: over the limit in bytes, under it in characters
+    await api.postOps({ baseVersion: 5, ops: [{ op: "update_clip", clipId: "x1", patch: { text: long } }] });
+    expect(fetchFn.mock.calls[1][1]!.keepalive).toBe(false);
   });
 
   it("puts the request id in the body when one is given", async () => {

@@ -1,14 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { cx } from "@/components/ui/cx";
 import { EDITING_INDICATOR_MS, editingLabel } from "@/lib/editor/activity";
+import { actorLook, agentLook } from "./actor-look";
 import { useEditor } from "./context";
+import { usePresence } from "./presence-context";
 import { PresentPeople } from "./present-people";
 
 // Shows who else has the project open, and who else just edited until EDITING_INDICATOR_MS after their change. The
-// dots never shrink, so the "is editing…" text is what truncates.
+// dots never shrink, so the "is editing…" text is what truncates. One editor is drawn in their own colour: an AI
+// agent's name and dot in the agent's colour, a teammate's dot in theirs while they are here.
 export function EditingIndicator() {
   const remote = useEditor((s) => s.remote);
+  const meId = useEditor((s) => s.me.id);
+  const peers = usePresence((s) => s.peers);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -19,13 +25,18 @@ export function EditingIndicator() {
   }, [remote]);
 
   const label = remote && now < remote.at + EDITING_INDICATOR_MS ? editingLabel(remote.names) : null;
+  const actors = remote?.actors ?? [];
+  // One look only when every change came from the same one: an agent's for each member it acted for counts as one.
+  const looks = actors.map((actor) => actorLook(actor, meId, peers));
+  const look = looks.length > 0 && looks.every((l) => l !== null && l.bg === looks[0]?.bg) ? looks[0] : null;
+  const isAgent = actors.length > 0 && actors.every((actor) => agentLook(actor) !== null);
   return (
     <>
       <PresentPeople />
       {label && (
         <span role="status" className="flex min-w-0 shrink items-center gap-1.5 text-xs leading-4 text-ed-muted">
-          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-ed-text" />
-          <span className="truncate">{label}</span>
+          <span aria-hidden className={cx("size-1.5 shrink-0 rounded-full", look?.bg ?? "bg-ed-text")} />
+          <span className={cx("truncate", isAgent && look ? cx(look.text, "font-medium") : null)}>{label}</span>
         </span>
       )}
     </>

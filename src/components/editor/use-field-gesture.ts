@@ -59,7 +59,8 @@ export function useFieldGesture(store: EditorStore, clipId: string, field: ClipF
     live,
     preview(ops: OpInput[] | null): boolean {
       const change = ops !== null && ops.length > 0 ? ops : null;
-      const applies = store.getState().setGesture(change);
+      // Held under the field's own label, so a pause in typing saves it as leaving the field would (held-edit.ts).
+      const applies = store.getState().setGesture(change, FIELD_LABEL[field]);
       remember(change ? (store.getState().gesture?.ops ?? null) : null, ops === null || !applies);
       return ops !== null && applies;
     },

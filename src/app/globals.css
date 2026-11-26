@@ -44,6 +44,10 @@
   --color-ed-peer-3: var(--ed-peer-3);
   --color-ed-peer-4: var(--ed-peer-4);
   --color-ed-peer-5: var(--ed-peer-5);
+  --color-ed-agent-claude: var(--ed-agent-claude);
+  --color-ed-agent-chatgpt: var(--ed-agent-chatgpt);
+  --color-ed-agent-codex: var(--ed-agent-codex);
+  --color-ed-agent-cursor: var(--ed-agent-cursor);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -124,6 +128,12 @@ html:has(.h-site) {
   --ed-peer-3: #fb923c; /* orange */
   --ed-peer-4: #a3e635; /* lime */
   --ed-peer-5: #c084fc; /* violet */
+  /* An AI agent's own colour, wherever its change or its name shows (src/components/editor/actor-look.ts); the same
+     values as the public site's --h-claude, --h-chatgpt, --h-codex and --h-cursor. Attribution only, never an accent. */
+  --ed-agent-claude: #f97316;  /* Claude Orange, Claude and Claude Code */
+  --ed-agent-chatgpt: #4ade80; /* ChatGPT Green */
+  --ed-agent-codex: #e879f9;   /* Codex Fuchsia */
+  --ed-agent-cursor: #f5e663;  /* Cursor Lemon */
 }
 
 body {

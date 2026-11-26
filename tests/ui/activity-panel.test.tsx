@@ -134,8 +134,12 @@ it("shows the whole summary of a long entry, with 'Undo this change' under it", 
     expect(found).toHaveLength(1);
     return found;
   });
-  const summary = screen.getByText(/^Claude \(for Grace Hopper\) · /);
+  const summary = row.firstElementChild!;
+  expect(summary.textContent).toMatch(/^Claude \(for Grace Hopper\) · /);
   expect(summary.textContent?.length).toBeGreaterThan(40);
+  // The agent's name and its dot are in Claude's own colour.
+  expect(screen.getByText("Claude (for Grace Hopper)").className).toContain("text-ed-agent-claude");
+  expect(summary.querySelector(".bg-ed-agent-claude")).not.toBeNull();
   expect(summary.closest(".truncate")).toBeNull();
   const undo = screen.getByRole("button", { name: "Undo this change" });
   expect(row.contains(undo)).toBe(true);
@@ -174,4 +178,30 @@ it("Undo on a change from before the move does nothing", () => {
   const store = makeStore({ movedAtVersion: 7 });
   store.getState().undoChange({ ...entry(6, [{ op: "move_clip", clipId: "x2", start: 100 }]), inverse: [{ op: "move_clip", clipId: "x2", start: 90 }] });
   expect(store.getState().queue).toEqual([]);
+});
+
+it("an undo from Activity reads as one, the change it undid says Undone, and a row selects what it changed", async () => {
+  const server = makeFakeServer(sampleDoc(), 0);
+  server.remote([{ op: "move_clip", clipId: "x2", start: 200 }], "u2", "Theo");
+  const store = makeStore({ doc: server.doc(), version: 1 });
+  render(
+    <EditorProvider store={store} api={server.api}>
+      <ActivityPanel />
+    </EditorProvider>,
+  );
+  const moved = await screen.findByRole("button", { name: "Theo · Moved text “hi”" });
+  act(() => fireEvent.click(moved));
+  expect(store.getState().selection.clipIds).toEqual(["x2"]);
+  expect(store.getState().playhead).toBe(200);
+
+  act(() => fireEvent.click(screen.getByRole("button", { name: "Undo this change" })));
+  const sent = store.getState().queue[0];
+  await act(async () => {
+    const answer = await server.api.postOps({ baseVersion: 1, ops: sent.ops, requestId: sent.id });
+    if (answer.ok) store.getState().ack(sent.id, answer.version, answer.inverse);
+  });
+  await waitFor(() => expect(rows()[0].firstElementChild?.textContent).toBe("You · Undid: Moved text “hi” (Theo's)"));
+  expect(rows()[0].querySelector(".bg-ed-accent")).not.toBeNull(); // you, in blue
+  expect(screen.getByText("Undone")).toBeTruthy();
+  expect(screen.getAllByRole("button", { name: "Undo this change" })).toHaveLength(1);
 });

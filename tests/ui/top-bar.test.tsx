@@ -565,11 +565,11 @@ it("Edit and View are greyed once the project is deleted", () => {
   expect(trigger("View").disabled).toBe(true);
 });
 
-it("the top row reads Projects, Edit, View, the name, Undo, Redo, Settings, Keyboard shortcuts, Export", () => {
+it("the top row reads Projects, Edit, View, Help, the name, Undo, Redo, Settings, Keyboard shortcuts, Export", () => {
   showMenus();
   const header = screen.getByRole("banner");
   const names = [...header.querySelectorAll<HTMLElement>("a, button")].map((el) => el.getAttribute("aria-label") ?? el.textContent);
-  expect(names).toEqual(["Projects", "Edit", "View", "Qual recap", "Undo", "Redo", "Settings", "Keyboard shortcuts", "Export"]);
+  expect(names).toEqual(["Projects", "Edit", "View", "Help", "Qual recap", "Undo", "Redo", "Settings", "Keyboard shortcuts", "Export"]);
   // For a viewer the name is a heading, between View and the "View only" badge.
   cleanup();
   showMenus({ canEdit: false });
@@ -578,7 +578,7 @@ it("the top row reads Projects, Edit, View, the name, Undo, Redo, Settings, Keyb
   expect(order[1].compareDocumentPosition(order[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
-it("Help is there on a server with the guide: it lists the lessons, and one opens in a tab of its own", () => {
+it("Help lists the guide's lessons on a server with the guide, and the AI agents page always; each opens in a tab of its own", () => {
   const store = makeStore();
   const opened = vi.fn();
   vi.stubGlobal("open", opened);
@@ -591,8 +591,11 @@ it("Help is there on a server with the guide: it lists the lessons, and one open
       <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
     </EditorProvider>,
   );
-  // No guide on this server: no menu.
-  expect(screen.queryByRole("button", { name: "Help" })).toBeNull();
+  // No guide on this server: Help still leads to the AI agents page, beside the project, and the shortcuts.
+  fireEvent.click(screen.getByRole("button", { name: "Help" }));
+  expect(screen.getAllByRole("menuitem").map((item) => item.textContent?.replace(/\?$/, ""))).toEqual(["AI agents", "Keyboard shortcuts"]);
+  fireEvent.click(screen.getByRole("menuitem", { name: "AI agents" }));
+  expect(opened).toHaveBeenCalledWith("/agents", "_blank", "noopener");
   unmount();
   render(
     <EditorProvider store={store}>
@@ -600,7 +603,7 @@ it("Help is there on a server with the guide: it lists the lessons, and one open
     </EditorProvider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Help" }));
-  expect(screen.getAllByRole("menuitem").map((item) => item.textContent?.replace(/\?$/, ""))).toEqual(["The basics", "Sound", "Keyboard shortcuts"]);
+  expect(screen.getAllByRole("menuitem").map((item) => item.textContent?.replace(/\?$/, ""))).toEqual(["The basics", "Sound", "AI agents", "Keyboard shortcuts"]);
   fireEvent.click(screen.getByRole("menuitem", { name: "Sound" }));
   expect(opened).toHaveBeenCalledWith("/learn/sound", "_blank", "noopener");
 });
