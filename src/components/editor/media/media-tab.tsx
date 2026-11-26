@@ -349,7 +349,8 @@ export function LocalFolderPanel({ hasDrive }: { hasDrive: boolean }) {
       {state === "none" && (
         <>
           <p className={MUTED}>{hasDrive ? MEDIA_MESSAGES.folderOfferWithDrive : MEDIA_MESSAGES.folderOffer}</p>
-          <Button data-edit-control disabled={busy} onClick={() => run(() => folder.choose(pickFolder))}>
+          {/* The name is longer than the panel at its starting width, so it may take two lines. */}
+          <Button data-edit-control disabled={busy} className="h-auto! min-h-7 py-1 whitespace-normal!" onClick={() => run(() => folder.choose(pickFolder))}>
             Use a folder on this computer
           </Button>
         </>

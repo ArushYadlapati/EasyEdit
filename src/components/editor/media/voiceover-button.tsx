@@ -71,7 +71,9 @@ export function RecordButtons({ canUpload }: { canUpload: boolean }) {
   return (
     <>
       <RecordButton kind="voice" canUpload={canUpload} />
-      <div className="grid grid-cols-2 gap-2">
+      {/* Side by side where the panel is wide enough for both names, one under the other where it is not (its
+          starting width is not): two fixed columns pushed the names out of their buttons and over each other. */}
+      <div className="flex flex-wrap gap-2 *:min-w-fit *:flex-1">
         <RecordButton kind="screen" canUpload={canUpload} />
         <RecordButton kind="camera" canUpload={canUpload} />
       </div>
