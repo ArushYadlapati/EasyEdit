@@ -10,7 +10,7 @@ import { connectHref } from "@/lib/storage/messages";
 import { personalSpaceId, SEED_TEAM_SLUG } from "@/lib/spaces/types";
 import { joinSpace } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
-import { fireEvent, render, screen } from "../helpers/dom";
+import { render, screen } from "../helpers/dom";
 
 class Redirected extends Error {
   constructor(readonly to: string) {
@@ -76,12 +76,11 @@ describe("the welcome page", () => {
     expect(screen.queryByText(/^Step \d+ of/)).toBeNull();
   });
 
-  it("points the access token hints at the agents page", async () => {
+  it("offers Claude and ChatGPT, and points every other agent at the agents page", async () => {
     await show({ step: "agents" });
-    fireEvent.click(screen.getAllByRole("tab")[2]);
-    const links = screen.getAllByRole("link", { name: /access tokens/i });
-    expect(links.length).toBeGreaterThan(0);
-    for (const l of links) expect(l.getAttribute("href")).toBe("/agents#access-tokens");
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["ClaudeAnthropic", "ChatGPTOpenAI"]);
+    expect(screen.getByText(/Sign in with the Google account you use for EasyEdit/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Other agents and developer tools" }).getAttribute("href")).toBe("/agents");
   });
 
   it("starts with storage when it can be set up, with the exact copy and buttons", async () => {

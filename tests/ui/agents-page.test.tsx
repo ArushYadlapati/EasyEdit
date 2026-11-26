@@ -7,7 +7,8 @@ import { AccountMenu } from "@/components/dashboard/account-menu";
 import type { CurrentUser } from "@/lib/access-rules";
 import type { Role } from "@/lib/allowlist/service";
 import type { MySpace } from "@/lib/spaces/types";
-import { AGENT_KINDS, AGENTS, fillTemplate } from "@/lib/connector/agents";
+import { AGENT_WORDS } from "@/lib/connector/agent-words";
+import { AGENT_KINDS, AGENTS, OTHER_AGENTS, fillTemplate } from "@/lib/connector/agents";
 import { SKILL_WORDS } from "@/lib/skills/words";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
@@ -85,7 +86,7 @@ afterEach(() => {
 });
 
 const tab = (name: string | RegExp) => screen.getByRole("tab", { name });
-const panel = () => screen.getByRole("tabpanel");
+const panel = () => within(region("Connect an agent")).getByRole("tabpanel");
 const region = (name: string) => screen.getByRole("region", { name });
 const button = (name: string, inside: HTMLElement = document.body) => within(inside).getByRole("button", { name }) as HTMLButtonElement;
 const dialog = (name: string) => screen.getByRole("dialog", { name });
@@ -104,42 +105,117 @@ async function makeToken(name: string) {
   });
 }
 
-describe("setting up an agent", () => {
-  it("lists every agent in order, with Claude first, picked and marked Recommended", () => {
-    renderView();
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((t) => t.textContent)).toEqual(AGENT_KINDS.map((k) => (k === "claude" ? "Claude Recommended" : AGENTS[k].name)));
-    expect(tab("Claude Recommended").getAttribute("aria-selected")).toBe("true");
-    expect(tabs.filter((t) => t.getAttribute("aria-selected") === "true")).toHaveLength(1);
-    expect(panel().getAttribute("aria-labelledby")).toBe(tab("Claude Recommended").id);
-    expect(within(panel()).getByRole("heading", { name: "Claude" })).toBeTruthy();
-    const steps = within(panel()).getAllByRole("listitem").map((li) => li.textContent);
-    expect(steps).toEqual(AGENTS.claude.steps.map((s) => s.replace("{url}", URL_)));
-    // Claude only signs in, so there is no snippet and no token hint.
-    expect(within(panel()).queryByRole("figure")).toBeNull();
-    expect(within(panel()).queryByRole("link")).toBeNull();
+// The step's words as a person reads them, without the Copy button that sits beside the address.
+const stepText = (li: HTMLElement) => {
+  const copy = li.cloneNode(true) as HTMLElement;
+  for (const b of copy.querySelectorAll("button, [role=status], a")) b.remove();
+  return copy.textContent?.replace(/\s+/g, " ").trim();
+};
+const said = (step: string) => fillTemplate(step, { url: URL_ }).replace(/\s+/g, " ").replace(` ${URL_} `, ` ${URL_}`).replace(`: ${URL_}`, `:${URL_}`);
+
+describe("connecting Claude or ChatGPT", () => {
+  const choices = () => within(screen.getByRole("tablist", { name: "Agent to connect" })).getAllByRole("tab");
+  const choice = (name: RegExp) => within(screen.getByRole("tablist", { name: "Agent to connect" })).getByRole("tab", { name });
+  const steps = () => within(panel()).getAllByRole("listitem").filter((li) => li.parentElement?.tagName === "OL");
+
+  it("offers the two as large choices, Claude picked first", () => {
+    renderView({ connections: [], tokens: [] });
+    expect(choices().map((t) => t.textContent)).toEqual(["ClaudeAnthropic", "ChatGPTOpenAI"]);
+    expect(choice(/Claude/).getAttribute("aria-selected")).toBe("true");
+    expect(panel().getAttribute("aria-labelledby")).toBe(choice(/Claude/).id);
   });
 
-  it("ChatGPT shows its own steps with the server address filled in", async () => {
+  it("Claude's steps link to its connector settings, put the address with its own Copy in the step, and end with what to ask", async () => {
+    renderView({ connections: [], tokens: [] });
+    const items = steps();
+    expect(items).toHaveLength(AGENTS.claude.steps.length + 1);
+    const settings = within(items[0]).getByRole("link", { name: /Open Claude's connector settings/ });
+    expect(settings.getAttribute("href")).toBe("https://claude.ai/customize/connectors");
+    expect(settings.getAttribute("target")).toBe("_blank");
+    expect(settings.getAttribute("rel")).toContain("noopener");
+    const address = within(items[1]).getByRole("group", { name: "EasyEdit's address" });
+    expect(address.querySelector("code")?.textContent).toBe(URL_);
+    await click(within(address).getByRole("button", { name: "Copy EasyEdit's address" }));
+    expect(writeText).toHaveBeenCalledWith(URL_);
+    expect(stepText(items[2])).toContain("Sign in with the Google account you use for EasyEdit");
+    const last = items[items.length - 1];
+    expect(last.textContent).toContain("Then ask it, for example:");
+    const asks = within(last).getAllByRole("listitem");
+    expect(asks.map((li) => li.querySelector("q")?.textContent)).toEqual([...AGENT_WORDS.asks]);
+    await click(within(last).getByRole("button", { name: "Copy example 1" }));
+    expect(writeText).toHaveBeenLastCalledWith(AGENT_WORDS.asks[0]);
+  });
+
+  it("ChatGPT shows its own steps, with its plugins page and the address filled in", async () => {
+    renderView({ connections: [], tokens: [] });
+    await click(choice(/ChatGPT/));
+    expect(choice(/ChatGPT/).getAttribute("aria-selected")).toBe("true");
+    const items = steps();
+    expect(within(items[0]).getByRole("link", { name: /Open ChatGPT's plugins page/ }).getAttribute("href")).toBe("https://chatgpt.com/plugins");
+    expect(within(items[1]).getByRole("group", { name: "EasyEdit's address" }).textContent).toContain(URL_);
+    expect(panel().textContent).not.toContain("{url}");
+    expect(panel().textContent).toContain("Developer mode");
+  });
+
+  it("the arrow keys move between the two", async () => {
     renderView();
-    await click(tab("ChatGPT"));
-    expect(tab("ChatGPT").getAttribute("aria-selected")).toBe("true");
-    expect(tab("Claude Recommended").getAttribute("aria-selected")).toBe("false");
-    const steps = within(panel()).getAllByRole("listitem").map((li) => li.textContent);
-    expect(steps).toEqual(AGENTS.chatgpt.steps.map((step) => fillTemplate(step, { url: URL_ })));
-    expect(steps.some((step) => step?.includes(URL_))).toBe(true);
-    expect(steps.join(" ")).not.toContain("{url}");
+    await act(async () => {
+      fireEvent.keyDown(choice(/Claude/), { key: "ArrowRight" });
+    });
+    expect(choice(/ChatGPT/).getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(choice(/ChatGPT/));
+    await act(async () => {
+      fireEvent.keyDown(choice(/ChatGPT/), { key: "ArrowRight" });
+    });
+    expect(choice(/Claude/).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("marks an agent that is already connected", () => {
+    renderView();
+    expect(choice(/Claude/).textContent).toContain("Connected");
+    expect(choice(/ChatGPT/).textContent).not.toContain("Connected");
+  });
+
+  it("says what an agent can and can't do here", () => {
+    renderView();
+    const box = region("What an agent can do here");
+    const lines = within(box).getAllByRole("listitem").map((li) => li.textContent);
+    expect(lines).toEqual([...AGENT_WORDS.canDo]);
+    expect(lines.join(" ")).toContain("Activity");
+    expect(lines.join(" ")).toContain("can't delete projects");
+  });
+
+  it("no agent's steps name a team Google account", () => {
+    for (const kind of AGENT_KINDS) expect(AGENTS[kind].steps.join(" ")).not.toMatch(/team Google/);
+  });
+});
+
+describe("setting up another agent", () => {
+  it("lists every other agent behind the disclosure, without Claude and ChatGPT", () => {
+    renderView();
+    const summary = screen.getByText("Other agents and developer tools");
+    expect(summary.closest("details")).toBeTruthy();
+    const tabs = within(region("Set up another agent")).getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(OTHER_AGENTS.map((k) => AGENTS[k].name));
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("Claude Code shows its steps with the address in place", () => {
+    renderView();
+    const setup = region("Set up another agent");
+    const items = within(within(setup).getByRole("tabpanel")).getAllByRole("listitem");
+    expect(items.map(stepText)).toEqual(AGENTS["claude-code"].steps.map(said));
   });
 
   it("the arrow keys move between agents", async () => {
     renderView();
     await act(async () => {
-      fireEvent.keyDown(tab("Claude Recommended"), { key: "ArrowDown" });
+      fireEvent.keyDown(tab("Claude Code"), { key: "ArrowDown" });
     });
-    expect(tab("ChatGPT").getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(tab("ChatGPT"));
+    expect(tab("Cursor").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(tab("Cursor"));
     await act(async () => {
-      fireEvent.keyDown(tab("ChatGPT"), { key: "End" });
+      fireEvent.keyDown(tab("Cursor"), { key: "End" });
     });
     expect(tab("Another agent").getAttribute("aria-selected")).toBe("true");
   });
@@ -147,15 +223,15 @@ describe("setting up an agent", () => {
   it("Cursor shows its snippet, which copies, and points to access tokens", async () => {
     renderView();
     await click(tab("Cursor"));
-    const code = within(panel()).getByText(/mcpServers/);
+    const setupPanel = within(region("Set up another agent")).getByRole("tabpanel");
+    const code = within(setupPanel).getByText(/mcpServers/);
     expect(code.textContent).toBe(fillTemplate(AGENTS.cursor.snippet!.code, { url: URL_ }));
-    expect(code.textContent).toContain(URL_);
-    expect(within(panel()).getByText(AGENTS.cursor.snippet!.label)).toBeTruthy();
-    const copy = button("Copy setup snippet", panel());
+    expect(within(setupPanel).getByText(AGENTS.cursor.snippet!.label)).toBeTruthy();
+    const copy = button("Copy setup snippet", setupPanel);
     await click(copy);
     expect(writeText).toHaveBeenCalledWith(code.textContent);
     expect(copy.textContent).toBe("Copied");
-    const hint = within(panel()).getByRole("link", { name: "make one under Access tokens" });
+    const hint = within(setupPanel).getByRole("link", { name: "make one under Access tokens" });
     expect(hint.getAttribute("href")).toBe("#access-tokens");
     expect(region("Access tokens").id).toBe("access-tokens");
   });
@@ -163,16 +239,17 @@ describe("setting up an agent", () => {
   it("the OpenAI API needs a token, and its snippet waits for one", async () => {
     renderView();
     await click(tab("OpenAI API"));
-    expect(within(panel()).getByText(/This agent needs an access token/)).toBeTruthy();
-    expect(within(panel()).getByText(/"authorization": "<your access token>"/)).toBeTruthy();
+    const setupPanel = within(region("Set up another agent")).getByRole("tabpanel");
+    expect(within(setupPanel).getByText(/This agent needs an access token/)).toBeTruthy();
+    expect(within(setupPanel).getByText(/"authorization": "<your access token>"/)).toBeTruthy();
   });
 });
 
 describe("video skills", () => {
-  it("come after the setup steps, say connected agents already have them, and give three other ways in", () => {
+  it("come after the other agents' steps, say connected agents already have them, and give three other ways in", () => {
     renderView();
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(["Server address", "Set up an agent", "Video skills", "Connected agents", "Access tokens"]);
+    expect(headings).toEqual(["Connect an agent", "What an agent can do here", "Connected agents", "Server address", "Set up another agent", "Video skills", "Access tokens"]);
     const section = region("Video skills");
     expect(within(section).getByText(SKILL_WORDS.intro)).toBeTruthy();
     expect(within(section).getByText("Agents you connect here already have them. You can also add them yourself:")).toBeTruthy();
@@ -263,25 +340,53 @@ describe("the server address", () => {
 });
 
 describe("connected agents", () => {
-  it("lists each signed-in agent and each token, with their dates", () => {
+  it("lists each signed-in agent and each token something has used, with their dates", () => {
     renderView();
     const list = screen.getByRole("list", { name: "Connected agents" });
     const rows = within(list).getAllByRole("listitem");
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(3);
     expect(rows[0].textContent).toContain("Claude");
     expect(rows[0].textContent).toContain("Connected Nov 5, 2026");
     // The client's own name shows only when it says more than the agent's.
     expect(rows[0].textContent).not.toContain("ClaudeClaude");
     expect(rows[1].textContent).toContain("Cursor Desktop");
-    expect(rows[2].textContent).toContain("Laptop script");
-    expect(rows[2].textContent).toContain("OpenAI API");
-    expect(rows[2].textContent).toContain("…x9Qa");
-    expect(rows[2].textContent).toContain("Created Nov 1, 2026");
-    expect(rows[2].textContent).toContain("Never used");
-    expect(rows[3].textContent).toContain("Last used Nov 10, 2026");
+    expect(rows[2].textContent).toContain("Codex at home");
+    expect(rows[2].textContent).toContain("Last used Nov 10, 2026");
+    expect(list.textContent).not.toContain("Laptop script");
     expect(button("Disconnect Claude")).toBeTruthy();
     expect(button("Disconnect Cursor (Cursor Desktop)")).toBeTruthy();
+  });
+
+  it("lists a token nothing has used yet with the access tokens, not as a connected agent", () => {
+    renderView();
+    const unused = within(region("Access tokens")).getByRole("list", { name: "Not used yet" });
+    const rows = within(unused).getAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain("Laptop script");
+    expect(rows[0].textContent).toContain("OpenAI API");
+    expect(rows[0].textContent).toContain("…x9Qa");
+    expect(rows[0].textContent).toContain("Created Nov 1, 2026");
+    expect(rows[0].textContent).toContain("Never used");
     expect(button("Revoke Laptop script")).toBeTruthy();
+  });
+
+  it("says so when an agent connects while the page is open", () => {
+    const { rerender, actions } = renderView({ connections: [] });
+    expect(screen.queryByText(/is connected\. Go back/)).toBeNull();
+    rerender(<AgentsView serverUrl={URL_} connections={CONNECTIONS.slice(0, 1)} tokens={TOKENS} nameLimit={60} now={NOW} actions={actions} />);
+    expect(screen.getByText("Claude is connected. Go back to Claude and ask it to make something.").getAttribute("role")).toBe("status");
+  });
+
+  it("reads the page again when the person comes back to the tab", async () => {
+    router.refresh.mockClear();
+    renderView();
+    expect(router.refresh).not.toHaveBeenCalled();
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    // Both fire on coming back; one refresh is enough.
+    expect(router.refresh).toHaveBeenCalledTimes(1);
   });
 
   it("says when nothing is connected", () => {
@@ -334,11 +439,11 @@ describe("access tokens", () => {
     expect(options).toEqual(AGENT_KINDS.filter((k) => AGENTS[k].methods.includes("token")).map((k) => AGENTS[k].name));
     expect(options).not.toContain("Claude");
     expect(options).toContain("OpenAI API");
-    // Claude signs in, so the form starts on the OpenAI API.
-    expect(agentSelect().value).toBe("openai-api");
+    // The first of the other agents, Claude Code, takes a token, so the form starts on it.
+    expect(agentSelect().value).toBe("claude-code");
     await click(tab("Cursor"));
     expect(agentSelect().value).toBe("cursor");
-    await click(tab("ChatGPT"));
+    await click(tab("OpenAI API"));
     expect(agentSelect().value).toBe("openai-api");
     const name = within(region("Access tokens")).getByRole("textbox", { name: "Name" }) as HTMLInputElement;
     expect(name.maxLength).toBe(60);
@@ -431,9 +536,10 @@ describe("the AI agents page", () => {
     server.spaces = [space("personal", "admin"), space("team", "editor")];
     render(await AgentsPage());
     expect(screen.getByRole("heading", { level: 1, name: "AI agents" })).toBeTruthy();
-    expect(screen.getByText(/each one acts as you and its changes are labeled with its name/)).toBeTruthy();
+    expect(screen.getByText(AGENT_WORDS.intro)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/speaks MCP/);
     expect((screen.getByRole("textbox", { name: "Server address" }) as HTMLInputElement).value).toBe(URL_);
-    expect(within(screen.getByRole("list", { name: "Connected agents" })).getAllByRole("listitem")).toHaveLength(4);
+    expect(within(screen.getByRole("list", { name: "Connected agents" })).getAllByRole("listitem")).toHaveLength(3);
     expect(screen.getByRole("link", { name: "Projects" }).getAttribute("href")).toBe("/dashboard");
     expect(screen.queryByText(/not in a team yet/)).toBeNull();
     const { listAgentConnections } = await import("@/lib/connector/connections");
