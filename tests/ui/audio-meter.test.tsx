@@ -60,8 +60,22 @@ it("rests empty, with its scale and both sides named", () => {
   expect(screen.getByRole("group", { name: "Audio meter" })).toBeTruthy();
   expect(fills()).toEqual(["inset(100% 0 0 0)", "inset(100% 0 0 0)"]);
   expect(overs()).toEqual(["false", "false"]);
-  for (const mark of ["0", "6", "12", "18", "24", "36", "48", "L", "R"]) expect(screen.getByText(mark)).toBeTruthy();
-  expect(screen.getByText("-∞")).toBeTruthy();
+  // Numbers every 12 dB, at the label size in Muted Text: words a person reads.
+  for (const mark of ["0", "12", "24", "48", "L", "R", "-∞"]) {
+    const set = screen.getByText(mark).closest<HTMLElement>('[class*="text-["]')!; // the element that sets its size
+    expect(set.className, mark).toMatch(/\btext-\[11px\].*\btext-ed-muted\b/);
+    expect(set.className, mark).not.toMatch(/text-ed-faint|text-\[9px\]|text-\[10px\]/);
+  }
+  expect(screen.queryByText("6")).toBeNull();
+});
+
+it("clears both overload lights from one button across its top, 28 px tall", () => {
+  show();
+  const clear = screen.getByRole("button", { name: "Clear the overload lights" });
+  expect(clear.className).toMatch(/\bmin-h-7\b/);
+  // The peak readout and both lights are inside it, so the whole strip is the target.
+  expect(clear.textContent).toBe("-∞");
+  expect(clear.querySelectorAll("[data-over]").length).toBe(2);
 });
 
 it("follows the mix while playing: each side to its level, a line at the peak, and the peak in numbers", () => {
@@ -108,7 +122,7 @@ it("lights a side that went past full scale until it is clicked, and clears it w
   levels.now = { left: 0.1, right: 0.1 };
   step(2000);
   expect(overs()).toEqual(["true", "false"]); // it stays lit
-  fireEvent.click(screen.getByRole("button", { name: "Clear the left overload light" }));
+  fireEvent.click(screen.getByRole("button", { name: "Clear the overload lights" }));
   expect(overs()).toEqual(["false", "false"]);
   levels.now = { left: 0.1, right: 2 };
   step();
