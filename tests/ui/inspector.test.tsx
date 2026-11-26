@@ -16,6 +16,10 @@ import { DEFAULT_TRANSFORM, isCropped, slotOf, type Clip } from "@/lib/timeline"
 import { entry, makeStore, sampleDoc, text, video } from "../editor/fixtures";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
+import { openEverySection } from "../helpers/folds";
+
+// These tests are about what the sections hold, so every section starts open.
+beforeEach(openEverySection);
 
 it("previews while typing and saves one change on blur", () => {
   const store = makeStore();
@@ -105,9 +109,9 @@ it("a viewer sees the values with every edit control disabled", () => {
   const { container } = render(<EditorProvider store={store}><Inspector /></EditorProvider>);
   expect((screen.getByLabelText("Text") as HTMLTextAreaElement).value).toBe("hi");
   expect((screen.getByLabelText("Size") as HTMLInputElement).value).toBe("64");
-  // The keyframe arrows only move the playhead, so they are not edit controls.
+  // The keyframe arrows only move the playhead, so they are not edit controls; nor are the headings that fold a section.
   const seeks = ["Previous keyframe", "Next keyframe"];
-  const all = [...container.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button, input, select, textarea")];
+  const all = [...container.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button:not([aria-expanded]), input, select, textarea")];
   const controls = all.filter((c) => !seeks.includes(c.getAttribute("aria-label") ?? ""));
   expect(all.length - controls.length).toBe(2);
   expect(controls.length).toBeGreaterThan(10);
@@ -497,7 +501,7 @@ describe("position and size in your units", () => {
     setup();
     // The heading shares a row with the keyframe arrows.
     const section = screen.getByRole("heading", { name: "Position" }).parentElement!.parentElement!;
-    const names = [...section.querySelectorAll("input, button")].map((c) => c.getAttribute("aria-label"));
+    const names = [...section.querySelectorAll("input, button:not([aria-expanded])")].map((c) => c.getAttribute("aria-label"));
     expect(names).toEqual([
       "Previous keyframe", "Next keyframe",
       "X", "Add X keyframe", "Y", "Add Y keyframe", "Width", "Lock aspect ratio", "Height",

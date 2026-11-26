@@ -4,7 +4,10 @@ import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { useStore } from "zustand";
 import { CHOSEN_EDGE, FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { Splitter } from "@/components/ui/splitter";
+import { displayRows } from "@/lib/editor/geometry";
 import { fitLayout, layoutStyle, sizeBounds, type Layout, type LayoutStore, type PanelId } from "@/lib/editor/layout";
+import { viewDoc } from "@/lib/editor/store";
+import { useEditor } from "./context";
 import { useMediaDropState } from "./media/media-context";
 
 const REGION = "relative min-h-0 min-w-0 overflow-hidden";
@@ -59,7 +62,9 @@ export function PanelGrid({ layout, deleted = false, top, left, center, right, b
   // followed the window's height, is kept as it was rather than replaced by the size shown at the start.
   const beforeDrag = useRef<Layout | null>(null);
   const ids = { left: useId(), right: useId(), timeline: useId() };
-  const shown = fitLayout(wanted, win);
+  // The timeline's default height follows its track count, so a project with few tracks leaves the preview the room.
+  const rows = useEditor((s) => displayRows(viewDoc(s)).length);
+  const shown = fitLayout(wanted, win, rows);
 
   // The window's size bounds every panel; it is read before the first paint, so saved sizes that do not fit never show.
   useLayoutEffect(() => {
@@ -99,7 +104,7 @@ export function PanelGrid({ layout, deleted = false, top, left, center, right, b
   return (
     <div
       data-resizing={resizing ?? undefined}
-      style={layoutStyle(shown)}
+      style={layoutStyle(shown, rows)}
       // The 44px top row is TOP_BAR_PX in the layout module.
       className={cx(
         "relative grid h-full gap-px bg-ed-line-strong",

@@ -20,11 +20,12 @@ export function nextSlotName(doc: TimelineDoc): string {
 }
 
 // What this clip is in a template: nothing, or a slot that gets filled in later. Every change is one update_clip.
-export function SlotSection({ clip }: { clip: Clip }) {
-  return clip.type === "shape" || clip.type === "adjustment" ? null : <SlotFields clip={clip} />;
+// bare: without its own heading, for a section that has one.
+export function SlotSection({ clip, bare = false }: { clip: Clip; bare?: boolean }) {
+  return clip.type === "shape" || clip.type === "adjustment" ? null : <SlotFields clip={clip} bare={bare} />;
 }
 
-function SlotFields({ clip }: { clip: Exclude<Clip, { type: "shape" | "adjustment" }> }) {
+function SlotFields({ clip, bare }: { clip: Exclude<Clip, { type: "shape" | "adjustment" }>; bare: boolean }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const locked = useEditor((s) => s.doc.tracks.some((t) => t.locked && t.clips.some((c) => c.id === clip.id)));
@@ -77,7 +78,7 @@ function SlotFields({ clip }: { clip: Exclude<Clip, { type: "shape" | "adjustmen
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-sm leading-5 font-semibold text-ed-text">Template slot</h2>
+      {!bare && <h2 className="text-sm leading-5 font-semibold text-ed-text">Template slot</h2>}
       <p className="text-[13px] leading-5 text-ed-muted">A slot is a part of the template that gets filled in later.</p>
       {clip.type === "placeholder" && (
         <p className="text-[13px] leading-5 text-ed-muted">

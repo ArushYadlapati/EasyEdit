@@ -20,9 +20,11 @@ import {
   stepVolume,
   toggleMute,
 } from "./actions";
+import { addGuideInMiddle, addShapeInMiddle, type DrawDeps } from "./add-centred";
 import type { ClipboardStore } from "./clipboard";
 import { TRIM_MODES } from "./drag";
 import { ZOOM_STEP } from "./geometry";
+import { DEFAULT_PREFS } from "./settings";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import type { EditorState, EditorStore } from "./store";
 
@@ -35,7 +37,10 @@ export type CommandContext = {
   openExport?(): void;
   openSearch?(): void;
   hasSound?(assetId: string): boolean;
+  drawing?: DrawDeps; // a new shape's length and colour, as a drag on the preview gives them
 };
+
+const DEFAULT_DRAWING: DrawDeps = { seconds: () => DEFAULT_PREFS.textSeconds, color: () => undefined };
 
 const EDITS = new Set(SHORTCUTS.filter((s) => s.edits).map((s) => s.command));
 
@@ -114,6 +119,12 @@ export function runCommand(command: CommandId, ctx: CommandContext): void {
       return void state.setTool("guide");
     case "tool-crop":
       return void state.setTool("crop");
+    case "add-in-middle":
+      if (state.tool === "guide") return void addGuideInMiddle(store, "x");
+      return void addShapeInMiddle(store, ctx.drawing ?? DEFAULT_DRAWING);
+    case "add-guide-across":
+      if (state.tool === "guide") addGuideInMiddle(store, "y");
+      return;
     case "split":
       return splitAtPlayhead(store);
     case "delete":

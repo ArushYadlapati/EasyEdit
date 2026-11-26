@@ -40,6 +40,18 @@ export function drawnGeometry(tool: ShapeTool, from: Point, to: Point, keys: { s
   return { x: round4(centre.x / frame.width), y: round4(centre.y / frame.height), width: round2(Math.max(1, width)), height: round2(Math.max(1, height)), rotation: 0 };
 }
 
+// A shape added without a drag, from the keyboard or a menu: in the middle of the frame, a third of its shorter side
+// across in the shape's even-sided proportions; a line or an arrow across the middle third of the frame, left to right.
+export function centredGeometry(tool: ShapeTool, frame: Size): DrawnGeometry {
+  const middle = { x: frame.width / 2, y: frame.height / 2 };
+  if (tool === "line" || tool === "arrow") {
+    return drawnGeometry(tool, { x: frame.width / 3, y: middle.y }, { x: (frame.width * 2) / 3, y: middle.y }, { shift: false, centre: false }, frame);
+  }
+  const across = Math.min(frame.width, frame.height) / 3;
+  const corner = { x: middle.x + across / 2, y: middle.y + across / regularAspect(tool) / 2 };
+  return drawnGeometry(tool, middle, corner, { shift: false, centre: true }, frame);
+}
+
 // A point pulled onto the frame's edges, its centre lines and the guides shown, each axis on its own, when one is
 // within px project pixels.
 export function snapPoint(p: Point, frame: Size, guides: readonly Guide[], px: number): Point {

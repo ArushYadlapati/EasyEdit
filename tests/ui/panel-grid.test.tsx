@@ -3,9 +3,9 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { writeLayoutCookie } from "@/components/editor/browser-prefs";
 import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
-import type { Layout } from "@/lib/editor/layout";
+import { layoutStyle, type Layout } from "@/lib/editor/layout";
 import type { EditorStore } from "@/lib/editor/store";
-import { makeStore } from "../editor/fixtures";
+import { makeStore, sampleDoc } from "../editor/fixtures";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { happyDOM } from "../helpers/layout";
 
@@ -30,7 +30,9 @@ it("shows three named separators with their sizes, beside the audio meter's own"
   expect(screen.getAllByRole("separator").map((el) => el.getAttribute("aria-label"))).toEqual([
     "Left panel width", "Right panel width", "Timeline height", "Audio meter width",
   ]);
-  expect([size("Left panel width"), size("Right panel width"), size("Timeline height")]).toEqual(["240", "280", "276"]);
+  // At 1024 px the side panels take their narrowest default widths, and the sample's four tracks fill the timeline's
+  // default height.
+  expect([size("Left panel width"), size("Right panel width"), size("Timeline height")]).toEqual(["218", "240", "276"]);
   expect(bar("Left panel width").getAttribute("aria-orientation")).toBe("vertical");
   expect(bar("Timeline height").getAttribute("aria-orientation")).toBe("horizontal");
   // Each separator names the region it sizes.
@@ -42,16 +44,17 @@ it("an arrow key on a separator resizes the panel and does not move the playhead
   const { store, saveLayout, bar, size, variable } = show();
   bar("Left panel width").focus();
   expect(fireEvent.keyDown(bar("Left panel width"), { key: "ArrowRight" })).toBe(false);
-  expect(size("Left panel width")).toBe("256");
-  expect(variable("--ed-left-w")).toBe("256px");
-  expect(saveLayout).toHaveBeenCalledWith({ left: 256, right: 280, timeline: null });
+  expect(size("Left panel width")).toBe("234");
+  expect(variable("--ed-left-w")).toBe("234px");
+  // Only the size that was chosen is kept; the others go on following the window.
+  expect(saveLayout).toHaveBeenCalledWith({ left: 234, right: null, timeline: null });
   expect(store.getState().playhead).toBe(0);
 });
 
 it("dragging a separator resizes and saves once", () => {
   const { saveLayout, bar, grid, size } = show();
   const left = bar("Left panel width");
-  fireEvent.pointerDown(left, { button: 0, pointerId: 1, clientX: 240 });
+  fireEvent.pointerDown(left, { button: 0, pointerId: 1, clientX: 218 });
   expect(grid.dataset.resizing).toBe("col");
   fireEvent.pointerMove(left, { pointerId: 1, clientX: 260 });
   expect(size("Left panel width")).toBe("260");
@@ -68,9 +71,9 @@ it("dragging a separator resizes and saves once", () => {
 it("a press with another button starts no drag", () => {
   const { bar, grid, size } = show();
   const left = bar("Left panel width");
-  fireEvent.pointerDown(left, { button: 2, pointerId: 1, clientX: 240 });
+  fireEvent.pointerDown(left, { button: 2, pointerId: 1, clientX: 218 });
   fireEvent.pointerMove(left, { pointerId: 1, clientX: 300 });
-  expect(size("Left panel width")).toBe("240");
+  expect(size("Left panel width")).toBe("218");
   expect(grid.dataset.resizing).toBeUndefined();
 });
 
@@ -84,7 +87,7 @@ it("dragging the timeline's edge up makes the timeline taller", () => {
   expect(size("Timeline height")).toBe("336");
   expect(variable("--ed-timeline-h")).toBe("336px");
   expect(saveLayout).toHaveBeenCalledTimes(1);
-  expect(saveLayout).toHaveBeenCalledWith({ left: 240, right: 280, timeline: 336 });
+  expect(saveLayout).toHaveBeenCalledWith({ left: null, right: null, timeline: 336 });
 });
 
 it("Escape during a drag puts the size back", () => {
@@ -92,17 +95,17 @@ it("Escape during a drag puts the size back", () => {
   store.getState().select(["x1"]);
   const { saveLayout, bar, grid, size } = show({ store });
   const left = bar("Left panel width");
-  fireEvent.pointerDown(left, { button: 0, pointerId: 1, clientX: 240 });
+  fireEvent.pointerDown(left, { button: 0, pointerId: 1, clientX: 218 });
   fireEvent.pointerMove(left, { pointerId: 1, clientX: 260 });
   expect(size("Left panel width")).toBe("260");
   expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(false);
-  expect(size("Left panel width")).toBe("240");
+  expect(size("Left panel width")).toBe("218");
   expect(grid.dataset.resizing).toBeUndefined();
   expect(left.hasPointerCapture(1)).toBe(false);
   // The drag is over: later moves and the capture's end do nothing.
   fireEvent.pointerMove(left, { pointerId: 1, clientX: 300 });
   fireEvent.lostPointerCapture(left, { pointerId: 1 });
-  expect(size("Left panel width")).toBe("240");
+  expect(size("Left panel width")).toBe("218");
   expect(saveLayout).not.toHaveBeenCalled();
   expect(store.getState().selection.clipIds).toEqual(["x1"]);
   // With no drag running, Escape clears the selection as before.
@@ -119,10 +122,10 @@ it("Escape on the timeline's edge leaves it following the window height", () => 
   fireEvent.keyDown(window, { key: "Escape" });
   expect(size("Timeline height")).toBe("276");
   expect(saveLayout).not.toHaveBeenCalled();
-  // Still the default: a taller window gives a taller timeline.
+  // Still the default: a taller window gives it room up to what its four tracks need (277 px), and no more.
   act(() => happyDOM().setViewport({ width: 1024, height: 1000 }));
-  expect(size("Timeline height")).toBe("360");
-  expect(variable("--ed-timeline-h")).toBe("360px");
+  expect(size("Timeline height")).toBe("277");
+  expect(variable("--ed-timeline-h")).toBe("277px");
 });
 
 it("Escape in a narrow window puts back the size that was chosen, not the one shown", () => {
@@ -141,8 +144,8 @@ it("Escape in a narrow window puts back the size that was chosen, not the one sh
 it("a double-click puts the default size back", () => {
   const { saveLayout, bar, size } = show({ initialLayout: { left: 300, right: 240, timeline: 400 } });
   fireEvent.doubleClick(bar("Left panel width"));
-  expect(size("Left panel width")).toBe("240");
-  expect(saveLayout).toHaveBeenCalledWith({ left: 240, right: 240, timeline: 400 });
+  expect(size("Left panel width")).toBe("218");
+  expect(saveLayout).toHaveBeenCalledWith({ left: null, right: 240, timeline: 400 });
 });
 
 it("starts from the saved sizes", () => {
@@ -162,8 +165,8 @@ it("a narrower window gives way and a wider one brings the size back", () => {
 it("a viewer can resize, and a deleted project has no separators.", () => {
   const viewer = show({ store: makeStore({ canEdit: false }) });
   expect(fireEvent.keyDown(viewer.bar("Right panel width"), { key: "ArrowLeft" })).toBe(false);
-  expect(viewer.size("Right panel width")).toBe("296");
-  expect(viewer.saveLayout).toHaveBeenCalledWith({ left: 240, right: 296, timeline: null });
+  expect(viewer.size("Right panel width")).toBe("256");
+  expect(viewer.saveLayout).toHaveBeenCalledWith({ left: null, right: 256, timeline: null });
   viewer.unmount();
 
   const store = makeStore();
@@ -221,7 +224,30 @@ it("View → Reset panel sizes puts all three edges back and keeps them, and the
   expect([size("Left panel width"), size("Right panel width"), size("Timeline height"), size("Audio meter width")]).toEqual(["260", "250", "300", "140"]);
   fireEvent.click(screen.getByRole("button", { name: "View" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Reset panel sizes" }));
-  expect([size("Left panel width"), size("Right panel width"), size("Timeline height"), size("Audio meter width")]).toEqual(["240", "280", "276", "56"]);
-  expect(saveLayout).toHaveBeenCalledWith({ left: 240, right: 280, timeline: null });
+  expect([size("Left panel width"), size("Right panel width"), size("Timeline height"), size("Audio meter width")]).toEqual(["218", "240", "276", "56"]);
+  expect(saveLayout).toHaveBeenCalledWith({ left: null, right: null, timeline: null });
   expect(store.getState().audioMeterWidth).toBe(56);
+});
+
+it("with no sizes chosen, the side panels follow the window and the timeline its tracks", () => {
+  act(() => happyDOM().setViewport({ width: 1440, height: 900 }));
+  const { size } = show({ store: makeStore({ doc: { ...sampleDoc(), tracks: sampleDoc().tracks.slice(0, 2) } }) });
+  // 15vw + 64 px and 19vw; two tracks, a spare row, the ruler and the control row need 197 px, so the least, 200.
+  expect([size("Left panel width"), size("Right panel width"), size("Timeline height")]).toEqual(["280", "274", "200"]);
+  act(() => happyDOM().setViewport({ width: 1920, height: 1080 }));
+  expect([size("Left panel width"), size("Right panel width")]).toEqual(["300", "320"]);
+});
+
+it("a size someone chose wins over the default at every window size", () => {
+  const { size } = show({ initialLayout: { left: 230, right: null, timeline: null } });
+  act(() => happyDOM().setViewport({ width: 1920, height: 1080 }));
+  expect([size("Left panel width"), size("Right panel width")]).toEqual(["230", "320"]);
+});
+
+it("before the window is measured the grid's sizes are the stylesheet's defaults", () => {
+  expect(layoutStyle({ left: null, right: null, timeline: null }, 3)).toEqual({
+    "--ed-left-w": "clamp(200px, calc(15vw + 64px), 300px)",
+    "--ed-right-w": "clamp(240px, 19vw, 320px)",
+    "--ed-timeline-h": "clamp(200px, 237px, clamp(220px, 36vh, 360px))",
+  });
 });

@@ -6,12 +6,18 @@ import { useContextMenu } from "@/components/ui/context-menu";
 import { IconButton } from "@/components/ui/icon-button";
 import { BOX_SHAPES, LINE_TOOLS, SHAPE_TOOL_NAME, type BoxShape, type LineTool, type ShapeTool } from "@/lib/timeline/shapes";
 import { deleteSelection, splitAtPlayhead } from "@/lib/editor/actions";
+import { addGuideInMiddle, addShapeInMiddle } from "@/lib/editor/add-centred";
 import type { CommandId } from "@/lib/editor/shortcuts";
 import { TOOLS, toolNeedsEdit, type Tool } from "@/lib/editor/tools";
-import { useEditor, useEditorStore } from "./context";
+import { useBrand } from "./brand/brand-context";
+import { useEditor, useEditorStore, useSettingsStore } from "./context";
 import { useShortcutLabel } from "./use-shortcuts";
 
 export const RAIL_PX = 44;
+
+type Lister = "shape" | "line" | "guide"; // the buttons with a list
+const ADD = "add-in-middle";
+const withArticle = (name: string) => `${/^[aeiou]/i.test(name) ? "an" : "a"} ${name.toLowerCase()}`;
 
 const TOOL_LOOK: Record<Tool, { label: string; command: CommandId; icon: ReactNode }> = {
   select: { label: "Selection", command: "tool-select", icon: <MousePointer2 /> },
@@ -40,7 +46,9 @@ export const SHAPE_ICON: Record<ShapeTool, ReactNode> = {
 // who can't edit keeps Selection, and the rest is disabled. In a window too short for every button the strip scrolls.
 // Two of the tools draw more than one thing. Shape keeps a list of shapes; Line draws a line or an arrow. Each shows
 // what it draws now, and a click on it while it is already the tool changes that: Shape opens its list, Line switches
-// to the other of its two.
+// to the other of its two. Shape, Line and Guide each have a list (ArrowRight or a right-click; for Shape and Guide a
+// second click too) that also adds one in the middle of the frame, for whoever does not drag (Enter does the same
+// while the tool is chosen and focus is not on a button).
 export function ToolRail() {
   const store = useEditorStore();
   const tool = useEditor((s) => s.tool);
@@ -49,6 +57,8 @@ export function ToolRail() {
   const shapeTool = useEditor((s) => s.shapeTool);
   const lineTool = useEditor((s) => s.lineTool);
   const key = useShortcutLabel();
+  const settings = useSettingsStore();
+  const brandColor = useBrand().kit.colors[0];
   const menu = useContextMenu();
   const bar = useRef<HTMLDivElement>(null);
   const [focusAt, setFocusAt] = useState<number | null>(null);
@@ -58,30 +68,48 @@ export function ToolRail() {
   const disabledAt = (index: number) => (index >= TOOLS.length ? !canEdit || (index > TOOLS.length && !hasSelection) : toolNeedsEdit(TOOLS[index]) && !canEdit);
   const stop = focusAt !== null && !disabledAt(focusAt) ? focusAt : TOOLS.indexOf(tool);
 
-  // What the Shape or the Line button draws, as a list opened beside the rail. Picking one picks the tool with it.
-  function openList(button: HTMLElement, of: "shape" | "line") {
+  // What the Shape or the Line button draws, as a list opened beside the rail, then a way to add one in the middle of
+  // the frame. Picking a shape picks the tool with it. The Guide button's list adds a guide down or across the middle.
+  function openList(button: HTMLElement, of: Lister) {
     if (!menu || !canEdit) return;
     const box = button.getBoundingClientRect();
+    const place = { x: box.right + 4, y: box.top, returnFocus: button };
+    if (of === "guide") {
+      menu({
+        ...place,
+        label: "Guide",
+        items: [
+          { id: "x", label: "Add a guide down the middle", shortcut: key("add-in-middle"), edit: true },
+          { id: "y", label: "Add a guide across the middle", shortcut: key("add-guide-across"), edit: true },
+        ],
+        onSelect: (id) => {
+          if (store.getState().setTool("guide")) addGuideInMiddle(store, id === "y" ? "y" : "x");
+        },
+      });
+      return;
+    }
     const [kinds, current]: [readonly ShapeTool[], ShapeTool] = of === "shape" ? [BOX_SHAPES, shapeTool] : [LINE_TOOLS, lineTool];
     menu({
-      x: box.right + 4,
-      y: box.top,
+      ...place,
       label: of === "shape" ? "Shapes" : "Line or arrow",
-      returnFocus: button,
-      items: kinds.map((s) => ({ id: s, label: SHAPE_TOOL_NAME[s], radio: true, checked: s === current })),
+      items: [
+        ...kinds.map((s) => ({ id: s, label: SHAPE_TOOL_NAME[s], radio: true, checked: s === current })),
+        { id: ADD, label: `Add ${withArticle(SHAPE_TOOL_NAME[current])} in the middle`, shortcut: key("add-in-middle"), separatorBefore: true, edit: true },
+      ],
       onSelect: (id) => {
         const state = store.getState();
         if (!state.setTool(of)) return;
-        if (of === "shape") state.setShapeTool(id as BoxShape);
+        if (id === ADD) addShapeInMiddle(store, { seconds: () => settings.getState().textSeconds, color: () => brandColor });
+        else if (of === "shape") state.setShapeTool(id as BoxShape);
         else state.setLineTool(id as LineTool);
       },
     });
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    // ArrowRight on the Shape or the Line button opens its list.
+    // ArrowRight on the Shape, Line or Guide button opens its list.
     const of = (e.target as HTMLElement).dataset.tool;
-    if (e.key === "ArrowRight" && (of === "shape" || of === "line")) {
+    if (e.key === "ArrowRight" && (of === "shape" || of === "line" || of === "guide")) {
       e.preventDefault();
       e.stopPropagation();
       openList(e.target as HTMLElement, of);
@@ -125,7 +153,7 @@ export function ToolRail() {
         const needsEdit = toolNeedsEdit(t);
         // A button that draws more than one thing shows what it draws now and a corner mark, and a right-click or
         // ArrowRight opens its list.
-        const of = t === "shape" || t === "line" ? t : null;
+        const of = t === "shape" || t === "line" || t === "guide" ? t : null;
         const other: LineTool = lineTool === "line" ? "arrow" : "line";
         const listProps = of && {
           "data-tool": of,
@@ -142,14 +170,19 @@ export function ToolRail() {
             {...(needsEdit && { "data-edit-control": true })}
             label={of === "shape" ? `Shape: ${SHAPE_TOOL_NAME[shapeTool]}` : of === "line" ? SHAPE_TOOL_NAME[lineTool] : look.label}
             shortcut={key(of === "line" && lineTool === "arrow" ? "tool-arrow" : look.command)}
-            hint={of === "shape" ? "Click again for more shapes" : of === "line" ? `Click again for ${other === "line" ? "a line" : "an arrow"}` : undefined}
+            hint={
+              of === "shape" ? "Drag on the preview; click again for more shapes"
+              : of === "line" ? `Drag on the preview; click again for ${other === "line" ? "a line" : "an arrow"}`
+              : of === "guide" ? "Drag on the preview; click again to add one in the middle"
+              : undefined
+            }
             tipSide="right"
             pressed={tool === t}
             disabled={needsEdit && !canEdit}
             tabIndex={stop === i ? 0 : -1}
             onClick={(e) => {
               const state = store.getState();
-              if (of === "shape" && tool === "shape") openList(e.currentTarget, "shape");
+              if ((of === "shape" || of === "guide") && tool === of) openList(e.currentTarget, of);
               else if (of === "line" && tool === "line") state.setLineTool(other);
               else state.setTool(t);
             }}

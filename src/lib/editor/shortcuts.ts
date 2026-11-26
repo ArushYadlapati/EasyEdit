@@ -7,7 +7,8 @@ export type CommandId =
   | "volume-up" | "volume-down" | "mute-clip" | "separate-audio" | "duck-audio" | "reverse-clip" | "freeze-frame"
   | "select-all" | "clear-selection" | "zoom-in" | "zoom-out" | "zoom-fit" | "toggle-snapping" | "next-trim-mode" | "toggle-audio-meter"
   | "export" | "show-shortcuts" | "search"
-  | "tool-select" | "tool-razor" | "tool-text" | "tool-shape" | "tool-shape-next" | "tool-line" | "tool-arrow" | "tool-guide" | "tool-crop";
+  | "tool-select" | "tool-razor" | "tool-text" | "tool-shape" | "tool-shape-next" | "tool-line" | "tool-arrow" | "tool-guide" | "tool-crop"
+  | "add-in-middle" | "add-guide-across";
 
 // edits: the command changes the project, so it does nothing for a viewer. repeats: holding the key
 // down runs it again with each repeat; other commands run once per press.
@@ -51,6 +52,9 @@ export const SHORTCUTS: Shortcut[] = [
   row("Tools", "tool-arrow", ["Shift+A"], "Arrow: drag on the preview to draw one", EDITS),
   row("Tools", "tool-guide", ["G"], "Guide: drag on the preview to add a guide", EDITS),
   row("Tools", "tool-crop", ["R"], "Crop tool", EDITS),
+  // Without a drag: what the Shape, Line or Guide tool draws, added in the middle of the frame and selected.
+  row("Tools", "add-in-middle", ["Enter"], "With Shape, Line or Guide: add one in the middle of the frame", EDITS),
+  row("Tools", "add-guide-across", ["Shift+Enter"], "With Guide: add a guide across the middle of the frame", EDITS),
   row("Playback", "play-pause", ["Space"], "Play or pause"),
   row("Playback", "play-forward", ["L"], "Play forward; press again to go faster"),
   row("Playback", "pause", ["K"], "Pause"),

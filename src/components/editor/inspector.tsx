@@ -1,10 +1,10 @@
 "use client";
 
-import { Link2, Link2Off } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronRight, Link2, Link2Off } from "lucide-react";
+import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
-import { FOCUS_RING, SWATCH_BOX, cx } from "@/components/ui/cx";
+import { FADE, FOCUS_RING, SWATCH_BOX, TAG, cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
 import { IconButton } from "@/components/ui/icon-button";
 import { NumberInput } from "@/components/ui/number-input";
@@ -34,6 +34,8 @@ import {
   parseNumber,
   scrubBounds,
   type ClipField, MASK_RANGE } from "@/lib/editor/inspector-fields";
+import type { Guide } from "@/lib/timeline";
+import { SECTION_ORDER, createFoldStore, isOpen, sectionChanges, type Folds, type SectionId } from "@/lib/editor/inspector-folds";
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { clipFrame } from "@/lib/editor/keyframe-edit";
 import { markerAt, sortedMarkers } from "@/lib/editor/markers";
@@ -103,21 +105,68 @@ function editField(store: EditorStore, clipId: string, field: ClipField, raw: st
   if (ops && ops.length > 0) store.getState().edit(ops, FIELD_LABEL[field]);
 }
 
-// actions: controls at the right of the heading.
-function Section({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
-  const heading = <h2 className="text-sm leading-5 font-semibold text-ed-text">{title}</h2>;
+// The open or closed choice a person makes on a clip's sections, kept in this browser. The server, and the first paint
+// in the browser, show the sections as a kind of clip opens them; the kept choices follow at once.
+const folds = createFoldStore(() => (typeof window === "undefined" ? null : window.localStorage));
+const NO_FOLDS: Folds = {};
+const useFolds = () => useSyncExternalStore(folds.subscribe, folds.get, () => NO_FOLDS);
+
+// The clip whose sections fold. Outside it (the project, a track, several clips) a section is always open.
+const FoldScope = createContext<Clip | null>(null);
+
+// A section of the inspector, under its heading. actions: controls at the right of the heading. fold: the section's
+// name in SECTION_ORDER; inside a clip's inspector its heading is then a button that folds it away and opens it again.
+// Folded, its controls stay mounted, so a job running in it (a cut-out, a stabilize) carries on, and the heading says
+// "Changed" when something in it is not as a new clip has it.
+function Section({ title, actions, fold, children }: { title: string; actions?: ReactNode; fold?: SectionId; children: ReactNode }) {
+  const clip = useContext(FoldScope);
+  const kept = useFolds();
+  const id = useId();
+  if (!fold || !clip) {
+    const heading = <h2 className="text-sm leading-5 font-semibold text-ed-text">{title}</h2>;
+    return (
+      <div className="flex flex-col gap-2">
+        {actions ? (
+          <div className="flex items-center justify-between gap-2">
+            {heading}
+            {actions}
+          </div>
+        ) : (
+          heading
+        )}
+        {children}
+      </div>
+    );
+  }
+  const open = isOpen(kept, clip.type, fold);
+  const changes = open ? [] : sectionChanges(clip, fold);
   return (
-    <div className="flex flex-col gap-2">
-      {actions ? (
-        <div className="flex items-center justify-between gap-2">
-          {heading}
-          {actions}
-        </div>
-      ) : (
-        heading
-      )}
-      {children}
-    </div>
+    <section data-section={fold} className="-mt-2 flex flex-col gap-2 border-t border-ed-line pt-2 first:mt-0 first:border-t-0 first:pt-0">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <h2 className="min-w-0 flex-1 text-sm leading-5 font-semibold text-ed-text">
+          <button
+            type="button"
+            id={`${id}-heading`}
+            aria-expanded={open}
+            aria-controls={`${id}-body`}
+            className={cx("-mx-1 flex h-7 w-[calc(100%+8px)] min-w-0 items-center gap-1 rounded-md px-1 text-left select-none hover:bg-ed-hover", FOCUS_RING, FADE)}
+            onClick={() => folds.set(clip.type, fold, !open)}
+          >
+            <ChevronRight aria-hidden className={cx("size-4 shrink-0 text-ed-muted transition-transform duration-120 motion-reduce:transition-none", open && "rotate-90")} />
+            <span className="min-w-0 truncate">{title}</span>
+            {changes.length > 0 && (
+              <span className={cx(TAG, "ml-auto")}>
+                Changed<span className="sr-only">: {changes.join(", ")}</span>
+              </span>
+            )}
+          </button>
+        </h2>
+        {open && actions}
+      </div>
+      <div id={`${id}-body`} hidden={!open} className={cx("flex-col gap-2 pb-2", open ? "flex" : "hidden")}>
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -421,8 +470,10 @@ function FontField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   );
 }
 
-// Styling some of a text's words: the stretch selected in the Text box above made bold, italic, underlined or another
-// colour, while the rest keeps the clip's own look. stretch: what is selected there, null for nothing.
+// Bold, italic and underline in one row: on the stretch selected in the Text box above, which can also take another
+// colour while the rest keeps the clip's own look; with nothing selected, on the whole text (Bold between the font's
+// regular and bold weights). stretch: what is selected there, null for nothing.
+const STYLE_NAME = { bold: "Bold", italic: "Italic", underline: "Underline" } as const;
 function WordStyles({ clip, canEdit, stretch }: { clip: TextClip; canEdit: boolean; stretch: { from: number; to: number } | null }) {
   const store = useEditorStore();
   const styled = clip.spans?.length ?? 0;
@@ -430,14 +481,28 @@ function WordStyles({ clip, canEdit, stretch }: { clip: TextClip; canEdit: boole
   const apply = (ops: OpInput[]) => {
     if (ops.length > 0) store.getState().edit(ops, "text style");
   };
-  const off = !canEdit || stretch === null;
+  const whole = { bold: clip.style.fontWeight >= 600, italic: clip.style.italic ?? false, underline: clip.style.underline ?? false };
+  function toggleWhole(what: keyof typeof STYLE_NAME) {
+    if (what !== "bold") return editField(store, clip.id, what, whole[what] ? "off" : "on");
+    // The font's own weights: regular (or the nearest under 600) and bold (or the nearest from 600).
+    const weights = weightOptions(clip.style.fontFamily, clip.style.fontWeight).map((w) => w.value);
+    const light = weights.includes(400) ? 400 : (weights.filter((w) => w < 600).at(-1) ?? weights[0]);
+    const heavy = weights.includes(700) ? 700 : (weights.find((w) => w >= 600) ?? weights.at(-1)!);
+    editField(store, clip.id, "fontWeight", String(whole.bold ? light : heavy));
+  }
   return (
-    <div className="flex flex-col gap-2" role="group" aria-label="Style the selected words">
-      <span className={CAPTION}>Selected words</span>
+    <div className="flex flex-col gap-2" role="group" aria-label="Text style">
+      <span className={CAPTION}>{stretch ? "Style of the selected words" : "Style"}</span>
       <div className="flex flex-wrap items-center gap-1">
         {(["bold", "italic", "underline"] as const).map((what) => (
-          <Button key={what} data-edit-control aria-pressed={stretch !== null && look[what]} disabled={off} onClick={() => stretch && apply(toggleStretchOps(clip, stretch, what))}>
-            {what === "bold" ? "Bold" : what === "italic" ? "Italic" : "Underline"}
+          <Button
+            key={what}
+            data-edit-control
+            aria-pressed={stretch !== null ? look[what] : whole[what]}
+            disabled={!canEdit}
+            onClick={() => (stretch ? apply(toggleStretchOps(clip, stretch, what)) : toggleWhole(what))}
+          >
+            {STYLE_NAME[what]}
           </Button>
         ))}
         <Button data-edit-control variant="ghost" disabled={!canEdit || styled === 0} onClick={() => apply(plainStretchOps(clip, stretch))}>
@@ -450,7 +515,7 @@ function WordStyles({ clip, canEdit, stretch }: { clip: TextClip; canEdit: boole
           ? "Changes only the words selected in the box above."
           : styled > 0
             ? `${styled === 1 ? "1 stretch has a look of its own" : `${styled} stretches have a look of their own`}. Select words above to change them.`
-            : "Select some of the words above to make just those bold, italic, underlined or another color."}
+            : "Changes the whole text. Select some of the words above to change just those."}
       </Hint>
     </div>
   );
@@ -478,7 +543,7 @@ function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   const toggle = (field: ClipField, on: boolean) => editField(store, clip.id, field, on ? "on" : "off");
 
   return (
-    <Section title="Text">
+    <Section title="Text" fold="text">
       <Field label="Text">
         <TextArea
           data-edit-control
@@ -529,10 +594,6 @@ function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
           options={[...ALIGN_OPTIONS]}
           onChange={(align) => editField(store, clip.id, "align", align)}
         />
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Toggle label="Italic" data-edit-control checked={clip.style.italic ?? false} disabled={!canEdit} onChange={(on) => toggle("italic", on)} />
-        <Toggle label="Underline" data-edit-control checked={clip.style.underline ?? false} disabled={!canEdit} onChange={(on) => toggle("underline", on)} />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clip.id} field="letterSpacing" label="Letter spacing" suffix="%" min={-20} max={200} />
@@ -616,7 +677,7 @@ function ShapeSection({ clip, canEdit }: { clip: ShapeClip; canEdit: boolean }) 
   const filled = clip.fill != null;
   const edit = (field: ClipField) => (value: string) => editField(store, clip.id, field, value);
   return (
-    <Section title={shapeName(clip)}>
+    <Section title={shapeName(clip)} fold="shape">
       {box && (
         <Toggle
           label="Outline"
@@ -696,7 +757,7 @@ function PositionSection({ clipId, lengthLabel }: { clipId: string; lengthLabel?
   const canEdit = useEditor((s) => s.canEdit);
   const length = { suffix: UNIT_SUFFIX[units], step: units === "px" ? 1 : 0.1 };
   return (
-    <Section title="Position" actions={<KeyframeSteps clipId={clipId} />}>
+    <Section title="Position" fold="position" actions={<KeyframeSteps clipId={clipId} />}>
       <div className="grid grid-cols-2 gap-2">
         <Keyed clipId={clipId} prop="x">
           <NumberField clipId={clipId} field="x" label="X" {...length} />
@@ -750,7 +811,7 @@ function CropSection({ clipId }: { clipId: string }) {
   const side = { suffix: "%", min: 0, max: 95 };
   const SIDES = [["cropLeft", "Crop left"], ["cropTop", "Crop top"], ["cropRight", "Crop right"], ["cropBottom", "Crop bottom"]] as const;
   return (
-    <Section title="Crop">
+    <Section title="Crop" fold="crop">
       <div className="grid grid-cols-2 gap-2">
         {SIDES.map(([field, label]) => (
           <Keyed key={field} clipId={clipId} prop={field}>
@@ -770,7 +831,7 @@ function CropSection({ clipId }: { clipId: string }) {
 // slips: a video or audio clip, which can also slip: start from another moment of its file, keeping its place and length.
 function TimingSection({ clipId, slips }: { clipId: string; slips: boolean }) {
   return (
-    <Section title="Timing">
+    <Section title="Timing" fold="timing">
       <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clipId} field="start" label="Start" suffix="s" min={0} step={0.1} />
         <NumberField clipId={clipId} field="duration" label="Length" suffix="s" min={0} step={0.1} />
@@ -786,7 +847,7 @@ function StabilizeSection({ clip }: { clip: MediaClip }) {
   const { run, off, busy } = useSteady();
   const [strength, setStrength] = useState<SteadyStrength>("normal");
   return (
-    <Section title="Stabilize">
+    <Section title="Stabilize" fold="stabilize">
       {clip.steady ? (
         <Hint>{`Stabilized: the picture is moved against the camera's shake, and drawn ${Math.round((clip.steady.zoom - 1) * 100)}% larger so its edges never show.`}</Hint>
       ) : (
@@ -824,7 +885,7 @@ function ReframeSection({ clipId, assetId }: { clipId: string; assetId: string }
   const plan = reframePlan(doc, clipId, width && height ? { width, height } : null);
   if (!plan.ok && (plan.why === "fits" || plan.why === "no-size" || plan.why === "not-a-video")) return null;
   return (
-    <Section title="Reframe">
+    <Section title="Reframe" fold="reframe">
       <Hint>{`This video is ${width && height && width >= height ? "wider" : "taller"} than the frame. Reframing fills the frame with it and moves it to keep what moves in view. It follows movement, not faces.`}</Hint>
       <Button data-edit-control className="self-start" disabled={!canEdit || busy} onClick={() => void run(clipId)}>
         {busy ? "Looking at the movement…" : "Reframe to follow the action"}
@@ -845,7 +906,7 @@ export function CutoutSection({ clipId, cutter }: { clipId: string; cutter?: Cut
   const canEdit = useEditor((s) => s.canEdit);
   const { run, cancel, step } = useCutout(cutter);
   return (
-    <Section title="Background">
+    <Section title="Background" fold="background">
       <Hint>Keeps the person in the picture and makes the rest see-through. It works on people, not on things. The first time, a 26 MB model is fetched; the picture never leaves this browser.</Hint>
       <div className="flex items-center gap-2">
         <Button data-edit-control disabled={!canEdit || step !== null} onClick={() => void run(clipId)}>
@@ -867,7 +928,7 @@ function FollowSection({ clipId }: { clipId: string }) {
   const canEdit = useEditor((s) => s.canEdit);
   const { run, busy } = useFollow();
   return (
-    <Section title="Follow">
+    <Section title="Follow" fold="follow">
       <Hint>Put this where something is in the video under it at the playhead, then press Follow: it gets position keyframes that keep it on that thing.</Hint>
       <Button data-edit-control className="self-start" disabled={!canEdit || busy} onClick={() => void run(clipId)}>
         {busy ? "Following…" : "Follow what is under it"}
@@ -883,9 +944,7 @@ function NestSection({ clip, canEdit }: { clip: NestClip; canEdit: boolean }) {
   const held = nestClips(clip).length;
   const seconds = (frames: number) => `${(frames / fps).toFixed(1)} s`;
   return (
-    <>
-      <h2 className="text-sm leading-5 font-semibold text-ed-text">{nestName(clip)}</h2>
-      <Section title="Nest">
+    <Section title="Nest" fold="nest">
         <Hint>
           {`${held} ${held === 1 ? "clip" : "clips"} on ${clip.tracks.length} ${clip.tracks.length === 1 ? "track" : "tracks"}, drawn together as one picture. It plays ${seconds(clip.duration)} of the ${seconds(nestLength(clip))} it holds.`}
         </Hint>
@@ -894,8 +953,7 @@ function NestSection({ clip, canEdit }: { clip: NestClip; canEdit: boolean }) {
           Unnest
         </Button>
         <Hint>Unnest puts its clips back on the timeline where they play. What is set on the nest itself goes with it.</Hint>
-      </Section>
-    </>
+    </Section>
   );
 }
 
@@ -904,7 +962,7 @@ function ScenesSection({ clipId }: { clipId: string }) {
   const canEdit = useEditor((s) => s.canEdit);
   const { split, busy } = useSceneSplit();
   return (
-    <Section title="Scenes">
+    <Section title="Scenes" fold="scenes">
       <Hint>For a video that is already several shots, such as a download or a recording of a call: split this clip where the shot changes.</Hint>
       <Button data-edit-control className="self-start" disabled={!canEdit || busy} onClick={() => void split(clipId)}>
         {busy ? "Looking for cuts…" : "Split at scene changes"}
@@ -964,13 +1022,13 @@ function SoundSection({ clip }: { clip: MediaClip }) {
   const { level, busy } = useLevelVolume();
   if (!hasSound) {
     return (
-      <Section title="Sound">
+      <Section title="Sound" fold="sound">
         <Hint>This file has no sound.</Hint>
       </Section>
     );
   }
   return (
-    <Section title="Sound">
+    <Section title="Sound" fold="sound">
       <div className="grid grid-cols-2 items-end gap-2">
         <Keyed clipId={clip.id} prop="volume">
           <NumberField clipId={clip.id} field="volume" label="Volume" suffix="%" min={0} max={VOLUME_MAX * 100} step={10} />
@@ -1044,6 +1102,7 @@ function ColorSection({ clip }: { clip: ColorClip }) {
   return (
     <Section
       title="Color"
+      fold="color"
       actions={
         <Button data-edit-control size="sm" disabled={!canEdit || (!isToned(clip.adjust) && !graded && keyed.length === 0)} onClick={reset}>
           Reset color
@@ -1115,7 +1174,7 @@ function MaskSection({ clip }: { clip: ColorClip }) {
     <NumberField clipId={clip.id} field={field} label={label} suffix="%" min={MASK_RANGE[field].min} max={MASK_RANGE[field].max} />
   );
   return (
-    <Section title="Mask">
+    <Section title="Mask" fold="mask">
       <Toggle label={clip.type === "adjustment" ? "Change only part of the frame" : "Show only part of the picture"} data-edit-control checked={!!clip.mask} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "mask", on ? "on" : "off")} />
       {clip.mask && (
         <>
@@ -1155,6 +1214,7 @@ function StylizeSection({ clip }: { clip: ColorClip }) {
   return (
     <Section
       title="Stylize"
+      fold="stylize"
       actions={
         <Button data-edit-control size="sm" disabled={!canEdit || (!isStyled(clip.adjust) && keyed.length === 0)} onClick={reset}>
           Reset effects
@@ -1178,7 +1238,7 @@ function MixSection({ clip }: { clip: Exclude<Clip, { type: "placeholder" | "adj
   const canEdit = useEditor((s) => s.canEdit);
   const picture = clip.type === "video" || clip.type === "image";
   return (
-    <Section title="Blend">
+    <Section title="Blend" fold="blend">
       <Field label="Blend mode">
         <Select data-edit-control disabled={!canEdit} value={clip.blend ?? "normal"} onChange={(event) => editField(store, clip.id, "blend", event.target.value)}>
           {BLEND_MODES.map((mode) => (
@@ -1208,7 +1268,7 @@ function SpeedSection({ clip }: { clip: MediaClip }) {
   const held = clip.speed === 0;
   const backward = clip.speed < 0;
   return (
-    <Section title="Speed">
+    <Section title="Speed" fold="speed">
       {held ? (
         <Hint>Freeze frame: this clip holds one frame, without sound.</Hint>
       ) : (
@@ -1316,7 +1376,7 @@ function ManyClips({ count }: { count: number }) {
         </Button>
       </Section>
       {sounding > 1 && (
-        <Section title="Sound">
+        <Section title="Sound" fold="sound">
           <Hint>Make these clips equally loud, or clean up the voice on each.</Hint>
           <div className="flex flex-wrap gap-2">
             <Button data-edit-control disabled={!canEdit || busy} onClick={() => void level(store.getState().selection.clipIds)}>
@@ -1361,60 +1421,87 @@ function MediaSection({ assetId, kind }: { assetId: string; kind: Exclude<Clip["
   );
 }
 
-// An adjustment layer: how much of it shows, and the colours, grade and effects it puts on everything under it.
-function AdjustmentInspector({ clip }: { clip: AdjustmentClip }) {
+// An adjustment layer: how much of it shows. Its colours, grade and effects are the sections after it.
+function AdjustmentSection({ clip }: { clip: AdjustmentClip }) {
   return (
-    <>
-      <Section title="Adjustment layer">
-        <Hint>Changes every clip on the tracks under it, for as long as it lasts. Pick a look or set the colors below.</Hint>
-        <Keyed clipId={clip.id} prop="opacity">
-          <NumberField clipId={clip.id} field="opacity" label="Amount" suffix="%" min={0} max={100} step={5} />
-        </Keyed>
-      </Section>
-      <ColorSection clip={clip} />
-      <StylizeSection clip={clip} />
-      <MaskSection clip={clip} />
-      <TimingSection clipId={clip.id} slips={false} />
-    </>
+    <Section title="Adjustment layer" fold="adjustment">
+      <Hint>Changes every clip on the tracks under it, for as long as it lasts. Pick a look or set the colors below.</Hint>
+      <Keyed clipId={clip.id} prop="opacity">
+        <NumberField clipId={clip.id} field="opacity" label="Amount" suffix="%" min={0} max={100} step={5} />
+      </Keyed>
+    </Section>
   );
 }
 
+// One of a clip's sections, or nothing when the clip has no such section.
+function ClipSection({ id, clip, canEdit }: { id: SectionId; clip: Clip; canEdit: boolean }): ReactNode {
+  const drawsOnCanvas = clip.type !== "audio" && clip.type !== "adjustment" && !(clip.type === "placeholder" && clip.accepts === "audio");
+  const media = clip.type === "video" || clip.type === "audio";
+  switch (id) {
+    case "text":
+      return clip.type === "text" ? <TextSection clip={clip} canEdit={canEdit} /> : null;
+    case "shape":
+      return clip.type === "shape" ? <ShapeSection clip={clip} canEdit={canEdit} /> : null;
+    case "nest":
+      return clip.type === "nest" ? <NestSection clip={clip} canEdit={canEdit} /> : null;
+    case "adjustment":
+      return clip.type === "adjustment" ? <AdjustmentSection clip={clip} /> : null;
+    case "position":
+      return drawsOnCanvas ? <PositionSection clipId={clip.id} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} /> : null;
+    case "crop":
+      return clip.type === "video" || clip.type === "image" || clip.type === "text" ? <CropSection clipId={clip.id} /> : null;
+    case "color":
+      return isColorClip(clip) ? <ColorSection clip={clip} /> : null;
+    case "stylize":
+      return isColorClip(clip) ? <StylizeSection clip={clip} /> : null;
+    case "mask":
+      return isColorClip(clip) ? <MaskSection clip={clip} /> : null;
+    case "blend":
+      return drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "audio" ? <MixSection clip={clip} /> : null;
+    case "sound":
+      return media ? <SoundSection clip={clip} /> : null;
+    case "speed":
+      return media ? <SpeedSection clip={clip} /> : null;
+    case "timing":
+      return <TimingSection clipId={clip.id} slips={media} />;
+    case "stabilize":
+      return clip.type === "video" && clip.speed !== 0 ? <StabilizeSection clip={clip} /> : null;
+    case "scenes":
+      return clip.type === "video" && clip.speed > 0 ? <ScenesSection clipId={clip.id} /> : null;
+    case "reframe":
+      return clip.type === "video" ? <ReframeSection clipId={clip.id} assetId={clip.assetId} /> : null;
+    case "background":
+      return clip.type === "image" ? <CutoutSection clipId={clip.id} /> : null;
+    case "follow":
+      return clip.type === "text" || clip.type === "shape" || clip.type === "image" ? <FollowSection clipId={clip.id} /> : null;
+    case "slot":
+      return clip.type === "shape" || clip.type === "adjustment" ? null : (
+        <Section title="Template slot" fold="slot">
+          <SlotSection clip={clip} bare />
+        </Section>
+      );
+  }
+}
+
+// One clip: what it is, then its sections in the order its kind uses them (SECTION_ORDER), each folded or open.
 function ClipInspector({ clip }: { clip: Clip }) {
   const canEdit = useEditor((s) => s.canEdit);
-  const drawsOnCanvas = clip.type !== "audio" && !(clip.type === "placeholder" && clip.accepts === "audio");
-  if (clip.type === "adjustment") return <AdjustmentInspector clip={clip} />;
   return (
-    <>
-      {clip.type === "text" ? (
-        <TextSection clip={clip} canEdit={canEdit} />
-      ) : clip.type === "placeholder" ? (
+    <FoldScope.Provider value={clip}>
+      {clip.type === "placeholder" ? (
         <h2 className="text-sm leading-5 font-semibold text-ed-text">Slot: {clip.slot.name}</h2>
-      ) : clip.type === "shape" ? (
-        <ShapeSection clip={clip} canEdit={canEdit} />
       ) : clip.type === "nest" ? (
-        <NestSection clip={clip} canEdit={canEdit} />
-      ) : (
+        <h2 className="text-sm leading-5 font-semibold text-ed-text">{nestName(clip)}</h2>
+      ) : clip.type === "video" || clip.type === "image" || clip.type === "audio" ? (
         <>
           <h2 className="text-sm leading-5 font-semibold text-ed-text">{MEDIA_TITLE[clip.type]}</h2>
           <MediaSection assetId={clip.assetId} kind={clip.type} />
         </>
-      )}
-      {drawsOnCanvas && <PositionSection clipId={clip.id} lengthLabel={clip.type === "shape" && clip.shape === "arrow" ? `${shapeName(clip)} length` : undefined} />}
-      {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && clip.type !== "nest" && <CropSection clipId={clip.id} />}
-      {isColorClip(clip) && <ColorSection clip={clip} />}
-      {isColorClip(clip) && <StylizeSection clip={clip} />}
-      {isColorClip(clip) && <MaskSection clip={clip} />}
-      {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "audio" && <MixSection clip={clip} />}
-      {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
-      {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}
-      <TimingSection clipId={clip.id} slips={clip.type === "video" || clip.type === "audio"} />
-      {clip.type === "video" && clip.speed !== 0 && <StabilizeSection clip={clip} />}
-      {clip.type === "video" && clip.speed > 0 && <ScenesSection clipId={clip.id} />}
-      {clip.type === "video" && <ReframeSection clipId={clip.id} assetId={clip.assetId} />}
-      {clip.type === "image" && <CutoutSection clipId={clip.id} />}
-      {(clip.type === "text" || clip.type === "shape" || clip.type === "image") && <FollowSection clipId={clip.id} />}
-      <SlotSection clip={clip} />
-    </>
+      ) : null}
+      {SECTION_ORDER[clip.type].map((id) => (
+        <ClipSection key={id} id={id} clip={clip} canEdit={canEdit} />
+      ))}
+    </FoldScope.Provider>
   );
 }
 
@@ -1595,7 +1682,51 @@ function MarkerRow({ marker, fps, canEdit }: { marker: Marker; fps: number; canE
   );
 }
 
-// The settings of what is selected: one clip, several clips, a track, or else the project.
+// A guide that is selected: where it sits, in project pixels from the frame's left (a guide down the frame) or top
+// (across it), typed or moved with the arrow keys, and a way to remove it. Dragging it on the preview does the same.
+function GuideSection({ guide }: { guide: Guide }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const size = useEditor((s) => (guide.axis === "x" ? viewDoc(s).width : viewDoc(s).height));
+  const down = guide.axis === "x";
+  return (
+    <Section title="Guide">
+      <Hint>{down ? "A guide down the frame. Clips snap to it while snapping is on." : "A guide across the frame. Clips snap to it while snapping is on."}</Hint>
+      <Field label={down ? "From the left" : "From the top"}>
+        <NumberInput
+          ariaLabel={down ? "Guide from the left" : "Guide from the top"}
+          data-edit-control
+          disabled={!canEdit}
+          value={Math.round(guide.at * size)}
+          suffix="px"
+          min={0}
+          max={size}
+          step={1}
+          scrub={1}
+          decimals={0}
+          onCommit={(px) => {
+            const at = Math.min(1, Math.max(0, Math.round(px) / size));
+            if (at !== guide.at) store.getState().edit([{ op: "move_guide", guideId: guide.id, at }], "move guide");
+          }}
+        />
+      </Field>
+      <div className="flex flex-col items-start">
+        <Button
+          variant="danger"
+          data-edit-control
+          disabled={!canEdit}
+          onClick={() => {
+            if (store.getState().edit([{ op: "remove_guide", guideId: guide.id }], "remove guide").ok) store.getState().selectGuide(null);
+          }}
+        >
+          Remove guide
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
+// The settings of what is selected: one clip, several clips, a track, a guide, or else the project.
 export function Inspector() {
   const count = useEditor((s) => s.selection.clipIds.length);
   const clip = useEditor((s) => {
@@ -1606,12 +1737,14 @@ export function Inspector() {
     const id = s.selection.trackId;
     return id === null ? null : (viewDoc(s).tracks.find((t) => t.id === id) ?? null);
   });
+  const guide = useEditor((s) => (s.guideId === null ? null : (viewDoc(s).guides?.find((g) => g.id === s.guideId) ?? null)));
 
   let body: ReactNode;
   if (clip) body = <ClipInspector key={clip.id} clip={clip} />;
   else if (count > 1) {
     body = <ManyClips count={count} />;
   } else if (track) body = <TrackSection key={track.id} track={track} />;
+  else if (guide) body = <GuideSection key={guide.id} guide={guide} />;
   else body = <ProjectSection />;
 
   return <div className="flex flex-col gap-4 p-3">{body}</div>;

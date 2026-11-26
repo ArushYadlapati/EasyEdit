@@ -4,6 +4,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { runCommand } from "@/lib/editor/run-command";
 import { keyHint, matchKeys } from "@/lib/editor/keymap";
 import { SHORTCUTS, isPressable, shouldIgnoreKey, type CommandId } from "@/lib/editor/shortcuts";
+import { useBrand } from "./brand/brand-context";
 import { useClipboard, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { useMedia } from "./media/media-context";
 
@@ -48,13 +49,16 @@ export function useCommandRunner(openShortcuts: () => void, openExport?: () => v
   const store = useEditorStore();
   const clipboard = useClipboard();
   const { library } = useMedia();
+  const settings = useSettingsStore();
+  const brandColor = useBrand().kit.colors[0]; // a new shape's colour, as a drag on the preview gives it
   return useCallback(
     (command: CommandId) => {
       // A file the library has not heard of yet counts as having sound: only one known to be silent is left out.
       const hasSound = (assetId: string) => library.getState().assets[assetId]?.hasAudio !== false;
-      runCommand(command, { store, clipboard, openShortcuts, openExport, openSearch, hasSound });
+      const drawing = { seconds: () => settings.getState().textSeconds, color: () => brandColor };
+      runCommand(command, { store, clipboard, openShortcuts, openExport, openSearch, hasSound, drawing });
     },
-    [store, clipboard, library, openShortcuts, openExport, openSearch],
+    [store, clipboard, library, settings, brandColor, openShortcuts, openExport, openSearch],
   );
 }
 

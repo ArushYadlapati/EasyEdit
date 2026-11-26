@@ -30,6 +30,9 @@ const ZONES = `linear-gradient(to top, var(--ed-meter) 0 ${percent(meterFill(WAR
 )}, var(--ed-danger) ${percent(meterFill(HOT_DB))} 100%)`;
 
 const SIDES = ["L", "R"] as const;
+// The scale's numbers, every 12 dB and at its foot: 11 px words a person reads need about 12 px between them, and on
+// the shortest timeline 6 dB is about 10 px. Its lines stay at every tick.
+const SCALE_NUMBERS = METER_TICKS.filter((db) => db % 12 === 0);
 const OVER_HINT = "Too loud here: the exported sound will distort. Click to clear.";
 
 type Parts = { fill: HTMLDivElement | null; hold: HTMLDivElement | null; over: HTMLSpanElement | null };
@@ -37,6 +40,7 @@ type Parts = { fill: HTMLDivElement | null; hold: HTMLDivElement | null; over: H
 // How loud the preview is right now, left and right, on a decibel scale: the strip at the right end of the timeline.
 // Each bar jumps to the loudest moment and falls back, a thin line holds the recent peak, and the light on top stays
 // red once a side has gone past full scale, where an export is cut flat, until it is clicked or playback starts again.
+// The peak readout and the two lights are one button that clears them, as wide as the meter and 28 px tall.
 // It reads the editor's mix, so it shows what is heard: every clip's volume and fade and every muted track counted in.
 // It repaints only while something is playing or still falling, by writing styles directly, so it never draws React
 // again. Right-click hides it; View > Audio meter brings it back. Its left edge drags to make it wider or narrower, as
@@ -151,17 +155,38 @@ export function AudioMeter() {
         onCancel={() => preview(null)}
         className={cx("absolute inset-y-0 -left-[5px] z-40 w-[9px]", incoming && "pointer-events-none")}
       />
-      <span ref={readout} aria-hidden className="text-center text-[10px] leading-3 text-ed-muted tabular-nums">
-        -∞
-      </span>
+      <button
+        type="button"
+        aria-label="Clear the overload lights"
+        title={OVER_HINT}
+        onClick={clearOver}
+        className={cx("flex min-h-7 shrink-0 flex-col items-stretch justify-center gap-1 rounded-[2px]", FOCUS_RING_INSET)}
+      >
+        <span ref={readout} aria-hidden className="text-center text-[11px] leading-4 text-ed-muted tabular-nums">
+          -∞
+        </span>
+        <span aria-hidden className="flex gap-1 pl-5">
+          {SIDES.map((name, side) => (
+            <span key={name} className="h-2 min-w-0 flex-1 rounded-[2px] bg-ed-raised">
+              <span
+                ref={(el) => {
+                  parts.current[side].over = el;
+                }}
+                data-over="false"
+                className="block size-full rounded-[2px] bg-ed-danger opacity-0 data-[over=true]:opacity-100"
+              />
+            </span>
+          ))}
+        </span>
+      </button>
       <div className="flex min-h-0 flex-1 gap-1">
-        {/* The scale: a number at each marked level, level with its line across the bars. */}
+        {/* The scale: a number at every 12 dB, level with its line across the bars. */}
         <div aria-hidden className="relative w-4 shrink-0">
-          <div className="absolute inset-x-0 top-3 bottom-0">
-            {METER_TICKS.map((db) => (
+          <div className="absolute inset-0">
+            {SCALE_NUMBERS.map((db) => (
               <span
                 key={db}
-                className="absolute right-0 -translate-y-1/2 text-[9px] leading-none text-ed-faint tabular-nums"
+                className="absolute right-0 -translate-y-1/2 text-[11px] leading-none text-ed-muted tabular-nums"
                 style={{ top: percent(1 - meterFill(db)) }}
               >
                 {-db}
@@ -170,47 +195,30 @@ export function AudioMeter() {
           </div>
         </div>
         {SIDES.map((name, side) => (
-          <div key={name} className="flex min-w-0 flex-1 flex-col gap-1">
-            <button
-              type="button"
-              aria-label={`Clear the ${name === "L" ? "left" : "right"} overload light`}
-              title={OVER_HINT}
-              onClick={clearOver}
-              className={cx("h-2 w-full shrink-0 rounded-[2px] bg-ed-raised", FOCUS_RING_INSET)}
-            >
-              <span
-                ref={(el) => {
-                  parts.current[side].over = el;
-                }}
-                data-over="false"
-                className="block size-full rounded-[2px] bg-ed-danger opacity-0 data-[over=true]:opacity-100"
-              />
-            </button>
-            <div aria-hidden className="relative min-h-0 flex-1 overflow-hidden rounded-[2px] bg-ed-bg">
-              <div
-                ref={(el) => {
-                  parts.current[side].fill = el;
-                }}
-                data-meter-fill
-                className="absolute inset-0"
-                style={{ background: ZONES, clipPath: "inset(100% 0 0 0)" }}
-              />
-              {METER_TICKS.map((db) => (
-                <span key={db} className="absolute inset-x-0 h-px bg-ed-panel/70" style={{ top: percent(1 - meterFill(db)) }} />
-              ))}
-              <div
-                ref={(el) => {
-                  parts.current[side].hold = el;
-                }}
-                data-meter-hold
-                className="absolute inset-x-0 h-0.5 bg-ed-text opacity-0"
-                style={{ top: "100%" }}
-              />
-            </div>
+          <div key={name} aria-hidden className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-[2px] bg-ed-bg">
+            <div
+              ref={(el) => {
+                parts.current[side].fill = el;
+              }}
+              data-meter-fill
+              className="absolute inset-0"
+              style={{ background: ZONES, clipPath: "inset(100% 0 0 0)" }}
+            />
+            {METER_TICKS.map((db) => (
+              <span key={db} className="absolute inset-x-0 h-px bg-ed-panel/70" style={{ top: percent(1 - meterFill(db)) }} />
+            ))}
+            <div
+              ref={(el) => {
+                parts.current[side].hold = el;
+              }}
+              data-meter-hold
+              className="absolute inset-x-0 h-0.5 bg-ed-text opacity-0"
+              style={{ top: "100%" }}
+            />
           </div>
         ))}
       </div>
-      <div aria-hidden className="flex gap-1 pl-5 text-center text-[9px] leading-3 text-ed-faint">
+      <div aria-hidden className="flex gap-1 pl-5 text-center text-[11px] leading-4 text-ed-muted">
         <span className="flex-1">L</span>
         <span className="flex-1">R</span>
       </div>

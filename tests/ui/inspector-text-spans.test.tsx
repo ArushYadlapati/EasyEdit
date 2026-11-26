@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider } from "@/components/editor/media/media-context";
@@ -8,6 +8,10 @@ import type { TextClip, TimelineDoc } from "@/lib/timeline";
 import { makeStore, sampleDoc, text } from "../editor/fixtures";
 import { act, cleanup, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
+import { openEverySection } from "../helpers/folds";
+
+// These tests are about what the sections hold, so every section starts open.
+beforeEach(openEverySection);
 
 afterEach(cleanup);
 
@@ -34,16 +38,28 @@ function show(canEdit = true) {
     box().setSelectionRange(from, to);
     fireEvent.select(box());
   };
-  const group = () => within(screen.getByRole("group", { name: "Style the selected words" }));
+  const group = () => within(screen.getByRole("group", { name: "Text style" }));
   const button = (name: string) => group().getByRole("button", { name }) as HTMLButtonElement;
   return { store, clip, box, pick, group, button };
 }
 
-it("has nothing to style until some words are selected", () => {
-  const { button, group } = show();
-  expect(["Bold", "Italic", "Underline", "All plain"].map((name) => button(name).disabled)).toEqual([true, true, true, true]);
-  expect(group().getByText(/Select some of the words above/)).toBeTruthy();
+it("with no words selected, styles the whole text: one Bold, Italic and Underline row, not a second set of switches", () => {
+  const { clip, button, group } = show();
+  expect(["Bold", "Italic", "Underline", "All plain"].map((name) => button(name).disabled)).toEqual([false, false, false, true]);
+  expect(group().getByText(/Changes the whole text/)).toBeTruthy();
   expect(group().queryByLabelText("Color of the selected words")).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Italic" })).toBeNull();
+  // The text is at 400: Bold goes to the font's bold weight and back to regular.
+  expect(button("Bold").getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(button("Bold"));
+  expect(clip().style.fontWeight).toBe(700);
+  expect(button("Bold").getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(button("Bold"));
+  expect(clip().style.fontWeight).toBe(400);
+  fireEvent.click(button("Italic"));
+  fireEvent.click(button("Underline"));
+  expect([clip().style.italic, clip().style.underline, clip().spans ?? null]).toEqual([true, true, null]);
+  expect(button("Italic").getAttribute("aria-pressed")).toBe("true");
 });
 
 it("makes the selected words bold, shows that they are, and makes them plain again", () => {
@@ -81,13 +97,13 @@ it("keeps the look on its words when the text is retyped, and says how many stre
   fireEvent.change(box(), { target: { value: "see the big robot" } });
   fireEvent.blur(box());
   expect([clip().text, clip().spans]).toEqual(["see the big robot", [{ from: 8, to: 11, fontWeight: 700 }]]);
-  // Nothing is selected now: the buttons wait, and All plain clears every stretch.
+  // Nothing is selected now: the buttons are for the whole text, and All plain clears every stretch.
   act(() => {
     box().setSelectionRange(0, 0);
     fireEvent.select(box());
   });
   expect(group().getByText("1 stretch has a look of its own. Select words above to change them.")).toBeTruthy();
-  expect(button("Bold").disabled).toBe(true);
+  expect(button("Bold").disabled).toBe(false);
   fireEvent.click(button("All plain"));
   expect(clip().spans).toBeNull();
 });

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { EffectsPanel } from "@/components/editor/effects-panel";
 import { Inspector } from "@/components/editor/inspector";
@@ -7,6 +7,10 @@ import { findClip } from "@/lib/editor/store";
 import { newShapeClip, type ShapeClip, type TimelineDoc } from "@/lib/timeline";
 import { makeStore, sampleDoc } from "../editor/fixtures";
 import { fireEvent, render, screen } from "../helpers/dom";
+import { openEverySection } from "../helpers/folds";
+
+// These tests are about what the sections hold, so every section starts open.
+beforeEach(openEverySection);
 
 function docWith(clip: ShapeClip): TimelineDoc {
   const doc = sampleDoc();
