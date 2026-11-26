@@ -34,6 +34,7 @@ import {
   parseNumber,
   scrubBounds,
   type ClipField, MASK_RANGE } from "@/lib/editor/inspector-fields";
+import type { Guide } from "@/lib/timeline";
 import { SECTION_ORDER, createFoldStore, isOpen, sectionChanges, type Folds, type SectionId } from "@/lib/editor/inspector-folds";
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { clipFrame } from "@/lib/editor/keyframe-edit";
@@ -1669,7 +1670,51 @@ function MarkerRow({ marker, fps, canEdit }: { marker: Marker; fps: number; canE
   );
 }
 
-// The settings of what is selected: one clip, several clips, a track, or else the project.
+// A guide that is selected: where it sits, in project pixels from the frame's left (a guide down the frame) or top
+// (across it), typed or moved with the arrow keys, and a way to remove it. Dragging it on the preview does the same.
+function GuideSection({ guide }: { guide: Guide }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const size = useEditor((s) => (guide.axis === "x" ? viewDoc(s).width : viewDoc(s).height));
+  const down = guide.axis === "x";
+  return (
+    <Section title="Guide">
+      <Hint>{down ? "A guide down the frame. Clips snap to it while snapping is on." : "A guide across the frame. Clips snap to it while snapping is on."}</Hint>
+      <Field label={down ? "From the left" : "From the top"}>
+        <NumberInput
+          ariaLabel={down ? "Guide from the left" : "Guide from the top"}
+          data-edit-control
+          disabled={!canEdit}
+          value={Math.round(guide.at * size)}
+          suffix="px"
+          min={0}
+          max={size}
+          step={1}
+          scrub={1}
+          decimals={0}
+          onCommit={(px) => {
+            const at = Math.min(1, Math.max(0, Math.round(px) / size));
+            if (at !== guide.at) store.getState().edit([{ op: "move_guide", guideId: guide.id, at }], "move guide");
+          }}
+        />
+      </Field>
+      <div className="flex flex-col items-start">
+        <Button
+          variant="danger"
+          data-edit-control
+          disabled={!canEdit}
+          onClick={() => {
+            if (store.getState().edit([{ op: "remove_guide", guideId: guide.id }], "remove guide").ok) store.getState().selectGuide(null);
+          }}
+        >
+          Remove guide
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
+// The settings of what is selected: one clip, several clips, a track, a guide, or else the project.
 export function Inspector() {
   const count = useEditor((s) => s.selection.clipIds.length);
   const clip = useEditor((s) => {
@@ -1680,12 +1725,14 @@ export function Inspector() {
     const id = s.selection.trackId;
     return id === null ? null : (viewDoc(s).tracks.find((t) => t.id === id) ?? null);
   });
+  const guide = useEditor((s) => (s.guideId === null ? null : (viewDoc(s).guides?.find((g) => g.id === s.guideId) ?? null)));
 
   let body: ReactNode;
   if (clip) body = <ClipInspector key={clip.id} clip={clip} />;
   else if (count > 1) {
     body = <ManyClips count={count} />;
   } else if (track) body = <TrackSection key={track.id} track={track} />;
+  else if (guide) body = <GuideSection key={guide.id} guide={guide} />;
   else body = <ProjectSection />;
 
   return <div className="flex flex-col gap-4 p-3">{body}</div>;

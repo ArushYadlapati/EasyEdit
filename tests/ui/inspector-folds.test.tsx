@@ -6,7 +6,7 @@ import { MediaProvider } from "@/components/editor/media/media-context";
 import { FOLDS_KEY } from "@/lib/editor/inspector-folds";
 import type { TimelineDoc } from "@/lib/timeline";
 import { makeStore, sampleDoc, video } from "../editor/fixtures";
-import { cleanup, fireEvent, render, screen, within } from "../helpers/dom";
+import { act, cleanup, fireEvent, render, screen, within } from "../helpers/dom";
 import { forgetFolds } from "../helpers/folds";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 
@@ -118,4 +118,23 @@ it("the project, a track and several clips have no folds", () => {
     </EditorProvider>,
   );
   expect(screen.getAllByRole("heading").every((h) => within(h).queryByRole("button") === null)).toBe(true);
+});
+
+it("a selected guide shows where it is, moves from its field and its arrow keys, and can be removed", () => {
+  const store = show("c1", (d) => {
+    d.guides = [{ id: "g1", axis: "x", at: 0.5 }];
+  });
+  act(() => store.getState().selectGuide("g1"));
+  expect(screen.getByRole("heading", { name: "Guide" })).toBeTruthy();
+  const field = screen.getByLabelText("Guide from the left") as HTMLInputElement;
+  expect(field.value).toBe("540"); // half of 1080
+  fireEvent.change(field, { target: { value: "270" } });
+  fireEvent.blur(field);
+  expect(store.getState().doc.guides![0].at).toBe(0.25);
+  expect(store.getState().queue.at(-1)?.label).toBe("move guide");
+  fireEvent.keyDown(field, { key: "ArrowUp" });
+  expect(store.getState().doc.guides![0].at).toBeCloseTo(271 / 1080, 6);
+  fireEvent.click(screen.getByRole("button", { name: "Remove guide" }));
+  expect(store.getState().doc.guides ?? []).toEqual([]);
+  expect(store.getState().guideId).toBeNull();
 });

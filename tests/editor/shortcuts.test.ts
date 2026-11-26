@@ -69,7 +69,7 @@ describe("matching keys", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(SHORTCUTS.every((s) => s.label.length > 0 && s.keys.length > 0)).toBe(true);
     expect(SHORTCUTS.filter((s) => s.edits).map((s) => s.command).sort()).toEqual([
-      "cut", "delete", "duck-audio", "duplicate", "freeze-frame", "group-clips", "mute-clip", "next-trim-mode", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "reverse-clip", "ripple-delete",
+      "add-guide-across", "add-in-middle", "cut", "delete", "duck-audio", "duplicate", "freeze-frame", "group-clips", "mute-clip", "next-trim-mode", "nudge-left", "nudge-left-second", "nudge-right", "nudge-right-second", "paste", "redo", "reverse-clip", "ripple-delete",
       "separate-audio", "split", "toggle-marker", "tool-arrow", "tool-crop", "tool-guide", "tool-line", "tool-razor", "tool-shape", "tool-shape-next", "tool-text", "undo", "ungroup-clips", "volume-down", "volume-up",
     ]);
   });
@@ -109,6 +109,8 @@ describe("matching keys", () => {
       ["tool-arrow", "Shift+A", "Arrow: drag on the preview to draw one"],
       ["tool-guide", "G", "Guide: drag on the preview to add a guide"],
       ["tool-crop", "R", "Crop tool"],
+      ["add-in-middle", "Enter", "With Shape, Line or Guide: add one in the middle of the frame"],
+      ["add-guide-across", "Shift+Enter", "With Guide: add a guide across the middle of the frame"],
       ["play-pause", "Space", "Play or pause"],
       ["play-forward", "L", "Play forward; press again to go faster"],
       ["pause", "K", "Pause"],
@@ -170,6 +172,7 @@ describe("matching keys", () => {
   it("lists the commands in the table's order, with their groups", () => {
     expect(SHORTCUTS.map((s) => `${s.group}:${s.command}`)).toEqual([
       "Tools:tool-select", "Tools:tool-razor", "Tools:tool-text", "Tools:tool-shape", "Tools:tool-shape-next", "Tools:tool-line", "Tools:tool-arrow", "Tools:tool-guide", "Tools:tool-crop",
+      "Tools:add-in-middle", "Tools:add-guide-across",
       "Playback:play-pause", "Playback:play-forward", "Playback:pause", "Playback:play-reverse",
       "Playback:frame-back", "Playback:frame-forward", "Playback:second-back", "Playback:second-forward",
       "Playback:prev-edge", "Playback:next-edge", "Playback:prev-marker", "Playback:next-marker", "Playback:go-start", "Playback:go-end",
