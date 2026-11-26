@@ -127,4 +127,23 @@ describe("matching", () => {
     const items = [made("a", "Split one", true), made("b", "Split two", false), made("c", "Other", false, ["split"]), made("d", "Cut", false)];
     expect(searchFeatures(items, "split").map((i) => i.id)).toEqual(["b", "a", "c"]);
   });
+
+  it("lists the guide's lessons under Help on a server that has it, found by name and by what their chapters teach", () => {
+    const guide = [
+      { title: "The basics", path: "/learn", chapters: ["Welcome", "Export"] },
+      { title: "Effects, speed and color", path: "/learn/effects", chapters: ["Transitions", "Keyframes", "Speed", "Color"] },
+    ];
+    expect(searchItems(input()).some((i) => i.group === "Help")).toBe(false);
+    const help = searchItems(input({ guide })).filter((i) => i.group === "Help");
+    expect(help.map((i) => [i.label, i.action])).toEqual([
+      ["Guide: The basics", { kind: "guide", path: "/learn" }],
+      ["Guide: Effects, speed and color", { kind: "guide", path: "/learn/effects" }],
+    ]);
+    expect(labels("keyframes", { guide })).toContain("Guide: Effects, speed and color");
+    expect(labels("tutorial", { guide })).toEqual(["Guide: The basics", "Guide: Effects, speed and color"]);
+    // A lesson is never ahead of the thing itself: Export stays the first answer to "export".
+    expect(labels("export", { guide })[0]).toBe("Export");
+    // A deleted project's editor can still be learnt from.
+    expect(searchItems(input({ guide, deleted: true })).filter((i) => i.group === "Help").every((i) => !i.disabled)).toBe(true);
+  });
 });

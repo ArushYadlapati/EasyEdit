@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tutorialVideo } from "@/lib/tutorial/video";
+import { lessonVideo, tutorialVideo } from "@/lib/tutorial/video";
 
 const env = (value: string | undefined) => ({ TUTORIAL_VIDEO_URL: value }) as unknown as NodeJS.ProcessEnv;
 
@@ -30,3 +30,24 @@ describe("tutorialVideo", () => {
     expect(tutorialVideo(env("http://localhost.evil.test/a.mp4"))).toBeNull();
   });
 });
+
+describe("lessonVideo", () => {
+  const first = { url: "https://cdn.test/guide/2026-11-26/basics.mp4?v=3", poster: "https://cdn.test/guide/2026-11-26/basics.jpg?v=3" };
+
+  it("gives the first lesson the video the setting names", () => {
+    expect(lessonVideo(first, "basics", true)).toBe(first);
+  });
+
+  it("finds any other lesson's video and poster beside it, named by the lesson, keeping the query string", () => {
+    expect(lessonVideo(first, "sound", false)).toEqual({
+      url: "https://cdn.test/guide/2026-11-26/sound.mp4?v=3",
+      poster: "https://cdn.test/guide/2026-11-26/sound.jpg?v=3",
+    });
+  });
+
+  it("does not care what the first lesson's file is called", () => {
+    const intro = tutorialVideo({ TUTORIAL_VIDEO_URL: "http://localhost:3341/easyedit-intro.mp4" } as unknown as NodeJS.ProcessEnv)!;
+    expect(lessonVideo(intro, "text", false)).toEqual({ url: "http://localhost:3341/text.mp4", poster: "http://localhost:3341/text.jpg" });
+  });
+});
+

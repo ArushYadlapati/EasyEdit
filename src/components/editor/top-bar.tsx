@@ -8,7 +8,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { LogoMark } from "@/components/ui/logo";
 import { Menu } from "@/components/ui/menu";
 import { addAdjustmentLayer, addText, addTrack } from "@/lib/editor/actions";
-import { editMenu, topMenuInput, viewMenu, type MenuEntry, type TopMenuInput } from "@/lib/editor/menus";
+import { editMenu, topMenuInput, viewMenu, type MenuEntry, type TopMenuInput, guideLinkOf, helpMenu, type GuideLink } from "@/lib/editor/menus";
 import { searchItems, type PanelSide, type SearchItem, type SettingsPage } from "@/lib/editor/search";
 import { TEXT_PRESETS } from "@/lib/editor/text-presets";
 import { LIMITS } from "@/lib/limits";
@@ -38,10 +38,15 @@ type TopBarProps = {
   onShowSettingsAt?(page: SettingsPage): void; // the search opens Settings at a page
   onOpenPanel?(side: PanelSide, tab: string): void; // the search opens a panel's tab
   searchRef?: RefObject<HTMLInputElement | null>; // the search key focuses the field
+  guide?: readonly GuideLink[]; // the guide's lessons, for the Help menu and the search; none on a server without it
 };
 
-// The row across the top, in three parts. Left: the logo with Projects (back to the space), the Edit and View menus and
-// the project's name. Middle: the search, centred on the window while both sides fit. Right: the save status, the undo,
+const NO_GUIDE: readonly GuideLink[] = [];
+// A lesson opens in a tab of its own, so the project stays open behind it.
+const openLesson = (path: string) => void window.open(path, "_blank", "noopener");
+
+// The row across the top, in three parts. Left: the logo with Projects (back to the space), the Edit, View and (on a
+// server with the guide) Help menus and the project's name. Middle: the search, centred on the window while both sides fit. Right: the save status, the undo,
 // redo, settings and shortcuts buttons, and Export. The menus and the search read the editor as they open, so what
 // cannot run right then is greyed.
 export function TopBar({
@@ -55,6 +60,7 @@ export function TopBar({
   onShowSettingsAt,
   onOpenPanel,
   searchRef,
+  guide = NO_GUIDE,
 }: TopBarProps) {
   const store = useEditorStore();
   const settings = useSettingsStore();
@@ -79,7 +85,9 @@ export function TopBar({
   const itemsOf = (menu: (input: TopMenuInput) => MenuEntry[]) => () =>
     toItems(menu(topMenuInput(store.getState(), clipboard.read() !== null)));
   function pick(id: string) {
-    if (id === "safe-zones") store.getState().toggleSafeZones();
+    const lesson = guideLinkOf(id, guide);
+    if (lesson) openLesson(lesson.path);
+    else if (id === "safe-zones") store.getState().toggleSafeZones();
     else if (id === "reset-layout") onResetLayout?.();
     else if (id === "save-template") onSaveTemplate?.();
     else if (id === "import-timeline") setTimelineFile("import");
@@ -96,6 +104,7 @@ export function TopBar({
       trackCount: state.doc.tracks.length,
       hasCaptions: state.doc.tracks.some((t) => t.kind === "caption"),
       canSaveTemplate: onSaveTemplate !== undefined,
+      guide,
     });
   }
 
@@ -124,6 +133,8 @@ export function TopBar({
         return onOpenPanel?.(action.side, action.tab);
       case "settings":
         return onShowSettingsAt ? onShowSettingsAt(action.page) : onShowSettings?.();
+      case "guide":
+        return openLesson(action.path);
       case "safe-zones":
         return state.toggleSafeZones();
       case "reset-layout":
@@ -156,6 +167,12 @@ export function TopBar({
         <div className="flex shrink-0 items-center">
           <Menu label="Edit" disabled={deleted} items={itemsOf(editMenu)} onSelect={pick} />
           <Menu label="View" disabled={deleted} items={itemsOf(viewMenu)} onSelect={pick} />
+          {/* The guide's lessons, for a window with room for them; a deleted project's editor can still be learnt from. */}
+          {guide.length > 0 && (
+            <div className="contents max-lg:hidden">
+              <Menu label="Help" items={itemsOf((input) => helpMenu(input, guide))} onSelect={pick} />
+            </div>
+          )}
         </div>
         <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
         <ProjectName renameRequest={renameRequest} />

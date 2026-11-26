@@ -16,6 +16,7 @@ import { storageState } from "@/lib/spaces/storage";
 import { storageBlock } from "@/lib/storage/availability";
 import { connectionOwner } from "@/lib/storage/settings-view";
 import { stockConfig } from "@/lib/stock/config";
+import { editorGuide } from "@/lib/tutorial/guide";
 
 // The editor is always dark. This asks the Dark Reader browser extension to leave the page alone: on a screen that
 // is already dark it darkens the few light elements, and the playhead all but disappears. The color scheme tells the
@@ -77,6 +78,7 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
         space={{ id: space.id, slug: slugFor(space), storageReady, storageProblem, kind: space.kind, isAdmin, storageBlock: block, ownsConnection: owner?.userId === user.id, ownerEmail: owner?.email ?? null, stock: stockConfig() !== null }}
         layout={layout}
         prefs={prefs}
+        guide={editorGuide()}
       />
     </>
   );

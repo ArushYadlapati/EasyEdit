@@ -20,6 +20,7 @@ import { docAssetIds } from "@/lib/media/library-store";
 import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser-prefs";
 import { EditorProvider, useEditor, useEditorStore } from "./context";
 import { watchDrags } from "./drag-watch";
+import type { GuideLink } from "@/lib/editor/menus";
 import { EditorScreen } from "./editor-screen";
 import type { SpaceKind } from "@/lib/spaces/types";
 import type { StorageBlock } from "@/lib/storage/messages";
@@ -65,7 +66,8 @@ export type EditorSpace = {
 // space: the space the project is in (and its address slug), whether it has storage for uploads, and if not, why
 // (storageProblem: "none", no storage; "broken", its Google connection needs reconnecting; null when it is ready;
 // left out, it follows storageReady as MediaProvider says).
-export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; space: EditorSpace; layout?: Layout; prefs?: Prefs }) {
+// guide: the guide's lessons, when the server has it, for the top bar's Help menu and search.
+export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS, guide }: { initial: EditorInit; space: EditorSpace; layout?: Layout; prefs?: Prefs; guide?: readonly GuideLink[] }) {
   const [{ store, api, sync, clipboard, media, drop, settings, savePrefs, presenceStore, review }] = useState(() => {
     const store = createEditorStore(initial, {
       view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones, showGuides: prefs.guides, showAudioMeter: prefs.meter, audioMeterWidth: prefs.meterWidth },
@@ -295,7 +297,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
           <CaptionsProvider>
             <PresenceProvider store={presenceStore}>
               <ReviewProvider api={review} projectHref={projectHref}>
-                <EditorScreen spaceSlug={space.slug} spaceId={space.id} initialLayout={layout} />
+                <EditorScreen spaceSlug={space.slug} spaceId={space.id} initialLayout={layout} guide={guide} />
               </ReviewProvider>
             </PresenceProvider>
           </CaptionsProvider>

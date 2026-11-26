@@ -212,7 +212,7 @@ describe("the dashboard page", () => {
   });
 });
 
-describe("the tutorial in the dashboard's frame", () => {
+describe("the guide in the dashboard's frame", () => {
   const frame = async () => render(await DashboardLayout({ children: <p>x</p> } as never));
   const welcome = () => screen.queryByRole("dialog", { name: "Welcome to EasyEdit" });
   const menuItems = () => {
@@ -227,7 +227,7 @@ describe("the tutorial in the dashboard's frame", () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it("with no video on the server there is no welcome, no Learn link and no Tutorial item, and nobody is looked up", async () => {
+  it("with no videos on the server there is no welcome, no Learn link and no Learn item, and nobody is looked up", async () => {
     await frame();
     expect(welcome()).toBeNull();
     expect(screen.queryByRole("link", { name: "Learn" })).toBeNull();
@@ -244,7 +244,7 @@ describe("the tutorial in the dashboard's frame", () => {
     expect(hasSeenTutorial).toHaveBeenCalledTimes(1);
   });
 
-  it("with a video, someone who has seen it only gets the Tutorial item, and another person's mark does not count", async () => {
+  it("with the videos, someone already welcomed only gets the Learn item, and another person's mark does not count", async () => {
     vi.stubEnv("TUTORIAL_VIDEO_URL", "https://cdn.test/easyedit-intro.mp4");
     await markTutorialSeen(testDb, vic.id);
     const first = await frame();
@@ -255,7 +255,7 @@ describe("the tutorial in the dashboard's frame", () => {
     expect(welcome()).toBeNull();
     // The header's way back to it, on every dashboard page.
     expect(screen.getByRole("link", { name: "Learn" }).getAttribute("href")).toBe("/learn");
-    expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Tutorial", "Sign out"]);
+    expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Learn", "Sign out"]);
   });
 
   it("when the seen marks cannot be read the dashboard still opens, with no welcome", async () => {
@@ -264,13 +264,13 @@ describe("the tutorial in the dashboard's frame", () => {
     await frame();
     expect(screen.getByText("x")).toBeTruthy();
     expect(welcome()).toBeNull();
-    expect(menuItems()).toContain("Tutorial");
+    expect(menuItems()).toContain("Learn");
   });
 
   it("an address that is not a video link counts as no video", async () => {
     vi.stubEnv("TUTORIAL_VIDEO_URL", "http://cdn.test/easyedit-intro.mp4");
     await frame();
     expect(welcome()).toBeNull();
-    expect(menuItems()).not.toContain("Tutorial");
+    expect(menuItems()).not.toContain("Learn");
   });
 });

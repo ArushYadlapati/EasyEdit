@@ -6,6 +6,7 @@ import { ContextMenuProvider } from "@/components/ui/context-menu";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { METER_WIDTH } from "@/lib/audio/meter";
 import { DEFAULT_LAYOUT, LAYOUT_COOKIE, createLayoutStore, formatLayout, parseLayout, type Layout } from "@/lib/editor/layout";
+import type { GuideLink } from "@/lib/editor/menus";
 import { failureMessage } from "@/lib/export/messages";
 import type { ExportOutcome } from "@/lib/export/protocol";
 import { isBusy, progressFraction, type ExportState } from "@/lib/export/state";
@@ -34,13 +35,14 @@ type EditorScreenProps = {
   spaceId?: string; // the same space, for Save as template; without it the dialog is not there
   initialLayout?: Layout; // the panel sizes this browser kept
   saveLayout?(layout: Layout): void; // keeps the sizes once a resize ends
+  guide?: readonly GuideLink[]; // the guide's lessons, for the top bar's Help menu and search
 };
 
 // The whole editor, drawn from the store in context. Always dark and exactly as tall as the window:
 // top bar, then the add panel, preview and details side by side, then the timeline across the bottom.
 // The keyboard shortcuts work anywhere in the window, and any part can open a right-click menu. The panel
 // grid alone follows the panel sizes, so resizing a panel does not draw the panels again.
-export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOUT, saveLayout = writeLayoutCookie }: EditorScreenProps) {
+export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOUT, saveLayout = writeLayoutCookie, guide }: EditorScreenProps) {
   const store = useEditorStore();
   const deleted = useEditor((s) => s.status === "deleted");
   const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
@@ -108,6 +110,7 @@ export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOU
                 onSaveTemplate={spaceId ? () => setTemplateOpen(true) : undefined}
                 onShowSettingsAt={showSettingsAt}
                 onOpenPanel={openPanel}
+                guide={guide}
                 searchRef={searchRef}
               />
             }

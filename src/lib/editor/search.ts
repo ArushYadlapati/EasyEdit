@@ -1,13 +1,13 @@
 import { LIMITS } from "@/lib/limits";
 import { BOX_SHAPES, SHAPE_TOOL_NAME, type BoxShape, type TrackKind } from "@/lib/timeline";
-import type { TopMenuInput } from "./menus";
+import type { GuideLink, TopMenuInput } from "./menus";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import { TEXT_PRESETS } from "./text-presets";
 
 // The top bar's search: everything a person can find by name and run from one field. Each result is data; the top bar
 // runs its action.
 
-export type SearchGroup = "Tools" | "Add" | "Edit" | "Playback" | "Timeline" | "Panels" | "Settings" | "Project";
+export type SearchGroup = "Tools" | "Add" | "Edit" | "Playback" | "Timeline" | "Panels" | "Settings" | "Project" | "Help";
 
 export type SettingsPage = "project" | "general" | "shortcuts";
 export type PanelSide = "left" | "right";
@@ -24,7 +24,8 @@ export type SearchAction =
   | { kind: "reset-layout" }
   | { kind: "save-template" }
   | { kind: "timeline-file"; mode: "import" | "export" }
-  | { kind: "rename" };
+  | { kind: "rename" }
+  | { kind: "guide"; path: string };
 
 // command: its key is shown as the result's hint. checked: a switch, shown as on or off.
 export type SearchItem = {
@@ -47,6 +48,7 @@ export type SearchInput = TopMenuInput & {
   trackCount: number;
   hasCaptions: boolean;
   canSaveTemplate: boolean;
+  guide?: readonly GuideLink[]; // the guide's lessons, on a server that has it
 };
 
 // Other words people use for a thing, so "blade" finds the Razor and "fade" the Effects tab.
@@ -381,6 +383,17 @@ export function searchItems(input: SearchInput): SearchItem[] {
       disabled: input.deleted,
     },
   );
+  // The guide's lessons, each opening on the Learn page beside the project. A lesson is found by its name and by
+  // its chapters' names, so "keyframes" finds the lesson that teaches them.
+  for (const lesson of input.guide ?? []) {
+    items.push({
+      id: `guide:${lesson.path}`,
+      label: `Guide: ${lesson.title}`,
+      group: "Help",
+      keywords: ["help", "learn", "lesson", "tutorial", "video", "how", ...lesson.chapters],
+      action: { kind: "guide", path: lesson.path },
+    });
+  }
   return items;
 }
 

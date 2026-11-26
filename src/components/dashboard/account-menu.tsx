@@ -8,6 +8,7 @@ import { TutorialDialog } from "@/components/dashboard/tutorial-dialog";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { authClient } from "@/lib/auth-client";
 import { signOutAndLeave } from "@/lib/sign-out";
+import type { Lesson } from "@/lib/tutorial/lesson";
 import type { TutorialVideo } from "@/lib/tutorial/video";
 import { TUTORIAL_WORDS } from "@/lib/tutorial/words";
 
@@ -20,14 +21,15 @@ function backFromSigningIn(): string | null {
   return params.get("passkeys") === "1" ? (params.get("error") ?? "") : null;
 }
 
-// The intro tutorial as the server offers it: the video, whether this person has yet to see it, and the action that
-// remembers they have.
-export type AccountTutorial = TutorialVideo & { firstVisit: boolean; markSeen(): Promise<unknown> };
+// The guide as the server offers it: the first lesson's video, whether this person has yet to be welcomed with it,
+// and the action that writes that they have. The lesson itself (its chapters and captions) and the voice's credit
+// come only for someone still to be welcomed: nobody else is shown the dialog.
+export type AccountTutorial = TutorialVideo & { firstVisit: boolean; markSeen(): Promise<unknown>; lesson?: Lesson; credit?: string | null };
 
 // The header's account button: the person's picture and name, opening a menu with Settings, Passkeys, AI agents,
-// Tutorial and Sign out. Settings (the editor's General and Shortcuts) is offered on the space pages only: the
-// preferences cookie it edits belongs to /s, so the Admin and AI agents pages cannot read it. Tutorial (the Learn
-// page) is offered when the server has the video (tutorial).
+// Learn and Sign out. Settings (the editor's General and Shortcuts) is offered on the space pages only: the
+// preferences cookie it edits belongs to /s, so the Admin and AI agents pages cannot read it. Learn (the guide's
+// page) is offered when the server has the videos (tutorial).
 // openSignUp: whether anyone may make an account, as the server reads it, for what a refused Google sign-in says.
 export function AccountMenu({ name, image, openSignUp = false, tutorial }: { name: string; image: string | null; openSignUp?: boolean; tutorial?: AccountTutorial }): ReactNode {
   const router = useRouter();
@@ -37,13 +39,16 @@ export function AccountMenu({ name, image, openSignUp = false, tutorial }: { nam
   const [passkeysOpen, setPasskeysOpen] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
 
-  // Someone who has not seen the tutorial gets it once, by itself, the first time this page load shows a space page:
-  // not over Admin or AI agents, where they went on purpose. Playing it or closing it writes the mark, once; from
-  // then on the tutorial is the Learn page, which the menu's Tutorial goes to. A mark that cannot be written is let
-  // go: the dialog comes back next visit.
+  // Someone who has not been welcomed gets the guide's first lesson once, by itself, the first time this page load
+  // shows a space page: not over Admin or AI agents, where they went on purpose. Playing it or closing it writes the
+  // mark, once; from then on the guide is the Learn page, which the menu's Learn goes to. A mark that cannot be
+  // written is let go: the dialog comes back next visit.
   // It opens once the page is live in the browser, never in the page as the server sends it: a player in that page
   // would start loading before anything listens to it, and a video that failed to load would go unsaid.
   const live = useSyncExternalStore(noChanges, () => true, () => false);
+  // The lesson comes only while the person is still to be welcomed, and writing the mark draws the dashboard's frame
+  // again without it. The one that came first is kept, so the welcome stays open, and playing, after its first play.
+  const [welcome] = useState(() => (tutorial?.lesson ? { lesson: tutorial.lesson, credit: tutorial.credit ?? null } : null));
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [welcomed, setWelcomed] = useState(false);
   const [seen, setSeen] = useState(false);
@@ -104,7 +109,7 @@ export function AccountMenu({ name, image, openSignUp = false, tutorial }: { nam
           ...(inSpace ? [{ id: "settings", label: "Settings" } satisfies MenuItem] : []),
           { id: "passkeys", label: "Passkeys" },
           { id: "agents", label: "AI agents" },
-          ...(tutorial ? [{ id: "tutorial", label: TUTORIAL_WORDS.menu } satisfies MenuItem] : []),
+          ...(tutorial ? [{ id: "tutorial", label: TUTORIAL_WORDS.learn } satisfies MenuItem] : []),
           { id: "sign-out", label: "Sign out", separatorBefore: true },
         ]}
         onSelect={(id) => {
@@ -116,10 +121,12 @@ export function AccountMenu({ name, image, openSignUp = false, tutorial }: { nam
         }}
       />
       {settingsOpen && <DashboardSettingsDialog onClose={() => setSettingsOpen(false)} />}
-      {tutorial && (
+      {tutorial && welcome && (
         <TutorialDialog
           open={tutorialOpen}
           video={tutorial}
+          lesson={welcome.lesson}
+          credit={welcome.credit}
           firstVisit={firstVisit}
           onWatched={markSeen}
           onClose={() => {

@@ -141,15 +141,17 @@ Everyone has a personal space as well as their teams, but it is not offered unti
 
 Switch it on once personal spaces can have storage ([Storage per space](#storage-per-space)): without storage, a personal space holds projects but no videos.
 
-## Tutorial video
+## The guide's videos
 
-EasyEdit can welcome each person with a short intro video the first time they open their dashboard, and keep it on a **Learn** page (`/learn`) that the dashboard's top bar and **Tutorial** in the account menu link to. It does so only when `TUTORIAL_VIDEO_URL` is set (in `.env.local`, and in Vercel followed by a redeploy):
+EasyEdit comes with a guide: a set of short lessons on video, each with chapters, captions and a transcript. It is on the **Learn** page (`/learn`), which the dashboard's top bar, **Learn** in the account menu and the editor's **Help** menu and search link to. The first lesson is also shown once to each person, in a welcome dialog, the first time they open their dashboard. All of this is there only when `TUTORIAL_VIDEO_URL` is set (in `.env.local`, and in Vercel followed by a redeploy):
 
-- The value is an `https` link to the MP4. A JPG with the same name beside it (`…/easyedit-intro.jpg` for `…/easyedit-intro.mp4`) is the picture shown before it plays.
-- Unset, or set to anything that is not such a link, there is no welcome dialog, no Learn page and no links to it.
-- The dialog opens once per account, on a space's page. Playing the video or closing the dialog marks it as seen, which needs the migration `0018_tutorial_views`.
-- The chapter list and the captions come from `src/lib/tutorial/script.ts`, which belongs to one recording of the video. Replace the file and the video together.
-- The video has a spoken voice, and its captions show by default. The same file names the credit the voice asks for (`TUTORIAL_VOICE_CREDIT`): the current voice was made on ElevenLabs' free plan, which requires the credit "elevenlabs.io" in the title, so the tutorial's title reads "The basics · Voice by elevenlabs.io" on the Learn page and in the welcome dialog. That plan is for non-commercial use only: if EasyEdit becomes commercial, the voice has to be made again on a paid plan (which also drops the credit).
+- The value is an `https` link to the first lesson's MP4. A JPG with the same name beside it (`…/basics.jpg` for `…/basics.mp4`) is the picture shown before it plays.
+- Every other lesson's MP4 and JPG are in the same folder, named by the lesson: `…/sound.mp4` and `…/sound.jpg` for the lesson at `/learn/sound`. The names are the `slug` of each lesson in `src/lib/tutorial/script.ts`.
+- Unset, or set to anything that is not such a link, there is no Learn page, no welcome dialog, no Help menu and no links to any of them.
+- The welcome dialog opens once per account, on a space's page. Playing a lesson or closing the dialog marks the person as welcomed, which needs the migration `0018_tutorial_views`.
+- The lessons, their chapters and their captions come from `src/lib/tutorial/script.ts`, which belongs to one recording of the videos. Replace the file and the videos together, and put a new recording's files in a folder of their own: a browser may keep a file it already has.
+- The ticks beside watched lessons are kept in each person's browser, not on the server.
+- The videos can have a spoken voice, and their captions show by default. The same file names the credit the voice asks for (`GUIDE_VOICE_CREDIT`), which is then shown beside each lesson's length on the Learn page and in the welcome dialog. A voice made on ElevenLabs' free plan requires the credit "elevenlabs.io" and is for non-commercial use only: if EasyEdit becomes commercial, such a voice has to be made again on a paid plan (which also drops the credit).
 
 Plain `http` is accepted from `localhost` only, to try a new recording on your own computer.
 

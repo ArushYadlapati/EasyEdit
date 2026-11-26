@@ -16,8 +16,9 @@ import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { listMyInvites } from "@/lib/spaces/invites";
 import { listMySpaces } from "@/lib/spaces/service";
 import { openSignUp } from "@/lib/signup";
+import { firstLesson, guideVideo } from "@/lib/tutorial/guide";
+import { GUIDE_VOICE_CREDIT } from "@/lib/tutorial/script";
 import { hasSeenTutorial } from "@/lib/tutorial/seen";
-import { tutorialVideo } from "@/lib/tutorial/video";
 
 // The dashboard is always dark, in the editor's colors. This asks the Dark Reader browser extension to leave it alone,
 // and the color scheme tells the browser's own dark mode the same (and darkens the page behind it, see globals.css).
@@ -26,13 +27,13 @@ export const viewport: Viewport = { colorScheme: "dark" };
 
 // The dashboard's own frame: a header with the person's account menu, and the page filling the rest of the window.
 // Admin shares this frame; sign-in keeps the (auth) look. The person's spaces reach the header too, which shows Admin
-// only in Seattle Solvers (AdminLink). When the server has the intro tutorial's video, the account menu is told
-// whether this person has yet to see it; the menu opens it for them once, and the header's Learn link and the
-// menu's Tutorial lead to it on a page of its own from then on.
+// only in Seattle Solvers (AdminLink). When the server has the guide's videos, the account menu is told whether this
+// person has yet to be welcomed with its first lesson; the menu opens it for them once (and is handed that lesson
+// only then), and the header's Learn link and the menu's Learn lead to the guide's own page.
 export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
   const db = getDb();
-  const video = tutorialVideo();
+  const video = guideVideo();
   // The tutorial is an extra: if its marks cannot be read (the setting was switched on before the table was made),
   // the dashboard opens without the welcome rather than not at all.
   const [spaces, myInvites, seenTutorial] = await Promise.all([
@@ -42,7 +43,9 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   ]);
   // Only what the sidebar shows of each invite: where it leads and the team's name.
   const invites = myInvites.map(({ id, teamName }) => ({ id, teamName }));
-  const tutorial = video ? { ...video, firstVisit: !seenTutorial, markSeen: markTutorialSeenAction } : undefined;
+  const tutorial = video
+    ? { ...video, firstVisit: !seenTutorial, markSeen: markTutorialSeenAction, ...(seenTutorial ? {} : { lesson: firstLesson(), credit: GUIDE_VOICE_CREDIT }) }
+    : undefined;
 
   return (
     <SpacesProvider spaces={spaces} createTeam={canCreateTeam(spaces) ? createTeamAction : undefined} personalSoon={!personalSpacesOpen()} invites={invites}>

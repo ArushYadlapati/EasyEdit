@@ -3,6 +3,7 @@ import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountMenu } from "@/components/dashboard/account-menu";
 import { act, fireEvent, render, screen, waitFor, within } from "../helpers/dom";
+import { GUIDE } from "../helpers/guide";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
 // The page the menu is on, as Next reports it.
@@ -185,11 +186,14 @@ describe("the account menu", () => {
   });
 });
 
-describe("the tutorial in the account menu", () => {
+describe("the guide in the account menu", () => {
   const VIDEO = { url: "https://cdn.test/easyedit-intro.mp4", poster: "https://cdn.test/easyedit-intro.jpg" };
   type MarkSeen = () => Promise<unknown>;
   let markSeen: ReturnType<typeof vi.fn<MarkSeen>>;
-  const menu = (firstVisit: boolean) => <AccountMenu name="Ada Lovelace" image={null} tutorial={{ ...VIDEO, firstVisit, markSeen }} />;
+  // The dashboard's frame hands the first lesson over only for someone still to be welcomed.
+  const menu = (firstVisit: boolean) => (
+    <AccountMenu name="Ada Lovelace" image={null} tutorial={{ ...VIDEO, firstVisit, markSeen, ...(firstVisit ? { lesson: GUIDE[0], credit: null } : {}) }} />
+  );
   const welcome = () => screen.queryByRole("dialog", { name: "Welcome to EasyEdit" });
   const items = () => {
     fireEvent.click(account());
@@ -197,9 +201,9 @@ describe("the tutorial in the account menu", () => {
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     return names;
   };
-  const pickTutorial = () => {
+  const pickLearn = () => {
     fireEvent.click(account());
-    fireEvent.click(screen.getByRole("menuitem", { name: "Tutorial" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Learn" }));
   };
 
   beforeEach(() => {
@@ -212,18 +216,18 @@ describe("the tutorial in the account menu", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("Tutorial sits after AI agents on every dashboard page, when the server has a video", () => {
+  it("Learn sits after AI agents on every dashboard page, when the server has the guide's videos", () => {
     const { unmount } = render(menu(false));
-    expect(items()).toEqual(["Settings", "Passkeys", "AI agents", "Tutorial", "Sign out"]);
+    expect(items()).toEqual(["Settings", "Passkeys", "AI agents", "Learn", "Sign out"]);
     unmount();
     at.path = "/agents";
     render(menu(false));
-    expect(items()).toEqual(["Passkeys", "AI agents", "Tutorial", "Sign out"]);
+    expect(items()).toEqual(["Passkeys", "AI agents", "Learn", "Sign out"]);
   });
 
-  it("Tutorial goes to the Learn page, and opens no dialog", () => {
+  it("Learn goes to the Learn page, and opens no dialog", () => {
     render(menu(false));
-    pickTutorial();
+    pickLearn();
     expect(router.push).toHaveBeenCalledWith("/learn");
     expect(welcome()).toBeNull();
     expect(markSeen).not.toHaveBeenCalled();
@@ -236,8 +240,8 @@ describe("the tutorial in the account menu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
     expect(welcome()).toBeNull();
     expect(markSeen).toHaveBeenCalledTimes(1);
-    // From then on Tutorial is the page, as for everyone.
-    pickTutorial();
+    // From then on the guide is the page, as for everyone.
+    pickLearn();
     expect(router.push).toHaveBeenCalledWith("/learn");
     expect(welcome()).toBeNull();
     expect(markSeen).toHaveBeenCalledTimes(1);
@@ -247,6 +251,20 @@ describe("the tutorial in the account menu", () => {
     render(menu(true));
     fireEvent.click(screen.getByRole("button", { name: "Watch" }));
     expect(markSeen).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(welcome()).toBeNull();
+    expect(markSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it("the welcome stays open, and playing, when writing the mark draws the dashboard's frame again without the lesson", () => {
+    const { rerender } = render(menu(true));
+    fireEvent.click(screen.getByRole("button", { name: "Watch" }));
+    expect(markSeen).toHaveBeenCalledTimes(1);
+    const playing = document.querySelector("video");
+    // The frame, drawn again for someone now welcomed: no lesson comes with it.
+    rerender(menu(false));
+    expect(welcome()).toBeTruthy();
+    expect(document.querySelector("video")).toBe(playing);
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(welcome()).toBeNull();
     expect(markSeen).toHaveBeenCalledTimes(1);

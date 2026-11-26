@@ -575,3 +575,47 @@ it("the top row reads Projects, Edit, View, the name, Undo, Redo, Settings, Keyb
   expect(order[0].compareDocumentPosition(order[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(order[1].compareDocumentPosition(order[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
+
+it("Help is there on a server with the guide: it lists the lessons, and one opens in a tab of its own", () => {
+  const store = makeStore();
+  const opened = vi.fn();
+  vi.stubGlobal("open", opened);
+  const guide = [
+    { title: "The basics", path: "/learn", chapters: ["Welcome"] },
+    { title: "Sound", path: "/learn/sound", chapters: ["Levels"] },
+  ];
+  const { unmount } = render(
+    <EditorProvider store={store}>
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
+    </EditorProvider>,
+  );
+  // No guide on this server: no menu.
+  expect(screen.queryByRole("button", { name: "Help" })).toBeNull();
+  unmount();
+  render(
+    <EditorProvider store={store}>
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} guide={guide} />
+    </EditorProvider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Help" }));
+  expect(screen.getAllByRole("menuitem").map((item) => item.textContent?.replace(/\?$/, ""))).toEqual(["The basics", "Sound", "Keyboard shortcuts"]);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Sound" }));
+  expect(opened).toHaveBeenCalledWith("/learn/sound", "_blank", "noopener");
+});
+
+it("the search finds a lesson of the guide and opens it beside the project", () => {
+  const store = makeStore();
+  const opened = vi.fn();
+  vi.stubGlobal("open", opened);
+  render(
+    <EditorProvider store={store}>
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} guide={[{ title: "Sound", path: "/learn/sound", chapters: ["Levels", "Music"] }]} />
+    </EditorProvider>,
+  );
+  const search = screen.getByRole("combobox", { name: "Search tools and actions" });
+  fireEvent.focus(search);
+  fireEvent.change(search, { target: { value: "guide" } });
+  fireEvent.click(screen.getByRole("option", { name: /Guide: Sound/ }));
+  expect(opened).toHaveBeenCalledWith("/learn/sound", "_blank", "noopener");
+});
+

@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import { ZOOM_MAX, ZOOM_MIN, clampZoom, zoomLimits } from "@/lib/editor/geometry";
 import {
-  assetMenu, clipMenu, editMenu, laneMenu, presetMenu, previewMenu, rightClickEntries, topMenuInput, trackMenu, viewMenu, type MenuEntry,
-  type TopMenuInput,
+  assetMenu, clipMenu, editMenu, guideLinkOf, helpMenu, laneMenu, presetMenu, previewMenu, rightClickEntries, topMenuInput, trackMenu, viewMenu,
+  type GuideLink, type MenuEntry, type TopMenuInput,
 } from "@/lib/editor/menus";
 import { LIMITS } from "@/lib/limits";
 import { docDuration } from "@/lib/timeline";
@@ -491,3 +491,25 @@ it("rightClickEntries drops the separator before the first entry left", () => {
     { id: "b", label: "B", separatorBefore: true },
   ]);
 });
+
+const LESSONS: GuideLink[] = [
+  { title: "The basics", path: "/learn", chapters: ["Welcome", "Export"] },
+  { title: "Sound", path: "/learn/sound", chapters: ["Levels"] },
+];
+
+it("Help lists the guide's lessons by name, then the keyboard shortcuts under a line", () => {
+  const entries = helpMenu(BASE, LESSONS);
+  expect(entries.map((e) => [e.id, e.label, e.separatorBefore ?? false])).toEqual([
+    ["guide:0", "The basics", false],
+    ["guide:1", "Sound", false],
+    ["show-shortcuts", "Keyboard shortcuts", true],
+  ]);
+  // Opening a lesson changes nothing in the project, so a viewer and a deleted project's editor have it too.
+  expect(helpMenu({ ...BASE, canEdit: false, deleted: true }, LESSONS).every((e) => !e.disabled)).toBe(true);
+});
+
+it("a Help entry leads to its lesson, and nothing else is taken for one", () => {
+  expect(guideLinkOf("guide:1", LESSONS)).toBe(LESSONS[1]);
+  for (const id of ["guide:2", "guide:", "guide:x", "undo", "xguide:0", "guide:0 "]) expect(guideLinkOf(id, LESSONS)).toBeUndefined();
+});
+

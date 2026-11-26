@@ -119,6 +119,26 @@ export function viewMenu(input: TopMenuInput): MenuEntry[] {
   ];
 }
 
+// A lesson of the guide, as the editor knows it: its name, its page, and the names of its chapters (for the search).
+// The editor is handed these when the server has the guide, and none when it has not.
+export type GuideLink = { title: string; path: string; chapters: readonly string[] };
+
+// An entry that opens a lesson: "guide:" and the lesson's place in the list.
+export const guideEntryId = (index: number) => `guide:${index}`;
+export function guideLinkOf(id: string, guide: readonly GuideLink[]): GuideLink | undefined {
+  const match = /^guide:(\d+)$/.exec(id);
+  return match ? guide[Number(match[1])] : undefined;
+}
+
+// Help: the guide's lessons by name, each opening on the Learn page in a tab of its own so the project stays open,
+// then the keyboard shortcuts. The top bar shows the menu only when there are lessons to list.
+export function helpMenu(input: TopMenuInput, guide: readonly GuideLink[]): MenuEntry[] {
+  return [
+    ...guide.map((lesson, index) => ({ id: guideEntryId(index), label: lesson.title })),
+    commandEntry(input, { command: "show-shortcuts", label: "Keyboard shortcuts", separatorBefore: guide.length > 0 }),
+  ];
+}
+
 export type TrackMenuId = "rename" | "duplicate" | "up" | "down" | "locked" | "hidden" | "muted" | "remove";
 
 // A track's options (label "Track options"), read when the menu opens. Every entry changes the

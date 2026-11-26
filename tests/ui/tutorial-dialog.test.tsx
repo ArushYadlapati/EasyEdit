@@ -2,18 +2,13 @@
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TutorialDialog } from "@/components/dashboard/tutorial-dialog";
-import { TUTORIAL_CAPTIONS, TUTORIAL_CHAPTERS } from "@/lib/tutorial/script";
 import { TUTORIAL_WORDS } from "@/lib/tutorial/words";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
+import { GUIDE } from "../helpers/guide";
 
-// What the recording says about its voice; a test sets it, and the dialog reads it as it would the real file.
-const voice = vi.hoisted(() => ({ credit: null as string | null }));
-vi.mock("@/lib/tutorial/script", async (orig) => ({
-  ...(await orig<typeof import("@/lib/tutorial/script")>()),
-  get TUTORIAL_VOICE_CREDIT() {
-    return voice.credit;
-  },
-}));
+const LESSON = GUIDE[0];
+// What the recording says about its voice, as the dashboard's frame hands it over; a test sets it.
+const voice = { credit: null as string | null };
 
 const VIDEO = { url: "https://cdn.test/easyedit-intro.mp4", poster: "https://cdn.test/easyedit-intro.jpg" };
 
@@ -36,7 +31,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 function dialog({ open = true, firstVisit = true } = {}) {
-  return <TutorialDialog open={open} video={VIDEO} firstVisit={firstVisit} onClose={onClose} onWatched={onWatched} />;
+  return <TutorialDialog open={open} video={VIDEO} lesson={LESSON} credit={voice.credit} firstVisit={firstVisit} onClose={onClose} onWatched={onWatched} />;
 }
 
 const video = () => document.querySelector("video") as HTMLVideoElement;
@@ -46,16 +41,17 @@ const footerNames = () =>
   [TUTORIAL_WORDS.skip, TUTORIAL_WORDS.watch, TUTORIAL_WORDS.done].filter((name) => screen.queryByRole("button", { name }) !== null);
 
 describe("the tutorial dialog", () => {
-  it("titles the video and credits its voice there when the recording names one", () => {
+  it("names the lesson, with its length, and credits its voice there when the recording names one", () => {
     voice.credit = "voice.example";
     render(dialog());
     expect(screen.getByRole("dialog", { name: "Welcome to EasyEdit" })).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 3, name: "The basics · Voice by voice.example" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: "The basics" })).toBeTruthy();
+    expect(screen.getByText("1:00 · Voice by voice.example")).toBeTruthy();
   });
 
-  it("titles the video plainly when the recording names no voice to credit", () => {
+  it("names the lesson plainly when the recording names no voice to credit", () => {
     render(dialog());
-    expect(screen.getByRole("heading", { level: 3, name: "The basics" })).toBeTruthy();
+    expect(screen.getByText("1:00")).toBeTruthy();
     expect(screen.queryByText(/Voice by/)).toBeNull();
   });
 
@@ -70,31 +66,39 @@ describe("the tutorial dialog", () => {
     expect(onWatched).not.toHaveBeenCalled();
   });
 
-  it("lists the ten chapters, each with its number, name and time", () => {
+  it("lists the lesson's chapters, each with its name and time", () => {
     render(dialog());
-    expect(chapters()).toHaveLength(10);
-    expect(chapters()[0].textContent).toBe("1Welcome0:00");
-    expect(chapters()[2].textContent).toContain("3Dashboard");
+    expect(chapters().map((c) => c.textContent)).toEqual(["Welcome0:00", "A new project0:10", "Export0:40"]);
   });
 
   it("a chapter jumps the video to its start and plays", () => {
     render(dialog());
     fireEvent.click(chapters()[2]);
-    expect(video().currentTime).toBe(TUTORIAL_CHAPTERS[2].start);
+    expect(video().currentTime).toBe(LESSON.chapters[2].start);
     expect(play).toHaveBeenCalledTimes(1);
   });
 
   it("marks the chapter that is playing", () => {
     render(dialog());
     expect(chapters()[0].getAttribute("aria-current")).toBe("true");
-    video().currentTime = TUTORIAL_CHAPTERS[3].start + 1;
+    video().currentTime = LESSON.chapters[1].start + 1;
     act(() => {
       video().dispatchEvent(new Event("timeupdate"));
     });
-    expect(chapters().map((c) => c.getAttribute("aria-current"))).toEqual([null, null, null, "true", null, null, null, null, null, null]);
+    expect(chapters().map((c) => c.getAttribute("aria-current"))).toEqual([null, "true", null]);
   });
 
-  it("Watch plays it and reports the first play once, then the foot offers only Done", () => {
+  it("once it has played, the foot leads to the rest of the guide, and going there closes the welcome", () => {
+    render(dialog());
+    expect(screen.queryByRole("link", { name: TUTORIAL_WORDS.allLessons })).toBeNull();
+    fireEvent.click(button(TUTORIAL_WORDS.watch));
+    const all = screen.getByRole("link", { name: TUTORIAL_WORDS.allLessons });
+    expect(all.getAttribute("href")).toBe("/learn");
+    fireEvent.click(all);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Watch plays it and reports the first play once, then the foot's only button is Done", () => {
     render(dialog());
     expect(footerNames()).toEqual([TUTORIAL_WORDS.skip, TUTORIAL_WORDS.watch]);
     fireEvent.click(button(TUTORIAL_WORDS.watch));
@@ -155,13 +159,13 @@ describe("the tutorial dialog", () => {
     expect(tracks.length).toBe(1);
     expect(tracks[0].kind).toBe("captions");
     expect(tracks[0].mode).toBe("showing");
-    expect(tracks[0].cues?.length).toBe(TUTORIAL_CAPTIONS.length);
-    expect((tracks[0].cues?.[0] as VTTCue).text).toBe(TUTORIAL_CAPTIONS[0].text);
+    expect(tracks[0].cues?.length).toBe(LESSON.captions.length);
+    expect((tracks[0].cues?.[0] as VTTCue).text).toBe(LESSON.captions[0].text);
   });
 
   it("the player has a name, and Watch hands it the keyboard, so Space pauses the video and does not close the dialog", () => {
     render(dialog());
-    expect(video().getAttribute("aria-label")).toBe(TUTORIAL_WORDS.video);
+    expect(video().getAttribute("aria-label")).toBe("The basics: lesson video");
     fireEvent.click(button(TUTORIAL_WORDS.watch));
     expect(document.activeElement).toBe(video());
   });
