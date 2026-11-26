@@ -1,4 +1,4 @@
-import { activityRows, shortActorName } from "./activity";
+import { activityRows, shortActorName, undoLinks } from "./activity";
 import type { EditorState, EditorStore } from "./store";
 import type { ActivityEntry, PendingEdit } from "./types";
 
@@ -62,7 +62,14 @@ export function burstMessage(said: readonly Said[]): string {
     .join(" ");
 }
 
-// Calls say with one message per burst of changes. Returns the stop function.
+// "Theo Park undid your change: Moved text “Hi”. It's in Activity if you want it back."
+export function undoneMineMessage(who: string, what: string, count = 1): string {
+  const head = count === 1 ? `${who} undid your change: ${what}.` : `${who} undid ${count} of your changes. The last: ${what}.`;
+  return `${head} Undo theirs in Activity to bring it back.`;
+}
+
+// Calls say with one message per burst of changes, and tells me with a notice when someone else undid a change of
+// mine. Returns the stop function.
 export function watchEdits(
   store: EditorStore,
   say: (message: string) => void,
@@ -97,8 +104,19 @@ export function watchEdits(
     // Someone else's, as they arrive: the entries the server copy moved on by that are not mine.
     if (state.remote !== before.remote && state.remote !== null && state.server.version > before.server.version) {
       const arrived = state.activity.filter((e) => e.version > before.server.version && e.version <= state.server.version && e.actor !== state.me.id);
-      const lines = summaries(state, arrived, { before, assetName: opts.assetName });
-      add(arrived.map((e, i) => ({ who: shortActorName(e.actorName), summary: lines[i] })));
+      // One of them undid a change of mine: a notice says so, which a screen reader hears too, so it is not said twice.
+      const { undid } = undoLinks(state.activity);
+      const byVersion = new Map(state.activity.map((e) => [e.version, e]));
+      const mine = arrived.filter((e) => byVersion.get(undid.get(e.version) ?? -1)?.actor === state.me.id);
+      const told = arrived.filter((e) => !mine.includes(e));
+      const lines = summaries(state, told, { before, assetName: opts.assetName });
+      add(told.map((e, i) => ({ who: shortActorName(e.actorName), summary: lines[i] })));
+      const last = mine.at(-1);
+      if (last) {
+        const target = byVersion.get(undid.get(last.version)!)!;
+        const [what] = summaries(state, [target], { before, assetName: opts.assetName });
+        state.notify("info", undoneMineMessage(shortActorName(last.actorName), what, mine.length));
+      }
     }
   });
   return () => {

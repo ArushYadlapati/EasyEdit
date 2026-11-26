@@ -71,3 +71,17 @@ it("my own change coming back from the server is not told twice", async () => {
   vi.advanceTimersByTime(ANNOUNCE_QUIET_MS);
   expect(said).toEqual(["Moved text “hi”."]);
 });
+
+it("a teammate undoing my change is told with a notice, not said twice", () => {
+  const { store, said } = watched();
+  const mine = { ...entry(6, move(200), "u1", "Ada"), inverse: move(90) };
+  store.getState().applyRemote([mine]);
+  vi.advanceTimersByTime(ANNOUNCE_QUIET_MS);
+  store.getState().applyRemote([{ ...entry(7, move(90), "u2", "Theo Park"), inverse: move(200) }]);
+  vi.advanceTimersByTime(ANNOUNCE_QUIET_MS);
+  expect(store.getState().notice).toMatchObject({
+    tone: "info",
+    text: "Theo Park undid your change: Moved text “hi”. Undo theirs in Activity to bring it back.",
+  });
+  expect(said).toEqual([]);
+});
