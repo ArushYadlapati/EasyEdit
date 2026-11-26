@@ -117,6 +117,15 @@ describe("the login page with sign-up open", () => {
     expect(link.getAttribute("href")).toBe("/privacy");
   });
 
+  it("links the terms that signing in agrees to, in the same quiet note", async () => {
+    const page: Page = LoginPage;
+    render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+    const link = screen.getByRole("link", { name: "terms of service" });
+    expect(link.getAttribute("href")).toBe("/terms");
+    expect(link.parentElement?.textContent).toBe("By signing in, you agree to the terms of service.");
+    expect(link.parentElement?.className).toBe("h-signNote");
+  });
+
   it("draws the editor beside the sign-in as a picture, out of the screen reader's way", async () => {
     const page: Page = LoginPage;
     const { container } = render(await page({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));

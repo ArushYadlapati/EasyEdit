@@ -82,6 +82,10 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             not on EasyEdit&apos;s servers, and EasyEdit only ever sees the files it makes there.{" "}
             <Link href="/privacy">How EasyEdit uses your data</Link>
           </p>
+          {/* What signing in agrees to, linked, as the terms say ("By signing in, you agree to them"). */}
+          <p className="h-signNote">
+            By signing in, you agree to the <Link href="/terms">terms of service</Link>.
+          </p>
         </div>
         <SignInPicture />
       </main>
