@@ -1885,3 +1885,54 @@ describe("teammates' selections on the preview", () => {
     expect(st().selection.clipIds).toEqual([]);
   });
 });
+
+describe("handles by touch", () => {
+  const touchAt = (x: number, y: number) => {
+    fireEvent.pointerDown(overlay(), { clientX: x, clientY: y, button: 0, pointerId: 1, pointerType: "touch" });
+    fireEvent.pointerUp(overlay(), { clientX: x, clientY: y, pointerId: 1, pointerType: "touch" });
+  };
+  const sizeOf = (grip: string) => [handle(grip)!.style.width, handle(grip)!.style.height];
+
+  it("after a finger's press a small box keeps only its corners, as 40 px targets outside it, so a touch in it moves it", () => {
+    const { st } = show({ selected: ["x1"] });
+    expect(sizeOf("se")).toEqual(["8px", "8px"]);
+    touchAt(...TEXT);
+    expect(handleNames().sort()).toEqual(["ne", "nw", "rotate", "se", "sw"]);
+    expect(sizeOf("nw")).toEqual(["40px", "40px"]);
+    // x1's box is overlay 270..302 × 476.8..515.2: each corner's target sits just past its corner, none over the box.
+    expect(placeOf("nw")).toEqual(["250px", "456.8px"]);
+    expect(placeOf("se")).toEqual(["322px", "535.2px"]);
+    for (const grip of ["nw", "ne", "se", "sw", "rotate"]) {
+      const [left, top] = placeOf(grip).map((v) => parseFloat(v));
+      const overlaps = left + 20 > 270 && left - 20 < 302 && top + 20 > 476.8 && top - 20 < 515.2;
+      expect(overlaps, grip).toBe(false);
+    }
+    // A touch drag from the text moves it.
+    fireEvent.pointerDown(overlay(), { clientX: 486, clientY: 520, button: 0, pointerId: 2, pointerType: "touch" });
+    fireEvent.pointerMove(overlay(), { clientX: 506, clientY: 540, pointerId: 2, pointerType: "touch" });
+    frame();
+    fireEvent.pointerUp(overlay(), { clientX: 506, clientY: 540, pointerId: 2, pointerType: "touch" });
+    expect(labelsOf(st())).toEqual(["position change"]);
+    // A mouse press lays them out for a pointer again.
+    fireEvent.pointerDown(overlay(), { clientX: TEXT[0], clientY: TEXT[1], button: 0, pointerId: 3, pointerType: "mouse" });
+    fireEvent.pointerUp(overlay(), { clientX: TEXT[0], clientY: TEXT[1], pointerId: 3, pointerType: "mouse" });
+    expect(handleNames().filter((n) => n !== "rotate").sort()).toEqual([...EIGHT].sort());
+    expect(sizeOf("se")).toEqual(["8px", "8px"]);
+  });
+
+  it("a box with room keeps all eight handles by touch, each a 40 px target", () => {
+    show({ selected: ["c1"] });
+    touchAt(...PICTURE);
+    expect(handleNames().filter((n) => n !== "rotate").sort()).toEqual([...EIGHT].sort());
+    expect(sizeOf("e")).toEqual(["40px", "40px"]);
+  });
+
+  it("a finger lands on a thin clip up to 12 px outside its box; a mouse only 4 px", () => {
+    // x1 at scale 0.2 is 6.4 × 7.68 on screen, its bottom edge at client 539.84; the frame-sized c1 is behind it.
+    const { st } = show({ over: { doc: withTransform(sampleDoc(), "x1", { scale: 0.2 }) } });
+    click(486, 549);
+    expect(st().selection.clipIds).toEqual(["c1"]);
+    touchAt(486, 549);
+    expect(st().selection.clipIds).toEqual(["x1"]);
+  });
+});
