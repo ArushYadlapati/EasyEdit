@@ -61,6 +61,8 @@ const FOLDER_ITEMS: MenuItem[] = [
 
 const NO_PINS: string[] = [];
 
+export const SEARCH_TITLE = "Search results";
+
 const HEADING = "mb-3 text-sm font-semibold text-ed-text";
 const EMPTY = "text-[13px] text-ed-muted";
 
@@ -133,10 +135,16 @@ export function Dashboard({ projects, folders, templates, recentIds, pinnedIds =
   const folderNames = new Map(folders.map((folder) => [folder.id, folder.name]));
   const viewFolder = folderOf(view);
   const folderName = viewFolder === null ? null : (folderNames.get(viewFolder) ?? null);
-  const title = view.kind === "recent" ? "Recent" : view.kind === "all" ? "All projects" : (folderName ?? "All projects");
-  const shown =
-    view.kind === "recent" ? recentProjects(projects, recentIds, search) : projectsInView(projects, { folderId: viewFolder, search, sort });
+  // Typing in the search box searches every project in the space, whichever view it was typed in; clearing it goes
+  // back to that view.
   const searching = search.trim() !== "";
+  const viewTitle = view.kind === "recent" ? "Recent" : view.kind === "all" ? "All projects" : (folderName ?? "All projects");
+  const title = searching ? SEARCH_TITLE : viewTitle;
+  const shown = searching
+    ? projectsInView(projects, { folderId: null, search, sort })
+    : view.kind === "recent"
+      ? recentProjects(projects, recentIds, search)
+      : projectsInView(projects, { folderId: viewFolder, search, sort });
   const showFolderTiles = view.kind === "all" && folders.length > 0 && !searching;
 
   // A drag can come from another window or site with any id, so only this page's projects move, and a drop onto the
@@ -180,10 +188,7 @@ export function Dashboard({ projects, folders, templates, recentIds, pinnedIds =
   );
 
   function empty(): ReactNode {
-    if (searching) {
-      const what = view.kind === "recent" ? "recent projects" : "projects";
-      return <p className={EMPTY}>{`No ${what} match "${search.trim()}".`}</p>;
-    }
+    if (searching) return <p className={EMPTY}>{`No projects in this space match "${search.trim()}".`}</p>;
     if (view.kind === "recent" && projects.length > 0) {
       return (
         <div className="flex flex-col items-start gap-2">
@@ -267,7 +272,7 @@ export function Dashboard({ projects, folders, templates, recentIds, pinnedIds =
               <h1 id={titleId} className="min-w-0 truncate text-base font-semibold">
                 {title}
               </h1>
-              {canEdit && folderName !== null && (
+              {canEdit && folderName !== null && !searching && (
                 <Menu label="Folder options" icon={<Ellipsis />} items={FOLDER_ITEMS} onSelect={chooseFolderOption} />
               )}
             </div>
@@ -281,7 +286,7 @@ export function Dashboard({ projects, folders, templates, recentIds, pinnedIds =
                 onChange={(event) => setSearch(event.target.value)}
                 className="min-w-0 flex-1 sm:w-56 sm:flex-none"
               />
-              {view.kind !== "recent" && (
+              {(view.kind !== "recent" || searching) && (
                 <Select
                   aria-label="Sort by"
                   value={sort}
@@ -324,7 +329,7 @@ export function Dashboard({ projects, folders, templates, recentIds, pinnedIds =
                   Projects
                 </h2>
               )}
-              {list(view.kind === "all" ? ownFolder : noFolder)}
+              {list(view.kind === "all" || searching ? ownFolder : noFolder)}
             </section>
           </div>
         </main>
