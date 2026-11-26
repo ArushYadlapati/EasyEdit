@@ -37,6 +37,7 @@ import {
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { clipFrame } from "@/lib/editor/keyframe-edit";
 import { markerAt, sortedMarkers } from "@/lib/editor/markers";
+import type { CutoutStep } from "@/lib/editor/cutout";
 import { explainOpError } from "@/lib/editor/messages";
 import { TRACK_KIND_LABEL } from "@/lib/editor/placement";
 import { soundClipsOf } from "@/lib/editor/sound";
@@ -46,6 +47,8 @@ import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import type { Units } from "@/lib/editor/settings";
 import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
+import type { Cutter } from "@/lib/media/cutout/client";
+import { CUTOUT_MODEL_BYTES } from "@/lib/media/cutout/protocol";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, nestClips, nestLength, nestName, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type NestClip, type OpInput, type ShapeClip, type TextClip, type Track } from "@/lib/timeline";
@@ -69,6 +72,7 @@ import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-f
 import { useLevelVolume } from "./use-level-volume";
 import { useFollow } from "./use-follow";
 import { useSceneSplit } from "./use-scene-split";
+import { useCutout } from "./use-cutout";
 import { useSteady } from "./use-steady";
 import { useSyncSound } from "./use-sync-sound";
 
@@ -807,6 +811,35 @@ function StabilizeSection({ clip }: { clip: MediaClip }) {
   );
 }
 
+// Remove background: the person in a picture is kept and the rest made see-through, so the picture can sit over a
+// video. The model runs in this browser; the picture goes nowhere.
+function cutoutStatus(step: CutoutStep): string {
+  if (step.stage === "reading") return "Reading the picture…";
+  if (step.stage === "model") return step.done < step.total ? `Getting the model: ${Math.floor((step.done / step.total) * 100)}% of ${Math.round(CUTOUT_MODEL_BYTES / 1_000_000)} MB` : "Starting the model…";
+  if (step.stage === "cutting") return "Cutting out…";
+  return "Saving the cut-out…";
+}
+export function CutoutSection({ clipId, cutter }: { clipId: string; cutter?: Cutter }) {
+  const canEdit = useEditor((s) => s.canEdit);
+  const { run, cancel, step } = useCutout(cutter);
+  return (
+    <Section title="Background">
+      <Hint>Keeps the person in the picture and makes the rest see-through. It works on people, not on things. The first time, a 26 MB model is fetched; the picture never leaves this browser.</Hint>
+      <div className="flex items-center gap-2">
+        <Button data-edit-control disabled={!canEdit || step !== null} onClick={() => void run(clipId)}>
+          Remove background
+        </Button>
+        {step !== null && step.stage !== "uploading" && <Button onClick={cancel}>Cancel</Button>}
+      </div>
+      {step !== null && (
+        <p role="status" className="text-[13px] leading-5 text-ed-muted">
+          {cutoutStatus(step)}
+        </p>
+      )}
+    </Section>
+  );
+}
+
 // Follow: a text, a shape or an image kept on something in the video under it.
 function FollowSection({ clipId }: { clipId: string }) {
   const canEdit = useEditor((s) => s.canEdit);
@@ -1355,6 +1388,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       <TimingSection clipId={clip.id} slips={clip.type === "video" || clip.type === "audio"} />
       {clip.type === "video" && clip.speed !== 0 && <StabilizeSection clip={clip} />}
       {clip.type === "video" && clip.speed > 0 && <ScenesSection clipId={clip.id} />}
+      {clip.type === "image" && <CutoutSection clipId={clip.id} />}
       {(clip.type === "text" || clip.type === "shape" || clip.type === "image") && <FollowSection clipId={clip.id} />}
       <SlotSection clip={clip} />
     </>
