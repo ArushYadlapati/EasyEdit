@@ -4,7 +4,7 @@ import Link from "next/link";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { CreateTeamDialog } from "@/components/dashboard/create-team-dialog";
 import { SidebarSection } from "@/components/dashboard/sidebar-section";
-import { FADE, FOCUS_RING_INSET, TAG, cx } from "@/components/ui/cx";
+import { CHOSEN_EDGE, FADE, FOCUS_RING_INSET, TAG, cx } from "@/components/ui/cx";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { PERSONAL_SOON } from "@/lib/spaces/personal";
 import type { TeamFormState } from "@/lib/spaces/team-actions";
@@ -97,7 +97,7 @@ export function SpaceSwitcher({
               aria-label={soon ? `${labelOf(space)}, ${PERSONAL_SOON.label}` : undefined}
               className={cx(
                 "flex h-7 shrink-0 items-center gap-2 rounded-md px-2 text-xs font-semibold whitespace-nowrap",
-                isCurrent ? "bg-ed-accent-weak text-ed-accent" : soon ? "text-ed-muted hover:bg-ed-hover" : "text-ed-text hover:bg-ed-hover",
+                isCurrent ? cx("bg-ed-accent-weak text-ed-accent", CHOSEN_EDGE.on) : soon ? "text-ed-muted hover:bg-ed-hover" : "text-ed-text hover:bg-ed-hover",
                 FOCUS_RING_INSET,
                 FADE,
               )}

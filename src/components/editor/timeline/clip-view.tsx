@@ -196,6 +196,8 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
         "group absolute flex touch-none items-center overflow-hidden rounded-[4px] border select-none",
         FILL[clip.type],
         selected ? "border-ed-accent bg-linear-to-r from-ed-accent-weak to-ed-accent-weak" : "border-ed-line-strong",
+        // With the system's high contrast colours both edges would be the same text colour.
+        "forced-colors:aria-pressed:border-2 forced-colors:aria-pressed:border-[Highlight]",
         hidden && "opacity-50",
         locked && "cursor-not-allowed",
         razor && "cursor-crosshair",

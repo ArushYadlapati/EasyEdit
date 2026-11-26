@@ -2,7 +2,7 @@
 
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
-import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
+import { CHOSEN_EDGE, FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { Splitter } from "@/components/ui/splitter";
 import { fitLayout, layoutStyle, sizeBounds, type Layout, type LayoutStore, type PanelId } from "@/lib/editor/layout";
 import { useMediaDropState } from "./media/media-context";
@@ -137,6 +137,7 @@ export function PanelGrid({ layout, deleted = false, top, left, center, right, b
                 aria-pressed={phoneTab === tab.id}
                 className={cx(
                   "flex-1 rounded-md text-[13px] font-medium text-ed-muted select-none aria-pressed:bg-ed-accent-weak aria-pressed:text-ed-accent",
+                  CHOSEN_EDGE.pressed,
                   FOCUS_RING,
                   FADE,
                 )}

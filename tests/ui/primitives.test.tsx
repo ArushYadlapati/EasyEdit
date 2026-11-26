@@ -116,8 +116,10 @@ it("the chosen segment has an accent edge as well as its tint, 3:1 off the well 
     const classes = option.className.split(" ");
     expect(classes).toContain("aria-checked:inset-ring");
     expect(classes).toContain("aria-checked:inset-ring-ed-accent");
-    // A ring drawn inside, not a border, so no option's word loses room when it is chosen.
-    expect(classes.filter((c) => /(^|:)border/.test(c))).toEqual([]);
+    // A ring drawn inside, not a border, so no option's word loses room when it is chosen. Only with the system's
+    // high contrast colours, which drop shadows and so the ring, is the edge a border, in the selection colour.
+    expect(classes.filter((c) => /(^|:)border/.test(c) && !c.startsWith("forced-colors:"))).toEqual([]);
+    expect(classes).toEqual(expect.arrayContaining(["forced-colors:aria-checked:border-2", "forced-colors:aria-checked:border-[Highlight]"]));
   }
 
   // The tint alone is 1.38:1 off the well and the blue words 1.05:1 off the muted ones; the edge carries the choice.
@@ -128,6 +130,33 @@ it("the chosen segment has an accent edge as well as its tint, 3:1 off the well 
   expect(tint).toBe("#2b3545");
   expect(contrast(role("accent"), well)).toBeGreaterThanOrEqual(3);
   expect(contrast(role("accent"), tint)).toBeGreaterThanOrEqual(3);
+});
+
+it("the chosen tab and a pressed icon button take an accent edge as well as their tint, and Highlight in forced colours", () => {
+  render(
+    <>
+      <Tabs label="Panel" value="a" tabs={[{ id: "a", label: "Inspect" }, { id: "b", label: "Activity" }]} onChange={() => {}} />
+      <IconButton label="Snap" pressed onClick={() => {}}>
+        <Plus />
+      </IconButton>
+      <IconButton label="Trim" pressed={false} onClick={() => {}}>
+        <Plus />
+      </IconButton>
+    </>,
+  );
+  for (const tab of screen.getAllByRole("tab")) {
+    expect(tab.className.split(" ")).toEqual(
+      expect.arrayContaining(["aria-selected:inset-ring", "aria-selected:inset-ring-ed-accent", "forced-colors:aria-selected:border-[Highlight]"]),
+    );
+  }
+  expect(screen.getByRole("tab", { name: "Inspect" }).getAttribute("aria-selected")).toBe("true");
+  // The icon button's own transparent edge turns blue, so the edge sits at the button's edge.
+  const snap = screen.getByRole("button", { name: "Snap" });
+  expect(snap.getAttribute("aria-pressed")).toBe("true");
+  expect(snap.className.split(" ")).toEqual(
+    expect.arrayContaining(["border", "border-transparent", "aria-pressed:border-ed-accent", "forced-colors:aria-pressed:border-[Highlight]"]),
+  );
+  expect(screen.getByRole("button", { name: "Trim" }).getAttribute("aria-pressed")).toBe("false");
 });
 
 it("a caller's onClick on Toggle and Segmented does not stop onChange", () => {
