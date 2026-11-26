@@ -7,6 +7,7 @@ import { browserExportDeps } from "@/components/editor/export/browser-deps";
 import { createMediaServices, type MediaServices } from "@/components/editor/media/media-context";
 import { browserThumbnailDeps } from "@/components/editor/thumbnail-deps";
 import { formatTimecode } from "@/lib/editor/geometry";
+import { ANNOUNCE_QUIET_MS } from "@/lib/editor/announce";
 import { HELD_EDIT_PAUSE_MS } from "@/lib/editor/held-edit";
 import { MOVE_MESSAGES } from "@/lib/projects/move-messages";
 import { DEFAULT_KEYMAP, KEYMAP_KEY, formatKeymap, setKeys, setOff } from "@/lib/editor/keymap";
@@ -179,6 +180,20 @@ it("words typed and not yet sent are not called saved: the browser asks before l
   act(() => fireEvent.blur(box));
   await flush();
   expect(server.posts()).toBe(3); // nothing left to save when the box is left
+});
+
+it("tells a screen reader what an edit did, once the burst of changes is over", async () => {
+  stubServer();
+  render(<EditorShell space={SPACE} initial={initial()} />);
+  const region = () => document.querySelector<HTMLElement>("[aria-live='polite'].sr-only")!;
+  expect(region().textContent).toBe("");
+  await addTitle();
+  await after(ANNOUNCE_QUIET_MS);
+  expect(region().textContent).toBe("Added text “Your title”.\u00a0");
+  // The same words again are still said: the region's text changes.
+  await addTitle();
+  await after(ANNOUNCE_QUIET_MS);
+  expect(region().textContent).toBe("Added text “Your title”.");
 });
 
 it("leaving the editor with edits still queued sends them all, then stops", async () => {

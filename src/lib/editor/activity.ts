@@ -248,13 +248,14 @@ export function whoLabel(entry: ActivityEntry, meId: string): string {
 // The log names an AI agent "<agent>" or "<agent> (for <name>)", as in "Claude (for Ada)"; both show as the agent.
 const AGENT_LABELS = [...new Set([...AGENT_KINDS.map(agentLabel), UNKNOWN_AGENT_LABEL])];
 
-function withoutMember(name: string): string {
+// A name as the log keeps it, without the member an agent acted for: "Claude (for Ada)" is "Claude".
+export function shortActorName(name: string): string {
   const agent = AGENT_LABELS.find((label) => name === label || (name.startsWith(`${label} (for `) && name.endsWith(")")));
   return agent ?? name;
 }
 
 export function editingLabel(names: string[]): string | null {
-  const people = [...new Set(names.map(withoutMember))];
+  const people = [...new Set(names.map(shortActorName))];
   if (people.length === 0) return null;
   if (people.length === 1) return `${people[0]} is editing…`;
   return `${people.length} people are editing…`;
@@ -349,6 +350,7 @@ export function undoLinks(entries: ActivityEntry[]): { undid: Map<number, number
 
 export type ActivityContext = {
   doc?: TimelineDoc; // the project as the server holds it: names what is still there
+  earlierDoc?: TimelineDoc; // the project before these changes, which names what they took away
   movedAtVersion?: number | null; // the version of the project's last move
   assetName?: (assetId: string) => string | undefined; // a media file's name, from the library
 };
@@ -357,7 +359,7 @@ export type ActivityContext = {
 // the project's last move, the move reads as one and the changes before it cannot be undone. An undo reads "Undid: …"
 // and the change it undid is marked undone; undoing an undo reads "Redid: …".
 export function activityRows(entries: ActivityEntry[], meId: string, now: Date, context: ActivityContext = {}): ActivityRow[] {
-  const { doc, movedAtVersion = null, assetName = () => undefined } = context;
+  const { doc, earlierDoc, movedAtVersion = null, assetName = () => undefined } = context;
   const kinds = new Map<string, ClipKind>();
   const about = new Map<string, ClipAbout>();
   for (const entry of entries) {
@@ -365,6 +367,12 @@ export function activityRows(entries: ActivityEntry[], meId: string, now: Date, 
     kindsIn(entry.inverse, kinds);
     aboutIn(entry.ops, doc, assetName, about);
     aboutIn(entry.inverse, doc, assetName, about);
+  }
+  for (const track of earlierDoc?.tracks ?? []) {
+    for (const clip of track.clips) {
+      kinds.set(clip.id, clip.type);
+      about.set(clip.id, { name: clipName(clip, assetName), track: track.name });
+    }
   }
   const inDoc = new Set<string>();
   for (const track of doc?.tracks ?? []) {

@@ -22,6 +22,7 @@ import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser
 import { EditorProvider, useEditor, useEditorStore } from "./context";
 import { watchDrags } from "./drag-watch";
 import type { GuideLink } from "@/lib/editor/menus";
+import { EditAnnouncer } from "./edit-announcer";
 import { EditorScreen } from "./editor-screen";
 import type { SpaceKind } from "@/lib/spaces/types";
 import type { StorageBlock } from "@/lib/storage/messages";
@@ -310,6 +311,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS, gui
             <PresenceProvider store={presenceStore}>
               <ReviewProvider api={review} projectHref={projectHref}>
                 <EditorScreen spaceSlug={space.slug} spaceId={space.id} initialLayout={layout} guide={guide} />
+                <EditAnnouncer />
               </ReviewProvider>
             </PresenceProvider>
           </CaptionsProvider>
