@@ -353,11 +353,25 @@ export const TextStyle = z.object({
 });
 export type TextStyle = z.infer<typeof TextStyle>;
 
+// A stretch of a text clip's words with a look of its own: from the character at `from` up to, not including, the one
+// at `to` (counted as a text field counts them), and what differs there from the clip's style. See spans.ts.
+export const TextSpan = z.strictObject({
+  from: z.number().int().min(0),
+  to: z.number().int().min(1),
+  color: HexColor.optional(),
+  fontWeight: z.number().int().min(100).max(900).optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+});
+export type TextSpan = z.infer<typeof TextSpan>;
+
 export const TextClip = z.object({
   ...ClipBase,
   type: z.literal("text"),
   text: z.string().max(LIMITS.textClipChars).refine(isStorableText, UNSTORABLE_TEXT),
   style: TextStyle,
+  // In order, not overlapping, inside the text (checked in the ops). null or absent: one look throughout.
+  spans: z.array(TextSpan).max(LIMITS.textSpansPerClip).nullable().optional(),
   slot: Slot.optional(),
   keyframes: Keyframes.optional(),
   animationIn: TextAnimationIn.nullable().optional(),

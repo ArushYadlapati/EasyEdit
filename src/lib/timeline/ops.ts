@@ -75,6 +75,7 @@ const ClipExpect = z
     animationIn: TextClip.shape.animationIn,
     animationOut: TextClip.shape.animationOut,
     emphasis: TextClip.shape.emphasis,
+    spans: TextClip.shape.spans,
     shape: ShapeClipFields.shape.shape,
     width: ShapeClipFields.shape.width,
     height: ShapeClipFields.shape.height,

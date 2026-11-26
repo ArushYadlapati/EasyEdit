@@ -103,6 +103,20 @@ describe("what a project's text needs", () => {
     ]);
   });
 
+  it("asks for each other weight a styled span is drawn in, with that clip's characters", () => {
+    // "go!" in clip b is drawn at 300, and one word of clip c in the weight clip a and b already use.
+    const styled = docWith(
+      text("a", 0, 30, { text: "GO Žofia" }),
+      text("b", 30, 30, { text: "go!\n🤖", spans: [{ from: 0, to: 3, fontWeight: 300 }, { from: 4, to: 6, color: "#ff0000" }] }),
+      text("c", 60, 30, { text: "x", style: medium, spans: [{ from: 0, to: 1, fontWeight: 700, italic: true }] }),
+    );
+    expect(probeRequests(styled, pageFont)).toEqual([
+      { font: '700 100px "Geist", "Geist Fallback"', text: `${PROBE_BASE}GOŽ!🤖x` },
+      { font: '300 100px "Geist", "Geist Fallback"', text: `${PROBE_BASE}!🤖` },
+      { font: '500 100px "Geist", "Geist Fallback"', text: `${PROBE_BASE}x` },
+    ]);
+  });
+
   it("leaves out hidden tracks and invisible clips, and stops at 256 extra characters", () => {
     const hidden = doc();
     hidden.tracks[1].hidden = true;

@@ -80,6 +80,8 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
     if (clip.animationIn) out += ` anim-in=${clip.animationIn.preset} ${framesToSeconds(clip.animationIn.frames, fps)}s`;
     if (clip.animationOut) out += ` anim-out=${clip.animationOut.preset} ${framesToSeconds(clip.animationOut.frames, fps)}s`;
     if (clip.emphasis) out += ` emphasis=${clip.emphasis.preset}${clip.emphasis.preset === "highlight_word" ? ` ${clip.emphasis.color ?? "#FFD400"}` : ""}`;
+    // The stretches of its words with a look of their own, as update_clip takes them.
+    if (detail && clip.spans && clip.spans.length > 0) out += ` spans=${JSON.stringify(clip.spans)}`;
   } else if (clip.type !== "adjustment") {
     if (clip.transitionIn) out += ` in=${transitionToken(clip.transitionIn)} ${framesToSeconds(clip.transitionIn.frames, fps)}s`;
     if (clip.transitionOut) out += ` out=${transitionToken(clip.transitionOut)} ${framesToSeconds(clip.transitionOut.frames, fps)}s`;

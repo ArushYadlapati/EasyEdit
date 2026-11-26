@@ -1,6 +1,7 @@
 export const LIMITS = {
   projectNameChars: 100,
   textClipChars: 2000,
+  textSpansPerClip: 40, // stretches of one text clip with a look of their own
   trackNameChars: 100,
   slotHintChars: 200,
   tracksPerProject: 20,

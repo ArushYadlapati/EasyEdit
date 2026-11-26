@@ -46,7 +46,8 @@ import { UNIT_DECIMALS, UNIT_SUFFIX, toUnit } from "@/lib/editor/units";
 import { LIMITS } from "@/lib/limits";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type OpInput, type ShapeClip, type TextClip, type Track } from "@/lib/timeline";
+import { colorStretchOps, plainStretchOps, stretchLook, toggleStretchOps } from "@/lib/editor/text-spans";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
 import { CROP_PROPS, volumeAt } from "@/lib/timeline/keyframes";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
@@ -57,6 +58,7 @@ import { KeyframeButton, KeyframeSteps } from "./keyframe-button";
 import { useLibrary, useMedia } from "./media/media-context";
 import { SlotSection } from "./slot-section";
 import { useTextMeasure } from "./text-measure";
+import { EffectColor } from "./effects-section";
 import { GradeControls } from "./grade-controls";
 import { Scopes } from "./scopes";
 import { Timecode } from "./timecode";
@@ -408,10 +410,54 @@ function FontField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   );
 }
 
+// Styling some of a text's words: the stretch selected in the Text box above made bold, italic, underlined or another
+// colour, while the rest keeps the clip's own look. stretch: what is selected there, null for nothing.
+function WordStyles({ clip, canEdit, stretch }: { clip: TextClip; canEdit: boolean; stretch: { from: number; to: number } | null }) {
+  const store = useEditorStore();
+  const styled = clip.spans?.length ?? 0;
+  const look = stretchLook(clip, stretch ?? { from: 0, to: 0 });
+  const apply = (ops: OpInput[]) => {
+    if (ops.length > 0) store.getState().edit(ops, "text style");
+  };
+  const off = !canEdit || stretch === null;
+  return (
+    <div className="flex flex-col gap-2" role="group" aria-label="Style the selected words">
+      <span className={CAPTION}>Selected words</span>
+      <div className="flex flex-wrap items-center gap-1">
+        {(["bold", "italic", "underline"] as const).map((what) => (
+          <Button key={what} data-edit-control aria-pressed={stretch !== null && look[what]} disabled={off} onClick={() => stretch && apply(toggleStretchOps(clip, stretch, what))}>
+            {what === "bold" ? "Bold" : what === "italic" ? "Italic" : "Underline"}
+          </Button>
+        ))}
+        <Button data-edit-control variant="ghost" disabled={!canEdit || styled === 0} onClick={() => apply(plainStretchOps(clip, stretch))}>
+          {stretch ? "Plain" : "All plain"}
+        </Button>
+      </div>
+      {stretch !== null && <EffectColor label="Color of the selected words" value={look.color ?? clip.style.color} canEdit={canEdit} onCommit={(color) => apply(colorStretchOps(clip, stretch, color))} />}
+      <Hint>
+        {stretch !== null
+          ? "Changes only the words selected in the box above."
+          : styled > 0
+            ? `${styled === 1 ? "1 stretch has a look of its own" : `${styled} stretches have a look of their own`}. Select words above to change them.`
+            : "Select some of the words above to make just those bold, italic, underlined or another color."}
+      </Hint>
+    </div>
+  );
+}
+
 function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   const store = useEditorStore();
   const text = useTextField(store, clip.id, "text", clipFieldValue(clip, "text", fieldContext(viewDoc(store.getState()), clip)));
+  // What is selected in the Text box, kept after the box loses focus to a button below it. It counts only for the
+  // clip it was made in and while the box still holds the clip's saved words.
+  const [selected, setSelected] = useState<{ clipId: string; from: number; to: number } | null>(null);
+  // Read wherever the caret may have moved: a selection made, and one let go of by a click or an arrow key.
+  const readSelection = (event: { currentTarget: HTMLTextAreaElement }) => {
+    const { selectionStart: from, selectionEnd: to } = event.currentTarget;
+    setSelected((now) => (from < to ? (now && now.clipId === clip.id && now.from === from && now.to === to ? now : { clipId: clip.id, from, to }) : null));
+  };
   if (clip.type !== "text") return null;
+  const stretch = selected && selected.clipId === clip.id && text.value === clip.text && selected.to <= clip.text.length ? { from: selected.from, to: selected.to } : null;
   const weight = clip.style.fontWeight;
   const weights = weightOptions(clip.style.fontFamily, weight);
   const look = textExtras(clip.style);
@@ -429,11 +475,19 @@ function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
           rows={3}
           maxLength={LIMITS.textClipChars}
           value={text.value}
-          onChange={(event) => text.change(event.target.value)}
+          onChange={(event) => {
+            // New words: what was selected before no longer names the same ones.
+            setSelected(null);
+            text.change(event.target.value);
+          }}
           onBlur={text.save}
           onKeyDown={(event) => text.onKeyDown(event, true)}
+          onSelect={readSelection}
+          onKeyUp={readSelection}
+          onMouseUp={readSelection}
         />
       </Field>
+      <WordStyles clip={clip} canEdit={canEdit} stretch={stretch} />
       <FontField clip={clip} canEdit={canEdit} />
       <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clip.id} field="fontSize" label="Size" suffix="px" min={FONT_SIZE_MIN} max={FONT_SIZE_MAX} />

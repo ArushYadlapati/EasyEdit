@@ -1,5 +1,6 @@
 import { cropRect, mediaSize, type LocalRect } from "@/lib/render/compositor";
 import { textRect } from "@/lib/render/text-layout";
+import type { TextSpan } from "@/lib/timeline";
 import { stretchOf } from "@/lib/timeline/presets";
 import { shapeBox } from "@/lib/timeline/shapes";
 import type { Clip, FrameSize, MediaClip, PlaceholderClip, TextClip, TimelineDoc } from "@/lib/timeline";
@@ -9,6 +10,8 @@ import type { Clip, FrameSize, MediaClip, PlaceholderClip, TextClip, TimelineDoc
 export type Sizer = {
   source(clip: MediaClip): { width: number; height: number } | null;
   measure(clip: TextClip, s: string): number;
+  // The same in a styled span's look (bolder, slanted). Without it a text with spans is boxed as if it had none.
+  measureSpan?(clip: TextClip, s: string, span: TextSpan | null): number;
 };
 
 // The least share of a clip's width or height a crop typed or dragged by hand leaves showing.
@@ -21,7 +24,7 @@ export function clipRects(doc: TimelineDoc, clip: Clip, sizer: Sizer): { full: L
   if (clip.type === "audio" || clip.type === "adjustment" || (clip.type === "placeholder" && clip.accepts === "audio")) return null;
   const full =
     clip.type === "text"
-      ? textRect(clip, doc.width, (s) => sizer.measure(clip, s))
+      ? textRect(clip, doc.width, (s) => sizer.measure(clip, s), sizer.measureSpan ? (s, span) => sizer.measureSpan!(clip, s, span) : undefined)
       : clip.type === "placeholder"
         ? centred(doc) // an empty slot is as large as the frame before its transform
         : clip.type === "shape"

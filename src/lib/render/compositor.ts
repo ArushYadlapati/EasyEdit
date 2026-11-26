@@ -2,7 +2,7 @@ import { captionsShow } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
 import { drawCaptions } from "./captions";
 import { drawShape } from "./shapes";
-import type { AdjustmentClip, Clip, Crop, Grade, Mask, MediaClip, TextClip, TimelineDoc, Track, Transform } from "@/lib/timeline";
+import type { AdjustmentClip, Clip, Crop, Grade, Mask, MediaClip, TextClip, TextSpan, TimelineDoc, Track, Transform } from "@/lib/timeline";
 import { adjustAt, effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
 import { STYLE_KEYS, TONE_KEYS, type FullAdjust } from "@/lib/timeline/adjust";
@@ -12,7 +12,7 @@ import { bakeGrade } from "./grade";
 import { keyOut, type ChromaKey } from "./chroma";
 import { clipLook, effectWindows } from "./effects";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
-import { alignShift, layoutText, letterSpacingOf, lettersWidth, textFont, textRect, type LocalRect, type TextLine } from "./text-layout";
+import { alignShift, layoutText, letterSpacingOf, lettersWidth, spanRuns, textFont, textRect, type LocalRect, type StyledMeasure, type TextLine } from "./text-layout";
 
 export type { LocalRect };
 
@@ -238,6 +238,51 @@ function drawTextPieces(ctx: Ctx2D, clip: TextClip, lines: TextLine[], look: Tex
   });
 }
 
+// A text with styled spans, drawn stretch by stretch: each in its own font and colour, from where the one before it
+// ended. A typed-in reveal shows only the characters reached so far, and a lit word takes its colour over its span's.
+// outline: the stretches' outlines are drawn, not the stretches. It leaves the font, colour and alignment as the
+// clip's own, for whatever is drawn next.
+function drawStyledLines(ctx: Ctx2D, clip: TextClip, lines: TextLine[], look: TextLook, fontOf: (span: TextSpan | null) => string, outline: boolean): void {
+  const { color, align } = clip.style;
+  const measure = (s: string) => ctx.measureText(s).width;
+  ctx.textAlign = "left";
+  for (const line of lines) {
+    const cells = line.cells ?? [];
+    const width = line.width ?? 0;
+    let x = align === "left" ? line.x : align === "right" ? line.x - width : line.x - width / 2;
+    for (const run of spanRuns(cells)) {
+      ctx.font = fontOf(run.span);
+      const whole = run.cells.map((cell) => cell.g).join("");
+      const shown = look.reveal === null ? run.cells : run.cells.filter((cell) => cell.at < look.reveal!);
+      if (shown.length > 0) {
+        const text = shown.map((cell) => cell.g).join("");
+        const own = run.span?.color ?? color;
+        if (outline) ctx.strokeText(text, x, line.y);
+        else {
+          ctx.fillStyle = own;
+          if (run.span?.underline ?? clip.style.underline) underline(ctx, clip, x, line.y, lettersWidth(clip.style, text, measure(text)));
+          if (look.litWord === null) ctx.fillText(text, x, line.y);
+          else {
+            // Word by word, so the lit one can take its colour.
+            let i = 0;
+            while (i < shown.length) {
+              let j = i + 1;
+              while (j < shown.length && shown[j].word === shown[i].word) j++;
+              ctx.fillStyle = shown[i].word !== -1 && shown[i].word === look.litWord ? (look.litColor ?? own) : own;
+              ctx.fillText(shown.slice(i, j).map((cell) => cell.g).join(""), x + measure(shown.slice(0, i).map((cell) => cell.g).join("")), line.y);
+              i = j;
+            }
+          }
+        }
+      }
+      x += measure(whole);
+    }
+  }
+  ctx.font = fontOf(null);
+  ctx.fillStyle = color;
+  ctx.textAlign = align;
+}
+
 // The line under underlined text: a tenth of the font size below the letters' feet, a fourteenth of it thick.
 function underline(ctx: Ctx2D, clip: TextClip, left: number, y: number, width: number): void {
   const { fontSize } = clip.style;
@@ -277,9 +322,23 @@ function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (fa
   ctx.textAlign = align;
   ctx.textBaseline = "middle";
   const measure = (s: string) => ctx.measureText(s).width;
+  // A text with styled spans: each stretch has its own font (its weight and slant) and is measured in it.
+  const family = resolveFont(fontFamily);
+  const fontOf = (span: TextSpan | null) =>
+    textFont(span ? { ...clip.style, fontWeight: span.fontWeight ?? clip.style.fontWeight, italic: span.italic ?? clip.style.italic } : clip.style, family);
+  const styled: StyledMeasure | undefined =
+    clip.spans && clip.spans.length > 0
+      ? (text, span) => {
+          if (!span || (span.fontWeight === undefined && span.italic === undefined)) return ctx.measureText(text).width;
+          ctx.font = fontOf(span);
+          const width = ctx.measureText(text).width;
+          ctx.font = fontOf(null);
+          return width;
+        }
+      : undefined;
   const crop = clip.transform.crop;
   if (crop && isCropped(crop)) {
-    const k = cropRect(textRect(clip, doc.width, measure), crop);
+    const k = cropRect(textRect(clip, doc.width, measure, styled), crop);
     // An uncut side moves out by the font size, so glyphs wider than their measured advance are not shaved, and by
     // whatever else the text draws around itself: its outline, its shadow and its box.
     const out =
@@ -295,11 +354,11 @@ function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (fa
     ctx.rect(k.left, k.top, k.right - k.left, k.bottom - k.top);
     ctx.clip();
   }
-  const lines = layoutText(clip, doc.width, measure);
+  const lines = layoutText(clip, doc.width, measure, styled);
 
   if (boxed) {
     // One box behind all the lines, as much larger than them as its padding, at its own opacity on top of the clip's.
-    const r = textRect(clip, doc.width, measure);
+    const r = textRect(clip, doc.width, measure, styled);
     const pad = extras.backgroundPadding * fontSize;
     const box = { left: r.left - pad, top: r.top - pad, right: r.right + pad, bottom: r.bottom + pad };
     const alpha = ctx.globalAlpha;
@@ -317,6 +376,10 @@ function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (fa
   if (shift !== 0) ctx.translate(shift, 0);
   const pieces = look.reveal !== null || look.litWord !== null;
   const letters = (outline: boolean) => {
+    if (styled) {
+      drawStyledLines(ctx, clip, lines, look, fontOf, outline);
+      return;
+    }
     if (pieces) {
       drawTextPieces(ctx, clip, lines, look, measure, outline);
       // The pieces are drawn from the left and in their own colours; the next pass starts as this one did.
@@ -338,7 +401,7 @@ function drawText(ctx: Ctx2D, doc: TimelineDoc, clip: TextClip, resolveFont: (fa
   };
   if (!outlined && !shadowed) {
     // Plain text, the common case: one pass.
-    if (pieces) drawTextPieces(ctx, clip, lines, look, measure);
+    if (pieces && !styled) drawTextPieces(ctx, clip, lines, look, measure);
     else letters(false);
     return;
   }

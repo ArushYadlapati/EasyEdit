@@ -10,4 +10,5 @@ export * from "./shapes";
 export * from "./captions";
 export * from "./speed";
 export * from "./text-style";
+export * from "./spans";
 export * from "./adjust";

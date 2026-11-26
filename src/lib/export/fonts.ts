@@ -135,12 +135,16 @@ export function probeRequests(doc: TimelineDoc, resolveFont: (family: string) =>
   const base = new Set(graphemes(PROBE_BASE));
   const byFont = new Map<string, Set<string>>();
   for (const clip of drawnTextClips(doc)) {
-    const font = `${clip.style.fontWeight} ${PROBE_PX}px ${resolveFont(clip.style.fontFamily)}`;
-    let extra = byFont.get(font);
-    if (!extra) byFont.set(font, (extra = new Set()));
-    for (const character of graphemes(clip.text)) {
-      if (extra.size >= MAX_EXTRA_CHARACTERS) break;
-      if (!base.has(character) && !isLineBreak(character)) extra.add(character);
+    // The clip's own weight, then each other weight a styled span of it is drawn in.
+    const weights = new Set([clip.style.fontWeight, ...(clip.spans ?? []).flatMap((span) => (span.fontWeight === undefined ? [] : [span.fontWeight]))]);
+    for (const weight of weights) {
+      const font = `${weight} ${PROBE_PX}px ${resolveFont(clip.style.fontFamily)}`;
+      let extra = byFont.get(font);
+      if (!extra) byFont.set(font, (extra = new Set()));
+      for (const character of graphemes(clip.text)) {
+        if (extra.size >= MAX_EXTRA_CHARACTERS) break;
+        if (!base.has(character) && !isLineBreak(character)) extra.add(character);
+      }
     }
   }
   const captions = drawnCaptions(doc);

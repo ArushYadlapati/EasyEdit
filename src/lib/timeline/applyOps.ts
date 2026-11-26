@@ -16,9 +16,10 @@ import {
 import { captionStyleOf, captionTrack, defaultCaptionStyle, rewordRun, transcriptOf } from "./captions";
 import { ADJUST_KEYS } from "./adjust";
 import { ARROW_DEFAULTS } from "./shapes";
+import { remapSpans, spansProblem } from "./spans";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
 import { AdjustmentClip, CaptionStyle, CaptionWords, MediaClip, PlaceholderClip, ShapeClipFields, TextClip, Transform, TextStyle, isMediaClip, shapeRules, slotOf } from "./types";
-import type { Clip, FormatId, FrameSize, Guide, KeyframeProp, TimelineDoc, Track } from "./types";
+import type { Clip, FormatId, FrameSize, Guide, KeyframeProp, TextSpan, TimelineDoc, Track } from "./types";
 
 // update_clip re-validates strictly so a typo'd or foreign key is rejected, not dropped.
 const StrictMediaClip = MediaClip.extend({ transform: Transform.strict() }).strict();
@@ -51,6 +52,7 @@ const CLIP_FILL: Record<string, () => unknown> = {
   chroma: () => null,
   mask: () => null,
   rounding: () => 0,
+  spans: () => null,
   group: () => null,
 };
 
@@ -79,7 +81,7 @@ const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string
   video: [...VISUAL_EFFECTS, ...SOUND_EFFECTS, ...PICTURE_EFFECTS],
   image: [...VISUAL_EFFECTS, ...PICTURE_EFFECTS],
   audio: [...SOUND_EFFECTS, "keyframes"], // its volume's only (assertKeyframesFit)
-  text: ["keyframes", "animationIn", "animationOut", "emphasis", "blend"],
+  text: ["keyframes", "animationIn", "animationOut", "emphasis", "blend", "spans"],
   shape: [...VISUAL_EFFECTS, "blend"],
   adjustment: ["keyframes", "adjust", "grade", "mask"], // its opacity's and colours' keyframes only (assertKeyframesFit)
 };
@@ -130,6 +132,9 @@ function givenKeys(part: unknown, inside?: string): string[] {
   if (!isPlainObject(obj)) return [];
   return Object.keys(obj).filter((key) => obj[key] !== undefined);
 }
+
+// An empty list of spans is stored as none.
+const orNull = (spans: TextSpan[]): TextSpan[] | null => (spans.length > 0 ? spans : null);
 
 function assertEffectsFit(clip: EffectsHolder, keys: string[], opIndex: number, opName: string) {
   const allowed = clipEffects(clip);
@@ -234,6 +239,13 @@ function assertSpeedFits(clip: Clip, opIndex: number, opName: string) {
     const kind = clip.type === "audio" ? "an audio" : "an image";
     throw new OpError("INVALID", `${opName}: ${kind} clip's speed must be above 0`, opIndex);
   }
+}
+
+// A text's styled spans lie inside its words, in order.
+function assertSpansFit(clip: Clip, opIndex: number, opName: string) {
+  if (clip.type !== "text" || !clip.spans) return;
+  const problem = spansProblem(clip.text, clip.spans);
+  if (problem) throw new OpError("INVALID", `${opName}: clip "${clip.id}" spans are invalid: ${problem}`, opIndex);
 }
 
 // A volume is keyed only on a clip that sounds, and a sound has no picture to key.
@@ -439,6 +451,7 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         assertAccepts(track, op.clip, opIndex, name);
         assertSpeedFits(op.clip, opIndex, name);
         assertKeyframesFit(op.clip, opIndex, name);
+        assertSpansFit(op.clip, opIndex, name);
         // A null is the neutral value, so a clip that spells out "none" for a field it can't use is still fine.
         const carried: Record<string, unknown> = op.clip;
         assertEffectsFit(op.clip, givenKeys(op.clip).filter((key) => carried[key] !== null), opIndex, name);
@@ -639,46 +652,52 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         const { track, clipIndex } = findClip(doc, op.clipId, opIndex, name);
         assertUnlocked(track, opIndex, name);
         const current = track.clips[clipIndex];
-        assertEffectsFit(current, givenKeys(op.patch), opIndex, name);
+        // New words move a text's styled spans with them, so each stays on its own words; an op that names the spans
+        // says what they become itself. The undo then puts the old spans back with the old words.
+        const patch: typeof op.patch =
+          current.type === "text" && typeof op.patch.text === "string" && op.patch.spans === undefined && current.spans?.length
+            ? { ...op.patch, spans: orNull(remapSpans(current.text, op.patch.text, current.spans)) }
+            : op.patch;
+        assertEffectsFit(current, givenKeys(patch), opIndex, name);
         const transform: Record<string, unknown> = current.transform;
-        for (const key of [...givenKeys(op.patch, "transform"), ...givenKeys(op.expect, "transform")]) {
+        for (const key of [...givenKeys(patch, "transform"), ...givenKeys(op.expect, "transform")]) {
           if (Object.hasOwn(TRANSFORM_FILL, key) && transform[key] === undefined) transform[key] = TRANSFORM_FILL[key]();
         }
         if (current.type === "text") {
           const style: Record<string, unknown> = current.style;
-          for (const key of [...givenKeys(op.patch, "style"), ...givenKeys(op.expect, "style")]) {
+          for (const key of [...givenKeys(patch, "style"), ...givenKeys(op.expect, "style")]) {
             if (STYLE_FILL.has(key) && style[key] === undefined) style[key] = TEXT_STYLE_DEFAULTS[key as keyof typeof TEXT_STYLE_DEFAULTS];
           }
         }
         const fields: Record<string, unknown> = current;
-        for (const key of [...givenKeys(op.patch), ...givenKeys(op.expect)]) {
+        for (const key of [...givenKeys(patch), ...givenKeys(op.expect)]) {
           if (clipEffects(current).includes(key) && fields[key] === undefined) fields[key] = CLIP_FILL[key]();
           if (current.type === "shape" && Object.hasOwn(SHAPE_FILL, key) && fields[key] === undefined) fields[key] = SHAPE_FILL[key]();
         }
         // Colour changes merge one level deep too, and each one named starts from 0.
         const adjust = fields.adjust;
         if (isPlainObject(adjust)) {
-          for (const key of [...givenKeys(op.patch, "adjust"), ...givenKeys(op.expect, "adjust")]) {
+          for (const key of [...givenKeys(patch, "adjust"), ...givenKeys(op.expect, "adjust")]) {
             if ((ADJUST_KEYS as readonly string[]).includes(key) && adjust[key] === undefined) adjust[key] = 0;
           }
         }
         // A sound's clean-up merges one level deep as well: each part named starts from off.
         const sound = fields.sound;
         if (isPlainObject(sound)) {
-          for (const key of [...givenKeys(op.patch, "sound"), ...givenKeys(op.expect, "sound")]) {
+          for (const key of [...givenKeys(patch, "sound"), ...givenKeys(op.expect, "sound")]) {
             if (Object.hasOwn(SOUND_OFF, key) && sound[key] === undefined) sound[key] = SOUND_OFF[key];
           }
         }
         // So does a grade: each part named starts from off, and is then set, undone and expected whole.
         const grade = fields.grade;
         if (isPlainObject(grade)) {
-          for (const key of [...givenKeys(op.patch, "grade"), ...givenKeys(op.expect, "grade")]) {
+          for (const key of [...givenKeys(patch, "grade"), ...givenKeys(op.expect, "grade")]) {
             if (Object.hasOwn(GRADE_OFF, key) && grade[key] === undefined) grade[key] = GRADE_OFF[key]();
           }
         }
         const keyframes = fields.keyframes;
         if (isPlainObject(keyframes)) {
-          for (const key of [...givenKeys(op.patch, "keyframes"), ...givenKeys(op.expect, "keyframes")]) {
+          for (const key of [...givenKeys(patch, "keyframes"), ...givenKeys(op.expect, "keyframes")]) {
             if ((KEYFRAME_PROPS as readonly string[]).includes(key) && keyframes[key] === undefined) keyframes[key] = [];
           }
         }
@@ -689,12 +708,12 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
           if (!slotHolds || !holds(current, otherExpect)) throw stale(`clip "${op.clipId}"`);
         }
         for (const key of FROZEN_CLIP_KEYS) {
-          if (key in op.patch) {
+          if (key in patch) {
             throw new OpError("INVALID", `${name}: "${key}" cannot be changed with update_clip`, opIndex);
           }
         }
         const merged: Record<string, unknown> = { ...current };
-        for (const [key, value] of Object.entries(op.patch)) {
+        for (const [key, value] of Object.entries(patch)) {
           const existing = merged[key];
           if (key === "slot") {
             // A slot is replaced whole, and null takes it off.
@@ -724,11 +743,12 @@ export function applyOps(input: TimelineDoc, ops: Op[]): { doc: TimelineDoc; inv
         assertAccepts(track, result.data, opIndex, name);
         assertSpeedFits(result.data, opIndex, name);
         assertKeyframesFit(result.data, opIndex, name);
+        assertSpansFit(result.data, opIndex, name);
         const before: Record<string, unknown> = current;
         const after: Record<string, unknown> = result.data;
         const undo: Record<string, unknown> = {};
         const written: Record<string, unknown> = {};
-        for (const key of Object.keys(op.patch)) {
+        for (const key of Object.keys(patch)) {
           // transform, style and keyframes are compared one level deep, so the
           // undo only touches the sub-keys this op changed.
           const b = before[key];
