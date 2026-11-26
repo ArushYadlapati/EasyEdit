@@ -30,7 +30,7 @@ export function StorageSetupCard({ card, settingsHref }: { card: StorageCard; se
       {card.note && <p className="text-[13px] leading-5 text-ed-muted">{card.note}</p>}
       {card.action && (
         <Link href={settingsHref} className={linkButtonClass("primary", "mt-1")}>
-          {card.action === "choose" ? STORAGE_MESSAGES.chooseAccount : STORAGE_MESSAGES.reconnect}
+          {card.action === "choose" ? STORAGE_MESSAGES.connectDrive : STORAGE_MESSAGES.reconnect}
         </Link>
       )}
     </section>

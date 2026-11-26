@@ -87,15 +87,14 @@ describe("the welcome page", () => {
     await show();
     expect(screen.getByRole("heading", { name: "Welcome to EasyEdit" })).toBeTruthy();
     expect(screen.getByText("Step 1 of 2")).toBeTruthy();
-    expect(screen.getByText("Where should your videos live?")).toBeTruthy();
-    expect(screen.getByText("EasyEdit keeps your videos in your own Google Drive, in a folder of its own. It can't see your other files.")).toBeTruthy();
-    expect(screen.getByText(/Each Google account can store videos for only one space/)).toBeTruthy();
+    expect(screen.getByText("Connect Google Drive for your uploads")).toBeTruthy();
+    expect(screen.getByText("Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.")).toBeTruthy();
+    expect(screen.getByText(/Each Google account can hold uploads for only one space/)).toBeTruthy();
     expect(screen.getByText("You're signed in as ada@gmail.com.")).toBeTruthy();
-    const here = screen.getByRole("link", { name: "Connect to this Google Drive" });
+    const here = screen.getByRole("link", { name: "Connect Google Drive" });
     expect(here.getAttribute("href")).toBe(connectHref(personalSpaceId(ada.id), { signedInAccount: true, returnTo: "/welcome?step=storage" }));
-    const other = screen.getByRole("link", { name: "Choose a different Google account" });
+    const other = screen.getByRole("link", { name: "Use a different Google account" });
     expect(other.getAttribute("href")).toBe(connectHref(personalSpaceId(ada.id), { returnTo: "/welcome?step=storage" }));
-    expect(screen.queryByRole("link", { name: "Choose Google account" })).toBeNull();
     expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents");
     expect(screen.getByRole("button", { name: "Skip setup" })).toBeTruthy();
   });
@@ -108,7 +107,7 @@ describe("the welcome page", () => {
       await show();
       expect(screen.queryByText(/^Step \d+ of/)).toBeNull();
       expect(screen.getByText("Use EasyEdit with your AI agent")).toBeTruthy();
-      expect(screen.queryByText("Where should your videos live?")).toBeNull();
+      expect(screen.queryByText("Connect Google Drive for your uploads")).toBeNull();
       document.body.innerHTML = "";
     }
   });
@@ -129,14 +128,14 @@ describe("the welcome page", () => {
     expect(screen.getByText("Step 1 of 2")).toBeTruthy();
     expect(screen.getByRole("status").textContent).toBe("Google Drive connected.");
     expect(screen.getByRole("link", { name: "Continue" }).getAttribute("href")).toBe("/welcome?step=agents");
-    expect(screen.queryByRole("link", { name: "Connect to this Google Drive" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Connect Google Drive" })).toBeNull();
     expect(screen.queryByText("Use EasyEdit with your AI agent")).toBeNull();
   });
 
   it("a connected note with no storage behind it shows the normal storage step", async () => {
     await show({ step: "storage", storage: "connected" });
     expect(screen.queryByText("Google Drive connected.")).toBeNull();
-    expect(screen.getByRole("link", { name: "Connect to this Google Drive" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Connect Google Drive" })).toBeTruthy();
   });
 
   it("after a connect that didn't work, says why and offers the choices again", async () => {
@@ -144,8 +143,8 @@ describe("the welcome page", () => {
     expect(screen.getByRole("alert").textContent).toBe(
       "That Google account already holds another EasyEdit space's storage. Choose a different Google account.",
     );
-    expect(screen.getByRole("link", { name: "Connect to this Google Drive" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Choose a different Google account" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Connect Google Drive" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Use a different Google account" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents");
   });
 
@@ -157,7 +156,7 @@ describe("the welcome page", () => {
 
   it("an unknown step is the first step", async () => {
     await show({ step: "nonsense" });
-    expect(screen.getByText("Where should your videos live?")).toBeTruthy();
+    expect(screen.getByText("Connect Google Drive for your uploads")).toBeTruthy();
   });
 
   it("an invited member of the team sees the agents step only", async () => {
@@ -169,7 +168,7 @@ describe("the welcome page", () => {
 
   it("a team that isn't the person's is ignored: the normal flow", async () => {
     await show({ team: SEED_TEAM_SLUG });
-    expect(screen.getByText("Where should your videos live?")).toBeTruthy();
+    expect(screen.getByText("Connect Google Drive for your uploads")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents");
   });
 

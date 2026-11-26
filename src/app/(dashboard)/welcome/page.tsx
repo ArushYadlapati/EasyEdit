@@ -12,7 +12,7 @@ import { welcomePlan, type WelcomeStep } from "@/lib/onboarding/steps";
 import { ensurePersonalSpace } from "@/lib/spaces/service";
 import { personalSpaceId } from "@/lib/spaces/types";
 import { StorageNote } from "@/components/storage/storage-banner";
-import { connectHref, settingsNote, STORAGE_MESSAGES } from "@/lib/storage/messages";
+import { connectHref, settingsNote, SETUP_CARD, STORAGE_MESSAGES } from "@/lib/storage/messages";
 import { finishOnboardingAction } from "./actions";
 
 export const metadata: Metadata = { title: "Welcome" };
@@ -67,10 +67,8 @@ export default async function WelcomePage({ searchParams }: PageProps<"/welcome"
 
         {step === "storage" ? (
           <section className="flex flex-col gap-4">
-            <h2 className="text-sm font-semibold">Where should your videos live?</h2>
-            <p className="text-[13px] leading-5 text-ed-muted">
-              EasyEdit keeps your videos in your own Google Drive, in a folder of its own. It can&apos;t see your other files.
-            </p>
+            <h2 className="text-sm font-semibold">{SETUP_CARD.personalTitle}</h2>
+            <p className="text-[13px] leading-5 text-ed-text">{STORAGE_MESSAGES.why}</p>
             {connected ? (
               <>
                 {note && <StorageNote note={note} />}
@@ -83,14 +81,17 @@ export default async function WelcomePage({ searchParams }: PageProps<"/welcome"
             ) : (
               <>
                 {note && told !== "connected" && <StorageNote note={note} />}
-                <p className="text-[13px] leading-5 text-ed-muted">{STORAGE_MESSAGES.oneAccountOneSpace}</p>
+                {/* Said before any account is picked: one Google account holds one space's uploads. */}
+                <p className="text-[13px] leading-5 text-ed-text">
+                  {STORAGE_MESSAGES.oneAccountOneSpace} {STORAGE_MESSAGES.forATeam}
+                </p>
                 <p className="text-[13px] leading-5 text-ed-muted">{STORAGE_MESSAGES.signedInAs(me.email)}</p>
                 <div className="flex flex-wrap items-center gap-3">
                   <a
                     href={connectHref(personalId, { signedInAccount: true, returnTo: storageHref })}
                     className={linkButtonClass(differentFirst ? undefined : "primary")}
                   >
-                    {STORAGE_MESSAGES.connectSignedIn}
+                    {STORAGE_MESSAGES.connectDrive}
                   </a>
                   <a href={connectHref(personalId, { returnTo: storageHref })} className={linkButtonClass(differentFirst ? "primary" : undefined)}>
                     {STORAGE_MESSAGES.chooseDifferent}

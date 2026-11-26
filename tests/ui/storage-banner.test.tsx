@@ -108,9 +108,9 @@ describe("the top of a space's dashboard", () => {
   it("a personal space with no storage: the setup card, leading to storage settings", async () => {
     withStorageSettings();
     const top = await noticesFor(ada, "personal");
-    expect(within(top).getByRole("heading", { name: "Set up your storage" })).toBeTruthy();
-    expect(within(top).getByText("Pick a Google account for your own videos.")).toBeTruthy();
-    expect(within(top).getByRole("link", { name: "Choose account" }).getAttribute("href")).toBe("/s/personal/settings/storage");
+    expect(within(top).getByRole("heading", { name: "Connect Google Drive for your uploads" })).toBeTruthy();
+    expect(within(top).getByText("Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.")).toBeTruthy();
+    expect(within(top).getByRole("link", { name: "Connect Google Drive" }).getAttribute("href")).toBe("/s/personal/settings/storage");
   });
 
   it("a team with no storage: the card for its admins only", async () => {
@@ -120,8 +120,8 @@ describe("the top of a space's dashboard", () => {
     delete (globalThis as { __easyEditMainSa?: unknown }).__easyEditMainSa;
     try {
       const top = await noticesFor(ada, "robots");
-      expect(within(top).getByRole("heading", { name: "Set up this team's storage" })).toBeTruthy();
-      expect(within(top).getByRole("link", { name: "Choose account" }).getAttribute("href")).toBe("/s/robots/settings/storage");
+      expect(within(top).getByRole("heading", { name: "Connect Google Drive for this team's uploads" })).toBeTruthy();
+      expect(within(top).getByRole("link", { name: "Connect Google Drive" }).getAttribute("href")).toBe("/s/robots/settings/storage");
       expect((await noticesFor(bea, "robots")).textContent).toBe("");
     } finally {
       delete (globalThis as { __easyEditMainSa?: unknown }).__easyEditMainSa;
@@ -142,7 +142,7 @@ describe("the top of a space's dashboard", () => {
     const admin = await noticesFor(ada, "robots");
     expect(within(admin).getByText(BANNER)).toBeTruthy();
     expect(within(admin).getByRole("link", { name: "Reconnect" }).getAttribute("href")).toBe("/s/robots/settings/storage");
-    expect(within(admin).queryByText("Set up this team's storage")).toBeNull();
+    expect(within(admin).queryByText("Connect Google Drive for this team's uploads")).toBeNull();
     const editor = await noticesFor(bea, "robots");
     expect(within(editor).getByText(BANNER)).toBeTruthy();
     expect(within(editor).queryByRole("link")).toBeNull();

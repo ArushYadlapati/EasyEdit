@@ -8,7 +8,7 @@ import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { StorageNote } from "@/components/storage/storage-banner";
 import { Button } from "@/components/ui/button";
 import { linkButtonClass } from "@/components/ui/button-class";
-import { SETUP_CARD, STORAGE_MESSAGES, connectHref, settingsNote, storageSettingsPath, usageLine } from "@/lib/storage/messages";
+import { STORAGE_MESSAGES, connectHref, settingsNote, storageSettingsPath, usageLine } from "@/lib/storage/messages";
 import { spacePath } from "@/lib/spaces/paths";
 import type { StorageSettingsView } from "@/lib/storage/settings-view";
 import type { StorageFormState } from "@/lib/storage/storage-actions";
@@ -150,22 +150,24 @@ export function StorageSettings({ view, note, first, disconnect }: StorageSettin
       );
     }
 
-    // No storage yet: the choices.
-    const intro = space.kind === "personal" ? SETUP_CARD.personalText : firstRun ? null : STORAGE_MESSAGES.noneTeam;
+    // No storage yet: what it is and the one rule first, then the way in.
     return (
       <>
-        {firstRun && <p className="text-sm font-semibold text-ed-text">{STORAGE_MESSAGES.firstRun}</p>}
-        {intro !== null && <p className={TEXT}>{intro}</p>}
+        {firstRun ? (
+          <p className="text-sm font-semibold text-ed-text">{STORAGE_MESSAGES.firstRun}</p>
+        ) : (
+          space.kind === "team" && <p className={TEXT}>{STORAGE_MESSAGES.noneTeam}</p>
+        )}
+        <p className={TEXT}>{STORAGE_MESSAGES.why}</p>
+        <p className={TEXT}>{STORAGE_MESSAGES.oneAccountOneSpace}</p>
         <div className="flex flex-col gap-2">
           {/* One way in: Google's own account picker. A connected account can't be offered as a one-click choice,
               because it may already hold another space's storage (one Google account, one space). */}
           <div className={ROW}>
             <ConnectLink href={connectHref(space.id)} primary>
-              {STORAGE_MESSAGES.chooseGoogleAccount}
+              {STORAGE_MESSAGES.connectDrive}
             </ConnectLink>
           </div>
-          <p className={MUTED}>{STORAGE_MESSAGES.oneAccountOneSpace}</p>
-          <p className={MUTED}>{STORAGE_MESSAGES.ownFolder}</p>
           {/* Nobody is held on this page after making a team. */}
           {firstRun && (
             <div className={ROW}>
