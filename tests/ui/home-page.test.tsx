@@ -299,7 +299,7 @@ describe("home page", () => {
     expect([...demo.children].map((el) => el.tagName)).toEqual(["H2", "P", "DIV", "UL"]);
     const show = demo.children[2];
     expect(show.className).toBe("h-demoShow");
-    expect([...show.children]).toEqual([stage, demo.querySelector(".h-demoAnswer")]);
+    expect([...show.children]).toEqual([demo.querySelector(".h-ask"), stage, demo.querySelector(".h-demoAnswer")]);
     expect(demo.children[3]).toBe(requests);
     expect(ai.querySelector(".h-demoText, .h-sectionHead, .h-points, h3")).toBeNull();
     // The old three points live on as the requests' own result lines.
@@ -308,6 +308,41 @@ describe("home page", () => {
     }
     expect(stage.querySelector(":scope > [data-ui]")).toBeTruthy();
     expect(stage.querySelector("figcaption")).toBeNull();
+  });
+
+  it("says where asking happens: in the agent you already use, and the edit lands here", async () => {
+    render(await Home());
+    const ai = document.getElementById("ai")!;
+    expect(within(ai).getByRole("heading", { level: 2 }).nextElementSibling!.textContent).toBe(
+      "You ask in Claude, ChatGPT or another AI agent you already use. It edits your project here, and you see every change. Pick a request to watch one land in a working model of the editor.",
+    );
+    expect(document.querySelector(".h-page")!.textContent).not.toContain("speaks MCP");
+  });
+
+  it("draws each request as the person's message in that agent's own app, above the editor where it lands", () => {
+    render(<AgentDemo />);
+    const ask = document.querySelector<HTMLElement>(".h-ask")!;
+    // A drawn piece of an app, kept from screen readers: the request buttons say the same words.
+    expect(ask.hasAttribute("data-ui")).toBe(true);
+    expect(ask.getAttribute("aria-hidden")).toBe("true");
+    const chats = [...ask.querySelectorAll<HTMLElement>(".h-askChat")];
+    expect(chats.map((c) => [c.dataset.agent, c.querySelector(".h-askApp")?.textContent, c.querySelector(".h-askMsg")?.textContent])).toEqual(
+      REQUESTS.map((r) => [r.agent, r.agent, r.words]),
+    );
+    for (const chat of chats) expect(chat.querySelector(".h-askTool")?.textContent).toBe("EasyEdit connector");
+    const on = () => chats.filter((c) => c.hasAttribute("data-on")).map((c) => c.dataset.agent);
+    expect(on()).toEqual(["Claude"]);
+    fireEvent.click(screen.getByRole("button", { name: /Make the surf shot two seconds long/ }));
+    expect(on()).toEqual(["ChatGPT"]);
+    // Each agent's own mark, coloured as that agent's edits are.
+    const marks = chats.map((c) => c.querySelector<HTMLElement>(".h-askLogo")!.style.maskImage);
+    expect(marks).toEqual(REQUESTS.map((r) => `url(/home/logos/${r.logo}.svg)`));
+    const rules = cssRules(readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8"));
+    const decl = (selector: string, prop: string) =>
+      rules.find((r) => r.media === null && r.selectors.includes(selector))?.decls.get(prop);
+    expect(decl('.h-askChat[data-agent="Claude"]', "--agent")).toBe("var(--h-claude)");
+    expect(decl(".h-askChat:not([data-on])", "visibility")).toBe("hidden");
+    expect(decl(".h-ask", "box-shadow")).toBe("0 0 0 1px var(--ed-line-strong)");
   });
 
   it("takes the keyboard from the editor's Undo to the requests and then on to the first project", async () => {
@@ -469,7 +504,11 @@ describe("home page free, teams and every agent", () => {
     expect(copies[1].getAttribute("aria-hidden")).toBe("true");
     // The line under the heading says what connects and where, and lists no names.
     const line = heading.nextElementSibling!;
-    expect(line.textContent).toBe("Any agent that speaks MCP can edit your projects. Connect one from AI agents in your account menu.");
+    expect(line.textContent!.replace(/\u00a0/g, " ")).toBe(
+      "Any AI agent that supports MCP, the standard way agents connect to apps, can edit your projects. Once you've signed up, the AI agents page shows the steps for yours: add EasyEdit's link to your agent, sign in and choose Allow.",
+    );
+    // Nothing a signed-out visitor doesn't have, like an account menu.
+    expect(line.textContent).not.toContain("account menu");
     for (const name of names) expect(line.textContent).not.toContain(name);
   });
 
@@ -521,7 +560,7 @@ describe("home page free, teams and every agent", () => {
 describe("home page stylesheet (home.css)", () => {
   const rules = cssRules(readFileSync(join(process.cwd(), "src/components/home/home.css"), "utf8"));
   // The drawn pieces of the app keep the app's own sizes, colours, edges and dividers.
-  const DRAWN = /^\.h-(ed|ui|tm|kit|shot|drive|dock|np|heroBox|heroHandle|heroTag)/;
+  const DRAWN = /^\.h-(ed|ui|ask|tm|kit|shot|drive|dock|np|heroBox|heroHandle|heroTag)/;
   const own = (selector: string) => !DRAWN.test(selector.replace(/^\.h-(hero|page)(\[[^\]]*\])? /, ""));
   const pageRules = rules.filter((r) => r.selectors.some(own) && !/^(from|to|\d+%)$/.test(r.selectors[0]));
 

@@ -48,8 +48,8 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
               <span className="h-line">Ask an agent.</span> <span className="h-line">Watch it edit.</span>
             </h2>
             <p className="h-lead">
-              Connect Claude, ChatGPT, Cursor or any agent that speaks MCP. Pick a request and watch it land in a working
-              model of the editor.
+              You ask in Claude, ChatGPT or another AI agent you already use. It edits your project here, and you see
+              every change. Pick a request to watch one land in a working model of the editor.
             </p>
           </AgentDemo>
         </section>
@@ -92,7 +92,9 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
             <span className="h-line">Works with</span> <span className="h-line">every AI agent.</span>
           </h2>
           <p className="h-lead">
-            Any agent that speaks MCP can edit your projects. Connect one from AI&nbsp;agents in your account menu.
+            Any AI agent that supports MCP, the standard way agents connect to apps, can edit your projects. Once
+            you&apos;ve signed up, the AI&nbsp;agents page shows the steps for yours: add EasyEdit&apos;s link to your
+            agent, sign in and choose Allow.
           </p>
           <AgentMarquee agents={AGENTS} />
         </section>

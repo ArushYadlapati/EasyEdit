@@ -1247,6 +1247,97 @@
   letter-spacing: -0.01em;
   color: #fff;
 }
+/* The person's request in their own agent's app, drawn above the editor where its edit lands: the agent's mark in
+   its own colour, its name, EasyEdit as a connector in it, and the person's words as their message. A drawn piece of
+   an app, so it keeps the app's sizes (13 px, 11 px for the connector's tag) and the window's 1 px ring. All four sit
+   in the one grid cell and the unseen ones hold it open, so nothing moves when the choice does. */
+.h-ask {
+  display: grid;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ed-text);
+  background: var(--ed-bg);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--ed-line-strong);
+}
+.h-askChat {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+}
+.h-askChat:not([data-on]) {
+  visibility: hidden;
+}
+.h-askChat[data-agent="Claude"] {
+  --agent: var(--h-claude);
+}
+.h-askChat[data-agent="ChatGPT"] {
+  --agent: var(--h-chatgpt);
+}
+.h-askChat[data-agent="Codex"] {
+  --agent: var(--h-codex);
+}
+.h-askChat[data-agent="Cursor"] {
+  --agent: var(--h-cursor);
+}
+.h-askBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--ed-panel);
+  border-bottom: 1px solid var(--ed-line);
+}
+.h-askLogo {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: var(--agent);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+.h-askApp {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.h-askTool {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ed-raised);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ed-muted);
+  white-space: nowrap;
+}
+/* The person's message, on the right as a chat app sets what you sent; it comes in as the request is picked. */
+.h-askMsg {
+  align-self: flex-end;
+  max-width: 85%;
+  margin: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--ed-raised);
+  text-wrap: pretty;
+}
+.h-askChat[data-on] .h-askMsg {
+  animation: h-in 300ms ease both;
+}
+/* With the system's high contrast colours the ring and the message's fill go: both get a real edge. */
+@media (forced-colors: active) {
+  .h-ask,
+  .h-askMsg {
+    border: 1px solid CanvasText;
+  }
+  .h-askLogo {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}
+
 /* An agent's edit is marked in that agent's own colour (site.css). */
 .h-ui[data-agent="Claude"] {
   --fresh: var(--h-claude);
