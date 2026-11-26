@@ -30,16 +30,18 @@ const byId = (entries: MenuEntry[], id: string) => entries.find((e) => e.id === 
 it("the Edit menu lists its items in order", () => {
   const entries = editMenu(BASE);
   expect(entries.map((e) => e.id)).toEqual([
-    "undo", "redo", "cut", "copy", "paste", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection", "save-template",
+    "undo", "redo", "cut", "copy", "paste", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection", "save-template", "import-timeline", "export-timeline",
   ]);
   expect(entries.map((e) => e.label)).toEqual([
-    "Undo", "Redo", "Cut", "Copy", "Paste", "Duplicate", "Split", "Delete", "Ripple delete", "Select all", "Deselect all", "Save as template…",
+    "Undo", "Redo", "Cut", "Copy", "Paste", "Duplicate", "Split", "Delete", "Ripple delete", "Select all", "Deselect all", "Save as template…", "Import timeline…", "Export timeline…",
   ]);
-  expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["cut", "split", "select-all", "save-template"]);
-  for (const entry of entries.filter((e) => e.id !== "save-template")) expect(entry.command).toBe(entry.id);
+  expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["cut", "split", "select-all", "save-template", "import-timeline"]);
+  const dialogs = ["save-template", "import-timeline", "export-timeline"]; // opened by the top bar, not commands
+  for (const entry of entries.filter((e) => !dialogs.includes(e.id))) expect(entry.command).toBe(entry.id);
+  for (const id of dialogs) expect(byId(entries, id).command).toBeUndefined();
   expect(byId(entries, "save-template").command).toBeUndefined();
   // edit follows the shortcut table: copy, select all and deselect change nothing.
-  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["undo", "redo", "cut", "paste", "duplicate", "split", "delete", "ripple-delete", "save-template"]);
+  expect(entries.filter((e) => e.edit).map((e) => e.id)).toEqual(["undo", "redo", "cut", "paste", "duplicate", "split", "delete", "ripple-delete", "save-template", "import-timeline"]);
 });
 
 it("Save as template is there for an editor and gone for a viewer or a deleted project", () => {
@@ -50,7 +52,10 @@ it("Save as template is there for an editor and gone for a viewer or a deleted p
 
 it("a viewer may only copy and select", () => {
   const all = { ...BASE, hasSelection: true, canPaste: true, canUndo: true, canRedo: true };
-  expect(enabled(editMenu({ ...all, canEdit: false }))).toEqual(["copy", "select-all", "clear-selection"]);
+  // Writing the cut out for another editor changes nothing, so a viewer has that too.
+  expect(enabled(editMenu({ ...all, canEdit: false }))).toEqual(["copy", "select-all", "clear-selection", "export-timeline"]);
+  expect(byId(editMenu({ ...all, canEdit: false }), "export-timeline").separatorBefore).toBe(true);
+  expect(editMenu({ ...all, canEdit: false }).some((e) => e.id === "import-timeline")).toBe(false);
   // The same input for an editor enables everything.
   expect(enabled(editMenu(all))).toEqual(editMenu(all).map((e) => e.id));
 });
@@ -60,20 +65,21 @@ it("nothing edits while a gesture is live or the project is deleted", () => {
   for (const input of [{ ...all, busy: true }, { ...all, deleted: true }]) {
     const entries = editMenu(input);
     const edits = entries.filter((e) => e.edit);
-    expect(edits).toHaveLength(input.deleted ? 8 : 9);
+    expect(edits).toHaveLength(input.deleted ? 8 : 10);
     for (const entry of edits) expect(entry.disabled, entry.id).toBe(true);
-    expect(enabled(entries)).toEqual(["copy", "select-all", "clear-selection"]);
+    // A deleted project has no timeline to write out.
+    expect(enabled(entries)).toEqual(input.deleted ? ["copy", "select-all", "clear-selection"] : ["copy", "select-all", "clear-selection", "export-timeline"]);
   }
 });
 
 it("undo and redo follow their stacks; cut and delete need a selection; paste needs something copied", () => {
-  expect(enabled(editMenu(BASE))).toEqual(["split", "select-all", "clear-selection", "save-template"]);
-  expect(enabled(editMenu({ ...BASE, canUndo: true }))).toEqual(["undo", "split", "select-all", "clear-selection", "save-template"]);
-  expect(enabled(editMenu({ ...BASE, canRedo: true }))).toEqual(["redo", "split", "select-all", "clear-selection", "save-template"]);
+  expect(enabled(editMenu(BASE))).toEqual(["split", "select-all", "clear-selection", "save-template", "import-timeline", "export-timeline"]);
+  expect(enabled(editMenu({ ...BASE, canUndo: true }))).toEqual(["undo", "split", "select-all", "clear-selection", "save-template", "import-timeline", "export-timeline"]);
+  expect(enabled(editMenu({ ...BASE, canRedo: true }))).toEqual(["redo", "split", "select-all", "clear-selection", "save-template", "import-timeline", "export-timeline"]);
   expect(enabled(editMenu({ ...BASE, hasSelection: true }))).toEqual([
-    "cut", "copy", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection", "save-template",
+    "cut", "copy", "duplicate", "split", "delete", "ripple-delete", "select-all", "clear-selection", "save-template", "import-timeline", "export-timeline",
   ]);
-  expect(enabled(editMenu({ ...BASE, canPaste: true }))).toEqual(["paste", "split", "select-all", "clear-selection", "save-template"]);
+  expect(enabled(editMenu({ ...BASE, canPaste: true }))).toEqual(["paste", "split", "select-all", "clear-selection", "save-template", "import-timeline", "export-timeline"]);
 });
 
 it("the View menu shows the two switches and the zoom limits", () => {

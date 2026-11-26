@@ -24,6 +24,7 @@ import { spacePath } from "@/lib/spaces/paths";
 import { ProjectName } from "./project-name";
 import { RIGHT_TABS } from "./right-panel";
 import { SaveStatus } from "./save-status";
+import { TimelineFileDialog, type TimelineFileMode } from "./timeline-file-dialog";
 import { useCommandRunner, useShortcutLabel } from "./use-shortcuts";
 
 type TopBarProps = {
@@ -61,6 +62,7 @@ export function TopBar({
   const { fonts } = useBrand().kit;
   const run = useCommandRunner(onShowShortcuts, onExport);
   const [renameRequest, setRenameRequest] = useState(0);
+  const [timelineFile, setTimelineFile] = useState<TimelineFileMode | null>(null);
   const ownSearch = useRef<HTMLInputElement>(null);
   const canEdit = useEditor((s) => s.canEdit);
   const moved = useEditor((s) => s.moved);
@@ -80,6 +82,8 @@ export function TopBar({
     if (id === "safe-zones") store.getState().toggleSafeZones();
     else if (id === "reset-layout") onResetLayout?.();
     else if (id === "save-template") onSaveTemplate?.();
+    else if (id === "import-timeline") setTimelineFile("import");
+    else if (id === "export-timeline") setTimelineFile("export");
     else run(id as CommandId);
   }
 
@@ -114,6 +118,8 @@ export function TopBar({
         return;
       case "adjustment":
         return void addAdjustmentLayer(store);
+      case "timeline-file":
+        return setTimelineFile(action.mode);
       case "panel":
         return onOpenPanel?.(action.side, action.tab);
       case "settings":
@@ -159,6 +165,7 @@ export function TopBar({
         )}
       </div>
       <FeatureSearch items={searchList} onRun={runFound} inputRef={searchRef ?? ownSearch} />
+      <TimelineFileDialog mode={timelineFile} onClose={() => setTimelineFile(null)} />
       <div className="flex items-center justify-end gap-2">
         <EditingIndicator />
         <div className="shrink-0">

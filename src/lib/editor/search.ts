@@ -23,6 +23,7 @@ export type SearchAction =
   | { kind: "safe-zones" }
   | { kind: "reset-layout" }
   | { kind: "save-template" }
+  | { kind: "timeline-file"; mode: "import" | "export" }
   | { kind: "rename" };
 
 // command: its key is shown as the result's hint. checked: a switch, shown as on or off.
@@ -361,6 +362,25 @@ export function searchItems(input: SearchInput): SearchItem[] {
       disabled: input.busy,
     });
   }
+  // After Export, so a search for "export" still finds the video's export first.
+  items.push(
+    {
+      id: "import-timeline",
+      label: "Import timeline from another editor",
+      group: "Project",
+      keywords: ["premiere", "resolve", "davinci", "final cut", "xml", "edl", "otio", "open", "sequence", "project"],
+      action: { kind: "timeline-file", mode: "import" },
+      disabled: editBlocked,
+    },
+    {
+      id: "export-timeline",
+      label: "Export timeline for another editor",
+      group: "Project",
+      keywords: ["premiere", "resolve", "davinci", "final cut", "xml", "edl", "otio", "save", "sequence", "hand off"],
+      action: { kind: "timeline-file", mode: "export" },
+      disabled: input.deleted,
+    },
+  );
   return items;
 }
 

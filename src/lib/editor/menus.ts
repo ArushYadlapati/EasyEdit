@@ -94,6 +94,12 @@ export function editMenu(input: TopMenuInput): MenuEntry[] {
   if (input.canEdit && !input.deleted) {
     items.push({ id: "save-template", label: "Save as template…", separatorBefore: true, edit: true, disabled: input.busy });
   }
+  // A cut from, or for, another editor (Premiere Pro, DaVinci Resolve): the top bar opens each dialog by id. Writing
+  // one out changes nothing, so a viewer has it too.
+  if (!input.deleted) {
+    if (input.canEdit) items.push({ id: "import-timeline", label: "Import timeline…", separatorBefore: true, edit: true, disabled: input.busy });
+    items.push({ id: "export-timeline", label: "Export timeline…", ...(!input.canEdit && { separatorBefore: true }) });
+  }
   return items;
 }
 
