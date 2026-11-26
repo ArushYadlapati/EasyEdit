@@ -8,6 +8,7 @@ import type { CurrentUser } from "@/lib/access-rules";
 import type { Role } from "@/lib/allowlist/service";
 import type { MySpace } from "@/lib/spaces/types";
 import { AGENT_KINDS, AGENTS, fillTemplate } from "@/lib/connector/agents";
+import { SKILL_WORDS } from "@/lib/skills/words";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
@@ -164,6 +165,49 @@ describe("setting up an agent", () => {
     await click(tab("OpenAI API"));
     expect(within(panel()).getByText(/This agent needs an access token/)).toBeTruthy();
     expect(within(panel()).getByText(/"authorization": "<your access token>"/)).toBeTruthy();
+  });
+});
+
+describe("video skills", () => {
+  it("come after the setup steps, say connected agents already have them, and give three other ways in", () => {
+    renderView();
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual(["Server address", "Set up an agent", "Video skills", "Connected agents", "Access tokens"]);
+    const section = region("Video skills");
+    expect(within(section).getByText(SKILL_WORDS.intro)).toBeTruthy();
+    expect(within(section).getByText("Agents you connect here already have them. You can also add them yourself:")).toBeTruthy();
+    const ways = within(section).getByRole("list", { name: "Other ways to add them" });
+    expect(within(ways).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "Claude Code",
+      "Codex, Cursor, Gemini CLI and Copilot",
+      "Claude on the web",
+    ]);
+    expect(within(ways).getByText("Upload the same file under Settings → Capabilities → Skills.")).toBeTruthy();
+    // No words an agent's maker would use and a person wouldn't.
+    expect(section.textContent).not.toMatch(/\b(MCP|oEmbed|JSON|token)\b/i);
+  });
+
+  it("Claude Code gets the two plugin commands, each read-only and copied on its own", async () => {
+    renderView();
+    const section = region("Video skills");
+    const first = within(section).getByRole("textbox", { name: "First command" }) as HTMLInputElement;
+    const second = within(section).getByRole("textbox", { name: "Second command" }) as HTMLInputElement;
+    expect([first.value, second.value]).toEqual(["/plugin marketplace add ArushYadlapati/EasyEdit", "/plugin install easyedit@easyedit"]);
+    expect(first.readOnly && second.readOnly).toBe(true);
+    await click(button("Copy the first command", section));
+    expect(writeText).toHaveBeenLastCalledWith("/plugin marketplace add ArushYadlapati/EasyEdit");
+    await click(button("Copy the second command", section));
+    expect(writeText).toHaveBeenLastCalledWith("/plugin install easyedit@easyedit");
+    expect(button("Copy the second command", section).textContent).toBe("Copied");
+  });
+
+  it("other agents download the zip and unzip it into their skills folder", () => {
+    renderView();
+    const section = region("Video skills");
+    expect(within(section).getByText((_, el) => el?.tagName === "P" && el.textContent === "Download the skill and unzip it into ~/.agents/skills.")).toBeTruthy();
+    const download = within(section).getByRole("link", { name: "Download easyedit-video.zip" });
+    expect(download.getAttribute("href")).toBe("/skills/easyedit-video.zip");
+    expect(download.getAttribute("download")).toBe("easyedit-video.zip");
   });
 });
 

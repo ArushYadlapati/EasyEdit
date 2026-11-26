@@ -5,7 +5,7 @@ Read this when someone wants you to learn their style from their videos, links o
 ## The short version
 
 - Start by reading what's already saved: `get_editing_guide` with topic "style" and the space. You get the style, one line of facts for each reference, and a frame sheet for each analyzed video, where your client can show images.
-- Learn from two to five videos that feel most like them. Their own files give the full read: shots, words, sound and color. A link gives you little more than a title and an author.
+- Learn from two to five videos that feel most like them. Their own files give the full read: shots, words, sound and color. A link gives you little more than a title, and a TikTok link often not even that.
 - Go by medians and by what most references share. One odd video shouldn't set the style.
 - Fill only the fields the evidence supports. An empty field is better than a wrong one.
 - Write the summary, hook, voice, always and never in plain, concrete words that someone could check on a timeline.
@@ -19,7 +19,7 @@ A style learns from up to 12 references in all. There are three kinds, and each 
 
 - **Their own videos**, from the space's media, are the best source. EasyEdit reads the file in the person's browser, measures the cuts, the words, the sound and the colors, and saves a strip of frames.
 - **Past projects** made in EasyEdit show the choices they made in the editor: caption look, fonts, transitions, music level and looks.
-- **Links** to YouTube, Vimeo or TikTok videos show what a video is called and who made it. Nothing is downloaded, so there's nothing to measure.
+- **Links** to YouTube or Vimeo videos show what a video is called and who made it. TikTok links show almost nothing. Nothing is downloaded, so there's nothing to measure.
 
 People add videos and past projects themselves, on the space's Style page (Settings → Style). You can add links with `save_style` and add_links. The space is a slug from `list_projects`, or "personal".
 
@@ -89,8 +89,9 @@ If your client can't show images, you still get every number and each sheet's fr
 
 What a link gives you:
 
-- A title and the author or channel. The Style page also shows the person its cover picture.
+- From YouTube and Vimeo, a title and the author or channel. The Style page also shows the person its cover picture.
 - From Vimeo, and from a video picked from the space's connected YouTube channel, the length and the description too.
+- From TikTok, almost nothing. TikTok doesn't share a video's title or picture with other apps, so the link is usually saved with its address as the title.
 
 What it doesn't give you: shots, words, sound or colors. A link can't tell you how a video is cut.
 
@@ -186,7 +187,7 @@ Then tell them what you changed, give the editor link, and ask whether it feels 
 ## Common mistakes
 
 - Saving a style without asking. It changes what every agent in the space reads.
-- Writing pace, shot length or a look from links. A link gives a title and an author, nothing measured.
+- Writing pace, shot length or a look from links. A link gives a title at most, nothing measured.
 - Letting one outlier set the style, such as a 10-minute tutorial among 30-second Reels, or one sunset video that makes the look "golden".
 - Going by the average shot length when one long shot skews it. Use the median.
 - Sending always with only your new item and wiping the rest. Lists replace whole.

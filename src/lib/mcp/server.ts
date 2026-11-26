@@ -1,23 +1,27 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
+import { SKILL_DESCRIPTION, SKILL_MD, SKILL_TOPICS } from "@/lib/skills";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { FormatId } from "@/lib/timeline";
 import { UNEXPECTED } from "./errors";
 import { EDIT_DESCRIPTION, buildEditingGuide } from "./guide";
+import { editInMyStylePrompt, learnMyStylePrompt } from "./style-prompts";
 import { withStructuredContent } from "./structured";
 import { addMediaTool } from "./tools/add-media";
 import { addTextTool } from "./tools/add-text";
 import { createProjectTool } from "./tools/create-project";
 import { editTimelineTool } from "./tools/edit-timeline";
 import { FetchOutput, fetchTool } from "./tools/fetch";
+import { getEditingGuideTool } from "./tools/get-editing-guide";
 import { getProjectTool } from "./tools/get-project";
 import { listAssetsTool } from "./tools/list-assets";
 import { listProjectsTool } from "./tools/list-projects";
+import { saveStyleTool, STYLE_LINKS_PER_CALL } from "./tools/save-style";
 import { SEARCH_RESULTS_MAX, SearchOutput, searchTool } from "./tools/search";
 import { fillTemplateTool, getTemplateTool, listTemplatesTool } from "./tools/templates";
 import { undoChangeTool } from "./tools/undo-change";
-import { ok, type ToolContext, type ToolResult } from "./types";
+import type { ToolContext, ToolResult } from "./types";
 
 // A database error code (such as "22021"), on the error or its cause. Only a short plain token is taken.
 function errorCode(error: unknown): string | undefined {
@@ -28,14 +32,16 @@ function errorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-// Every tool answers through here, and Claude reads UNEXPECTED when one throws.
+// Every tool answers through here, and Claude reads UNEXPECTED when one throws. The text comes first, then one image
+// block per picture, so a client that drops pictures still reads the whole answer.
 // The log gets the tool name, the error's class and its database code. Never the error itself, its message or its stack:
 // a failed query's message holds the values bound to it, which are the tool's arguments.
 function answer<Input>(name: string, tool: (input: Input) => Promise<ToolResult>) {
   return async (input: Input) => {
     try {
-      const { text, isError } = await tool(input);
-      return { content: [{ type: "text" as const, text }], isError };
+      const { text, isError, images = [] } = await tool(input);
+      const pictures = images.map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType }));
+      return { content: [{ type: "text" as const, text }, ...pictures], isError };
     } catch (error) {
       const kind = error instanceof Error ? error.constructor.name : typeof error;
       const code = errorCode(error);
@@ -46,6 +52,7 @@ function answer<Input>(name: string, tool: (input: Input) => Promise<ToolResult>
 }
 
 const GUIDE_URI = "easyedit://editing-guide";
+const SKILLS_URI = "easyedit://skills";
 
 export function registerTools(server: McpServer, ctx: ToolContext): void {
   server.registerTool(
@@ -53,10 +60,11 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "Editing guide",
       description:
-        "How to edit well in this app: how a project is built, what is possible today, and rules for short videos. Read it once before your first edit in a conversation.",
+        "How to edit well in this app: how a project is built, what is possible today, and rules for short videos. Read it once before your first edit in a conversation, with the project's space for that space's style. Pass topic for a skill; the guide lists them.",
+      inputSchema: z.object({ topic: z.string().max(40).optional(), space: z.string().max(100).optional() }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    answer("get_editing_guide", async () => ok(buildEditingGuide())),
+    answer("get_editing_guide", (input) => getEditingGuideTool(ctx, input)),
   );
 
   server.registerPrompt(
@@ -70,6 +78,46 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     GUIDE_URI,
     { title: "Editing guide", mimeType: "text/markdown" },
     () => ({ contents: [{ uri: GUIDE_URI, mimeType: "text/markdown", text: buildEditingGuide() }] }),
+  );
+
+  // The video skill: SKILL.md as a resource, and each topic as a prompt (a slash command in some agents) and a resource.
+  // Neither counts toward the tool list.
+  server.registerResource(
+    "skills",
+    SKILLS_URI,
+    { title: "Video skills", description: SKILL_DESCRIPTION, mimeType: "text/markdown" },
+    () => ({ contents: [{ uri: SKILLS_URI, mimeType: "text/markdown", text: SKILL_MD }] }),
+  );
+  for (const topic of SKILL_TOPICS) {
+    const uri = `${SKILLS_URI}/${topic.id}`;
+    server.registerPrompt(topic.id, { title: topic.title, description: topic.summary }, () => ({
+      messages: [{ role: "user" as const, content: { type: "text" as const, text: topic.body } }],
+    }));
+    server.registerResource(`skills-${topic.id}`, uri, { title: topic.title, description: topic.summary, mimeType: "text/markdown" }, () => ({
+      contents: [{ uri, mimeType: "text/markdown", text: topic.body }],
+    }));
+  }
+
+  // Two ways to start on a space's style: learn it from the person's videos, or edit a project the way it says.
+  const spaceArg = z.string().min(1).max(100).describe('The space\'s slug as list_projects shows it, or "personal".');
+  const userMessage = (text: string) => ({ messages: [{ role: "user" as const, content: { type: "text" as const, text } }] });
+  server.registerPrompt(
+    "learn-my-style",
+    {
+      title: "Learn my style",
+      description: "Look at a space's videos, links and past projects, suggest a style, and save it once you agree.",
+      argsSchema: z.object({ space: spaceArg, links: z.string().max(2000).optional().describe("Video links to learn from too, separated by commas.") }),
+    },
+    ({ space, links }) => userMessage(learnMyStylePrompt(space, links)),
+  );
+  server.registerPrompt(
+    "edit-in-my-style",
+    {
+      title: "Edit in my style",
+      description: "Plan and make an edit that follows a space's saved style.",
+      argsSchema: z.object({ space: spaceArg, project: z.string().max(200).optional().describe("The project to edit, by id or name. Left out, the space's most recent one.") }),
+    },
+    ({ space, project }) => userMessage(editInMyStylePrompt(space, project)),
   );
 
   server.registerTool(
@@ -275,6 +323,27 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     answer("undo_change", (input) => undoChangeTool(ctx, input)),
+  );
+
+  server.registerTool(
+    "save_style",
+    {
+      title: "Save a space's style",
+      description:
+        "Save a space's style, which get_editing_guide gives agents. Pass space and any of: summary, fields (style fields; each replaces the saved one, null clears it), notes, add_links (video links to learn from). Ask the person first.",
+      // fields is checked against the style's rules when it is saved, so its schema here stays small.
+      inputSchema: z.object({
+        space: z.string().max(100),
+        summary: z.string().optional(),
+        fields: z.record(z.string(), z.unknown()).optional(),
+        notes: z.string().optional(),
+        add_links: z.array(z.string()).max(STYLE_LINKS_PER_CALL).optional(),
+      }),
+      // It can clear fields and replace the notes people typed, so it isn't only additive. It reads outside sites: a
+      // link's public details come from YouTube, Vimeo or TikTok.
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    },
+    answer("save_style", (input) => saveStyleTool(ctx, input)),
   );
 
   // The two tools ChatGPT's deep research and company knowledge read a server with, in the shapes OpenAI documents.

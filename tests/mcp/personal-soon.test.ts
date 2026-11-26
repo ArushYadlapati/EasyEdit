@@ -117,7 +117,10 @@ describe("create_project while personal spaces are not offered", () => {
     const db = await makeTestDb();
     // templates (Plan 8) added 1_639 chars (14_639 measured vs 13_000 on main); raising past 13_100 is Arush's call;
     // captions added 85 chars (14_724 measured); Arush's call
-    expect(JSON.stringify(await toolList(await toolContext(db))).length).toBeLessThan(14_785);
+    // video skills: +143 chars (get_editing_guide's topic, 14_867 measured), the cap raised by exactly that; Arush's call
+    // style for agents: +845 chars (get_editing_guide's space and the save_style tool, 15_712 measured), the cap raised
+    // by exactly that; Arush's call
+    expect(JSON.stringify(await toolList(await toolContext(db))).length).toBeLessThan(15_773);
   });
 
   it("someone in no team is told to make one", async () => {
