@@ -243,7 +243,7 @@ describe("AI agents in the dashboard's header", () => {
 
 describe("the guide in the dashboard's frame", () => {
   const frame = async () => render(await DashboardLayout({ children: <p>x</p> } as never));
-  const welcome = () => screen.queryByRole("dialog", { name: "Welcome to EasyEdit" });
+  const welcome = () => screen.queryByRole("dialog", { name: "Take the short tour" });
   const menuItems = () => {
     fireEvent.click(screen.getByRole("button", { name: "Account" }));
     return screen.getAllByRole("menuitem").map((item) => item.textContent);

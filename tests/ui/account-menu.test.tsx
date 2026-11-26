@@ -194,7 +194,7 @@ describe("the guide in the account menu", () => {
   const menu = (firstVisit: boolean) => (
     <AccountMenu name="Ada Lovelace" image={null} tutorial={{ ...VIDEO, firstVisit, markSeen, ...(firstVisit ? { lesson: GUIDE[0], credit: null } : {}) }} />
   );
-  const welcome = () => screen.queryByRole("dialog", { name: "Welcome to EasyEdit" });
+  const welcome = () => screen.queryByRole("dialog", { name: "Take the short tour" });
   const items = () => {
     fireEvent.click(account());
     const names = screen.getAllByRole("menuitem").map((item) => item.textContent);
@@ -245,6 +245,17 @@ describe("the guide in the account menu", () => {
     expect(router.push).toHaveBeenCalledWith("/learn");
     expect(welcome()).toBeNull();
     expect(markSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it("sent from the welcome to make a first project, the lesson waits: no dialog over New project, no mark", () => {
+    window.history.replaceState(null, "", "/s/rocket?new=project");
+    try {
+      render(menu(true));
+      expect(welcome()).toBeNull();
+      expect(markSeen).not.toHaveBeenCalled();
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
   });
 
   it("on a first visit, playing it writes the mark, and closing afterwards does not write it again", () => {

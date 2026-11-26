@@ -21,6 +21,11 @@ function backFromSigningIn(): string | null {
   return params.get("passkeys") === "1" ? (params.get("error") ?? "") : null;
 }
 
+// The address the welcome's last step leads to, which opens New project (see the space's dashboard page).
+function makingFirstProject(): boolean {
+  return new URLSearchParams(window.location.search).get("new") === "project";
+}
+
 // The guide as the server offers it: the first lesson's video, whether this person has yet to be welcomed with it,
 // and the action that writes that they have. The lesson itself (its chapters and captions) and the voice's credit
 // come only for someone still to be welcomed: nobody else is shown the dialog.
@@ -55,7 +60,9 @@ export function AccountMenu({ name, image, openSignUp = false, tutorial }: { nam
   const firstVisit = tutorial?.firstVisit === true && !seen;
   if (live && firstVisit && inSpace && !welcomed) {
     setWelcomed(true);
-    setTutorialOpen(true);
+    // Sent from the welcome to make a first project: New project opens alone, and the lesson waits for the next visit
+    // (nothing is marked seen).
+    if (!makingFirstProject()) setTutorialOpen(true);
   }
   function markSeen() {
     if (!tutorial || !firstVisit) return;

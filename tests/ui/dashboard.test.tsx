@@ -217,6 +217,12 @@ describe("the dashboard", () => {
     expect(screen.getByRole("dialog", { name: "New project" })).toBeTruthy();
   });
 
+  it("arriving from the welcome, New project is open, and the address drops the request", () => {
+    renderDashboard({ openNewProject: true });
+    expect(screen.getByRole("dialog", { name: "New project" })).toBeTruthy();
+    expect(router.replace).toHaveBeenCalledWith("/s/seattle-solvers?view=all", { scroll: false });
+  });
+
   it("New project opens the large dialog in the folder in view", () => {
     renderDashboard({ view: { kind: "folder", folderId: "f1" } });
     expect(screen.queryByRole("dialog")).toBeNull();

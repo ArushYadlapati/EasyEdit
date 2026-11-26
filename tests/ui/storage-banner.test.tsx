@@ -30,7 +30,8 @@ const { Dashboard, signedIn } = vi.hoisted(() => ({
   signedIn: { user: null as CurrentUser | null },
 }));
 vi.mock("@/components/dashboard/dashboard", () => ({ Dashboard }));
-vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }));
+const jar = vi.hoisted(() => ({ values: {} as Record<string, string> }));
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: (name: string) => (name in jar.values ? { name, value: jar.values[name] } : undefined) }) }));
 vi.mock("@/app/(dashboard)/dashboard/actions", () => ({
   createProjectAction: vi.fn(), renameProjectAction: vi.fn(), deleteProjectAction: vi.fn(), duplicateProjectAction: vi.fn(),
   moveProjectAction: vi.fn(), pinProjectAction: vi.fn(), unpinProjectAction: vi.fn(), createFolderAction: vi.fn(), renameFolderAction: vi.fn(), deleteFolderAction: vi.fn(),
@@ -111,6 +112,16 @@ describe("the top of a space's dashboard", () => {
     expect(within(top).getByRole("heading", { name: "Connect Google Drive for your uploads" })).toBeTruthy();
     expect(within(top).getByText("Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.")).toBeTruthy();
     expect(within(top).getByRole("link", { name: "Connect Google Drive" }).getAttribute("href")).toBe("/s/personal/settings/storage");
+  });
+
+  it("just after skipping storage in the welcome, the personal space's dashboard doesn't ask again", async () => {
+    withStorageSettings();
+    jar.values = { ee_storage_later: "1" };
+    try {
+      expect((await noticesFor(ada, "personal")).textContent).toBe("");
+    } finally {
+      jar.values = {};
+    }
   });
 
   it("a team with no storage: the card for its admins only", async () => {

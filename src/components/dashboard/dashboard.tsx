@@ -3,7 +3,7 @@
 import { Ellipsis, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { useAction } from "@/app/(app)/action-ui";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { FolderNameDialog } from "@/components/dashboard/folder-name-dialog";
@@ -52,6 +52,7 @@ export type DashboardProps = {
   fromSpace?: MySpace; // the space shown, and the person's other spaces they can edit in: a card's Move to… (hidden with none)
   moveTargets?: MySpace[];
   notices?: ReactNode; // what the page puts at the top of the main area: storage to set up or reconnect, a connect's outcome
+  openNewProject?: boolean; // New project starts open (?new=project, from the welcome); the address then drops it
 };
 
 const FOLDER_ITEMS: MenuItem[] = [
@@ -106,12 +107,18 @@ function CardGrid({ projects, folderName, now, canEdit, pinned, folders, actions
 // its menu), the search, the sort and New project. Recent lists the projects you opened last, in that order (so it has
 // no sort); All projects lists a tile for each folder, then every project; a folder view lists that folder's projects.
 // A card dropped on a folder, in the sidebar or on its tile, moves there, and a refused move says why in the bar.
-export function Dashboard({ projects, folders, templates, recentIds, pinnedIds = NO_PINS, sidebarCollapsed, view, canEdit, now, actions, spaceSlug, fromSpace, moveTargets, notices }: DashboardProps): ReactNode {
+export function Dashboard({ projects, folders, templates, recentIds, pinnedIds = NO_PINS, sidebarCollapsed, view, canEdit, now, actions, spaceSlug, fromSpace, moveTargets, notices, openNewProject = false }: DashboardProps): ReactNode {
   useRefreshOnReturn();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("changed");
-  const [newOpen, setNewOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(openNewProject);
+  // Opened from the address once: a reload or a copied link doesn't open it again.
+  useEffect(() => {
+    if (openNewProject) router.replace(spacePath(spaceSlug, viewQuery(view)), { scroll: false });
+    // Only on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [folderDialog, setFolderDialog] = useState<"new" | "rename" | "delete" | null>(null);
   // The folder that Rename folder or Delete folder was opened on, kept while its dialog is open even if the folder
   // leaves the page: a refusal because it was deleted elsewhere refreshes the page out of the folder's view, and the

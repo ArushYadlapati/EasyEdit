@@ -6,6 +6,7 @@ import { PersonalSoon } from "@/components/dashboard/personal-soon";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
 import { SECTIONS_COOKIE } from "@/lib/dashboard/sidebar-sections";
+import { STORAGE_LATER_COOKIE } from "@/lib/onboarding/storage-later";
 import { ALL_VIEW, RECENT_VIEW, recentProjects, resolveView } from "@/lib/dashboard/view";
 import { LIMITS } from "@/lib/limits";
 import type { DashboardActions } from "@/lib/projects/dashboard-actions";
@@ -56,7 +57,7 @@ const actionsFor = (spaceId: string): DashboardActions => ({
 // A space's dashboard, read on the server: its projects and folders, and the projects this person opened last.
 // Searching and sorting happen in the browser. The address picks the view (resolveView): Recent by default (All projects
 // when nothing here has been opened yet), ?view=recent or ?view=all
-// for All projects, ?folder=<id> for a folder. A space the person is not in is a plain 404. A personal space, while
+// for All projects, ?folder=<id> for a folder; ?new=project opens New project (the welcome's last step ends here). A space the person is not in is a plain 404. A personal space, while
 // personal spaces are not offered (personalSpacesOpen), is the coming-soon page instead.
 export default async function SpacePage({ params, searchParams }: PageProps<"/s/[space]">): Promise<ReactNode> {
   // The page checks for itself: a layout renders alongside its page and is not run again on a client navigation.
@@ -82,9 +83,12 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
     listTemplates(db, actor),
   ]);
   const names = await getUserNames(db, projects.map((project) => actorUserId(project.updatedBy)));
-  const { folder, view: named, storage: storageNote, youtube: channelNote } = await searchParams;
+  const { folder, view: named, storage: storageNote, youtube: channelNote, new: opening } = await searchParams;
+  const jar = await cookies();
   // The sidebar sections this browser folded, so the first paint already has them folded.
-  const sidebarCollapsed = (await cookies()).get(SECTIONS_COOKIE)?.value;
+  const sidebarCollapsed = jar.get(SECTIONS_COOKIE)?.value;
+  // Skipped in the welcome a moment ago: the Personal space's dashboard doesn't ask for storage again straight away.
+  const storageLater = space.kind === "personal" && jar.get(STORAGE_LATER_COOKIE)?.value === "1";
   // Someone who has opened nothing here yet (a teammate's first visit) lands on All projects, not an empty Recent.
   const landing = recentProjects(projects, recentIds, "").length > 0 ? RECENT_VIEW : ALL_VIEW;
   const view = resolveView({ folder, view: named }, folders, landing);
@@ -102,7 +106,7 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
   const broken = !storage.ready && storage.reason === "broken" && canEdit;
   // Only the person who connected the account can reconnect it; another admin is told who.
   const owner = broken && isAdmin ? await connectionOwner(db, space.id) : null;
-  const block = !storage.ready && storage.reason === "none" && isAdmin ? storageBlock(space.kind) : undefined;
+  const block = !storage.ready && storage.reason === "none" && isAdmin && !storageLater ? storageBlock(space.kind) : undefined;
   const notices =
     note || broken || block === null ? (
       <>
@@ -128,6 +132,7 @@ export default async function SpacePage({ params, searchParams }: PageProps<"/s/
       fromSpace={space}
       moveTargets={moveTargets}
       notices={notices}
+      openNewProject={canEdit && opening === "project"}
     />
   );
 }
