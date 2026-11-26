@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { expect, it } from "vitest";
+import { beforeEach, expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { EffectsPanel } from "@/components/editor/effects-panel";
 import { Inspector } from "@/components/editor/inspector";
@@ -9,6 +9,10 @@ import type { Clip } from "@/lib/timeline";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { makeStore, sampleDoc } from "../editor/fixtures";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
+import { openEverySection } from "../helpers/folds";
+
+// These tests are about what the sections hold, so every section starts open.
+beforeEach(openEverySection);
 
 function storeWith(extra: Record<string, unknown>, canEdit = true): EditorStore {
   const doc = sampleDoc();

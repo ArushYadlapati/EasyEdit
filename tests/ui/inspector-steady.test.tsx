@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
@@ -10,6 +10,13 @@ import { makeStore, noticesOf, video } from "../editor/fixtures";
 import { cleanup, fireEvent, render, screen, waitFor } from "../helpers/dom";
 import { docWithCaptions } from "../helpers/docs";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
+import { openEverySection } from "../helpers/folds";
+
+// The button, not the section heading of the same name, which folds the section.
+const stabilizeButton = () => screen.getAllByRole("button", { name: "Stabilize" }).find((b) => !b.hasAttribute("aria-expanded"))!;
+
+// These tests are about what the sections hold, so every section starts open.
+beforeEach(openEverySection);
 
 // The video the scanner "reads", 160 × 90 at 30 frames a second: a textured wall seen by a camera that is `camera`
 // pixels off at each second of the file.
@@ -72,7 +79,7 @@ it("Stabilize keeps on the clip the moves that undo the camera's shake, and says
   camera = shake;
   const { store, notices, clip } = show();
   expect(screen.getByText(/Takes a hand-held camera's shake out/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Stabilize" }));
+  fireEvent.click(stabilizeButton());
   expect(screen.getByRole("button", { name: "Looking at the motion…" })).toBeTruthy();
   await waitFor(() => expect(notices).toHaveLength(1));
   expect(scanned).toEqual([{ from: 1, to: 4 + 1 / 30, side: 192 }]); // the part of the file the clip plays
@@ -101,7 +108,7 @@ it("stronger evens the path out over longer, so it moves the picture further", a
   const zoomAt = async (strength: string) => {
     const { notices, clip } = show();
     fireEvent.change(screen.getByLabelText("How steady"), { target: { value: strength } });
-    fireEvent.click(screen.getByRole("button", { name: "Stabilize" }));
+    fireEvent.click(stabilizeButton());
     await waitFor(() => expect(notices).toHaveLength(1));
     const zoom = clip().steady?.zoom ?? 1;
     cleanup();
@@ -114,19 +121,19 @@ it("stronger evens the path out over longer, so it moves the picture further", a
 it("leaves a steady clip alone, and says when the file cannot be read", async () => {
   camera = () => ({ x: 0, y: 0 });
   const still = show();
-  fireEvent.click(screen.getByRole("button", { name: "Stabilize" }));
+  fireEvent.click(stabilizeButton());
   await waitFor(() => expect(still.notices).toEqual([MESSAGES.steadyAlready]));
   expect(still.clip().steady).toBeUndefined();
   cleanup();
   const gone = show({ readable: false });
-  fireEvent.click(screen.getByRole("button", { name: "Stabilize" }));
+  fireEvent.click(stabilizeButton());
   await waitFor(() => expect(gone.notices).toEqual([MESSAGES.steadyUnreadable]));
 });
 
 it("changes nothing when the picture is too flat to tell how it moved", async () => {
   flat = true;
   const { notices, clip } = show();
-  fireEvent.click(screen.getByRole("button", { name: "Stabilize" }));
+  fireEvent.click(stabilizeButton());
   await waitFor(() => expect(notices).toEqual([MESSAGES.steadyUnsure]));
   expect(clip().steady).toBeUndefined();
   flat = false;
@@ -134,7 +141,7 @@ it("changes nothing when the picture is too flat to tell how it moved", async ()
 
 it("is for a video that plays, and off for someone who can't edit", () => {
   show({ canEdit: false });
-  expect((screen.getByRole("button", { name: "Stabilize" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((stabilizeButton() as HTMLButtonElement).disabled).toBe(true);
   cleanup();
   show({ doc: doc({ speed: 0 }) }); // a held frame has no motion
   expect(screen.queryByRole("heading", { name: "Stabilize" })).toBeNull();

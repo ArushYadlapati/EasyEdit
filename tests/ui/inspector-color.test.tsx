@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { expect, it } from "vitest";
+import { beforeEach, expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider } from "@/components/editor/media/media-context";
@@ -9,6 +9,10 @@ import { LOOKS, lookPatch, type MediaClip, type TimelineDoc } from "@/lib/timeli
 import { makeStore, noticesOf, sampleDoc } from "../editor/fixtures";
 import { act, fireEvent, render, screen, waitFor, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
+import { openEverySection } from "../helpers/folds";
+
+// These tests are about what the sections hold, so every section starts open.
+beforeEach(openEverySection);
 
 function show(opts: { doc?: TimelineDoc; canEdit?: boolean; select?: string[] } = {}) {
   const store = makeStore({ doc: opts.doc ?? sampleDoc(), canEdit: opts.canEdit ?? true });

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider, type MediaServices } from "@/components/editor/media/media-context";
@@ -8,6 +8,10 @@ import type { MediaClip, TimelineDoc } from "@/lib/timeline";
 import { makeStore, noticesOf, sampleDoc, video } from "../editor/fixtures";
 import { cleanup, fireEvent, render, screen, waitFor } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
+import { openEverySection } from "../helpers/folds";
+
+// These tests are about what the sections hold, so every section starts open.
+beforeEach(openEverySection);
 
 // The video the scanner "reads": its shots as [seconds, colour], shown at 30 frames a second. null: unreadable.
 let shots: [number, [number, number, number]][] | null = [];

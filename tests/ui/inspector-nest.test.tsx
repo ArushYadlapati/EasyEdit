@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider } from "@/components/editor/media/media-context";
@@ -7,6 +7,10 @@ import type { NestClip, TimelineDoc } from "@/lib/timeline";
 import { makeStore, sampleDoc, text, video } from "../editor/fixtures";
 import { cleanup, fireEvent, render, screen } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
+import { openEverySection } from "../helpers/folds";
+
+// These tests are about what the sections hold, so every section starts open.
+beforeEach(openEverySection);
 
 afterEach(cleanup);
 
