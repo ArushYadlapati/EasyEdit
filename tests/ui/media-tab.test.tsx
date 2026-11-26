@@ -595,7 +595,7 @@ describe("a tile's right-click menu", () => {
     act(() => store.getState().seek(200));
     expect(rightClick("IMG_4821")).toBe(false);
     const menu = screen.getByRole("menu", { name: "More for IMG_4821" });
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Add to timeline", "Rename", "Set event", "Remove"]);
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Add to timeline", "Open in source monitor", "Rename", "Set event", "Remove"]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Add to timeline" }));
     const added = store.getState().doc.tracks.flatMap((t) => t.clips).find((c) => c.type === "image")!;
     expect(added).toMatchObject({ assetId: "i1", start: 200, duration: 120 });

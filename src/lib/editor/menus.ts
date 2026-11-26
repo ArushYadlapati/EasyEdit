@@ -269,12 +269,14 @@ export function previewMenu(state: EditorState, canPaste: boolean): MenuEntry[] 
   ] satisfies (MenuEntry & { id: PreviewMenuId })[];
 }
 
-export type AssetMenuId = "add" | "rename" | "event" | "remove";
+export type AssetMenuId = "add" | "monitor" | "rename" | "event" | "remove";
 
 // A media tile's menu (label "More for <name>").
 export function assetMenu(): MenuEntry[] {
   return [
     { id: "add", label: "Add to timeline", edit: true },
+    // Opens the file on its own, to mark a part of it and insert or overwrite that at the playhead.
+    { id: "monitor", label: "Open in source monitor", edit: true },
     { id: "rename", label: "Rename", separatorBefore: true, edit: true },
     { id: "event", label: "Set event", edit: true },
     { id: "remove", label: "Remove", danger: true, edit: true },

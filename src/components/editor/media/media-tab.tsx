@@ -20,6 +20,7 @@ import { isLocalFile, type AssetKind, type AssetView, type UploadItem } from "@/
 import { useEditor, useEditorStore } from "../context";
 import { LeaveLink } from "../leave-link";
 import { AssetTile, type AssetAction, type WatchView } from "./asset-tile";
+import { SourceMonitor } from "./source-monitor";
 import { canPickFolder, pickFolder } from "./folder-memory";
 import { type StorageSetup, useLibrary, useLocalFolder, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
 import { UploadRow } from "./upload-row";
@@ -312,7 +313,11 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
         </div>
       )}
 
-      <AssetDialog editing={editing} onRemoved={onRemoved} onClose={() => setEditing(null)} />
+      {editing?.action === "monitor" ? (
+        <SourceMonitor key={editing.asset.id} asset={editing.asset} onClose={() => setEditing(null)} />
+      ) : (
+        <AssetDialog editing={editing} onRemoved={onRemoved} onClose={() => setEditing(null)} />
+      )}
     </div>
   );
 }
@@ -389,6 +394,7 @@ function StorageNotice({ card, setup, className }: { card: StorageCard; setup: S
 }
 
 const TITLES: Record<AssetAction, (name: string) => string> = {
+  monitor: (name) => `Source: ${name}`, // the source monitor draws its own dialog
   rename: () => "Rename",
   event: () => "Set event",
   remove: (name) => `Remove "${name}"?`,

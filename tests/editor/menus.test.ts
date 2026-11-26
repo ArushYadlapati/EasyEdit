@@ -426,7 +426,7 @@ it("clipMenu and laneMenu grey every editing entry while a gesture is live", () 
 
 it("the media tile and text preset menus", () => {
   const asset = assetMenu();
-  expect(asset.map((e) => [e.id, e.label])).toEqual([["add", "Add to timeline"], ["rename", "Rename"], ["event", "Set event"], ["remove", "Remove"]]);
+  expect(asset.map((e) => [e.id, e.label])).toEqual([["add", "Add to timeline"], ["monitor", "Open in source monitor"], ["rename", "Rename"], ["event", "Set event"], ["remove", "Remove"]]);
   expect(asset.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["rename"]);
   expect(asset.filter((e) => e.danger).map((e) => e.id)).toEqual(["remove"]);
   for (const entry of asset) expect([entry.edit, !!entry.disabled], entry.id).toEqual([true, false]);

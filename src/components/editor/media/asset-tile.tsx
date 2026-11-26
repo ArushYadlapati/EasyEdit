@@ -15,9 +15,10 @@ import { useIsMac } from "../use-shortcuts";
 import { useMediaDrop } from "./media-context";
 import { usePoster } from "./use-poster";
 
-export type AssetAction = "rename" | "event" | "remove";
+export type AssetAction = "monitor" | "rename" | "event" | "remove";
 
 const ACTIONS: MenuItem[] = [
+  { id: "monitor", label: "Open in source monitor" },
   { id: "rename", label: "Rename" },
   { id: "event", label: "Set event" },
   { id: "remove", label: "Remove", danger: true },
