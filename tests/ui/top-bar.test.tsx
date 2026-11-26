@@ -649,11 +649,14 @@ it("below the lg width the save status is a mark with a word when it matters, an
   const store = makeStore();
   store.getState().edit([{ op: "remove_clip", clipId: "c1" }], "Delete");
   store.getState().setStatus("offline");
+  // The browser itself is offline (online, the same state reads "Can't reach EasyEdit").
+  const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
   render(
     <EditorProvider store={store}>
       <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
     </EditorProvider>,
   );
+  online.mockRestore();
   const said = screen.getAllByRole("status").filter((s) => s.textContent?.startsWith("Offline"));
   expect(said).toHaveLength(1);
   expect(said[0].textContent).toBe("Offline. Changes will save when you reconnect.");

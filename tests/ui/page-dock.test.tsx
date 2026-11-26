@@ -737,9 +737,10 @@ describe("page dock styles", () => {
     // The line is a border, which those colours keep, not a fill, which they replace with the window's background.
     expect(rule(".h-dockPlayhead")).toContain("border-left: 1px solid var(--ed-text);");
     expect(css).not.toContain(".h-dockPlayhead::before");
-    const forced = css.slice(css.indexOf("@media (forced-colors: active)"));
-    expect(forced).not.toBe(css);
-    const block = forced.slice(0, forced.indexOf("\n}\n"));
+    // The page has more than one high contrast block (the agent demo's comes first); the dock's holds its edge.
+    const blocks = css.split("@media (forced-colors: active)").slice(1).map((b) => b.slice(0, b.indexOf("\n}\n")));
+    const block = blocks.find((b) => b.includes(".h-dock::before")) ?? "";
+    expect(block).not.toBe("");
     expect(block).toMatch(/\.h-dock::before \{\n\s+border: 1px solid CanvasText;/);
     expect(block).toMatch(/\.h-dockClip\[aria-current\] \{\n\s+border: 2px solid Highlight;/);
     expect(block).toMatch(

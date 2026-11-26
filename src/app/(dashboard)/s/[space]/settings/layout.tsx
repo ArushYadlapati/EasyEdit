@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { SettingsTabs } from "@/components/dashboard/settings-tabs";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
-import { mySpace, spaceLabel } from "@/lib/dashboard/page-data";
+import { mySpace, spaceLabel } from "../page-data";
 import { slugFor, spacePath } from "@/lib/spaces/paths";
 import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { settingsTabsFor } from "@/lib/spaces/settings-tabs";

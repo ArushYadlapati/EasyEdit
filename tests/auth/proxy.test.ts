@@ -109,6 +109,8 @@ describe("proxy", () => {
     for (const url of ["/dashboard", "/s/seattle-solvers/editor/abc", "/consent?client_id=c1"]) {
       expect(getRedirectUrl(proxy(new NextRequest(`http://localhost:3000${url}`))), url).toBe("http://localhost:3000/login");
     }
+    // /new makes the home page's first project, so sign-in comes back to it.
+    expect(getRedirectUrl(proxy(new NextRequest("http://localhost:3000/new")))).toBe("http://localhost:3000/login?next=%2Fnew");
     const res = proxy(new NextRequest("http://localhost:3000/api/x"));
     expect(res.status).toBe(401);
     await expect(res.json()).resolves.toEqual({ code: "UNAUTHENTICATED", message: "Sign in to continue." });

@@ -6,7 +6,7 @@ import { Dashboard } from "@/components/dashboard/dashboard";
 import { PersonalSoon } from "@/components/dashboard/personal-soon";
 import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
-import { myActor, myFolders, mySpace, spaceLabel } from "@/lib/dashboard/page-data";
+import { myActor, myFolders, mySpace, spaceLabel } from "./page-data";
 import { SECTIONS_COOKIE } from "@/lib/dashboard/sidebar-sections";
 import { STORAGE_LATER_COOKIE } from "@/lib/onboarding/storage-later";
 import { ALL_VIEW, RECENT_VIEW, recentProjects, resolveView } from "@/lib/dashboard/view";
