@@ -48,6 +48,19 @@ export const CLIP_HEIGHT = 32; // the clip's box in its row; the timeline draws 
 export const CLIP_TOP = (ROW_HEIGHT - CLIP_HEIGHT) / 2;
 const MIN_TRIM_PX = 16; // narrower clips have no trim handles, so they can still be grabbed to move
 const HANDLE = cx("absolute inset-y-0 w-1.5 cursor-ew-resize", FADE); // 6 px, as tall as the clip
+// A finger trims from this close to either end, where a mouse needs the 6 px handle; never more than a third of the
+// clip's width, so the middle third still moves it.
+export const TOUCH_TRIM_PX = 14;
+
+// The end of the clip a finger's press is close enough to trim from, if any. Other pointers trim from the handles.
+function touchTrimEdge(e: PointerEvent<HTMLDivElement>): "start" | "end" | null {
+  if (e.pointerType !== "touch") return null;
+  const box = e.currentTarget.getBoundingClientRect();
+  if (box.width < MIN_TRIM_PX) return null;
+  const reach = Math.min(TOUCH_TRIM_PX, box.width / 3);
+  const x = e.clientX - box.left;
+  return x <= reach ? "start" : box.width - x <= reach ? "end" : null;
+}
 
 // A text clip's first line; a media clip's asset name, or its kind before the library knows the asset.
 function clipLabel(clip: Clip, assetName: string | undefined): string {
@@ -89,6 +102,9 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
   const stillFileId = useLibrary((s) => (pictured ? posterFileFor(s.assets[clip.assetId]) : null));
   const removed = useLibrary((s) => pictured && s.assets[clip.assetId]?.removed === true);
   const press = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  // Whether a pointer press came before the next click. A click with none before it (or with no click count, which a
+  // screen reader's or voice control's "press" sends) selects the clip, as Enter does.
+  const pointerPressed = useRef(false);
   const width = Math.max(2, frameToPx(clip.duration, zoom));
   const dragger = canEdit && !locked ? drag : null; // null for a viewer, a locked track, or outside a timeline
   const isMac = useIsMac();
@@ -111,6 +127,7 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
   }
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
+    pointerPressed.current = true;
     if (isMac && e.ctrlKey) return;
     press.current = null;
     if (e.button !== 0) return;
@@ -126,7 +143,8 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
     if (toggle) select(picked, "toggle");
     else if (!keep) select(picked);
     if (dragger) {
-      const edge = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-trim-handle]")?.dataset.trimHandle : undefined;
+      const handle = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-trim-handle]")?.dataset.trimHandle : undefined;
+      const edge = touchTrimEdge(e) ?? handle;
       dragger.pressClip(e, clip.id, edge === "start" || edge === "end" ? edge : "move", keep);
     } else if (keep) press.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
   }
@@ -141,6 +159,14 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
   function onContextMenu(e: MouseEvent<HTMLDivElement>) {
     e.preventDefault();
     openClipMenu(e, clip.id, e.currentTarget);
+  }
+
+  // A click the pointer made was handled at the press. Any other selects the clip, as Enter does.
+  function onClick(e: MouseEvent<HTMLDivElement>) {
+    const fromPointer = pointerPressed.current && e.detail !== 0;
+    pointerPressed.current = false;
+    if (fromPointer) return;
+    store.getState().select([clip.id]);
   }
 
   // Enter selects the clip. Space is left alone: in the editor it always plays or pauses.
@@ -164,6 +190,7 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
       onPointerLeave={razor ? () => setRazorAt(null) : undefined}
       onPointerCancel={() => (press.current = null)}
       onKeyDown={onKeyDown}
+      onClick={onClick}
       onContextMenu={onContextMenu}
       className={cx(
         "group absolute flex touch-none items-center overflow-hidden rounded-[4px] border select-none",

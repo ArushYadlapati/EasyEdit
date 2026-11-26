@@ -678,3 +678,69 @@ it("losing edit access mid-drag ends a track drag and saves nothing", () => {
   expect(rowOrder(st)).toEqual(["cap", "t1", "v1", "a1"]);
   expect(st().queue).toHaveLength(0);
 });
+
+// x2 runs from frame 90 for 30 frames: on screen x(90) to x(120), 60 px wide.
+const placeX2 = (clip: (id: string) => HTMLElement) => {
+  clip("x2").getBoundingClientRect = () => new DOMRect(x(90), 0, 60, ROW_HEIGHT);
+};
+
+it("a finger 10 px inside a clip's end trims it, where a mouse there would move it", () => {
+  const { st, clip, press, move, release, frame } = renderTimeline();
+  placeX2(clip);
+  press(clip("x2"), x(120) - 10, T1, { pointerType: "touch" });
+  move(x(130) - 10, T1);
+  frame();
+  release(x(130) - 10, T1);
+  const x2 = findClip(st().doc, "x2")!.clip;
+  expect([x2.start, x2.duration]).toEqual([90, 40]);
+  expect(st().undoStack.map((e) => e.label)).toEqual(["trim"]);
+});
+
+it("a finger trims from the start too, and moves the clip from its middle", () => {
+  const { st, clip, press, move, release, frame, startOf } = renderTimeline();
+  placeX2(clip);
+  press(clip("x2"), x(90) + 8, T1, { pointerType: "touch" });
+  move(x(95) + 8, T1);
+  frame();
+  release(x(95) + 8, T1);
+  expect(st().undoStack.map((e) => e.label)).toEqual(["trim"]);
+  const trimmed = findClip(st().doc, "x2")!.clip;
+  expect([trimmed.start, trimmed.duration]).toEqual([95, 25]);
+  // 20 px in from the end of the 50 px it is now is its middle: a move.
+  clip("x2").getBoundingClientRect = () => new DOMRect(x(95), 0, 50, ROW_HEIGHT);
+  press(clip("x2"), x(120) - 20, T1, { pointerType: "touch" });
+  move(x(130) - 20, T1);
+  frame();
+  release(x(130) - 20, T1);
+  expect(startOf("x2")).toBe(105);
+  expect(st().undoStack.map((e) => e.label)).toEqual(["trim", "move"]);
+});
+
+it("a mouse 10 px inside a clip's end moves it: the 6 px handle is its trim", () => {
+  const { st, clip, press, move, release, frame, startOf } = renderTimeline();
+  placeX2(clip);
+  press(clip("x2"), x(120) - 10, T1, { pointerType: "mouse" });
+  move(x(130) - 10, T1);
+  frame();
+  release(x(130) - 10, T1);
+  expect(startOf("x2")).toBe(100);
+  expect(st().undoStack.map((e) => e.label)).toEqual(["move"]);
+});
+
+it("a click no pointer made, such as a screen reader's press, selects the clip as Enter does", () => {
+  const { st, clip } = renderTimeline();
+  expect(st().selection.clipIds).toEqual([]);
+  fireEvent.click(clip("x2"), { detail: 0 });
+  expect(st().selection.clipIds).toEqual(["x2"]);
+  expect(clip("x2").getAttribute("aria-pressed")).toBe("true");
+});
+
+it("the click after a mouse press changes nothing the press did not", () => {
+  const { st, clip, press, release } = renderTimeline();
+  act(() => st().select(["x1", "x2"]));
+  // Shift takes x1 out of the selection at the press; its click must not make x1 the only one.
+  press(clip("x1"), x(24), T1, { shiftKey: true });
+  release(x(24), T1);
+  fireEvent.click(clip("x1"), { detail: 1, shiftKey: true });
+  expect(st().selection.clipIds).toEqual(["x2"]);
+});
