@@ -6,7 +6,7 @@ import { EditorScreen } from "@/components/editor/editor-screen";
 import type { Layout } from "@/lib/editor/layout";
 import type { EditorStore } from "@/lib/editor/store";
 import { makeStore } from "../editor/fixtures";
-import { act, fireEvent, render, screen } from "../helpers/dom";
+import { act, fireEvent, render, screen, within } from "../helpers/dom";
 import { happyDOM } from "../helpers/layout";
 
 beforeEach(() => happyDOM().setViewport({ width: 1024, height: 768 }));
@@ -177,11 +177,26 @@ it("a viewer can resize, and a deleted project has no separators.", () => {
   expect(screen.queryAllByRole("separator")).toEqual([]);
 });
 
-it("a narrow window still gets its message", () => {
+it("a narrow window stacks the same regions, with a switch between the timeline, the add panel and the details", () => {
   const { grid } = show();
-  expect(grid.classList.contains("hidden")).toBe(true);
-  expect(grid.classList.contains("lg:grid")).toBe(true);
-  expect(screen.getByText("The editor needs a wider window.")).toBeTruthy();
+  expect(grid.classList.contains("grid")).toBe(true);
+  expect(grid.classList.contains("hidden")).toBe(false);
+  expect(screen.queryByText("The editor needs a wider window.")).toBeNull();
+  const region = (name: string) => screen.getByRole(name === "Timeline" ? "region" : "complementary", { name });
+  const shown = () => ["Timeline", "Add", "Details"].map((name) => !region(name).classList.contains("max-lg:hidden"));
+  const tab = (name: string) => within(screen.getByRole("navigation", { name: "Show" })).getByRole("button", { name });
+  expect(shown()).toEqual([true, false, false]);
+  expect(tab("Timeline").getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(tab("Details"));
+  expect(shown()).toEqual([false, false, true]);
+  expect([tab("Timeline"), tab("Details")].map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
+  fireEvent.click(tab("Add"));
+  expect(shown()).toEqual([false, true, false]);
+  // The switch, the edges and the phone's rows are for one width or the other, never both.
+  expect(screen.getByRole("navigation", { name: "Show" }).className).toContain("lg:hidden");
+  for (const edge of ["Left panel width", "Right panel width", "Timeline height"]) expect(screen.getByRole("separator", { name: edge }).className).toContain("max-lg:hidden");
+  // Nothing is mounted twice: one preview, one timeline.
+  expect(screen.getAllByRole("main")).toHaveLength(1);
 });
 
 it("writeLayoutCookie keeps the sizes for editor pages", () => {

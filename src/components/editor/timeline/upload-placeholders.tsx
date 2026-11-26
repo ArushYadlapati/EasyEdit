@@ -2,7 +2,7 @@
 
 import { useMemo, type ReactNode } from "react";
 import { cx } from "@/components/ui/cx";
-import { HEADER_WIDTH, ROW_HEIGHT, clampZoom, displayRows, frameToPx } from "@/lib/editor/geometry";
+import { ROW_HEIGHT, clampZoom, displayRows, frameToPx } from "@/lib/editor/geometry";
 import { dropTrack, endToEnd, uploadFrames, type DropGroup } from "@/lib/editor/media-drop";
 import { homeKind, placeClips } from "@/lib/editor/placement";
 import { viewDoc } from "@/lib/editor/store";
@@ -14,6 +14,7 @@ import { useLibrary, useMediaDropState } from "../media/media-context";
 import { progressOf, stageLabel } from "../media/upload-row";
 import { CLIP_HEIGHT, CLIP_TOP } from "./clip-view";
 import { LANE_GUTTER } from "./playhead";
+import { useHeaderWidth } from "./header-width";
 
 type Shown = { id: string; item: UploadItem; row: number; start: number; length: number };
 
@@ -71,6 +72,7 @@ function placeholdersOf(groups: DropGroup[], uploads: UploadItem[], doc: Timelin
 // it is. A failed upload that can be tried again keeps its place, outlined as failed. Drawn over the rows, never taking
 // the pointer; it lives only in this tab.
 export function UploadPlaceholders(): ReactNode {
+  const headerWidth = useHeaderWidth();
   const doc = useEditor(viewDoc);
   const storedZoom = useEditor((s) => s.zoom);
   const groups = useMediaDropState((s) => s.groups, NO_GROUPS);
@@ -94,7 +96,7 @@ export function UploadPlaceholders(): ReactNode {
           "bg-ed-accent-weak flex items-center overflow-hidden",
         )}
         style={{
-          left: HEADER_WIDTH + LANE_GUTTER + frameToPx(start, zoom),
+          left: headerWidth + LANE_GUTTER + frameToPx(start, zoom),
           top: row * ROW_HEIGHT + CLIP_TOP,
           width: Math.max(2, frameToPx(length, zoom)),
           height: CLIP_HEIGHT,

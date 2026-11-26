@@ -158,22 +158,25 @@ it("trackMenu disables Duplicate on Captions and Remove on a locked track", () =
   const store = makeStore();
   const t1 = trackMenu(store.getState(), "t1");
   expect(t1.map((e) => [e.id, e.label])).toEqual([
-    ["rename", "Rename"], ["duplicate", "Duplicate"], ["up", "Move up"], ["down", "Move down"], ["remove", "Remove track"],
+    ["rename", "Rename"], ["duplicate", "Duplicate"], ["up", "Move up"], ["down", "Move down"],
+    ["locked", "Lock track"], ["hidden", "Hide track"], ["remove", "Remove track"],
   ]);
   for (const entry of t1) expect([entry.edit, entry.command], entry.id).toEqual([true, undefined]);
-  expect(t1.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["remove"]);
+  expect(t1.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual(["locked", "remove"]);
   expect(t1.filter((e) => e.danger).map((e) => e.id)).toEqual(["remove"]);
-  expect(enabled(t1)).toEqual(["rename", "duplicate", "up", "down", "remove"]);
+  expect(enabled(t1)).toEqual(["rename", "duplicate", "up", "down", "locked", "hidden", "remove"]);
 
   // Rows top to bottom: cap, t1, v1, then audio a1.
-  expect(enabled(trackMenu(store.getState(), "cap"))).toEqual(["rename", "down", "remove"]);
-  expect(enabled(trackMenu(store.getState(), "v1"))).toEqual(["rename", "duplicate", "up", "remove"]);
-  expect(enabled(trackMenu(store.getState(), "a1"))).toEqual(["rename", "duplicate", "remove"]);
+  expect(enabled(trackMenu(store.getState(), "cap"))).toEqual(["rename", "down", "locked", "hidden", "remove"]);
+  // A track's switches are in its menu too: a video track hides and mutes, an audio track only mutes.
+  expect(enabled(trackMenu(store.getState(), "v1"))).toEqual(["rename", "duplicate", "up", "locked", "hidden", "muted", "remove"]);
+  expect(enabled(trackMenu(store.getState(), "a1"))).toEqual(["rename", "duplicate", "locked", "muted", "remove"]);
 
   store.getState().edit([{ op: "update_track", trackId: "t1", patch: { locked: true } }], "track change");
   const locked = byId(trackMenu(store.getState(), "t1"), "remove");
   expect(locked).toMatchObject({ label: "Remove track (unlock first)", danger: true, separatorBefore: true, disabled: true });
-  expect(enabled(trackMenu(store.getState(), "t1"))).toEqual(["rename", "duplicate", "up", "down"]);
+  expect(enabled(trackMenu(store.getState(), "t1"))).toEqual(["rename", "duplicate", "up", "down", "locked", "hidden"]);
+  expect(byId(trackMenu(store.getState(), "t1"), "locked").label).toBe("Unlock track");
 
   const full = sampleDoc();
   for (let i = full.tracks.length; i < LIMITS.tracksPerProject; i++) {
@@ -182,7 +185,7 @@ it("trackMenu disables Duplicate on Captions and Remove on a locked track", () =
   expect(byId(trackMenu(makeStore({ doc: full }).getState(), "t1"), "duplicate").disabled).toBe(true);
 
   const viewer = trackMenu(makeStore({ canEdit: false }).getState(), "t1");
-  expect(viewer.map((e) => e.id)).toEqual(["rename", "duplicate", "up", "down", "remove"]);
+  expect(viewer.map((e) => e.id)).toEqual(["rename", "duplicate", "up", "down", "locked", "hidden", "remove"]);
   expect(enabled(viewer)).toEqual([]);
 });
 

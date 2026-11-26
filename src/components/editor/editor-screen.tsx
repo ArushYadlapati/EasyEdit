@@ -144,10 +144,6 @@ export function EditorScreen({ spaceSlug, spaceId, initialLayout = DEFAULT_LAYOU
               </>
             }
           />
-          <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center lg:hidden">
-            <p className="text-sm font-semibold">The editor needs a wider window.</p>
-            <p className="text-[13px] leading-5 text-ed-muted">Open this project on a laptop or desktop.</p>
-          </div>
           <SettingsDialog at={settingsAt} onSection={showSettingsAt} onClose={() => setSettingsAt(null)} />
           {spaceId && <SaveTemplateDialog open={templateOpen} onClose={() => setTemplateOpen(false)} spaceId={spaceId} spaceSlug={spaceSlug} />}
           <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} exporter={exporter} />

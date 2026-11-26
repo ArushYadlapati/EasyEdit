@@ -183,8 +183,8 @@ describe("track header", () => {
   it("the track options list Duplicate, which adds 'Text 1 copy' above the track", () => {
     const { store, openMenu, item } = setup();
     openMenu();
-    expect(screen.getAllByRole("menuitem").map((e) => e.textContent)).toEqual(["Rename", "Duplicate", "Move up", "Move down", "Remove track"]);
-    expect((screen.getByRole("separator").nextElementSibling as HTMLElement).textContent).toBe("Remove track");
+    expect(screen.getAllByRole("menuitem").map((e) => e.textContent)).toEqual(["Rename", "Duplicate", "Move up", "Move down", "Lock track", "Hide track", "Remove track"]);
+    expect(screen.getAllByRole("separator").map((line) => (line.nextElementSibling as HTMLElement).textContent)).toEqual(["Lock track", "Remove track"]);
     for (const menuItem of screen.getAllByRole("menuitem")) expect(menuItem.hasAttribute("data-edit-control"), menuItem.textContent!).toBe(true);
     fireEvent.click(item("Duplicate"));
     const { doc, selection, queue } = store.getState();
@@ -201,7 +201,7 @@ describe("track header", () => {
     const { store } = setup();
     expect(rightClick(headerOf("Text 1"))).toBe(false);
     expect(screen.getByRole("menu", { name: "Track options" })).toBeTruthy();
-    expect(screen.getAllByRole("menuitem").map((e) => e.textContent)).toEqual(["Rename", "Duplicate", "Move up", "Move down", "Remove track"]);
+    expect(screen.getAllByRole("menuitem").map((e) => e.textContent)).toEqual(["Rename", "Duplicate", "Move up", "Move down", "Lock track", "Hide track", "Remove track"]);
     expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Rename" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate" }));
     const { doc, queue } = store.getState();
@@ -334,5 +334,29 @@ describe("toolbar", () => {
     expect(add.hasAttribute("data-edit-control")).toBe(true);
     act(() => store.getState().edit([{ op: "remove_track", trackId: "a19" }], "remove track"));
     expect(add.disabled).toBe(false);
+  });
+});
+
+describe("a track's switches in its options menu", () => {
+  it("lock, hide and mute from the menu, as a phone's narrow header has no switches", () => {
+    const store = makeStore();
+    render(
+      <EditorProvider store={store}>
+        <ContextMenuProvider>
+          <TrackHeader track={store.getState().doc.tracks.find((t) => t.id === "v1")!} selected={false} />
+        </ContextMenuProvider>
+      </EditorProvider>,
+    );
+    const pick = (name: string) => {
+      fireEvent.click(screen.getByRole("button", { name: "Track options" }));
+      fireEvent.click(screen.getByRole("menuitem", { name }));
+    };
+    const track = () => store.getState().doc.tracks.find((t) => t.id === "v1")!;
+    pick("Lock track");
+    pick("Hide track");
+    pick("Mute track");
+    expect([track().locked, track().hidden, track().muted]).toEqual([true, true, true]);
+    // The header's own switches are for a wide window only.
+    for (const name of ["Lock track", "Hide track", "Mute track"]) expect(screen.getByRole("button", { name }).className).toContain("max-lg:hidden");
   });
 });

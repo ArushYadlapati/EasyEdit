@@ -288,16 +288,14 @@ it("takes only the keys it uses from the browser", () => {
   expect(st().queue.map((e) => e.label)).toEqual(["split"]);
 });
 
-it("does nothing while the window is too narrow for the editor", () => {
+it("works in a narrow window too: the editor is shown at every width (a tablet with a keyboard)", () => {
   const { st } = show();
   const wide = window.matchMedia("(min-width: 64rem)");
-  const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({ ...wide, media: query, matches: false }));
-  for (const [key, mods] of [["Delete", {}], ["s", {}], ["v", MOD()], ["z", MOD()], [" ", {}], ["ArrowRight", {}], ["?", { shiftKey: true }]] as const) {
-    expect(press(document.body, key, mods)).toBe(true);
-  }
-  expect(matchMedia).toHaveBeenCalledWith("(min-width: 64rem)");
-  expect([st().queue, st().playhead, st().playing]).toEqual([[], 0, false]);
-  expect(document.querySelector("dialog[open]")).toBeNull();
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({ ...wide, media: query, matches: false }));
+  expect(press(document.body, "ArrowRight")).toBe(false);
+  expect(st().playhead).toBe(1);
+  expect(press(document.body, " ")).toBe(false);
+  expect(st().playing).toBe(true);
 });
 
 it("leaves copy and cut to the browser with no clip selected, or with text selected on the page", () => {
@@ -374,8 +372,6 @@ it("a shortcut turned off does nothing and loses its hint", () => {
 
 it("with all shortcuts off the browser gets every key", () => {
   const { st } = showWithKeys({ ...CUSTOM_SPLIT, on: false });
-  // The listener returns before anything else, so it does not even ask the window's width.
-  const matchMedia = vi.spyOn(window, "matchMedia");
   expect(press(document.body, " ")).toBe(true);
   expect(st().playing).toBe(false);
   expect(press(document.body, "S", { ctrlKey: true, shiftKey: true })).toBe(true);
@@ -383,7 +379,6 @@ it("with all shortcuts off the browser gets every key", () => {
   act(() => st().select(["x1"]));
   expect(press(document.body, "Escape")).toBe(true);
   expect(st().selection.clipIds).toEqual(["x1"]);
-  expect(matchMedia).not.toHaveBeenCalled();
   // Hints drop their keys too.
   const hinted = ["Undo", "Redo", "Keyboard shortcuts", "Split", "Delete", "Ripple delete", "Snap", "Zoom timeline in", "Zoom timeline out", "Fit timeline", "Selection", "Razor"];
   const transport = ["Go to start", "Back one frame", "Play", "Forward one frame", "Go to end"];

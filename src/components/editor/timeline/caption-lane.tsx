@@ -3,22 +3,24 @@
 import { useMemo } from "react";
 import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { docCues } from "@/lib/captions/cues";
-import { HEADER_WIDTH, frameToPx } from "@/lib/editor/geometry";
+import { frameToPx } from "@/lib/editor/geometry";
 import { viewDoc } from "@/lib/editor/store";
 import { useEditor, useEditorStore } from "../context";
 import { CLIP_HEIGHT, CLIP_TOP } from "./clip-view";
+import { useHeaderWidth } from "./header-width";
 
 // The Captions track's lane: each caption line as a block where it shows, in the clip's geometry. The lines come from
 // the clips and follow them, so a block is not dragged; a click moves the playhead to where the line starts. During a
 // drag the lines follow the clips being dragged.
 export function CaptionLane({ zoom, fromFrame, toFrame, hidden }: { zoom: number; fromFrame: number; toFrame: number; hidden: boolean }) {
+  const headerWidth = useHeaderWidth();
   const store = useEditorStore();
   const doc = useEditor(viewDoc);
   const cues = useMemo(() => docCues(doc), [doc]);
 
   if (cues.length === 0) {
     return (
-      <p className="pointer-events-none sticky w-max text-xs leading-4 text-ed-muted" style={{ left: HEADER_WIDTH + 12 }}>
+      <p className="pointer-events-none sticky w-max text-xs leading-4 text-ed-muted" style={{ left: headerWidth + 12 }}>
         Captions show here. Add them in the Captions tab.
       </p>
     );

@@ -10,10 +10,6 @@ import { useMedia } from "./media/media-context";
 const isMacPlatform = () => navigator.platform.startsWith("Mac");
 const noChanges = () => () => {};
 
-// The width at which EditorScreen shows the editor (Tailwind's lg). Below it a message takes its
-// place, so a key would change things nobody can see.
-const WIDE_ENOUGH = "(min-width: 64rem)";
-
 const REPEATING = new Set(SHORTCUTS.filter((s) => s.repeats).map((s) => s.command));
 
 // A field the person types into: every key there is the browser's.
@@ -106,7 +102,6 @@ export function useShortcuts(openShortcuts: () => void, openExport?: () => void,
       const clicked =
         event.key === " " && target instanceof HTMLElement && isPressable(target) && target === clickedControl ? target : null;
       if (!clicked && shouldIgnoreKey(event, target)) return;
-      if (!window.matchMedia(WIDE_ENOUGH).matches) return;
       if (document.querySelector('dialog[open], [role="menu"]')) return;
       const command = matchKeys(event, isMac, keymap);
       if (!command) return;

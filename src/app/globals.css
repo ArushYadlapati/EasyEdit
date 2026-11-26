@@ -134,3 +134,8 @@ body {
 
 /* A sideways swipe past the board's edge (or over the board in Fill, where it does not scroll) is not the browser's Back. */
 html:has(.editor) { overscroll-behavior-x: none; }
+
+/* On a phone the editor's fields are 16px: iOS zooms the whole page in when a smaller field takes the keyboard. */
+@media (max-width: 1023px) and (pointer: coarse) {
+  .editor input, .editor textarea, .editor select { font-size: 16px; }
+}

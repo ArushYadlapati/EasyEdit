@@ -2,8 +2,9 @@
 
 import type { KeyboardEvent } from "react";
 import { FOCUS_RING_INSET, cx } from "@/components/ui/cx";
-import { HEADER_WIDTH, formatTimecode, frameToPx } from "@/lib/editor/geometry";
+import { formatTimecode, frameToPx } from "@/lib/editor/geometry";
 import { useEditor } from "../context";
+import { useHeaderWidth } from "./header-width";
 
 const GRAB_PX = 24; // the transparent area that takes the pointer; the drawn head inside is 9 px
 
@@ -57,11 +58,12 @@ export function PlayheadHead({ zoom, fps, max, end }: { zoom: number; fps: numbe
 // The line across the rows. It sits under the track headers and the ruler and lets the pointer through.
 export function PlayheadLine({ zoom }: { zoom: number }) {
   const playhead = useEditor((s) => s.playhead);
+  const headerWidth = useHeaderWidth();
   return (
     <div
       aria-hidden
       className="pointer-events-none absolute top-0 bottom-0 z-10 w-px bg-ed-text"
-      style={{ left: HEADER_WIDTH + LANE_GUTTER, transform: `translateX(${frameToPx(playhead, zoom)}px)` }}
+      style={{ left: headerWidth + LANE_GUTTER, transform: `translateX(${frameToPx(playhead, zoom)}px)` }}
     />
   );
 }

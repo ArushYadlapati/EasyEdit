@@ -5,7 +5,6 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import { beginMove, beginTrim, resolveDrag, type Drag, type DragGhost, type DragResult } from "@/lib/editor/drag";
 import { moveTrack } from "@/lib/editor/actions";
 import {
-  HEADER_WIDTH,
   ROW_HEIGHT,
   RULER_HEIGHT,
   clipsInBox,
@@ -20,6 +19,7 @@ import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import type { AssetView } from "@/lib/media/types";
 import type { OpInput, TimelineDoc } from "@/lib/timeline";
 import { useMedia } from "../media/media-context";
+import { headerWidthNow } from "./header-width";
 
 export const CLICK_SLOP_PX = 3; // a press that travels further is a drag, not a click
 const EDGE_ZONE_PX = 32; // a pointer this close to either side of the lanes, or to the rows' top or bottom, scrolls them
@@ -127,7 +127,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
   function autoscroll(clientX: number): boolean {
     if (!scroller) return false;
     const { left, right } = scroller.getBoundingClientRect();
-    const step = clientX < left + HEADER_WIDTH + EDGE_ZONE_PX ? -AUTOSCROLL_PX : clientX > right - EDGE_ZONE_PX ? AUTOSCROLL_PX : 0;
+    const step = clientX < left + headerWidthNow() + EDGE_ZONE_PX ? -AUTOSCROLL_PX : clientX > right - EDGE_ZONE_PX ? AUTOSCROLL_PX : 0;
     if (step === 0) return false;
     const before = scroller.scrollLeft;
     scroller.scrollLeft = before + step;
@@ -442,7 +442,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     // there is no track, even where a scrolled row lies hidden under the ruler.
     pointAt(clientX, clientY) {
       const area = scroller?.getBoundingClientRect();
-      const lanesLeft = (area?.left ?? 0) + HEADER_WIDTH;
+      const lanesLeft = (area?.left ?? 0) + headerWidthNow();
       const frame = Math.round(frameAt(Math.max(clientX, lanesLeft)));
       const shown = displayRows(store.getState().doc);
       const row = Math.floor(yInRows(clientY) / ROW_HEIGHT);

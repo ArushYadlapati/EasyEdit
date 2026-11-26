@@ -2,7 +2,7 @@
 
 import { memo, useMemo } from "react";
 import { cx } from "@/components/ui/cx";
-import { HEADER_WIDTH, ROW_HEIGHT, frameToPx, visibleClips } from "@/lib/editor/geometry";
+import { ROW_HEIGHT, frameToPx, visibleClips } from "@/lib/editor/geometry";
 import { clipMarks, trackMarks, type Peer } from "@/lib/editor/presence";
 import { viewDoc } from "@/lib/editor/store";
 import type { Track } from "@/lib/timeline";
@@ -11,6 +11,7 @@ import { PEER_MORE, peerLook } from "../peer-look";
 import { usePresence } from "../presence-context";
 import { CLIP_HEIGHT, CLIP_TOP } from "./clip-view";
 import { LANE_GUTTER } from "./playhead";
+import { useHeaderWidth } from "./header-width";
 
 const RINGS_PER_CLIP = 2; // the first person's ring is 2 px outside the clip, the second's 4 px
 const RING_GAP_PX = 2;
@@ -30,6 +31,7 @@ type PeerSelectionsProps = {
 // a bar on a track they selected. It reads the doc as you see it, so the rings follow your own drag preview, and it
 // re-renders on its own when the list changes, so a check never re-renders a row. Nothing here takes the pointer.
 export const PeerSelections = memo(function PeerSelections({ rows, zoom, fromFrame, toFrame }: PeerSelectionsProps) {
+  const headerWidth = useHeaderWidth();
   const peers = usePresence((s) => s.peers);
   const doc = useEditor(viewDoc);
 
@@ -54,7 +56,7 @@ export const PeerSelections = memo(function PeerSelections({ rows, zoom, fromFra
           rings.push({
             key: `${clip.id}:${peer.userId}`,
             peer,
-            left: HEADER_WIDTH + LANE_GUTTER + frameToPx(clip.start, zoom) - out,
+            left: headerWidth + LANE_GUTTER + frameToPx(clip.start, zoom) - out,
             top: row * ROW_HEIGHT + CLIP_TOP - out,
             width,
             height: CLIP_HEIGHT + 2 * out,
@@ -70,7 +72,7 @@ export const PeerSelections = memo(function PeerSelections({ rows, zoom, fromFra
       if (row !== undefined) bands.push({ trackId, peer: on[0], top: row * ROW_HEIGHT });
     }
     return { rings, bands };
-  }, [peers, doc, rows, zoom, fromFrame, toFrame]);
+  }, [peers, doc, rows, zoom, fromFrame, toFrame, headerWidth]);
 
   return (
     <>

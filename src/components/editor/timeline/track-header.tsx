@@ -8,7 +8,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { InlineEdit } from "@/components/ui/inline-edit";
 import { Menu } from "@/components/ui/menu";
 import { duplicateTrack, removeTrack, renameTrack, reorderTrack, toggleTrack } from "@/lib/editor/actions";
-import { HEADER_WIDTH, trackToggles } from "@/lib/editor/geometry";
+import { trackToggles } from "@/lib/editor/geometry";
 import { rightClickEntries, trackMenu } from "@/lib/editor/menus";
 import { LIMITS } from "@/lib/limits";
 import type { Track } from "@/lib/timeline";
@@ -16,6 +16,7 @@ import { useEditor, useEditorStore } from "../context";
 import { useToMenuItems } from "../menu-items";
 import { useIsMac } from "../use-shortcuts";
 import { useClipDrag } from "./use-clip-drag";
+import { useHeaderWidth } from "./header-width";
 
 // Each switch keeps one name, for what it turns on, and shows with aria-pressed whether it is on.
 const SWITCHES = {
@@ -30,6 +31,7 @@ const SWITCHES = {
 // opens the same options where it was clicked; on a Mac a Ctrl press is that right-click, so it neither
 // drags nor opens the name.
 export const TrackHeader = memo(function TrackHeader({ track, selected }: { track: Track; selected: boolean }) {
+  const headerWidth = useHeaderWidth();
   const store = useEditorStore();
   const drag = useClipDrag();
   const selectTrack = useEditor((s) => s.selectTrack);
@@ -99,6 +101,7 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
     if (id === "rename") startRename();
     else if (id === "duplicate") duplicateTrack(store, track.id);
     else if (id === "up" || id === "down") reorderTrack(store, track.id, id);
+    else if (id === "locked" || id === "hidden" || id === "muted") toggleTrack(store, track.id, id);
     else if (id === "remove") removeTrack(store, track.id);
   }
 
@@ -110,7 +113,7 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
         canEdit && "cursor-grab",
         FADE,
       )}
-      style={{ width: HEADER_WIDTH }}
+      style={{ width: headerWidth }}
       onClick={onHeaderClick}
       onPointerDown={onHeaderPointerDown}
       onContextMenu={onHeaderContextMenu}
@@ -142,7 +145,9 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
             {track.name}
           </button>
           <div className="min-w-0 flex-1 self-stretch" />
+          {/* On a phone the column is narrow: the switches give way, and the options menu has them all. */}
           <IconButton
+            className="max-lg:hidden"
             data-edit-control
             disabled={!canEdit}
             label="Lock track"
@@ -156,6 +161,7 @@ export const TrackHeader = memo(function TrackHeader({ track, selected }: { trac
             return (
               <IconButton
                 key={field}
+                className="max-lg:hidden"
                 data-edit-control
                 disabled={!canEdit}
                 label={label}

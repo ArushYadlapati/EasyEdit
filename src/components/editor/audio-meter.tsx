@@ -129,7 +129,8 @@ export function AudioMeter() {
       data-audio-meter
       onContextMenu={onContextMenu}
       style={{ width }}
-      className="relative flex shrink-0 flex-col items-stretch gap-1 border-l border-ed-line bg-ed-panel px-1.5 pt-1.5 pb-1 select-none"
+      // Not on a phone: the lanes need the width.
+      className="relative flex shrink-0 flex-col items-stretch gap-1 border-l border-ed-line bg-ed-panel px-1.5 pt-1.5 pb-1 select-none max-lg:hidden"
     >
       {/* A 9 px strip centred on the meter's left line (5 px left of the padding box, which starts inside that 1 px
           line), above the timeline's ruler and its drop tint (z-30). */}

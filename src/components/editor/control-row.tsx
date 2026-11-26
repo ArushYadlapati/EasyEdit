@@ -48,7 +48,8 @@ export function ControlRow({ duration, fps }: { duration: number; fps: number })
   const { min: minZoom, max: maxZoom } = zoomLimits(duration, fps);
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-ed-line px-3 [&_button:focus-visible]:-outline-offset-2">
+    // On a phone the row is wider than the screen: it scrolls sideways, and the preview's own zoom and format give way.
+    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-ed-line px-3 max-lg:overflow-x-auto max-lg:overscroll-x-contain max-lg:px-2 max-lg:[scrollbar-width:none] max-lg:[&>*]:shrink-0 [&_button:focus-visible]:-outline-offset-2">
       <Menu
         data-edit-control
         disabled={!canEdit || tracksFull}
@@ -61,7 +62,7 @@ export function ControlRow({ duration, fps }: { duration: number; fps: number })
       <TransportButtons />
       <TimeReadout duration={duration} fps={fps} />
       <RateBadge />
-      <div className="ml-auto flex min-w-0 items-center gap-2">
+      <div className="ml-auto flex min-w-0 items-center gap-2 max-lg:hidden">
         <ZoomMenu />
         <ViewAsMenu />
         <span className="min-w-0 truncate text-xs text-ed-muted">{format}</span>

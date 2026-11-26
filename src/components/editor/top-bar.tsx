@@ -137,7 +137,9 @@ export function TopBar({
 
   return (
     // The middle column keeps its width while the sides can give way: the project name first, as before.
-    <header className="col-span-3 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(9rem,clamp(12rem,28vw,24rem))_minmax(max-content,1fr)] items-center gap-3 bg-ed-panel px-3">
+    // Below the lg width (a phone) the search, the save status and the keyboard list give way: the name, undo, redo
+    // and Export stay.
+    <header className="grid min-w-0 items-center gap-3 bg-ed-panel px-3 max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:gap-1 max-lg:px-1.5 lg:col-span-3 lg:grid-cols-[minmax(0,1fr)_minmax(9rem,clamp(12rem,28vw,24rem))_minmax(max-content,1fr)]">
       <div className="flex min-w-0 items-center gap-2 overflow-hidden">
         <LeaveLink
           href={spacePath(spaceSlug)}
@@ -148,7 +150,7 @@ export function TopBar({
           )}
         >
           <LogoMark size={16} />
-          Projects
+          <span className="max-lg:sr-only">Projects</span>
         </LeaveLink>
         <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
         <div className="flex shrink-0 items-center">
@@ -164,12 +166,16 @@ export function TopBar({
           </span>
         )}
       </div>
-      <FeatureSearch items={searchList} onRun={runFound} inputRef={searchRef ?? ownSearch} />
+      <div className="contents max-lg:hidden">
+        <FeatureSearch items={searchList} onRun={runFound} inputRef={searchRef ?? ownSearch} />
+      </div>
       <TimelineFileDialog mode={timelineFile} onClose={() => setTimelineFile(null)} />
-      <div className="flex items-center justify-end gap-2">
-        <EditingIndicator />
-        <div className="shrink-0">
-          <SaveStatus />
+      <div className="flex items-center justify-end gap-2 max-lg:gap-0.5">
+        <div className="contents max-lg:hidden">
+          <EditingIndicator />
+          <div className="shrink-0">
+            <SaveStatus />
+          </div>
         </div>
         <IconButton
           data-edit-control
@@ -193,10 +199,10 @@ export function TopBar({
         <IconButton label="Settings" onClick={onShowSettings}>
           <SettingsIcon />
         </IconButton>
-        <IconButton label="Keyboard shortcuts" shortcut={keyFor("show-shortcuts")} onClick={onShowShortcuts}>
+        <IconButton className="max-lg:hidden" label="Keyboard shortcuts" shortcut={keyFor("show-shortcuts")} onClick={onShowShortcuts}>
           <Keyboard />
         </IconButton>
-        <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
+        <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line max-lg:hidden" />
         {/* Not an edit: a viewer exports too. A project deleted during an export keeps the way back to its progress,
             and to a file waiting for Download. */}
         <Button

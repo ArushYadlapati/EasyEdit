@@ -5,7 +5,6 @@ import { useStore } from "zustand";
 import type { StoreApi } from "zustand/vanilla";
 import { cx } from "@/components/ui/cx";
 import {
-  HEADER_WIDTH,
   MAX_CONTENT_PX,
   ROW_HEIGHT,
   RULER_HEIGHT,
@@ -26,6 +25,7 @@ import { PeerSelections } from "./peer-selections";
 import { LANE_GUTTER, PlayheadLine } from "./playhead";
 import { Ruler } from "./ruler";
 import { ControlRow } from "../control-row";
+import { headerWidthNow, useHeaderWidth } from "./header-width";
 import { CLIP_HEIGHT, CLIP_TOP } from "./clip-view";
 import { TrackRow, useLaneMenu } from "./track-row";
 import { UploadPlaceholders } from "./upload-placeholders";
@@ -87,7 +87,8 @@ export function Timeline() {
   // A project that grew may no longer fit at the stored zoom; draw at the allowed one and store it below.
   const zoom = clampZoom(storedZoom, duration, fps);
   const frames = contentFrames(duration, fps);
-  const width = Math.min(HEADER_WIDTH + LANE_GUTTER + Math.floor(frames * zoom), MAX_CONTENT_PX);
+  const headerWidth = useHeaderWidth();
+  const width = Math.min(headerWidth + LANE_GUTTER + Math.floor(frames * zoom), MAX_CONTENT_PX);
   const fromFrame = Math.max(0, (scrollStart - LANE_GUTTER - OVERSCAN_PX) / zoom);
   const toFrame = (scrollStart - LANE_GUTTER + WINDOW_STEP_PX + viewportPx + OVERSCAN_PX) / zoom;
   const drag = useTimelineDrag(store, scrollRef, rowsRef, zoom);
@@ -107,7 +108,7 @@ export function Timeline() {
     if (!el) return;
     let measured = false;
     const measure = () => {
-      const lanes = el.clientWidth - HEADER_WIDTH;
+      const lanes = el.clientWidth - headerWidthNow();
       if (el.clientWidth === 0 || lanes <= 0) return;
       const { setViewport, zoomToFit } = store.getState();
       setViewport(lanes);
@@ -121,7 +122,8 @@ export function Timeline() {
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [store]);
+    // Measured again when the column of track names changes width (a window crossing the phone's width).
+  }, [store, headerWidth]);
 
   // Ctrl or Cmd with the wheel zooms around the pointer. React's wheel listener is passive, so this
   // one is added by hand to be allowed to stop the browser's own zoom.
@@ -135,7 +137,7 @@ export function Timeline() {
       const delta = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * LINE_PX : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? e.deltaY * el.clientWidth : e.deltaY;
       const next = clampZoom(current * Math.exp(-delta * WHEEL_ZOOM_RATE), docDuration(d), d.fps);
       if (next === current) return;
-      wheelAnchor.current = Math.max(0, e.clientX - el.getBoundingClientRect().left - HEADER_WIDTH);
+      wheelAnchor.current = Math.max(0, e.clientX - el.getBoundingClientRect().left - headerWidthNow());
       setZoom(next);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -153,7 +155,7 @@ export function Timeline() {
     wheelAnchor.current = null;
     if (!el || before === zoom) return;
     const playheadPx = LANE_GUTTER + frameToPx(store.getState().playhead, before) - el.scrollLeft;
-    const anchorPx = anchor ?? (playheadPx >= 0 && playheadPx <= el.clientWidth - HEADER_WIDTH ? playheadPx : 0);
+    const anchorPx = anchor ?? (playheadPx >= 0 && playheadPx <= el.clientWidth - headerWidthNow() ? playheadPx : 0);
     el.scrollLeft = keepAnchor(el.scrollLeft, anchorPx, before, zoom);
     setScrollStart(windowStart(el.scrollLeft));
   }, [zoom, store]);
@@ -176,7 +178,7 @@ export function Timeline() {
       store.subscribe((s, prev) => {
         const el = scrollRef.current;
         if (!el || s.playhead === prev.playhead || scrubbing.current) return;
-        const next = revealScroll({ playheadPx: LANE_GUTTER + frameToPx(s.playhead, s.zoom), scrollLeft: el.scrollLeft, viewportPx: el.clientWidth - HEADER_WIDTH });
+        const next = revealScroll({ playheadPx: LANE_GUTTER + frameToPx(s.playhead, s.zoom), scrollLeft: el.scrollLeft, viewportPx: el.clientWidth - headerWidthNow() });
         if (next !== null) el.scrollLeft = next;
       }),
     [store],
@@ -250,7 +252,7 @@ export function Timeline() {
           {empty && !landing && (
             <p
               className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-center text-[13px] leading-5 text-ed-muted"
-              style={{ left: HEADER_WIDTH, top: RULER_HEIGHT }}
+              style={{ left: headerWidth, top: RULER_HEIGHT }}
             >
               {takesFiles
                 ? "Nothing on the timeline yet. Add text or media from the panel on the left, or drag files here."
@@ -290,7 +292,8 @@ function DragOverlay({ view, hover, rows, zoom }: { view: StoreApi<DragView>; ho
   const guide = dragGuide ?? incoming?.guide ?? null;
   const incomingRow = incoming ? rows.findIndex((t) => t.id === incoming.trackId) : -1;
   const moves = track !== null && (track.slot > track.fromRow ? track.slot - 1 : track.slot) !== track.fromRow;
-  const x = (frame: number) => HEADER_WIDTH + LANE_GUTTER + frameToPx(frame, zoom);
+  const headerWidth = useHeaderWidth();
+  const x = (frame: number) => headerWidth + LANE_GUTTER + frameToPx(frame, zoom);
   return (
     <>
       {ghost?.map((g) => {

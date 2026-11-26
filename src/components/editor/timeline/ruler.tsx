@@ -1,10 +1,11 @@
 "use client";
 
 import { memo, useMemo, useRef, type PointerEvent } from "react";
-import { HEADER_WIDTH, RULER_HEIGHT, frameToPx, pxToFrame, rulerTicks } from "@/lib/editor/geometry";
+import { RULER_HEIGHT, frameToPx, pxToFrame, rulerTicks } from "@/lib/editor/geometry";
 import { markerLabel, sortedMarkers } from "@/lib/editor/markers";
 import { useEditor, useEditorStore } from "../context";
 import { useReview } from "../review/review-context";
+import { useHeaderWidth } from "./header-width";
 import { LANE_GUTTER, PlayheadHead } from "./playhead";
 
 type RulerProps = {
@@ -21,6 +22,7 @@ type RulerProps = {
 // grabbing the head drags it from where it was taken, so it does not jump under the pointer.
 export const Ruler = memo(function Ruler({ zoom, fps, fromFrame, toFrame, max, end, onScrub }: RulerProps) {
   const store = useEditorStore();
+  const headerWidth = useHeaderWidth();
   const laneRef = useRef<HTMLDivElement>(null);
   const grabOffset = useRef(0);
   const { ticks } = useMemo(() => rulerTicks({ zoom, fps, fromFrame, toFrame }), [zoom, fps, fromFrame, toFrame]);
@@ -49,7 +51,7 @@ export const Ruler = memo(function Ruler({ zoom, fps, fromFrame, toFrame, max, e
 
   return (
     <div className="sticky top-0 z-30 flex bg-ed-panel select-none" style={{ height: RULER_HEIGHT }}>
-      <div className="sticky left-0 z-10 shrink-0 border-r border-b border-ed-line bg-ed-panel" style={{ width: HEADER_WIDTH }} />
+      <div className="sticky left-0 z-10 shrink-0 border-r border-b border-ed-line bg-ed-panel" style={{ width: headerWidth }} />
       <div
         ref={laneRef}
         onPointerDown={onPointerDown}

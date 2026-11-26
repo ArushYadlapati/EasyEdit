@@ -5,7 +5,7 @@ import { duplicateTrackOps, reorderTrackOps, splitOps } from "./commands";
 import { soundClipsOf } from "./sound";
 import { nestOps } from "./nest";
 import { freezeFrameOps, reverseOps } from "./speed";
-import { zoomLimits } from "./geometry";
+import { trackToggles, zoomLimits } from "./geometry";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import { findClip, type EditorState } from "./store";
 
@@ -119,13 +119,15 @@ export function viewMenu(input: TopMenuInput): MenuEntry[] {
   ];
 }
 
-export type TrackMenuId = "rename" | "duplicate" | "up" | "down" | "remove";
+export type TrackMenuId = "rename" | "duplicate" | "up" | "down" | "locked" | "hidden" | "muted" | "remove";
 
 // A track's options (label "Track options"), read when the menu opens. Every entry changes the
 // project, so all are greyed for a viewer.
 export function trackMenu(state: EditorState, trackId: string): MenuEntry[] {
   const { doc, canEdit } = state;
-  const locked = doc.tracks.find((t) => t.id === trackId)?.locked ?? false;
+  const track = doc.tracks.find((t) => t.id === trackId);
+  const locked = track?.locked ?? false;
+  const toggles = track ? trackToggles(track.kind) : [];
   const entry = (id: TrackMenuId, label: string, unavailable = false): MenuEntry => ({
     id,
     label,
@@ -137,6 +139,10 @@ export function trackMenu(state: EditorState, trackId: string): MenuEntry[] {
     entry("duplicate", "Duplicate", duplicateTrackOps(doc, trackId, "new").length === 0),
     entry("up", "Move up", reorderTrackOps(doc, trackId, "up").length === 0),
     entry("down", "Move down", reorderTrackOps(doc, trackId, "down").length === 0),
+    // The header's switches, here too: a phone's narrow header shows only the name and this menu.
+    { ...entry("locked", locked ? "Unlock track" : "Lock track"), separatorBefore: true },
+    ...(toggles.includes("hidden") ? [entry("hidden", track?.hidden ? "Show track" : "Hide track")] : []),
+    ...(toggles.includes("muted") ? [entry("muted", track?.muted ? "Unmute track" : "Mute track")] : []),
     {
       ...entry("remove", locked ? "Remove track (unlock first)" : "Remove track", locked),
       danger: true,

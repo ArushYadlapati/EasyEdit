@@ -2,7 +2,7 @@
 
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
-import { cx } from "@/components/ui/cx";
+import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { Splitter } from "@/components/ui/splitter";
 import { fitLayout, layoutStyle, sizeBounds, type Layout, type LayoutStore, type PanelId } from "@/lib/editor/layout";
 import { useMediaDropState } from "./media/media-context";
@@ -30,14 +30,29 @@ type PanelGridProps = {
   overlay?: ReactNode;
 };
 
+// What the lower part of a phone's screen shows: one of the three at a time.
+type PhoneTab = "timeline" | "add" | "details";
+const PHONE_TABS: { id: PhoneTab; label: string }[] = [
+  { id: "timeline", label: "Timeline" },
+  { id: "add", label: "Add" },
+  { id: "details", label: "Details" },
+];
+// Below the lg width a region sits in the fourth row when its tab is chosen, and is not shown otherwise. It stays
+// mounted either way, so nothing in it starts over when the tab changes.
+const phoneCell = (shown: boolean) => (shown ? "max-lg:row-start-4" : "max-lg:hidden");
+
 // The editor's grid: the top row, then the add panel, preview and details side by side, then the timeline across the
 // bottom, with an edge between them that resizes each panel. Sizes come from the layout store, fitted to the window,
-// and are set as the grid's size variables, which the notice bar also reads. Hidden below the lg width, where the
-// editor shows its message instead. A deleted project shows only the top row and its message, with no edges.
+// and are set as the grid's size variables, which the notice bar also reads. A deleted project shows only the top row
+// and its message, with no edges.
+// Below the lg width (a phone, a narrow window) the same regions stack: the top row, the preview, a row of three tabs,
+// and under it the timeline, the add panel or the details, whichever tab is chosen. Only the grid's CSS differs, so
+// the server's first paint is right at any width and nothing is mounted twice.
 export function PanelGrid({ layout, deleted = false, top, left, center, right, bottom, overlay }: PanelGridProps) {
   const wanted = useStore(layout, (s) => s.wanted);
   const win = useStore(layout, (s) => s.window);
   const [resizing, setResizing] = useState<"col" | "row" | null>(null);
+  const [phoneTab, setPhoneTab] = useState<PhoneTab>("timeline");
   // While something is dragged over the window, the edges let it through to the panels under them.
   const dragging = useMediaDropState((s) => s.incoming !== null, false);
   // The sizes wanted when a drag began. Escape puts them back, so a size the window had squeezed, or a timeline that
@@ -76,7 +91,7 @@ export function PanelGrid({ layout, deleted = false, top, left, center, right, b
           beforeDrag.current = dragging ? layout.getState().wanted : null;
           setResizing(dragging ? (vertical ? "col" : "row") : null);
         }}
-        className={cx(EDGE, className, dragging && "pointer-events-none")}
+        className={cx(EDGE, className, "max-lg:hidden", dragging && "pointer-events-none")}
       />
     );
   };
@@ -87,30 +102,50 @@ export function PanelGrid({ layout, deleted = false, top, left, center, right, b
       style={layoutStyle(shown)}
       // The 44px top row is TOP_BAR_PX in the layout module.
       className={cx(
-        "relative hidden h-full grid-cols-[var(--ed-left-w)_minmax(0,1fr)_var(--ed-right-w)] grid-rows-[44px_minmax(0,1fr)_var(--ed-timeline-h)] gap-px bg-ed-line-strong lg:grid",
+        "relative grid h-full gap-px bg-ed-line-strong",
+        "lg:grid-cols-[var(--ed-left-w)_minmax(0,1fr)_var(--ed-right-w)] lg:grid-rows-[44px_minmax(0,1fr)_var(--ed-timeline-h)]",
+        "max-lg:grid-cols-[minmax(0,1fr)] max-lg:grid-rows-[44px_minmax(0,38dvh)_40px_minmax(0,1fr)]",
         RESIZE_CURSOR,
       )}
     >
       {top}
       {deleted ? (
-        <main className="col-span-3 row-span-2 flex flex-col items-center justify-center gap-2 bg-ed-bg text-center">{center}</main>
+        <main className="flex flex-col items-center justify-center gap-2 bg-ed-bg text-center max-lg:row-span-3 lg:col-span-3 lg:row-span-2">{center}</main>
       ) : (
         <>
-          <aside id={ids.left} aria-label="Add" className={cx(REGION, "bg-ed-panel")}>
+          <aside id={ids.left} aria-label="Add" className={cx(REGION, "bg-ed-panel", phoneCell(phoneTab === "add"))}>
             {left}
           </aside>
           {edge("left", "Left panel width", LEFT_EDGE)}
-          <main aria-label="Preview" className={cx(REGION, "bg-ed-bg")}>
+          <main aria-label="Preview" className={cx(REGION, "bg-ed-bg max-lg:row-start-2")}>
             {center}
           </main>
           {edge("right", "Right panel width", RIGHT_EDGE)}
-          <aside id={ids.right} aria-label="Details" className={cx(REGION, "bg-ed-panel")}>
+          <aside id={ids.right} aria-label="Details" className={cx(REGION, "bg-ed-panel", phoneCell(phoneTab === "details"))}>
             {right}
           </aside>
           {edge("timeline", "Timeline height", TIMELINE_EDGE)}
-          <section id={ids.timeline} aria-label="Timeline" className={cx(REGION, "col-span-3 bg-ed-panel")}>
+          <section id={ids.timeline} aria-label="Timeline" className={cx(REGION, "bg-ed-panel lg:col-span-3", phoneCell(phoneTab === "timeline"))}>
             {bottom}
           </section>
+          {/* A phone's switch between the three. Not tabs to a screen reader: each region is a landmark it can go to by name. */}
+          <nav aria-label="Show" className="flex items-stretch gap-1 bg-ed-panel px-2 py-1 max-lg:row-start-3 lg:hidden">
+            {PHONE_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                aria-pressed={phoneTab === tab.id}
+                className={cx(
+                  "flex-1 rounded-md text-[13px] font-medium text-ed-muted select-none aria-pressed:bg-ed-accent-weak aria-pressed:text-ed-accent",
+                  FOCUS_RING,
+                  FADE,
+                )}
+                onClick={() => setPhoneTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
           {overlay}
         </>
       )}

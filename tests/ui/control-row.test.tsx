@@ -39,7 +39,8 @@ describe("the control row", () => {
 
   it("keeps to one line, the format label giving way first", () => {
     const { row } = showRow();
-    expect(row.className).not.toMatch(/flex-wrap|overflow-x/);
+    // On a wide window. (A phone's row scrolls sideways: those classes are all max-lg ones.)
+    expect(row.className.split(" ").filter((name) => !name.startsWith("max-lg:")).join(" ")).not.toMatch(/flex-wrap|overflow-x/);
     const format = within(row).getByText(formatLabel(sampleDoc()));
     expect(format.className).toMatch(/\btruncate\b/);
     expect(format.className).toMatch(/\bmin-w-0\b/);
