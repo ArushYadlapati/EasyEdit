@@ -53,11 +53,29 @@ export function uploadFrames(item: Pick<UploadItem, "fileName" | "durationMs">, 
   return item.durationMs === null ? null : sourceFrames(item.durationMs, fps);
 }
 
+// An upload that may still land: not cancelled (its row is there) and not failed in a way a retry cannot mend.
+export const liveUpload = (item: UploadItem | undefined): item is UploadItem => item !== undefined && !(item.stage === "failed" && !item.canRetry);
+
 // One dropped file: waiting for its original (pending), being added, on the timeline, or never to land (out: cancelled,
 // failed for good, or refused a place). placedFrames: the length it landed with.
 export type DropMember = { key: string; state: "pending" | "placing" | "placed" | "out"; placedFrames?: number };
 // The files of one drop, laid end to end from frame on the dropped row. stillSeconds is the still length at the drop.
 export type DropGroup = { id: string; frame: number; trackId: string | null; stillSeconds: number; members: DropMember[] };
+
+// Where each file of a drop is shown while it waits: its first frame and its length, laid end to end from the drop
+// frame as the landing lays them. A length not read yet counts as the drop's still length, so each file shows near
+// where it will go; one that will never land takes no room, so the files after it close up.
+export function shownSlots(group: DropGroup, uploads: UploadItem[], fps: number): { start: number; length: number }[] {
+  const nominal = Math.max(1, Math.round(group.stillSeconds * fps));
+  const lengths = group.members.map((member) => {
+    if (member.state === "placed") return member.placedFrames ?? 0;
+    const item = uploads.find((u) => u.key === member.key);
+    if (member.state === "out" || !liveUpload(item)) return 0;
+    return uploadFrames(item, fps, group.stillSeconds) ?? nominal;
+  });
+  const starts = endToEnd(group.frame, lengths);
+  return lengths.map((length, i) => ({ start: starts[i]!, length })); // every length is known here, so every start is
+}
 
 // What is dragged over the editor, for an editor only.
 export type Incoming = "files" | "asset" | null;
@@ -72,6 +90,11 @@ export type MediaDrop = {
   endAssetDrag(): void;
   // Uploads the files, and lands each at its place once its original is in, unselected.
   dropFiles(files: File[], at: TimelinePoint, opts: { stillSeconds: number }): void;
+  // Gives a file that still waits a place of its own. It leaves its drop; the files before it keep theirs, and the
+  // ones after it stay where they are shown. A file that has landed, or is not waiting, is left alone.
+  moveFile(key: string, at: TimelinePoint): void;
+  // While a file is held (it is being dragged), nothing lands, as under a drag of a clip. null lets go.
+  hold(key: string | null): void;
   start(): () => void; // watches the editor and the library; the function it returns stops that
 };
 
@@ -86,6 +109,7 @@ export function createMediaDrop(deps: { store: EditorStore; library: LibraryStor
   let started = false;
   let scheduled = false;
   let dropped = 0; // how many drops this editor has taken, for their ids
+  let held: string | null = null; // the waiting file a person is dragging
 
   function dropGroups() {
     if (state.getState().groups.length > 0) state.setState({ groups: [] });
@@ -109,7 +133,7 @@ export function createMediaDrop(deps: { store: EditorStore; library: LibraryStor
 
   function advance() {
     const editor = deps.store.getState();
-    if (editor.gesture !== null || !editor.canEdit || editor.status === "deleted") return;
+    if (held !== null || editor.gesture !== null || !editor.canEdit || editor.status === "deleted") return;
     for (const { id } of state.getState().groups) advanceGroup(id);
     const groups = state.getState().groups;
     const left = groups.filter((g) => !g.members.every(settled));
@@ -186,6 +210,32 @@ export function createMediaDrop(deps: { store: EditorStore; library: LibraryStor
       state.setState((s) => ({ groups: [...s.groups, group] }));
       schedule(); // a file whose original is already in lands without waiting for another change
     },
+    moveFile(key, at) {
+      const { groups } = state.getState();
+      const from = groups.findIndex((g) => g.members.some((m) => m.key === key && m.state === "pending"));
+      if (from < 0) return;
+      const group = groups[from];
+      const index = group.members.findIndex((m) => m.key === key && m.state === "pending");
+      const slots = shownSlots(group, deps.library.getState().uploads, deps.store.getState().doc.fps);
+      const waits = (members: DropMember[]) => members.some((m) => !settled(m));
+      const before = group.members.slice(0, index);
+      const after = group.members.slice(index + 1);
+      const parts: DropGroup[] = [];
+      if (waits(before)) parts.push({ ...group, members: before });
+      dropped += 1;
+      parts.push({ ...group, id: `drop-${dropped}`, frame: at.frame, trackId: at.trackId, members: [group.members[index]] });
+      if (waits(after)) {
+        dropped += 1;
+        parts.push({ ...group, id: `drop-${dropped}`, frame: slots[index + 1].start, members: after });
+      }
+      state.setState({ groups: [...groups.slice(0, from), ...parts, ...groups.slice(from + 1)] });
+      schedule(); // it may be ready to land already
+    },
+    hold(key) {
+      if (held === key) return;
+      held = key;
+      if (key === null) schedule(); // whatever came in meanwhile lands now
+    },
     start() {
       started = true;
       const stopEditor = deps.store.subscribe((editor, prev) => {
@@ -205,6 +255,7 @@ export function createMediaDrop(deps: { store: EditorStore; library: LibraryStor
       });
       return () => {
         started = false;
+        held = null;
         stopEditor();
         stopLibrary();
         dropGroups();

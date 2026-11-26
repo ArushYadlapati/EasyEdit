@@ -434,7 +434,7 @@ it("a dropped file shows a placeholder until its upload lands, then the clip", a
   expect(leftOf(shown)).toBe(LANE_LEFT + 90 * ZOOM);
   expect(widthOf(shown)).toBe(60 * ZOOM);
   expect(rowOf(shown)).toBe(2);
-  expect(shown.className).toContain("pointer-events-none absolute z-10 rounded-[4px] border border-dashed border-ed-accent bg-ed-accent-weak");
+  expect(shown.className).toContain("absolute z-10 rounded-[4px] border border-dashed border-ed-accent bg-ed-accent-weak");
   expect(shown.getAttribute("aria-hidden")).toBe("true");
   expect(shown.querySelector<HTMLElement>("[data-upload-progress]")!.style.width).toBe("40%");
   expect(shown.querySelector("button")).toBeNull();
@@ -633,6 +633,148 @@ it("a drop that carries no file is taken and does nothing", () => {
   expect(line()).toBeNull();
   expect(media.queue.add).not.toHaveBeenCalled();
   expect(drop.state.getState().groups).toEqual([]);
+});
+
+// A waiting file's box takes the pointer: pressed, moved and let go of on the box itself, which holds the pointer.
+const at = (clientX: number, clientY: number) => ({ button: 0, pointerId: 1, clientX, clientY });
+const groupsNow = () => drop.state.getState().groups.map((g) => ({ frame: g.frame, trackId: g.trackId, keys: g.members.map((m) => m.key) }));
+
+it("a file's box can be dragged along the timeline while it uploads, and the file lands where it was let go", async () => {
+  const { st, lane, placeholders } = open();
+  fileDrop(lane(2), x(200), y(2), [file("climb.mov")]);
+  await setUploads([upload("climb.mov")]);
+  const box = () => placeholders()[0];
+  expect(box().className).not.toContain("pointer-events-none");
+  expect(box().className).toContain("cursor-grab");
+  // Its name and its bar let the pointer through to the box.
+  expect([...box().children].every((child) => child.className.includes("pointer-events-none"))).toBe(true);
+
+  // Taken 10 frames into the box and carried 200 frames to the right: [400, 460], far from every snap target.
+  fireEvent.pointerDown(box(), at(x(210), y(2)));
+  fireEvent.pointerMove(box(), at(x(410), y(2)));
+  expect(leftOf(box())).toBe(LANE_LEFT + 400 * ZOOM);
+  expect(rowOf(box())).toBe(2);
+  expect(box().className).toContain("cursor-grabbing");
+  expect(box().dataset.moving).toBe("true");
+  expect(groupsNow()).toEqual([{ frame: 200, trackId: "v1", keys: ["climb.mov"] }]); // nothing is changed until it is let go
+  fireEvent.pointerUp(box(), at(x(410), y(2)));
+  expect(groupsNow()).toEqual([{ frame: 400, trackId: "v1", keys: ["climb.mov"] }]);
+  expect(leftOf(box())).toBe(LANE_LEFT + 400 * ZOOM);
+  expect(box().dataset.moving).toBeUndefined();
+
+  await act(async () => {
+    media.library.getState().setUploads([upload("climb.mov", { stage: "done", sentBytes: 100, assetId: "n1" })]);
+    media.library.getState().put(assetView({ id: "n1", name: "climb", fileName: "climb.mov", durationMs: 2_000 }));
+  });
+  await flush();
+  expect(placeholders()).toEqual([]);
+  expect(st().doc.tracks.find((t) => t.id === "v1")!.clips.find((c) => c.type === "video" && c.assetId === "n1")).toMatchObject({ start: 400, duration: 60 });
+});
+
+it("a dragged box snaps to a clip's edge with a guide, and not with snapping off", async () => {
+  const { st, lane, placeholders, guide } = open();
+  fileDrop(lane(2), x(200), y(2), [file("climb.mov")]);
+  await setUploads([upload("climb.mov")]);
+  const box = () => placeholders()[0];
+  fireEvent.pointerDown(box(), at(x(200), y(2)));
+  fireEvent.pointerMove(box(), at(x(62), y(2))); // 2 frames from c2's end at 60
+  expect(leftOf(box())).toBe(LANE_LEFT + 60 * ZOOM);
+  expect(parseFloat(guide()!.style.left)).toBe(LANE_LEFT + 60 * ZOOM);
+  act(() => st().setSnapping(false));
+  fireEvent.pointerMove(box(), at(x(63), y(2)));
+  expect(leftOf(box())).toBe(LANE_LEFT + 63 * ZOOM);
+  expect(guide()).toBeNull();
+  fireEvent.pointerUp(box(), at(x(63), y(2)));
+  expect(groupsNow()).toEqual([{ frame: 63, trackId: "v1", keys: ["climb.mov"] }]);
+  expect(guide()).toBeNull();
+});
+
+it("a box dragged onto another row wishes for that row, and never starts before frame 0", async () => {
+  const { lane, placeholders } = open();
+  fileDrop(lane(3), x(200), y(3), [file("theme.mp3")]);
+  await setUploads([upload("theme.mp3")]);
+  const box = () => placeholders()[0];
+  expect(rowOf(box())).toBe(3);
+  // Onto the video row, which takes no audio: it wishes for it, and shows on the audio row placement would use.
+  fireEvent.pointerDown(box(), at(x(230), y(3)));
+  fireEvent.pointerMove(box(), at(x(10), y(2)));
+  expect(leftOf(box())).toBe(LANE_LEFT);
+  expect(rowOf(box())).toBe(3);
+  fireEvent.pointerUp(box(), at(x(10), y(2)));
+  expect(groupsNow()).toEqual([{ frame: 0, trackId: "v1", keys: ["theme.mp3"] }]);
+});
+
+it("Escape puts a dragged box back, heard by nothing else, and a press without a move changes nothing", async () => {
+  const { lane, placeholders } = open();
+  fileDrop(lane(2), x(200), y(2), [file("climb.mov")]);
+  await setUploads([upload("climb.mov")]);
+  const box = () => placeholders()[0];
+  const before = drop.state.getState().groups;
+  const heard: string[] = [];
+  const listen = (e: KeyboardEvent) => heard.push(e.key);
+  window.addEventListener("keydown", listen);
+
+  fireEvent.pointerDown(box(), at(x(210), y(2)));
+  fireEvent.pointerMove(box(), at(x(410), y(2)));
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  expect(leftOf(box())).toBe(LANE_LEFT + 200 * ZOOM);
+  expect(heard).toEqual([]);
+  // The button is still down: further moves and the release do nothing.
+  fireEvent.pointerMove(box(), at(x(500), y(2)));
+  fireEvent.pointerUp(box(), at(x(500), y(2)));
+  expect(drop.state.getState().groups).toBe(before);
+
+  // With no drag under way Escape is everyone's again.
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  expect(heard).toEqual(["Escape"]);
+
+  // A press that travels less than a click's slop is no drag.
+  fireEvent.pointerDown(box(), at(x(210), y(2)));
+  fireEvent.pointerMove(box(), at(x(210) + 2, y(2)));
+  fireEvent.pointerUp(box(), at(x(210) + 2, y(2)));
+  expect(drop.state.getState().groups).toBe(before);
+  window.removeEventListener("keydown", listen);
+});
+
+it("a file that comes in while its box is dragged lands when the box is let go, at its new place", async () => {
+  const { st, lane, placeholders } = open();
+  fileDrop(lane(2), x(200), y(2), [file("climb.mov")]);
+  await setUploads([upload("climb.mov")]);
+  const box = () => placeholders()[0];
+  fireEvent.pointerDown(box(), at(x(210), y(2)));
+  fireEvent.pointerMove(box(), at(x(410), y(2)));
+  await act(async () => {
+    media.library.getState().setUploads([upload("climb.mov", { stage: "done", sentBytes: 100, assetId: "n1" })]);
+    media.library.getState().put(assetView({ id: "n1", name: "climb", fileName: "climb.mov", durationMs: 2_000 }));
+  });
+  await flush();
+  const landed = () => st().doc.tracks.flatMap((t) => t.clips).find((c) => c.type === "video" && c.assetId === "n1");
+  expect(landed()).toBeUndefined();
+  expect(placeholders()).toHaveLength(1);
+  fireEvent.pointerUp(box(), at(x(410), y(2)));
+  await flush();
+  expect(landed()).toMatchObject({ start: 400, duration: 60 });
+  expect(placeholders()).toEqual([]);
+});
+
+it("dragging one file of a drop leaves the others where they are", async () => {
+  const { lane, placeholders } = open();
+  fileDrop(lane(2), x(200), y(2), [file("a.mov"), file("b.mov"), file("c.mov")]);
+  await setUploads([upload("a.mov"), upload("b.mov"), upload("c.mov")]);
+  const lefts = () => placeholders().map((p) => (leftOf(p) - LANE_LEFT) / ZOOM);
+  expect(lefts()).toEqual([200, 260, 320]);
+  const b = () => placeholders().find((p) => p.textContent!.startsWith("b.mov"))!;
+  fireEvent.pointerDown(b(), at(x(260), y(2)));
+  fireEvent.pointerMove(b(), at(x(500), y(2)));
+  expect(placeholders().map((p) => p.textContent!.split(" ")[0])).toEqual(["a.mov", "b.mov", "c.mov"]);
+  expect(lefts()).toEqual([200, 500, 320]);
+  fireEvent.pointerUp(b(), at(x(500), y(2)));
+  expect(groupsNow()).toEqual([
+    { frame: 200, trackId: "v1", keys: ["a.mov"] },
+    { frame: 500, trackId: "v1", keys: ["b.mov"] },
+    { frame: 320, trackId: "v1", keys: ["c.mov"] },
+  ]);
+  expect(lefts()).toEqual([200, 500, 320]);
 });
 
 it("files being added or already landed are shown and counted as the landing counts them", async () => {

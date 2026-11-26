@@ -122,6 +122,30 @@ it("renders only the clips in view out of 1,000 and keeps the content within the
   expect(width).toBeLessThanOrEqual(MAX_CONTENT_PX);
 });
 
+it("zoomed out past the end of the project, the ruler and the rows go on to the right edge", () => {
+  // Five minutes of video. Before, the timeline ended 30 seconds after it however far out the zoom went.
+  const doc = sampleDoc();
+  doc.tracks[0].clips = [video("long", 0, 5 * 60 * 30)];
+  const { st, scroller, ruler, pressRuler } = setup(makeStore({ doc }));
+  act(() => st().setZoom(0.05)); // 1.5 px a second: the 1,160 px of lanes hold almost 13 minutes
+  const width = parseFloat((scroller.firstElementChild as HTMLElement).style.width);
+  expect(width).toBe(1400);
+  const labels = [...ruler.querySelectorAll("span")].map((s) => s.textContent).filter(Boolean);
+  expect(labels).toContain("10:00");
+  // The playhead can be put out there too.
+  pressRuler(HEADER_WIDTH + LANE_GUTTER + 10 * 60 * 30 * 0.05);
+  expect(st().playhead).toBe(10 * 60 * 30);
+  expect(Number(screen.getByRole("slider", { name: "Playhead" }).getAttribute("aria-valuemax"))).toBeGreaterThanOrEqual(10 * 60 * 30);
+});
+
+it("zoomed in, the timeline still ends 30 seconds after the project", () => {
+  const doc = sampleDoc();
+  doc.tracks[0].clips = [video("long", 0, 5 * 60 * 30)];
+  const { st, scroller } = setup(makeStore({ doc }));
+  act(() => st().setZoom(1));
+  expect(parseFloat((scroller.firstElementChild as HTMLElement).style.width)).toBe(HEADER_WIDTH + LANE_GUTTER + (5 * 60 + 30) * 30);
+});
+
 const hourLong = () => {
   const doc = sampleDoc();
   doc.tracks[0].clips = [video("long", 0, 60 * 60 * 30)];

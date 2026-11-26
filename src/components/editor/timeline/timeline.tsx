@@ -10,10 +10,10 @@ import {
   ROW_HEIGHT,
   RULER_HEIGHT,
   clampZoom,
-  contentFrames,
   displayRows,
   frameToPx,
   revealScroll,
+  shownFrames,
   zoomAt,
 } from "@/lib/editor/geometry";
 import { editTextInPlace } from "@/lib/editor/actions";
@@ -86,7 +86,8 @@ export function Timeline() {
   const empty = useMemo(() => doc.tracks.every((t) => t.clips.length === 0), [doc]);
   // A project that grew may no longer fit at the stored zoom; draw at the allowed one and store it below.
   const zoom = clampZoom(storedZoom, duration, fps);
-  const frames = contentFrames(duration, fps);
+  // Zoomed out past the end of the project, the lanes are filled to the right edge.
+  const frames = shownFrames(duration, fps, zoom, viewportPx - LANE_GUTTER);
   const width = Math.min(HEADER_WIDTH + LANE_GUTTER + Math.floor(frames * zoom), MAX_CONTENT_PX);
   const fromFrame = Math.max(0, (scrollStart - LANE_GUTTER - OVERSCAN_PX) / zoom);
   const toFrame = (scrollStart - LANE_GUTTER + WINDOW_STEP_PX + viewportPx + OVERSCAN_PX) / zoom;

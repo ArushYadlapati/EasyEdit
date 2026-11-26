@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  ASSET_DRAG_TYPE, carriesFiles, createMediaDrop, dragKind, dropTrack, endToEnd, uploadFrames,
+  ASSET_DRAG_TYPE, carriesFiles, createMediaDrop, dragKind, dropTrack, endToEnd, shownSlots, uploadFrames,
 } from "@/lib/editor/media-drop";
 import { MESSAGES } from "@/lib/editor/messages";
 import { createLibraryStore } from "@/lib/media/library-store";
@@ -465,6 +465,131 @@ describe("dropped files", () => {
     await flush();
     expect(labels()).toEqual(["move", "add media"]);
     expect(clipsOf(asset.id)).toMatchObject([{ track: "Video 2", start: 90, duration: 60 }]);
+  });
+
+  it("shownSlots lays a drop's files end to end, a length not read yet counting as the still length", () => {
+    const group = {
+      id: "drop-1", frame: 90, trackId: "v1", stillSeconds: 3,
+      members: [
+        { key: "a.mov", state: "placed" as const, placedFrames: 30 },
+        { key: "b.mov", state: "out" as const },
+        { key: "c.mov", state: "pending" as const },
+        { key: "d.mov", state: "pending" as const },
+        { key: "gone.mov", state: "pending" as const },
+        { key: "e.png", state: "pending" as const },
+      ],
+    };
+    const rows = [row("c.mov"), row("d.mov", { durationMs: 2_000 }), row("gone.mov", { stage: "failed", canRetry: false }), row("e.png")];
+    // a landed 30 long; b takes no room; c is not read yet (3 s = 90); d is 60; a file failed for good takes none.
+    expect(shownSlots(group, rows, 30)).toEqual([
+      { start: 90, length: 30 }, { start: 120, length: 0 }, { start: 120, length: 90 }, { start: 210, length: 60 },
+      { start: 270, length: 0 }, { start: 270, length: 90 },
+    ]);
+  });
+
+  it("a file moved while it uploads lands at its new place", async () => {
+    const { drop, uploads, put, clipsOf, groups } = setup();
+    drop.dropFiles([fileOf("climb.mov")], AT, { stillSeconds: 3 });
+    uploads(row("climb.mov", { durationMs: 2_000 }));
+    await flush();
+    drop.moveFile("climb.mov", { frame: 300, trackId: "v1" });
+    expect(groups()).toEqual([
+      { id: expect.any(String), frame: 300, trackId: "v1", stillSeconds: 3, members: [{ key: "climb.mov", state: "pending" }] },
+    ]);
+    const [item, asset] = readyVideo("climb.mov", 2_000);
+    uploads(item);
+    put(asset);
+    await flush();
+    expect(clipsOf(asset.id)).toEqual([{ track: "Video 1", trackId: "v1", start: 300, duration: 60 }]);
+    expect(groups()).toEqual([]);
+  });
+
+  it("moving one file of a drop leaves the others where they are shown", async () => {
+    const { drop, uploads, put, clipsOf, groups } = setup();
+    drop.dropFiles([fileOf("a.mov"), fileOf("b.mov"), fileOf("c.mov")], AT, { stillSeconds: 3 });
+    // b's length is not read yet, so it shows 90 frames long and c shows from 240.
+    uploads(row("a.mov", { durationMs: 2_000 }), row("b.mov"), row("c.mov", { durationMs: 1_000 }));
+    await flush();
+    drop.moveFile("b.mov", { frame: 600, trackId: null });
+    expect(groups().map((g) => ({ frame: g.frame, trackId: g.trackId, keys: g.members.map((m) => m.key) }))).toEqual([
+      { frame: 90, trackId: "v1", keys: ["a.mov"] },
+      { frame: 600, trackId: null, keys: ["b.mov"] },
+      { frame: 240, trackId: "v1", keys: ["c.mov"] },
+    ]);
+    expect(new Set(groups().map((g) => g.id)).size).toBe(3);
+
+    // b turns out 2 s long: c does not slide back to follow it.
+    const [aItem, a] = readyVideo("a.mov", 2_000);
+    const [bItem, b] = readyVideo("b.mov", 2_000);
+    const [cItem, c] = readyVideo("c.mov", 1_000);
+    uploads(aItem, bItem, cItem);
+    put(a, b, c);
+    await flush();
+    expect(clipsOf(a.id)).toMatchObject([{ trackId: "v1", start: 90, duration: 60 }]);
+    expect(clipsOf(b.id)).toMatchObject([{ start: 600, duration: 60 }]);
+    expect(clipsOf(c.id)).toMatchObject([{ trackId: "v1", start: 240, duration: 30 }]);
+  });
+
+  it("moving the first or the last file of a drop keeps the rest together", async () => {
+    const { drop, uploads, groups } = setup();
+    drop.dropFiles([fileOf("a.mov"), fileOf("b.mov"), fileOf("c.mov")], AT, { stillSeconds: 3 });
+    uploads(row("a.mov", { durationMs: 2_000 }), row("b.mov", { durationMs: 2_000 }), row("c.mov", { durationMs: 2_000 }));
+    await flush();
+    drop.moveFile("a.mov", { frame: 0, trackId: "v1" });
+    const shape = () => groups().map((g) => ({ frame: g.frame, keys: g.members.map((m) => m.key) }));
+    expect(shape()).toEqual([{ frame: 0, keys: ["a.mov"] }, { frame: 150, keys: ["b.mov", "c.mov"] }]);
+    drop.moveFile("c.mov", { frame: 900, trackId: "v1" });
+    expect(shape()).toEqual([{ frame: 0, keys: ["a.mov"] }, { frame: 150, keys: ["b.mov"] }, { frame: 900, keys: ["c.mov"] }]);
+  });
+
+  it("a file that has landed, or one that is not waiting, cannot be moved", async () => {
+    const { drop, uploads, put, clipsOf, groups } = setup();
+    drop.dropFiles([fileOf("a.mov"), fileOf("b.mov")], AT, { stillSeconds: 3 });
+    const [aItem, a] = readyVideo("a.mov", 2_000);
+    uploads(aItem, row("b.mov", { durationMs: 2_000 }));
+    put(a);
+    await flush();
+    const before = groups();
+    drop.moveFile("a.mov", { frame: 600, trackId: "v1" });
+    drop.moveFile("nothing.mov", { frame: 600, trackId: "v1" });
+    expect(groups()).toBe(before);
+    expect(clipsOf(a.id)).toMatchObject([{ start: 90 }]);
+  });
+
+  it("nothing lands while a file is held, as under a drag; it lands when it is let go", async () => {
+    const { drop, uploads, put, clipsOf } = setup();
+    drop.dropFiles([fileOf("climb.mov")], AT, { stillSeconds: 3 });
+    uploads(row("climb.mov", { durationMs: 2_000 }));
+    await flush();
+    drop.hold("climb.mov");
+    const [item, asset] = readyVideo("climb.mov", 2_000);
+    uploads(item);
+    put(asset);
+    await flush();
+    expect(clipsOf(asset.id)).toEqual([]);
+    drop.moveFile("climb.mov", { frame: 300, trackId: "v1" });
+    await flush();
+    expect(clipsOf(asset.id)).toEqual([]);
+    drop.hold(null);
+    await flush();
+    expect(clipsOf(asset.id)).toMatchObject([{ start: 300, duration: 60 }]);
+  });
+
+  it("stopping lets go of a held file", async () => {
+    const { drop, stop, uploads, put, clipsOf } = setup();
+    drop.dropFiles([fileOf("climb.mov")], AT, { stillSeconds: 3 });
+    uploads(row("climb.mov", { durationMs: 2_000 }));
+    drop.hold("climb.mov");
+    stop();
+    // Watching again, a new drop lands: nothing is held any more.
+    const again = drop.start();
+    drop.dropFiles([fileOf("b.mov")], AT, { stillSeconds: 3 });
+    const [item, asset] = readyVideo("b.mov", 2_000);
+    uploads(item);
+    put(asset);
+    await flush();
+    expect(clipsOf(asset.id)).toMatchObject([{ start: 90, duration: 60 }]);
+    again();
   });
 
   it("the still length is the one at the drop", async () => {

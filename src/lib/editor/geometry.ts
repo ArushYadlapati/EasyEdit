@@ -23,6 +23,13 @@ export function contentFrames(duration: number, fps: number): number {
   return Math.max(duration + 30 * fps, 60 * fps);
 }
 
+// The frames the timeline lays out: the project and its run-on, or, zoomed out further than that, as many as fill the
+// lanes (lanePx wide, from frame 0). So the ruler and the rows never stop short of the right edge.
+export function shownFrames(duration: number, fps: number, zoom: number, lanePx: number): number {
+  const content = contentFrames(duration, fps);
+  return zoom > 0 && lanePx > 0 ? Math.max(content, Math.ceil(lanePx / zoom)) : content;
+}
+
 // Into [ZOOM_MIN, ZOOM_MAX], then low enough that the content stays within MAX_CONTENT_PX. For a
 // project of many hours that last cap can go below ZOOM_MIN.
 export function clampZoom(zoom: number, duration: number, fps: number): number {
