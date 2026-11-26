@@ -14,7 +14,7 @@ import {
   type TimelineDoc,
   type Track,
 } from "@/lib/timeline";
-import { canUndoChange, isBeforeMove } from "./activity";
+import { canUndoChange, isBeforeMove, shortActorName } from "./activity";
 import type { TrimMode } from "./drag";
 import { clampZoom, fitZoom } from "./geometry";
 import { MESSAGES, explainOpError } from "./messages";
@@ -285,17 +285,22 @@ export function createEditorStore(
       return { patch: { server, queue: kept, ...history, ...settle(state, doc) }, dropped };
     }
 
+    // by: the one person (or agent) whose changes came in, when that is known, so a dropped edit can say who.
     function rebaseAndTell(
       state: EditorState,
       server: EditorState["server"],
       queue: PendingEdit[],
       stacks: Stacks = stacksOf(state),
       extra: Partial<EditorState> = {},
+      by: string | null = null,
     ) {
       const { patch, dropped } = rebase(state, server, queue, stacks);
       // A dropped undo or redo says what the server would say had it refused it.
       const first = dropped[0];
-      const text = !first ? null : first.kind === "edit" ? MESSAGES.rebaseDropped : refusalMessage(first.kind, "STALE");
+      const doc = patch.doc ?? state.doc;
+      const clipRemoved = !!first && first.ops.some((op) => "clipId" in op && typeof op.clipId === "string" && !findClip(doc, op.clipId));
+      const dropMessage = by === null ? MESSAGES.rebaseDropped : MESSAGES.rebaseDroppedBy(by, clipRemoved);
+      const text = !first ? null : first.kind === "edit" ? dropMessage : refusalMessage(first.kind, "STALE");
       const notice = text ? { notice: makeNotice("error", text) } : {};
       set({ ...patch, ...extra, ...notice });
     }
@@ -612,10 +617,9 @@ export function createEditorStore(
           // A change by an AI agent on my behalf has actor "claude:<my id>" or "agent:<kind>:<my id>", so it counts as someone else.
           const others = applied.filter((e) => e.actor !== state.me.id);
           const extra: Partial<EditorState> = { activity: mergeActivity(state.activity, applied) };
-          if (others.length > 0) {
-            extra.remote = { names: [...new Set(others.map((e) => e.actorName))], actors: [...new Set(others.map((e) => e.actor))], at: now() };
-          }
-          rebaseAndTell(state, server, queue, stacks, extra);
+          const names = [...new Set(others.map((e) => e.actorName))];
+          if (others.length > 0) extra.remote = { names, actors: [...new Set(others.map((e) => e.actor))], at: now() };
+          rebaseAndTell(state, server, queue, stacks, extra, names.length === 1 ? shortActorName(names[0]) : null);
         }
         return complete;
       },

@@ -145,7 +145,7 @@ describe("confirmation and lost edits", () => {
     st().applyRemote([entry(6, [{ op: "remove_clip", clipId: "x2" }])]);
     expect(st().queue).toEqual([]);
     expect(st().undoStack).toEqual([]);
-    expect(st().notice).toMatchObject({ text: MESSAGES.rebaseDropped });
+    expect(st().notice).toMatchObject({ text: MESSAGES.rebaseDroppedBy("Grace", true) });
   });
 
   it("a queued undo that a teammate's change makes stale is dropped with the undo message", () => {

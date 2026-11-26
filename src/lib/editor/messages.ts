@@ -5,6 +5,11 @@ export const MESSAGES = {
   undoRefused: "Can't undo. This was changed afterwards.",
   redoRefused: "Can't redo. This was changed afterwards.",
   rebaseDropped: "A change of yours no longer fits and was removed.",
+  // The same, when one person's change (a teammate's or an AI agent's) is why.
+  rebaseDroppedBy: (who: string, clipRemoved: boolean) =>
+    clipRemoved
+      ? `${who} removed the clip you were changing, so your change was dropped. Undo theirs in Activity to get the clip back.`
+      : `${who} changed this first, so your change no longer fit and was dropped. Their change is in Activity.`,
   clipGone: "That clip was removed by someone else.",
   trackGone: "That track was removed by someone else.",
   guideGone: "That guide was removed by someone else.",
