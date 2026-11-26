@@ -6,7 +6,7 @@ import NewProjectPage from "@/app/new/page";
 import { StartProject } from "@/app/new/start-project";
 import type { CurrentUser } from "@/lib/access-rules";
 import { FIRST_PROJECT_KEY } from "@/lib/home/first-project";
-import { fireEvent, render, screen, waitFor } from "../helpers/dom";
+import { act, fireEvent, render, screen, waitFor } from "../helpers/dom";
 
 class Redirected extends Error {
   constructor(readonly to: string) {
@@ -112,6 +112,22 @@ describe("the new project page", () => {
     expect(action).not.toHaveBeenCalled();
   });
 
+  it("lets the draft go as soon as it is read, since the server's redirect to the editor ends this page", async () => {
+    ask(true);
+    // The real action never comes back here (it redirects); this one is let go at the end so React's transition ends.
+    let done = () => {};
+    const action = vi.fn<(form: FormData) => Promise<{ error?: string }>>(
+      () =>
+        new Promise((resolve) => {
+          done = () => resolve({});
+        }),
+    );
+    render(<StartProject action={action} />);
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    expect(window.sessionStorage.getItem(FIRST_PROJECT_KEY)).toBeNull();
+    await act(async () => done());
+  });
+
   it("says why when the project can't be made, with a way on, and asks no second time by itself", async () => {
     ask(true);
     const action = vi.fn<(form: FormData) => Promise<{ error?: string }>>(async () => ({ error: "You've made 25 projects today." }));
@@ -119,7 +135,8 @@ describe("the new project page", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("You've made 25 projects today.");
     expect(screen.getByRole("heading", { name: "Your project wasn't made" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Go to your projects" }).getAttribute("href")).toBe("/dashboard");
-    expect(JSON.parse(window.sessionStorage.getItem(FIRST_PROJECT_KEY)!).asked).toBe(false);
+    // The home page's form gets what was typed back, and nothing asks for the project again by itself.
+    await waitFor(() => expect(JSON.parse(window.sessionStorage.getItem(FIRST_PROJECT_KEY) ?? "null")?.asked).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(action).toHaveBeenCalledTimes(2));
   });

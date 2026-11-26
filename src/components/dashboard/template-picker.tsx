@@ -74,7 +74,7 @@ export function TemplatePicker({
               <BlankFrame width={template?.width ?? 1} height={template?.height ?? 1} />
             </span>
             <span className="flex min-w-0 flex-col">
-              <span className="truncate text-xs font-medium text-ed-text">{template ? template.name : "Blank"}</span>
+              <span className="line-clamp-2 text-xs font-medium break-words text-ed-text">{template ? template.name : "Blank"}</span>
               {/* With two cards to a row, a phone or a tablet leaves too little room for the slot count and the Starter tag
                   side by side, so the tag drops to its own line there rather than cutting the count short. */}
               <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-ed-muted">

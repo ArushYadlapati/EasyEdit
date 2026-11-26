@@ -9,6 +9,8 @@ const DESCRIPTION = SITE_DESCRIPTION;
 // Link previews (Discord, Slack, iMessage) read the Open Graph tags first, so they carry the same text, with the
 // picture in opengraph-image.tsx shown large.
 export const metadata: Metadata = {
+  // Link previews' picture addresses are absolute: on this site's own address (production sets BETTER_AUTH_URL to it).
+  metadataBase: new URL(process.env.BETTER_AUTH_URL ?? "https://easyedit.arush.dev"),
   title: "EasyEdit",
   description: DESCRIPTION,
   openGraph: { title: "EasyEdit", description: DESCRIPTION, siteName: "EasyEdit", type: "website" },
