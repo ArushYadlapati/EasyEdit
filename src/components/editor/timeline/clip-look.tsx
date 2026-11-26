@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { waveColumns, type Peaks } from "@/lib/audio/peaks";
-import { clipSpanSeconds, createClipLooks, stripTiles, type ClipLooks, type LookKind, type Strip } from "@/lib/media/clip-looks";
+import { clipSpanSeconds, createClipLooks, stripTiles, type ClipLooks, type LookKind, type Strip, stripGone } from "@/lib/media/clip-looks";
 import type { MediaFiles } from "@/lib/media/media-files";
 import { playbackFileFor } from "@/lib/media/playback";
 import type { MediaClip } from "@/lib/timeline";
@@ -64,6 +64,8 @@ export function ClipLook({ clip, look, fps, width, height }: { clip: MediaClip; 
     const timing = { start, duration, speed, in: sourceIn, type } as MediaClip;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (isStrip(look)) {
+      // A strip freed a moment ago draws nothing: the clip is plain until its own strip comes (stripGone).
+      if (stripGone(look)) return;
       // Drawn in the clip's own pixels and squeezed sideways onto the canvas, which CSS stretches back.
       const squeeze = shown / width;
       for (const tile of stripTiles(timing, fps, duration / width, width, height, look)) {

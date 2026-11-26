@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { stripPlan } from "@/components/editor/media/make-looks";
 import type { Peaks } from "@/lib/audio/peaks";
-import { clipSpanSeconds, createClipLooks, stripTiles, type Strip } from "@/lib/media/clip-looks";
+import { clipSpanSeconds, createClipLooks, stripGone, stripTiles, type Strip } from "@/lib/media/clip-looks";
 import type { MediaFiles } from "@/lib/media/media-files";
 import { DEFAULT_TRANSFORM, type MediaClip } from "@/lib/timeline";
 
@@ -125,6 +125,37 @@ describe("the looks clips share", () => {
     expect([t.looks.strip("f1"), t.looks.strip("f2")]).toEqual([null, null]);
     expect(t.looks.strip("f3")).not.toBeNull();
     expect(t.changes).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a strip that was let go of", () => {
+  it("is known by its emptied picture, so a clip that still has it draws nothing instead of failing", () => {
+    // What freeing does to the strip's canvas in the browser (dropStrip in make-looks.ts).
+    const canvas = { width: 570, height: 128 };
+    const kept = strip({ image: canvas as unknown as CanvasImageSource });
+    expect(stripGone(kept)).toBe(false);
+    canvas.width = canvas.height = 0;
+    expect(stripGone(kept)).toBe(true);
+  });
+
+  it("is what a split's wide piece is left holding for one drawing when its narrow piece lets go first", async () => {
+    // One clip holds the file's strip. A split redraws both pieces: the wide piece reads the strip, then the piece
+    // now too narrow for one lets go (the only hold), which frees it, and only then does the wide piece take hold.
+    const canvas = { width: 570, height: 128 };
+    const t = setup();
+    t.makeStrip.mockImplementationOnce(async () => strip({ image: canvas as unknown as CanvasImageSource }));
+    const looks = createClipLooks({ files: { get: async () => ({ ok: true, blob: new Blob(["f1"]) }), put: async () => {} }, makeStrip: t.makeStrip, makePeaks: t.makePeaks, dropStrip: (s) => Object.assign(s.image, { width: 0, height: 0 }) });
+    const narrowLetsGo = looks.hold("f1", "strip");
+    await t.settle();
+    const read = looks.strip("f1")!;
+    expect(stripGone(read)).toBe(false);
+    narrowLetsGo();
+    expect(stripGone(read)).toBe(true);
+    // The wide piece's own hold has the strip made again.
+    looks.hold("f1", "strip");
+    await t.settle();
+    expect(looks.strip("f1")).not.toBeNull();
+    expect(looks.strip("f1")).not.toBe(read);
   });
 });
 

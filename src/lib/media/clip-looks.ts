@@ -11,6 +11,15 @@ import type { MediaFiles } from "./media-files";
 // reading order, `columns` to a row.
 export type Strip = { image: CanvasImageSource; tiles: number; columns: number; tileWidth: number; tileHeight: number; first: number; every: number };
 
+// Whether a strip has been let go of: freeing one empties its canvas (dropStrip), and drawing an empty canvas throws.
+// A freed strip can still reach a clip for one drawing. When a split leaves one piece too narrow for a strip, that
+// piece lets go of the file's strip in the same pass in which the other piece, which read it a moment before, draws
+// it; the other piece then holds the file itself and its strip is made again.
+export function stripGone(strip: Strip): boolean {
+  const size = strip.image as { width?: unknown; height?: unknown };
+  return size.width === 0 || size.height === 0;
+}
+
 export type LookKind = "strip" | "peaks";
 
 export type ClipLooks = {
