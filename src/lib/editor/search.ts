@@ -7,7 +7,9 @@ import { TEXT_PRESETS } from "./text-presets";
 // The top bar's search: everything a person can find by name and run from one field. Each result is data; the top bar
 // runs its action.
 
-export type SearchGroup = "Tools" | "Add" | "Edit" | "Playback" | "Timeline" | "Panels" | "Settings" | "Project" | "Help";
+export type SearchGroup =
+  | "Tools" | "Add" | "Edit" | "Playback" | "Timeline" | "Panels" | "Inspect" | "Effects" | "Review" | "Captions" | "Media"
+  | "Settings" | "Project" | "Help";
 
 export type SettingsPage = "project" | "general" | "shortcuts";
 export type PanelSide = "left" | "right";
@@ -27,12 +29,18 @@ export type SearchAction =
   | { kind: "rename" }
   | { kind: "guide"; path: string }; // a page of help (a lesson, the AI agents page), opened in a tab of its own
 
-// command: its key is shown as the result's hint. checked: a switch, shown as on or off.
+// command: its key is shown as the result's hint. checked: a switch, shown as on or off. names: other names for the
+// label (another spelling, the word people use), matched as the label is, so "colour" finds Color first. note: why a
+// disabled item cannot run now, shown beside it. findOnly: left out of the empty list, which already shows the panel
+// that holds it, and found once something is typed.
 export type SearchItem = {
   id: string;
   label: string;
   group: SearchGroup;
   keywords: string[];
+  names?: string[];
+  note?: string;
+  findOnly?: boolean;
   action: SearchAction;
   command?: CommandId;
   disabled?: boolean;
@@ -105,7 +113,7 @@ const COMMAND_WORDS: Partial<Record<CommandId, string[]>> = {
   "reverse-clip": ["backward", "backwards", "rewind", "speed", "flip", "time"],
   "freeze-frame": ["hold", "still", "pause", "stop", "speed", "time"],
   export: ["render", "download", "save", "video", "mp4", "share"],
-  "show-shortcuts": ["keyboard", "keys", "hotkeys", "keymap"],
+  "show-shortcuts": ["keyboard", "keys", "hotkeys", "keymap", "help"],
 };
 
 // Shorter names than the shortcut table's, which explains each tool on its own line.
@@ -137,6 +145,13 @@ const COMMAND_LABELS: Partial<Record<CommandId, string>> = {
   "zoom-out": "Zoom out on the timeline",
 };
 
+// The names the Edit and View menus give a command where the search's label says it another way: matched as the label is.
+const COMMAND_NAMES: Partial<Record<CommandId, string[]>> = {
+  "ripple-delete": ["Ripple delete"],
+  "clear-selection": ["Deselect all"],
+  "reverse-clip": ["Reverse"],
+};
+
 const SHAPE_WORDS: Record<BoxShape, string[]> = {
   rect: ["square", "box"],
   ellipse: ["circle", "oval"],
@@ -165,7 +180,53 @@ const PANEL_WORDS: Record<string, string[]> = {
   activity: ["history", "changes", "log", "who", "edits"],
   effects: ["transitions", "fade", "keyframes", "animation", "animate", "motion"],
   captions: ["subtitles", "transcribe", "transcript", "auto"],
+  review: ["comments", "versions", "history", "restore"],
 };
+
+// The parts of the side panels found by name: each opens the tab that holds it. needsClip: it is set on a selected
+// clip, so without one it is there but greyed, with why. Only what the editor has: a part added to a panel is added here.
+type PanelFeature = {
+  id: string;
+  label: string;
+  group: SearchGroup;
+  side: PanelSide;
+  tab: string;
+  names?: string[];
+  keywords: string[];
+  needsClip?: boolean;
+};
+
+const inspect = (id: string, label: string, keywords: string[], names?: string[]): PanelFeature =>
+  ({ id, label, group: "Inspect", side: "right", tab: "inspect", keywords, needsClip: true, ...(names && { names }) });
+
+const PANEL_FEATURES: PanelFeature[] = [
+  inspect("color", "Color", ["looks", "filter", "filters", "lut", "wheels", "curves", "contrast", "saturation", "exposure", "brightness", "temperature", "warm", "cool", "tint"], ["colour", "grade", "grading", "color grading", "colour grading"]),
+  inspect("green-screen", "Green screen", ["key", "keying", "background", "remove", "color", "colour"], ["chroma key"]),
+  inspect("scopes", "Scopes", ["waveform", "vectorscope", "histogram", "parade", "levels", "color", "colour"]),
+  inspect("mask", "Mask", ["cutout", "shape", "feather", "vignette", "hide", "reveal", "spotlight"], ["masks"]),
+  inspect("stylize", "Stylize", ["blur", "glow", "grain", "film", "vhs", "pixelate", "sharpen", "effect", "look"], ["stylise"]),
+  inspect("blend", "Blend and flip", ["blend mode", "opacity", "multiply", "screen", "overlay", "mirror", "flip", "upside down"]),
+  inspect("speed", "Speed", ["slow motion", "slowmo", "fast", "faster", "slower", "time", "rate", "percent"]),
+  inspect("speed-ramp", "Speed ramp", ["ramp", "slow motion", "ease", "time", "speed up", "slow down"]),
+  inspect("stabilize", "Stabilize", ["shake", "shaky", "steady", "smooth", "wobble", "handheld"], ["stabilise"]),
+  inspect("reframe", "Reframe", ["vertical", "portrait", "shorts", "reels", "tiktok", "9:16", "auto", "crop"]),
+  inspect("follow", "Follow", ["track", "tracking", "motion tracking", "attach", "pin", "stick"]),
+  inspect("nest", "Nest", ["group", "compound", "precompose", "sequence"]),
+  inspect("scenes", "Scenes", ["scene detection", "detect", "shots", "cuts", "split"]),
+  inspect("remove-background", "Remove background", ["cutout", "person", "background", "bg", "matte", "segment"]),
+  inspect("sound", "Sound", ["volume", "audio", "fade", "fades", "pan", "balance", "bass", "treble", "tone", "eq", "compressor", "gate"]),
+  inspect("noise", "Noise reduction", ["hiss", "hum", "background noise", "voice", "audio", "sound", "gate", "clean"], ["denoise", "clean up voice"]),
+  inspect("multicam", "Multicam", ["angles", "angle", "camera", "cameras", "switch", "sync"]),
+  { id: "transitions", label: "Transitions", group: "Effects", side: "right", tab: "effects", keywords: ["fade", "dissolve", "wipe", "slide", "dip", "cross"], needsClip: true },
+  { id: "keyframes", label: "Keyframes", group: "Effects", side: "right", tab: "effects", keywords: ["animate", "animation", "motion", "ease", "easing"], needsClip: true },
+  { id: "text-animation", label: "Text animation", group: "Effects", side: "right", tab: "effects", keywords: ["animate", "animation", "typewriter", "pop", "words", "title"], needsClip: true },
+  { id: "comments", label: "Comments", group: "Review", side: "right", tab: "review", names: ["comment"], keywords: ["feedback", "notes", "note", "review", "approve", "reply"] },
+  { id: "versions", label: "Versions", group: "Review", side: "right", tab: "review", names: ["version"], keywords: ["history", "restore", "snapshot", "save point", "backup", "earlier", "review"] },
+  { id: "captions-auto", label: "Auto captions", group: "Captions", side: "left", tab: "captions", keywords: ["subtitles", "transcribe", "transcript", "speech", "words", "cc"] },
+  { id: "captions-languages", label: "Captions in other languages", group: "Captions", side: "left", tab: "captions", keywords: ["language", "languages", "spoken", "translate", "translation", "spanish", "french", "german", "hindi", "subtitles"] },
+  { id: "captions-files", label: "Subtitle files: SRT and VTT", group: "Captions", side: "left", tab: "captions", keywords: ["srt", "vtt", "import", "export", "download", "captions", "subtitles"] },
+  { id: "record", label: "Record voiceover, screen or camera", group: "Media", side: "left", tab: "media", keywords: ["record", "recording", "microphone", "mic", "voice", "narration", "webcam", "screen", "audio"] },
+];
 
 const SETTINGS: { page: SettingsPage; label: string; keywords: string[] }[] = [
   {
@@ -254,6 +315,7 @@ export function searchItems(input: SearchInput): SearchItem[] {
     label: COMMAND_LABELS[id] ?? LABELS.get(id) ?? id,
     group,
     keywords: COMMAND_WORDS[id] ?? [],
+    ...(COMMAND_NAMES[id] && { names: COMMAND_NAMES[id] }),
     action: { kind: "command", command: id },
     command: id,
     // A deleted project shows no preview or timeline, so nothing but Export and the shortcuts has anything to act on.
@@ -331,6 +393,23 @@ export function searchItems(input: SearchInput): SearchItem[] {
     });
   input.leftTabs.forEach(panel("left"));
   input.rightTabs.forEach(panel("right"));
+  // Only where the editor has the panels to open, as the panels themselves.
+  const tabs = new Set([...input.leftTabs.map((t) => `left:${t.id}`), ...input.rightTabs.map((t) => `right:${t.id}`)]);
+  for (const feature of PANEL_FEATURES) {
+    if (!tabs.has(`${feature.side}:${feature.tab}`)) continue;
+    const noClip = feature.needsClip === true && !input.hasSelection;
+    items.push({
+      id: `feature:${feature.id}`,
+      label: feature.label,
+      group: feature.group,
+      keywords: feature.keywords,
+      ...(feature.names && { names: feature.names }),
+      action: { kind: "panel", side: feature.side, tab: feature.tab },
+      disabled: input.deleted || noClip,
+      ...(noClip && !input.deleted && { note: "Select a clip first" }),
+      findOnly: true,
+    });
+  }
   items.push({
     id: "reset-layout",
     label: "Reset panel sizes",
@@ -419,9 +498,11 @@ const words = (text: string) => normalize(text).split(" ").filter((word) => word
 
 // How well an item matches the query's words, lower being better, or null when one word matches nothing. A word
 // matches the start of a word of the label or of a keyword, or (three letters or more) any part of the label.
+// The item's other names count as its label.
 function score(item: SearchItem, query: string, tokens: string[]): number | null {
   const label = normalize(item.label);
-  const labelWords = label.split(" ");
+  const names = (item.names ?? []).map(normalize);
+  const labelWords = [label, ...names].flatMap((name) => name.split(" "));
   const keywordWords = item.keywords.flatMap(words);
   let worst = 0;
   for (const token of tokens) {
@@ -430,15 +511,15 @@ function score(item: SearchItem, query: string, tokens: string[]): number | null
     else if (token.length >= 3 && label.includes(token)) worst = Math.max(worst, 3);
     else return null;
   }
-  return label.startsWith(query) ? 0 : worst;
+  return label.startsWith(query) || names.some((name) => name.startsWith(query)) ? 0 : worst;
 }
 
 // The items that match the query, best first; ties keep the list's order, and what cannot run comes after what can at
-// the same rank. An empty query keeps every item in order.
+// the same rank. An empty query keeps every item in order, but those found only by name.
 export function searchFeatures(items: readonly SearchItem[], query: string): SearchItem[] {
   const normalized = normalize(query);
   const tokens = normalized.split(" ").filter((token) => token !== "");
-  if (tokens.length === 0) return [...items];
+  if (tokens.length === 0) return items.filter((item) => !item.findOnly);
   const ranked: { item: SearchItem; rank: number; at: number }[] = [];
   items.forEach((item, at) => {
     const s = score(item, normalized, tokens);
