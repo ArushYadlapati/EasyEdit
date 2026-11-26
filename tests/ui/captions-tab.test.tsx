@@ -13,7 +13,7 @@ import { findClip } from "@/lib/editor/store";
 import type { AssetView } from "@/lib/media/types";
 import { applyOps, prepareOps, type CaptionWord, type Clip, type TimelineDoc } from "@/lib/timeline";
 import { makeStore, sampleDoc, video } from "../editor/fixtures";
-import { act, fireEvent, render, screen, within } from "../helpers/dom";
+import { act, cleanup, fireEvent, render, screen, within } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 
 const w = (t: string, s: number, e: number): CaptionWord => ({ t, s, e });
@@ -61,7 +61,7 @@ function setup(options: { canEdit?: boolean; doc?: TimelineDoc; assets?: AssetVi
     fonts: () => KIT.fonts,
     ...options.deps,
   };
-  render(
+  const view = render(
     <EditorProvider store={store}>
       <MediaProvider services={pretendMediaServices(assets)}>
         <BrandProvider spaceId="team1" canEdit={canEdit} initial={KIT} api={{ fetch: vi.fn(), save: vi.fn() }}>
@@ -75,7 +75,7 @@ function setup(options: { canEdit?: boolean; doc?: TimelineDoc; assets?: AssetVi
     </EditorProvider>,
   );
   fireEvent.click(screen.getByRole("tab", { name: "Captions" }));
-  return { store, deps, calls: driven.calls };
+  return { store, deps, calls: driven.calls, view };
 }
 
 const autoButton = () => screen.getByRole("button", { name: "Auto captions" }) as HTMLButtonElement;
@@ -397,4 +397,68 @@ it("an imported subtitle file becomes the selected clip's captions", async () =>
   expect(clipOf(store.getState().doc, "c1").captions).toBe(true);
   expect(store.getState().notice?.text).toBe("Imported 1 line of captions.");
   expect((screen.getByRole("textbox", { name: "Caption at 0:00" }) as HTMLInputElement).value).toBe("from a file");
+});
+
+const language = () => screen.getByRole("combobox", { name: "Spoken language" }) as HTMLSelectElement;
+const translate = () => screen.queryByRole("switch", { name: "Translate to English" }) as HTMLButtonElement | null;
+const on = (toggle: HTMLButtonElement | null) => toggle!.getAttribute("aria-checked") === "true";
+const pick = (value: string) => fireEvent.change(language(), { target: { value } });
+// A transcriber that writes down the language it was asked for and answers at once.
+function listening(asked: unknown[]): Transcriber {
+  return { transcribe: async (_file, opts = {}) => (asked.push({ language: opts.language, translate: opts.translate }), WORDS) };
+}
+
+it("starts as English, with nothing to translate, and offers the languages by name", () => {
+  window.localStorage.clear();
+  setup();
+  expect(language().value).toBe("english");
+  expect(translate()).toBeNull();
+  const names = [...language().options].map((o) => o.text);
+  expect(names.slice(0, 3)).toEqual(["English", "Spanish", "French"]);
+  expect(names).toContain("Japanese (captions in English)");
+});
+
+it("hears the clips in the language picked, written as spoken or in English", async () => {
+  window.localStorage.clear();
+  const asked: unknown[] = [];
+  const { deps, store } = setup({ deps: { transcriber: listening(asked) } });
+  act(() => store.getState().select(["c1"]));
+  pick("spanish");
+  expect(on(translate())).toBe(false);
+  await act(async () => { fireEvent.click(autoButton()); });
+  await act(async () => {});
+  expect(asked).toEqual([{ language: "spanish", translate: false }]);
+  expect(deps.save).toHaveBeenCalledWith("a", WORDS, expect.stringMatching(/#spanish$/));
+  // The clips have captions now: hearing them in English takes Transcribe again.
+  expect(screen.getByText(/To hear them again, or in another language, use Transcribe again/)).toBeTruthy();
+  fireEvent.click(translate()!);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Transcribe again" })); });
+  await act(async () => {});
+  expect(asked.at(-1)).toEqual({ language: "spanish", translate: true });
+  expect(deps.save).toHaveBeenLastCalledWith("a", WORDS, expect.stringMatching(/#spanish>english$/));
+});
+
+it("a language written without spaces is always captioned in English, and says why", () => {
+  window.localStorage.clear();
+  setup();
+  pick("japanese");
+  expect([on(translate()), translate()!.disabled]).toEqual([true, true]);
+  expect(screen.getByText(/Japanese is written without spaces between words/)).toBeTruthy();
+  pick("french");
+  expect([on(translate()), translate()!.disabled]).toEqual([true, false]); // it stays on until switched off
+  pick("english");
+  expect(translate()).toBeNull();
+});
+
+it("remembers the language in this browser, and reads back anything else as English", () => {
+  window.localStorage.clear();
+  const first = setup();
+  pick("hindi");
+  expect(JSON.parse(window.localStorage.getItem("easyedit:speech")!)).toEqual({ language: "hindi", translate: false });
+  first.view.unmount();
+  expect(setup().view && language().value).toBe("hindi");
+  cleanup();
+  window.localStorage.setItem("easyedit:speech", "{not json");
+  setup();
+  expect(language().value).toBe("english");
 });

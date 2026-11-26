@@ -152,3 +152,18 @@ describe("drawing captions", () => {
     expect(texts(calls)).toContain("hello brave new world.");
   });
 });
+
+describe("a line that runs right to left", () => {
+  const ARABIC = [w("مرحبا", 0, 400), w("بكم", 450, 800), w("جميعا", 900, 1300)];
+  it("is drawn whole in karaoke, not word by word: the canvas orders and joins its letters", () => {
+    const calls = caps(make({ preset: "karaoke" }, [speaker()], ARABIC), 14); // the second word is being said
+    expect(texts(calls)).toEqual(["مرحبا بكم جميعا"]);
+    expect(calls.filter((c) => c[0] === "set fillStyle").map((c) => c[1])).not.toContain("#ff0000");
+  });
+  it("leaves a left-to-right line in another script lit word by word", () => {
+    const HINDI = [w("नमस्ते", 0, 400), w("दुनिया", 450, 800)];
+    const calls = caps(make({ preset: "karaoke" }, [speaker()], HINDI), 14);
+    expect(texts(calls)).toEqual(["नमस्ते ", "दुनिया"]);
+    expect(calls.filter((c) => c[0] === "set fillStyle").map((c) => c[1])).toContain("#ff0000");
+  });
+});

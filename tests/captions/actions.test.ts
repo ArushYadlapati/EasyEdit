@@ -9,7 +9,7 @@ import {
   type AutoCaptionProgress,
 } from "@/lib/captions/actions";
 import { docCues } from "@/lib/captions/cues";
-import { TranscribeError, type TranscribeProgress, type Transcriber } from "@/lib/captions/speech/client";
+import { SPEECH_MODEL, TranscribeError, type TranscribeProgress, type Transcriber } from "@/lib/captions/speech/client";
 import type { BrandFonts } from "@/lib/brand/types";
 import { findClip } from "@/lib/editor/store";
 import type { MediaFiles } from "@/lib/media/media-files";
@@ -228,7 +228,7 @@ describe("runAutoCaptions", () => {
     const outcome = await runAutoCaptions(store, deps, { onProgress: (p) => progress.push(p) });
     expect(outcome.captioned).toBe(1);
     expect(heard).toEqual(["prev-a"]);
-    expect(deps.save).toHaveBeenCalledWith("a", HELLO);
+    expect(deps.save).toHaveBeenCalledWith("a", HELLO, SPEECH_MODEL); // English as spoken: marked with the bare model
     // "sound" first while the file itself is read, before the transcriber reports anything.
     expect(progress.map((p) => p.stage)).toEqual(["checking", "sound", "model", "sound", "speech"]);
     expect(progress[1]).toEqual({ file: 1, files: 1, name: "intake", stage: "sound", done: 0, total: 0 });
@@ -246,7 +246,7 @@ describe("runAutoCaptions", () => {
     expect(stages[0]).toBe("sound");
     expect(heard).toEqual(["prev-a"]);
     expect(store.getState().doc.captions?.transcripts?.a).toEqual(fresh);
-    expect(deps.save).toHaveBeenCalledWith("a", fresh);
+    expect(deps.save).toHaveBeenCalledWith("a", fresh, SPEECH_MODEL);
   });
 
   it("tries the original file once when the preview copy has no sound it can read", async () => {
@@ -375,7 +375,7 @@ describe("runAutoCaptions", () => {
     const third = fakeDeps({ saved: { a: HELLO, b: HELLO }, answers: { "orig-m": HELLO } });
     const outcome = await runAutoCaptions(store, third.deps, {});
     expect(outcome).toEqual({ captioned: 3, silent: [], failed: [], cancelled: false });
-    expect(third.deps.fetchSaved).not.toHaveBeenCalledWith("a");
+    expect(third.deps.fetchSaved).not.toHaveBeenCalledWith("a", expect.anything());
     expect(third.heard).toEqual(["orig-m"]);
     const after = store.getState().doc;
     expect(after.captions?.transcripts?.a).toEqual(fixed);
@@ -481,5 +481,51 @@ describe("runAutoCaptions", () => {
     const store = makeStore({ doc: plainDoc() });
     store.getState().select(["c1"]);
     expect(await runAutoCaptions(store, throwing, {})).toEqual({ captioned: 0, silent: [], failed: [{ name: "a file", why }], cancelled: false });
+  });
+});
+
+describe("captions in another language", () => {
+  // A transcriber that writes down what it was asked for.
+  function listening() {
+    const asked: { language?: string; translate?: boolean }[] = [];
+    const transcriber: Transcriber = {
+      async transcribe(_file, opts = {}) {
+        asked.push({ language: opts.language, translate: opts.translate });
+        return HELLO;
+      },
+    };
+    return { transcriber, asked };
+  }
+  const run = async (speech: { language: string; translate: boolean } | undefined, saved: Record<string, CaptionWord[]> = {}) => {
+    const store = makeStore({ doc: plainDoc() });
+    store.getState().select(["c1"]);
+    const heard = listening();
+    // The server keeps one set of words a file, marked with what they were heard as.
+    const { deps } = fakeDeps({ transcriber: heard.transcriber, fetchSaved: vi.fn(async (_assetId: string, tag: string) => saved[tag] ?? null) });
+    const outcome = await runAutoCaptions(store, deps, { speech });
+    return { deps, asked: heard.asked, outcome };
+  };
+
+  it("hears the language picked, and marks the saved words with it", async () => {
+    const spanish = await run({ language: "spanish", translate: false });
+    expect(spanish.asked).toEqual([{ language: "spanish", translate: false }]);
+    expect(spanish.deps.fetchSaved).toHaveBeenCalledWith("a", `${SPEECH_MODEL}#spanish`);
+    expect(spanish.deps.save).toHaveBeenCalledWith("a", HELLO, `${SPEECH_MODEL}#spanish`);
+    const translated = await run({ language: "spanish", translate: true });
+    expect(translated.asked).toEqual([{ language: "spanish", translate: true }]);
+    expect(translated.deps.save).toHaveBeenCalledWith("a", HELLO, `${SPEECH_MODEL}#spanish>english`);
+  });
+  it("uses saved words only when they were heard as the same thing", async () => {
+    // The server has this file's words as English: someone wanting Spanish hears it again.
+    const english = { [SPEECH_MODEL]: HELLO };
+    expect((await run({ language: "spanish", translate: false }, english)).asked).toHaveLength(1);
+    expect((await run(undefined, english)).asked).toHaveLength(0);
+    expect((await run({ language: "spanish", translate: false }, { [`${SPEECH_MODEL}#spanish`]: HELLO })).asked).toHaveLength(0);
+  });
+  it("makes a choice whole before it runs: Chinese is always written in English, and a language it does not know is English", async () => {
+    expect((await run({ language: "chinese", translate: false })).asked).toEqual([{ language: "chinese", translate: true }]);
+    const unknown = await run({ language: "klingon", translate: true });
+    expect(unknown.asked).toEqual([{ language: "english", translate: false }]);
+    expect(unknown.deps.save).toHaveBeenCalledWith("a", HELLO, SPEECH_MODEL);
   });
 });

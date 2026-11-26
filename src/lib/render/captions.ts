@@ -1,4 +1,5 @@
 import { cuesAt } from "@/lib/captions/cues";
+import { isRightToLeft } from "@/lib/captions/speech/languages";
 import { captionStyleOf } from "@/lib/timeline/captions";
 import type { TimelineDoc } from "@/lib/timeline";
 import type { Ctx2D } from "./compositor";
@@ -90,11 +91,14 @@ export function drawCaptions(ctx: Ctx2D, doc: TimelineDoc, frame: number, resolv
       const lineIds = ids.slice(cursor, cursor + line.length);
       cursor += line.length;
       if (!bar) ctx.strokeText(line, left, y);
+      // A line that runs right to left (Arabic, Hebrew) is drawn whole: the canvas orders and joins its letters, and a
+      // word drawn apart, to light it, would land on the wrong side and lose its joins.
+      const lights = style.preset === "karaoke" && !isRightToLeft(line);
       let i = 0;
       while (i < line.length) {
         let j = i + 1;
-        while (j < line.length && (style.preset === "karaoke" ? (lineIds[j] === lit) === (lineIds[i] === lit) : true)) j++;
-        ctx.fillStyle = style.preset === "karaoke" && lineIds[i] === lit ? style.highlight : style.color;
+        while (j < line.length && (lights ? (lineIds[j] === lit) === (lineIds[i] === lit) : true)) j++;
+        ctx.fillStyle = lights && lineIds[i] === lit ? style.highlight : style.color;
         ctx.fillText(line.slice(i, j), left + measure(line.slice(0, i)), y);
         i = j;
       }

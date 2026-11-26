@@ -19,7 +19,8 @@ export function pinnedModelUrl(url: string | URL): string {
 export type TranscribeFailure = "no-sound" | "undecodable" | "too-long" | "model" | "unknown";
 export type TranscribeStage = "model" | "sound" | "speech";
 
-export type ToTranscriber = { type: "start"; file: Blob };
+// language: what is spoken, by the model's name for it; English when left out. translate: write it in English.
+export type ToTranscriber = { type: "start"; file: Blob; language?: string; translate?: boolean };
 
 export type FromTranscriber =
   | { type: "progress"; stage: TranscribeStage; done: number; total: number } // model: bytes; sound and speech: seconds of the file

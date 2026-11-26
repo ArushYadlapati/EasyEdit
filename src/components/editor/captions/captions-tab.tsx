@@ -1,10 +1,14 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Select } from "@/components/ui/select";
+import { Toggle } from "@/components/ui/toggle";
 import { captionTargets, captionsOffOps, type AutoCaptionProgress } from "@/lib/captions/actions";
 import { docCues } from "@/lib/captions/cues";
+import { SPEECH_LANGUAGES, speechChoice, speechLanguage, type SpeechChoice } from "@/lib/captions/speech/languages";
 import { importSubtitleOps, parseSubtitles, subtitlesText, type SubtitleFormat } from "@/lib/captions/subtitles";
 import { formatClock } from "@/lib/editor/geometry";
 import { editBlocked } from "@/lib/editor/menus";
@@ -100,6 +104,55 @@ function SubtitleFiles({ blocked }: { blocked: boolean }) {
   );
 }
 
+const SPEECH_KEY = "easyedit:speech";
+
+// The language this person last captioned in: this browser's own, so someone who films in Spanish picks it once.
+function rememberedSpeech(): SpeechChoice {
+  try {
+    return speechChoice(JSON.parse(window.localStorage.getItem(SPEECH_KEY) ?? "null"));
+  } catch {
+    return speechChoice(null); // storage blocked, or what was kept is not a choice
+  }
+}
+
+function useSpeech(): [SpeechChoice, (next: SpeechChoice) => void] {
+  const [speech, setSpeech] = useState(rememberedSpeech);
+  const choose = (next: SpeechChoice) => {
+    const whole = speechChoice(next);
+    setSpeech(whole);
+    try {
+      window.localStorage.setItem(SPEECH_KEY, JSON.stringify(whole));
+    } catch {
+      // storage blocked: the choice lasts for this page only
+    }
+  };
+  return [speech, choose];
+}
+
+// What is spoken in the clips, and whether the captions are those words or English ones.
+function SpeechControls({ speech, onChange, disabled }: { speech: SpeechChoice; onChange(next: SpeechChoice): void; disabled: boolean }) {
+  const language = speechLanguage(speech.language);
+  return (
+    <div className="flex flex-col gap-2">
+      <Field label="Spoken language">
+        <Select value={speech.language} disabled={disabled} onChange={(event) => onChange({ language: event.target.value, translate: speech.translate })}>
+          {SPEECH_LANGUAGES.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.translateOnly ? `${l.label} (captions in English)` : l.label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {speech.language !== "english" && (
+        <>
+          <Toggle label="Translate to English" checked={speech.translate} disabled={disabled || language?.translateOnly === true} onChange={(translate) => onChange({ language: speech.language, translate })} />
+          {language?.translateOnly && <p className={MUTED}>{`${language.label} is written without spaces between words, which caption lines need, so its captions are in English.`}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
 // The left panel's Captions tab: Auto captions for the selected clips (or every clip with sound), where it is while it
 // runs, what went wrong after, then the look of the captions and their lines, to fix.
 export function CaptionsTab({ panel }: { panel: PanelProps }) {
@@ -109,6 +162,7 @@ export function CaptionsTab({ panel }: { panel: PanelProps }) {
   const doc = useEditor((s) => s.doc);
   const selection = useEditor(useShallow((s) => s.selection.clipIds));
   const run = useAutoCaptions();
+  const [speech, setSpeech] = useSpeech();
 
   const { selectedCaptioned, targets, hint } = useMemo(() => {
     const clips = selection.flatMap((id) => findClip(doc, id)?.clip ?? []);
@@ -133,7 +187,8 @@ export function CaptionsTab({ panel }: { panel: PanelProps }) {
     <div {...panel} className="min-h-0 flex-1 overflow-y-auto">
       <div className="flex flex-col gap-4 p-3">
         <div className="flex flex-col gap-2">
-          <Button data-edit-control variant="primary" disabled={blocked || targets === 0 || run.running} onClick={() => run.start()}>
+          <SpeechControls speech={speech} onChange={setSpeech} disabled={run.running} />
+          <Button data-edit-control variant="primary" disabled={blocked || targets === 0 || run.running} onClick={() => run.start({ speech })}>
             Auto captions
           </Button>
           <p className={MUTED}>{hint}</p>
@@ -158,9 +213,10 @@ export function CaptionsTab({ panel }: { panel: PanelProps }) {
               </p>
             ))}
 
+          {selectedCaptioned && <p className={MUTED}>Clips that already have captions keep them. To hear them again, or in another language, use Transcribe again.</p>}
           {selectedCaptioned && (
             <div className="flex flex-wrap gap-2">
-              <Button data-edit-control disabled={blocked || run.running} onClick={() => run.start({ redo: true })}>
+              <Button data-edit-control disabled={blocked || run.running} onClick={() => run.start({ redo: true, speech })}>
                 Transcribe again
               </Button>
               <Button

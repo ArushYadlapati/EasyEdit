@@ -19,15 +19,16 @@ export class TranscribeError extends Error {
 
 export type TranscribeWorker = Pick<Worker, "postMessage" | "terminate" | "addEventListener">;
 
+// language: what is spoken (the model's name for it); English when left out. translate: the words come back in English.
 export type Transcriber = {
-  transcribe(file: Blob, opts?: { signal?: AbortSignal; onProgress?: (p: TranscribeProgress) => void }): Promise<CaptionWord[]>;
+  transcribe(file: Blob, opts?: { signal?: AbortSignal; onProgress?: (p: TranscribeProgress) => void; language?: string; translate?: boolean }): Promise<CaptionWord[]>;
 };
 
 const cancelled = () => new TranscribeError("cancelled", "Transcription was cancelled.");
 
 export function createTranscriber(startWorker: () => TranscribeWorker): Transcriber {
   return {
-    transcribe(file, { signal, onProgress } = {}) {
+    transcribe(file, { signal, onProgress, language, translate } = {}) {
       return new Promise<CaptionWord[]>((resolve, reject) => {
         if (signal?.aborted) return reject(cancelled());
         let worker: TranscribeWorker;
@@ -64,7 +65,8 @@ export function createTranscriber(startWorker: () => TranscribeWorker): Transcri
         worker.addEventListener("error", () => fail("unknown", "The speech worker stopped."));
         worker.addEventListener("messageerror", () => fail("unknown", "A message from the speech worker could not be read."));
 
-        const start: ToTranscriber = { type: "start", file };
+        // English as spoken sends nothing more, as before there was a choice.
+        const start: ToTranscriber = { type: "start", file, ...(language && language !== "english" ? { language, translate: translate === true } : {}) };
         worker.postMessage(start);
       });
     },

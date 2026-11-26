@@ -2,7 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { runAutoCaptions, type AutoCaptionDeps, type AutoCaptionOutcome, type AutoCaptionProgress } from "@/lib/captions/actions";
-import { SPEECH_MODEL, browserTranscriber } from "@/lib/captions/speech/client";
+import { browserTranscriber } from "@/lib/captions/speech/client";
+import type { SpeechChoice } from "@/lib/captions/speech/languages";
 import { fetchSavedTranscript, saveTranscriptToServer } from "@/lib/captions/transcript-client";
 import type { BrandFonts } from "@/lib/brand/types";
 import { useBrand } from "../brand/brand-context";
@@ -15,7 +16,7 @@ export function browserCaptionDeps(media: MediaServices, fonts: () => BrandFonts
   return {
     transcriber: browserTranscriber(),
     fetchSaved: fetchSavedTranscript,
-    save: (assetId, words) => saveTranscriptToServer(assetId, words, SPEECH_MODEL),
+    save: saveTranscriptToServer,
     files: media.files,
     assets: () => media.library.getState().assets,
     ensure: (ids) => media.library.getState().ensure(ids),
@@ -34,7 +35,8 @@ export type AutoCaptionsRun = {
   progress: AutoCaptionProgress | null;
   slowModel: boolean;
   outcome: AutoCaptionOutcome | null;
-  start(opts?: { redo?: boolean }): void;
+  // speech: the language spoken and whether to write it in English; English as spoken when left out.
+  start(opts?: { redo?: boolean; speech?: SpeechChoice }): void;
   cancel(): void;
 };
 
@@ -81,13 +83,13 @@ export function CaptionsProvider({ deps: given, children }: { deps?: AutoCaption
   );
 
   const start = useCallback(
-    (opts: { redo?: boolean } = {}) => {
+    (opts: { redo?: boolean; speech?: SpeechChoice } = {}) => {
       if (controller.current) return;
       const current = new AbortController();
       controller.current = current;
       last.current = null;
       setState({ running: true, progress: null, slowModel: false, outcome: null });
-      void runAutoCaptions(store, deps, { redo: opts.redo, signal: current.signal, onProgress }).then(
+      void runAutoCaptions(store, deps, { redo: opts.redo, speech: opts.speech, signal: current.signal, onProgress }).then(
         (outcome) => {
           controller.current = null;
           stopSlowTimer();

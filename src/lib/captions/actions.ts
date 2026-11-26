@@ -11,6 +11,7 @@ import { captionTrack, defaultCaptionStyle, transcriptOf, type CaptionWord, type
 import type { Cue } from "./cues";
 import { retextCue } from "./cues";
 import { TranscribeError, type Transcriber } from "./speech/client";
+import { DEFAULT_SPEECH, speechChoice, speechTag, type SpeechChoice } from "./speech/languages";
 import type { TranscribeStage } from "./speech/protocol";
 
 // What the Captions tab does to the project: which clips Auto captions works on, the edits it makes, and the run that
@@ -85,10 +86,11 @@ export function captionsOffOps(doc: TimelineDoc, clipIds: readonly string[]): Op
 }
 
 // What a run needs from the page; tests pass fakes. The real ones are made in captions-context.tsx.
+// tag: what the saved words are marked with (speechTag: the model and the language they were heard as).
 export type AutoCaptionDeps = {
   transcriber: Transcriber;
-  fetchSaved(assetId: string): Promise<CaptionWord[] | null>;
-  save(assetId: string, words: CaptionWord[]): Promise<boolean>;
+  fetchSaved(assetId: string, tag: string): Promise<CaptionWord[] | null>;
+  save(assetId: string, words: CaptionWord[], tag: string): Promise<boolean>;
   files: MediaFiles;
   assets(): Record<string, AssetView>;
   ensure(ids: string[]): Promise<string[]>;
@@ -120,7 +122,7 @@ class Cancelled extends Error {}
 
 // Reads one file and hears it. A video's preview copy is a re-encode that can lose or garble the sound, so when it
 // has none it can read, the original is heard once instead.
-async function hear(asset: AssetView, deps: AutoCaptionDeps, signal: AbortSignal | undefined, report: (stage: TranscribeStage, done: number, total: number) => void): Promise<Heard> {
+async function hear(asset: AssetView, deps: AutoCaptionDeps, speech: SpeechChoice, signal: AbortSignal | undefined, report: (stage: TranscribeStage, done: number, total: number) => void): Promise<Heard> {
   const playback = playbackFileFor(asset);
   // A preview copy still being made, or none made: the original has the same sound.
   const first = playback.fileId !== null ? playback : { fileId: asset.originalFileId!, from: "original" as const };
@@ -134,7 +136,7 @@ async function hear(asset: AssetView, deps: AutoCaptionDeps, signal: AbortSignal
     if (signal?.aborted) return { cancelled: true };
     if (!got.ok) return { why: WHY.unreadable };
     try {
-      const words = await deps.transcriber.transcribe(got.blob, { signal, onProgress: (p) => report(p.stage, p.done, p.total) });
+      const words = await deps.transcriber.transcribe(got.blob, { signal, onProgress: (p) => report(p.stage, p.done, p.total), ...speech });
       return { words };
     } catch (error) {
       const code = error instanceof TranscribeError ? error.code : "unknown";
@@ -163,13 +165,16 @@ function unusable(asset: AssetView | undefined): string | null {
 // is by then, on the target clips still in it. A file's words are the project's own when it has some (they may hold a
 // person's fixes), else the saved ones, else heard here; "Transcribe again" (redo) always hears it. A cancel stops
 // before the next step and keeps what is done. A file with nothing to caption changes nothing. A locked Captions track
-// stops it before it starts. Never throws.
+// stops it before it starts. speech: the language spoken and whether to write it in English; only words saved as
+// that are used, and the words heard are saved as that. Never throws.
 export async function runAutoCaptions(
   store: EditorStore,
   deps: AutoCaptionDeps,
-  opts: { redo?: boolean; signal?: AbortSignal; onProgress?: (p: AutoCaptionProgress) => void } = {},
+  opts: { redo?: boolean; signal?: AbortSignal; onProgress?: (p: AutoCaptionProgress) => void; speech?: SpeechChoice } = {},
 ): Promise<AutoCaptionOutcome> {
   const { redo = false, signal, onProgress } = opts;
+  const speech = speechChoice(opts.speech ?? DEFAULT_SPEECH);
+  const tag = speechTag(speech);
   const outcome: AutoCaptionOutcome = { captioned: 0, silent: [], failed: [], cancelled: false };
   const begin = store.getState();
   if (captionTrack(begin.doc)?.locked) {
@@ -219,7 +224,7 @@ export async function runAutoCaptions(
         if (!words && !redo) {
           report("checking");
           // Saved words that are an empty list are taken as none: a file heard as silent once may be heard again.
-          const saved = await deps.fetchSaved(assetId).catch(() => null);
+          const saved = await deps.fetchSaved(assetId, tag).catch(() => null);
           stopped();
           if (saved && saved.length > 0) {
             words = saved;
@@ -227,7 +232,7 @@ export async function runAutoCaptions(
           }
         }
         if (!words) {
-          const heard = await hear(asset, deps, signal, report);
+          const heard = await hear(asset, deps, speech, signal, report);
           if ("cancelled" in heard) throw new Cancelled();
           if ("silent" in heard) {
             outcome.silent.push(name);
@@ -241,7 +246,7 @@ export async function runAutoCaptions(
           // The next project with this file gets its words at once. A failed save costs only that. No words are not
           // saved, so the file can be heard again.
           if (words.length > 0) {
-            await deps.save(assetId, words).catch(() => false);
+            await deps.save(assetId, words, tag).catch(() => false);
             stopped();
           }
         }

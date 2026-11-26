@@ -102,7 +102,7 @@ async function loadModel() {
 // The shortest window worth hearing, in seconds.
 const MIN_WINDOW_SECONDS = 0.1;
 
-async function transcribe(file: Blob): Promise<FromTranscriber> {
+async function transcribe(file: Blob, language: string, translate: boolean): Promise<FromTranscriber> {
   const audio = await hear(file);
   const seconds = audio.length / SAMPLE_RATE;
   const transcriber = await loadModel();
@@ -117,8 +117,8 @@ async function transcribe(file: Blob): Promise<FromTranscriber> {
         const slice = audio.subarray(Math.round(window.start * SAMPLE_RATE), Math.round(window.end * SAMPLE_RATE));
         const output = (await transcriber(slice, {
           return_timestamps: "word",
-          language: "english",
-          task: "transcribe",
+          language,
+          task: translate ? "translate" : "transcribe",
         })) as AutomaticSpeechRecognitionOutput;
         const words = (output.chunks ?? []).map(({ text, timestamp: [start, end] }) => ({
           text,
@@ -144,6 +144,7 @@ let started = false;
 self.addEventListener("message", (event: MessageEvent<ToTranscriber>) => {
   if (started || event.data?.type !== "start") return; // one file per worker
   started = true;
-  void transcribe(event.data.file).then(post, (error: unknown) => post(failed(error)));
+  const { file, language = "english", translate = false } = event.data;
+  void transcribe(file, language, translate && language !== "english").then(post, (error: unknown) => post(failed(error)));
 });
 self.addEventListener("unhandledrejection", (event) => post(failed(event.reason)));

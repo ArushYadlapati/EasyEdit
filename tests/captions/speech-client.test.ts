@@ -162,3 +162,22 @@ describe("the transcriber", () => {
     await expect(transcriber.transcribe(file)).rejects.toMatchObject({ code: "unknown", message: "no workers here" });
   });
 });
+
+describe("the language asked of the worker", () => {
+  const file = new Blob(["x"]);
+  it("is not named for English as spoken, as before there was a choice", () => {
+    const { transcriber, workers } = setup();
+    void transcriber.transcribe(file).catch(() => {});
+    void transcriber.transcribe(file, { language: "english", translate: true }).catch(() => {});
+    expect(workers.map((w) => w.posted[0])).toEqual([{ type: "start", file }, { type: "start", file }]);
+  });
+  it("is named for any other, with whether to write it in English", () => {
+    const { transcriber, workers } = setup();
+    void transcriber.transcribe(file, { language: "spanish" }).catch(() => {});
+    void transcriber.transcribe(file, { language: "hindi", translate: true }).catch(() => {});
+    expect(workers.map((w) => w.posted[0])).toEqual([
+      { type: "start", file, language: "spanish", translate: false },
+      { type: "start", file, language: "hindi", translate: true },
+    ]);
+  });
+});
