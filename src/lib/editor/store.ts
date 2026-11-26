@@ -67,7 +67,7 @@ export type EditorState = {
   undoStack: UndoEntry[]; // newest last, at most UNDO_LIMIT
   redoStack: UndoEntry[];
   activity: ActivityEntry[]; // oldest first, at most ACTIVITY_LIMIT
-  remote: { names: string[]; at: number } | null; // who else just edited, and when
+  remote: { names: string[]; actors: string[]; at: number } | null; // who else just edited (names and actor ids), and when
   playing: boolean;
   rate: number; // negative when playing backward
   showSafeZones: boolean;
@@ -612,7 +612,9 @@ export function createEditorStore(
           // A change by an AI agent on my behalf has actor "claude:<my id>" or "agent:<kind>:<my id>", so it counts as someone else.
           const others = applied.filter((e) => e.actor !== state.me.id);
           const extra: Partial<EditorState> = { activity: mergeActivity(state.activity, applied) };
-          if (others.length > 0) extra.remote = { names: [...new Set(others.map((e) => e.actorName))], at: now() };
+          if (others.length > 0) {
+            extra.remote = { names: [...new Set(others.map((e) => e.actorName))], actors: [...new Set(others.map((e) => e.actor))], at: now() };
+          }
           rebaseAndTell(state, server, queue, stacks, extra);
         }
         return complete;

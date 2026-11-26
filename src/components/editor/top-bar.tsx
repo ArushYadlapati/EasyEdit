@@ -167,12 +167,11 @@ export function TopBar({
         <div className="flex shrink-0 items-center">
           <Menu label="Edit" disabled={deleted} items={itemsOf(editMenu)} onSelect={pick} />
           <Menu label="View" disabled={deleted} items={itemsOf(viewMenu)} onSelect={pick} />
-          {/* The guide's lessons, for a window with room for them; a deleted project's editor can still be learnt from. */}
-          {guide.length > 0 && (
-            <div className="contents max-lg:hidden">
-              <Menu label="Help" items={itemsOf((input) => helpMenu(input, guide))} onSelect={pick} />
-            </div>
-          )}
+          {/* The guide's lessons, the AI agents page and the shortcuts, for a window with room for them; a deleted
+              project's editor can still be learnt from. */}
+          <div className="contents max-lg:hidden">
+            <Menu label="Help" items={itemsOf((input) => helpMenu(input, guide))} onSelect={pick} />
+          </div>
         </div>
         <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
         <ProjectName renameRequest={renameRequest} />

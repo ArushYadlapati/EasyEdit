@@ -134,8 +134,12 @@ it("shows the whole summary of a long entry, with 'Undo this change' under it", 
     expect(found).toHaveLength(1);
     return found;
   });
-  const summary = screen.getByText(/^Claude \(for Grace Hopper\) · /);
+  const summary = row.firstElementChild!;
+  expect(summary.textContent).toMatch(/^Claude \(for Grace Hopper\) · /);
   expect(summary.textContent?.length).toBeGreaterThan(40);
+  // The agent's name and its dot are in Claude's own colour.
+  expect(screen.getByText("Claude (for Grace Hopper)").className).toContain("text-ed-agent-claude");
+  expect(summary.querySelector(".bg-ed-agent-claude")).not.toBeNull();
   expect(summary.closest(".truncate")).toBeNull();
   const undo = screen.getByRole("button", { name: "Undo this change" });
   expect(row.contains(undo)).toBe(true);
@@ -196,7 +200,8 @@ it("an undo from Activity reads as one, the change it undid says Undone, and a r
     const answer = await server.api.postOps({ baseVersion: 1, ops: sent.ops, requestId: sent.id });
     if (answer.ok) store.getState().ack(sent.id, answer.version, answer.inverse);
   });
-  await screen.findByText("You · Undid: Moved text “hi” (Theo's)");
+  await waitFor(() => expect(rows()[0].firstElementChild?.textContent).toBe("You · Undid: Moved text “hi” (Theo's)"));
+  expect(rows()[0].querySelector(".bg-ed-accent")).not.toBeNull(); // you, in blue
   expect(screen.getByText("Undone")).toBeTruthy();
   expect(screen.getAllByRole("button", { name: "Undo this change" })).toHaveLength(1);
 });

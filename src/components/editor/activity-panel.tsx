@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { ACTIVITY_LIMIT, findClip } from "@/lib/editor/store";
 import { MADE_BEFORE_MOVE, activityRows, hasOlderActivity, loadOlderActivity, loadRecentActivity } from "@/lib/editor/activity";
+import { actorLook, agentLook, type ActorLook } from "./actor-look";
 import { useEditor, useEditorApi, useEditorStore } from "./context";
 import { useLibrary } from "./media/media-context";
+import { usePresence } from "./presence-context";
 
 type Load = "loading" | "failed" | "ready";
 
@@ -24,6 +26,7 @@ export function ActivityPanel() {
   const serverVersion = useEditor((s) => s.server.version);
   const undoChange = useEditor((s) => s.undoChange);
   const assets = useLibrary((s) => s.assets);
+  const peers = usePresence((s) => s.peers);
 
   const [load, setLoad] = useState<Load>("loading");
   const [attempt, setAttempt] = useState(0);
@@ -115,6 +118,7 @@ export function ActivityPanel() {
       <ul role="list" className="flex flex-col">
         {rows.map((row) => {
           const entry = byVersion.get(row.version);
+          const who = entry ? <Who name={row.who} look={actorLook(entry.actor, me.id, peers)} agent={agentLook(entry.actor) !== null} /> : row.who;
           return (
             <li key={row.version} className="flex flex-col gap-1 border-b border-ed-line px-3 py-2">
               {/* The whole summary, wrapping as it needs: the list is there to say what changed. A change to clips still
@@ -126,11 +130,11 @@ export function ActivityPanel() {
                   onClick={() => showChange(row.clipIds)}
                   className={cx(SUMMARY, "-mx-1 rounded-[4px] px-1 text-left hover:bg-ed-raised", row.undone ? "text-ed-muted" : "text-ed-text", FOCUS_RING, FADE)}
                 >
-                  {row.who} · {row.summary}
+                  {who} · {row.summary}
                 </button>
               ) : (
                 <p className={cx(SUMMARY, row.undone ? "text-ed-muted" : "text-ed-text")}>
-                  {row.who} · {row.summary}
+                  {who} · {row.summary}
                 </p>
               )}
               <div className="flex items-center justify-between gap-2">
@@ -172,6 +176,17 @@ export function ActivityPanel() {
         )}
       </div>
     </div>
+  );
+}
+
+// Who made a change, after a dot in their colour (you in blue, a teammate in theirs while they are here, an AI agent in
+// its own); an agent's name is in its colour too, so its work reads as its own down the list.
+function Who({ name, look, agent }: { name: string; look: ActorLook | null; agent: boolean }) {
+  return (
+    <>
+      {look && <span aria-hidden className={cx("mr-1.5 mb-px inline-block size-2 rounded-full align-middle", look.bg)} />}
+      <span className={cx(agent && look && cx(look.text, "font-medium"))}>{name}</span>
+    </>
   );
 }
 

@@ -123,19 +123,27 @@ export function viewMenu(input: TopMenuInput): MenuEntry[] {
 // The editor is handed these when the server has the guide, and none when it has not.
 export type GuideLink = { title: string; path: string; chapters: readonly string[] };
 
+// The AI agents page, where a person connects Claude, ChatGPT or another agent to edit their projects. Like a lesson it
+// opens in a tab of its own, so the project stays open.
+export const AGENTS_LINK: GuideLink = { title: "AI agents", path: "/agents", chapters: [] };
+export const AGENTS_ENTRY_ID = "help:agents";
+
 // An entry that opens a lesson: "guide:" and the lesson's place in the list.
 export const guideEntryId = (index: number) => `guide:${index}`;
+// The page a Help entry opens: a lesson, or the AI agents page.
 export function guideLinkOf(id: string, guide: readonly GuideLink[]): GuideLink | undefined {
+  if (id === AGENTS_ENTRY_ID) return AGENTS_LINK;
   const match = /^guide:(\d+)$/.exec(id);
   return match ? guide[Number(match[1])] : undefined;
 }
 
 // Help: the guide's lessons by name, each opening on the Learn page in a tab of its own so the project stays open,
-// then the keyboard shortcuts. The top bar shows the menu only when there are lessons to list.
+// then the AI agents page, then the keyboard shortcuts.
 export function helpMenu(input: TopMenuInput, guide: readonly GuideLink[]): MenuEntry[] {
   return [
     ...guide.map((lesson, index) => ({ id: guideEntryId(index), label: lesson.title })),
-    commandEntry(input, { command: "show-shortcuts", label: "Keyboard shortcuts", separatorBefore: guide.length > 0 }),
+    { id: AGENTS_ENTRY_ID, label: AGENTS_LINK.title, ...(guide.length > 0 && { separatorBefore: true }) },
+    commandEntry(input, { command: "show-shortcuts", label: "Keyboard shortcuts" }),
   ];
 }
 

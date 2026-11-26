@@ -38,7 +38,7 @@ describe("the search's list", () => {
   it("has the tools, the edits, playback, the panels, settings and the project's actions, each id once", () => {
     const items = searchItems(input());
     const groups = [...new Set(items.map((i) => i.group))];
-    expect(groups).toEqual(["Tools", "Add", "Edit", "Playback", "Timeline", "Panels", "Settings", "Project"]);
+    expect(groups).toEqual(["Tools", "Add", "Edit", "Playback", "Timeline", "Panels", "Settings", "Project", "Help"]);
     expect(new Set(items.map((i) => i.id)).size).toBe(items.length);
     for (const label of ["Razor tool", "Arrow tool", "Line tool", "Star shape", "Add title", "Add audio track", "Split at the playhead", "Brand kit", "Effects panel", "General settings", "Export", "Rename project", "Save as template"]) {
       expect(items.map((i) => i.label)).toContain(label);
@@ -71,9 +71,9 @@ describe("the search's list", () => {
     expect(item("save-template", { canSaveTemplate: false })).toBeUndefined();
   });
 
-  it("in a deleted project keeps only Export, the shortcuts, settings and panel sizes", () => {
+  it("in a deleted project keeps only Export, the shortcuts, settings, panel sizes and the AI agents page", () => {
     const enabled = searchItems(input({ deleted: true })).filter((i) => !i.disabled).map((i) => i.id);
-    expect(enabled).toEqual(["reset-layout", "settings:project", "settings:general", "settings:shortcuts", "command:show-shortcuts", "command:export"]);
+    expect(enabled).toEqual(["reset-layout", "settings:project", "settings:general", "settings:shortcuts", "command:show-shortcuts", "command:export", "agents"]);
   });
 
   it("says whether the switches are on", () => {
@@ -133,8 +133,8 @@ describe("matching", () => {
       { title: "The basics", path: "/learn", chapters: ["Welcome", "Export"] },
       { title: "Effects, speed and color", path: "/learn/effects", chapters: ["Transitions", "Keyframes", "Speed", "Color"] },
     ];
-    expect(searchItems(input()).some((i) => i.group === "Help")).toBe(false);
-    const help = searchItems(input({ guide })).filter((i) => i.group === "Help");
+    expect(searchItems(input()).filter((i) => i.group === "Help").map((i) => i.id)).toEqual(["agents"]);
+    const help = searchItems(input({ guide })).filter((i) => i.group === "Help" && i.id !== "agents");
     expect(help.map((i) => [i.label, i.action])).toEqual([
       ["Guide: The basics", { kind: "guide", path: "/learn" }],
       ["Guide: Effects, speed and color", { kind: "guide", path: "/learn/effects" }],
@@ -145,5 +145,16 @@ describe("matching", () => {
     expect(labels("export", { guide })[0]).toBe("Export");
     // A deleted project's editor can still be learnt from.
     expect(searchItems(input({ guide, deleted: true })).filter((i) => i.group === "Help").every((i) => !i.disabled)).toBe(true);
+  });
+});
+
+describe("AI agents", () => {
+  it.each(["agent", "ai", "AI agent", "claude", "chatgpt", "codex", "cursor", "connect", "mcp"])("“%s” finds the AI agents page first", (query) => {
+    const [first] = searchFeatures(searchItems(input()), query);
+    expect(first).toMatchObject({ label: "Connect an AI agent", group: "Help", action: { kind: "guide", path: "/agents" } });
+  });
+
+  it("a viewer and a deleted project's editor can open it too", () => {
+    expect(item("agents", { canEdit: false, deleted: true })?.disabled).toBeFalsy();
   });
 });

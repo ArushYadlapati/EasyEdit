@@ -1,6 +1,6 @@
 import { LIMITS } from "@/lib/limits";
 import { BOX_SHAPES, SHAPE_TOOL_NAME, type BoxShape, type TrackKind } from "@/lib/timeline";
-import type { GuideLink, TopMenuInput } from "./menus";
+import { AGENTS_LINK, type GuideLink, type TopMenuInput } from "./menus";
 import { SHORTCUTS, type CommandId } from "./shortcuts";
 import { TEXT_PRESETS } from "./text-presets";
 
@@ -25,7 +25,7 @@ export type SearchAction =
   | { kind: "save-template" }
   | { kind: "timeline-file"; mode: "import" | "export" }
   | { kind: "rename" }
-  | { kind: "guide"; path: string };
+  | { kind: "guide"; path: string }; // a page of help (a lesson, the AI agents page), opened in a tab of its own
 
 // command: its key is shown as the result's hint. checked: a switch, shown as on or off.
 export type SearchItem = {
@@ -383,6 +383,14 @@ export function searchItems(input: SearchInput): SearchItem[] {
       disabled: input.deleted,
     },
   );
+  // The AI agents page, beside the project: connecting an agent is how a person asks for a first cut.
+  items.push({
+    id: "agents",
+    label: "Connect an AI agent",
+    group: "Help",
+    keywords: ["ai", "agents", "claude", "chatgpt", "openai", "codex", "cursor", "gemini", "copilot", "vs code", "mcp", "connector", "connect", "help", "ask"],
+    action: { kind: "guide", path: AGENTS_LINK.path },
+  });
   // The guide's lessons, each opening on the Learn page beside the project. A lesson is found by its name and by
   // its chapters' names, so "keyframes" finds the lesson that teaches them.
   for (const lesson of input.guide ?? []) {
