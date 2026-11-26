@@ -48,7 +48,7 @@ function setup(held: AssetView[] = []) {
       server.held = server.held.map((one) => (one.id === assetId ? { ...one, removed: true } : one));
       return { ok: true };
     },
-    open: unused, offset: unused, complete: unused, openFile: unused, completeFile: unused, previewFailed: unused, readToken: unused,
+    open: unused, offset: unused, complete: unused, openFile: unused, completeFile: unused, previewFailed: unused, addLocal: unused, localFile: unused, readToken: unused,
   };
   const store = createLibraryStore({ api, now: () => clock.at });
   const state = () => store.getState();

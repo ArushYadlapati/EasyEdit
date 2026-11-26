@@ -138,6 +138,7 @@ export function handlersFetch(ctx: MediaContext, actor: Actor, auth?: MediaHandl
     ["GET /api/media", media.list],
     ["POST /api/media", media.open],
     ["POST /api/drive/read-token", readToken],
+    ["POST /api/media/local", media.addLocal],
   ]);
   // By what follows the asset's id in the path.
   const forOne = new Map<string, (req: Request, at: AssetRouteContext) => Promise<Response>>([
@@ -148,6 +149,7 @@ export function handlersFetch(ctx: MediaContext, actor: Actor, auth?: MediaHandl
     ["POST /files", media.openFile],
     ["POST /files/complete", media.completeFile],
     ["POST /preview-failed", media.previewFailed],
+    ["POST /local-file", media.localFile],
   ]);
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), APP_ORIGIN);

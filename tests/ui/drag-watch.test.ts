@@ -11,7 +11,7 @@ import { assetView } from "../helpers/media-services";
 
 const never = <T,>() => new Promise<T>(() => {});
 const api: MediaApi = {
-  list: never, open: never, offset: never, complete: never, openFile: never, completeFile: never, previewFailed: never,
+  list: never, open: never, offset: never, complete: never, openFile: never, completeFile: never, previewFailed: never, addLocal: never, localFile: never,
   update: never, remove: never, readToken: never,
 };
 

@@ -23,6 +23,14 @@ export const MEDIA_MESSAGES = {
   sessionExpired: "This upload expired. Choose the file again.",
   notFinished: "The upload is not finished.",
   wrongFolder: "That file is not in the library's folder.",
+  folderOffer: "Or keep media in a folder on this computer. Files you add are copied there, not to Google Drive, and only this computer has them.",
+  folderOfferWithDrive: "New media goes to Google Drive. You can keep it in a folder on this computer instead: only this computer has it then.",
+  folderLocked: (name: string) => `Media is kept in "${name}" on this computer. The browser asks before it opens the folder again each visit.`,
+  folderReady: (name: string) => `New media is saved to "${name}" on this computer, not to Google Drive. Teammates and your other devices need the same files in a folder of their own.`,
+  folderNeedsChrome: "Keeping media in a folder on this computer needs Chrome or Edge.",
+  notLocal: "That file is kept in Google Drive, not on a computer.",
+  localWriteFailed: "The file couldn't be saved to your media folder. Check that the folder is still there and has room, then try again.",
+  localFolderGone: "Your media folder can't be opened. Choose it again in the Media tab.",
   tooManyIds: `Ask for up to ${LIMITS.mediaIdsPerRequest} files at a time.`,
   formerMember: "A former member", // shown as the uploader when that person's account is gone
   // Why an asset cannot be removed. names: the projects that use it, in the order to show them, of which the

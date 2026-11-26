@@ -16,14 +16,17 @@ import { forgetAllSources } from "@/lib/storage/token-cache";
 import { getTranscript, saveTranscript } from "@/lib/captions/transcripts";
 import { MEDIA_MESSAGES } from "./messages";
 import {
+  addLocalAsset,
   assetGone,
   completeAssetFile,
   completeUpload,
   failPreview,
+  isLocalAsset,
   listAssets,
   openAssetFile,
   openUpload,
   removeAsset,
+  setLocalFile,
   updateAsset,
   uploadOffset,
   type AssetFileRole,
@@ -165,6 +168,11 @@ function mediaRoute<Rest extends unknown[]>(
   });
 }
 
+// Stands in for a space's Drive where none is needed: removing a file kept on a computer calls nothing of it.
+const NO_DRIVE = new Proxy({} as DriveClient, {
+  get: (_target, call) => () => Promise.reject(new Error(`Drive was asked to ${String(call)} for a file kept on a computer.`)),
+});
+
 export function makeMediaHandlers(deps: MediaHandlerDeps) {
   // What the service needs to reach Drive. Null when media is not set up. A Drive failure the member is not shown
   // (a file that could not be moved to the trash) leaves the same one line.
@@ -206,6 +214,20 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
       return Response.json({ asset, uploadUrl, offset }, { status: 201 });
     }),
 
+    // A file that stays in a folder on the member's computer: the library gets its entry and Drive is not asked,
+    // so this works in a space with no storage too.
+    addLocal: mediaRoute(deps, inQueriedSpace, async (actor, req) => {
+      const db = deps.db();
+      const asset = await addLocalAsset({ db, checkNew: () => checkAppBudget(db, actor.userId, "upload") }, actor, await bodyOf(req, openBody));
+      return Response.json({ asset }, { status: 201 });
+    }),
+
+    localFile: mediaRoute(deps, inAssetSpace, async (actor, req, ctx: AssetRouteContext) => {
+      const { id } = await ctx.params;
+      const { role } = await bodyOf(req, completeFileBody);
+      return Response.json({ asset: await setLocalFile(deps.db(), actor, id, role) });
+    }),
+
     update: mediaRoute(deps, inAssetSpace, async (actor, req, ctx: AssetRouteContext) => {
       const { id } = await ctx.params;
       const patch = await bodyOf(req, updateBody);
@@ -213,9 +235,10 @@ export function makeMediaHandlers(deps: MediaHandlerDeps) {
     }),
 
     remove: mediaRoute(deps, inAssetSpace, async (actor, _req, ctx: AssetRouteContext) => {
-      const service = await media(actor);
-      if (!service) return notSetUp();
       const { id } = await ctx.params;
+      // A file kept on a computer has nothing in Drive to trash, so its entry goes without the space's storage.
+      const service = (await isLocalAsset(deps.db(), actor, id)) ? { db: deps.db(), drive: NO_DRIVE, origin: deps.origin() } : await media(actor);
+      if (!service) return notSetUp();
       await removeAsset(service, actor, id);
       return new Response(null, { status: 204 });
     }),

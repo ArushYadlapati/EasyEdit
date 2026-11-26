@@ -36,6 +36,20 @@ export type AssetView = {
   createdAt: string; // ISO time
 };
 
+// A file kept in a folder on a member's own computer, and not in Drive, has an id of this form: the asset's id, and
+// for the copies made from it which one ("preview", "poster"). Only a browser that has been pointed at the folder can
+// read it; the server holds no such file and never tries to.
+export const LOCAL_FILE = "local:";
+export type LocalRole = "original" | "preview" | "poster";
+export const localFileId = (assetId: string, role: LocalRole = "original") => (role === "original" ? `${LOCAL_FILE}${assetId}` : `${LOCAL_FILE}${assetId}:${role}`);
+export function localFileOf(fileId: string | null): { assetId: string; role: LocalRole } | null {
+  if (fileId === null || !fileId.startsWith(LOCAL_FILE)) return null;
+  const [assetId, role] = fileId.slice(LOCAL_FILE.length).split(":");
+  if (!assetId || (role !== undefined && role !== "preview" && role !== "poster")) return null;
+  return { assetId, role: role ?? "original" };
+}
+export const isLocalFile = (fileId: string | null) => localFileOf(fileId) !== null;
+
 export type OpenUploadInput = {
   fileName: string;
   sizeBytes: number;

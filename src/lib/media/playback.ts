@@ -1,5 +1,5 @@
 import { LIMITS } from "@/lib/limits";
-import type { AssetView } from "./types";
+import { isLocalFile, type AssetView } from "./types";
 
 // The file a clip plays in the editor, or why it has none to play.
 export type PlaybackFile =
@@ -13,6 +13,9 @@ export function playbackFileFor(asset: AssetView | undefined): PlaybackFile {
   const original: PlaybackFile = { fileId: asset.originalFileId, from: "original" };
   if (asset.kind !== "video") return original;
   if (asset.previewStatus === "ready" && asset.previewFileId !== null) return { fileId: asset.previewFileId, from: "preview" };
+  // A file kept on this computer costs nothing to read, so it plays as it is while its preview copy is made, and
+  // when none could be.
+  if (isLocalFile(asset.originalFileId)) return original;
   if (asset.previewStatus === "pending") return { fileId: null, why: "preparing" };
   // No preview copy was made. A small original plays well enough as it is.
   return asset.sizeBytes <= LIMITS.mediaDirectPlayBytes ? original : { fileId: null, why: "no-preview" };

@@ -16,9 +16,17 @@ export type QueueDeps = {
   onAsset(asset: AssetView): void; // whenever the server returns the asset's newer state
   onPreviewFile(fileId: string, blob: Blob): void; // the finished preview copy or still picture, so this browser need not download its own file
   event(): string | undefined; // the event to give new uploads
+  // Where files go when the person keeps media on this computer and not in Drive; null (or left out) for Drive.
+  local?: () => LocalTarget | null;
   chunkBytes?: number;
   parallel?: number;
   genKey?: () => string;
+};
+
+// A folder on this computer that takes the files in Drive's place (local-folder.ts).
+export type LocalTarget = {
+  write(asset: { id: string; fileName: string; sizeBytes: number }, role: "original" | "preview" | "poster", blob: Blob): Promise<void>;
+  remove(asset: { id: string; fileName: string; sizeBytes: number }): Promise<void>;
 };
 
 export type UploadQueue = {
@@ -256,6 +264,69 @@ export function createUploadQueue(deps: QueueDeps): UploadQueue {
     return completed.asset;
   }
 
+  // Steps 3 to 5 for a file that stays on this computer: the library gets its entry, the file is written to the
+  // folder, and the copies made from it are written beside it. Nothing goes to Drive.
+  async function keepLocal(entry: Entry, kind: AssetKind, probe: AssetProbe, folder: LocalTarget) {
+    const { file } = entry;
+    change(entry, { stage: "uploading" });
+    const added = await api.addLocal({ fileName: file.name, sizeBytes: file.size, mimeType: file.type, lastModifiedMs: file.lastModified, probe, event: deps.event() });
+    if (entry.left) {
+      if (entry.left === "canceled" && added.ok) void api.remove(added.asset.id);
+      return;
+    }
+    if (!added.ok) return fail(entry, failureOf(added));
+    const asset = added.asset;
+    change(entry, { assetId: asset.id });
+    try {
+      await folder.write(asset, "original", file);
+    } catch {
+      // The entry has no file behind it: it goes again, so the library never lists what this computer does not hold.
+      const removed = await api.remove(asset.id);
+      if (removed.ok) change(entry, { assetId: null });
+      return fail(entry, final(MEDIA_MESSAGES.localWriteFailed));
+    }
+    if (entry.left) {
+      // Canceled while the file was being written: its entry is being removed, and the copy goes with it.
+      if (entry.left === "canceled") void folder.remove(asset);
+      return;
+    }
+    entry.ready = true;
+    deps.onAsset(asset);
+    release(entry);
+    if (kind === "audio") {
+      change(entry, { stage: "done", sentBytes: file.size });
+      return startWaiting();
+    }
+    if (!entry.derive) startDerive(entry, probe);
+    change(entry, { stage: "preview", sentBytes: file.size });
+    startWaiting();
+    const made = await entry.derive!.made;
+    if (entry.left) return;
+    change(entry, { previewFraction: 1 });
+    const keep = async (role: "preview" | "poster", blob: Blob | null): Promise<boolean> => {
+      if (!blob) return false;
+      try {
+        await folder.write(asset, role, blob);
+      } catch {
+        return false;
+      }
+      const noted = await api.localFile(asset.id, role);
+      if (noted.ok && !entry.left) deps.onAsset(noted.asset);
+      return noted.ok;
+    };
+    const previewIn = await keep("preview", made.preview);
+    if (entry.left) return;
+    if (kind === "video" && !previewIn) {
+      // The original plays from the folder as it is, so a missing preview copy needs no word to the person.
+      const failed = await api.previewFailed(asset.id);
+      if (entry.left) return;
+      if (failed.ok) deps.onAsset(failed.asset);
+    }
+    await keep("poster", made.poster);
+    entry.derive = null;
+    change(entry, { stage: "done" });
+  }
+
   // Steps 2 to 5 for an entry that has a place. After every wait it looks whether the entry is still in the list.
   async function run(entry: Entry, kind: AssetKind) {
     const { file } = entry;
@@ -271,6 +342,9 @@ export function createUploadQueue(deps: QueueDeps): UploadQueue {
       probe = entry.probe = read;
       change(entry, { durationMs: read.durationMs });
     }
+
+    const folder = deps.local?.() ?? null;
+    if (folder) return keepLocal(entry, kind, probe, folder);
 
     const sends = (entry.sends = new AbortController());
     const before = entry.item.assetId;

@@ -16,11 +16,12 @@ import type { MediaFailure, MediaResult } from "@/lib/media/api";
 import { visibleAssets } from "@/lib/media/library-store";
 import { MEDIA_MESSAGES } from "@/lib/media/messages";
 import { STORAGE_MESSAGES, type StorageCard, storageCard, storageSettingsPath } from "@/lib/storage/messages";
-import type { AssetKind, AssetView, UploadItem } from "@/lib/media/types";
+import { isLocalFile, type AssetKind, type AssetView, type UploadItem } from "@/lib/media/types";
 import { useEditor, useEditorStore } from "../context";
 import { LeaveLink } from "../leave-link";
 import { AssetTile, type AssetAction, type WatchView } from "./asset-tile";
-import { type StorageSetup, useLibrary, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
+import { canPickFolder, pickFolder } from "./folder-memory";
+import { type StorageSetup, useLibrary, useLocalFolder, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
 import { UploadRow } from "./upload-row";
 import { RecordButtons } from "./voiceover-button";
 
@@ -95,7 +96,7 @@ type MediaTabProps = {
 // The Media tab of the left panel: upload, the uploads under way, search and the library. The whole tab takes
 // dropped files.
 export function MediaTab({ panel, onAdd }: MediaTabProps) {
-  const { library, queue } = useMedia();
+  const { library, queue, local } = useMedia();
   const { storageReady, storageProblem, storageSetup } = useMediaSpace();
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
@@ -108,8 +109,12 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   // A team whose Google connection broke still lists and plays what its reader can read; only uploads stop. A personal
   // space's broken connection is the only way to read its Drive, so there the card stands alone.
   const readsWhileBroken = !storageReady && storageProblem === "broken" && storageSetup?.kind === "team";
-  const listed = storageReady || readsWhileBroken;
-  const canUpload = canEdit && setUp && storageReady;
+  // A media folder on this computer is storage of its own: with one open, files are taken and the library is listed
+  // whatever the space's Drive is.
+  const { state: folderState } = useLocalFolder();
+  const localReady = folderState === "ready";
+  const listed = storageReady || readsWhileBroken || localReady;
+  const canUpload = canEdit && ((setUp && storageReady) || localReady);
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   // Over this tab, or a file from the computer anywhere over the window.
@@ -146,6 +151,8 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   // A removed asset's row goes, and with it the More button that had focus: focus goes to the next row, else the one
   // before, else the search field.
   function onRemoved(removed: AssetView) {
+    // A file kept on this computer goes from its folder with its entry.
+    if (isLocalFile(removed.originalFileId)) void local.remove(removed);
     const at = assets.findIndex((asset) => asset.id === removed.id);
     const near = at === -1 ? [] : [assets[at + 1], assets[at - 1]].flatMap((asset) => (asset ? [asset.id] : []));
     afterClose.current = () => {
@@ -190,8 +197,9 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
       });
   if (card && !listed) {
     return (
-      <div {...panel} className="min-h-0 flex-1">
-        <StorageNotice card={card} setup={storageSetup} className="p-3" />
+      <div {...panel} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+        <StorageNotice card={card} setup={storageSetup} />
+        {canEdit && <LocalFolderPanel hasDrive={false} />}
       </div>
     );
   }
@@ -205,7 +213,7 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
       onDrop={onDrop}
     >
       <div ref={scroller} className="flex h-full flex-col gap-3 overflow-y-auto p-3">
-        {card ? (
+        {card && !localReady ? (
           <StorageNotice card={card} setup={storageSetup} />
         ) : (
           <div className="flex flex-col gap-2">
@@ -245,7 +253,8 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
                 onChange={(event) => library.getState().setUploadEvent(event.target.value)}
               />
             </label>
-            {!setUp && <p className="text-[13px] leading-5 text-ed-muted">{MEDIA_MESSAGES.notSetUp}</p>}
+            {!setUp && !localReady && <p className="text-[13px] leading-5 text-ed-muted">{MEDIA_MESSAGES.notSetUp}</p>}
+            {canEdit && <LocalFolderPanel hasDrive={storageReady && setUp} />}
           </div>
         )}
 
@@ -304,6 +313,61 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
       )}
 
       <AssetDialog editing={editing} onRemoved={onRemoved} onClose={() => setEditing(null)} />
+    </div>
+  );
+}
+
+// Where new media goes: Google Drive, or a folder on this computer the person picks. With a folder open, files are
+// copied into it and only this computer has them; teammates and other devices see the entry and can open a folder of
+// their own that holds the same files. hasDrive: the space's Drive works, so there is something to go back to.
+export function LocalFolderPanel({ hasDrive }: { hasDrive: boolean }) {
+  const { folder, state, name } = useLocalFolder();
+  const [supported] = useState(canPickFolder);
+  const [busy, setBusy] = useState(false);
+  const run = (work: () => Promise<unknown>) => {
+    setBusy(true);
+    void work().finally(() => setBusy(false));
+  };
+  const MUTED = "text-[13px] leading-5 text-ed-muted";
+  if (state === "none" && !supported) return hasDrive ? null : <p className={MUTED}>{MEDIA_MESSAGES.folderNeedsChrome}</p>;
+  return (
+    <div role="group" aria-label="Media folder" className="flex flex-col gap-1.5 rounded-md border border-ed-line p-2">
+      {state === "none" && (
+        <>
+          <p className={MUTED}>{hasDrive ? MEDIA_MESSAGES.folderOfferWithDrive : MEDIA_MESSAGES.folderOffer}</p>
+          <Button data-edit-control disabled={busy} onClick={() => run(() => folder.choose(pickFolder))}>
+            Use a folder on this computer
+          </Button>
+        </>
+      )}
+      {state === "locked" && (
+        <>
+          <p className={MUTED}>{MEDIA_MESSAGES.folderLocked(name ?? "your folder")}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" data-edit-control disabled={busy} onClick={() => run(() => folder.unlock())}>
+              Open folder
+            </Button>
+            <Button variant="ghost" data-edit-control disabled={busy} onClick={() => run(() => folder.forget())}>
+              {hasDrive ? "Use Google Drive" : "Stop using it"}
+            </Button>
+          </div>
+        </>
+      )}
+      {state === "ready" && (
+        <>
+          <p className={MUTED}>{MEDIA_MESSAGES.folderReady(name ?? "your folder")}</p>
+          <div className="flex flex-wrap gap-2">
+            {supported && (
+              <Button data-edit-control disabled={busy} onClick={() => run(() => folder.choose(pickFolder))}>
+                Change folder
+              </Button>
+            )}
+            <Button variant="ghost" data-edit-control disabled={busy} onClick={() => run(() => folder.forget())}>
+              {hasDrive ? "Use Google Drive" : "Stop using it"}
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

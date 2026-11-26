@@ -8,6 +8,10 @@ export type MediaResult<T> = ({ ok: true } & T) | MediaFailure;
 export type MediaApi = {
   list(ids?: string[]): Promise<MediaResult<{ assets: AssetView[]; setUp: boolean }>>;
   open(input: OpenUploadInput): Promise<MediaResult<{ asset: AssetView; uploadUrl: string; offset: number }>>;
+  // A file that stays on this computer: the library gets its entry, ready at once, and nothing goes to Drive.
+  addLocal(input: OpenUploadInput): Promise<MediaResult<{ asset: AssetView }>>;
+  // Says this browser has made a local asset's preview copy or still picture and keeps it with the original.
+  localFile(assetId: string, role: "preview" | "poster"): Promise<MediaResult<{ asset: AssetView }>>;
   offset(assetId: string): Promise<MediaResult<{ uploadUrl: string | null; offset: number; done: boolean }>>;
   complete(assetId: string): Promise<MediaResult<{ asset: AssetView }>>;
   openFile(assetId: string, role: "preview" | "poster", sizeBytes: number): Promise<MediaResult<{ uploadUrl: string }>>;
@@ -120,6 +124,8 @@ export function createMediaApi(spaceId: string, fetchFn?: typeof fetch): MediaAp
   return {
     list: (ids) => request(() => ({ method: "GET", path: `${MEDIA}?${inSpace(spaceId)}${ids ? `&ids=${ids.map(encodeURIComponent).join(",")}` : ""}` }), fieldsOf(listed)),
     open: (input) => post(() => `${MEDIA}?${inSpace(spaceId)}`, fieldsOf(opened), input),
+    addLocal: (input) => post(() => `${MEDIA}/local?${inSpace(spaceId)}`, fieldsOf(oneAsset), input),
+    localFile: (assetId, role) => post(() => assetPath(assetId, "/local-file"), fieldsOf(oneAsset), { role }),
     offset: (assetId) => post(() => assetPath(assetId, "/offset"), fieldsOf(held)),
     complete: (assetId) => post(() => assetPath(assetId, "/complete"), fieldsOf(oneAsset)),
     openFile: (assetId, role, sizeBytes) => post(() => assetPath(assetId, "/files"), fieldsOf(fileOpened), { role, sizeBytes }),

@@ -668,6 +668,8 @@ describe("the route files", () => {
     ["media/[id]/files/complete/route.ts", () => import("@/app/api/media/[id]/files/complete/route"), { POST: "completeFile" }],
     ["media/[id]/preview-failed/route.ts", () => import("@/app/api/media/[id]/preview-failed/route"), { POST: "previewFailed" }],
     ["media/[id]/transcript/route.ts", () => import("@/app/api/media/[id]/transcript/route"), { GET: "transcript", PUT: "saveTranscript" }],
+    ["media/local/route.ts", () => import("@/app/api/media/local/route"), { POST: "addLocal" }],
+    ["media/[id]/local-file/route.ts", () => import("@/app/api/media/[id]/local-file/route"), { POST: "localFile" }],
     ["drive/read-token/route.ts", () => import("@/app/api/drive/read-token/route"), { POST: "readToken" }],
   ];
 
@@ -678,14 +680,14 @@ describe("the route files", () => {
     vi.resetModules();
   });
 
-  it("there are nine, and each sends its methods to the handlers of the table", async () => {
+  it("there are eleven, and each sends its methods to the handlers of the table", async () => {
     const files = [...sources("src/app/api/media"), ...sources("src/app/api/drive")].map(([file]) => file);
     expect(files.sort()).toEqual(ROUTES.map(([file]) => `src/app/api/${file}`).sort());
 
     // No setting is there to be read while the files load.
     for (const name of ["DATABASE_URL", "BETTER_AUTH_URL", "BETTER_AUTH_SECRET", "GOOGLE_SERVICE_ACCOUNT_KEY", "DRIVE_FOLDER_ID"]) vi.stubEnv(name, "");
     vi.resetModules();
-    const handlerNames = ["list", "open", "update", "remove", "offset", "complete", "openFile", "completeFile", "previewFailed", "transcript", "saveTranscript"];
+    const handlerNames = ["list", "open", "update", "remove", "offset", "complete", "openFile", "completeFile", "previewFailed", "transcript", "saveTranscript", "addLocal", "localFile"];
     const handlers: Record<string, unknown> = Object.fromEntries(handlerNames.map((name) => [name, vi.fn()]));
     const readToken = vi.fn();
     const makeMediaHandlers = vi.fn<(deps: MediaHandlerDeps) => unknown>(() => handlers);
@@ -705,7 +707,7 @@ describe("the route files", () => {
     const { getDb } = await import("@/db");
     const { readerFor, storageFor } = await import("@/lib/spaces/storage");
     const { appBaseUrl } = await import("@/lib/connector/config");
-    expect(makeMediaHandlers).toHaveBeenCalledTimes(8);
+    expect(makeMediaHandlers).toHaveBeenCalledTimes(10);
     expect(makeReadTokenHandler).toHaveBeenCalledTimes(1);
     for (const [deps] of [...makeMediaHandlers.mock.calls, ...makeReadTokenHandler.mock.calls]) {
       expect(Object.keys(deps).sort()).toEqual(["auth", "db", "drive", "origin", "reader"]);

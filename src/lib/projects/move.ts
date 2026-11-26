@@ -175,6 +175,7 @@ export async function startMove(deps: MoveDeps, actor: Actor, input: { projectId
   const byId = new Map(sources.map((row) => [row.id, row]));
   for (const id of ids) {
     const row = byId.get(id);
+    if (row && row.status === "ready" && row.driveFileId === null) throw new ServiceError("INVALID", 400, MOVE_MESSAGES.onAComputer(row.name));
     if (!row || row.status !== "ready" || row.driveFileId === null) throw new ServiceError("INVALID", 400, MOVE_MESSAGES.notReady(row?.name ?? id));
   }
 

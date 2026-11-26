@@ -24,7 +24,7 @@ import { sampleDoc } from "../editor/fixtures";
 import { dragEvent } from "../helpers/drag-events";
 import { act, cleanup, fireEvent, render, screen, tipOf } from "../helpers/dom";
 import { happyDOM } from "../helpers/layout";
-import { assetView, pretendMediaServices } from "../helpers/media-services";
+import { assetView, pretendMediaServices, idleFolder } from "../helpers/media-services";
 import { fakeCtx } from "../render/fake-ctx";
 import { fakeExportDeps } from "./export-fakes";
 
@@ -223,7 +223,7 @@ function pretendMedia(options: { refreshFails?: boolean } = {}) {
   };
   const api: MediaApi = {
     list: vi.fn(async () => ({ ok: true as const, assets: [], setUp: true })),
-    open: fails, offset: fails, complete: fails, openFile: fails, completeFile: fails, previewFailed: fails,
+    open: fails, offset: fails, complete: fails, openFile: fails, completeFile: fails, previewFailed: fails, addLocal: fails, localFile: fails,
     update: fails, remove: fails, readToken: fails,
   };
   const library = createLibraryStore({ api });
@@ -241,7 +241,7 @@ function pretendMedia(options: { refreshFails?: boolean } = {}) {
     items: () => [],
     active: vi.fn(() => active),
   } satisfies UploadQueue;
-  const services: MediaServices = { library, queue, files: { get: () => new Promise(() => {}), put: async () => {} }, dispose: vi.fn() };
+  const services: MediaServices = { library, queue, files: { get: () => new Promise(() => {}), put: async () => {} }, local: idleFolder(), dispose: vi.fn() };
   vi.mocked(createMediaServices).mockReturnValueOnce(services);
   return { api, library, refresh, ensure, queue, services, setActive: (n: number) => void (active = n) };
 }

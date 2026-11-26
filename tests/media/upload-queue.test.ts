@@ -67,7 +67,7 @@ type Options = {
   api?: (real: MediaApi) => Partial<MediaApi>; // calls answered by the test and not by the server
   beforePiece?: (nth: number) => void | Promise<void>; // waited for before the nth piece of this tab is sent, counted from 1
   event?: () => string | undefined;
-  options?: Pick<QueueDeps, "chunkBytes" | "parallel" | "genKey">;
+  options?: Pick<QueueDeps, "chunkBytes" | "parallel" | "genKey" | "local">;
 };
 
 async function harness(options: Options = {}) {

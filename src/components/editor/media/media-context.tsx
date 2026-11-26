@@ -9,14 +9,17 @@ import type { StorageBlock } from "@/lib/storage/messages";
 import { createIngest } from "@/lib/media/ingest-protocol";
 import { createLibraryStore, type LibraryState, type LibraryStore } from "@/lib/media/library-store";
 import { createMediaFiles, createMemoryStore, type MediaFiles } from "@/lib/media/media-files";
+import { createLocalFolder, withLocalFiles, type FolderState, type HandleMemory, type LocalFolder } from "@/lib/media/local-folder";
 import { createReadTokens } from "@/lib/media/read-tokens";
 import { createUploadQueue, type UploadQueue } from "@/lib/media/upload-queue";
 import { createDriveTransport } from "@/lib/media/uploader";
+import { folderMemory } from "./folder-memory";
 import { createOpfsStore, createSettledStore } from "./media-cache";
 
 // What one open editor uses of the media library. dispose: for leaving the editor; it stops the uploads that run
 // (removing nothing on the server) and ends the worker. The services stay usable afterwards.
-export type MediaServices = { library: LibraryStore; queue: UploadQueue; files: MediaFiles; dispose(): void };
+// local: the folder on this computer that takes new media in Drive's place, once the person has chosen one.
+export type MediaServices = { library: LibraryStore; queue: UploadQueue; files: MediaFiles; local: LocalFolder; dispose(): void };
 
 // A wait between tries of an upload's piece. It always resolves.
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -26,10 +29,16 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 export function createMediaServices(spaceId: string): MediaServices {
   const api = createMediaApi(spaceId);
   const library = createLibraryStore({ api });
-  const files = createMediaFiles({
-    tokens: createReadTokens({ api }),
-    store: createSettledStore(async () => (await createOpfsStore().catch(() => null)) ?? createMemoryStore()),
-  });
+  const local = createLocalFolder(folderMemory(spaceId));
+  void local.restore();
+  const files = withLocalFiles(
+    createMediaFiles({
+      tokens: createReadTokens({ api }),
+      store: createSettledStore(async () => (await createOpfsStore().catch(() => null)) ?? createMemoryStore()),
+    }),
+    local,
+    (assetId) => library.getState().assets[assetId] ?? null,
+  );
   const ingest = createIngest(() => new Worker(new URL("../../../workers/ingest.worker.ts", import.meta.url), { type: "module" }));
   const queue = createUploadQueue({
     api,
@@ -40,11 +49,14 @@ export function createMediaServices(spaceId: string): MediaServices {
     onAsset: (asset) => library.getState().put(asset), // the member's own uploads need no fetch of the library
     onPreviewFile: (fileId, blob) => void files.put(fileId, blob),
     event: () => library.getState().uploadEvent,
+    // With a media folder open, new files stay on this computer.
+    local: () => (local.state() === "ready" ? local : null),
   });
   return {
     library,
     queue,
     files,
+    local,
     dispose() {
       queue.stop();
       ingest.dispose();
@@ -55,10 +67,14 @@ export function createMediaServices(spaceId: string): MediaServices {
 // The services of a space with no storage: the queue takes no file. Every way a file gets in (the Media tab, the window,
 // the timeline, the preview) ends at queue.add, so this one place refuses them all, whatever the library's setUp says
 // before its first refresh. Nothing is ever sent to the media API for a file.
+// A media folder on this computer is storage of its own: with one open, files are taken whatever the space's Drive is.
 export function gateStorage(services: MediaServices, storageReady: boolean): MediaServices {
   if (storageReady) return services;
-  return { ...services, queue: { ...services.queue, add: () => [] } };
+  return { ...services, queue: { ...services.queue, add: (files) => (services.local.state() === "ready" ? services.queue.add(files) : []) } };
 }
+
+// A memory that keeps nothing, for services that never open a folder.
+const NO_MEMORY: HandleMemory = { load: async () => null, save: async () => {} };
 
 // Without a provider, as in tests of other parts of the editor: a library that never loads, a queue that takes
 // nothing, and files that cannot be read.
@@ -72,6 +88,8 @@ function idleServices(): MediaServices {
     openFile: never,
     completeFile: never,
     previewFailed: never,
+    addLocal: never,
+    localFile: never,
     update: never,
     remove: never,
     readToken: never,
@@ -87,7 +105,15 @@ function idleServices(): MediaServices {
     active: () => 0,
   };
   const files: MediaFiles = { get: async () => ({ ok: false, problem: "offline" }), put: async () => {} };
-  return { library: createLibraryStore({ api }), queue, files, dispose() {} };
+  return { library: createLibraryStore({ api }), queue, files, local: createLocalFolder(NO_MEMORY), dispose() {} };
+}
+
+// Which state the media folder is in, re-read whenever it changes.
+export function useLocalFolder(): { folder: LocalFolder; state: FolderState; name: string | null } {
+  const folder = useMedia().local;
+  const state = useSyncExternalStore(folder.subscribe, folder.state, folder.state);
+  const name = useSyncExternalStore(folder.subscribe, folder.name, folder.name);
+  return { folder, state, name };
 }
 
 const MediaContext = createContext<MediaServices | null>(null);

@@ -16,6 +16,8 @@ import type { UploadQueue } from "@/lib/media/upload-queue";
 import { findClip } from "@/lib/editor/store";
 import { makeStore } from "../editor/fixtures";
 import { act, fireEvent, render, renderHook, screen, within } from "../helpers/dom";
+import type { LocalFolder } from "@/lib/media/local-folder";
+import { idleFolder } from "../helpers/media-services";
 import { dragEvent } from "../helpers/drag-events";
 
 const asset = (over: Partial<AssetView>): AssetView => ({
@@ -74,6 +76,8 @@ function pretendApi(listed: AssetView[], setUp = true) {
     openFile: notCalled(),
     completeFile: notCalled(),
     previewFailed: notCalled(),
+    addLocal: notCalled(),
+    localFile: notCalled(),
     readToken: notCalled(),
   } satisfies MediaApi;
   return { api, answers };
@@ -94,12 +98,12 @@ function pretendQueue() {
 
 const never = <T,>() => new Promise<T>(() => {});
 
-function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boolean; files?: MediaFiles; settings?: SettingsStore; drop?: MediaDrop } = {}) {
+function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boolean; files?: MediaFiles; settings?: SettingsStore; drop?: MediaDrop; local?: LocalFolder } = {}) {
   const { api, answers } = pretendApi(options.listed ?? [FIELD, PHOTO], options.setUp);
   const library = createLibraryStore({ api });
   const queue = pretendQueue();
   const files: MediaFiles = options.files ?? { get: vi.fn<MediaFiles["get"]>(() => never()), put: vi.fn(async () => {}) };
-  const services: MediaServices = { library, queue, files, dispose: vi.fn() };
+  const services: MediaServices = { library, queue, files, local: options.local ?? idleFolder(), dispose: vi.fn() };
   const store = makeStore({ canEdit: options.canEdit ?? true });
   const view = render(
     <EditorProvider store={store} settings={options.settings}>

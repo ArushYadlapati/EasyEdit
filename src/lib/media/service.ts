@@ -13,7 +13,7 @@ import { ConnectionBrokenError } from "@/lib/storage/google-oauth";
 import { graphemes, isStorableText } from "@/lib/text";
 import { FILE_REFUSALS, MEDIA_MESSAGES, NAMED_PROJECTS } from "./messages";
 import { checkFile, cleanName, driveName, probeFits } from "./rules";
-import type { AssetKind, AssetView, OpenUploadInput } from "./types";
+import { isLocalFile, localFileId, type AssetKind, type AssetView, type OpenUploadInput } from "./types";
 
 // onDriveError: told of each Drive failure that the member is not shown. The service itself prints nothing.
 export type MediaDeps = { db: DB; drive: DriveClient; origin: string; onDriveError?: (error: DriveError) => void;
@@ -62,7 +62,8 @@ function toView(row: AssetRow, names: Map<string, string>): AssetView {
     height: row.height,
     fps: row.fps,
     hasAudio: row.hasAudio,
-    originalFileId: row.status === "ready" ? row.driveFileId : null,
+    // A ready asset with no Drive file is one kept on a member's computer (addLocalAsset): its id says so.
+    originalFileId: row.status === "ready" ? (row.driveFileId ?? localFileId(row.id)) : null,
     previewStatus: previewGivenUp(row) ? "failed" : row.previewStatus,
     previewFileId: row.previewFileId,
     posterFileId: row.posterFileId,
@@ -247,6 +248,78 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
   throw tooManyUnfinished();
 }
 
+// Records a file that stays in a folder on the member's own computer: a library entry like any other, ready at once,
+// with no file in Drive behind it. The browser keeps the bytes; other members see the entry and can point their own
+// browser at a copy of the file. The same checks as an upload, and none of Drive: a space needs no storage for it.
+export async function addLocalAsset(deps: { db: DB; checkNew?: () => Promise<void> }, actor: Actor, input: OpenUploadInput): Promise<AssetView> {
+  requireRole(actor, "editor");
+  const { db } = deps;
+  const checked = checkFile({ name: input.fileName, sizeBytes: input.sizeBytes });
+  if (!checked.ok) throw refusedFile(checked.reason);
+  const { kind } = checked;
+  if (!probeFits(kind, input.probe) || !canBeStored(kind, input)) throw refusedFile("unreadable");
+  const event = eventOf(input.event);
+  await deps.checkNew?.();
+  const { probe } = input;
+  const isVideo = kind === "video";
+  let inserted: AssetRow | undefined;
+  try {
+    [inserted] = await db
+      .insert(assets)
+      .values({
+        id: nanoid(12),
+        spaceId: actor.spaceId,
+        kind,
+        name: cleanName(input.fileName),
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        lastModifiedMs: input.lastModifiedMs,
+        status: "ready",
+        driveFileId: null,
+        uploadUrl: null,
+        durationMs: kind === "image" ? null : probe.durationMs,
+        width: kind === "audio" ? null : probe.width,
+        height: kind === "audio" ? null : probe.height,
+        fps: isVideo ? probe.fps : null,
+        hasAudio: probe.hasAudio,
+        videoCodec: isVideo ? probe.videoCodec : null,
+        // The browser makes a preview copy into the same folder and says so (setLocalFile).
+        previewStatus: isVideo ? "pending" : "none",
+        event,
+        uploadedBy: actor.userId,
+        readyAt: sql`now()`,
+      })
+      .returning();
+  } catch (error) {
+    throw notRecorded(error);
+  }
+  if (!inserted) throw notRecorded(null);
+  return viewOf(db, inserted);
+}
+
+// Whether a library asset is one kept on a computer. Unknown, removed or another space's: false.
+export async function isLocalAsset(db: DB, actor: Actor, assetId: string): Promise<boolean> {
+  const [row] = await db.select({ status: assets.status, driveFileId: assets.driveFileId }).from(assets).where(and(eq(assets.id, assetId), inSpace(actor)));
+  return !!row && row.status === "ready" && row.driveFileId === null;
+}
+
+// Notes that the browser has made a local asset's preview copy or still picture and keeps it beside the original.
+export async function setLocalFile(db: DB, actor: Actor, assetId: string, role: AssetFileRole): Promise<AssetView> {
+  const row = await ownAsset(db, actor, assetId);
+  if (row.status !== "ready" || row.driveFileId !== null) throw new ServiceError("INVALID", 400, MEDIA_MESSAGES.notLocal);
+  const spec = ASSET_FILES[role];
+  if (!spec.kinds.includes(row.kind)) throw new ServiceError("INVALID", 400, MEDIA_MESSAGES.notLocal);
+  const fileId = localFileId(assetId, role);
+  const [updated] = await db
+    .update(assets)
+    .set(role === "preview" ? { previewFileId: fileId, previewStatus: "ready" } : { posterFileId: fileId })
+    .where(and(eq(assets.id, assetId), inSpace(actor), isNull(assets.removedAt)))
+    .returning();
+  if (!updated) throw gone();
+  return viewOf(db, updated);
+}
+
 // An asset, for the member who uploaded it or for an admin.
 async function ownAsset(db: DB, actor: Actor, assetId: string): Promise<AssetRow> {
   requireRole(actor, "editor");
@@ -365,7 +438,9 @@ const quietFailure = (error: unknown): DriveError | null =>
 // is not shown to them. It is reported instead: that report is the only record that the file is still in Drive.
 // A failure that is not Drive's answer is not hidden: it is thrown once every file has been tried.
 export async function trashQuietly(deps: MediaDeps, fileIds: (string | null)[]): Promise<void> {
-  const tried = await Promise.allSettled(fileIds.filter((id) => id !== null).map((id) => deps.drive.trashFile(id)));
+  // A file kept on a member's computer is not in Drive: there is nothing of it to move to the trash.
+  const inDrive = fileIds.filter((id): id is string => id !== null && !isLocalFile(id));
+  const tried = await Promise.allSettled(inDrive.map((id) => deps.drive.trashFile(id)));
   const failures = tried.flatMap((result) => (result.status === "rejected" ? [result.reason as unknown] : []));
   const others: unknown[] = [];
   for (const failure of failures) {

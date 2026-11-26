@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorProvider } from "@/components/editor/context";
 import { LeftPanel } from "@/components/editor/left-panel";
 import { MediaProvider, gateStorage, useMediaSpace, type MediaServices, type StorageSetup } from "@/components/editor/media/media-context";
@@ -9,7 +9,10 @@ import { createLibraryStore } from "@/lib/media/library-store";
 import { MEDIA_MESSAGES } from "@/lib/media/messages";
 import type { AssetView } from "@/lib/media/types";
 import { makeStore } from "../editor/fixtures";
-import { act, fireEvent, render, renderHook, screen } from "../helpers/dom";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "../helpers/dom";
+import { createLocalFolder, type LocalFolder } from "@/lib/media/local-folder";
+import { fakeFolder, type FakeFolder } from "../helpers/fake-folder";
+import { idleFolder } from "../helpers/media-services";
 
 const PERSONAL: StorageSetup = { kind: "personal", slug: "personal", isAdmin: true, block: null, ownsConnection: true, ownerEmail: null };
 const TEAM_ADMIN: StorageSetup = { kind: "team", slug: "robots", isAdmin: true, block: null, ownsConnection: true, ownerEmail: "u1@gmail.com" };
@@ -21,14 +24,14 @@ const READY: AssetView = {
 };
 const TEAM_MEMBER: StorageSetup = { kind: "team", slug: "robots", isAdmin: false, block: null, ownsConnection: false, ownerEmail: "u1@gmail.com" };
 
-function setup(options: { storageReady?: boolean; storageProblem?: "none" | "broken" | null; setUp?: boolean; storageSetup?: StorageSetup; assets?: AssetView[] }) {
+function setup(options: { storageReady?: boolean; storageProblem?: "none" | "broken" | null; setUp?: boolean; storageSetup?: StorageSetup; assets?: AssetView[]; local?: LocalFolder }) {
   const refused = vi.fn(async (): Promise<never> => {
     throw new Error("not called");
   });
   const list = vi.fn(async () => ({ ok: true as const, assets: options.assets ?? [], setUp: options.setUp ?? true }));
   const api = { list, update: refused, remove: refused, open: refused, offset: refused, complete: refused, openFile: refused, completeFile: refused, previewFailed: refused, readToken: refused } as unknown as MediaApi;
   const queue = { add: vi.fn(() => []), cancel: vi.fn(), retry: vi.fn(), resume: vi.fn(), dismiss: vi.fn(), stop: vi.fn(), items: () => [], active: () => 0 };
-  const services: MediaServices = { library: createLibraryStore({ api }), queue, files: { get: vi.fn(() => new Promise<never>(() => {})), put: vi.fn(async () => {}) }, dispose: vi.fn() };
+  const services: MediaServices = { library: createLibraryStore({ api }), queue, files: { get: vi.fn(() => new Promise<never>(() => {})), put: vi.fn(async () => {}) }, local: options.local ?? idleFolder(), dispose: vi.fn() };
   const view = render(
     <EditorProvider store={makeStore({ canEdit: true })}>
       <ContextMenuProvider>
@@ -38,7 +41,7 @@ function setup(options: { storageReady?: boolean; storageProblem?: "none" | "bro
       </ContextMenuProvider>
     </EditorProvider>,
   );
-  return { list, view };
+  return { list, view, queue };
 }
 
 async function openMedia() {
@@ -171,9 +174,95 @@ describe("gateStorage", () => {
 
   it("makes the queue take no file where there is none, so a drop makes no group", () => {
     const add = vi.fn(() => ["k1"]);
-    const services = { queue: { add } } as unknown as MediaServices;
+    const services = { queue: { add }, local: idleFolder() } as unknown as MediaServices;
     const gated = gateStorage(services, false);
     expect(gated.queue.add([new File(["x"], "a.mov")])).toEqual([]);
     expect(add).not.toHaveBeenCalled();
+  });
+});
+
+describe("media kept in a folder on this computer", () => {
+  const memory = () => ({ load: async () => null, save: async () => {} });
+  // What Chrome and Edge have and the test browser lacks: a folder picker, here answering with a folder in memory.
+  function withPicker(picked: FakeFolder | null) {
+    const pick = vi.fn(async () => {
+      if (!picked) throw new DOMException("closed", "AbortError");
+      return picked;
+    });
+    vi.stubGlobal("showDirectoryPicker", pick);
+    return pick;
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("is offered under the storage card, and says so where the browser cannot pick a folder", async () => {
+    setup({ storageReady: false, storageProblem: "none" });
+    await openMedia();
+    expect(screen.getByText(MEDIA_MESSAGES.folderNeedsChrome)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use a folder on this computer" })).toBeNull();
+  });
+
+  it("choosing a folder turns uploading on in a space with no storage: files go to the queue and the library is listed", async () => {
+    const picked = fakeFolder("Footage");
+    const pick = withPicker(picked);
+    const local = createLocalFolder(memory());
+    const { list, view, queue } = setup({ storageReady: false, storageProblem: "none", local });
+    await openMedia();
+    expect(screen.getByRole("heading", { name: "Set up your storage" })).toBeTruthy();
+    expect(screen.getByText(MEDIA_MESSAGES.folderOffer)).toBeTruthy();
+    expect(list).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Use a folder on this computer" }));
+    await waitFor(() => expect(screen.getByText(MEDIA_MESSAGES.folderReady("Footage"))).toBeTruthy());
+    expect(pick).toHaveBeenCalledWith({ id: "easyedit-media", mode: "readwrite" });
+    // The storage card gives way to the upload controls.
+    expect(screen.queryByRole("heading", { name: "Set up your storage" })).toBeNull();
+    const upload = screen.getByRole("button", { name: "Upload" }) as HTMLButtonElement;
+    expect(upload.disabled).toBe(false);
+    expect(list).toHaveBeenCalled();
+    const input = view.container.querySelector('input[type="file"]:not([aria-label])') as HTMLInputElement;
+    const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(queue.add).toHaveBeenCalledWith([file]);
+    // With no Drive to go back to, the way out is to stop using the folder.
+    fireEvent.click(screen.getByRole("button", { name: "Stop using it" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Set up your storage" })).toBeTruthy());
+    expect(local.state()).toBe("none");
+  });
+
+  it("a remembered folder waits for a click before it opens again", async () => {
+    withPicker(null);
+    const picked = fakeFolder("Footage", { now: "prompt" });
+    const local = createLocalFolder({ load: async () => picked, save: async () => {} });
+    await local.restore();
+    setup({ storageReady: false, storageProblem: "none", local });
+    await openMedia();
+    expect(screen.getByText(MEDIA_MESSAGES.folderLocked("Footage"))).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open folder" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Upload" })).toBeTruthy());
+    expect(picked.asked).toBe(1);
+  });
+
+  it("where Drive works, the folder is an offer under Upload, and leaving it goes back to Drive", async () => {
+    withPicker(fakeFolder("Footage"));
+    const local = createLocalFolder(memory());
+    setup({ storageReady: true, local });
+    await openMedia();
+    expect(screen.getByText(MEDIA_MESSAGES.folderOfferWithDrive)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use a folder on this computer" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Use Google Drive" })).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Change folder" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use Google Drive" }));
+    await waitFor(() => expect(screen.getByText(MEDIA_MESSAGES.folderOfferWithDrive)).toBeTruthy());
+  });
+
+  it("the gate lets files through only with storage or an open folder", async () => {
+    const add = vi.fn(() => ["k"]);
+    const local = createLocalFolder(memory());
+    const services = { queue: { add }, local } as unknown as MediaServices;
+    expect(gateStorage(services, true)).toBe(services);
+    const gated = gateStorage(services, false);
+    expect(gated.queue.add([new File(["x"], "a.mp4")])).toEqual([]);
+    await local.choose(async () => fakeFolder());
+    expect(gated.queue.add([new File(["x"], "a.mp4")])).toEqual(["k"]);
   });
 });
