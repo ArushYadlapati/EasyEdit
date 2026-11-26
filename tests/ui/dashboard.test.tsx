@@ -20,7 +20,7 @@ const mainHeadings = () => within(main()).getAllByRole("heading", { level: 2 }).
 const region = (name: string) => screen.getByRole("region", { name });
 const linkNames = (el: HTMLElement) => within(el).queryAllByRole("link").map((a) => a.textContent);
 // The section of project cards: headed Projects under the folder tiles, otherwise named by the title.
-const grid = () => screen.getByRole("region", { name: /^(All projects|Projects|Recent)$/ });
+const grid = () => screen.getByRole("region", { name: /^(All projects|Projects|Recent|Search results)$/ });
 const card = (name: string) => within(grid()).getByRole("link", { name }).closest("li")!;
 const search = () => screen.getByRole("searchbox", { name: "Search projects" });
 const sortBy = () => screen.getByRole("combobox", { name: "Sort by" }) as HTMLSelectElement;
@@ -50,16 +50,36 @@ describe("the dashboard", () => {
     expect(screen.getByRole("button", { name: "New project" })).toBeTruthy();
   });
 
-  it("Recent with nothing opened points to All projects; search narrows it", () => {
-    const { unmount } = renderDashboard({ view: { kind: "recent" }, recentIds: ["gone"] });
+  it("Recent with nothing opened points to All projects", () => {
+    renderDashboard({ view: { kind: "recent" }, recentIds: ["gone"] });
     expect(screen.getByText("Projects you open show up here.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "See all projects" }).getAttribute("href")).toBe("/s/seattle-solvers?view=all");
-    unmount();
-    renderDashboard({ view: { kind: "recent" }, recentIds: ["c", "a"] });
-    fireEvent.change(search(), { target: { value: "qual" } });
-    expect(linkNames(region("Recent"))).toEqual(["Qual recap"]);
+  });
+
+  it("search from Recent finds every project in the space, not only the recent ones, and clearing it goes back", () => {
+    renderDashboard({ view: { kind: "recent" }, recentIds: ["c"] });
+    expect(linkNames(region("Recent"))).toEqual(["Finals"]);
+    // Poster was never opened, so it isn't in Recent: search finds it all the same.
+    fireEvent.change(search(), { target: { value: "post" } });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Search results");
+    expect(linkNames(region("Search results"))).toEqual(["Poster"]);
+    // Found from anywhere, a card says which folder it is in, and the results can be sorted.
+    expect(within(region("Search results")).getByText("Season 2026")).toBeTruthy();
+    expect(sortBy()).toBeTruthy();
     fireEvent.change(search(), { target: { value: "zzz" } });
-    expect(screen.getByText('No recent projects match "zzz".')).toBeTruthy();
+    expect(screen.getByText('No projects in this space match "zzz".')).toBeTruthy();
+    fireEvent.change(search(), { target: { value: "" } });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Recent");
+    expect(linkNames(region("Recent"))).toEqual(["Finals"]);
+    expect(screen.queryByRole("combobox", { name: "Sort by" })).toBeNull();
+  });
+
+  it("search from a folder finds projects outside it too", () => {
+    renderDashboard({ view: { kind: "folder", folderId: "f1" } });
+    expect(linkNames(region("Season 2026"))).toEqual(["Poster"]);
+    fireEvent.change(search(), { target: { value: "finals" } });
+    expect(linkNames(region("Search results"))).toEqual(["Finals"]);
+    expect(screen.queryByRole("button", { name: "Folder options" })).toBeNull();
   });
 
   it("a card shows its frame, format, who changed it and its folder", () => {
@@ -95,7 +115,7 @@ describe("the dashboard", () => {
     expect(linkNames(grid())).toEqual(["Qual recap"]);
     expect(screen.queryByRole("region", { name: "Folders" })).toBeNull();
     fireEvent.change(search(), { target: { value: "zzz" } });
-    expect(screen.getByText('No projects match "zzz".')).toBeTruthy();
+    expect(screen.getByText('No projects in this space match "zzz".')).toBeTruthy();
   });
 
   it("sort by name and by date created", () => {
@@ -165,6 +185,8 @@ describe("the dashboard", () => {
     const editor = renderDashboard({ projects: [] });
     expect(screen.getByText("No projects yet.")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "New project" })).toHaveLength(2);
+    // An agent can make the first one too.
+    expect(screen.getByRole("link", { name: "ask your AI agent to make one" }).getAttribute("href")).toBe("/agents");
     editor.unmount();
     // In a space with no projects, Recent says the same, not "projects you open".
     const recentEditor = renderDashboard({ projects: [], view: { kind: "recent" } });
@@ -174,6 +196,7 @@ describe("the dashboard", () => {
     const viewer = renderDashboard({ projects: [], canEdit: false });
     expect(screen.getByText("No projects yet.")).toBeTruthy();
     expect(screen.queryAllByRole("button", { name: "New project" })).toHaveLength(0);
+    expect(screen.queryByRole("link", { name: "ask your AI agent to make one" })).toBeNull();
     viewer.unmount();
     const folderEditor = renderDashboard({ view: { kind: "folder", folderId: "f2" } });
     expect(
@@ -187,11 +210,17 @@ describe("the dashboard", () => {
   it("a search with no match in a folder says so, and the second New project opens the dialog", () => {
     const first = renderDashboard({ view: { kind: "folder", folderId: "f1" } });
     fireEvent.change(search(), { target: { value: "  nope " } });
-    expect(screen.getByText('No projects match "nope".')).toBeTruthy();
+    expect(screen.getByText('No projects in this space match "nope".')).toBeTruthy();
     first.unmount();
     renderDashboard({ projects: [] });
     fireEvent.click(screen.getAllByRole("button", { name: "New project" })[1]);
     expect(screen.getByRole("dialog", { name: "New project" })).toBeTruthy();
+  });
+
+  it("arriving from the welcome, New project is open, and the address drops the request", () => {
+    renderDashboard({ openNewProject: true });
+    expect(screen.getByRole("dialog", { name: "New project" })).toBeTruthy();
+    expect(router.replace).toHaveBeenCalledWith("/s/seattle-solvers?view=all", { scroll: false });
   });
 
   it("New project opens the large dialog in the folder in view", () => {

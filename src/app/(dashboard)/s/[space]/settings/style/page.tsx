@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { StylePage } from "@/components/style/style-page";
@@ -15,6 +16,8 @@ import { getStyle, listReferences } from "@/lib/style/service";
 
 // How many of the space's most recent projects the page offers to learn from.
 const PROJECTS_OFFERED = 20;
+
+export const metadata: Metadata = { title: "Style" };
 
 // A space's style, which AI agents read before they edit, for every member; editors and admins can change it and what
 // it learns from. Anyone else gets a plain 404. The page checks for itself: a layout is not run again on a client

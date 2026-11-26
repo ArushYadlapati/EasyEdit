@@ -17,7 +17,8 @@ export const TUTORIAL_WORDS = {
   nextLesson: (title: string) => `Next: ${title}`,
   lastLesson: "That's the last lesson.",
   backToProjects: "Projects",
-  title: "Welcome to EasyEdit",
+  // Not "Welcome to EasyEdit": a new account has just been welcomed by that page.
+  title: "Take the short tour",
   intro: "The short tour: a new project, adding and cutting clips, a title, finding any tool, and export. About two minutes.",
   video: (title: string) => `${title}: lesson video`,
   watch: "Watch",

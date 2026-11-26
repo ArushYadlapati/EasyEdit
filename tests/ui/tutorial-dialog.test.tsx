@@ -44,7 +44,7 @@ describe("the tutorial dialog", () => {
   it("names the lesson, with its length, and credits its voice there when the recording names one", () => {
     voice.credit = "voice.example";
     render(dialog());
-    expect(screen.getByRole("dialog", { name: "Welcome to EasyEdit" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Take the short tour" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 3, name: "The basics" })).toBeTruthy();
     expect(screen.getByText("1:00 · Voice by voice.example")).toBeTruthy();
   });
@@ -57,7 +57,7 @@ describe("the tutorial dialog", () => {
 
   it("shows the video with its poster, and never starts by itself", () => {
     render(dialog());
-    expect(screen.getByRole("dialog", { name: "Welcome to EasyEdit" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Take the short tour" })).toBeTruthy();
     expect(video().getAttribute("src")).toBe(VIDEO.url);
     expect(video().getAttribute("poster")).toBe(VIDEO.poster);
     expect(video().hasAttribute("autoplay")).toBe(false);

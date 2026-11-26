@@ -6,9 +6,22 @@ const fonts = { title: "Orbitron", subtitle: "Inter", body: "Roboto" };
 const byId = (id: string) => starterTemplates(fonts).find((t) => t.id === id)!;
 
 describe("starter templates", () => {
-  it("has the three starters, all valid docs with no mixed slots", () => {
+  it("has the six starters, the general ones first, all valid docs with no mixed slots", () => {
     const all = starterTemplates(fonts);
-    expect(all.map((t) => t.id)).toEqual(["starter-match-recap", "starter-robot-reveal", "starter-season-recap"]);
+    expect(all.map((t) => t.id)).toEqual([
+      "starter-talking-head",
+      "starter-product-teaser",
+      "starter-trip-recap",
+      "starter-match-recap",
+      "starter-robot-reveal",
+      "starter-season-recap",
+    ]);
+    // The first ones a new account sees say nothing of robots or matches.
+    for (const t of all.slice(0, 3)) {
+      const clips = t.doc.tracks.flatMap((x) => x.clips);
+      const words = [t.name, t.description, t.instructions, ...t.slots.map((x) => `${x.name} ${x.hint ?? ""}`), ...clips.map((c) => ("text" in c ? c.text : ""))].join(" ");
+      expect(words).not.toMatch(/robot|match|sponsor|season/i);
+    }
     for (const t of all) {
       expect(TimelineDoc.safeParse(t.doc).success).toBe(true);
       expect(mixedSlots(t.doc)).toEqual([]);
@@ -33,6 +46,21 @@ describe("starter templates", () => {
     expect(clips.sponsor_logo.transform).toMatchObject({ x: 0.5, y: 0.82, scale: 0.25, fit: "contain" });
     expect(clips.title_text).toMatchObject({ type: "text", text: "MATCH RECAP", style: { fontFamily: "Orbitron", fontSize: 96, fontWeight: 700, color: "#ffffff", align: "center" } });
     expect(clips.score_text).toMatchObject({ text: "FINAL 0 – 0", style: { fontFamily: "Roboto", fontSize: 64, fontWeight: 600 } });
+  });
+
+  it("the general starters: formats, slots and lengths", () => {
+    const talk = byId("starter-talking-head");
+    expect([talk.format, talk.width, talk.height]).toEqual(["short_9x16", 1080, 1920]);
+    expect(talk.slots.map((s) => [s.name, s.kind])).toEqual([
+      ["music", "audio"], ["hook_clip", "visual"], ["talk_clip", "visual"], ["outro_clip", "visual"], ["logo", "visual"], ["hook_text", "text"], ["outro_text", "text"],
+    ]);
+    const music = (id: string) => byId(id).doc.tracks[0].clips[0].duration;
+    expect([music("starter-talking-head"), music("starter-product-teaser"), music("starter-trip-recap")]).toEqual([30, 20, 60].map((s) => s * DEFAULT_FPS));
+    const teaser = byId("starter-product-teaser");
+    expect(teaser.slots.map((s) => s.name)).toEqual(["music", "teaser_clip", "reveal_clip", "closing_shot", "brand_logo", "headline", "details_text"]);
+    const trip = byId("starter-trip-recap");
+    expect([trip.format, trip.width]).toEqual(["long_16x9", 1920]);
+    expect(trip.doc.tracks[3].clips[0]).toMatchObject({ text: "OUR TRIP", style: { fontFamily: "Orbitron" } });
   });
 
   it("robot reveal and season recap", () => {

@@ -14,7 +14,7 @@ export const STORAGE_MESSAGES = {
   storedIn: (email: string) => `Stored in ${email}'s Google Drive`,
   folder: (name: string) => `Folder "${name}"`,
   brokenHere: "Google Drive needs reconnecting. Uploads are paused until you reconnect it.",
-  moveLater: "Moving a space's videos to another account comes with team invites.",
+  moveLater: "Moving a space's uploads to another Google account isn't built yet, so it keeps this one while it has uploads.",
   noneTeam: "This team has no storage yet.",
   noneYet: "No storage yet.",
   // A team just made, on a server where it can't have storage yet: the way on is its projects.
@@ -23,24 +23,29 @@ export const STORAGE_MESSAGES = {
   later: "Set this up later",
   // Only the person whose Google account it is can reconnect it: anyone else's sign-in would make a new connection.
   onlyOwner: (email: string | null) => (email ? `Only ${email} can reconnect it.` : "Only the person who connected it can reconnect it."),
-  firstRun: "Choose where this team's videos are stored.",
-  ownFolder: "EasyEdit keeps the videos in a folder of its own there, and can't see your other files.",
+  firstRun: "Connect Google Drive for this team's uploads",
+  // The one explanation of storage, the same wherever it is asked for: what, where, what EasyEdit sees, and what still
+  // works without it.
+  why: "Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.",
   serverNotSetUp: "Storage isn't set up on this server yet.",
   reconnect: "Reconnect",
   useDifferent: "Use a different Google account",
-  chooseGoogleAccount: "Choose Google account",
+  // Every button that starts connecting storage (or leads to where it is started) says this.
+  connectDrive: "Connect Google Drive",
+  // The same button under its older name, which the editor's Media tab still reads.
+  chooseAccount: "Connect Google Drive",
   // The welcome page's two ways to connect: the account the person signed in with, or another one.
-  connectSignedIn: "Connect to this Google Drive",
   signedInAs: (email: string) => `You're signed in as ${email}.`,
-  chooseDifferent: "Choose a different Google account",
-  // One Google account holds one space's storage, so the setup screen says so before Google's account picker.
-  oneAccountOneSpace: "Each Google account can store videos for only one space: your Personal space or one team. Pick one that isn't already in use.",
-  chooseAccount: "Choose account",
+  chooseDifferent: "Use a different Google account",
+  // One Google account holds one space's storage, so every place that leads to Google's account picker says so first.
+  oneAccountOneSpace: "Each Google account can hold uploads for only one space: your Personal space or one team. Pick one that isn't already in use.",
+  // The welcome asks for the Personal space's storage; someone who came to set up a team may want the account for it.
+  forATeam: "Setting up a team? You may want to keep your Google account for the team's uploads and skip this for now.",
   disconnect: "Disconnect",
   disconnectTitle: (email: string) => `Disconnect ${email}?`, // "Disconnect <email>?"
   disconnectQuestion: "EasyEdit stops using this Google account for this space and gives up its access to it. The EasyEdit folder stays in your Google Drive.",
   // Disconnect waits until nothing in the space depends on the account (the same rule as moving to another account).
-  disconnectLater: "This space has videos in that Google Drive, so it can't be disconnected yet.",
+  disconnectLater: "This space has uploads in that Google Drive, so it can't be disconnected. Moving them to another account isn't built yet.",
   banner: "Google Drive needs reconnecting. Uploads are paused until an admin reconnects it.",
   // A choice of account that didn't go through.
   failed: "That didn't work. Nothing was changed. Try again.",
@@ -53,12 +58,12 @@ export const STORAGE_MESSAGES = {
 
 // The setup card's words for a space with no storage, or one whose connection broke.
 export const SETUP_CARD = {
-  personalTitle: "Set up your storage",
-  personalText: "Pick a Google account for your own videos.",
-  teamTitle: "Set up this team's storage",
-  teamText: "Choose where this team's videos are stored.",
+  personalTitle: "Connect Google Drive for your uploads",
+  personalText: STORAGE_MESSAGES.why,
+  teamTitle: "Connect Google Drive for this team's uploads",
+  teamText: STORAGE_MESSAGES.why,
   noneTitle: "No storage yet",
-  memberText: "An admin needs to choose where this team's videos are stored.",
+  memberText: "An admin needs to connect Google Drive before anyone here can upload. Until then you can still make text-only videos.",
 };
 
 export type Note = { text: string; problem: boolean };
@@ -73,7 +78,7 @@ const SETTINGS_NOTES: Record<string, Note> = {
   expired: { text: "That took too long, so nothing was changed. Try again.", problem: true },
   "not-configured": { text: STORAGE_MESSAGES.serverNotSetUp, problem: true },
   "account-in-use": { text: STORAGE_MESSAGES.accountInUse, problem: true },
-  "in-use": { text: "This space already has videos in another Google account, so its storage can't be changed yet.", problem: true },
+  "in-use": { text: "This space already has uploads in another Google account. Moving them to a new account isn't built yet, so nothing was changed.", problem: true },
 };
 
 // The same for a space's dashboard, where a connect that can't name its space lands (by way of /dashboard).
@@ -94,7 +99,7 @@ export type StorageCard = { title: string; text: string; action: "choose" | "rec
 
 // What a space without storage to upload to shows: in the Media tab, and at the top of its dashboard. A space whose
 // connection broke says so, and its admins get Reconnect. One with none: its admins (a personal space's owner is one)
-// get Choose account, unless this server can't set storage up, which everyone is told plainly. Reconnect is only for
+// get Connect Google Drive, unless this server can't set storage up, which everyone is told plainly. Reconnect is only for
 // the admin whose connection it is (isOwner); another admin is told who can (ownerEmail, their account's address).
 export function storageCard(input: {
   problem: "none" | "broken";

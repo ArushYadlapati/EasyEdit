@@ -52,12 +52,12 @@ async function openMedia() {
 const link = (name: string) => screen.getByRole("link", { name });
 
 describe("the Media tab of a space with no storage", () => {
-  it("a personal space: set up your storage, with Choose account and no upload, file input or drop target", async () => {
+  it("a personal space: set up your storage, with Connect Google Drive and no upload, file input or drop target", async () => {
     const { list, view } = setup({ storageReady: false, storageProblem: "none" });
     await openMedia();
-    expect(screen.getByRole("heading", { name: "Set up your storage" })).toBeTruthy();
-    expect(screen.getByText("Pick a Google account for your own videos.")).toBeTruthy();
-    expect(link("Choose account").getAttribute("href")).toBe("/s/personal/settings/storage");
+    expect(screen.getByRole("heading", { name: "Connect Google Drive for your uploads" })).toBeTruthy();
+    expect(screen.getByText("Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.")).toBeTruthy();
+    expect(link("Connect Google Drive").getAttribute("href")).toBe("/s/personal/settings/storage");
     expect(screen.queryByText("Storage comes next")).toBeNull();
     expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
     expect(view.container.querySelector('input[type="file"]')).toBeNull();
@@ -67,15 +67,15 @@ describe("the Media tab of a space with no storage", () => {
   it("a team: its admins choose where its videos go, everyone else is told an admin does", async () => {
     const admin = setup({ storageReady: false, storageProblem: "none", storageSetup: TEAM_ADMIN });
     await openMedia();
-    expect(screen.getByRole("heading", { name: "Set up this team's storage" })).toBeTruthy();
-    expect(screen.getByText("Choose where this team's videos are stored.")).toBeTruthy();
-    expect(link("Choose account").getAttribute("href")).toBe("/s/robots/settings/storage");
+    expect(screen.getByRole("heading", { name: "Connect Google Drive for this team's uploads" })).toBeTruthy();
+    expect(screen.getByText("Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.")).toBeTruthy();
+    expect(link("Connect Google Drive").getAttribute("href")).toBe("/s/robots/settings/storage");
     admin.view.unmount();
 
     setup({ storageReady: false, storageProblem: "none", storageSetup: TEAM_MEMBER });
     await openMedia();
     expect(screen.getByRole("heading", { name: "No storage yet" })).toBeTruthy();
-    expect(screen.getByText("An admin needs to choose where this team's videos are stored.")).toBeTruthy();
+    expect(screen.getByText("An admin needs to connect Google Drive before anyone here can upload. Until then you can still make text-only videos.")).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
   });
 
@@ -140,7 +140,7 @@ describe("the Media tab of a space with no storage", () => {
   it("wins over a Drive that is not set up", async () => {
     setup({ storageReady: false, setUp: false });
     await openMedia();
-    expect(screen.getByText("Pick a Google account for your own videos.")).toBeTruthy();
+    expect(screen.getByText("Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.")).toBeTruthy();
     expect(screen.queryByText(MEDIA_MESSAGES.notSetUp)).toBeNull();
   });
 
@@ -149,7 +149,7 @@ describe("the Media tab of a space with no storage", () => {
     const { list } = setup({ storageReady: true, storageProblem: null, setUp: false });
     await openMedia();
     expect(list).toHaveBeenCalled(); // the library is still listed
-    expect(screen.queryByText("Set up your storage")).toBeNull();
+    expect(screen.queryByText("Connect Google Drive for your uploads")).toBeNull();
     expect(screen.getByRole("button", { name: "Upload" })).toBeTruthy();
     expect(screen.getByText(MEDIA_MESSAGES.notSetUp)).toBeTruthy();
   });
@@ -207,14 +207,14 @@ describe("media kept in a folder on this computer", () => {
     const local = createLocalFolder(memory());
     const { list, view, queue } = setup({ storageReady: false, storageProblem: "none", local });
     await openMedia();
-    expect(screen.getByRole("heading", { name: "Set up your storage" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Connect Google Drive for your uploads" })).toBeTruthy();
     expect(screen.getByText(MEDIA_MESSAGES.folderOffer)).toBeTruthy();
     expect(list).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Use a folder on this computer" }));
     await waitFor(() => expect(screen.getByText(MEDIA_MESSAGES.folderReady("Footage"))).toBeTruthy());
     expect(pick).toHaveBeenCalledWith({ id: "easyedit-media", mode: "readwrite" });
     // The storage card gives way to the upload controls.
-    expect(screen.queryByRole("heading", { name: "Set up your storage" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Connect Google Drive for your uploads" })).toBeNull();
     const upload = screen.getByRole("button", { name: "Upload" }) as HTMLButtonElement;
     expect(upload.disabled).toBe(false);
     expect(list).toHaveBeenCalled();
@@ -224,7 +224,7 @@ describe("media kept in a folder on this computer", () => {
     expect(queue.add).toHaveBeenCalledWith([file]);
     // With no Drive to go back to, the way out is to stop using the folder.
     fireEvent.click(screen.getByRole("button", { name: "Stop using it" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Set up your storage" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Connect Google Drive for your uploads" })).toBeTruthy());
     expect(local.state()).toBe("none");
   });
 
@@ -258,14 +258,14 @@ describe("media kept in a folder on this computer", () => {
   it("is for a Personal space only: a team is offered no folder, with or without storage, picker or not", async () => {
     const bare = setup({ storageReady: false, storageProblem: "none", storageSetup: TEAM_ADMIN });
     await openMedia();
-    expect(screen.getByRole("heading", { name: "Set up this team's storage" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Connect Google Drive for this team's uploads" })).toBeTruthy();
     expect(screen.queryByText(MEDIA_MESSAGES.folderNeedsChrome)).toBeNull();
     bare.view.unmount();
 
     withPicker(fakeFolder("Footage"));
     const noStorage = setup({ storageReady: false, storageProblem: "none", storageSetup: TEAM_ADMIN });
     await openMedia();
-    expect(screen.getByRole("heading", { name: "Set up this team's storage" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Connect Google Drive for this team's uploads" })).toBeTruthy();
     expect(screen.queryByRole("group", { name: "Media folder" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Use a folder on this computer" })).toBeNull();
     noStorage.view.unmount();
@@ -284,7 +284,7 @@ describe("media kept in a folder on this computer", () => {
     expect(local.state()).toBe("ready");
     const { list, view } = setup({ storageReady: false, storageProblem: "none", storageSetup: TEAM_ADMIN, local });
     await openMedia();
-    expect(screen.getByRole("heading", { name: "Set up this team's storage" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Connect Google Drive for this team's uploads" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
     expect(view.container.querySelector('input[type="file"]')).toBeNull();
     expect(screen.queryByText(MEDIA_MESSAGES.folderReady("Footage"))).toBeNull();

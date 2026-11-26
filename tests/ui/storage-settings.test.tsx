@@ -78,6 +78,8 @@ beforeEach(() => {
   router.refresh.mockClear();
 });
 
+const WHY = "Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.";
+
 describe("the storage settings", () => {
   it("Seattle Solvers: its shared drive, and nothing to change", () => {
     show({ space: SEED, storage: { kind: "shared_folder" } });
@@ -114,25 +116,25 @@ describe("the storage settings", () => {
     const different = button("Use a different Google account");
     expect(different.disabled).toBe(true);
     expect(screen.queryByRole("link", { name: "Use a different Google account" })).toBeNull();
-    expect(screen.getByText("Moving a space's videos to another account comes with team invites.")).toBeTruthy();
+    expect(screen.getByText("Moving a space's uploads to another Google account isn't built yet, so it keeps this one while it has uploads.")).toBeTruthy();
     expect(link("Reconnect")).toBeTruthy();
   });
 
-  it("none: one Choose Google account, through Google's own account picker, with the one-space rule", () => {
+  it("none: one Connect Google Drive, through Google's own account picker, with the one-space rule", () => {
     show();
-    expect(screen.getByText("Pick a Google account for your own videos.")).toBeTruthy();
-    expect(connectQuery("Choose Google account")).toEqual({ space: "personal_u1" });
-    expect(isPrimary(link("Choose Google account"))).toBe(true);
+    expect(screen.getByText("Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.")).toBeTruthy();
+    expect(connectQuery("Connect Google Drive")).toEqual({ space: "personal_u1" });
+    expect(isPrimary(link("Connect Google Drive"))).toBe(true);
     expect(
-      screen.getByText("Each Google account can store videos for only one space: your Personal space or one team. Pick one that isn't already in use."),
+      screen.getByText("Each Google account can hold uploads for only one space: your Personal space or one team. Pick one that isn't already in use."),
     ).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Use a different Google account" })).toBeNull();
   });
 
-  it("none, with the person's connections: still only Choose Google account, never a Use <email> per account", () => {
+  it("none, with the person's connections: still only Connect Google Drive, never a Use <email> per account", () => {
     // A connected account may already hold another space's storage, so none is offered as a one-click choice.
     show({ space: TEAM, connections: [{ id: "dc_1", email: "ada@gmail.com", broken: false }, { id: "dc_2", email: "ada.school@gmail.com", broken: true }] });
-    expect(connectQuery("Choose Google account")).toEqual({ space: "team_robots" });
+    expect(connectQuery("Connect Google Drive")).toEqual({ space: "team_robots" });
     expect(screen.queryByText(/Use ada/)).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getAllByRole("link")).toHaveLength(1);
@@ -140,13 +142,17 @@ describe("the storage settings", () => {
 
   it("a team without storage: the first-run note above the choices", () => {
     const first = show({ space: TEAM }, { first: true });
-    const note = screen.getByText("Choose where this team's videos are stored.");
-    const connect = link("Choose Google account");
+    const note = screen.getByText("Connect Google Drive for this team's uploads");
+    const connect = link("Connect Google Drive");
     expect(note.compareDocumentPosition(connect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // What storage is, and the one-account rule, come before the button, not under it.
+    for (const fact of [screen.getByText(WHY), screen.getByText(/Each Google account can hold uploads for only one space/)]) {
+      expect(fact.compareDocumentPosition(connect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
     first.unmount();
     show({ space: TEAM });
     expect(screen.getByText("This team has no storage yet.")).toBeTruthy();
-    expect(screen.queryByText("Choose where this team's videos are stored.")).toBeNull();
+    expect(screen.queryByText("Connect Google Drive for this team's uploads")).toBeNull();
   });
 
   it("a server with no storage settings: says so, and sends nobody to Google", () => {
@@ -165,7 +171,7 @@ describe("the storage settings", () => {
     show({ blocked: "server", connections: [{ id: "dc_1", email: "ada@gmail.com", broken: false }] });
     expect(screen.getByText("No storage yet.")).toBeTruthy();
     expect(screen.getByText("Storage isn't set up on this server yet.")).toBeTruthy();
-    expect(screen.queryByText("Pick a Google account for your own videos.")).toBeNull();
+    expect(screen.queryByText("Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.")).toBeNull();
     expect(screen.queryByText(/folder of its own/)).toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
@@ -174,7 +180,7 @@ describe("the storage settings", () => {
   it("a team just made, blocked on this server: it's ready, and the way on is its projects", () => {
     show({ space: TEAM, blocked: "server" }, { first: true });
     expect(screen.getByText("Your team is ready. You can add videos once storage is set up on this server.")).toBeTruthy();
-    expect(screen.queryByText("Choose where this team's videos are stored.")).toBeNull();
+    expect(screen.queryByText("Connect Google Drive for this team's uploads")).toBeNull();
     const onward = link("Go to the team's projects");
     expect(onward.getAttribute("href")).toBe("/s/robots");
     expect(isPrimary(onward)).toBe(true);
@@ -184,8 +190,8 @@ describe("the storage settings", () => {
 
   it("a team just made, not blocked: the note, the choices, and Set this up later", () => {
     show({ space: TEAM }, { first: true });
-    expect(screen.getByText("Choose where this team's videos are stored.")).toBeTruthy();
-    expect(link("Choose Google account")).toBeTruthy();
+    expect(screen.getByText("Connect Google Drive for this team's uploads")).toBeTruthy();
+    expect(link("Connect Google Drive")).toBeTruthy();
     const later = link("Set this up later");
     expect(later.getAttribute("href")).toBe("/s/robots");
     expect(isPrimary(later)).toBe(false);
@@ -204,19 +210,19 @@ describe("the storage settings", () => {
   });
 
   it("a refused Disconnect says why in the dialog, and stays on the page", async () => {
-    disconnect.mockResolvedValueOnce({ error: "This space has videos in that Google Drive, so it can't be disconnected yet." });
+    disconnect.mockResolvedValueOnce({ error: "This space has uploads in that Google Drive, so it can't be disconnected. Moving them to another account isn't built yet." });
     show({ storage: inAccount({ hasUploads: false }) });
     await act(async () => fireEvent.click(button("Disconnect")));
     const dialog = screen.getByRole("dialog");
     await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Disconnect" })));
-    expect((await within(dialog).findByRole("alert")).textContent).toBe("This space has videos in that Google Drive, so it can't be disconnected yet.");
+    expect((await within(dialog).findByRole("alert")).textContent).toBe("This space has uploads in that Google Drive, so it can't be disconnected. Moving them to another account isn't built yet.");
     expect(router.replace).not.toHaveBeenCalled();
   });
 
   it("a space with videos: Disconnect is off, and says why", () => {
     show({ storage: inAccount({ hasUploads: true }) });
     expect(button("Disconnect").disabled).toBe(true);
-    expect(screen.getByText("This space has videos in that Google Drive, so it can't be disconnected yet.")).toBeTruthy();
+    expect(screen.getByText("This space has uploads in that Google Drive, so it can't be disconnected. Moving them to another account isn't built yet.")).toBeTruthy();
   });
 
   it("no Disconnect for an admin who didn't connect the account, or on a server without storage settings", () => {
@@ -250,7 +256,7 @@ describe("the storage settings", () => {
     ["failed", "That didn't work. Nothing was changed. Try again."],
     ["expired", "That took too long, so nothing was changed. Try again."],
     ["not-configured", "Storage isn't set up on this server yet."],
-    ["in-use", "This space already has videos in another Google account, so its storage can't be changed yet."],
+    ["in-use", "This space already has uploads in another Google account. Moving them to a new account isn't built yet, so nothing was changed."],
   ])("back from Google with ?storage=%s, it says so", (note, text) => {
     show({ storage: inAccount() }, { note });
     expect(screen.getByText(text)).toBeTruthy();
@@ -292,7 +298,7 @@ describe("the storage settings page", () => {
   it("an admin sees the space's storage; here, a server with no storage settings", async () => {
     await storagePage(ada, "personal");
     expect(screen.getByText("Storage isn't set up on this server yet.")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Choose Google account" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Connect Google Drive" })).toBeNull();
   });
 
   it("Seattle Solvers' admins see its shared drive", async () => {
@@ -305,7 +311,7 @@ describe("the storage settings page", () => {
     await storagePage(ada, "robots", { storage: "cancelled", first: "1" });
     expect(screen.getByText("Nothing was changed.")).toBeTruthy();
     expect(screen.getByText("Your team is ready. You can add videos once storage is set up on this server.")).toBeTruthy();
-    expect(screen.queryByText("Choose where this team's videos are stored.")).toBeNull();
+    expect(screen.queryByText("Connect Google Drive for this team's uploads")).toBeNull();
     expect(link("Go to the team's projects").getAttribute("href")).toBe("/s/robots");
   });
 

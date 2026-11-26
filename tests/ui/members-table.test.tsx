@@ -167,7 +167,7 @@ describe("the invite dialog", () => {
     show("u1", "admin");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Invite" })));
     const invite = dialog("Invite someone");
-    expect(within(invite).getByText("They'll join once they accept. You'll get a link to send them.")).toBeTruthy();
+    expect(within(invite).getByText("Their Google address. You'll get a link to send them, and it works only when they sign in with this address.")).toBeTruthy();
     const role = within(invite).getByRole<HTMLSelectElement>("combobox", { name: "Role" });
     expect([...role.options].map((o) => o.textContent)).toEqual(["Admin", "Editor"]);
     expect(role.value).toBe("editor");
@@ -178,6 +178,8 @@ describe("the invite dialog", () => {
 
     const done = await waitFor(() => dialog("Invite someone"));
     expect(within(done).getByDisplayValue("https://easyedit.test/invite/inv_new")).toBeTruthy();
+    // Who it is for, and that only that Google address can use it.
+    expect(within(done).getByText("Send this link to ada@example.com. It works for 7 days, and only when they sign in with that Google address.")).toBeTruthy();
     await act(async () => fireEvent.click(within(done).getByRole("button", { name: "Copy link" })));
     expect(writeText).toHaveBeenCalledWith("https://easyedit.test/invite/inv_new");
     expect(within(done).getByRole("button", { name: "Copied" })).toBeTruthy();

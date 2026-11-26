@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/access";
+import { AGENT_WORDS } from "@/lib/connector/agent-words";
 import { mcpResourceUrl } from "@/lib/connector/config";
 import { listAgentConnections } from "@/lib/connector/connections";
 import { listAgentTokens, MAX_TOKEN_NAME } from "@/lib/connector/tokens";
@@ -49,10 +50,7 @@ export default async function AgentsPage(): Promise<ReactNode> {
             Projects
           </Link>
           <h1 className="text-base font-semibold">AI agents</h1>
-          <p className="text-[13px] leading-5 text-ed-muted">
-            Connect Claude, ChatGPT or any AI agent that speaks MCP. You can connect as many as you like; each one acts as
-            you and its changes are labeled with its name.
-          </p>
+          <p className="text-[13px] leading-5 text-ed-muted">{AGENT_WORDS.intro}</p>
           {!canChangeInAnySpace(spaces) && (
             <p className="text-[13px] leading-5 text-ed-muted">
               You&apos;re not in a team yet, so your agents can&apos;t create or change anything.

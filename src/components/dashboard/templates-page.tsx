@@ -18,6 +18,12 @@ const FAILED = "That did not work. Try again.";
 const message = (error: unknown) => (error instanceof TemplateApiError ? error.message : FAILED);
 
 // A space's templates: starters first, then the ones saved here. Editors and admins can edit and delete saved ones.
+// A slot's name as a person reads it: "hero_clip" is "Hero clip". Agents still see and use the name itself.
+export function slotLabel(name: string): string {
+  const words = name.replace(/[_-]+/g, " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : name;
+}
+
 export function TemplatesPage({ spaceId, canEdit, templates }: { spaceId: string; canEdit: boolean; templates: readonly TemplateSummary[] }): ReactNode {
   const router = useRouter();
   const [editing, setEditing] = useState<TemplateSummary | null>(null);
@@ -45,7 +51,7 @@ export function TemplatesPage({ spaceId, canEdit, templates }: { spaceId: string
   return (
     <>
       <p className="text-[13px] leading-5 text-ed-muted">
-        Templates are projects with slots to fill. Start a project from one in New project, or ask Claude to fill one.
+        Templates are projects with slots to fill. Start a project from one in New project, or ask your AI agent to fill one.
       </p>
       <ul className="flex flex-col gap-2">
         {ordered.map((template) => (
@@ -68,7 +74,7 @@ export function TemplatesPage({ spaceId, canEdit, templates }: { spaceId: string
               )}
             </div>
             <p className="text-xs text-ed-muted tabular-nums">{templateFormatLine(template)}</p>
-            {template.slots.length > 0 && <p className="text-xs text-ed-muted">{`Slots: ${template.slots.map((s) => s.name).join(", ")}`}</p>}
+            {template.slots.length > 0 && <p className="text-xs text-ed-muted">{`Slots: ${template.slots.map((s) => slotLabel(s.name)).join(", ")}`}</p>}
             {template.description && <p className="text-xs text-ed-text">{template.description}</p>}
           </li>
         ))}

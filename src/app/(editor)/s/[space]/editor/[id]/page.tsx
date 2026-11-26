@@ -8,6 +8,7 @@ import { getDb } from "@/db";
 import { meetsRole, requireUser } from "@/lib/access";
 import { LAYOUT_COOKIE, parseLayout } from "@/lib/editor/layout";
 import { PREFS_COOKIE, parsePrefs } from "@/lib/editor/settings";
+import { projectNameFor } from "@/lib/projects/project-title";
 import { getProject } from "@/lib/projects/service";
 import { actorIn } from "@/lib/spaces/access";
 import { editorPath, slugFor } from "@/lib/spaces/paths";
@@ -24,6 +25,14 @@ import { editorGuide } from "@/lib/tutorial/guide";
 // browser's own dark mode the same (and darkens the page behind the editor, see globals.css).
 export const metadata: Metadata = { other: { "darkreader-lock": "true" } };
 export const viewport: Viewport = { colorScheme: "dark" };
+
+// The browser tab names the project: "Summer trip · EasyEdit". The darkreader lock above still applies (metadata merges).
+export async function generateMetadata({ params }: PageProps<"/s/[space]/editor/[id]">): Promise<Metadata> {
+  const user = await requireUser();
+  const { space: slug, id } = await params;
+  const name = await projectNameFor(getDb(), user.id, slug, id);
+  return name === null ? {} : { title: `${name} · EasyEdit` };
+}
 
 // The editor fills the window on its own: the (editor) group has no layout, so the site header is not drawn.
 export default async function EditorPage({ params }: PageProps<"/s/[space]/editor/[id]">) {

@@ -48,12 +48,20 @@ function InviteDialog({ open, invite, onClose }: { open: boolean; invite: Invite
   // Only drives the hint: the role that is sent is read from the form.
   const [role, setRole] = useState<string>(DEFAULT_ROLE);
   const [link, setLink] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState("");
   const { error, pending, submit } = useAction(invite);
 
   function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
-    submit(new FormData(event.currentTarget), { onSuccess: (result) => setLink(result.link ?? null) });
+    const data = new FormData(event.currentTarget);
+    const email = data.get("email");
+    submit(data, {
+      onSuccess: (result) => {
+        setSentTo(typeof email === "string" ? email.trim() : "");
+        setLink(result.link ?? null);
+      },
+    });
   }
 
   if (link !== null) {
@@ -72,7 +80,7 @@ function InviteDialog({ open, invite, onClose }: { open: boolean; invite: Invite
         }
       >
         <div className="flex flex-col gap-3">
-          <p>Send them this link. It works for 7 days.</p>
+          <p>{sentTo ? `Send this link to ${sentTo}. It works for 7 days, and only when they sign in with that Google address.` : "Send them this link. It works for 7 days, and only when they sign in with the Google address you invited."}</p>
           <TextInput readOnly value={link} aria-label="Invite link" onFocus={(event) => event.currentTarget.select()} />
         </div>
       </Dialog>
@@ -99,7 +107,7 @@ function InviteDialog({ open, invite, onClose }: { open: boolean; invite: Invite
       }
     >
       <form id={formId} onSubmit={send} className="flex flex-col gap-4">
-        <Field label="Email" hint="They'll join once they accept. You'll get a link to send them.">
+        <Field label="Email" hint="Their Google address. You'll get a link to send them, and it works only when they sign in with this address.">
           <TextInput type="email" name="email" required data-autofocus autoComplete="off" spellCheck={false} />
         </Field>
         {/* The hint is drawn here rather than by Field, so the select can point screen readers at it. */}

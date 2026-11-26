@@ -75,8 +75,66 @@ function starter(
 
 export const STARTER_PREFIX = "starter-";
 
+// The general starters come first, for anyone; the robotics ones the app began with follow them.
 export function starterTemplates(fonts: BrandFonts): Template[] {
   return [
+    starter(fonts, {
+      id: "starter-talking-head",
+      name: "Talking Head",
+      description: "A 30-second video of you talking to the camera, with a hook and a sign-off, for Reels and Shorts.",
+      instructions:
+        "Use the first seconds of the take, or a striking shot, for hook_clip, the person talking to the camera for talk_clip, and a closing line or a wave for outro_clip. Keep the total length at 30 seconds, put the video's point in a few words in hook_text and what to do next (follow, comment, link in bio) in outro_text.",
+      format: "short_9x16",
+      seconds: 30,
+      footage: [
+        { name: "hook_clip", start: 0, end: 3, hint: "The first three seconds: what the video is about" },
+        { name: "talk_clip", start: 3, end: 26, hint: "You talking to the camera" },
+        { name: "outro_clip", start: 26, end: 30, hint: "A closing line or a wave" },
+      ],
+      logo: { name: "logo", start: 26, end: 30, y: 0.82, scale: 0.25, hint: "Your logo or channel mark" },
+      text: [
+        { name: "hook_text", start: 0, end: 3, text: "THE ONE THING TO KNOW", y: 0.2, title: true, hint: "The video's point in a few words" },
+        { name: "outro_text", start: 26, end: 30, text: "Follow for more", y: 0.3, hint: "What to do next: follow, comment, link in bio" },
+      ],
+    }),
+    starter(fonts, {
+      id: "starter-product-teaser",
+      name: "Product Teaser",
+      description: "A 20-second teaser for a product, a launch or an event, for Reels and Shorts.",
+      instructions:
+        "Use close-ups that hint at it without showing it all for teaser_clip, the product or the event shown clearly for reveal_clip, and a strong last shot for closing_shot. Keep the total length at 20 seconds, put its name in headline and a date, a place or where to get it in details_text.",
+      format: "short_9x16",
+      seconds: 20,
+      footage: [
+        { name: "teaser_clip", start: 0, end: 6, hint: "Close-ups that hint at it" },
+        { name: "reveal_clip", start: 6, end: 15, hint: "The product or the event, shown clearly" },
+        { name: "closing_shot", start: 15, end: 20, hint: "A strong last shot" },
+      ],
+      logo: { name: "brand_logo", start: 15, end: 20, y: 0.8, scale: 0.3, hint: "The brand's or the event's logo" },
+      text: [
+        { name: "headline", start: 6, end: 9, text: "SOMETHING NEW", y: 0.2, title: true, hint: "The product's or the event's name" },
+        { name: "details_text", start: 15, end: 20, text: "Coming soon", y: 0.3, hint: "A date, a place or where to get it" },
+      ],
+    }),
+    starter(fonts, {
+      id: "starter-trip-recap",
+      name: "Trip Recap",
+      description: "A 60-second look back at a trip, a weekend or a week, for YouTube.",
+      instructions:
+        "Open with the most striking shot for opening_shot, cover the best moments in the order they happened for highlights, and end on a calm or happy last shot for last_shot. Keep the total length at 60 seconds, put where and when in trip_title and a sign-off in outro_text.",
+      format: "long_16x9",
+      seconds: 60,
+      footage: [
+        { name: "opening_shot", start: 0, end: 6, hint: "The most striking shot of the trip" },
+        { name: "highlights", start: 6, end: 50, hint: "The best moments, in the order they happened" },
+        { name: "last_shot", start: 50, end: 60, hint: "A calm or happy last shot" },
+      ],
+      logo: { name: "channel_logo", start: 50, end: 60, y: 0.85, scale: 0.2, hint: "Your logo or channel mark" },
+      text: [
+        { name: "trip_title", start: 0, end: 5, text: "OUR TRIP", y: 0.5, title: true, hint: "Where and when, e.g. Three days in Lisbon" },
+        { name: "outro_text", start: 50, end: 60, text: "Thanks for watching", y: 0.15 },
+      ],
+    }),
     starter(fonts, {
       id: "starter-match-recap",
       name: "Match Recap",

@@ -106,7 +106,7 @@ export function MoveSpaceDialog({ project, fromSpace, targets, onClose, run = ru
 
   return (
     <Dialog
-      title="Move to…"
+      title="Move to another space"
       open
       onClose={onClose}
       closeDisabled={running}

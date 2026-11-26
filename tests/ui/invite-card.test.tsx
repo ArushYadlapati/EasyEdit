@@ -14,6 +14,7 @@ const base = { inviteId: "inv1", invitedBy: "Uma", teamName: "Robotics Club", ro
 describe("InviteCard", () => {
   it("signed out: the sentence and a Google button that returns to the invite, with no email", () => {
     render(<InviteCard state={{ kind: "signed-out", ...base }} accept={async () => ({})} decline={async () => ({})} />);
+    expect(screen.getByText("EasyEdit is a free video editor in your browser. Sign in with the Google address this invite was sent to.")).toBeTruthy();
     expect(screen.getByText("Uma invited you to join Robotics Club as Editor.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
     expect(signInSocial).toHaveBeenCalledWith({ provider: "google", callbackURL: "/invite/inv1", errorCallbackURL: "/invite/inv1" });
@@ -40,7 +41,8 @@ describe("InviteCard", () => {
 
   it("other email: says so, names the account, and signs out", async () => {
     render(<InviteCard state={{ kind: "wrong-account", ...base, signedInEmail: "bob@example.com" }} accept={async () => ({})} decline={async () => ({})} />);
-    expect(screen.getByText("This invite is for a different email address. You're signed in as bob@example.com.")).toBeTruthy();
+    expect(screen.getByText("This invite is for a different Google address. You're signed in as bob@example.com.")).toBeTruthy();
+    expect(screen.getByText("Sign out, then sign in with the address Uma invited, or ask them for a new invite.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(signOut).toHaveBeenCalled());
   });

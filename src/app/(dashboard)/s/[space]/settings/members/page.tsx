@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { MembersTable } from "@/components/space-settings/members-table";
@@ -22,6 +23,8 @@ const actionsFor = (spaceId: string): MemberActions => ({
   deleteTeam: deleteTeamAction.bind(null, spaceId),
   rename: renameTeamAction.bind(null, spaceId),
 });
+
+export const metadata: Metadata = { title: "Members" };
 
 // A team's members, for anyone in it; its admins get the controls. A personal space has no members page, and a space
 // the person isn't in is a plain 404. The page checks for itself: a layout is not run again on a client navigation.

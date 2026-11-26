@@ -37,13 +37,17 @@ function tokenDates(token: AgentTokenSummary, now: Date): ReactNode {
   );
 }
 
-// Everything that can act as the member: each agent they signed in to (one row per client) and each access token.
-// Disconnect and Revoke ask first; the dialog stays open with the reason when the action is refused.
-export function ConnectedAgents({ connections, tokens, now, actions }: {
+// What can act as the member: each agent they signed in to (one row per client) and access tokens. The page passes
+// the tokens that have been used here, and lists the ones nothing has used yet with Access tokens (label, empty null:
+// nothing is drawn when there are none). Disconnect and Revoke ask first; the dialog stays open with the reason when
+// the action is refused.
+export function ConnectedAgents({ connections, tokens, now, actions, label = "Connected agents", empty = "No agents connected yet." }: {
   connections: readonly AgentConnection[];
   tokens: readonly AgentTokenSummary[];
   now: Date;
   actions: Pick<AgentActions, "disconnect" | "revokeToken">;
+  label?: string;
+  empty?: string | null;
 }): ReactNode {
   // What the dialog asks about, kept while it closes so its text does not change under it.
   const [asking, setAsking] = useState<Asking | null>(null);
@@ -65,9 +69,9 @@ export function ConnectedAgents({ connections, tokens, now, actions }: {
   }
 
   const list = connections.length === 0 && tokens.length === 0 ? (
-    <p className="text-[13px] text-ed-muted">No agents connected yet.</p>
+    empty === null ? null : <p className="text-[13px] text-ed-muted">{empty}</p>
   ) : (
-    <ul aria-label="Connected agents" className="flex flex-col divide-y divide-ed-line rounded-md border border-ed-line bg-ed-panel">
+    <ul aria-label={label} className="flex flex-col divide-y divide-ed-line rounded-md border border-ed-line bg-ed-panel">
       {connections.map((connection) => {
         const { agent, client } = connectionName(connection);
         const label = client === null ? agent : `${agent} (${client})`;

@@ -21,6 +21,12 @@ export type AgentKind = (typeof AGENT_KINDS)[number];
 
 export const PRIMARY_AGENT: AgentKind = "claude";
 
+// The two agents most people already use in a browser or an app: the AI agents page offers them first, as two large
+// choices, and the rest (developer tools, the OpenAI API, any other MCP client) behind a disclosure.
+export const CONSUMER_AGENTS = ["claude", "chatgpt"] as const satisfies readonly AgentKind[];
+export type ConsumerAgent = (typeof CONSUMER_AGENTS)[number];
+export const OTHER_AGENTS: readonly AgentKind[] = AGENT_KINDS.filter((kind) => !(CONSUMER_AGENTS as readonly string[]).includes(kind));
+
 // How a member connects the agent: by signing in through the agent's own connector screen (OAuth), or by pasting an
 // access token the member makes on the AI agents page.
 export type ConnectMethod = "oauth" | "token";
@@ -40,8 +46,11 @@ export type AgentInfo = {
   clientDocumentHosts: readonly string[];
   // Whether the agent signs in through a loopback address on the member's own computer (RFC 8252 §7.3).
   usesLoopback: boolean;
-  // Steps for the AI agents page. "{url}" is replaced with the MCP server address.
+  // Steps for the AI agents page. "{url}" is replaced with the MCP server address, which the page shows with its own
+  // Copy button.
   steps: readonly string[];
+  // The agent's own page for adding a connector, linked from the first step, where the vendor documents a stable one.
+  settings?: { href: string; label: string };
   // A command or config file snippet. "{url}" and "{token}" are replaced.
   snippet?: { label: string; code: string };
   // The same setup with an access token in place of signing in, shown once right after a token is made.
@@ -59,10 +68,12 @@ export const AGENTS: Readonly<Record<AgentKind, AgentInfo>> = {
     clientDocumentHosts: ["claude.ai", "claude.com"],
     usesLoopback: false,
     steps: [
-      "In Claude (claude.ai, the desktop app or the phone app), open Customize or Settings, then Connectors.",
-      "Choose Add, then Add custom connector. Name it EasyEdit and paste {url} as the URL.",
-      "Choose Add, then Connect. Sign in with your team Google account and choose Allow.",
+      "In Claude, open Customize, then Connectors. In the desktop or phone app it's the same place.",
+      "Choose + Add, then Add custom connector. Name it EasyEdit and paste this address as the URL: {url}",
+      "Choose Continue, then Add, then Connect. Sign in with the Google account you use for EasyEdit and choose Allow.",
     ],
+    // From Anthropic's help article on custom connectors (checked 2026-11-26).
+    settings: { href: "https://claude.ai/customize/connectors", label: "Open Claude's connector settings" },
   },
   chatgpt: {
     kind: "chatgpt",
@@ -77,10 +88,12 @@ export const AGENTS: Readonly<Record<AgentKind, AgentInfo>> = {
     clientDocumentHosts: ["chatgpt.com"],
     usesLoopback: false,
     steps: [
-      "In ChatGPT, open Plugins (Apps & Connectors on older versions) and choose + → Add custom MCP server. If you don't see it, turn on Developer mode under Advanced settings first.",
-      "Name it EasyEdit, paste {url} as the Server URL and choose OAuth for Authentication.",
-      "Choose Create, sign in with your team Google account and choose Allow.",
+      "In ChatGPT on the web, open Plugins, then choose + and Add custom MCP server. If you don't see it, turn on Developer mode in Settings, Apps, Advanced settings: it's ChatGPT's switch for adding your own connectors.",
+      "Name it EasyEdit and paste this address as the Server URL: {url} Then choose OAuth for Authentication.",
+      "Choose I understand and want to continue, then Create as a plugin. Install it, sign in with the Google account you use for EasyEdit and choose Allow.",
     ],
+    // From OpenAI's developer mode guide (checked 2026-11-26).
+    settings: { href: "https://chatgpt.com/plugins", label: "Open ChatGPT's plugins page" },
   },
   "claude-code": {
     kind: "claude-code",
@@ -93,7 +106,7 @@ export const AGENTS: Readonly<Record<AgentKind, AgentInfo>> = {
     usesLoopback: true,
     steps: [
       "Run the command below in a terminal.",
-      "In Claude Code, run /mcp, pick easyedit and choose Authenticate (or run claude mcp login easyedit). Sign in with your team Google account and choose Allow.",
+      "In Claude Code, run /mcp, pick easyedit and choose Authenticate (or run claude mcp login easyedit). Sign in with the Google account you use for EasyEdit and choose Allow.",
     ],
     snippet: { label: "Terminal", code: "claude mcp add --transport http easyedit {url}" },
     tokenSnippet: { label: "Terminal", code: 'claude mcp add --transport http easyedit {url} --header "Authorization: Bearer {token}"' },
@@ -110,7 +123,7 @@ export const AGENTS: Readonly<Record<AgentKind, AgentInfo>> = {
     steps: [
       "In Cursor, open Settings → Tools & MCP → New MCP server, or edit ~/.cursor/mcp.json.",
       "Add the server below and save.",
-      "Choose Connect (or Needs login) next to easyedit, sign in with your team Google account and choose Allow.",
+      "Choose Connect (or Needs login) next to easyedit, sign in with the Google account you use for EasyEdit and choose Allow.",
     ],
     snippet: { label: "~/.cursor/mcp.json", code: '{\n  "mcpServers": {\n    "easyedit": { "url": "{url}" }\n  }\n}' },
     tokenSnippet: {
@@ -129,8 +142,8 @@ export const AGENTS: Readonly<Record<AgentKind, AgentInfo>> = {
     usesLoopback: true,
     steps: [
       "In VS Code, run MCP: Add Server from the Command Palette and pick HTTP, or add the server below to mcp.json.",
-      "Paste {url} and name it easyedit.",
-      "When VS Code asks, sign in with your team Google account and choose Allow. Use Copilot Chat in Agent mode.",
+      "Name it easyedit and paste this address: {url}",
+      "When VS Code asks, sign in with the Google account you use for EasyEdit and choose Allow. Use Copilot Chat in Agent mode.",
     ],
     snippet: { label: "mcp.json", code: '{\n  "servers": {\n    "easyedit": { "type": "http", "url": "{url}" }\n  }\n}' },
     tokenSnippet: {
@@ -150,7 +163,7 @@ export const AGENTS: Readonly<Record<AgentKind, AgentInfo>> = {
     usesLoopback: true,
     steps: [
       "Run the commands below in a terminal.",
-      "codex mcp login opens the browser: sign in with your team Google account and choose Allow.",
+      "codex mcp login opens the browser: sign in with the Google account you use for EasyEdit and choose Allow.",
     ],
     snippet: { label: "Terminal", code: "codex mcp add easyedit --url {url}\ncodex mcp login easyedit" },
     tokenSnippet: {
@@ -169,7 +182,7 @@ export const AGENTS: Readonly<Record<AgentKind, AgentInfo>> = {
     usesLoopback: true,
     steps: [
       "Run the command below in a terminal.",
-      "In Gemini CLI, run /mcp auth easyedit, sign in with your team Google account and choose Allow.",
+      "In Gemini CLI, run /mcp auth easyedit, sign in with the Google account you use for EasyEdit and choose Allow.",
     ],
     snippet: { label: "Terminal", code: "gemini mcp add -t http easyedit {url}" },
     tokenSnippet: { label: "Terminal", code: 'gemini mcp add -t http -H "Authorization: Bearer {token}" easyedit {url}' },
@@ -203,8 +216,8 @@ export const AGENTS: Readonly<Record<AgentKind, AgentInfo>> = {
     clientDocumentHosts: ["zed.dev", "goose-docs.ai"],
     usesLoopback: true,
     steps: [
-      "Point the agent at {url} as a Streamable HTTP MCP server.",
-      "If it supports OAuth, it opens a sign-in page: sign in with your team Google account and choose Allow.",
+      "Point the agent at this address as a Streamable HTTP MCP server: {url}",
+      "If it supports OAuth, it opens a sign-in page: sign in with the Google account you use for EasyEdit and choose Allow.",
       "If it only takes a header, make an access token below and send it as Authorization: Bearer <token>.",
     ],
   },

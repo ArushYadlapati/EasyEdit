@@ -17,7 +17,7 @@ import {
 } from "@/app/(dashboard)/dashboard/actions";
 import type { DashboardProps } from "@/components/dashboard/dashboard";
 import type { DB } from "@/db";
-import { user } from "@/db/schema";
+import { oauthClient, oauthConsent, user } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { createFolder } from "@/lib/projects/folders";
 import { recordOpen } from "@/lib/projects/opens";
@@ -212,9 +212,38 @@ describe("the dashboard page", () => {
   });
 });
 
+describe("AI agents in the dashboard's header", () => {
+  const frame = async () => render(await DashboardLayout({ children: <p>x</p> } as never));
+
+  beforeEach(() => {
+    signedIn.user = ada;
+    at.path = "/s/seattle-solvers";
+  });
+
+  it("is always there beside Learn, marked Connect until an agent is connected", async () => {
+    const first = await frame();
+    const link = screen.getByRole("link", { name: /^AI agents/ });
+    expect(link.getAttribute("href")).toBe("/agents");
+    expect(link.textContent).toContain("Connect");
+    expect(link.textContent).toContain("(none connected yet)");
+    first.unmount();
+    await testDb.insert(oauthClient).values([{ id: "c1", clientId: "claude-doc", name: "Claude", redirectUris: ["https://claude.ai/api/mcp/auth_callback"] }]);
+    const at_ = new Date("2026-11-01T10:00:00Z");
+    await testDb.insert(oauthConsent).values([{ id: "k1", clientId: "claude-doc", userId: ada.id, scopes: ["openid"], createdAt: at_, updatedAt: at_ }]);
+    await frame();
+    expect(screen.getByRole("link", { name: "AI agents" }).textContent).toBe("AI agents");
+  });
+
+  it("is marked as the page you're on, on the AI agents page", async () => {
+    at.path = "/agents";
+    await frame();
+    expect(screen.getByRole("link", { name: /^AI agents/ }).getAttribute("aria-current")).toBe("page");
+  });
+});
+
 describe("the guide in the dashboard's frame", () => {
   const frame = async () => render(await DashboardLayout({ children: <p>x</p> } as never));
-  const welcome = () => screen.queryByRole("dialog", { name: "Welcome to EasyEdit" });
+  const welcome = () => screen.queryByRole("dialog", { name: "Take the short tour" });
   const menuItems = () => {
     fireEvent.click(screen.getByRole("button", { name: "Account" }));
     return screen.getAllByRole("menuitem").map((item) => item.textContent);
@@ -231,7 +260,7 @@ describe("the guide in the dashboard's frame", () => {
     await frame();
     expect(welcome()).toBeNull();
     expect(screen.queryByRole("link", { name: "Learn" })).toBeNull();
-    expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Sign out"]);
+    expect(menuItems()).toEqual(["Editor preferences", "Passkeys", "AI agents", "Sign out"]);
     expect(hasSeenTutorial).not.toHaveBeenCalled();
   });
 
@@ -255,7 +284,7 @@ describe("the guide in the dashboard's frame", () => {
     expect(welcome()).toBeNull();
     // The header's way back to it, on every dashboard page.
     expect(screen.getByRole("link", { name: "Learn" }).getAttribute("href")).toBe("/learn");
-    expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Learn", "Sign out"]);
+    expect(menuItems()).toEqual(["Editor preferences", "Passkeys", "AI agents", "Learn", "Sign out"]);
   });
 
   it("when the seen marks cannot be read the dashboard still opens, with no welcome", async () => {

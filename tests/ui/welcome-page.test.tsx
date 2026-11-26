@@ -4,13 +4,14 @@ import WelcomePage from "@/app/(dashboard)/welcome/page";
 import { finishOnboardingAction } from "@/app/(dashboard)/welcome/actions";
 import DashboardRedirect from "@/app/(dashboard)/dashboard/page";
 import type { DB } from "@/db";
+import { oauthClient, oauthConsent } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { hasOnboarded, markOnboarded } from "@/lib/onboarding/state";
 import { connectHref } from "@/lib/storage/messages";
 import { personalSpaceId, SEED_TEAM_SLUG } from "@/lib/spaces/types";
 import { joinSpace } from "../helpers/actor";
 import { makeTestDb } from "../helpers/db";
-import { fireEvent, render, screen } from "../helpers/dom";
+import { render, screen } from "../helpers/dom";
 
 class Redirected extends Error {
   constructor(readonly to: string) {
@@ -27,6 +28,8 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/welcome",
 }));
+const jar = vi.hoisted(() => ({ set: vi.fn() }));
+vi.mock("next/headers", () => ({ cookies: async () => jar }));
 const signedIn = vi.hoisted(() => ({ user: null as CurrentUser | null }));
 vi.mock("@/lib/access", async () => ({
   requireUser: vi.fn(async () => signedIn.user!),
@@ -45,6 +48,7 @@ vi.mock("@/db", async (orig) => ({ ...(await orig<typeof import("@/db")>()), get
 const ada: CurrentUser = { id: "u1", email: "ada@gmail.com", name: "Ada", image: null, allowlistRole: "editor" };
 
 beforeEach(async () => {
+  jar.set.mockClear();
   testDb = await makeTestDb();
   signedIn.user = ada;
   storage.block = null;
@@ -76,29 +80,30 @@ describe("the welcome page", () => {
     expect(screen.queryByText(/^Step \d+ of/)).toBeNull();
   });
 
-  it("points the access token hints at the agents page", async () => {
+  it("offers Claude and ChatGPT, and points every other agent at the agents page", async () => {
     await show({ step: "agents" });
-    fireEvent.click(screen.getAllByRole("tab")[2]);
-    const links = screen.getAllByRole("link", { name: /access tokens/i });
-    expect(links.length).toBeGreaterThan(0);
-    for (const l of links) expect(l.getAttribute("href")).toBe("/agents#access-tokens");
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["ClaudeAnthropic", "ChatGPTOpenAI"]);
+    expect(screen.getByText(/Sign in with the Google account you use for EasyEdit/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Other agents and developer tools" }).getAttribute("href")).toBe("/agents");
   });
 
   it("starts with storage when it can be set up, with the exact copy and buttons", async () => {
     await show();
     expect(screen.getByRole("heading", { name: "Welcome to EasyEdit" })).toBeTruthy();
     expect(screen.getByText("Step 1 of 2")).toBeTruthy();
-    expect(screen.getByText("Where should your videos live?")).toBeTruthy();
-    expect(screen.getByText("EasyEdit keeps your videos in your own Google Drive, in a folder of its own. It can't see your other files.")).toBeTruthy();
-    expect(screen.getByText(/Each Google account can store videos for only one space/)).toBeTruthy();
+    expect(screen.getByText("Connect Google Drive for your uploads")).toBeTruthy();
+    expect(screen.getByText("Videos, pictures and audio you upload are kept in Google Drive, in a folder EasyEdit makes. It can't see anything else there. Until you connect one you can still make text-only videos.")).toBeTruthy();
+    expect(screen.getByText(/Each Google account can hold uploads for only one space/)).toBeTruthy();
     expect(screen.getByText("You're signed in as ada@gmail.com.")).toBeTruthy();
-    const here = screen.getByRole("link", { name: "Connect to this Google Drive" });
+    const here = screen.getByRole("link", { name: "Connect Google Drive" });
     expect(here.getAttribute("href")).toBe(connectHref(personalSpaceId(ada.id), { signedInAccount: true, returnTo: "/welcome?step=storage" }));
-    const other = screen.getByRole("link", { name: "Choose a different Google account" });
+    const other = screen.getByRole("link", { name: "Use a different Google account" });
     expect(other.getAttribute("href")).toBe(connectHref(personalSpaceId(ada.id), { returnTo: "/welcome?step=storage" }));
-    expect(screen.queryByRole("link", { name: "Choose Google account" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents");
-    expect(screen.getByRole("button", { name: "Skip setup" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents&skipped=storage");
+    // One way on without connecting, and nothing else that does the same.
+    expect(screen.queryByRole("button", { name: "Skip setup" })).toBeNull();
+    // What EasyEdit is, once, at the start, under a title no later screen repeats.
+    expect(screen.getByText(/^EasyEdit is a free video editor in your browser\./)).toBeTruthy();
   });
 
   it("goes straight to the agents step when storage is blocked or already set up", async () => {
@@ -109,19 +114,36 @@ describe("the welcome page", () => {
       await show();
       expect(screen.queryByText(/^Step \d+ of/)).toBeNull();
       expect(screen.getByText("Use EasyEdit with your AI agent")).toBeTruthy();
-      expect(screen.queryByText("Where should your videos live?")).toBeNull();
+      expect(screen.queryByText("Connect Google Drive for your uploads")).toBeNull();
       document.body.innerHTML = "";
     }
   });
 
-  it("shows the agents step with Finish and Skip, and the agent picker", async () => {
+  it("shows the agents step with one way out, to a first project, and the agent picker", async () => {
     await show({ step: "agents" });
     expect(screen.getByText("Step 2 of 2")).toBeTruthy();
-    expect(screen.getByText("Connect Claude, ChatGPT or another agent to make and edit videos by asking. You can do this any time from AI agents in your account menu.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Finish" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Skip" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Skip setup" })).toBeTruthy();
+    expect(screen.getByText("Connect Claude or ChatGPT to make and edit videos by asking. You can do this any time from AI agents at the top of the page.")).toBeTruthy();
+    // The agents' tabs and Copy buttons aside, the step's only button.
+    const ways = screen.getAllByRole("button").filter((b) => b.getAttribute("role") !== "tab" && !/^Copy/.test(b.getAttribute("aria-label") ?? ""));
+    expect(ways.map((b) => b.textContent)).toEqual(["Make your first project"]);
+    const out = screen.getByRole("button", { name: "Make your first project" }).closest("form")!;
+    expect(new FormData(out).get("next")).toBe("new-project");
+    expect(new FormData(out).get("storage")).toBeNull();
     expect(screen.getAllByRole("tab").length).toBeGreaterThan(1);
+  });
+
+  it("after storage was skipped, the last step passes that on", async () => {
+    await show({ step: "agents", skipped: "storage" });
+    const out = screen.getByRole("button", { name: "Make your first project" }).closest("form")!;
+    expect(new FormData(out).get("storage")).toBe("later");
+  });
+
+  it("marks an agent the person has already connected", async () => {
+    await testDb.insert(oauthClient).values([{ id: "c1", clientId: "claude-doc", name: "Claude", redirectUris: ["https://claude.ai/api/mcp/auth_callback"] }]);
+    const at = new Date("2026-11-01T10:00:00Z");
+    await testDb.insert(oauthConsent).values([{ id: "k1", clientId: "claude-doc", userId: ada.id, scopes: ["openid"], createdAt: at, updatedAt: at }]);
+    await show({ step: "agents" });
+    expect(screen.getByRole("tab", { name: /Claude/ }).textContent).toContain("Connected");
   });
 
   it("after a connect, shows that it worked and waits for Continue", async () => {
@@ -130,14 +152,14 @@ describe("the welcome page", () => {
     expect(screen.getByText("Step 1 of 2")).toBeTruthy();
     expect(screen.getByRole("status").textContent).toBe("Google Drive connected.");
     expect(screen.getByRole("link", { name: "Continue" }).getAttribute("href")).toBe("/welcome?step=agents");
-    expect(screen.queryByRole("link", { name: "Connect to this Google Drive" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Connect Google Drive" })).toBeNull();
     expect(screen.queryByText("Use EasyEdit with your AI agent")).toBeNull();
   });
 
   it("a connected note with no storage behind it shows the normal storage step", async () => {
     await show({ step: "storage", storage: "connected" });
     expect(screen.queryByText("Google Drive connected.")).toBeNull();
-    expect(screen.getByRole("link", { name: "Connect to this Google Drive" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Connect Google Drive" })).toBeTruthy();
   });
 
   it("after a connect that didn't work, says why and offers the choices again", async () => {
@@ -145,9 +167,9 @@ describe("the welcome page", () => {
     expect(screen.getByRole("alert").textContent).toBe(
       "That Google account already holds another EasyEdit space's storage. Choose a different Google account.",
     );
-    expect(screen.getByRole("link", { name: "Connect to this Google Drive" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Choose a different Google account" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents");
+    expect(screen.getByRole("link", { name: "Connect Google Drive" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Use a different Google account" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents&skipped=storage");
   });
 
   it("ignores a storage note it doesn't know", async () => {
@@ -158,7 +180,7 @@ describe("the welcome page", () => {
 
   it("an unknown step is the first step", async () => {
     await show({ step: "nonsense" });
-    expect(screen.getByText("Where should your videos live?")).toBeTruthy();
+    expect(screen.getByText("Connect Google Drive for your uploads")).toBeTruthy();
   });
 
   it("an invited member of the team sees the agents step only", async () => {
@@ -170,8 +192,8 @@ describe("the welcome page", () => {
 
   it("a team that isn't the person's is ignored: the normal flow", async () => {
     await show({ team: SEED_TEAM_SLUG });
-    expect(screen.getByText("Where should your videos live?")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents");
+    expect(screen.getByText("Connect Google Drive for your uploads")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Skip for now" }).getAttribute("href")).toBe("/welcome?step=agents&skipped=storage");
   });
 
   it("never redirects to /dashboard", async () => {
@@ -216,6 +238,16 @@ describe("finishing", () => {
     expect(await redirectOf(() => finishOnboardingAction(form()))).toBe("/s/personal");
     expect(log).toHaveBeenCalledTimes(1);
     log.mockRestore();
+  });
+
+  it("Make your first project lands with New project open; skipped storage leaves a cookie for the dashboard", async () => {
+    const f = form();
+    f.set("next", "new-project");
+    expect(await redirectOf(() => finishOnboardingAction(f))).toBe("/s/personal?new=project");
+    expect(jar.set).not.toHaveBeenCalled();
+    f.set("storage", "later");
+    await redirectOf(() => finishOnboardingAction(f));
+    expect(jar.set).toHaveBeenCalledWith("ee_storage_later", "1", expect.objectContaining({ path: "/", httpOnly: true, maxAge: 43200 }));
   });
 
   it("finishing twice is fine", async () => {

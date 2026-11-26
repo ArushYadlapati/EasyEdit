@@ -4,6 +4,7 @@ import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { AGENT_KINDS, AGENTS, PRIMARY_AGENT, fillTemplate, type AgentKind } from "@/lib/connector/agents";
 import { CodeBlock } from "./copy";
+import { StepText } from "./step-text";
 
 export const TOKENS_ANCHOR = "access-tokens";
 
@@ -36,19 +37,21 @@ function TokenHint({ kind, tokensHref }: { kind: AgentKind; tokensHref: string }
   );
 }
 
-// Every agent EasyEdit knows, Claude first and marked Recommended, as tabs: a column beside the steps on a wide
-// window, rows above them on a narrow one. The picked agent's steps show with the server address filled in, and its
-// config snippet when it has one. The arrow keys, Home and End move between agents.
-// `tokensHref` is where "Access tokens" is: on /agents itself by default, or that page when shown elsewhere.
+// The agents EasyEdit knows (`kinds`, every one by default, Claude first and marked Recommended), as tabs: a column
+// beside the steps on a wide window, rows above them on a narrow one. The picked agent's steps show with the server
+// address and its Copy button in place, and its config snippet when it has one. The arrow keys, Home and End move
+// between agents. `tokensHref` is where "Access tokens" is: on /agents itself by default, or that page elsewhere.
 export function AgentSetup({
   url,
   picked,
   onPick,
+  kinds = AGENT_KINDS,
   tokensHref = `#${TOKENS_ANCHOR}`,
 }: {
   url: string;
   picked: AgentKind;
   onPick(kind: AgentKind): void;
+  kinds?: readonly AgentKind[];
   tokensHref?: string;
 }): ReactNode {
   const prefix = useId();
@@ -61,9 +64,9 @@ export function AgentSetup({
     const move = KEY_MOVES[event.key];
     if (!move) return;
     event.preventDefault();
-    const next = move(index, AGENT_KINDS.length);
+    const next = move(index, kinds.length);
     buttons.current[next]?.focus();
-    onPick(AGENT_KINDS[next]);
+    onPick(kinds[next]);
   }
 
   return (
@@ -73,7 +76,7 @@ export function AgentSetup({
         aria-label="Agent"
         className="flex min-w-0 flex-wrap gap-1 md:w-52 md:shrink-0 md:flex-col md:flex-nowrap md:border-r md:border-ed-line md:pr-3"
       >
-        {AGENT_KINDS.map((kind, index) => (
+        {kinds.map((kind, index) => (
           <button
             key={kind}
             ref={(el) => {
@@ -115,7 +118,7 @@ export function AgentSetup({
         <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[13px] leading-5 text-ed-text marker:text-ed-muted">
           {info.steps.map((step) => (
             <li key={step} className="[overflow-wrap:anywhere]">
-              {fillTemplate(step, { url })}
+              <StepText step={step} url={url} />
             </li>
           ))}
         </ol>
