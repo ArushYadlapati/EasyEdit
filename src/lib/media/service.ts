@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, getTableColumns, inArray, is, isNotNull, isNull, or, sql, SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { rowsOf, type DB } from "@/db";
-import { assets, projects, templates } from "@/db/schema";
+import { assets, organization, projects, templates } from "@/db/schema";
 import { meetsRole } from "@/lib/access-rules";
 import { requireRole, type Actor } from "@/lib/actor";
 import type { DriveClient } from "@/lib/drive/client";
@@ -248,12 +248,15 @@ export async function openUpload(deps: MediaDeps, actor: Actor, input: OpenUploa
   throw tooManyUnfinished();
 }
 
-// Records a file that stays in a folder on the member's own computer: a library entry like any other, ready at once,
-// with no file in Drive behind it. The browser keeps the bytes; other members see the entry and can point their own
-// browser at a copy of the file. The same checks as an upload, and none of Drive: a space needs no storage for it.
+// Records a file that stays in a folder on the person's own computer: a library entry like any other, ready at once,
+// with no file in Drive behind it. The browser keeps the bytes; the person's other devices see the entry and can point
+// their own browser at a copy of the file. The same checks as an upload, and none of Drive: the space needs no storage
+// for it. Only in a Personal space: a team's media is in its Drive, where every member can play it.
 export async function addLocalAsset(deps: { db: DB; checkNew?: () => Promise<void> }, actor: Actor, input: OpenUploadInput): Promise<AssetView> {
   requireRole(actor, "editor");
   const { db } = deps;
+  const [space] = await db.select({ kind: organization.kind }).from(organization).where(eq(organization.id, actor.spaceId));
+  if (space?.kind !== "personal") throw new ServiceError("CONFLICT", 409, MEDIA_MESSAGES.localPersonalOnly);
   const checked = checkFile({ name: input.fileName, sizeBytes: input.sizeBytes });
   if (!checked.ok) throw refusedFile(checked.reason);
   const { kind } = checked;

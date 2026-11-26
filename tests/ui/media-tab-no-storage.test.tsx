@@ -255,6 +255,53 @@ describe("media kept in a folder on this computer", () => {
     await waitFor(() => expect(screen.getByText(MEDIA_MESSAGES.folderOfferWithDrive)).toBeTruthy());
   });
 
+  it("is for a Personal space only: a team is offered no folder, with or without storage, picker or not", async () => {
+    const bare = setup({ storageReady: false, storageProblem: "none", storageSetup: TEAM_ADMIN });
+    await openMedia();
+    expect(screen.getByRole("heading", { name: "Set up this team's storage" })).toBeTruthy();
+    expect(screen.queryByText(MEDIA_MESSAGES.folderNeedsChrome)).toBeNull();
+    bare.view.unmount();
+
+    withPicker(fakeFolder("Footage"));
+    const noStorage = setup({ storageReady: false, storageProblem: "none", storageSetup: TEAM_ADMIN });
+    await openMedia();
+    expect(screen.getByRole("heading", { name: "Set up this team's storage" })).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Media folder" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use a folder on this computer" })).toBeNull();
+    noStorage.view.unmount();
+
+    setup({ storageReady: true, storageSetup: TEAM_MEMBER });
+    await openMedia();
+    expect(screen.getByRole("button", { name: "Upload" })).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Media folder" })).toBeNull();
+    expect(screen.queryByText(MEDIA_MESSAGES.folderOfferWithDrive)).toBeNull();
+  });
+
+  it("a folder a team's browser still has open counts for nothing: the storage card stays and nothing can be added", async () => {
+    withPicker(null);
+    const local = createLocalFolder(memory());
+    await local.choose(async () => fakeFolder("Footage"));
+    expect(local.state()).toBe("ready");
+    const { list, view } = setup({ storageReady: false, storageProblem: "none", storageSetup: TEAM_ADMIN, local });
+    await openMedia();
+    expect(screen.getByRole("heading", { name: "Set up this team's storage" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
+    expect(view.container.querySelector('input[type="file"]')).toBeNull();
+    expect(screen.queryByText(MEDIA_MESSAGES.folderReady("Footage"))).toBeNull();
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("in a team whose Drive works, an open folder changes nothing: uploads are the Drive's", async () => {
+    const local = createLocalFolder(memory());
+    await local.choose(async () => fakeFolder("Footage"));
+    setup({ storageReady: true, setUp: false, storageSetup: TEAM_MEMBER, local });
+    await openMedia();
+    // With the Drive not set up, the folder does not turn uploading on, and the line that says why is still there.
+    expect((screen.getByRole("button", { name: "Upload" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(MEDIA_MESSAGES.notSetUp)).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Media folder" })).toBeNull();
+  });
+
   it("the gate lets files through only with storage or an open folder", async () => {
     const add = vi.fn(() => ["k"]);
     const local = createLocalFolder(memory());

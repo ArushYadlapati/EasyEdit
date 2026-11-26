@@ -23,7 +23,7 @@ import { AssetTile, type AssetAction, type WatchView } from "./asset-tile";
 import { SourceMonitor } from "./source-monitor";
 import { StockDialog } from "./stock-dialog";
 import { canPickFolder, pickFolder } from "./folder-memory";
-import { type StorageSetup, useLibrary, useLocalFolder, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
+import { type StorageSetup, keepsLocalFolder, useLibrary, useLocalFolder, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
 import { UploadRow } from "./upload-row";
 import { RecordButtons } from "./voiceover-button";
 
@@ -113,9 +113,11 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   // space's broken connection is the only way to read its Drive, so there the card stands alone.
   const readsWhileBroken = !storageReady && storageProblem === "broken" && storageSetup?.kind === "team";
   // A media folder on this computer is storage of its own: with one open, files are taken and the library is listed
-  // whatever the space's Drive is.
+  // whatever the space's Drive is. Only a Personal space has one: in a team it is not offered, and a folder that is
+  // somehow open counts for nothing.
+  const folderAllowed = keepsLocalFolder(storageSetup?.kind);
   const { state: folderState } = useLocalFolder();
-  const localReady = folderState === "ready";
+  const localReady = folderAllowed && folderState === "ready";
   const listed = storageReady || readsWhileBroken || localReady;
   const canUpload = canEdit && ((setUp && storageReady) || localReady);
   const picker = useRef<HTMLInputElement>(null);
@@ -202,7 +204,7 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
     return (
       <div {...panel} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
         <StorageNotice card={card} setup={storageSetup} />
-        {canEdit && <LocalFolderPanel hasDrive={false} />}
+        {canEdit && folderAllowed && <LocalFolderPanel hasDrive={false} />}
       </div>
     );
   }
@@ -264,7 +266,7 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
               />
             </label>
             {!setUp && !localReady && <p className="text-[13px] leading-5 text-ed-muted">{MEDIA_MESSAGES.notSetUp}</p>}
-            {canEdit && <LocalFolderPanel hasDrive={storageReady && setUp} />}
+            {canEdit && folderAllowed && <LocalFolderPanel hasDrive={storageReady && setUp} />}
           </div>
         )}
 
@@ -331,9 +333,9 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
   );
 }
 
-// Where new media goes: Google Drive, or a folder on this computer the person picks. With a folder open, files are
-// copied into it and only this computer has them; teammates and other devices see the entry and can open a folder of
-// their own that holds the same files. hasDrive: the space's Drive works, so there is something to go back to.
+// Where a Personal space's new media goes: Google Drive, or a folder on this computer the person picks. With a folder
+// open, files are copied into it and only this computer has them; the person's other devices see the entry and can open
+// a folder of their own that holds the same files. hasDrive: the space's Drive works, so there is something to go back to.
 export function LocalFolderPanel({ hasDrive }: { hasDrive: boolean }) {
   const { folder, state, name } = useLocalFolder();
   const [supported] = useState(canPickFolder);

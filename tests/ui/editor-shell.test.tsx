@@ -252,6 +252,18 @@ const uploading: UploadItem = {
   assetId: "x1", message: null, canRetry: false,
 };
 
+it("keeps media in a folder on this computer only in a Personal space: a team's services are made without one", async () => {
+  for (const [kind, localFolder] of [["personal", true], ["team", false], [undefined, false]] as const) {
+    stubServer();
+    pretendMedia();
+    vi.mocked(createMediaServices).mockClear();
+    const { unmount } = render(<EditorShell space={{ ...SPACE, kind }} initial={initial()} />);
+    await flush();
+    expect(vi.mocked(createMediaServices).mock.calls).toEqual([["s1", { localFolder }]]);
+    unmount();
+  }
+});
+
 it("loads the library when the editor opens, on focus and on the timer", async () => {
   stubServer();
   const media = pretendMedia();

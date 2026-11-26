@@ -25,7 +25,7 @@ import type { SpaceKind } from "@/lib/spaces/types";
 import type { StorageBlock } from "@/lib/storage/messages";
 import { BrandProvider } from "./brand/brand-context";
 import { CaptionsProvider } from "./captions/captions-context";
-import { MediaProvider, createMediaServices, gateStorage, useLibrary, type StorageProblem } from "./media/media-context";
+import { MediaProvider, createMediaServices, gateStorage, keepsLocalFolder, useLibrary, type StorageProblem } from "./media/media-context";
 import { PresenceProvider } from "./presence-context";
 import { ReviewProvider } from "./review/review-context";
 import { browserThumbnailDeps } from "./thumbnail-deps";
@@ -45,6 +45,7 @@ const quietly = (work: Promise<unknown>) => void work.catch(() => {});
 
 // The space a project is in, as the editor page hands it over.
 // kind, isAdmin, storageBlock: for the Media tab's setup card (see StorageSetup); left out, it offers no setup.
+// kind also says whether media may be kept in a folder on this computer: in a Personal space only.
 export type EditorSpace = {
   id: string;
   slug: string;
@@ -84,7 +85,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
       );
     };
     const settings = createSettingsStore({ prefs }, { prefs: savePrefs, keymap: (k) => writeKeymap(localStore, k) });
-    const media = gateStorage(createMediaServices(space.id), space.storageReady);
+    const media = gateStorage(createMediaServices(space.id, { localFolder: keepsLocalFolder(space.kind) }), space.storageReady);
     const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
     const review = createReviewApi(initial.projectId);
     return { store, api, sync, clipboard: createClipboard(localStore), media, drop, settings, savePrefs, presenceStore, review };
