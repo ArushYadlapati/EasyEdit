@@ -29,3 +29,35 @@ export async function decodeVideoFrame(blob: Blob, seconds: number, size: number
     input.dispose();
   }
 }
+
+// Every frame of a video between two moments of its file, in order, small: its pixels at about `side` pixels on the
+// longer side, with the moment it is shown at. For looking a video over (finding its cuts), not for showing it. each
+// may return false to stop early. False when the file has no video track.
+export async function scanFrames(
+  blob: Blob,
+  from: number,
+  to: number,
+  side: number,
+  each: (seconds: number, rgba: Uint8ClampedArray, width: number, height: number) => boolean | void,
+): Promise<boolean> {
+  const { ALL_FORMATS, BlobSource, CanvasSink, Input } = await loadMediabunny();
+  const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
+  try {
+    const track = await input.getPrimaryVideoTrack();
+    if (!track) return false;
+    const shownWidth = await track.getDisplayWidth();
+    const shownHeight = await track.getDisplayHeight();
+    const k = Math.min(1, side / Math.max(shownWidth, shownHeight));
+    const width = Math.max(2, Math.round(shownWidth * k));
+    const height = Math.max(2, Math.round(shownHeight * k));
+    const sink = new CanvasSink(track, { width, height, fit: "fill", poolSize: 2 });
+    for await (const frame of sink.canvases(Math.max(from, await track.getFirstTimestamp()), to)) {
+      const ctx = (frame.canvas as OffscreenCanvas).getContext("2d", { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D | null;
+      if (!ctx) return false;
+      if (each(frame.timestamp, ctx.getImageData(0, 0, width, height).data, width, height) === false) break;
+    }
+    return true;
+  } finally {
+    input.dispose();
+  }
+}

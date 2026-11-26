@@ -24,6 +24,15 @@ export const MESSAGES = {
   nothingToSeparate: "Select a video clip that has sound to separate its audio.",
   nothingToGroup: "Select two or more clips on unlocked tracks to link them.",
   nothingToUngroup: "None of the selected clips is linked.",
+  scenesUnreadable: "Couldn't read that video to look for its cuts.",
+  oneScene: "No cuts found: this clip looks like one shot.",
+  scenesSplit: (shots: number) => `Split into ${shots} shots.`,
+  syncNeedsTwo: "Select two or more video or audio clips that play at normal speed to line them up by their sound.",
+  syncUnreadable: "Couldn't read the sound of the clip the others would line up with.",
+  syncNoMatch: "Couldn't find the same sound in those clips. They may not be recordings of the same moment, or may be too short to tell: a few seconds are needed.",
+  alreadySynced: "Those clips already line up.",
+  synced: (moved: number, unmatched: number) =>
+    `${moved === 1 ? "Moved 1 clip" : `Moved ${moved} clips`} to line up by sound.${unmatched === 0 ? "" : unmatched === 1 ? " 1 clip had no matching sound and stayed." : ` ${unmatched} clips had no matching sound and stayed.`}`,
   rampNeedsOne: "Select one video or audio clip to ramp its speed.",
   rampRefused: {
     "not-a-clip": "A speed ramp needs a video or audio clip that plays forward, on an unlocked track.",

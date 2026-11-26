@@ -8,7 +8,7 @@ import { MESSAGES } from "@/lib/editor/messages";
 import { findClip } from "@/lib/editor/store";
 import type { MediaClip, TimelineDoc } from "@/lib/timeline";
 import { makeStore, noticesOf, sampleDoc, video } from "../editor/fixtures";
-import { act, fireEvent, render, screen, waitFor } from "../helpers/dom";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -254,4 +254,75 @@ it("a viewer sees the clean-up and cannot change it", () => {
   expect((screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("switch", { name: "Cut rumble" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByLabelText("Presence") as HTMLInputElement).value).toBe("2");
+});
+
+// What happened in the room, at the measuring rate: bursts of noise at uneven moments, the same on every run.
+function room(seconds: number, seed = 5): Float32Array {
+  let s = seed;
+  const next = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const out = new Float32Array(seconds * MEASURE_RATE);
+  for (let at = 0; at < out.length; ) {
+    at += Math.floor((0.1 + next() * 0.6) * MEASURE_RATE);
+    const length = Math.floor((0.03 + next() * 0.15) * MEASURE_RATE);
+    for (let i = at; i < Math.min(out.length, at + length); i++) out[i] = next() * 2 - 1;
+    at += length;
+  }
+  return out;
+}
+// A camera's video c1 at 2 s on the timeline and a microphone's recording m1 at 1 s, six and eight seconds long.
+const takeDoc = (c1Start = 60, m1Start = 30) =>
+  soundDoc((d) => {
+    d.tracks[0].clips = [video("c1", c1Start, 180)];
+    d.tracks[3].clips = [video("m1", m1Start, 240, { type: "audio", assetId: "song" })];
+  });
+// The camera started two seconds into the take and the microphone at its start; the files are told apart by size.
+const sameTake = () => {
+  const take = room(12);
+  return pretendDecoder((bytes) => [bytes === 10 ? take.slice(2 * MEASURE_RATE) : take.map((v) => v * 0.3)]);
+};
+
+it("Sync by sound moves the microphone's clip to where its sound lines up with the video's, as one change", async () => {
+  sameTake();
+  const { store, clip, notices } = show({ doc: takeDoc(), select: ["c1", "m1"], media: readable({ "prev-a": 10, "orig-song": 20 }) });
+  fireEvent.click(screen.getByRole("button", { name: "Sync by sound" }));
+  expect(screen.getByRole("button", { name: "Listening…" })).toBeTruthy();
+  await waitFor(() => expect(notices).toEqual(["Moved 1 clip to line up by sound."]));
+  // The video shows the take from 2 s on at 2 s of the timeline, so the take's start belongs at 0.
+  expect([clip("m1").start, clip("m1").in, clip("c1").start]).toEqual([0, 0, 60]);
+  expect(store.getState().queue.at(-1)).toMatchObject({ label: "sync by sound", ops: [{ op: "move_clip", clipId: "m1", start: 0 }] });
+  // Asked again, there is nothing to move.
+  await waitFor(() => expect(screen.getByRole("button", { name: "Sync by sound" })).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: "Sync by sound" }));
+  await waitFor(() => expect(notices.at(-1)).toBe(MESSAGES.alreadySynced));
+});
+
+it("Sync by sound keeps what fits when the clip belongs before the timeline's start", async () => {
+  sameTake();
+  const { clip, notices } = show({ doc: takeDoc(0, 30), select: ["c1", "m1"], media: readable({ "prev-a": 10, "orig-song": 20 }) });
+  fireEvent.click(screen.getByRole("button", { name: "Sync by sound" }));
+  await waitFor(() => expect(notices).toEqual(["Moved 1 clip to line up by sound."]));
+  // The microphone's first two seconds are from before the video begins: they are trimmed off.
+  expect(clip("m1")).toMatchObject({ start: 0, in: 60, duration: 180 });
+});
+
+it("Sync by sound says when the clips are not of the same moment, or the sound cannot be read", async () => {
+  const take = room(12);
+  const other = room(12, 77);
+  pretendDecoder((bytes) => [bytes === 10 ? take : other]);
+  const different = show({ doc: takeDoc(), select: ["c1", "m1"], media: readable({ "prev-a": 10, "orig-song": 20 }) });
+  fireEvent.click(screen.getByRole("button", { name: "Sync by sound" }));
+  await waitFor(() => expect(different.notices).toEqual([MESSAGES.syncNoMatch]));
+  expect(different.clip("m1").start).toBe(30);
+  cleanup();
+  const unread = show({ doc: takeDoc(), select: ["c1", "m1"], media: readable({ "orig-song": 20 }) });
+  fireEvent.click(screen.getByRole("button", { name: "Sync by sound" }));
+  await waitFor(() => expect(unread.notices).toEqual([MESSAGES.syncUnreadable]));
+});
+
+it("Sync by sound is offered for two sounding clips, and off for someone who can't edit", () => {
+  show({ doc: takeDoc(), select: ["c1", "m1"], canEdit: false });
+  expect((screen.getByRole("button", { name: "Sync by sound" }) as HTMLButtonElement).disabled).toBe(true);
+  cleanup();
+  show({ doc: takeDoc(), select: ["c1", "x1"] });
+  expect(screen.queryByRole("button", { name: "Sync by sound" })).toBeNull();
 });

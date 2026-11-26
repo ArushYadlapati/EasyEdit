@@ -62,6 +62,8 @@ import { Scopes } from "./scopes";
 import { Timecode } from "./timecode";
 import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-field-gesture";
 import { useLevelVolume } from "./use-level-volume";
+import { useSceneSplit } from "./use-scene-split";
+import { useSyncSound } from "./use-sync-sound";
 
 const TEXT = "text-[13px] leading-5";
 const CAPTION = "text-xs font-medium text-ed-muted";
@@ -712,6 +714,20 @@ function TimingSection({ clipId, slips }: { clipId: string; slips: boolean }) {
   );
 }
 
+// Footage that came in already edited: find where it cuts from one shot to the next, and split the clip there.
+function ScenesSection({ clipId }: { clipId: string }) {
+  const canEdit = useEditor((s) => s.canEdit);
+  const { split, busy } = useSceneSplit();
+  return (
+    <Section title="Scenes">
+      <Hint>For a video that is already several shots, such as a download or a recording of a call: split this clip where the shot changes.</Hint>
+      <Button data-edit-control className="self-start" disabled={!canEdit || busy} onClick={() => void split(clipId)}>
+        {busy ? "Looking for cuts…" : "Split at scene changes"}
+      </Button>
+    </Section>
+  );
+}
+
 // A clip's sound clean-up: one button that sets it for a voice, and each part on its own. A rumble filter, a noise
 // gate that turns the gaps between words down, a compressor that brings loud and quiet closer together, and three
 // tone bands. It is heard in the preview and is in the export.
@@ -1063,6 +1079,7 @@ function ManyClips({ count }: { count: number }) {
   const canEdit = useEditor((s) => s.canEdit);
   const sounding = useEditor((s) => soundClipsOf(viewDoc(s), s.selection.clipIds).length);
   const { level, busy } = useLevelVolume();
+  const { sync, busy: syncing } = useSyncSound();
   return (
     <>
       <p className={cx(TEXT, "font-medium text-ed-text")}>{count} clips selected</p>
@@ -1078,6 +1095,10 @@ function ManyClips({ count }: { count: number }) {
               Clean up voice
             </Button>
           </div>
+          <Hint>Recordings of the same moment, such as a camera and a separate microphone: move them so their sound lines up. The first video stays where it is.</Hint>
+          <Button data-edit-control className="self-start" disabled={!canEdit || syncing} onClick={() => void sync(store.getState().selection.clipIds)}>
+            {syncing ? "Listening…" : "Sync by sound"}
+          </Button>
         </Section>
       )}
     </>
@@ -1154,6 +1175,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}
       <TimingSection clipId={clip.id} slips={clip.type === "video" || clip.type === "audio"} />
+      {clip.type === "video" && clip.speed > 0 && <ScenesSection clipId={clip.id} />}
       <SlotSection clip={clip} />
     </>
   );
