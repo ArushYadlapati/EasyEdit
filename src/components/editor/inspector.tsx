@@ -181,6 +181,7 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
       return { scrub: 1, decimals: 0 };
     case "soundGate":
     case "soundCompress":
+    case "soundDenoise":
       return { scrub: 1, decimals: 0 };
     case "soundBass":
     case "soundMid":
@@ -277,7 +278,7 @@ function NumberField(props: {
     };
   } else if (field === "speed") {
     scrubRange = () => SPEED_PERCENT;
-  } else if (field === "rounding" || field === "chromaTolerance" || field === "chromaSoftness" || field === "soundGate" || field === "soundCompress") {
+  } else if (field === "rounding" || field === "chromaTolerance" || field === "chromaSoftness" || field === "soundGate" || field === "soundCompress" || field === "soundDenoise") {
     scrubRange = () => ({ min: 0, max: 100 });
   } else if (field === "soundBass" || field === "soundMid" || field === "soundTreble") {
     scrubRange = () => ({ min: -TONE_DB, max: TONE_DB });
@@ -728,9 +729,10 @@ function ScenesSection({ clipId }: { clipId: string }) {
   );
 }
 
-// A clip's sound clean-up: one button that sets it for a voice, and each part on its own. A rumble filter, a noise
-// gate that turns the gaps between words down, a compressor that brings loud and quiet closer together, and three
-// tone bands. It is heard in the preview and is in the export.
+// A clip's sound clean-up: one button that sets it for a voice, and each part on its own. Noise reduction that turns
+// down the steady noise under the sound, a rumble filter, a noise gate that turns the gaps between words down, a
+// compressor that brings loud and quiet closer together, and three tone bands. It is heard in the preview and is in
+// the export.
 function CleanUp({ clip }: { clip: MediaClip }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
@@ -751,6 +753,8 @@ function CleanUp({ clip }: { clip: MediaClip }) {
         </div>
       </div>
       <Toggle label="Cut rumble" data-edit-control checked={clip.sound?.lowCut ?? false} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "soundLowCut", on ? "on" : "off")} />
+      <NumberField clipId={clip.id} field="soundDenoise" label="Noise reduction" suffix="%" min={0} max={100} step={5} />
+      {(clip.sound?.denoise ?? 0) > 0 && <Hint>Turns down steady noise: hiss, a fan, a hum. Made for a voice; a long held note in music can go with it.</Hint>}
       <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clip.id} field="soundGate" label="Noise gate" suffix="%" min={0} max={100} step={5} />
         <NumberField clipId={clip.id} field="soundCompress" label="Compressor" suffix="%" min={0} max={100} step={5} />

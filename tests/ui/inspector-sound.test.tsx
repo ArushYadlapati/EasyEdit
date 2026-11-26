@@ -206,7 +206,7 @@ it("Clean up voice sets a clip's sound for a voice in one change, and Reset take
   expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
   expect(screen.getByRole("switch", { name: "Cut rumble" }).getAttribute("aria-checked")).toBe("false");
   fireEvent.click(screen.getByRole("button", { name: "Clean up voice" }));
-  expect(clip("c1").sound).toEqual({ lowCut: true, gate: 0.25, bass: 0, mid: 3, treble: 1, compress: 0.5 });
+  expect(clip("c1").sound).toEqual({ lowCut: true, gate: 0.25, bass: 0, mid: 3, treble: 1, compress: 0.5, denoise: 0.4 });
   expect(store.getState().queue.at(-1)).toMatchObject({ label: "sound clean-up" });
   expect(notices).toContain(MESSAGES.cleanedUp(1));
   expect(screen.getByRole("switch", { name: "Cut rumble" }).getAttribute("aria-checked")).toBe("true");
@@ -216,7 +216,7 @@ it("Clean up voice sets a clip's sound for a voice in one change, and Reset take
   fireEvent.click(screen.getByRole("button", { name: "Clean up voice" }));
   expect(store.getState().queue.length).toBe(sent);
   fireEvent.click(screen.getByRole("button", { name: "Reset" }));
-  expect(clip("c1").sound).toEqual({ lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 });
+  expect(clip("c1").sound).toEqual({ lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0, denoise: 0 });
   expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
   // One undo brings the whole clean-up back.
   store.getState().undo();
@@ -325,4 +325,23 @@ it("Sync by sound is offered for two sounding clips, and off for someone who can
   cleanup();
   show({ doc: takeDoc(), select: ["c1", "x1"] });
   expect(screen.queryByRole("button", { name: "Sync by sound" })).toBeNull();
+});
+
+it("Noise reduction is set in percent, says what it is for once it is on, and is part of Clean up voice", () => {
+  const { store, clip, field } = show({ select: ["c1"] });
+  expect(field("Noise reduction").value).toBe("0");
+  expect(screen.queryByText(/Turns down steady noise/)).toBeNull();
+  fireEvent.change(field("Noise reduction"), { target: { value: "60" } });
+  fireEvent.blur(field("Noise reduction"));
+  expect(clip("c1").sound).toEqual({ denoise: 0.6 });
+  expect(store.getState().queue.at(-1)).toMatchObject({ label: "sound clean-up", ops: [{ op: "update_clip", clipId: "c1", patch: { sound: { denoise: 0.6 } } }] });
+  expect(screen.getByText(/Turns down steady noise: hiss, a fan, a hum\. Made for a voice/)).toBeTruthy();
+  fireEvent.change(field("Noise reduction"), { target: { value: "250" } });
+  fireEvent.blur(field("Noise reduction"));
+  expect(clip("c1").sound?.denoise).toBe(1);
+  act(() => store.getState().undo());
+  act(() => store.getState().undo());
+  expect(clip("c1").sound?.denoise ?? 0).toBe(0);
+  fireEvent.click(screen.getByRole("button", { name: "Clean up voice" }));
+  expect([clip("c1").sound?.denoise, field("Noise reduction").value]).toEqual([0.4, "40"]);
 });

@@ -101,7 +101,7 @@ function clipEffects(clip: EffectsHolder): readonly string[] {
 const TRANSFORM_FILL: Record<string, () => unknown> = { crop: () => ({ ...NO_CROP }), stretch: () => NO_STRETCH, flipH: () => false, flipV: () => false };
 
 // A sound's clean-up with every part off.
-const SOUND_OFF: Record<string, unknown> = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 };
+const SOUND_OFF: Record<string, unknown> = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0, denoise: 0 };
 
 // A grade with every part off: wheels at rest, straight curves, no look-up table and, for one, all of it.
 const GRADE_OFF: Record<string, () => unknown> = {

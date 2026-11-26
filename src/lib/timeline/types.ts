@@ -138,8 +138,8 @@ export const Mask = z.strictObject({
 });
 export type Mask = z.infer<typeof Mask>;
 
-// A video's or audio clip's sound clean-up. Each is off, or 0, when absent: a rumble filter, a noise gate and a
-// compressor by how much (0 to 1), and three tone bands in decibels.
+// A video's or audio clip's sound clean-up. Each is off, or 0, when absent: a rumble filter, a noise gate, a
+// compressor and noise reduction by how much (0 to 1), and three tone bands in decibels.
 const ToneDb = z.number().min(-12).max(12);
 export const SoundFx = z.strictObject({
   lowCut: z.boolean().optional(),
@@ -148,6 +148,7 @@ export const SoundFx = z.strictObject({
   mid: ToneDb.optional(),
   treble: ToneDb.optional(),
   compress: z.number().min(0).max(1).optional(),
+  denoise: z.number().min(0).max(1).optional(),
 });
 export type SoundFx = z.infer<typeof SoundFx>;
 

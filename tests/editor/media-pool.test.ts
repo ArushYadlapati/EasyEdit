@@ -191,7 +191,7 @@ describe("the media pool", () => {
 
   it("with a mix, gives each element's line its clip's sound clean-up, and none where the clip has none", async () => {
     const h = await setup({ mix: true });
-    const fx = { lowCut: true, gate: 0, bass: 2, mid: 0, treble: 0, compress: 0 };
+    const fx = { lowCut: true, gate: 0, bass: 2, mid: 0, treble: 0, compress: 0, denoise: 0 };
     await h.syncSettled([want("c1", "a", { rate: 1, volume: 1, fx })]);
     const kept = h.lines.get(h.made[0])!;
     expect(kept.fx.at(-1)).toEqual(fx);

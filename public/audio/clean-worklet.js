@@ -1,7 +1,7 @@
 // Made by scripts/make-worklet.mjs from src/lib/audio/clean-dsp.ts and scripts/clean-processor.js. Change those, not this.
-const NO_FX = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 };
+const NO_FX = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0, denoise: 0 };
 function isPlainFx(fx) {
-    return !fx.lowCut && fx.gate <= 0 && fx.bass === 0 && fx.mid === 0 && fx.treble === 0 && fx.compress <= 0;
+    return !fx.lowCut && fx.gate <= 0 && fx.bass === 0 && fx.mid === 0 && fx.treble === 0 && fx.compress <= 0 && !(fx.denoise > 0);
 }
 const LOW_CUT_HZ = 80;
 const BASS_HZ = 200;
@@ -49,6 +49,179 @@ function compressorOf(amount) {
     return { threshold, ratio, makeup: (-threshold * (1 - 1 / ratio)) / 2 };
 }
 const KNEE_DB = 6;
+const DENOISE_FRAME = 512;
+const DENOISE_HOP = DENOISE_FRAME / 4;
+const DENOISE_BINS = DENOISE_FRAME / 2 + 1;
+const NOISE_OVER_MINIMUM = 3.2;
+const NOISE_MEMORY_SECONDS = 2;
+const NOISE_PARTS = 4;
+const DENOISE_WARM_SECONDS = 0.6;
+function denoiseOf(amount) {
+    return { over: 2 + 2 * amount, floor: Math.pow(10, -(6 + 24 * amount) / 20) };
+}
+function createFft(size) {
+    const levels = Math.round(Math.log2(size));
+    const swap = new Uint16Array(size);
+    for (let i = 0; i < size; i++) {
+        let r = 0;
+        for (let b = 0; b < levels; b++)
+            r |= ((i >> b) & 1) << (levels - 1 - b);
+        swap[i] = r;
+    }
+    const cos = new Float32Array(size / 2);
+    const sin = new Float32Array(size / 2);
+    for (let i = 0; i < size / 2; i++) {
+        cos[i] = Math.cos((2 * Math.PI * i) / size);
+        sin[i] = Math.sin((2 * Math.PI * i) / size);
+    }
+    return (re, im, inverse) => {
+        for (let i = 0; i < size; i++) {
+            const j = swap[i];
+            if (j > i) {
+                const r = re[i];
+                re[i] = re[j];
+                re[j] = r;
+                const m = im[i];
+                im[i] = im[j];
+                im[j] = m;
+            }
+        }
+        for (let length = 2; length <= size; length <<= 1) {
+            const half = length >> 1;
+            const step = size / length;
+            for (let start = 0; start < size; start += length) {
+                for (let k = 0; k < half; k++) {
+                    const c = cos[k * step];
+                    const sn = inverse ? sin[k * step] : -sin[k * step];
+                    const a = start + k;
+                    const b = a + half;
+                    const tr = re[b] * c - im[b] * sn;
+                    const ti = re[b] * sn + im[b] * c;
+                    re[b] = re[a] - tr;
+                    im[b] = im[a] - ti;
+                    re[a] += tr;
+                    im[a] += ti;
+                }
+            }
+        }
+        if (inverse) {
+            for (let i = 0; i < size; i++) {
+                re[i] /= size;
+                im[i] /= size;
+            }
+        }
+    };
+}
+function createDenoiser(sampleRate) {
+    const size = DENOISE_FRAME;
+    const fft = createFft(size);
+    const window = new Float32Array(size);
+    for (let i = 0; i < size; i++)
+        window[i] = Math.sqrt(0.5 - 0.5 * Math.cos((2 * Math.PI * i) / size));
+    const inL = new Float32Array(size);
+    const inR = new Float32Array(size);
+    const outL = new Float32Array(size);
+    const outR = new Float32Array(size);
+    const lRe = new Float32Array(size);
+    const lIm = new Float32Array(size);
+    const rRe = new Float32Array(size);
+    const rIm = new Float32Array(size);
+    const level = new Float32Array(DENOISE_BINS);
+    const quick = new Float32Array(DENOISE_BINS);
+    const lowest = new Float32Array(DENOISE_BINS).fill(Infinity);
+    const spans = Array.from({ length: NOISE_PARTS - 1 }, () => new Float32Array(DENOISE_BINS).fill(Infinity));
+    const earlier = new Float32Array(DENOISE_BINS).fill(Infinity);
+    const gain = new Float32Array(DENOISE_BINS).fill(1);
+    const wanted = new Float32Array(DENOISE_BINS);
+    const spanFrames = Math.max(1, Math.round((NOISE_MEMORY_SECONDS * sampleRate) / DENOISE_HOP / NOISE_PARTS));
+    const warmFrames = Math.max(1, Math.round((DENOISE_WARM_SECONDS * sampleRate) / DENOISE_HOP));
+    let settings = denoiseOf(0);
+    let at = 0;
+    let sinceFrame = 0;
+    let frames = 0;
+    let inSpan = 0;
+    let nextSpan = 0;
+    function frame() {
+        for (let i = 0; i < size; i++) {
+            const from = (at + i) % size;
+            lRe[i] = inL[from] * window[i];
+            rRe[i] = inR[from] * window[i];
+            lIm[i] = 0;
+            rIm[i] = 0;
+        }
+        fft(lRe, lIm, false);
+        fft(rRe, rIm, false);
+        const warmth = Math.min(1, frames / warmFrames);
+        const warm = warmth * warmth;
+        for (let k = 0; k < DENOISE_BINS; k++) {
+            const power = lRe[k] * lRe[k] + lIm[k] * lIm[k] + rRe[k] * rRe[k] + rIm[k] * rIm[k];
+            level[k] = frames === 0 ? power : 0.8 * level[k] + 0.2 * power;
+            quick[k] = frames === 0 ? power : 0.7 * quick[k] + 0.3 * power;
+            if (level[k] < lowest[k])
+                lowest[k] = level[k];
+            const noise = NOISE_OVER_MINIMUM * Math.min(lowest[k], earlier[k]);
+            const kept = quick[k] > 0 ? Math.sqrt(Math.max(0, 1 - (settings.over * noise) / quick[k])) : 0;
+            wanted[k] = Math.max(settings.floor, kept);
+        }
+        for (let k = 0; k < DENOISE_BINS; k++) {
+            const near = (wanted[Math.max(0, k - 1)] + 2 * wanted[k] + wanted[Math.min(DENOISE_BINS - 1, k + 1)]) / 4;
+            const now = near > gain[k] ? 0.5 * gain[k] + 0.5 * near : 0.75 * gain[k] + 0.25 * near;
+            gain[k] = now;
+            const g = 1 - warm * (1 - now);
+            lRe[k] *= g;
+            lIm[k] *= g;
+            rRe[k] *= g;
+            rIm[k] *= g;
+            if (k > 0 && k < DENOISE_BINS - 1) {
+                lRe[size - k] *= g;
+                lIm[size - k] *= g;
+                rRe[size - k] *= g;
+                rIm[size - k] *= g;
+            }
+        }
+        fft(lRe, lIm, true);
+        fft(rRe, rIm, true);
+        for (let i = 0; i < size; i++) {
+            const to = (at + i) % size;
+            outL[to] += lRe[i] * window[i] * 0.5;
+            outR[to] += rRe[i] * window[i] * 0.5;
+        }
+        frames++;
+        if (++inSpan >= spanFrames) {
+            inSpan = 0;
+            spans[nextSpan].set(lowest);
+            nextSpan = (nextSpan + 1) % spans.length;
+            for (let k = 0; k < DENOISE_BINS; k++) {
+                let least = Infinity;
+                for (const span of spans)
+                    if (span[k] < least)
+                        least = span[k];
+                earlier[k] = least;
+                lowest[k] = level[k];
+            }
+        }
+    }
+    return {
+        set(amount) {
+            settings = denoiseOf(Math.min(1, Math.max(0, amount)));
+        },
+        process(left, right) {
+            for (let i = 0; i < left.length; i++) {
+                inL[at] = left[i];
+                inR[at] = right[i];
+                left[i] = outL[at];
+                right[i] = outR[at];
+                outL[at] = 0;
+                outR[at] = 0;
+                at = (at + 1) % size;
+                if (++sinceFrame === DENOISE_HOP) {
+                    sinceFrame = 0;
+                    frame();
+                }
+            }
+        },
+    };
+}
 function createChain(sampleRate) {
     let fx = NO_FX;
     let plain = true;
@@ -62,6 +235,7 @@ function createChain(sampleRate) {
     const trebleM = memory();
     let gate = gateOf(0);
     let comp = compressorOf(0);
+    let denoiser = null;
     let heard = 0;
     let isOpen = true;
     let gateGain = 1;
@@ -82,10 +256,16 @@ function createChain(sampleRate) {
         treble = next.treble !== 0 ? highShelf(TREBLE_HZ, next.treble, sampleRate) : null;
         gate = gateOf(next.gate);
         comp = compressorOf(next.compress);
+        if (next.denoise > 0) {
+            denoiser ??= createDenoiser(sampleRate);
+            denoiser.set(next.denoise);
+        }
     }
     function process(left, right) {
         if (plain)
             return;
+        if (denoiser && fx.denoise > 0)
+            denoiser.process(left, right);
         const gating = fx.gate > 0;
         const compressing = fx.compress > 0;
         for (let i = 0; i < left.length; i++) {

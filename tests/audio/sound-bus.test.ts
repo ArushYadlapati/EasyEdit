@@ -254,7 +254,7 @@ describe("the clean-up worklet", () => {
     };
     return { p, bus, cleaners, addModule, settle, fail: async () => (fail(), await Promise.resolve(), await Promise.resolve()) };
   }
-  const voice = { lowCut: true, gate: 0.3, bass: 0, mid: 3, treble: 0, compress: 0.5 };
+  const voice = { lowCut: true, gate: 0.3, bass: 0, mid: 3, treble: 0, compress: 0.5, denoise: 0 };
 
   it("is fetched once the mix is set up, and then a limiter sits between the mix and the output and the meter", async () => {
     const h = withWorklet();
@@ -294,7 +294,7 @@ describe("the clean-up worklet", () => {
     line.setFx({ ...voice, bass: 2 });
     line.setFx(null);
     line.setFx(null);
-    expect(h.cleaners[1].sent).toEqual([voice, { ...voice, bass: 2 }, { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 }]);
+    expect(h.cleaners[1].sent).toEqual([voice, { ...voice, bass: 2 }, { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0, denoise: 0 }]);
     expect(h.cleaners).toHaveLength(2);
   });
 

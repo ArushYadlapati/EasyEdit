@@ -68,11 +68,12 @@ export type ClipField =
   | "fadeOut"
   // Where the clip's sound sits: −100 all the way left, 0 as recorded, 100 all the way right.
   | "pan"
-  // The clip's sound clean-up: the rumble filter ("on" or "off"), the noise gate and the compressor in percent of
-  // full strength, and three tone bands in decibels.
+  // The clip's sound clean-up: the rumble filter ("on" or "off"), the noise gate, the compressor and the noise
+  // reduction in percent of full strength, and three tone bands in decibels.
   | "soundLowCut"
   | "soundGate"
   | "soundCompress"
+  | "soundDenoise"
   | "soundBass"
   | "soundMid"
   | "soundTreble"
@@ -187,6 +188,7 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   soundLowCut: "sound clean-up",
   soundGate: "sound clean-up",
   soundCompress: "sound clean-up",
+  soundDenoise: "sound clean-up",
   soundBass: "sound clean-up",
   soundMid: "sound clean-up",
   soundTreble: "sound clean-up",
@@ -395,7 +397,7 @@ function lengthPx(clip: Clip, field: "x" | "y" | "width" | "height", ctx: FieldC
 }
 
 // The part of a clip's sound clean-up each number field sets, and how far a tone band turns, in decibels.
-const SOUND_PART = { soundGate: "gate", soundCompress: "compress", soundBass: "bass", soundMid: "mid", soundTreble: "treble" } as const;
+const SOUND_PART = { soundGate: "gate", soundCompress: "compress", soundDenoise: "denoise", soundBass: "bass", soundMid: "mid", soundTreble: "treble" } as const;
 export const TONE_DB = 12;
 
 export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext): string {
@@ -435,6 +437,7 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
       return hasSpeed(clip) ? (clip.sound?.lowCut ? "on" : "off") : "";
     case "soundGate":
     case "soundCompress":
+    case "soundDenoise":
       return hasSpeed(clip) ? String(Math.round((clip.sound?.[SOUND_PART[field]] ?? 0) * 100)) : "";
     case "soundBass":
     case "soundMid":
@@ -823,7 +826,8 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       return (raw === "on") === (clip.sound?.lowCut ?? false) ? [] : update({ sound: { lowCut: raw === "on" } });
     }
     case "soundGate":
-    case "soundCompress": {
+    case "soundCompress":
+    case "soundDenoise": {
       // Whole percents of full strength.
       const percent = parseNumber(raw);
       if (percent === null || !hasSpeed(clip)) return null;

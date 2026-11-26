@@ -52,7 +52,7 @@ describe("a clip's sound clean-up in the ops", () => {
     expect(fxOf(m1(songDoc()))).toBeNull();
     expect(fxOf(m1(songDoc({ sound: {} })))).toBeNull();
     expect(fxOf(m1(songDoc({ sound: { bass: 0, gate: 0, lowCut: false } })))).toBeNull();
-    expect(fxOf(m1(songDoc({ sound: { mid: 3 } })))).toEqual({ lowCut: false, gate: 0, bass: 0, mid: 3, treble: 0, compress: 0 });
+    expect(fxOf(m1(songDoc({ sound: { mid: 3 } })))).toEqual({ lowCut: false, gate: 0, bass: 0, mid: 3, treble: 0, compress: 0, denoise: 0 });
     expect(fxOf(songDoc().tracks[1].clips[0])).toBeNull(); // a text clip
   });
 });
@@ -63,7 +63,7 @@ describe("the clean-up on its way to the preview and the export", () => {
     const cleaned = songDoc({ sound: { lowCut: true, mid: 3 } });
     const want = (d: TimelineDoc) => mediaWants(d, 10, { playing: true, rate: 1 }).find((w) => w.clipId === "m1")!;
     expect("fx" in want(plain)).toBe(false);
-    expect(want(cleaned).fx).toEqual({ lowCut: true, gate: 0, bass: 0, mid: 3, treble: 0, compress: 0 });
+    expect(want(cleaned).fx).toEqual({ lowCut: true, gate: 0, bass: 0, mid: 3, treble: 0, compress: 0, denoise: 0 });
     const voice = (d: TimelineDoc) => soundSchedule(d, { m1: "song" }, 30, 48_000).voices.find((v) => v.clipIds[0] === "m1")!;
     expect(voice(plain).fx).toBeUndefined();
     expect(voice(cleaned).fx).toEqual(want(cleaned).fx);

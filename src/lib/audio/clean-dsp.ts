@@ -1,18 +1,18 @@
-// The sound clean-up itself: a rumble filter, a noise gate, three tone bands and a compressor for one clip, and a
-// limiter for the whole mix. The export runs it sample by sample in its worker, and the preview runs the very same
+// The sound clean-up itself: noise reduction, a rumble filter, a noise gate, three tone bands and a compressor for one
+// clip, and a limiter for the whole mix. The export runs it sample by sample in its worker, and the preview runs the very same
 // code in an audio worklet (public/audio/clean-dsp.js is this file turned into plain JavaScript by
 // scripts/make-worklet.mjs), so what is heard while editing is what is exported.
 //
 // It imports nothing and uses nothing of the page or of Node, so it can run in both places.
 
-// lowCut: the rumble filter is on. gate, compress: how much, 0 (off) to 1. bass, mid, treble: decibels, −12 to 12.
-export type FxSettings = { lowCut: boolean; gate: number; bass: number; mid: number; treble: number; compress: number };
+// lowCut: the rumble filter is on. gate, compress, denoise: how much, 0 (off) to 1. bass, mid, treble: decibels, −12 to 12.
+export type FxSettings = { lowCut: boolean; gate: number; bass: number; mid: number; treble: number; compress: number; denoise: number };
 
-export const NO_FX: FxSettings = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0 };
+export const NO_FX: FxSettings = { lowCut: false, gate: 0, bass: 0, mid: 0, treble: 0, compress: 0, denoise: 0 };
 
 // Whether the settings change nothing: such a clip is not processed at all, so it stays bit for bit as it was.
 export function isPlainFx(fx: FxSettings): boolean {
-  return !fx.lowCut && fx.gate <= 0 && fx.bass === 0 && fx.mid === 0 && fx.treble === 0 && fx.compress <= 0;
+  return !fx.lowCut && fx.gate <= 0 && fx.bass === 0 && fx.mid === 0 && fx.treble === 0 && fx.compress <= 0 && !(fx.denoise > 0);
 }
 
 export const LOW_CUT_HZ = 80; // below a voice: rumble, handling noise, wind
@@ -95,6 +95,203 @@ function compressorOf(amount: number) {
 
 const KNEE_DB = 6;
 
+// Noise reduction: the steady noise under a recording (hiss, a fan, a hum, a room's air) turned down, and what
+// stands above it left alone. The sound is taken in short overlapping pieces, each split into 257 pitches; at every
+// pitch the quietest the sound has lately been is taken for the noise there, and a pitch that is no louder than its
+// noise is turned down. A voice comes and goes at every pitch, noise stays, which is how the two are told apart with
+// nobody saying which is which.
+export const DENOISE_FRAME = 512; // samples in a piece: about a hundredth of a second, which is also how late the sound comes out
+const DENOISE_HOP = DENOISE_FRAME / 4;
+const DENOISE_BINS = DENOISE_FRAME / 2 + 1;
+// The quietest a smoothed level has been sits well under its average, so it is raised by this to stand for the noise.
+// Measured on steady noise with a made-up voice over it: at this value half strength takes about 15 dB off the noise
+// and full strength about 24 dB, while a voice 14 dB above the noise loses under 1 dB. Lower leaves more noise;
+// higher starts to take the quiet ends of words.
+const NOISE_OVER_MINIMUM = 3.2;
+const NOISE_MEMORY_SECONDS = 2; // how far back "lately" goes: longer than a word or a held note, so a pause is always in it
+const NOISE_PARTS = 4; // the memory is kept as this many shorter spans, the oldest dropped as a new one starts
+// A clip's start is let through while its noise is learned, so a clip cut to start on a word does not have that word
+// taken for noise: the reduction comes in over this long, slowly at first.
+const DENOISE_WARM_SECONDS = 0.6;
+
+// What an amount of noise reduction comes to: how much more than its noise a pitch must be to pass whole, and the
+// least any pitch is turned down to (−6 dB at the lightest, −30 dB at the strongest), so what is left of the noise
+// stays even and does not chirp.
+function denoiseOf(amount: number) {
+  return { over: 2 + 2 * amount, floor: Math.pow(10, -(6 + 24 * amount) / 20) };
+}
+
+// A Fourier transform of `size` values (a power of two), in place, either way.
+function createFft(size: number): (re: Float32Array, im: Float32Array, inverse: boolean) => void {
+  const levels = Math.round(Math.log2(size));
+  const swap = new Uint16Array(size);
+  for (let i = 0; i < size; i++) {
+    let r = 0;
+    for (let b = 0; b < levels; b++) r |= ((i >> b) & 1) << (levels - 1 - b);
+    swap[i] = r;
+  }
+  const cos = new Float32Array(size / 2);
+  const sin = new Float32Array(size / 2);
+  for (let i = 0; i < size / 2; i++) {
+    cos[i] = Math.cos((2 * Math.PI * i) / size);
+    sin[i] = Math.sin((2 * Math.PI * i) / size);
+  }
+  return (re, im, inverse) => {
+    for (let i = 0; i < size; i++) {
+      const j = swap[i];
+      if (j > i) {
+        const r = re[i];
+        re[i] = re[j];
+        re[j] = r;
+        const m = im[i];
+        im[i] = im[j];
+        im[j] = m;
+      }
+    }
+    for (let length = 2; length <= size; length <<= 1) {
+      const half = length >> 1;
+      const step = size / length;
+      for (let start = 0; start < size; start += length) {
+        for (let k = 0; k < half; k++) {
+          const c = cos[k * step];
+          const sn = inverse ? sin[k * step] : -sin[k * step];
+          const a = start + k;
+          const b = a + half;
+          const tr = re[b] * c - im[b] * sn;
+          const ti = re[b] * sn + im[b] * c;
+          re[b] = re[a] - tr;
+          im[b] = im[a] - ti;
+          re[a] += tr;
+          im[a] += ti;
+        }
+      }
+    }
+    if (inverse) {
+      for (let i = 0; i < size; i++) {
+        re[i] /= size;
+        im[i] /= size;
+      }
+    }
+  };
+}
+
+// One clip's noise reduction. process() changes the two sides in place and gives the sound back DENOISE_FRAME samples
+// late; both sides are turned down by the same amount at each pitch, so the sound does not wander between them. It
+// may be given blocks of any length, and gives the same sound whatever their lengths.
+export function createDenoiser(sampleRate: number): { set(amount: number): void; process(left: Float32Array, right: Float32Array): void } {
+  const size = DENOISE_FRAME;
+  const fft = createFft(size);
+  // Each piece is faded in and out before and after, so the overlapping pieces add up to the sound again.
+  const window = new Float32Array(size);
+  for (let i = 0; i < size; i++) window[i] = Math.sqrt(0.5 - 0.5 * Math.cos((2 * Math.PI * i) / size));
+  const inL = new Float32Array(size);
+  const inR = new Float32Array(size);
+  const outL = new Float32Array(size);
+  const outR = new Float32Array(size);
+  const lRe = new Float32Array(size);
+  const lIm = new Float32Array(size);
+  const rRe = new Float32Array(size);
+  const rIm = new Float32Array(size);
+  const level = new Float32Array(DENOISE_BINS); // each pitch's loudness, smoothed for finding the noise
+  const quick = new Float32Array(DENOISE_BINS); // and smoothed less, for deciding how much passes now
+  const lowest = new Float32Array(DENOISE_BINS).fill(Infinity); // the quietest in the span being filled
+  const spans = Array.from({ length: NOISE_PARTS - 1 }, () => new Float32Array(DENOISE_BINS).fill(Infinity)); // and in the ones before
+  const earlier = new Float32Array(DENOISE_BINS).fill(Infinity); // the quietest of those
+  const gain = new Float32Array(DENOISE_BINS).fill(1);
+  const wanted = new Float32Array(DENOISE_BINS);
+  const spanFrames = Math.max(1, Math.round((NOISE_MEMORY_SECONDS * sampleRate) / DENOISE_HOP / NOISE_PARTS));
+  const warmFrames = Math.max(1, Math.round((DENOISE_WARM_SECONDS * sampleRate) / DENOISE_HOP));
+  let settings = denoiseOf(0);
+  let at = 0; // where the next sample goes
+  let sinceFrame = 0;
+  let frames = 0;
+  let inSpan = 0;
+  let nextSpan = 0;
+
+  function frame(): void {
+    for (let i = 0; i < size; i++) {
+      const from = (at + i) % size; // oldest first
+      lRe[i] = inL[from] * window[i];
+      rRe[i] = inR[from] * window[i];
+      lIm[i] = 0;
+      rIm[i] = 0;
+    }
+    fft(lRe, lIm, false);
+    fft(rRe, rIm, false);
+    const warmth = Math.min(1, frames / warmFrames);
+    const warm = warmth * warmth;
+    for (let k = 0; k < DENOISE_BINS; k++) {
+      const power = lRe[k] * lRe[k] + lIm[k] * lIm[k] + rRe[k] * rRe[k] + rIm[k] * rIm[k];
+      level[k] = frames === 0 ? power : 0.8 * level[k] + 0.2 * power;
+      quick[k] = frames === 0 ? power : 0.7 * quick[k] + 0.3 * power;
+      if (level[k] < lowest[k]) lowest[k] = level[k];
+      const noise = NOISE_OVER_MINIMUM * Math.min(lowest[k], earlier[k]);
+      // What is left of the pitch once its noise, and a margin, is taken off.
+      const kept = quick[k] > 0 ? Math.sqrt(Math.max(0, 1 - (settings.over * noise) / quick[k])) : 0;
+      wanted[k] = Math.max(settings.floor, kept);
+    }
+    for (let k = 0; k < DENOISE_BINS; k++) {
+      // Evened out with the pitches beside it, let up quickly and brought down gently, so no lone pitch chirps.
+      const near = (wanted[Math.max(0, k - 1)] + 2 * wanted[k] + wanted[Math.min(DENOISE_BINS - 1, k + 1)]) / 4;
+      const now = near > gain[k] ? 0.5 * gain[k] + 0.5 * near : 0.75 * gain[k] + 0.25 * near;
+      gain[k] = now;
+      const g = 1 - warm * (1 - now);
+      lRe[k] *= g;
+      lIm[k] *= g;
+      rRe[k] *= g;
+      rIm[k] *= g;
+      if (k > 0 && k < DENOISE_BINS - 1) {
+        // The upper half of a transform mirrors the lower.
+        lRe[size - k] *= g;
+        lIm[size - k] *= g;
+        rRe[size - k] *= g;
+        rIm[size - k] *= g;
+      }
+    }
+    fft(lRe, lIm, true);
+    fft(rRe, rIm, true);
+    // Four pieces overlap at every sample, and their fades add up to two.
+    for (let i = 0; i < size; i++) {
+      const to = (at + i) % size;
+      outL[to] += lRe[i] * window[i] * 0.5;
+      outR[to] += rRe[i] * window[i] * 0.5;
+    }
+    frames++;
+    if (++inSpan >= spanFrames) {
+      inSpan = 0;
+      spans[nextSpan].set(lowest);
+      nextSpan = (nextSpan + 1) % spans.length;
+      for (let k = 0; k < DENOISE_BINS; k++) {
+        let least = Infinity;
+        for (const span of spans) if (span[k] < least) least = span[k];
+        earlier[k] = least;
+        lowest[k] = level[k];
+      }
+    }
+  }
+
+  return {
+    set(amount) {
+      settings = denoiseOf(Math.min(1, Math.max(0, amount)));
+    },
+    process(left, right) {
+      for (let i = 0; i < left.length; i++) {
+        inL[at] = left[i];
+        inR[at] = right[i];
+        left[i] = outL[at];
+        right[i] = outR[at];
+        outL[at] = 0;
+        outR[at] = 0;
+        at = (at + 1) % size;
+        if (++sinceFrame === DENOISE_HOP) {
+          sinceFrame = 0;
+          frame();
+        }
+      }
+    },
+  };
+}
+
 // One clip's clean-up. set() changes its settings without forgetting where the sound was, so a change made while it
 // plays does not click. process() changes the two sides in place; they must be as long as each other.
 export function createChain(sampleRate: number): { set(fx: FxSettings): void; process(left: Float32Array, right: Float32Array): void } {
@@ -110,6 +307,8 @@ export function createChain(sampleRate: number): { set(fx: FxSettings): void; pr
   const trebleM = memory();
   let gate = gateOf(0);
   let comp = compressorOf(0);
+  // Made when first asked for: most clips never have noise reduction on.
+  let denoiser: ReturnType<typeof createDenoiser> | null = null;
   // The gate: how loud the sound has lately been, whether it is open, and the gain it is at.
   let heard = 0;
   let isOpen = true;
@@ -135,10 +334,16 @@ export function createChain(sampleRate: number): { set(fx: FxSettings): void; pr
     treble = next.treble !== 0 ? highShelf(TREBLE_HZ, next.treble, sampleRate) : null;
     gate = gateOf(next.gate);
     comp = compressorOf(next.compress);
+    if (next.denoise > 0) {
+      denoiser ??= createDenoiser(sampleRate);
+      denoiser.set(next.denoise);
+    }
   }
 
   function process(left: Float32Array, right: Float32Array): void {
     if (plain) return;
+    // First, so the gate, the tone bands and the compressor work on the cleaned sound and do not lift the noise.
+    if (denoiser && fx.denoise > 0) denoiser.process(left, right);
     const gating = fx.gate > 0;
     const compressing = fx.compress > 0;
     for (let i = 0; i < left.length; i++) {
