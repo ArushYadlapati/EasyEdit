@@ -24,6 +24,7 @@ import { spacePath } from "@/lib/spaces/paths";
 import { ProjectName } from "./project-name";
 import { RIGHT_TABS } from "./right-panel";
 import { SaveStatus } from "./save-status";
+import { PeopleCount, SaveMark } from "./top-bar-compact";
 import { TimelineFileDialog, type TimelineFileMode } from "./timeline-file-dialog";
 import { useCommandRunner, useShortcutLabel } from "./use-shortcuts";
 
@@ -148,10 +149,11 @@ export function TopBar({
 
   return (
     // The middle column keeps its width while the sides can give way: the project name first, as before.
-    // Below the lg width (a phone) the search, the save status and the keyboard list give way: the name, undo, redo
-    // and Export stay.
-    <header className="grid min-w-0 items-center gap-3 bg-ed-panel px-3 max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:gap-1 max-lg:px-1.5 lg:col-span-3 lg:grid-cols-[minmax(0,1fr)_minmax(9rem,clamp(12rem,28vw,24rem))_minmax(max-content,1fr)]">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+    // Below the lg width (a phone, a narrow window) everything stays but in a smaller form: the search folds to its
+    // mark and opens across the bar, the save status is a mark (with a word when something needs knowing), who else
+    // is here is one count, and the keyboard list gives way. The search key opens the search at every width.
+    <header className="relative grid min-w-0 items-center gap-3 bg-ed-panel px-3 max-lg:grid-cols-[minmax(0,1fr)_auto_auto] max-lg:gap-1 max-lg:px-1.5 lg:col-span-3 lg:grid-cols-[minmax(0,1fr)_minmax(9rem,clamp(12rem,28vw,24rem))_minmax(max-content,1fr)]">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden max-lg:gap-1">
         <LeaveLink
           href={spacePath(spaceSlug)}
           className={cx(
@@ -183,16 +185,18 @@ export function TopBar({
           </span>
         )}
       </div>
-      <div className="contents max-lg:hidden">
-        <FeatureSearch items={searchList} onRun={runFound} inputRef={searchRef ?? ownSearch} />
-      </div>
+      <FeatureSearch items={searchList} onRun={runFound} inputRef={searchRef ?? ownSearch} fold />
       <TimelineFileDialog mode={timelineFile} onClose={() => setTimelineFile(null)} />
       <div className="flex items-center justify-end gap-2 max-lg:gap-0.5">
-        <div className="contents max-lg:hidden">
+        {/* One of each at every width, so what a screen reader hears never doubles; below the lg width the dots and
+            the words are kept for it and the count and mark beside them are what shows. */}
+        <div className="contents max-lg:[&>[role=group]]:hidden max-lg:[&>[role=status]]:sr-only">
           <EditingIndicator />
-          <div className="shrink-0">
-            <SaveStatus />
-          </div>
+        </div>
+        <PeopleCount className="lg:hidden" />
+        <SaveMark className="lg:hidden" />
+        <div className="shrink-0 max-lg:[&_[role=status]]:sr-only">
+          <SaveStatus />
         </div>
         <IconButton
           data-edit-control

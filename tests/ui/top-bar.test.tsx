@@ -4,9 +4,11 @@ import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
 import { LEAVE_SETTLE_MS } from "@/components/editor/leave-link";
 import { MediaProvider } from "@/components/editor/media/media-context";
+import { PresenceProvider } from "@/components/editor/presence-context";
 import { TopBar } from "@/components/editor/top-bar";
 import type { ProjectApi } from "@/lib/editor/api";
 import { createClipboard } from "@/lib/editor/clipboard";
+import { createPresenceStore } from "@/lib/editor/presence";
 import { DEFAULT_PREFS, createSettingsStore, type SettingsStore } from "@/lib/editor/settings";
 import type { SyncStatus } from "@/lib/editor/types";
 import { makeStore, text } from "../editor/fixtures";
@@ -619,3 +621,70 @@ it("the search finds a lesson of the guide and opens it beside the project", () 
   expect(opened).toHaveBeenCalledWith("/learn/sound", "_blank", "noopener");
 });
 
+
+// Whether an element is in something the narrow layout removes.
+const goneBelowLg = (el: Element | null | undefined) => {
+  for (let n = el ?? null; n; n = n.parentElement) if (n.classList.contains("max-lg:hidden")) return true;
+  return false;
+};
+
+it("below the lg width the search stays, folded to its mark, and opens across the bar", () => {
+  render(
+    <EditorProvider store={makeStore()}>
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
+    </EditorProvider>,
+  );
+  const field = screen.getByRole("combobox", { name: "Search tools and actions" });
+  expect(goneBelowLg(field)).toBe(false);
+  const box = field.parentElement!.className.split(" ");
+  expect(box).toEqual(expect.arrayContaining(["max-lg:size-7", "max-lg:focus-within:absolute", "max-lg:focus-within:inset-x-1.5"]));
+  // The bar is what the opened field spans.
+  expect(field.closest("header")!.className.split(" ")).toContain("relative");
+});
+
+it("below the lg width the save status is a mark with a word when it matters, and its words are still heard once", () => {
+  const store = makeStore();
+  store.getState().edit([{ op: "remove_clip", clipId: "c1" }], "Delete");
+  store.getState().setStatus("offline");
+  render(
+    <EditorProvider store={store}>
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
+    </EditorProvider>,
+  );
+  const said = screen.getAllByRole("status").filter((s) => s.textContent?.startsWith("Offline"));
+  expect(said).toHaveLength(1);
+  expect(said[0].textContent).toBe("Offline. Changes will save when you reconnect.");
+  expect(goneBelowLg(said[0])).toBe(false);
+  // Narrow, the words are kept for a screen reader, and the mark beside them is what shows.
+  expect(said[0].closest("[class*='max-lg:[&_[role=status]]:sr-only']")).not.toBeNull();
+  const mark = document.querySelector<HTMLElement>("[data-save-mark]")!;
+  expect(mark.getAttribute("aria-hidden")).toBe("true");
+  expect(mark.className.split(" ")).toContain("lg:hidden");
+  expect(mark.dataset.word).toBe("Offline");
+  expect(mark.title).toBe("Offline. Changes will save when you reconnect.");
+  // All well: the mark alone.
+  act(() => store.getState().setStatus("saved"));
+  expect(document.querySelector<HTMLElement>("[data-save-mark]")!.dataset.word).toBeUndefined();
+  act(() => store.getState().setStatus("signed-out"));
+  expect(document.querySelector<HTMLElement>("[data-save-mark]")!.dataset.word).toBe("Signed out");
+  expect(goneBelowLg(screen.getByRole("link", { name: "Sign in" }))).toBe(false);
+});
+
+it("below the lg width who else is here is one count that names them", () => {
+  const presence = createPresenceStore("u1");
+  presence.getState().receive([{ userId: "u2", name: "Grace Hopper", clipIds: [], trackId: null }, { userId: "u3", name: "Linus", clipIds: [], trackId: null }], Date.now());
+  render(
+    <EditorProvider store={makeStore()}>
+      <PresenceProvider store={presence}>
+        <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
+      </PresenceProvider>
+    </EditorProvider>,
+  );
+  const count = screen.getByRole("img", { name: "Also here: Grace Hopper, Linus" });
+  expect(count.textContent).toBe("2");
+  expect(count.className.split(" ")).toContain("lg:hidden");
+  // The dots stay at the lg width and up; narrow, their group is what gives way.
+  const dots = screen.getByRole("group", { name: "Also here" });
+  expect(goneBelowLg(dots)).toBe(false);
+  expect(dots.parentElement!.className).toContain("max-lg:[&>[role=group]]:hidden");
+});

@@ -11,13 +11,26 @@ type FeatureSearchProps = {
   onRun(item: SearchItem): void;
   inputRef?: RefObject<HTMLInputElement | null>; // the search key focuses it
   className?: string;
+  // Below the lg width the field folds to its search mark, a 28 px target, until it has focus; then it opens across
+  // its positioned parent (the top bar), above what is there. The search key focuses it at every width.
+  fold?: boolean;
 };
+
+// The folded field's looks, all below the lg width only. Folded, the field is a bare 28 px button-like square with
+// the mark in its middle; with focus it takes the top bar's width, 8 px from its top, with its usual looks.
+const FOLD_BOX =
+  "max-lg:size-7 max-lg:shrink-0 max-lg:focus-within:absolute max-lg:focus-within:inset-x-1.5 max-lg:focus-within:top-2 max-lg:focus-within:z-50 max-lg:focus-within:w-auto";
+const FOLD_FIELD = cx(
+  "max-lg:not-focus:cursor-pointer max-lg:not-focus:border-transparent max-lg:not-focus:bg-transparent max-lg:not-focus:px-0",
+  "max-lg:not-focus:text-transparent max-lg:not-focus:placeholder:text-transparent max-lg:not-focus:hover:bg-ed-hover",
+);
+const FOLD_MARK = "max-lg:left-[7px] max-lg:group-focus-within/search:left-2";
 
 // The top bar's search field. Focusing it opens a list of everything it can find, grouped; typing narrows it to the
 // best matches. The arrow keys move through the results while focus stays in the field, Enter or a click runs one, and
 // Escape closes the list and hands focus back to where it was, so the editor's keys work again. What cannot run right
 // now is listed greyed and does nothing.
-export function FeatureSearch({ items, onRun, inputRef, className }: FeatureSearchProps) {
+export function FeatureSearch({ items, onRun, inputRef, className, fold = false }: FeatureSearchProps) {
   const own = useRef<HTMLInputElement>(null);
   const input = inputRef ?? own;
   const [open, setOpen] = useState(false);
@@ -90,8 +103,8 @@ export function FeatureSearch({ items, onRun, inputRef, className }: FeatureSear
   const grouped = query.trim() === "";
 
   return (
-    <div className={cx("relative", className)}>
-      <Search aria-hidden size={14} className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ed-muted" />
+    <div className={cx("group/search relative", fold && FOLD_BOX, className)}>
+      <Search aria-hidden size={14} className={cx("pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ed-muted", fold && FOLD_MARK)} />
       <input
         ref={input}
         type="text"
@@ -117,12 +130,16 @@ export function FeatureSearch({ items, onRun, inputRef, className }: FeatureSear
           "focus:bg-ed-raised",
           FOCUS_RING_INSET,
           FADE,
+          fold && FOLD_FIELD,
         )}
       />
       {searchKey && (
         <kbd
           aria-hidden
-          className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 rounded-[4px] border border-ed-line px-1 font-sans text-[11px] leading-4 text-ed-muted peer-focus:hidden"
+          className={cx(
+            "pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 rounded-[4px] border border-ed-line px-1 font-sans text-[11px] leading-4 text-ed-muted peer-focus:hidden",
+            fold && "max-lg:hidden",
+          )}
         >
           {searchKey}
         </kbd>
@@ -132,7 +149,11 @@ export function FeatureSearch({ items, onRun, inputRef, className }: FeatureSear
           id={listId}
           role="listbox"
           aria-label="Results"
-          className="absolute top-full left-1/2 z-50 mt-1 flex max-h-[min(24rem,calc(100dvh-4rem))] w-[max(100%,26rem)] -translate-x-1/2 flex-col overflow-y-auto rounded-md border border-ed-line bg-ed-raised py-1 shadow-lg"
+          className={cx(
+            "absolute top-full left-1/2 z-50 mt-1 flex max-h-[min(24rem,calc(100dvh-4rem))] w-[max(100%,26rem)] -translate-x-1/2 flex-col overflow-y-auto rounded-md border border-ed-line bg-ed-raised py-1 shadow-lg",
+            // Opened across a narrow top bar, the list is as wide as the field, so it never runs off the window.
+            fold && "max-lg:w-full",
+          )}
           // A press in the list keeps focus in the field, so the list stays open until the click picks.
           onMouseDown={(e) => e.preventDefault()}
         >
