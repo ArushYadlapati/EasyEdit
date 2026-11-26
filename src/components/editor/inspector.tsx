@@ -4,7 +4,7 @@ import { ChevronRight, Link2, Link2Off } from "lucide-react";
 import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
-import { FADE, FOCUS_RING, SWATCH_BOX, TAG, cx } from "@/components/ui/cx";
+import { CHOSEN_EDGE, FADE, FOCUS_RING, SWATCH_BOX, TAG, cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
 import { IconButton } from "@/components/ui/icon-button";
 import { NumberInput } from "@/components/ui/number-input";
@@ -498,6 +498,8 @@ function WordStyles({ clip, canEdit, stretch }: { clip: TextClip; canEdit: boole
           <Button
             key={what}
             data-edit-control
+            // On, a style button takes the chosen state's tint, blue words and inset edge, as a pressed icon button does.
+            className={cx("aria-pressed:bg-ed-accent-weak aria-pressed:text-ed-accent", CHOSEN_EDGE.pressed)}
             aria-pressed={stretch !== null ? look[what] : whole[what]}
             disabled={!canEdit}
             onClick={() => (stretch ? apply(toggleStretchOps(clip, stretch, what)) : toggleWhole(what))}

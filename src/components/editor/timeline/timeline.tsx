@@ -296,9 +296,11 @@ export function Timeline() {
             </div>
           </div>
           {empty && !landing && (
+            // In the room under the empty tracks, so it never reads as a word on one of them (a new project's timeline is
+            // only as tall as its tracks need, plus that room).
             <p
               className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-center text-[13px] leading-5 text-ed-muted"
-              style={{ left: headerWidth, top: RULER_HEIGHT }}
+              style={{ left: headerWidth, top: RULER_HEIGHT + rows.length * ROW_HEIGHT }}
             >
               {takesFiles
                 ? "Nothing on the timeline yet. Add text or media from the panel on the left, or drag files here."
