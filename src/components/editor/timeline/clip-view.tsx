@@ -195,7 +195,8 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
       className={cx(
         "group absolute flex touch-none items-center overflow-hidden rounded-[4px] border select-none",
         FILL[clip.type],
-        selected ? "border-ed-accent bg-linear-to-r from-ed-accent-weak to-ed-accent-weak" : "border-ed-line-strong",
+        // At rest the edge is Field Edge, 3.26:1 off the lane, since where a clip starts and ends is what it says.
+        selected ? "border-ed-accent bg-linear-to-r from-ed-accent-weak to-ed-accent-weak" : "border-ed-field-line",
         // With the system's high contrast colours both edges would be the same text colour.
         "forced-colors:aria-pressed:border-2 forced-colors:aria-pressed:border-[Highlight]",
         hidden && "opacity-50",

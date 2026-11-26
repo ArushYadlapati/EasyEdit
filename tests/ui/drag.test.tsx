@@ -815,3 +815,11 @@ it("near the side of narrow lanes a dragged clip waits 250 ms before they scroll
   expect(scroller.scrollLeft).toBe(held);
   release(386, T1);
 });
+
+it("a clip at rest has an edge that stands off the lane, and a chosen one the accent's", () => {
+  const { st, clip } = renderTimeline();
+  expect(clip("x2").className.split(" ")).toContain("border-ed-field-line");
+  act(() => st().select(["x2"]));
+  expect(clip("x2").className.split(" ")).toContain("border-ed-accent");
+  expect(clip("x2").className.split(" ")).not.toContain("border-ed-field-line");
+});
