@@ -61,17 +61,23 @@ export function HomePage({ closedBeta = false }: { closedBeta?: boolean }) {
           <NewProjectForm />
         </section>
 
-        {/* The heading, then what it comes to as a list a size under it (beside it on a computer), then the app's
-            Storage page. */}
+        {/* The heading, then what it comes to as a list a size under it with the way in under that (beside the heading
+            on a computer, as the first screen's lead and Start free stand beside its headline), then the app's Storage
+            page. */}
         <section id="free" className="h-section h-free" aria-labelledby="free-title" data-dock-label="Free">
           <h2 id="free-title" className="h-h2">
             <span className="h-line">Free, and your files</span> <span className="h-line">stay in your Drive.</span>
           </h2>
-          <ul className="h-facts">
-            {FREE_FACTS.map((fact) => (
-              <li key={fact}>{fact}</li>
-            ))}
-          </ul>
+          <div className="h-freeSide">
+            <ul className="h-facts">
+              {FREE_FACTS.map((fact) => (
+                <li key={fact}>{fact}</li>
+              ))}
+            </ul>
+            <Link href="/login" className="h-btn h-freeStart">
+              {closedBeta ? "Sign in" : "Start free"}
+            </Link>
+          </div>
           <DriveShot />
         </section>
 

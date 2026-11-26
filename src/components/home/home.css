@@ -1592,6 +1592,15 @@
 .h-facts li {
   text-wrap: balance;
 }
+/* What free comes to, then the way in under it: the page's white pill, a clear step under the last line. */
+.h-freeSide {
+  display: flex;
+  flex-direction: column;
+}
+.h-freeStart {
+  align-self: flex-start;
+  margin-top: 32px;
+}
 @media (width > 860px) {
   .h-free {
     display: grid;
@@ -1600,7 +1609,7 @@
     align-items: end;
     column-gap: 48px;
   }
-  .h-free > .h-facts {
+  .h-freeSide > .h-facts {
     margin-top: 0;
   }
   .h-free > .h-driveStage {

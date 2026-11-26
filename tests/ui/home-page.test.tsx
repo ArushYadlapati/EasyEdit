@@ -61,9 +61,9 @@ describe("home page", () => {
     render(await Home());
     vi.unstubAllEnvs();
     expect(screen.getByRole("heading", { level: 1, name: "The video editor for AI agents." })).toBeTruthy();
-    // One name for the one action, in the header, the first screen and the page's close.
+    // One name for the one action, in the header, the first screen, under what free comes to and the page's close.
     const starts = screen.getAllByRole("link", { name: "Start free" });
-    expect(starts).toHaveLength(3);
+    expect(starts).toHaveLength(4);
     for (const a of starts) expect(a.getAttribute("href")).toBe("/login");
     expect(screen.queryByRole("link", { name: "Start editing, free" })).toBeNull();
     for (const a of screen.getAllByRole("link", { name: "Sign in" })) expect(a.getAttribute("href")).toBe("/login");
@@ -405,8 +405,14 @@ describe("home page free, teams and every agent", () => {
       "It can't see your other files.",
       "Exports render on your computer.",
     ]);
-    // Its own layout: the heading, the list right under it, then the picture. No head row, no cards.
-    expect([...free.children].map((el) => el.tagName)).toEqual(["H2", "UL", "DIV"]);
+    // Its own layout: the heading, the list right under it with Start free under that, then the picture. No head
+    // row, no cards.
+    expect([...free.children].map((el) => el.className.split(" ")[0])).toEqual(["h-h2", "h-freeSide", "h-driveStage"]);
+    const side = free.children[1];
+    expect([...side.children].map((el) => el.tagName)).toEqual(["UL", "A"]);
+    // The page's one action, worded as everywhere else: Sign in while sign-up is closed (as here), else Start free.
+    const start = side.lastElementChild!;
+    expect([start.textContent, start.getAttribute("href"), start.className]).toEqual(["Sign in", "/login", "h-btn h-freeStart"]);
     expect(free.querySelector("h3, article, .h-sectionHead")).toBeNull();
     const picture = free.lastElementChild!;
     expect(picture.classList.contains("h-driveStage")).toBe(true);
@@ -619,7 +625,7 @@ describe("home page stylesheet (home.css)", () => {
       "auto minmax(0, 30rem)",
       "end",
     ]);
-    expect(rule(".h-free > .h-facts", desktop).get("margin-top")).toBe("0");
+    expect(rule(".h-freeSide > .h-facts", desktop).get("margin-top")).toBe("0");
     expect(rule(".h-free > .h-driveStage", desktop).get("grid-column")).toBe("1 / -1");
   });
 
