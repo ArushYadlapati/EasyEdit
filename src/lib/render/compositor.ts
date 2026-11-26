@@ -2,7 +2,7 @@ import { captionsShow } from "@/lib/captions/cues";
 import { graphemes } from "@/lib/text";
 import { drawCaptions } from "./captions";
 import { drawShape } from "./shapes";
-import type { AdjustmentClip, Clip, Crop, Grade, MediaClip, TextClip, TimelineDoc, Track, Transform } from "@/lib/timeline";
+import type { AdjustmentClip, Clip, Crop, Grade, Mask, MediaClip, TextClip, TimelineDoc, Track, Transform } from "@/lib/timeline";
 import { adjustAt, effectiveTransform } from "@/lib/timeline/keyframes";
 import { isCropped, stretchOf } from "@/lib/timeline/presets";
 import { STYLE_KEYS, TONE_KEYS, type FullAdjust } from "@/lib/timeline/adjust";
@@ -18,7 +18,7 @@ export type { LocalRect };
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type ResolvedSource = { image: CanvasImageSource; width: number; height: number };
-export type LayerUse = "tone" | "finish" | "under";
+export type LayerUse = "tone" | "finish" | "under" | "mask";
 export type DrawOptions = {
   // The seam where media plugs in. clip: the video or image clip being drawn. frame: the timeline frame being drawn.
   resolveSource?: (clip: MediaClip, frame: number) => ResolvedSource | null;
@@ -29,8 +29,8 @@ export type DrawOptions = {
   hideClipId?: string;
   // A context on a canvas of this size for a picture that is finished on its own before it joins the frame, the
   // same one each time for the same use: "tone" for a picture being warmed, cooled or vignetted, "finish" for one on
-  // its way to the graphics card, "under" for the copy of the frame an adjustment layer works on. Default: an
-  // OffscreenCanvas; null where there is none.
+  // its way to the graphics card, "under" for the copy of the frame an adjustment layer works on, "mask" for a
+  // picture being cut to its mask. Default: an OffscreenCanvas; null where there is none.
   makeLayer?: (width: number, height: number, use: LayerUse) => Ctx2D | null;
   // What grades a picture and draws its stylised effects (finish-gl.ts). Default: one on the graphics card, shared;
   // null draws every picture without them.
@@ -474,6 +474,41 @@ function drawFinished(ctx: Ctx2D, pass: FinishPass, paint: (target: Ctx2D) => vo
   return true;
 }
 
+// A picture cut to its mask: painted whole on a layer of its own, the mask's shape then keeps (or, inverted, takes
+// out) its part of that layer, and the layer joins the frame. box: what the mask's shares are shares of, in the
+// clip's own pixels. The mask's soft edge is a canvas blur on the shape. False when there is no layer to paint on:
+// the caller then draws the picture unmasked.
+function drawMasked(ctx: Ctx2D, mask: Mask, box: LocalRect, paint: (target: Ctx2D) => void, options: DrawOptions): boolean {
+  const { width, height } = ctx.canvas;
+  const layer = (options.makeLayer ?? defaultLayer)(width, height, "mask");
+  if (!layer) return false;
+  const m = ctx.getTransform();
+  layer.save();
+  layer.setTransform(1, 0, 0, 1, 0, 0);
+  layer.clearRect(0, 0, width, height);
+  layer.setTransform(m);
+  paint(layer);
+  const w = box.right - box.left;
+  const h = box.bottom - box.top;
+  const mw = mask.width * w;
+  const mh = mask.height * h;
+  const cx = box.left + mask.x * w;
+  const cy = box.top + mask.y * h;
+  const blur = mask.feather * (Math.min(mw, mh) / 2) * Math.hypot(m.a, m.b);
+  layer.globalCompositeOperation = mask.invert ? "destination-out" : "destination-in";
+  if (blur > 0.01) layer.filter = `blur(${Number(blur.toFixed(2))}px)`;
+  layer.fillStyle = "#000000";
+  layer.beginPath();
+  if (mask.shape === "ellipse") layer.ellipse(cx, cy, mw / 2, mh / 2, 0, 0, Math.PI * 2);
+  else layer.rect(cx - mw / 2, cy - mh / 2, mw, mh);
+  layer.fill();
+  layer.restore();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(layer.canvas, 0, 0);
+  ctx.setTransform(m);
+  return true;
+}
+
 // An adjustment layer: the frame as drawn so far is copied to a layer, and drawn back over itself with the layer's
 // colour changes, grade and stylised effects, as much of it as the layer's opacity. A layer that changes nothing, or
 // is fully see-through, draws nothing. Without a canvas to copy the frame to, it is left out.
@@ -501,9 +536,13 @@ function drawAdjustment(ctx: Ctx2D, doc: TimelineDoc, clip: AdjustmentClip, fram
   };
   const whole = { left: 0, top: 0, right: doc.width, bottom: doc.height };
   const tone = (target: Ctx2D) => (toned ? drawAdjusted(target, adjust, whole, false, paint, options) : paint(target));
+  const finished = (target: Ctx2D) => {
+    if (!pass || !drawFinished(target, pass, tone, options)) tone(target);
+  };
   ctx.save();
   ctx.globalAlpha = amount;
-  if (!pass || !drawFinished(ctx, pass, tone, options)) tone(ctx);
+  // With a mask, only that part of the frame takes the change.
+  if (!clip.mask || !drawMasked(ctx, clip.mask, whole, finished, options)) finished(ctx);
   ctx.restore();
 }
 
@@ -580,7 +619,10 @@ function drawMedia(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip & { type: "vide
     // A keyed picture has see-through parts, as an image may.
     const tone = (target: Ctx2D) => (toned ? drawAdjusted(target, adjust, k, clip.type === "image" || !!clip.chroma, paint, options) : paint(target));
     const pass = finishOf(ctx, doc, clip, adjust, frame);
-    if (!pass || !drawFinished(ctx, pass, tone, options)) tone(ctx);
+    const finished = (target: Ctx2D) => {
+      if (!pass || !drawFinished(target, pass, tone, options)) tone(target);
+    };
+    if (!clip.mask || !drawMasked(ctx, clip.mask, k, finished, options)) finished(ctx);
     return;
   }
   ctx.fillStyle = PLACEHOLDER_FILL[clip.type];

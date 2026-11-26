@@ -49,6 +49,7 @@ const CLIP_FILL: Record<string, () => unknown> = {
   grade: () => ({}),
   blend: () => "normal",
   chroma: () => null,
+  mask: () => null,
   rounding: () => 0,
   group: () => null,
 };
@@ -70,7 +71,7 @@ const SHAPE_FILL: Record<string, () => unknown> = {
 // video and image effects (so a template's fade or move survives the fill), an audio slot none.
 const VISUAL_EFFECTS = ["keyframes", "transitionIn", "transitionOut"] as const;
 // What only a picture takes: its colours, and how it mixes with what is under it.
-const PICTURE_EFFECTS = ["adjust", "grade", "blend", "chroma", "rounding"] as const;
+const PICTURE_EFFECTS = ["adjust", "grade", "blend", "chroma", "mask", "rounding"] as const;
 // What a clip that sounds takes: captions for its speech, and a fade of its sound at either end.
 const SOUND_EFFECTS = ["captions", "fadeIn", "fadeOut", "pan", "sound"] as const;
 // A video clip takes both kinds; sound takes only its own (see CLIP_EFFECTS).
@@ -80,7 +81,7 @@ const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string
   audio: [...SOUND_EFFECTS, "keyframes"], // its volume's only (assertKeyframesFit)
   text: ["keyframes", "animationIn", "animationOut", "emphasis", "blend"],
   shape: [...VISUAL_EFFECTS, "blend"],
-  adjustment: ["keyframes", "adjust", "grade"], // its opacity's and colours' keyframes only (assertKeyframesFit)
+  adjustment: ["keyframes", "adjust", "grade", "mask"], // its opacity's and colours' keyframes only (assertKeyframesFit)
 };
 
 // A clip's ways in and out, each with the value that means it has none. A split takes the way out off the left piece

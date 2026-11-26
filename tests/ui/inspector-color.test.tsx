@@ -275,3 +275,19 @@ it("an adjustment layer shows its amount, the colours, the effects and its timin
   openGrade();
   expect(screen.getByRole("slider", { name: "Shadows color" })).toBeTruthy();
 });
+
+it("a mask is off until switched on, then shows its shape, place, size, soft edge and Invert", () => {
+  const { clip, field, type } = show();
+  expect(screen.getByRole("heading", { name: "Mask" })).toBeTruthy();
+  expect(screen.queryByLabelText("Mask width")).toBeNull();
+  fireEvent.click(screen.getByRole("switch", { name: "Show only part of the picture" }));
+  expect(clip().mask).toEqual({ shape: "ellipse", x: 0.5, y: 0.5, width: 0.6, height: 0.6, feather: 0.1 });
+  expect([field("Mask X").value, field("Mask width").value, field("Soft edge").value]).toEqual(["50", "60", "10"]);
+  fireEvent.click(screen.getByRole("radio", { name: "Rectangle" }));
+  type("Mask width", "30");
+  fireEvent.click(screen.getByRole("switch", { name: "Invert" }));
+  expect(clip().mask).toEqual({ shape: "rect", x: 0.5, y: 0.5, width: 0.3, height: 0.6, feather: 0.1, invert: true });
+  fireEvent.click(screen.getByRole("switch", { name: "Show only part of the picture" }));
+  expect(clip().mask).toBeNull();
+  expect(screen.queryByLabelText("Mask width")).toBeNull();
+});

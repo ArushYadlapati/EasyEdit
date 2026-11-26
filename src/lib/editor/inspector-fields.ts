@@ -1,5 +1,5 @@
 import { fontWeights, isListedFont, nearestWeight } from "@/lib/brand/fonts";
-import type { Clip, Crop, OpInput, TimelineDoc } from "@/lib/timeline";
+import type { Clip, Crop, Mask, OpInput, TimelineDoc } from "@/lib/timeline";
 import { ArrowHead, ArrowHeads, BlendMode, LOOKS, ShapeDash, VOLUME_MAX, adjustOf, isColorClip, isMediaClip, lookMatch, lookPatch, type AdjustKey, type MediaClip, type ShapeClip, type TextClip } from "@/lib/timeline";
 import { ARROW_DEFAULTS, CURVED_BEND, arrowThrough, takesRadius } from "@/lib/timeline/shapes";
 import { BACKGROUND_START, hasBackground, hasOutline, hasShadow, outlineStart, shadowStart, textExtras } from "@/lib/timeline/text-style";
@@ -115,6 +115,16 @@ export type ClipField =
   | "chromaColor"
   | "chromaTolerance"
   | "chromaSoftness"
+  // A picture's or adjustment layer's mask: on or off, its shape, where its middle sits and how large it is in
+  // percent of the picture, how soft its edge is in percent, and whether it is turned inside out ("on" or "off").
+  | "mask"
+  | "maskShape"
+  | "maskX"
+  | "maskY"
+  | "maskWidth"
+  | "maskHeight"
+  | "maskFeather"
+  | "maskInvert"
   // A shape's: its outline (or an arrow's line) colour and width, its fill, dashes and rounding, and an arrow's heads,
   // head look and size, and its path: Path sets it straight or curved, and Bend, on a line with one point, how far to
   // the side that point sits, in percent of the length.
@@ -208,6 +218,14 @@ export const FIELD_LABEL: Record<ClipField, string> = {
   chromaColor: "green screen",
   chromaTolerance: "green screen",
   chromaSoftness: "green screen",
+  mask: "mask",
+  maskShape: "mask",
+  maskX: "mask",
+  maskY: "mask",
+  maskWidth: "mask",
+  maskHeight: "mask",
+  maskFeather: "mask",
+  maskInvert: "mask",
   stroke: "style change",
   strokeWidth: "style change",
   fill: "style change",
@@ -275,6 +293,19 @@ export function slipRange(clip: MediaClip, lengthFrames?: number): { min: number
 
 // A clip with a picture of its own to colour and mirror: a video or an image.
 const LEVEL_WHEEL = { liftLevel: "lift", gammaLevel: "gamma", gainLevel: "gain" } as const;
+
+// What turning a mask on starts from: an ellipse in the middle, over a little more than half the picture, with a
+// slightly soft edge.
+export const MASK_START: Mask = { shape: "ellipse", x: 0.5, y: 0.5, width: 0.6, height: 0.6, feather: 0.1 };
+const MASK_PART = { maskX: "x", maskY: "y", maskWidth: "width", maskHeight: "height", maskFeather: "feather" } as const;
+// What each mask number takes as typed, in percent.
+export const MASK_RANGE: Record<keyof typeof MASK_PART, { min: number; max: number }> = {
+  maskX: { min: -100, max: 200 },
+  maskY: { min: -100, max: 200 },
+  maskWidth: { min: 1, max: 300 },
+  maskHeight: { min: 1, max: 300 },
+  maskFeather: { min: 0, max: 100 },
+};
 
 function isPicture(clip: Clip): clip is MediaClip & { type: "video" | "image" } {
   return clip.type === "video" || clip.type === "image";
@@ -434,6 +465,18 @@ export function clipFieldValue(saved: Clip, field: ClipField, ctx: FieldContext)
       return isColorClip(clip) ? oneDecimal(wheelOf(clip.grade, LEVEL_WHEEL[field]).level * 100) : "";
     case "lutAmount":
       return isColorClip(clip) && clip.grade?.lut ? oneDecimal((clip.grade.lutAmount ?? 1) * 100) : "";
+    case "mask":
+      return isColorClip(clip) ? (clip.mask ? "on" : "off") : "";
+    case "maskShape":
+      return isColorClip(clip) && clip.mask ? clip.mask.shape : "";
+    case "maskInvert":
+      return isColorClip(clip) && clip.mask ? (clip.mask.invert ? "on" : "off") : "";
+    case "maskX":
+    case "maskY":
+    case "maskWidth":
+    case "maskHeight":
+    case "maskFeather":
+      return isColorClip(clip) && clip.mask ? oneDecimal(clip.mask[MASK_PART[field]] * 100) : "";
     case "lookStrength": {
       const look = isColorClip(clip) ? lookMatch(clip.adjust) : null;
       return look && look.id !== "none" ? oneDecimal(look.strength * 100) : "";
@@ -840,6 +883,32 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       if (n === null || !isColorClip(clip) || !clip.grade?.lut) return null;
       const lutAmount = round(clamp(n, 0, 100) / 100, 3);
       return lutAmount === (clip.grade.lutAmount ?? 1) ? [] : update({ grade: { lutAmount } });
+    }
+    case "mask": {
+      if ((raw !== "on" && raw !== "off") || !isColorClip(clip)) return null;
+      if ((raw === "on") === !!clip.mask) return [];
+      return update({ mask: raw === "on" ? { ...MASK_START } : null });
+    }
+    case "maskShape": {
+      if (!isColorClip(clip) || !clip.mask || (raw !== "rect" && raw !== "ellipse")) return null;
+      // A mask is one value: it is sent whole.
+      return raw === clip.mask.shape ? [] : update({ mask: { ...clip.mask, shape: raw } });
+    }
+    case "maskInvert": {
+      if (!isColorClip(clip) || !clip.mask || (raw !== "on" && raw !== "off")) return null;
+      return (raw === "on") === (clip.mask.invert ?? false) ? [] : update({ mask: { ...clip.mask, invert: raw === "on" } });
+    }
+    case "maskX":
+    case "maskY":
+    case "maskWidth":
+    case "maskHeight":
+    case "maskFeather": {
+      const n = parseNumber(raw);
+      if (n === null || !isColorClip(clip) || !clip.mask) return null;
+      const part = MASK_PART[field];
+      const range = MASK_RANGE[field];
+      const value = round(clamp(n, range.min, range.max) / 100, 4);
+      return value === clip.mask[part] ? [] : update({ mask: { ...clip.mask, [part]: value } });
     }
     case "lookStrength": {
       // The look's colours at this share of their own. It stops at 1%: at 0 nothing of the look is left to have a

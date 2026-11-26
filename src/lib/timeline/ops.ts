@@ -70,6 +70,7 @@ const ClipExpect = z
     grade: Grade,
     blend: BlendMode,
     chroma: MediaClip.shape.chroma,
+    mask: MediaClip.shape.mask,
     rounding: MediaClip.shape.rounding,
     animationIn: TextClip.shape.animationIn,
     animationOut: TextClip.shape.animationOut,

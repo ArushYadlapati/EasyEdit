@@ -124,6 +124,20 @@ export type Lut = z.infer<typeof Lut>;
 export const Chroma = z.strictObject({ color: HexColor, tolerance: z.number().min(0).max(1), softness: z.number().min(0).max(1) });
 export type Chroma = z.infer<typeof Chroma>;
 
+// A mask: the part of a picture (or of what an adjustment layer changes) that shows. A box or an ellipse, placed and
+// sized in shares of the picture as it is shown (x, y its centre: 0.5, 0.5 the middle; width and height 1 the whole),
+// its edge softened by `feather` (a share of its shorter side). Inverted, it is the part that does not show.
+export const Mask = z.strictObject({
+  shape: z.enum(["rect", "ellipse"]),
+  x: z.number().min(-1).max(2),
+  y: z.number().min(-1).max(2),
+  width: z.number().min(0.01).max(3),
+  height: z.number().min(0.01).max(3),
+  feather: z.number().min(0).max(1),
+  invert: z.boolean().optional(),
+});
+export type Mask = z.infer<typeof Mask>;
+
 // A video's or audio clip's sound clean-up. Each is off, or 0, when absent: a rumble filter, a noise gate and a
 // compressor by how much (0 to 1), and three tone bands in decibels.
 const ToneDb = z.number().min(-12).max(12);
@@ -306,6 +320,7 @@ export const MediaClip = z.object({
   // Video and audio only (checked in the ops): its sound's clean-up.
   sound: SoundFx.optional(),
   chroma: Chroma.nullable().optional(), // null or absent: no colour is taken out
+  mask: Mask.nullable().optional(), // video and image only (checked in the ops); null or absent: all of it shows
   rounding: z.number().min(0).max(1).optional(), // how round its corners are: 0 square, 1 as round as its short side allows
 });
 export type MediaClip = z.infer<typeof MediaClip>;
@@ -440,6 +455,7 @@ export const AdjustmentClip = z.object({
   type: z.literal("adjustment"),
   adjust: Adjust.optional(),
   grade: Grade.optional(),
+  mask: Mask.nullable().optional(), // the part of the frame it changes; null or absent: all of it
   keyframes: Keyframes.optional(), // opacity and the colours only (checked in the ops)
 });
 export type AdjustmentClip = z.infer<typeof AdjustmentClip>;

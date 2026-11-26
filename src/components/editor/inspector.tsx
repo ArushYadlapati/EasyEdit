@@ -31,8 +31,7 @@ import {
   fieldContext,
   parseNumber,
   scrubBounds,
-  type ClipField,
-} from "@/lib/editor/inspector-fields";
+  type ClipField, MASK_RANGE } from "@/lib/editor/inspector-fields";
 import { mediaLengthFrames } from "@/lib/editor/media-clips";
 import { clipFrame } from "@/lib/editor/keyframe-edit";
 import { markerAt, sortedMarkers } from "@/lib/editor/markers";
@@ -162,6 +161,11 @@ function scrubOf(field: ClipField, units: Units, fps: number): { scrub: number; 
     case "glitch":
     case "vhs":
     case "lookStrength":
+    case "maskX":
+    case "maskY":
+    case "maskWidth":
+    case "maskHeight":
+    case "maskFeather":
     case "liftLevel":
     case "gammaLevel":
     case "gainLevel":
@@ -889,6 +893,44 @@ function ColorSection({ clip }: { clip: ColorClip }) {
   );
 }
 
+// A mask: the part of the picture that shows, or for an adjustment layer the part of the frame it changes. A box or
+// an ellipse, placed and sized in percent of the picture, with a soft edge; inverted it is the part that does not.
+function MaskSection({ clip }: { clip: ColorClip }) {
+  const store = useEditorStore();
+  const canEdit = useEditor((s) => s.canEdit);
+  const number = (field: keyof typeof MASK_RANGE, label: string) => (
+    <NumberField clipId={clip.id} field={field} label={label} suffix="%" min={MASK_RANGE[field].min} max={MASK_RANGE[field].max} />
+  );
+  return (
+    <Section title="Mask">
+      <Toggle label={clip.type === "adjustment" ? "Change only part of the frame" : "Show only part of the picture"} data-edit-control checked={!!clip.mask} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "mask", on ? "on" : "off")} />
+      {clip.mask && (
+        <>
+          <Segmented
+            label="Mask shape"
+            data-edit-control
+            disabled={!canEdit}
+            value={clip.mask.shape}
+            options={[
+              { value: "ellipse", label: "Ellipse" },
+              { value: "rect", label: "Rectangle" },
+            ]}
+            onChange={(shape) => editField(store, clip.id, "maskShape", shape)}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            {number("maskX", "Mask X")}
+            {number("maskY", "Mask Y")}
+            {number("maskWidth", "Mask width")}
+            {number("maskHeight", "Mask height")}
+            {number("maskFeather", "Soft edge")}
+          </div>
+          <Toggle label="Invert" data-edit-control checked={clip.mask.invert ?? false} disabled={!canEdit} onChange={(on) => editField(store, clip.id, "maskInvert", on ? "on" : "off")} />
+        </>
+      )}
+    </Section>
+  );
+}
+
 // A video's or image's stylised effects, each as how much of it: 0 is off. They are drawn on the graphics card, after
 // the colours, on the picture as it sits in the frame.
 function StylizeSection({ clip }: { clip: ColorClip }) {
@@ -1043,6 +1085,7 @@ function AdjustmentInspector({ clip }: { clip: AdjustmentClip }) {
       </Section>
       <ColorSection clip={clip} />
       <StylizeSection clip={clip} />
+      <MaskSection clip={clip} />
       <TimingSection clipId={clip.id} slips={false} />
     </>
   );
@@ -1070,6 +1113,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "shape" && <CropSection clipId={clip.id} />}
       {isColorClip(clip) && <ColorSection clip={clip} />}
       {isColorClip(clip) && <StylizeSection clip={clip} />}
+      {isColorClip(clip) && <MaskSection clip={clip} />}
       {drawsOnCanvas && clip.type !== "placeholder" && clip.type !== "audio" && <MixSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SoundSection clip={clip} />}
       {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}
