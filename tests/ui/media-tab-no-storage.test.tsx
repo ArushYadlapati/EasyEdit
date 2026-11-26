@@ -158,7 +158,7 @@ describe("the Media tab of a space with no storage", () => {
 describe("the media space context", () => {
   it("defaults to storage ready with no provider, as MediaProvider does without the prop", () => {
     const bare = renderHook(() => useMediaSpace());
-    expect(bare.result.current).toEqual({ spaceId: null, storageReady: true, storageProblem: null, storageSetup: null });
+    expect(bare.result.current).toEqual({ spaceId: null, storageReady: true, storageProblem: null, storageSetup: null, stock: false });
     const provided = renderHook(() => useMediaSpace(), {
       wrapper: ({ children }) => <MediaProvider services={{} as MediaServices}>{children}</MediaProvider>,
     });
