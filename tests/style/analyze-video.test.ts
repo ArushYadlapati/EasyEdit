@@ -8,6 +8,7 @@ import {
   failureReason,
   filesToTry,
   sheetLabel,
+  sheetLabels,
   type AnalyzeDeps,
   type AnalyzeProgress,
   type SheetCanvas,
@@ -244,6 +245,28 @@ describe("looking over a video", () => {
     expect(analysis.sound).toEqual({ loudnessDb: -6, peakDb: -6 });
   });
 
+  it("tells how far reading the frames has got against the file's own length when the library doesn't know it", async () => {
+    const shotsDone = (seen: AnalyzeProgress[]) => seen.filter((p) => p.stage === "shots" && p.done > 0 && p.done < 0.9).length;
+    const known = fakeDeps();
+    const withLength: AnalyzeProgress[] = [];
+    await analyzeVideo(VIDEO, known.deps, { listen: false, onProgress: (p) => withLength.push(p) });
+
+    const told = fakeDeps();
+    const videoSeconds = vi.fn(async () => 6);
+    const fromFile: AnalyzeProgress[] = [];
+    const { analysis } = await analyzeVideo(assetView({ ...VIDEO, durationMs: null }), { ...told.deps, videoSeconds }, { listen: false, onProgress: (p) => fromFile.push(p) });
+    expect(videoSeconds).toHaveBeenCalledOnce();
+    expect(shotsDone(fromFile)).toBe(shotsDone(withLength));
+    expect(shotsDone(fromFile)).toBeGreaterThan(50);
+    expect(analysis.seconds).toBe(6); // still from the last frame read
+
+    // A file that can't say either: no share is told until the frames are read, as before.
+    const silent = fakeDeps();
+    const unknown: AnalyzeProgress[] = [];
+    await analyzeVideo(assetView({ ...VIDEO, durationMs: null }), { ...silent.deps, videoSeconds: async () => null }, { listen: false, onProgress: (p) => unknown.push(p) });
+    expect(shotsDone(unknown)).toBe(0);
+  });
+
   it("takes its length from the last frame when the library doesn't know it", async () => {
     const { deps, scanned } = fakeDeps();
     const { analysis } = await analyzeVideo(assetView({ ...VIDEO, durationMs: null }), deps);
@@ -354,7 +377,7 @@ describe("the strip of frames", () => {
     expect(draws[4]).toEqual(["drawImage", times[4], 0, 240, 135, 240]);
     // Each label is white text on a dark, see-through pill in the tile's corner.
     const labels = canvas.ops.filter((op) => op[0] === "fillText");
-    expect(labels.map((op) => op[1])).toEqual(times.map(sheetLabel));
+    expect(labels.map((op) => op[1])).toEqual(sheetLabels(times));
     expect(labels[0]).toEqual(["fillText", "0:00.2", 9, 13, "#fff", expect.stringContaining("12px")]);
     expect(canvas.ops).toContainEqual(["fill", "rgba(0, 0, 0, 0.6)"]);
     expect(canvas.ops.find((op) => op[0] === "roundRect")).toEqual(["roundRect", 4, 4, 46, 18, 9]);
@@ -444,6 +467,28 @@ describe("the strip of frames", () => {
     expect(sheetLabel(61.55)).toBe("1:01.6");
     expect(sheetLabel(59.96)).toBe("1:00.0");
     expect(sheetLabel(3723.4)).toBe("1:02:03.4");
+    expect(sheetLabel(0.15, 2)).toBe("0:00.15");
+    expect(sheetLabel(3723.05, 2)).toBe("1:02:03.05");
+    expect(sheetLabel(59.996, 2)).toBe("1:00.00");
+  });
+
+  it("labels every tile in hundredths when two would read the same in tenths, so each can be told apart", () => {
+    expect(sheetLabels([0.2, 1.5, 3.25])).toEqual(["0:00.2", "0:01.5", "0:03.3"]);
+    // A clip of 0.3 s, whose frames are 0.05 s or more apart.
+    const times = sheetTimes([], 0.3);
+    expect(new Set(times.map((t) => sheetLabel(t))).size).toBeLessThan(times.length);
+    const labels = sheetLabels(times);
+    expect(labels).toEqual(times.map((t) => sheetLabel(t, 2)));
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("draws a very short clip's labels in hundredths", async () => {
+    const { deps, canvases } = fakeDeps({ files: { "prev-a": { shots: [[0.3, RED]] }, "orig-a": { shots: [[0.3, RED]] } } });
+    const { analysis } = await analyzeVideo(assetView({ ...VIDEO, durationMs: 300 }), deps);
+    const drawn = canvases[0].ops.filter((op) => op[0] === "fillText").map((op) => op[1]);
+    expect(drawn).toEqual(sheetLabels(analysis.sheet!.times));
+    expect(drawn[0]).toMatch(/^0:00\.\d\d$/);
+    expect(new Set(drawn).size).toBe(drawn.length);
   });
 });
 

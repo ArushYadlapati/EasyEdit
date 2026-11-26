@@ -178,10 +178,12 @@ export function speechStats(words: readonly CaptionWord[], seconds: number): Spe
 const SHEET_APART = 0.05;
 
 // When to take the frames for a video's strip, in seconds to two places, in order: one at 0.2 s (the first thing
-// people see; the middle of a video under 0.4 s), then the rest from the middles of its shots, spread evenly over
-// them. With more shots than room, shots are picked evenly through the video; with fewer, the longer shots give more
-// than one frame, from the middles of equal parts of them. Of frames under 0.05 s apart only one is kept, and the
-// first frame is never the one dropped. At most max, and never more than a strip holds (12).
+// people see; the middle of a video under 0.4 s), which stands for the first shot, then the rest from the middles of
+// its shots, spread evenly over them. With more shots after the first than room, those shots are picked evenly
+// through the video; with fewer, every shot gets a frame and the longer ones more than one, from the middles of equal
+// parts of them, the first shot's first part having the 0.2 s frame in place of its middle, so the strip doesn't spend
+// a second tile on its opening moment. Of frames under 0.05 s apart only one is kept, and the first frame is never
+// the one dropped. At most max, and never more than a strip holds (12).
 export function sheetTimes(cuts: readonly number[], seconds: number, max: number = ANALYSIS_LIMITS.sheetFrames): number[] {
   if (!(seconds > 0)) return [0];
   const most = Number.isFinite(max) ? clamp(Math.floor(max), 1, ANALYSIS_LIMITS.sheetFrames) : ANALYSIS_LIMITS.sheetFrames;
@@ -189,21 +191,23 @@ export function sheetTimes(cuts: readonly number[], seconds: number, max: number
   const times = [seconds < 0.4 ? seconds / 2 : 0.2];
   const bounds = shotBounds(cuts, seconds);
   const shots = bounds.slice(1).map((end, i) => ({ start: bounds[i], length: end - bounds[i] }));
-  if (room > 0 && shots.length >= room) {
+  const later = shots.slice(1);
+  if (later.length >= room) {
     for (let k = 0; k < room; k++) {
-      const shot = shots[Math.floor(((k + 0.5) * shots.length) / room)];
+      const shot = later[Math.floor(((k + 0.5) * later.length) / room)];
       times.push(shot.start + shot.length / 2);
     }
-  } else if (room > 0) {
-    // Every shot gets a frame; each one left over goes to the shot whose parts are now the longest.
+  } else {
+    // Every shot gets a frame, the first shot the one already taken; each one left over goes to the shot whose parts
+    // are now the longest.
     const parts = shots.map(() => 1);
-    for (let left = room - shots.length; left > 0; left--) {
+    for (let left = most - shots.length; left > 0; left--) {
       let best = 0;
       for (let i = 1; i < shots.length; i++) if (shots[i].length / parts[i] > shots[best].length / parts[best]) best = i;
       parts[best]++;
     }
     shots.forEach((shot, i) => {
-      for (let j = 0; j < parts[i]; j++) times.push(shot.start + ((j + 0.5) * shot.length) / parts[i]);
+      for (let j = i === 0 ? 1 : 0; j < parts[i]; j++) times.push(shot.start + ((j + 0.5) * shot.length) / parts[i]);
     });
   }
   // The first frame always stays; each other one stays when it is far enough from every frame kept so far.

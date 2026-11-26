@@ -18,6 +18,11 @@ const TEXT = "text-[13px] leading-5";
 // How many lines the card gives a style with no summary.
 const GLANCE_LINES = 2;
 
+// The fields that say most about how to edit, in the order the card picks them when there is no summary; the others
+// follow in the Style page's order.
+const MOST_USEFUL: readonly (keyof StyleProfile)[] = ["pace", "captions", "look", "music", "hook"];
+const GLANCE_ORDER: readonly (keyof StyleProfile)[] = [...MOST_USEFUL, ...STYLE_PROFILE_KEYS.filter((key) => key !== "summary" && !MOST_USEFUL.includes(key))];
+
 // The choices the card names alone ("Pace: Quick"): what each one means is on the Style page.
 const CHOICES: Partial<Record<keyof StyleProfile, readonly StyleOption<string>[]>> = {
   pace: PACE_OPTIONS,
@@ -40,13 +45,14 @@ function fieldWords(key: keyof StyleProfile, profile: StyleProfile): string | nu
   return profileValueWords(key, profile);
 }
 
-// What the card says of a style: its summary; else the first things that are set, in the Style page's order, then
-// its notes, at most GLANCE_LINES of them, each as "Pace: Quick". Nothing for a style nobody has filled in.
+// What the card says of a style: its summary; else the most useful things that are set (pace, captions, look, music
+// and how it opens before the rest), then its notes, at most GLANCE_LINES of them, each as "Pace: Quick". Nothing for
+// a style nobody has filled in.
 function glance(style: Style): string[] {
   const summary = profileValueWords("summary", style.profile);
   if (summary) return [summary];
   const lines: string[] = [];
-  for (const key of STYLE_PROFILE_KEYS) {
+  for (const key of GLANCE_ORDER) {
     const value = fieldWords(key, style.profile);
     if (value) lines.push(WORDS.field(STYLE_FIELDS[key].label, value));
   }
@@ -80,7 +86,7 @@ export function StyleCardProvider({
 // and not again while it stays open. The first time, there's no card until it has arrived, or at all when it couldn't
 // be read: the tab works the same without it. Opened again, the card shows the style as last read while it's read
 // again, and keeps it if that read fails. Someone who can't edit the project can only look at the style, so their link
-// says so.
+// says so, and isn't there at all while there's no style to look at.
 export function StyleCard(): ReactNode {
   const space = useContext(StyleCardContext);
   const canEdit = useEditor((s) => s.canEdit);
@@ -120,9 +126,11 @@ export function StyleCard(): ReactNode {
       ) : (
         <p className={cx(TEXT, "text-ed-muted")}>{canEdit ? WORDS.empty : WORDS.emptyViewer}</p>
       )}
-      <LeaveLink href={settingsTabPath(space.slug, "style")} className={linkButtonClass()}>
-        {canEdit ? WORDS.edit : WORDS.see}
-      </LeaveLink>
+      {(canEdit || lines.length > 0) && (
+        <LeaveLink href={settingsTabPath(space.slug, "style")} className={linkButtonClass()}>
+          {canEdit ? WORDS.edit : WORDS.see}
+        </LeaveLink>
+      )}
     </section>
   );
 }

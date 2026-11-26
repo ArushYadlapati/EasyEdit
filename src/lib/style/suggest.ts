@@ -29,6 +29,15 @@ function quantile(sorted: readonly number[], q: number): number {
   return sorted[low] + (sorted[high] - sorted[low]) * (at - low);
 }
 
+// Of three lengths or fewer, those near enough the middle one to be the same kind of video: no more than 3 times it,
+// and no less than a third of it. With two there's no telling which one is odd, so both stay. Sorted in, sorted out.
+const FAR = 3;
+function nearTheMiddle(sorted: readonly number[]): readonly number[] {
+  if (sorted.length < 3) return sorted;
+  const middle = quantile(sorted, 0.5);
+  return sorted.filter((n) => n <= middle * FAR && n >= middle / FAR);
+}
+
 // The value given most often, the one earlier in order among equals; undefined when none of them is in order.
 function mostCommon<T extends string>(values: readonly T[], order: readonly T[]): T | undefined {
   let best: T | undefined;
@@ -87,7 +96,9 @@ function talkingHook(opening: string | undefined): string {
 
 // The style the references point to, with only the fields they say something about:
 // - pace and typical shot from the middle of each video's and project's middle shot length;
-// - typical length from the spread of their lengths (the middle half once there are 4 or more), to 5 seconds;
+// - typical length from the spread of the lengths of the space's own videos and projects, or of the links' when there
+//   are none (a link is often someone else's video): the middle half once there are 4 or more, else from the shortest
+//   to the longest, leaving out one more than 3 times the middle one or under a third of it; to 5 seconds;
 // - where they post from the projects' formats, the videos' shapes and links to Shorts or other tall clips;
 // - captions on, in the projects' most used look, when projects show captions, else on when most videos talk (someone
 //   talking through over 40% of the video);
@@ -113,9 +124,10 @@ export function suggestStyle(analyses: readonly ReferenceAnalysis[]): StyleProfi
     profile.shotSeconds = shot;
   }
 
-  const lengths = [...videos.map((v) => v.seconds), ...links.map((l) => l.seconds), ...projects.map((p) => p.seconds)]
-    .filter((n): n is number => finite(n) && n > 0)
-    .sort((a, b) => a - b);
+  const lengthsOf = (list: readonly (number | undefined)[]) => list.filter((n): n is number => finite(n) && n > 0).sort((a, b) => a - b);
+  const own = lengthsOf([...videos, ...projects].map((a) => a.seconds));
+  const pool = own.length > 0 ? own : lengthsOf(links.map((l) => l.seconds));
+  const lengths = pool.length >= 4 ? pool : nearTheMiddle(pool);
   if (lengths.length > 0) {
     const spread = lengths.length >= 4;
     const fit = (n: number) => clamp(n, STYLE_LENGTH_SECONDS.min, STYLE_LENGTH_SECONDS.max);

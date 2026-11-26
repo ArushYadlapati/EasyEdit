@@ -3,11 +3,13 @@
 import { Download } from "lucide-react";
 import type { ReactNode } from "react";
 import { linkButtonClass } from "@/components/ui/button-class";
-import { TextInput } from "@/components/ui/text-input";
 import { AGENT_SKILLS_FOLDER, PLUGIN_COMMANDS, SKILL_WORDS, SKILL_ZIP_NAME, SKILL_ZIP_PATH } from "@/lib/skills/words";
 import { CopyButton } from "./copy";
 
 const TEXT = "text-[13px] leading-5 text-ed-text [overflow-wrap:anywhere]";
+// A command shown whole: it wraps onto more lines rather than being cut off in a narrow window, and a click selects all
+// of it. 28 px tall on one line, as the Copy button beside it.
+const COMMAND = "min-w-0 flex-1 rounded-md border border-ed-line bg-ed-raised px-3 py-[3px] font-mono text-xs leading-5 text-ed-text select-all [overflow-wrap:anywhere]";
 
 function Way({ name, children }: { name: string; children: ReactNode }): ReactNode {
   return (
@@ -19,8 +21,8 @@ function Way({ name, children }: { name: string; children: ReactNode }): ReactNo
 }
 
 // The body of the AI agents page's "Video skills" section: connected agents already have the skills; Claude Code adds
-// them, with the connection, from two copyable commands; agents that read skills from a folder unzip the download; and
-// Claude on the web takes the same file as an upload.
+// them, with the connection, from two commands, each shown whole with Copy beside it; agents that read skills from a
+// folder unzip the download; and Claude on the web takes the same file as an upload.
 export function VideoSkills(): ReactNode {
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -29,15 +31,8 @@ export function VideoSkills(): ReactNode {
         <Way name={SKILL_WORDS.claudeCode.name}>
           <p className={TEXT}>{SKILL_WORDS.claudeCode.text}</p>
           {PLUGIN_COMMANDS.map(({ command, label, copyLabel }) => (
-            <div key={command} className="flex min-w-0 items-center gap-2">
-              <TextInput
-                readOnly
-                aria-label={label}
-                value={command}
-                spellCheck={false}
-                className="min-w-0 flex-1 font-mono"
-                onFocus={(event) => event.currentTarget.select()}
-              />
+            <div key={command} role="group" aria-label={label} className="flex min-w-0 items-start gap-2">
+              <code className={COMMAND}>{command}</code>
               <CopyButton text={command} label={copyLabel} />
             </div>
           ))}

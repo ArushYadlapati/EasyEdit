@@ -187,21 +187,33 @@ describe("when the strip's frames are taken", () => {
     expect(short.every((t) => t === 0.15 || Math.abs(t - 0.15) >= 0.05 - 1e-9)).toBe(true);
   });
 
-  it("spreads the rest over one long shot", () => {
-    const times = sheetTimes([], 60);
+  it("spreads the rest over one long shot, the first frame standing for its first part", () => {
+    // 12 parts of 5 s: the first frame in place of the first part's middle, then the middles of the other 11.
+    expect(sheetTimes([], 60)).toEqual([0.2, 7.5, 12.5, 17.5, 22.5, 27.5, 32.5, 37.5, 42.5, 47.5, 52.5, 57.5]);
+  });
+
+  it("never spends two frames on the first moment of a short single shot", () => {
+    // Before, a 9 s clip gave 0.2 s and 0.41 s, which show all but the same picture.
+    const times = sheetTimes([], 9);
     expect(times).toHaveLength(12);
-    expect(times.slice(0, 3)).toEqual([0.2, 2.73, 8.18]);
-    expect(times[11]).toBe(57.27);
+    expect(times.slice(0, 3)).toEqual([0.2, 1.13, 1.88]);
+    const gaps = times.slice(1).map((t, i) => t - times[i]);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(0.74);
   });
 
-  it("picks shots evenly through a video with more shots than room", () => {
+  it("picks the shots after the first evenly through a video with more of them than room", () => {
     const cuts = Array.from({ length: 23 }, (_, i) => i + 1); // 24 shots of 1 second
-    expect(sheetTimes(cuts, 24)).toEqual([0.2, 1.5, 3.5, 5.5, 7.5, 9.5, 12.5, 14.5, 16.5, 18.5, 20.5, 22.5]);
+    expect(sheetTimes(cuts, 24)).toEqual([0.2, 2.5, 4.5, 6.5, 8.5, 10.5, 12.5, 14.5, 16.5, 18.5, 20.5, 22.5]);
+    // 12 shots: the first frame for the first, and one from the middle of each of the other 11.
+    expect(sheetTimes(Array.from({ length: 11 }, (_, i) => i + 1), 12)).toEqual([0.2, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5, 11.5]);
   });
 
-  it("gives longer shots more frames when there are fewer shots than room", () => {
-    // A 2 s shot and a 10 s shot, 4 frames after the first: the long one gets 3, from the middles of its thirds.
-    expect(sheetTimes([2], 12, 5)).toEqual([0.2, 1, 3.67, 7, 10.33]);
+  it("gives longer shots more frames when there are fewer shots than room, counting the first frame as the first shot's", () => {
+    // A 2 s shot and a 10 s shot, 5 frames: the first frame is the short shot's, and the long one gets 4, from the
+    // middles of its quarters.
+    expect(sheetTimes([2], 12, 5)).toEqual([0.2, 3.25, 5.75, 8.25, 10.75]);
+    // Cuts at 2.5, 4.5 and 7.5 s in 9 s: the first shot's other frames are from the middles of its later parts.
+    expect(sheetTimes([2.5, 4.5, 7.5], 9).slice(0, 3)).toEqual([0.2, 1.25, 2.08]);
   });
 
   it("never takes more frames than a strip holds", () => {

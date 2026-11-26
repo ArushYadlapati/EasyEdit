@@ -8,35 +8,62 @@ import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import type { AssetView } from "@/lib/media/types";
 import { sheetUrl } from "@/lib/style/client";
-import { progressWords, referenceFacts } from "@/lib/style/describe";
+import { progressWords, referenceFacts, referenceTitle } from "@/lib/style/describe";
 import { isThumbnailHost } from "@/lib/style/links";
 import { STYLE_WORDS } from "@/lib/style/messages";
-import type { StyleReference } from "@/lib/style/types";
+import type { SheetPlan, StyleReference } from "@/lib/style/types";
 import type { ReferenceProgress } from "./use-analyze-reference";
 
 const W = STYLE_WORDS.learn;
-const BOX = "flex aspect-video w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-ed-line bg-ed-bg text-ed-muted sm:w-24 [&>svg]:size-5";
+const BOX =
+  "relative flex aspect-video w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-ed-line bg-ed-bg text-ed-muted sm:w-24 [&>svg]:size-5";
 
-function AssetPicture({ asset }: { asset: AssetView }) {
+// A video's still from the library, with what to show until it has loaded, or if it never does.
+function AssetPicture({ asset, until }: { asset: AssetView; until: ReactNode }) {
   const poster = usePoster(asset, true);
   return poster ? (
     // eslint-disable-next-line @next/next/no-img-element -- a blob address of the space's own video still
     <img src={poster} alt="" className="size-full object-cover" />
   ) : (
-    <Film aria-hidden />
+    until
   );
 }
 
-// The picture at the start of a card: a measured video's strip of frames, else its still from the library; a link's
-// picture from its site (sent no page address); a neutral mark for anything else.
+// The first tile of a video's strip of frames, filling the card's 16:9 box the way a cover-fit picture would: the strip
+// is drawn columns × rows times the tile's size, from the tile's top-left corner, inside a tile-shaped window that
+// covers the box. A tile has the video's shape (sheetGrid in video-facts.ts), so a tall video's is cut to its middle.
+function FirstTile({ src, sheet, width, height }: { src: string; sheet: SheetPlan; width: number; height: number }) {
+  const wider = width * 9 >= height * 16; // at least as wide as the box, so the tile is as tall as the box
+  return (
+    <span
+      className={cx("absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 overflow-hidden", wider ? "h-full" : "w-full")}
+      style={{ aspectRatio: `${width} / ${height}` }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- the reference's own strip of frames, served by EasyEdit */}
+      <img
+        src={src}
+        alt=""
+        className="absolute top-0 left-0 max-w-none"
+        style={{ width: `${sheet.columns * 100}%`, height: `${sheet.rows * 100}%` }}
+      />
+    </span>
+  );
+}
+
+// The picture at the start of a card: a video's still from the library, as the Media tab shows it; until that has
+// loaded, or when the video isn't in the library, the first frame of its strip once it has been measured (the whole
+// strip is for agents: at this size it is a mosaic). A link's picture from its site (sent no page address); a neutral
+// mark for anything else.
 function Picture({ reference, asset }: { reference: StyleReference; asset: AssetView | undefined }) {
   const facts = reference.analysis;
   let inside: ReactNode;
-  if (reference.kind === "video" && reference.hasSheet && facts?.kind === "video") {
-    // eslint-disable-next-line @next/next/no-img-element -- the reference's own strip of frames, served by EasyEdit
-    inside = <img src={sheetUrl(reference.id, facts.analyzedAt)} alt="" className="size-full object-cover" />;
-  } else if (reference.kind === "video") {
-    inside = asset ? <AssetPicture asset={asset} /> : <Film aria-hidden />;
+  if (reference.kind === "video") {
+    const tile =
+      reference.hasSheet && facts?.kind === "video" && facts.sheet ? (
+        <FirstTile src={sheetUrl(reference.id, facts.analyzedAt)} sheet={facts.sheet} width={facts.width} height={facts.height} />
+      ) : null;
+    const until = tile ?? <Film aria-hidden />;
+    inside = asset ? <AssetPicture asset={asset} until={until} /> : until;
   } else if (reference.kind === "link" && reference.thumbnailUrl && isThumbnailHost(reference.thumbnailUrl)) {
     inside = (
       // eslint-disable-next-line @next/next/no-img-element -- a small picture on YouTube's, Vimeo's or TikTok's own servers; next/image would fetch it through ours.
@@ -62,24 +89,24 @@ export type ReferenceCardProps = {
 };
 
 // One thing the style learns from, as a row: its picture, its title (a link's opens its video), one line of facts, and
-// where it is: being looked at, not looked at yet, or why it couldn't be, with Try again. Editors can remove it.
+// where it is: being looked at, not looked at yet, or why it couldn't be, with Try again. Editors can remove it. A
+// viewer is told that a video couldn't be looked at, but not the reason, which is for the editor whose browser tried.
 export function ReferenceCard({ reference, asset, progress, error, canEdit, stale, busy, onRemove, onTryAgain, onRefresh }: ReferenceCardProps): ReactNode {
   const facts = referenceFacts(reference);
+  const title = referenceTitle(reference);
   const failure = error ?? (reference.status === "failed" ? (reference.failure ?? STYLE_WORDS.analysisFailed.unknown) : null);
   let status: ReactNode = null;
   if (progress) {
     status = <p className="text-xs leading-4 text-ed-text tabular-nums">{progressWords(progress)}</p>;
+  } else if (reference.kind === "video" && failure && !canEdit) {
+    status = <p className="text-xs leading-4 text-ed-muted">{W.failedViewer}</p>;
   } else if (reference.kind === "video" && failure) {
     status = (
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <p role={error ? "alert" : undefined} className="min-w-0 text-xs leading-4 text-ed-danger">
           {failure}
         </p>
-        {canEdit && (
-          <Button size="sm" onClick={onTryAgain}>
-            {W.tryAgain}
-          </Button>
-        )}
+        <Button onClick={onTryAgain}>{W.tryAgain}</Button>
       </div>
     );
   } else if (reference.kind === "video" && reference.status === "pending" && canEdit && asset?.removed) {
@@ -95,7 +122,7 @@ export function ReferenceCard({ reference, asset, progress, error, canEdit, stal
           {error ?? W.channelStale}
         </p>
         {canEdit && onRefresh && (
-          <Button size="sm" disabled={busy} onClick={onRefresh}>
+          <Button disabled={busy} onClick={onRefresh}>
             {W.refresh}
           </Button>
         )}
@@ -120,16 +147,16 @@ export function ReferenceCard({ reference, asset, progress, error, canEdit, stal
             rel="noreferrer"
             className={cx("max-w-full self-start truncate rounded-sm text-[13px] leading-5 font-medium text-ed-text underline-offset-2 hover:underline", FOCUS_RING, FADE)}
           >
-            {reference.title}
+            {title}
           </a>
         ) : (
-          <p className="truncate text-[13px] leading-5 font-medium text-ed-text">{reference.title}</p>
+          <p className="truncate text-[13px] leading-5 font-medium text-ed-text">{title}</p>
         )}
         {facts && <p className="text-xs leading-4 break-words text-ed-muted">{facts}</p>}
         {status}
       </div>
       {canEdit && (
-        <IconButton label={W.remove(reference.title)} disabled={busy} onClick={onRemove}>
+        <IconButton label={W.remove(title)} disabled={busy} onClick={onRemove}>
           <X />
         </IconButton>
       )}

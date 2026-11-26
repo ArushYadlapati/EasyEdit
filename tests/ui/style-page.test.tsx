@@ -164,6 +164,11 @@ describe("the Style page", () => {
   it("shows a viewer the style and what it learns from, with nothing to change", () => {
     page({ canEdit: false, references: [reference("r1"), linkReference("r2")], style: { ...STYLE, profile: { ...STYLE.profile, never: ["long intros"] }, notes: "Keep it bright." } });
     expect(screen.getByText(STYLE_WORDS.introViewer)).toBeTruthy();
+    // Named for what it is, not as something to do: a viewer can't add to it.
+    expect(screen.getByRole("region", { name: "What your style learns from" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Learn from your videos" })).toBeNull();
+    // Who changed it last sits under the heading, not off at the far side on its own.
+    expect(within(yourStyle()).getByText("Last changed by Claude (for Ada), 2 hours ago").className).not.toMatch(/ml-auto/);
     expect(screen.getByText("Bright and quick.")).toBeTruthy();
     expect(screen.getByText("Quick: A new shot every 1.2 to 2.5 seconds.")).toBeTruthy();
     expect(screen.getByText("long intros")).toBeTruthy();
@@ -174,10 +179,18 @@ describe("the Style page", () => {
     expect(screen.queryByRole("region", { name: "Try it" })).toBeNull();
   });
 
-  it("tells a viewer when nothing is filled in yet", () => {
+  it("tells a viewer when nothing is filled in yet, and who can fill it in", () => {
     page({ canEdit: false, style: DEFAULT_STYLE });
-    expect(screen.getByText(STYLE_WORDS.form.empty)).toBeTruthy();
-    expect(screen.getByText(STYLE_WORDS.learn.emptyViewer)).toBeTruthy();
+    expect(within(yourStyle()).getByText("Nothing yet. An editor can fill this in.")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "What your style learns from" })).getByText("Nothing yet.")).toBeTruthy();
+  });
+
+  it("tells a viewer a video couldn't be looked at without the reason meant for the editor, and offers nothing to press", () => {
+    const failed = reference("r1", { status: "failed", analysis: null, hasSheet: false, failure: STYLE_WORDS.analysisFailed.unreadable });
+    page({ canEdit: false, references: [failed], assets: [assetView({ id: "asset-r1" })] });
+    expect(screen.getByText(STYLE_WORDS.learn.failedViewer)).toBeTruthy();
+    expect(screen.queryByText(STYLE_WORDS.analysisFailed.unreadable)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 
   it("uses no technical words", async () => {
@@ -225,8 +238,15 @@ describe("learning from links", () => {
     fireEvent.click(screen.getByRole("button", { name: "Paste a link" }));
     fireEvent.change(screen.getByLabelText("Video link"), { target: { value: "https://www.instagram.com/reel/Cabc123/" } });
     expect(screen.getByRole("alert").textContent).toBe(STYLE_MESSAGES.instagram);
-    fireEvent.click(screen.getByRole("button", { name: "Add link" }));
+    // Add does nothing for a link like this, so it's off until the link is changed.
+    const add = screen.getByRole("button", { name: "Add link" }) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    fireEvent.click(add);
     expect(api.addReference).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Video link"), { target: { value: "https://vm.tiktok.com/ZMh1a2b3c/" } });
+    expect(screen.getByRole("alert").textContent).toBe(STYLE_MESSAGES.tiktokShareLink);
+    expect(add.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Video link"), { target: { value: "https://www.instagram.com/reel/Cabc123/" } });
     fireEvent.click(screen.getByRole("button", { name: STYLE_WORDS.link.uploadInstead }));
     expect(screen.getByRole("dialog", { name: "Add a video" })).toBeTruthy();
   });
@@ -241,6 +261,8 @@ describe("learning from links", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add link" }));
     expect(screen.getByRole("alert").textContent).toBe(STYLE_MESSAGES.badLink);
     expect(api.addReference).not.toHaveBeenCalled();
+    // Add and Cancel sit together, so a narrow window wraps them as a pair.
+    expect(screen.getByRole("button", { name: "Add link" }).parentElement).toBe(screen.getByRole("button", { name: "Cancel" }).parentElement);
     fireEvent.change(box, { target: { value: "https://vimeo.com/76979871" } });
     expect(screen.queryByRole("alert")).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add link" })));
@@ -319,9 +341,22 @@ describe("learning from the space's videos", () => {
     expect(screen.getByText(STYLE_WORDS.learn.notLookedAt)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Paste a link" })); // the page drawn again doesn't start it again
     expect(analyze.run).toHaveBeenCalledTimes(1);
-    act(() => analyze.options!.onDone!(reference("r1")));
+    act(() => analyze.options!.onDone!(reference("r1", { analysis: measured({ sheet: { times: [0.2, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], columns: 4, rows: 3 } }) })));
     expect(screen.getByText("38 s · 24 shots, about 1.6 s each · talks 170 words a minute")).toBeTruthy();
-    expect(learn().querySelector("img")?.getAttribute("src")).toBe("/api/style/references/r1/sheet?v=2026-11-25T20%3A00%3A00.000Z");
+    // The card shows the strip's first tile only: the strip drawn 4 tiles wide and 3 high, from its top-left corner.
+    const picture = learn().querySelector("img")!;
+    expect(picture.getAttribute("src")).toBe("/api/style/references/r1/sheet?v=2026-11-25T20%3A00%3A00.000Z");
+    expect([picture.style.width, picture.style.height]).toEqual(["400%", "300%"]);
+    expect(picture.parentElement!.style.aspectRatio).toBe("1080 / 1920");
+  });
+
+  it("shows a measured video's still from the library once it has loaded, in place of its strip's first tile", async () => {
+    const base = pretendMediaServices([assetView({ id: "asset-r1", posterFileId: "post-r1" })]);
+    const files = { ...base.files, get: vi.fn(async (id: string) => (id === "post-r1" ? { ok: true as const, blob: new Blob(["still"], { type: "image/jpeg" }) } : new Promise<never>(() => {}))) };
+    page({ services: { ...base, files }, references: [reference("r1", { analysis: measured({ sheet: { times: [0.2, 1, 2], columns: 3, rows: 1 } }) })] });
+    await waitFor(() => expect(learn().querySelector("img")?.getAttribute("src")).toMatch(/^blob:/));
+    expect(files.get).toHaveBeenCalledWith("post-r1");
+    expect(learn().querySelectorAll("img")).toHaveLength(1);
   });
 
   it("still looks a waiting video over when React's development mode mounts the page twice", () => {
@@ -348,7 +383,10 @@ describe("learning from the space's videos", () => {
     page({ services: { ...base, queue: { ...base.queue, add } } });
     fireEvent.click(screen.getByRole("button", { name: "Add a video" }));
     const dialog = screen.getByRole("dialog", { name: "Add a video" });
-    expect(within(dialog).getByText(STYLE_WORDS.video.uploadsShowHere)).toBeTruthy();
+    // Upload a video, then what happens next.
+    const hint = within(dialog).getByText("New uploads appear here once they're ready to pick.");
+    const upload = within(dialog).getByRole("button", { name: STYLE_WORDS.video.upload });
+    expect(upload.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const input = dialog.querySelector<HTMLInputElement>('input[type="file"]')!;
     expect(input.getAttribute("accept")).toBe(".mp4,.m4v,.mov,.webm");
     const file = new File(["x"], "match.mp4", { type: "video/mp4" });
@@ -374,6 +412,23 @@ describe("learning from the space's videos", () => {
     page({ canEdit: false, references: [reference("r1", { status: "pending", analysis: null, hasSheet: false })], assets: [assetView({ id: "asset-r1" })] });
     expect(analyze.run).not.toHaveBeenCalled();
     expect(screen.getByText(STYLE_WORDS.learn.notLookedAtViewer)).toBeTruthy();
+  });
+
+  it("names a link whose details couldn't be read by its site, and still opens its address", () => {
+    const url = "https://www.tiktok.com/@paperplanesclub/video/7301234567890123456";
+    const unread = linkReference("r1", {
+      provider: "tiktok",
+      title: url,
+      author: undefined,
+      url,
+      thumbnailUrl: undefined,
+      analysis: { kind: "link", provider: "tiktok", title: url, fetchedAt: NOW.toISOString(), unreadable: true },
+    });
+    page({ references: [unread] });
+    const title = within(learn()).getByRole("link", { name: "TikTok video from @paperplanesclub" });
+    expect(title.getAttribute("href")).toBe(url);
+    expect(within(learn()).getByRole("button", { name: "Remove TikTok video from @paperplanesclub" })).toBeTruthy();
+    expect(within(learn()).queryByText(url)).toBeNull();
   });
 
   it("says why a video couldn't be looked over, with Try again", () => {
@@ -469,7 +524,7 @@ describe("learning from the YouTube channel", () => {
     const api = fakeApi({ addChannelVideo: vi.fn(async () => fresh) });
     page({ channelOn: true, api, references: [old] });
     expect(screen.getByText(STYLE_WORDS.learn.channelStale)).toBeTruthy();
-    expect(within(learn()).getByRole("link", { name: url }).getAttribute("href")).toBe(url);
+    expect(within(learn()).getByRole("link", { name: "YouTube video" }).getAttribute("href")).toBe(url);
     expect(within(learn()).queryByText("Paper planes")).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Refresh" })));
     expect(api.addChannelVideo).toHaveBeenCalledWith(SEED_TEAM_ID, "dQw4w9WgXcQ");
@@ -601,10 +656,64 @@ describe("the style form", () => {
     expect(tags()).toBe(filled - 1);
   });
 
-  it("says what to do first when there's nothing to fill in from", () => {
-    page({ references: [reference("r1", { status: "pending", analysis: null, hasSheet: false })] });
+  it("is off, saying what it waits for, until something it can learn from is ready", () => {
+    const fill = () => screen.getByRole("button", { name: "Fill in from my videos" }) as HTMLButtonElement;
+    const { view } = page();
+    expect(fill().disabled).toBe(true);
+    expect(within(yourStyle()).getByText(STYLE_WORDS.form.fillInFirst).id).toBe(fill().getAttribute("aria-describedby"));
+    view.unmount();
+
+    page({ references: [reference("r1", { status: "pending", analysis: null, hasSheet: false })], assets: [assetView({ id: "asset-r1" })] });
+    expect(fill().disabled).toBe(true);
+    expect(within(yourStyle()).getByText("We can fill this in once a video above has been looked at.")).toBeTruthy();
+    expect(within(yourStyle()).queryByRole("status")).toBeNull();
+    // Once the video has been looked at, it can be used.
+    act(() => analyze.options!.onDone!(reference("r1")));
+    expect(fill().disabled).toBe(false);
+    expect(within(yourStyle()).queryByText("We can fill this in once a video above has been looked at.")).toBeNull();
+    expect(fill().hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  it("names what it filled in from: the videos, links or projects it read", () => {
+    const project = reference("r2", {
+      kind: "project",
+      assetId: undefined,
+      projectId: "p1",
+      hasSheet: false,
+      analysis: {
+        kind: "project",
+        seconds: 40,
+        format: "short_9x16",
+        fps: 30,
+        shots: shots(20, 2),
+        text: { clips: 0, perMinute: 0, fonts: [], averageWords: 0, sizes: { small: 0, medium: 0, large: 0 } },
+        captions: null,
+        transitions: { fade: 0, crossfade: 0, slide: 0, zoom: 0, whip: 0, dip: 0 },
+        textAnimations: {},
+        music: null,
+        speedChanges: 0,
+        looks: {},
+        effects: [],
+      },
+    });
+    page({ references: [reference("r1"), project], style: DEFAULT_STYLE });
     fireEvent.click(screen.getByRole("button", { name: "Fill in from my videos" }));
-    expect(within(yourStyle()).getByRole("status").textContent).toBe(STYLE_WORDS.form.fillInFirst);
+    expect(within(yourStyle()).getByRole("status").textContent).toMatch(/^Filled in \d+ fields from your videos and projects\. Check them, then save\.$/);
+    // Only what was read is named, in the page's order, each kind once.
+    expect(STYLE_WORDS.form.filledSome(1, ["link"])).toBe("Filled in 1 field from your links. Check them, then save.");
+    expect(STYLE_WORDS.form.filledSome(3, ["project", "link", "video", "link"])).toBe("Filled in 3 fields from your videos, links and projects. Check them, then save.");
+  });
+
+  it("gives a sentence room to show: the summary, how you open, and voice and tone grow with what's typed", () => {
+    page();
+    for (const name of ["In a sentence or two", "How you open", "Voice and tone"]) {
+      const box = screen.getByLabelText(name);
+      expect(box.tagName).toBe("TEXTAREA");
+      expect(box.className).toContain("[field-sizing:content]");
+    }
+    // Where a browser can't size a box to its words, it gets as many rows.
+    expect(screen.getByLabelText("In a sentence or two").getAttribute("rows")).toBe("3");
+    expect(screen.getByLabelText("How you open").getAttribute("rows")).toBe("2");
   });
 
   it("shows the server's words when a save is refused", async () => {

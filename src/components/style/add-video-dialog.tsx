@@ -73,8 +73,9 @@ export type AddVideoDialogProps = {
   onPick(asset: AssetView): void;
 };
 
-// Picks one of the space's videos for the style to learn from. A video is uploaded the way the Media tab uploads, and
-// can be picked here once it is ready. Pictures and sounds aren't offered.
+// Picks one of the space's videos for the style to learn from. A video is uploaded the way the Media tab uploads, with
+// Upload a video first in the footer and what happens next beside it: it can be picked here once it is ready. Pictures
+// and sounds aren't offered.
 export function AddVideoDialog({ open, onClose, inStyle, adding, problem, onPick }: AddVideoDialogProps): ReactNode {
   const assets = useLibrary((s) => s.assets);
   const uploads = useLibrary((s) => s.uploads);
@@ -96,8 +97,7 @@ export function AddVideoDialog({ open, onClose, inStyle, adding, problem, onPick
       open={open}
       onClose={onClose}
       footer={
-        <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
-          <p className={cx(TEXT, "min-w-0 text-ed-muted")}>{canUpload ? W.uploadsShowHere : W.noStorage}</p>
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
           {canUpload && (
             <>
               <Button onClick={() => input.current?.click()}>{W.upload}</Button>
@@ -115,6 +115,7 @@ export function AddVideoDialog({ open, onClose, inStyle, adding, problem, onPick
               />
             </>
           )}
+          <p className={cx(TEXT, "min-w-0 text-ed-muted")}>{canUpload ? W.uploadsShowHere : W.noStorage}</p>
         </div>
       }
     >

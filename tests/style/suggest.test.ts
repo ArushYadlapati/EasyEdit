@@ -83,6 +83,23 @@ describe("a suggested style", () => {
     expect(suggest(link()).lengthSeconds).toBeUndefined(); // a link with no length
   });
 
+  it("leaves out links' lengths when the space's own videos or projects have one, as a link is often someone else's video", () => {
+    // A 38 s video, a 42 s project and an 8.5-minute YouTube link once made "35 to 515 seconds".
+    expect(suggest(video({ seconds: 38 }), project({ seconds: 42 }), link({ seconds: 512 })).lengthSeconds).toEqual({ min: 35, max: 45 });
+    // With nothing of its own, the links' lengths are used.
+    expect(suggest(link({ seconds: 31 }), link({ seconds: 58 })).lengthSeconds).toEqual({ min: 30, max: 60 });
+  });
+
+  it("leaves out a length far from the middle one when there are three", () => {
+    expect(suggest(video({ seconds: 30 }), video({ seconds: 40 }), video({ seconds: 600 })).lengthSeconds).toEqual({ min: 30, max: 40 });
+    expect(suggest(video({ seconds: 4 }), video({ seconds: 40 }), video({ seconds: 45 })).lengthSeconds).toEqual({ min: 40, max: 45 });
+    // Within 3 times the middle one either way, all three count.
+    expect(suggest(video({ seconds: 15 }), video({ seconds: 40 }), video({ seconds: 110 })).lengthSeconds).toEqual({ min: 15, max: 110 });
+    // With two there's no telling which is odd, so both count.
+    expect(suggest(video({ seconds: 30 }), video({ seconds: 600 })).lengthSeconds).toEqual({ min: 30, max: 600 });
+    expect(suggest(link({ seconds: 20 }), link({ seconds: 30 }), link({ seconds: 3600 })).lengthSeconds).toEqual({ min: 20, max: 30 });
+  });
+
   it("uses the middle half of the lengths once there are four or more, so one odd video doesn't stretch it", () => {
     const style = suggest(...[10, 20, 30, 40, 200].map((seconds) => video({ seconds })));
     expect(style.lengthSeconds).toEqual({ min: 20, max: 40 });

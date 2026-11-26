@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHANNEL_DAYS, channelFactsStale, lengthWords, profileValueWords, progressWords, referenceFacts } from "@/lib/style/describe";
+import { CHANNEL_DAYS, channelFactsStale, lengthWords, profileValueWords, progressWords, referenceFacts, referenceTitle } from "@/lib/style/describe";
 import { STYLE_MESSAGES, STYLE_WORDS } from "@/lib/style/messages";
 import { CHANNEL_FACTS_DAYS } from "@/lib/style/service";
 import type { LinkAnalysis, ProjectAnalysis, StyleReference, VideoAnalysis } from "@/lib/style/types";
@@ -48,11 +48,25 @@ function reference(over: Partial<StyleReference> = {}): StyleReference {
   return { id: "r1", kind: "video", title: "Match day recap", status: "ready", analysis: video(), hasSheet: true, createdAt: "2026-11-25T21:00:00.000Z", ...over };
 }
 
+// The facts as they read: the spaces that never break a line are spaces to a reader.
+const NB = "\u00a0";
+const read = (text: string | null) => text?.replaceAll(NB, " ") ?? null;
+const facts = (over: Partial<StyleReference> = {}) => read(referenceFacts(reference(over)));
+
 describe("a reference's line of facts", () => {
   it("says how long a video runs, how it's cut and how fast it talks", () => {
-    expect(referenceFacts(reference())).toBe("38 s · 24 shots, about 1.6 s each · talks 170 words a minute");
-    expect(referenceFacts(reference({ analysis: video({ speech: { words: 0, perMinute: 0, opening: "", talkingShare: 0 } }) }))).toBe("38 s · 24 shots, about 1.6 s each · no talking");
-    expect(referenceFacts(reference({ analysis: video({ seconds: 125, speech: null, shots: shots(1, 12.4) }) }))).toBe("2 min 5 s · 1 shot");
+    expect(facts()).toBe("38 s · 24 shots, about 1.6 s each · talks 170 words a minute");
+    expect(facts({ analysis: video({ speech: { words: 0, perMinute: 0, opening: "", talkingShare: 0 } }) })).toBe("38 s · 24 shots, about 1.6 s each · no talking");
+    expect(facts({ analysis: video({ seconds: 125, speech: null, shots: shots(1, 12.4) }) })).toBe("2 min 5 s · 1 shot");
+  });
+
+  it("keeps each number with its unit, and each dot with the fact before it, when the line wraps", () => {
+    // The line may break only at an ordinary space: after a dot, or between words that aren't a number and its unit.
+    const breaks = (text: string | null) => (text ?? "").split(" ");
+    expect(breaks(referenceFacts(reference()))).toEqual([`38${NB}s${NB}·`, `24${NB}shots,`, "about", `1.6${NB}s${NB}each${NB}·`, "talks", `170${NB}words`, `a${NB}minute`]);
+    const youtube = reference({ kind: "link", provider: "youtube", author: "Paper Planes Club", analysis: link({ author: "Paper Planes Club", seconds: 512 }) });
+    expect(breaks(referenceFacts(youtube))).toEqual([`YouTube${NB}·`, "Paper", "Planes", `Club${NB}·`, `8${NB}min${NB}32${NB}s`]);
+    expect(breaks(referenceFacts(reference({ kind: "project", analysis: project() })))).toContain(`3${NB}transitions`);
   });
 
   it("says nothing for a video not looked at yet", () => {
@@ -60,11 +74,10 @@ describe("a reference's line of facts", () => {
   });
 
   it("names a link's site and author, and its length when the site gave one", () => {
-    const youtube = reference({ kind: "link", provider: "youtube", author: "Paper Planes Club", analysis: link({ author: "Paper Planes Club" }) });
-    expect(referenceFacts(youtube)).toBe("YouTube · Paper Planes Club");
-    expect(referenceFacts(reference({ kind: "link", provider: "youtube", analysis: link({ short: true, seconds: 31 }) }))).toBe("YouTube Short · 31 s");
-    expect(referenceFacts(reference({ kind: "link", provider: "vimeo", analysis: link({ provider: "vimeo" }) }))).toBe("Vimeo");
-    expect(referenceFacts(reference({ kind: "link", provider: "channel", analysis: link({ provider: "channel" }) }))).toBe("Your YouTube channel");
+    expect(facts({ kind: "link", provider: "youtube", author: "Paper Planes Club", analysis: link({ author: "Paper Planes Club" }) })).toBe("YouTube · Paper Planes Club");
+    expect(facts({ kind: "link", provider: "youtube", analysis: link({ short: true, seconds: 31 }) })).toBe("YouTube Short · 31 s");
+    expect(facts({ kind: "link", provider: "vimeo", analysis: link({ provider: "vimeo" }) })).toBe("Vimeo");
+    expect(facts({ kind: "link", provider: "channel", analysis: link({ provider: "channel" }) })).toBe("Your YouTube channel");
   });
 
   it("says kindly when a link's details couldn't be read", () => {
@@ -72,20 +85,47 @@ describe("a reference's line of facts", () => {
   });
 
   it("counts a project's shots and transitions, and whether it has captions", () => {
-    expect(referenceFacts(reference({ kind: "project", analysis: project() }))).toBe("Project · 42 s · 18 shots, about 2.1 s each · 3 transitions");
+    expect(facts({ kind: "project", analysis: project() })).toBe("Project · 42 s · 18 shots, about 2.1 s each · 3 transitions");
     const plain = project({ transitions: { fade: 0, crossfade: 0, slide: 0, zoom: 0, whip: 0, dip: 0 }, captions: { look: "karaoke", uppercase: false, y: 0.8 } });
-    expect(referenceFacts(reference({ kind: "project", analysis: plain }))).toBe("Project · 42 s · 18 shots, about 2.1 s each · straight cuts · captions");
+    expect(facts({ kind: "project", analysis: plain })).toBe("Project · 42 s · 18 shots, about 2.1 s each · straight cuts · captions");
+  });
+});
+
+describe("a reference's title", () => {
+  const unread = (url: string, over: Partial<StyleReference> = {}) =>
+    reference({ kind: "link", title: url, url, analysis: link({ title: url, unreadable: true }), hasSheet: false, ...over });
+
+  it("names a link known only by its address by its site, from the address", () => {
+    expect(referenceTitle(unread("https://www.tiktok.com/@paperplanesclub/video/7301234567890123456", { provider: "tiktok" }))).toBe("TikTok video from @paperplanesclub");
+    expect(referenceTitle(unread("https://www.youtube.com/watch?v=dQw4w9WgXcQ"))).toBe("YouTube video");
+    expect(referenceTitle(unread("https://www.youtube.com/shorts/dQw4w9WgXcQ"))).toBe("YouTube Short");
+    expect(referenceTitle(unread("https://vimeo.com/76979871", { provider: "vimeo" }))).toBe("Vimeo video");
+    // A channel video whose details were cleared after 30 days keeps only its address too.
+    expect(referenceTitle(unread("https://www.youtube.com/watch?v=dQw4w9WgXcQ", { provider: "channel" }))).toBe("YouTube video");
+  });
+
+  it("keeps a title the site gave, and anything that isn't a link's address", () => {
+    expect(referenceTitle(reference({ kind: "link", title: "Paper planes", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }))).toBe("Paper planes");
+    expect(referenceTitle(reference())).toBe("Match day recap");
+    expect(referenceTitle(reference({ kind: "project", title: "https://example.com is our site" }))).toBe("https://example.com is our site");
+    // An address that isn't a video it can name stays as it is.
+    expect(referenceTitle(unread("https://example.com/watch/123"))).toBe("https://example.com/watch/123");
   });
 });
 
 describe("plain lengths", () => {
   it("reads like a person would say them", () => {
-    expect(lengthWords(0.4)).toBe("0 s");
-    expect(lengthWords(38.4)).toBe("38 s");
-    expect(lengthWords(60)).toBe("1 min");
-    expect(lengthWords(125)).toBe("2 min 5 s");
-    expect(lengthWords(3600)).toBe("1 h");
-    expect(lengthWords(4320)).toBe("1 h 12 min");
+    expect(read(lengthWords(0.4))).toBe("0 s");
+    expect(read(lengthWords(38.4))).toBe("38 s");
+    expect(read(lengthWords(60))).toBe("1 min");
+    expect(read(lengthWords(125))).toBe("2 min 5 s");
+    expect(read(lengthWords(3600))).toBe("1 h");
+    expect(read(lengthWords(4320))).toBe("1 h 12 min");
+  });
+
+  it("never breaks a line inside a length", () => {
+    expect(lengthWords(512)).not.toContain(" ");
+    expect(lengthWords(4320)).toBe(`1${NB}h${NB}12${NB}min`);
   });
 });
 
@@ -152,10 +192,12 @@ describe("a field's value for someone who can only read it", () => {
 
 describe("the Style page's words", () => {
   // Every string in STYLE_WORDS, with each wording that takes something filled in with a stand-in.
-  function everyLine(value: unknown): string[] {
+  function everyLine(value: unknown, key = ""): string[] {
     if (typeof value === "string") return [value];
+    // filledSome takes the kinds of reference read; every other wording takes a number or a name.
+    if (typeof value === "function" && key === "filledSome") return [String(value(2, ["video", "link", "project"])), String(value(1, ["video"]))];
     if (typeof value === "function") return [String(value(2, 2)), String(value("Ada", 2))];
-    if (typeof value === "object" && value !== null) return Object.values(value).flatMap(everyLine);
+    if (typeof value === "object" && value !== null) return Object.entries(value).flatMap(([name, inner]) => everyLine(inner, name));
     return [];
   }
 

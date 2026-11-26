@@ -187,13 +187,16 @@ describe("video skills", () => {
     expect(section.textContent).not.toMatch(/\b(MCP|oEmbed|JSON|token)\b/i);
   });
 
-  it("Claude Code gets the two plugin commands, each read-only and copied on its own", async () => {
+  it("Claude Code gets the two plugin commands, each shown whole and copied on its own", async () => {
     renderView();
     const section = region("Video skills");
-    const first = within(section).getByRole("textbox", { name: "First command" }) as HTMLInputElement;
-    const second = within(section).getByRole("textbox", { name: "Second command" }) as HTMLInputElement;
-    expect([first.value, second.value]).toEqual(["/plugin marketplace add ArushYadlapati/EasyEdit", "/plugin install easyedit@easyedit"]);
-    expect(first.readOnly && second.readOnly).toBe(true);
+    // Shown as text that wraps, not in a one-line box that a phone cuts off.
+    const command = (name: string) => within(section).getByRole("group", { name }).querySelector("code");
+    expect([command("First command")?.textContent, command("Second command")?.textContent]).toEqual([
+      "/plugin marketplace add ArushYadlapati/EasyEdit",
+      "/plugin install easyedit@easyedit",
+    ]);
+    expect(within(section).queryByRole("textbox")).toBeNull();
     await click(button("Copy the first command", section));
     expect(writeText).toHaveBeenLastCalledWith("/plugin marketplace add ArushYadlapati/EasyEdit");
     await click(button("Copy the second command", section));

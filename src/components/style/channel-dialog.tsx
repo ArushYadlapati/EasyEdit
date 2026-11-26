@@ -39,7 +39,7 @@ function Upload({ video, added, disabled, onAdd }: { video: ChannelUpload; added
       {added ? (
         <span className="shrink-0 text-xs text-ed-muted">{W.added}</span>
       ) : (
-        <Button size="sm" aria-label={W.addLabel(video.title)} disabled={disabled} onClick={onAdd}>
+        <Button aria-label={W.addLabel(video.title)} disabled={disabled} onClick={onAdd}>
           {W.add}
         </Button>
       )}

@@ -14,7 +14,7 @@ import { STYLE_WORDS } from "@/lib/style/messages";
 import { ANALYSIS_LIMITS, VideoAnalysis, type SheetPlan, type SoundFacts, type SpeechFacts } from "@/lib/style/types";
 import { createColorMeter, cutList, sheetGrid, sheetTimes, shotStats, speechStats } from "@/lib/style/video-facts";
 import type { CaptionWord } from "@/lib/timeline";
-import { decodeVideoFrame, scanFrames } from "../editor/media/frame-decode";
+import { decodeVideoFrame, loadMediabunny, scanFrames } from "../editor/media/frame-decode";
 import type { MediaServices } from "../editor/media/media-context";
 
 // Looks over one of the space's own videos in this browser, for its style: how it is cut, its colours, how loud it
@@ -67,7 +67,8 @@ export type SheetCanvas = {
 
 // What looking over a video needs from the page; tests pass fakes. The real ones are browserAnalyzeDeps.
 // fetchSavedTranscript: the words saved for the video in any language, since only how much and how fast it talks is
-// counted; saveTranscript and transcribe: English as spoken, the words Auto captions uses first.
+// counted; saveTranscript and transcribe: English as spoken, the words Auto captions uses first. videoSeconds: how long
+// a file's picture runs, as the file says, for progress on a video the library doesn't know the length of.
 export type AnalyzeDeps = {
   files: MediaFiles;
   scanFrames(
@@ -78,6 +79,7 @@ export type AnalyzeDeps = {
     each: (seconds: number, rgba: Uint8ClampedArray, width: number, height: number) => boolean | void,
   ): Promise<boolean>;
   decodeVideoFrame(blob: Blob, seconds: number, size: number): Promise<ResolvedSource | null>;
+  videoSeconds?(blob: Blob): Promise<number | null>;
   decodeSound(blob: Blob): Promise<{ ok: true; sound: DecodedSound } | { ok: false; why: DecodeTrouble }>;
   transcribe(blob: Blob, opts: { signal?: AbortSignal; onProgress?: (p: TranscribeProgress) => void }): Promise<CaptionWord[]>;
   fetchSavedTranscript(assetId: string): Promise<CaptionWord[] | null>;
@@ -109,15 +111,25 @@ const canceled = () => new DOMException("Looking at the video was canceled.", "A
 const round = (n: number, places: number) => Math.round(n * 10 ** places) / 10 ** places;
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
-// A moment of a video as a strip's tile shows it: "0:01.5", with hours "1:02:03.5".
-export function sheetLabel(seconds: number): string {
-  const tenths = Math.max(0, Math.round((Number.isFinite(seconds) ? seconds : 0) * 10));
-  const whole = Math.floor(tenths / 10);
-  const pad = (n: number) => String(n).padStart(2, "0");
+// A moment of a video as a strip's tile shows it: "0:01.5", with hours "1:02:03.5"; to hundredths ("0:00.15") when
+// places is 2.
+export function sheetLabel(seconds: number, places: 1 | 2 = 1): string {
+  const scale = 10 ** places;
+  const parts = Math.max(0, Math.round((Number.isFinite(seconds) ? seconds : 0) * scale));
+  const whole = Math.floor(parts / scale);
+  const pad = (n: number, width = 2) => String(n).padStart(width, "0");
   const h = Math.floor(whole / 3600);
   const m = Math.floor((whole % 3600) / 60);
-  const s = `${pad(whole % 60)}.${tenths % 10}`;
+  const s = `${pad(whole % 60)}.${pad(parts % scale, places)}`;
   return h > 0 ? `${h}:${pad(m)}:${s}` : `${m}:${s}`;
+}
+
+// The labels of a strip's tiles, in order: tenths, unless two tiles would then read the same (frames under a tenth of
+// a second apart, in a very short clip), when every one shows hundredths, as the strip's times are kept. Each tile can
+// then be told by its label alone.
+export function sheetLabels(times: readonly number[]): string[] {
+  const tenths = times.map((t) => sheetLabel(t));
+  return new Set(tenths).size === tenths.length ? tenths : times.map((t) => sheetLabel(t, 2));
 }
 
 // The files a video can be read from, in the order to try them: the one it plays from (its preview copy, or its
@@ -177,6 +189,9 @@ async function scanVideo(
   const seen: { colorAt: number; last: number; size: Scan["size"] | null } = { colorAt: -Infinity, last: 0, size: null };
   // A video of unknown length is read no further than just past the longest a style looks at, which is then too long.
   const to = seconds ?? ANALYSIS_LIMITS.seconds + 1;
+  // How far the reading has got is told against the video's length; the file's own when the library doesn't know it.
+  const length = seconds ?? (await deps.videoSeconds?.(blob).catch(() => null)) ?? null;
+  if (signal?.aborted) throw canceled();
   const read = await deps
     .scanFrames(blob, 0, to, SCAN_SIDE, (t, rgba, width, height) => {
       if (signal?.aborted) return false;
@@ -187,7 +202,7 @@ async function scanVideo(
       }
       seen.last = Math.max(seen.last, t);
       seen.size ??= { width, height };
-      if (seconds) report(t / seconds);
+      if (length) report(t / length);
     })
     .catch(() => false);
   if (signal?.aborted) throw canceled();
@@ -215,11 +230,12 @@ async function drawSheet(
     const fontPx = tile >= 200 ? 12 : 11;
     drawing.font = `600 ${fontPx}px system-ui, -apple-system, "Segoe UI", sans-serif`;
     drawing.textBaseline = "middle";
-    frames.forEach(({ t, image }, i) => {
+    const labels = sheetLabels(frames.map((frame) => frame.t));
+    frames.forEach(({ image }, i) => {
       const x = (i % grid.columns) * grid.tileW;
       const y = Math.floor(i / grid.columns) * grid.tileH;
       drawing.drawImage(image, x, y, grid.tileW, grid.tileH);
-      const label = sheetLabel(t);
+      const label = labels[i];
       const pillW = Math.ceil(drawing.measureText(label).width) + 10;
       const pillH = fontPx + 6;
       drawing.fillStyle = "rgba(0, 0, 0, 0.6)";
@@ -455,6 +471,22 @@ function detachedCanvas(width: number, height: number): SheetCanvas {
   };
 }
 
+// How long a file's picture runs, in seconds, as the file itself says; null when it has no picture or that can't be
+// read.
+async function fileVideoSeconds(blob: Blob): Promise<number | null> {
+  const { ALL_FORMATS, BlobSource, Input } = await loadMediabunny();
+  const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
+  try {
+    const track = await input.getPrimaryVideoTrack();
+    const seconds = track ? await track.computeDuration() : null;
+    return seconds !== null && Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+  } catch {
+    return null;
+  } finally {
+    input.dispose();
+  }
+}
+
 // The real deps for this page: its media files, the browser's decoders, speech to text in a worker (started only if
 // the video has no words saved yet), the words saved on the server (any language's; heard words are saved as English
 // as spoken, as Auto captions marks them), and a canvas that is never shown.
@@ -465,6 +497,7 @@ export function browserAnalyzeDeps(media: MediaServices): AnalyzeDeps {
     files: media.files,
     scanFrames,
     decodeVideoFrame: (blob, seconds, size) => decodeVideoFrame(blob, seconds, size),
+    videoSeconds: fileVideoSeconds,
     decodeSound,
     transcribe: (blob, opts) => transcriber.transcribe(blob, opts),
     fetchSavedTranscript: (assetId) => fetchSavedTranscript(assetId),

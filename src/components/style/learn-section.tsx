@@ -43,7 +43,8 @@ export type LearnSectionProps = {
 // "Learn from your videos": what the style learns from, as a list of cards, and for editors the ways to add to it (a
 // video from the space's media or a new upload, a pasted link, past projects, and the space's YouTube channel where
 // this server can read one). A video added, or still waiting, is looked over in this browser straight away, once,
-// one video at a time; a video that couldn't be offers Try again.
+// one video at a time; a video that couldn't be offers Try again. A viewer, who can't add anything, sees the list
+// under "What your style learns from".
 export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, references, setReferences, projects, api, now }: LearnSectionProps): ReactNode {
   const headingId = useId();
   const { library } = useMedia();
@@ -201,9 +202,9 @@ export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, 
   return (
     <section aria-labelledby={headingId} className="flex min-w-0 flex-col gap-3">
       <h2 id={headingId} className="text-sm font-semibold text-ed-text">
-        {W.heading}
+        {canEdit ? W.heading : W.headingViewer}
       </h2>
-      <p className={MUTED}>{canEdit ? W.intro : W.introViewer}</p>
+      {canEdit && <p className={MUTED}>{W.intro}</p>}
       {canEdit && (
         <div className="flex min-w-0 flex-wrap gap-2">
           <Button disabled={full} aria-haspopup="dialog" onClick={openVideos}>

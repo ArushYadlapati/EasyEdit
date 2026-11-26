@@ -2,6 +2,19 @@ import { LIMITS } from "@/lib/limits";
 
 const kb = (bytes: number) => `${Math.round(bytes / 1000)} KB`;
 
+// A space that never breaks a line, so a number and what it counts ("8 min", "2.1 s each") stay on one line.
+const NB = "\u00a0";
+
+// What Fill in read, named as the Style page names them, in the page's order: "videos", "videos and projects",
+// "videos, links and projects".
+const SOURCE_ORDER = ["video", "link", "project"] as const;
+const SOURCE_WORDS = { video: "videos", link: "links", project: "projects" } as const;
+function sourceWords(kinds: readonly (typeof SOURCE_ORDER)[number][]): string {
+  const names = SOURCE_ORDER.filter((kind) => kinds.includes(kind)).map((kind) => SOURCE_WORDS[kind]);
+  if (names.length === 0) return SOURCE_WORDS.video;
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 // What a refused style change says, to the person on the Style page and to an agent.
 export const STYLE_MESSAGES = {
   tooManyReferences: `A style learns from up to ${LIMITS.styleReferences} videos, links and projects. Remove one to add another.`,
@@ -53,20 +66,23 @@ export const STYLE_WORDS = {
 
   // "Learn from your videos": what the style learns from, and the ways to add to it. channelStale says
   // CHANNEL_FACTS_DAYS (in service.ts) in days; a test keeps the two alike.
+  // A viewer can't add anything, so their heading names the list rather than asking them to add to it.
   learn: {
     heading: "Learn from your videos",
+    headingViewer: "What your style learns from",
     intro:
       "Add a few videos you've made. EasyEdit looks at the cuts, the words, the sound and the colors, and saves a strip of frames agents can look at. Your files stay in your storage.",
-    introViewer: "The videos, links and past projects your style learns from.",
     addVideo: "Add a video",
     pasteLink: "Paste a link",
     pickProjects: "Pick past projects",
     fromChannel: "From your YouTube channel",
-    empty: "No videos yet. Add one or two that feel most like you.",
-    emptyViewer: "No videos yet.",
+    empty: "Nothing yet. Add one or two videos that feel most like you.",
+    emptyViewer: "Nothing yet.",
     remove: (title: string) => `Remove ${title}`,
     notLookedAt: "Not looked at yet.",
     notLookedAtViewer: "Not looked at yet. That happens when an editor opens this page.",
+    // A video that couldn't be looked at, as a viewer sees it: the reason is for the editor whose browser tried.
+    failedViewer: "We couldn't look at this video. An editor can try again here.",
     tryAgain: "Try again",
     refresh: "Refresh",
     channelStale: "YouTube's details for this video were cleared after 30 days, as YouTube asks.",
@@ -77,7 +93,7 @@ export const STYLE_WORDS = {
     title: "Add a video",
     empty: "This space has no videos yet.",
     upload: "Upload a video",
-    uploadsShowHere: "You can pick a new upload once it's ready.",
+    uploadsShowHere: "New uploads appear here once they're ready to pick.",
     noStorage: "To upload a video here, this space's storage needs setting up first.",
     uploading: "Uploading…",
     inStyle: "In your style",
@@ -125,9 +141,13 @@ export const STYLE_WORDS = {
   form: {
     heading: "Your style",
     fillIn: "Fill in from my videos",
+    // Beside Fill in while it can't be used yet: nothing added, or nothing looked at yet.
     fillInFirst: "Add a video, link or project above first, then we'll fill in what we can.",
-    fillInNothing: "Nothing new to fill in. Your videos don't say anything about the fields that are still empty.",
-    filledSome: (count: number) => `Filled in ${count === 1 ? "1 field" : `${count} fields`} from your videos. Check them, then save.`,
+    fillInWaiting: "We can fill this in once a video above has been looked at.",
+    fillInNothing: "Nothing new to fill in. We can't tell anything more about the fields that are still empty.",
+    // read: the kinds of reference Fill in read, so the line names just those ("from your videos and links").
+    filledSome: (count: number, read: readonly ("video" | "link" | "project")[]) =>
+      `Filled in ${count === 1 ? "1 field" : `${count} fields`} from your ${sourceWords(read)}. Check them, then save.`,
     filledTag: "Filled in",
     lastChanged: (who: string | undefined, ago: string) => (who ? `Last changed by ${who}, ${ago}` : `Last changed ${ago}`),
     save: "Save",
@@ -149,7 +169,7 @@ export const STYLE_WORDS = {
     listFull: "That's as many as this list holds.",
     alwaysPlaceholder: "For example: open on the best moment",
     neverPlaceholder: "For example: long intros",
-    empty: "Nobody has filled in this space's style yet.",
+    empty: "Nothing yet. An editor can fill this in.",
   },
 
   // How a set field reads when it can only be looked at.
@@ -161,17 +181,25 @@ export const STYLE_WORDS = {
     allCaps: "All caps",
   },
 
-  // The line of facts on each reference's card.
+  // The line of facts on each reference's card. A number keeps to the line its unit is on.
   facts: {
-    shots: (count: number, each: string) => (count === 1 ? "1 shot" : `${count} shots, about ${each} each`),
-    talks: (perMinute: number) => `talks ${perMinute} words a minute`,
+    shots: (count: number, each: string) => (count === 1 ? `1${NB}shot` : `${count}${NB}shots, about ${each}${NB}each`),
+    talks: (perMinute: number) => `talks ${perMinute}${NB}words a${NB}minute`,
     noTalking: "no talking",
     providers: { youtube: "YouTube", vimeo: "Vimeo", tiktok: "TikTok", channel: "Your YouTube channel" },
     youtubeShort: "YouTube Short",
     project: "Project",
-    transitions: (count: number) => (count === 1 ? "1 transition" : `${count} transitions`),
+    transitions: (count: number) => (count === 1 ? `1${NB}transition` : `${count}${NB}transitions`),
     noTransitions: "straight cuts",
     captions: "captions",
+  },
+
+  // What a link's card is called when its site's details couldn't be read, or were cleared, in place of its address.
+  untitled: {
+    youtube: "YouTube video",
+    youtubeShort: "YouTube Short",
+    vimeo: "Vimeo video",
+    tiktok: (account: string) => `TikTok video from ${account}`,
   },
 
   // "Try it": what to ask an agent once there is a style. A personal space has no name to give.
@@ -189,7 +217,7 @@ export const STYLE_WORDS = {
     heading: "Style",
     field: (label: string, value: string) => `${label}: ${value}`,
     empty: "No style yet. Show AI agents how your videos look and feel.",
-    emptyViewer: "No style yet.",
+    emptyViewer: "No style yet.", // with no link: there is nothing on the Style page to see
     edit: "Edit style",
     see: "See style",
   },

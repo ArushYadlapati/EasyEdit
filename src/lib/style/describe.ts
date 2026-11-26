@@ -11,6 +11,7 @@ import {
   optionFor,
   type StyleOption,
 } from "./fields";
+import { parseVideoLink } from "./links";
 import { STYLE_MESSAGES, STYLE_WORDS } from "./messages";
 import { isSetValue, type ShotFacts, type StyleProfile, type StyleReference } from "./types";
 
@@ -26,20 +27,26 @@ const CHANNEL_MS = CHANNEL_DAYS * 24 * 60 * 60 * 1000;
 
 const oneDecimal = (n: number) => String(Number(n.toFixed(1)));
 
-// How long something runs, in short words: "38 s", "2 min 5 s", "1 h 12 min".
+// A space that never breaks a line. A length is one fact, so it stays on one line: never "8 min" on one and "32 s" on
+// the next.
+const NB = "\u00a0";
+// Between the facts on a card's line: a line may break after the dot, never before it.
+const BETWEEN = `${NB}· `;
+
+// How long something runs, in short words: "38 s", "2 min 5 s", "1 h 12 min", with spaces that never break a line.
 export function lengthWords(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));
-  if (total < 60) return `${total} s`;
+  if (total < 60) return `${total}${NB}s`;
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const rest = total % 60;
-  if (hours > 0) return minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
-  return rest > 0 ? `${minutes} min ${rest} s` : `${minutes} min`;
+  if (hours > 0) return minutes > 0 ? `${hours}${NB}h${NB}${minutes}${NB}min` : `${hours}${NB}h`;
+  return rest > 0 ? `${minutes}${NB}min${NB}${rest}${NB}s` : `${minutes}${NB}min`;
 }
 
 // A shot's length, to a tenth of a second under 10 seconds: "1.6 s", "12 s".
 function shotWords(seconds: number): string {
-  return seconds < 10 ? `${oneDecimal(seconds)} s` : `${Math.round(seconds)} s`;
+  return seconds < 10 ? `${oneDecimal(seconds)}${NB}s` : `${Math.round(seconds)}${NB}s`;
 }
 
 function shotsLine(shots: ShotFacts): string {
@@ -49,7 +56,8 @@ function shotsLine(shots: ShotFacts): string {
 // The one line of facts a reference's card shows under its title, or null when there is nothing to say yet (a video
 // not looked at). A video: "38 s · 24 shots, about 1.6 s each · talks 170 words a minute". A link: its site and author
 // ("YouTube · Paper Planes Club"), or that its details couldn't be read. A project: "Project · 42 s · 18 shots, about
-// 2.1 s each · 3 transitions".
+// 2.1 s each · 3 transitions". On a narrow card the line wraps between facts or between words, never between a number
+// and its unit ("8 min 32 s", "2.1 s each") and never before a dot.
 export function referenceFacts(reference: StyleReference): string | null {
   const facts = reference.analysis;
   if (reference.kind === "link") {
@@ -61,20 +69,37 @@ export function referenceFacts(reference: StyleReference): string | null {
     const author = reference.author ?? link?.author;
     if (author) parts.push(author);
     if (link?.seconds) parts.push(lengthWords(link.seconds));
-    return parts.length > 0 ? parts.join(" · ") : null;
+    return parts.length > 0 ? parts.join(BETWEEN) : null;
   }
   if (facts?.kind === "video") {
     const parts = [lengthWords(facts.seconds), shotsLine(facts.shots)];
     if (facts.speech) parts.push(facts.speech.words > 0 ? FACTS.talks(Math.round(facts.speech.perMinute)) : FACTS.noTalking);
-    return parts.join(" · ");
+    return parts.join(BETWEEN);
   }
   if (facts?.kind === "project") {
     const transitions = Object.values(facts.transitions).reduce((a, b) => a + b, 0);
     const parts = [FACTS.project, lengthWords(facts.seconds), shotsLine(facts.shots), transitions > 0 ? FACTS.transitions(transitions) : FACTS.noTransitions];
     if (facts.captions) parts.push(FACTS.captions);
-    return parts.join(" · ");
+    return parts.join(BETWEEN);
   }
   return null;
+}
+
+// What a reference's card calls it. A link whose site's details couldn't be read, or were cleared after
+// CHANNEL_DAYS, has only its address for a title, which a narrow card cuts off just before the part that says which
+// video it is. It is called by its site instead ("YouTube video", "YouTube Short", "Vimeo video", or "TikTok video
+// from @account", from the address); the address stays where the card's link goes. Anything else keeps its title.
+export function referenceTitle(reference: StyleReference): string {
+  const { title, url } = reference;
+  if (reference.kind !== "link" || !url || (title !== url && !/^https?:\/\//i.test(title))) return title;
+  const link = parseVideoLink(url);
+  if (!link.ok) return title;
+  const NAMES = STYLE_WORDS.untitled;
+  if (link.provider === "youtube") return link.short ? NAMES.youtubeShort : NAMES.youtube;
+  if (link.provider === "vimeo") return NAMES.vimeo;
+  // A TikTok video's one address names its account: https://www.tiktok.com/@account/video/123.
+  const account = new URL(link.url).pathname.split("/")[1];
+  return NAMES.tiktok(account);
 }
 
 // Whether a video from the space's YouTube channel has had its facts cut back, or soon will: read more than

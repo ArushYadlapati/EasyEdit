@@ -17,8 +17,9 @@ export type PasteLinkProps = {
 };
 
 // The box a public video link is pasted in, with Add. The link is checked as it's typed: an Instagram link or a TikTok
-// share link is told at once why it can't be read, and anything else that isn't a YouTube, Vimeo or TikTok video when
-// Add is pressed. The server checks it again and asks the video's site for its title and picture.
+// share link is told at once why it can't be read, with Add switched off until it's changed, and anything else that
+// isn't a YouTube, Vimeo or TikTok video when Add is pressed. The server checks it again and asks the video's site for
+// its title and picture. Add and Cancel stay side by side when a narrow window wraps them under the box.
 export function PasteLink({ add, onCancel, onUpload }: PasteLinkProps): ReactNode {
   const [text, setText] = useState("");
   const [tried, setTried] = useState(false);
@@ -35,6 +36,7 @@ export function PasteLink({ add, onCancel, onUpload }: PasteLinkProps): ReactNod
   // being typed isn't called wrong.
   const refused = link && !link.ok && (tried || link.reason === "instagram" || link.reason === "tiktok-share") ? link.reason : null;
   const shown = problem ?? (refused ? linkRefusalMessage(refused) : null);
+  const refusedAtOnce = refused === "instagram" || refused === "tiktok-share";
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -73,12 +75,14 @@ export function PasteLink({ add, onCancel, onUpload }: PasteLinkProps): ReactNod
             setProblem(null);
           }}
         />
-        <Button type="submit" disabled={text.trim() === "" || adding}>
-          {W.add}
-        </Button>
-        <Button variant="ghost" disabled={adding} onClick={onCancel}>
-          {W.cancel}
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button type="submit" disabled={text.trim() === "" || adding || refusedAtOnce}>
+            {W.add}
+          </Button>
+          <Button variant="ghost" disabled={adding} onClick={onCancel}>
+            {W.cancel}
+          </Button>
+        </div>
       </div>
       {shown && (
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -86,7 +90,7 @@ export function PasteLink({ add, onCancel, onUpload }: PasteLinkProps): ReactNod
             {shown}
           </p>
           {refused === "instagram" && (
-            <Button size="sm" onClick={onUpload}>
+            <Button onClick={onUpload}>
               {W.uploadInstead}
             </Button>
           )}

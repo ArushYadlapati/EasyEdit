@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { Plus, WandSparkles, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { FADE, FOCUS_RING, TAG, cx } from "@/components/ui/cx";
@@ -52,6 +52,9 @@ const TEXT = "text-[13px] leading-5";
 const LABEL = "text-[13px] leading-5 font-medium text-ed-text";
 const HELP = "text-xs leading-4 text-ed-muted";
 const FILLED = cx(TAG, "border-ed-accent/50 text-ed-accent");
+// A box for a sentence that grows with what is typed, from at least 1 or 2 lines (the key), where the browser can size
+// a box to its words; elsewhere it is as many rows as it is given. 10 px is the box's padding and edge.
+const GROWS = { 1: "[field-sizing:content] min-h-[calc(1lh+10px)]", 2: "[field-sizing:content] min-h-[calc(2lh+10px)]" } as const;
 const CHIP = cx(
   "inline-flex h-7 max-w-full items-center rounded-md border border-ed-line bg-ed-raised px-2.5 text-xs font-medium text-ed-muted select-none",
   "enabled:hover:bg-ed-hover enabled:hover:text-ed-text",
@@ -94,7 +97,7 @@ function Row({
   const ids = { control: `${base}-control`, label: `${base}-label`, help: `${base}-help` };
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <div className="flex min-h-6 min-w-0 flex-wrap items-center gap-2">
+      <div className="flex min-h-7 min-w-0 flex-wrap items-center gap-2">
         {group ? (
           <span id={ids.label} className={LABEL}>
             {label}
@@ -106,7 +109,7 @@ function Row({
         )}
         {filled && <span className={FILLED}>{W.filledTag}</span>}
         {onClear && (
-          <Button size="sm" variant="ghost" className="ml-auto" aria-label={W.clearLabel(label)} onClick={onClear}>
+          <Button variant="ghost" className="ml-auto" aria-label={W.clearLabel(label)} onClick={onClear}>
             {W.clear}
           </Button>
         )}
@@ -212,7 +215,6 @@ function ListRow({ field, items, filled, placeholder, onChange }: { field: "alwa
           )}
           {items.length < LIMITS.styleListItems ? (
             <Button
-              size="sm"
               className="self-start"
               aria-label={W.addTo(label)}
               onClick={() => {
@@ -279,10 +281,12 @@ export type StyleFormProps = {
 
 // "Your style": every field of the space's style, with the words from fields.ts, and Save, which sends only what
 // changed. Fill in from my videos fills the fields still empty from what the references showed, never one the person
-// set, and tags each until it's saved. Who changed the style last, and when, sits under the heading. Viewers see the
-// fields that are set, with nothing to change.
+// set, and tags each until it's saved; until a reference is ready to read it is switched off, with a line saying what
+// it waits for. Who changed the style last, and when, sits under the heading (at the right of Fill in on a wide
+// window). Viewers see the fields that are set, with nothing to change.
 export function StyleForm({ spaceId, canEdit, initial, references, save, now }: StyleFormProps): ReactNode {
   const headingId = useId();
+  const fillHintId = useId();
   const [saved, setSaved] = useState(initial);
   const [draft, setDraft] = useState<StyleProfile>(() => withoutNumbers(initial.profile));
   const [notes, setNotes] = useState(initial.notes);
@@ -347,12 +351,12 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now }: 
     if (typed.ok && typed.value !== undefined) set("pace", paceFor(typed.value));
   }
 
+  const analyses = references.flatMap((r) => (r.status === "ready" && r.analysis ? [r.analysis] : []));
+  // Why Fill in can't be used yet: nothing added, or nothing looked at yet. null once something is ready.
+  const fillHint = analyses.length > 0 ? null : references.length === 0 ? W.fillInFirst : W.fillInWaiting;
+
   function fillIn() {
-    const analyses = references.flatMap((r) => (r.status === "ready" && r.analysis ? [r.analysis] : []));
-    if (analyses.length === 0) {
-      setFillNote(W.fillInFirst);
-      return;
-    }
+    if (analyses.length === 0) return;
     const merged = mergeSuggestion(current, suggestStyle(analyses));
     // A box being typed in keeps what's typed, even when it isn't a number yet.
     const typing = (key: Key) => (key === "lengthSeconds" && (length.min.trim() !== "" || length.max.trim() !== "")) || (key === "shotSeconds" && shot.trim() !== "");
@@ -365,7 +369,7 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now }: 
     if (taken.includes("lengthSeconds")) setLength(lengthTexts(merged.profile));
     if (taken.includes("shotSeconds")) setShot(numberText(merged.profile.shotSeconds));
     setFilled((was) => new Set([...was, ...taken]));
-    setFillNote(taken.length > 0 ? W.filledSome(taken.length) : W.fillInNothing);
+    setFillNote(taken.length > 0 ? W.filledSome(taken.length, analyses.map((a) => a.kind)) : W.fillInNothing);
     setNote(null);
   }
 
@@ -409,12 +413,17 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now }: 
       {(canEdit || lastChanged) && (
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           {canEdit && (
-            <Button variant="ghost" className="-ml-3" onClick={fillIn}>
-              {W.fillIn}
+            <Button disabled={fillHint !== null} aria-describedby={fillHint ? fillHintId : undefined} onClick={fillIn}>
+              <WandSparkles aria-hidden /> {W.fillIn}
             </Button>
           )}
-          {lastChanged && <p className="ml-auto text-xs text-ed-muted">{lastChanged}</p>}
+          {lastChanged && <p className={cx("text-xs text-ed-muted", canEdit && "sm:ml-auto")}>{lastChanged}</p>}
         </div>
+      )}
+      {canEdit && fillHint && (
+        <p id={fillHintId} className={HELP}>
+          {fillHint}
+        </p>
       )}
       {canEdit && fillNote && (
         <p role="status" className={cx(TEXT, "text-ed-text")}>
@@ -430,7 +439,8 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now }: 
               <TextArea
                 id={ids.control}
                 aria-describedby={ids.help}
-                rows={2}
+                rows={3}
+                className={GROWS[2]}
                 maxLength={LIMITS.styleSummaryChars}
                 value={draft.summary ?? ""}
                 onChange={(event) => set("summary", event.target.value)}
@@ -519,9 +529,11 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now }: 
 
           <Row label={STYLE_FIELDS.hook.label} help={STYLE_FIELDS.hook.help} filled={filled.has("hook")}>
             {(ids) => (
-              <TextInput
+              <TextArea
                 id={ids.control}
                 aria-describedby={ids.help}
+                rows={2}
+                className={GROWS[1]}
                 maxLength={LIMITS.styleShortTextChars}
                 value={draft.hook ?? ""}
                 onChange={(event) => set("hook", event.target.value)}
@@ -615,9 +627,11 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now }: 
 
           <Row label={STYLE_FIELDS.voice.label} help={STYLE_FIELDS.voice.help} filled={filled.has("voice")}>
             {(ids) => (
-              <TextInput
+              <TextArea
                 id={ids.control}
                 aria-describedby={ids.help}
+                rows={2}
+                className={GROWS[1]}
                 maxLength={LIMITS.styleShortTextChars}
                 value={draft.voice ?? ""}
                 onChange={(event) => set("voice", event.target.value)}

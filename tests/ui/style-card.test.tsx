@@ -62,15 +62,26 @@ describe("the Style card in the Brand kit tab", () => {
     expect(logos.compareDocumentPosition(card()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("without a summary, says the first two things that are set, in plain words", async () => {
+  it("without a summary, says the two most useful things for editing that are set, in plain words", async () => {
     await setup({
       load: vi.fn(async () =>
-        style({ profile: { formats: ["short_9x16", "long_16x9"], pace: "quick", shotSeconds: 1.6, music: "upbeat", look: "warm" } }),
+        style({ profile: { formats: ["short_9x16", "long_16x9"], lengthSeconds: { min: 30, max: 60 }, pace: "quick", shotSeconds: 1.6, music: "upbeat", look: "warm" } }),
       ),
     });
-    expect(cardText()).toEqual(["Where you post: Shorts, Reels and TikTok, YouTube", "Pace: Quick"]);
+    // Pace, captions, look, music and how it opens come before where it's posted and how long it runs.
+    expect(cardText()).toEqual(["Pace: Quick", "Look: Warm"]);
     // Nothing written for agents: no format ids, no frame counts.
     expect(card()!.textContent).not.toMatch(/short_9x16|fps|frames/);
+  });
+
+  it("names captions before the look, and falls back to the rest in the Style page's order", async () => {
+    await setup({ load: vi.fn(async () => style({ profile: { look: "vivid", captions: { on: true, look: "karaoke" } } })) });
+    expect(cardText()).toEqual(["Captions: On · Karaoke", "Look: Vivid"]);
+  });
+
+  it("falls back to where it's posted and how long it runs when nothing more useful is set", async () => {
+    await setup({ load: vi.fn(async () => style({ profile: { formats: ["short_9x16"], lengthSeconds: { min: 30, max: 60 } } })) });
+    expect(cardText()).toEqual(["Where you post: Shorts, Reels and TikTok", "Typical length: 30 to 60 seconds"]);
   });
 
   it("names a choice by itself, and the notes when little else is set", async () => {
@@ -85,10 +96,16 @@ describe("the Style card in the Brand kit tab", () => {
   });
 
   it("a viewer is offered a look at the style, not a change", async () => {
-    await setup({ canEdit: false });
-    expect(cardText()).toEqual(["No style yet."]);
+    await setup({ canEdit: false, load: vi.fn(async () => style({ profile: { summary: "Calm and warm." } })) });
+    expect(cardText()).toEqual(["Calm and warm."]);
     expect(within(card()!).queryByRole("link", { name: WORDS.edit })).toBeNull();
     expect(within(card()!).getByRole("link", { name: "See style" }).getAttribute("href")).toBe("/s/seattle-solvers/settings/style");
+  });
+
+  it("isn't offered to a viewer as a link while there's no style to see", async () => {
+    await setup({ canEdit: false });
+    expect(cardText()).toEqual(["No style yet."]);
+    expect(within(card()!).queryByRole("link")).toBeNull();
   });
 
   it("isn't there when the style couldn't be read, and the brand kit works as before", async () => {
