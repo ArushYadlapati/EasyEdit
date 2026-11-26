@@ -43,6 +43,7 @@ import { MESSAGES, explainOpError } from "./messages";
 import { placeClips } from "./placement";
 import { cleanUpOps, duckOps, muteOps, separateAudioOps, soundClipsOf, volumeStepOps } from "./sound";
 import { freezeFrameOps, reverseOps } from "./speed";
+import { CROP_PROPS } from "@/lib/timeline/keyframes";
 import { addAdjustmentOps } from "./adjustment";
 import { findClip, type EditorStore } from "./store";
 import type { BrandFonts } from "@/lib/brand/types";
@@ -462,8 +463,12 @@ export function duplicateSelection(store: EditorStore): void {
 export function resetCrop(store: EditorStore, clipId: string): void {
   const state = store.getState();
   const clip = findClip(state.doc, clipId)?.clip;
-  if (!state.canEdit || state.gesture !== null || !clip || !isCropped(clip.transform.crop)) return;
-  state.edit([{ op: "update_clip", clipId, patch: { transform: { crop: { ...NO_CROP } } } }], "crop");
+  if (!state.canEdit || state.gesture !== null || !clip) return;
+  // Its keyed sides go too, or they would crop it again.
+  const keyed = CROP_PROPS.filter((side) => (clip.keyframes?.[side]?.length ?? 0) > 0);
+  if (!isCropped(clip.transform.crop) && keyed.length === 0) return;
+  const patch = { ...(isCropped(clip.transform.crop) && { transform: { crop: { ...NO_CROP } } }), ...(keyed.length > 0 && { keyframes: Object.fromEntries(keyed.map((side) => [side, []])) }) };
+  state.edit([{ op: "update_clip", clipId, patch }], "crop");
 }
 
 // The inspector's diamond: adds a keyframe of the property at the playhead (inside the clip), or removes the one there,

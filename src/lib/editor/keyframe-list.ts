@@ -1,4 +1,4 @@
-import type { Clip, Ease, Keyframe, KeyframeProp, OpInput } from "@/lib/timeline";
+import type { Clip, Ease, Keyframe, KeyframeCurve, KeyframeProp, OpInput } from "@/lib/timeline";
 import { KEYFRAME_PROPS, basePatch, propValue, removeKeyframe } from "@/lib/timeline/keyframes";
 
 // A clip's keyframes as list rows for the Effects tab, and the ops that edit them. A keyframe's `at` counts from the
@@ -20,15 +20,22 @@ const update = (clip: Clip, patch: Record<string, unknown>): OpInput[] => [{ op:
 
 // Changes the keyframe at `at`. A move onto another keyframe's `at` replaces that one. [] when there is no keyframe
 // at `at` or the patch changes nothing.
-export function editKeyframeOps(clip: Clip, prop: KeyframeProp, at: number, patch: { at?: number; value?: number; ease?: Ease }): OpInput[] {
+// A named ease takes a hand-shaped curve off; a curve (null: none) leaves the ease as it is.
+export function editKeyframeOps(clip: Clip, prop: KeyframeProp, at: number, patch: { at?: number; value?: number; ease?: Ease; curve?: KeyframeCurve | null }): OpInput[] {
   const list = clip.keyframes?.[prop] ?? [];
   const old = list.find((k) => k.at === at);
   if (!old) return [];
   const next: Keyframe = { ...old };
   if (patch.at !== undefined) next.at = patch.at;
   if (patch.value !== undefined) next.value = patch.value;
-  if (patch.ease !== undefined) next.ease = patch.ease;
-  if (next.at === old.at && next.value === old.value && next.ease === old.ease) return [];
+  if (patch.ease !== undefined) {
+    next.ease = patch.ease;
+    delete next.curve;
+  }
+  if (patch.curve === null) delete next.curve;
+  else if (patch.curve !== undefined) next.curve = patch.curve.map((n) => Number(n.toFixed(3))) as KeyframeCurve;
+  const sameCurve = JSON.stringify(next.curve ?? null) === JSON.stringify(old.curve ?? null);
+  if (next.at === old.at && next.value === old.value && next.ease === old.ease && sameCurve) return [];
   const rest = list.filter((k) => k.at !== at && k.at !== next.at);
   const sorted = [...rest, next].sort((a, b) => a.at - b.at);
   return update(clip, { keyframes: { [prop]: sorted } });
@@ -41,12 +48,12 @@ export function deleteKeyframeOps(clip: Clip, prop: KeyframeProp, at: number): O
   if (!list.some((k) => k.at === at)) return [];
   const next = removeKeyframe(list, at);
   const patch: Record<string, unknown> = { keyframes: { [prop]: next } };
-  if (next.length === 0) Object.assign(patch, basePatch(prop, propValue(clip, prop, clip.start + at)));
+  if (next.length === 0) Object.assign(patch, basePatch(clip, prop, propValue(clip, prop, clip.start + at)));
   return update(clip, patch);
 }
 
 // Drops every keyframe of the property, keeping its value at the clip's first frame.
 export function clearKeyframesOps(clip: Clip, prop: KeyframeProp): OpInput[] {
   if ((clip.keyframes?.[prop]?.length ?? 0) === 0) return [];
-  return update(clip, { keyframes: { [prop]: [] }, ...basePatch(prop, propValue(clip, prop, clip.start)) });
+  return update(clip, { keyframes: { [prop]: [] }, ...basePatch(clip, prop, propValue(clip, prop, clip.start)) });
 }

@@ -49,7 +49,7 @@ import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type ShapeClip, type Track } from "@/lib/timeline";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
-import { volumeAt } from "@/lib/timeline/keyframes";
+import { CROP_PROPS, volumeAt } from "@/lib/timeline/keyframes";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
 import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { FontSelect } from "./font-select";
@@ -669,15 +669,21 @@ function PositionSection({ clipId, lengthLabel }: { clipId: string; lengthLabel?
 function CropSection({ clipId }: { clipId: string }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
-  const cropped = useEditor((s) => isCropped(findClip(viewDoc(s), clipId)?.clip.transform.crop));
+  // Cropped, or with a side keyed: Reset takes both off.
+  const cropped = useEditor((s) => {
+    const clip = findClip(viewDoc(s), clipId)?.clip;
+    return isCropped(clip?.transform.crop) || CROP_PROPS.some((side) => (clip?.keyframes?.[side]?.length ?? 0) > 0);
+  });
   const side = { suffix: "%", min: 0, max: 95 };
+  const SIDES = [["cropLeft", "Crop left"], ["cropTop", "Crop top"], ["cropRight", "Crop right"], ["cropBottom", "Crop bottom"]] as const;
   return (
     <Section title="Crop">
       <div className="grid grid-cols-2 gap-2">
-        <NumberField clipId={clipId} field="cropLeft" label="Crop left" {...side} />
-        <NumberField clipId={clipId} field="cropTop" label="Crop top" {...side} />
-        <NumberField clipId={clipId} field="cropRight" label="Crop right" {...side} />
-        <NumberField clipId={clipId} field="cropBottom" label="Crop bottom" {...side} />
+        {SIDES.map(([field, label]) => (
+          <Keyed key={field} clipId={clipId} prop={field}>
+            <NumberField clipId={clipId} field={field} label={label} {...side} />
+          </Keyed>
+        ))}
       </div>
       <div className="flex flex-col items-start">
         <Button data-edit-control disabled={!canEdit || !cropped} onClick={() => resetCrop(store, clipId)}>

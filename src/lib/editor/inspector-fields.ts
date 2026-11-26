@@ -924,8 +924,8 @@ export function clipFieldOps(saved: Clip, field: ClipField, raw: string, ctx: Fi
       const crop = clip.transform.crop ?? NO_CROP;
       const { side } = CROP_SIDES[field];
       const value = Math.max(0, round(clamp(n / 100, 0, cropRoom(crop, field)), 4));
-      // update_clip replaces the crop whole, so all four sides go.
-      return value === crop[side] ? [] : update({ transform: { crop: { ...crop, [side]: value } } });
+      // update_clip replaces the crop whole, so all four sides go. A keyed side is keyed at the playhead instead.
+      return value === crop[side] ? [] : place({ crop: { ...crop, [side]: value } });
     }
   }
 

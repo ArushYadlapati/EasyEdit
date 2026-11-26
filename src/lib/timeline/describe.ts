@@ -7,7 +7,7 @@ import { KEYFRAME_PROPS } from "./keyframes";
 import { shapeToolOf } from "./shapes";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
 import { isColorClip } from "./types";
-import type { Clip, Grade, KeyframeProp, MediaClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
+import type { Clip, Grade, Keyframe, KeyframeProp, MediaClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -52,7 +52,9 @@ function transitionToken(t: Transition): string {
 // Linear, the default, is left out.
 function keyframeList(clip: Clip, prop: KeyframeProp): string {
   const keys = clip.keyframes?.[prop] ?? [];
-  return keys.map((k) => `${k.at}:${Number(k.value.toFixed(4))}${k.ease && k.ease !== "linear" ? `~${k.ease}` : ""}`).join(",");
+  // A hand-shaped curve is its four numbers, as a patch gives them in `curve`.
+  const shape = (k: Keyframe) => (k.curve && k.ease !== "hold" ? `~curve(${k.curve.join(" ")})` : k.ease && k.ease !== "linear" ? `~${k.ease}` : "");
+  return keys.map((k) => `${k.at}:${Number(k.value.toFixed(4))}${shape(k)}`).join(",");
 }
 
 // A grade's parts that change the picture, as the JSON an update_clip patch takes: a wheel off its rest, a curve with

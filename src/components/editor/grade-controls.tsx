@@ -1,7 +1,7 @@
 "use client";
 
 import { nanoid } from "nanoid";
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DISABLED, FOCUS_RING, cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/field";
@@ -33,32 +33,12 @@ import {
 import type { ClipField } from "@/lib/editor/inspector-fields";
 import { MESSAGES } from "@/lib/editor/messages";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
-import { isColorClip, type ColorClip, type Op, type OpInput } from "@/lib/timeline";
+import { isColorClip, type ColorClip } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "./context";
+import { useLiveEdit } from "./use-live-edit";
 
 const CAPTION = "text-xs font-medium text-ed-muted";
 const LABEL = "color grade";
-
-// A drag that shows each value as it goes and saves one change when let go. The store holds the drag's ops; this
-// keeps the ones it started, so a drag someone else's change ended is never saved under this label. Leaving the
-// screen mid-drag saves what was shown.
-function useLiveEdit(store: EditorStore, label: string) {
-  const own = useRef<Op[] | null>(null);
-  const finish = useCallback(() => {
-    const state = store.getState();
-    if (own.current !== null && state.gesture?.ops === own.current) state.commitGesture(label);
-    own.current = null;
-  }, [store, label]);
-  useEffect(() => finish, [finish]);
-  return {
-    preview(ops: OpInput[] | null) {
-      const change = ops !== null && ops.length > 0 ? ops : null;
-      store.getState().setGesture(change);
-      own.current = change ? (store.getState().gesture?.ops ?? null) : null;
-    },
-    finish,
-  };
-}
 
 // The clip as it is saved, which is what a change is worked out against: the clip a component is given may already
 // show a drag in progress.

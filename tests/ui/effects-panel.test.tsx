@@ -119,6 +119,7 @@ describe("the keyframe list", () => {
       "Ease in",
       "Ease out",
       "Ease in-out",
+      "Custom curve",
     ]);
     expect(box(row("Opacity keyframe at 1.00s"), "Value").value).toBe("25");
   });

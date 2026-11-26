@@ -1,5 +1,5 @@
-import type { AdjustKey, Clip, ColorClip, KeyframeProp, MediaClip, OpInput, Transform } from "@/lib/timeline";
-import { KEYFRAME_PROPS, TRANSFORM_PROPS, basePatch, effectiveTransform, isKeyframed, keyframeAt, propValue, removeKeyframe, setKeyframe } from "@/lib/timeline/keyframes";
+import { CROP_KEY_MAX, type AdjustKey, type Clip, type ColorClip, type Crop, type KeyframeProp, type MediaClip, type OpInput, type Transform } from "@/lib/timeline";
+import { CROP_PROPS, CROP_SIDE, KEYFRAME_PROPS, TRANSFORM_PROPS, basePatch, effectiveTransform, isKeyframed, keyframeAt, propValue, removeKeyframe, setKeyframe } from "@/lib/timeline/keyframes";
 
 // Making and changing a clip's keyframes from the editor. Frames given here are timeline frames; a keyframe's `at`
 // counts from the clip's start.
@@ -34,7 +34,7 @@ export function toggleKeyframeOps(clip: Clip, prop: KeyframeProp, frame: number)
   }
   const next = removeKeyframe(list, at);
   const patch: Record<string, unknown> = { keyframes: { [prop]: next } };
-  if (next.length === 0) Object.assign(patch, basePatch(prop, value));
+  if (next.length === 0) Object.assign(patch, basePatch(clip, prop, value));
   return [{ op: "update_clip", clipId: clip.id, patch }];
 }
 
@@ -59,7 +59,17 @@ export function writeTransformOps(clip: Clip, frame: number, patch: Partial<Tran
   for (const [key, value] of Object.entries(patch)) {
     const prop = TRANSFORM_PROPS.find((p) => p === key);
     if (prop && isKeyframed(clip, prop)) keyframes[prop] = setKeyframe(clip.keyframes![prop]!, frame - clip.start, value as number);
-    else transform[key] = value;
+    else if (key === "crop" && value && CROP_PROPS.some((side) => isKeyframed(clip, side))) {
+      // A crop with keyed sides: each keyed side gets a keyframe here, and the rest stay on the transform's own crop.
+      const crop = value as Crop;
+      const base = { left: 0, top: 0, right: 0, bottom: 0, ...clip.transform.crop };
+      for (const side of CROP_PROPS) {
+        const wanted = Math.min(CROP_KEY_MAX, Math.max(0, crop[CROP_SIDE[side]]));
+        if (isKeyframed(clip, side)) keyframes[side] = setKeyframe(clip.keyframes![side]!, frame - clip.start, wanted);
+        else base[CROP_SIDE[side]] = crop[CROP_SIDE[side]];
+      }
+      if (JSON.stringify(base) !== JSON.stringify({ left: 0, top: 0, right: 0, bottom: 0, ...clip.transform.crop })) transform.crop = base;
+    } else transform[key] = value;
   }
   const out: Record<string, unknown> = {};
   if (Object.keys(transform).length > 0) out.transform = transform;

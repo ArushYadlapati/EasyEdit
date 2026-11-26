@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { OpError } from "./errors";
-import { KEYFRAME_PROPS, TRANSFORM_PROPS, shiftKeyframes } from "./keyframes";
+import { CROP_PROPS, KEYFRAME_PROPS, TRANSFORM_PROPS, shiftKeyframes } from "./keyframes";
 import type { Op } from "./ops";
 import {
   CUSTOM_SIZE_ONLY,
@@ -246,8 +246,12 @@ function assertKeyframesFit(clip: Clip, opIndex: number, opName: string) {
   if (clip.type === "audio" && TRANSFORM_PROPS.some(has)) {
     throw new OpError("INVALID", `${opName}: an audio clip takes only volume keyframes`, opIndex);
   }
-  if (clip.type === "adjustment" && (has("x") || has("y") || has("scale") || has("rotation") || has("volume"))) {
+  if (clip.type === "adjustment" && (has("x") || has("y") || has("scale") || has("rotation") || has("volume") || CROP_PROPS.some(has))) {
     throw new OpError("INVALID", `${opName}: an adjustment layer takes only opacity and colour keyframes`, opIndex);
+  }
+  // A crop is keyed where a crop can be set: a video, an image, text, and the slot one will fill.
+  if ((clip.type === "shape" || clip.type === "audio") && CROP_PROPS.some(has)) {
+    throw new OpError("INVALID", `${opName}: ${clip.type === "shape" ? "a shape" : "an audio clip"} takes no crop keyframes`, opIndex);
   }
   // Colours are keyed where colours are set: on a video, an image (and the slot one will fill) or an adjustment layer.
   const pictured = clip.type === "video" || clip.type === "image" || clip.type === "placeholder" || clip.type === "adjustment";

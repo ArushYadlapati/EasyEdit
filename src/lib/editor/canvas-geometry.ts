@@ -33,10 +33,11 @@ export function canvasItems(doc: TimelineDoc, frame: number, sizer: Sizer): Canv
   const items: CanvasItem[] = [];
   for (const { track, clip } of activeClips(doc, frame)) {
     if (clip.type === "audio" || clip.type === "adjustment" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
-    const rects = clipRects(doc, clip, sizer);
-    if (!rects) continue;
-    // Keyframes move the box with the picture. Transitions do not: they play for a moment and the box stays at rest.
+    // Keyframes move the box with the picture, and a keyed crop cuts it. Transitions do not: they play for a moment
+    // and the box stays at rest.
     const t = effectiveTransform(clip, frame);
+    const rects = clipRects(doc, t === clip.transform ? clip : ({ ...clip, transform: t } as typeof clip), sizer);
+    if (!rects) continue;
     items.push({
       clipId: clip.id,
       trackId: track.id,

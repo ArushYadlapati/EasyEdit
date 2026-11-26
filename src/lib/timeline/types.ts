@@ -149,12 +149,21 @@ export type Ease = z.infer<typeof Ease>;
 // are a video's or image's colour changes and stylised effects (the keys of Adjust), so a filter can fade in or
 // change as the clip plays. Which kind of clip takes which is checked in the ops.
 const ADJUST_PROPS = ["brightness", "contrast", "saturation", "temperature", "hue", "blur", "vignette", "sharpen", "grain", "pixelate", "split", "glitch", "vhs"] as const;
-export const KeyframeProp = z.enum(["x", "y", "scale", "rotation", "opacity", "volume", ...ADJUST_PROPS]);
+// The four sides of a clip's crop can be keyed too, each a share of the picture cut from that side.
+const CROP_PROPS = ["cropLeft", "cropTop", "cropRight", "cropBottom"] as const;
+export const KeyframeProp = z.enum(["x", "y", "scale", "rotation", "opacity", "volume", ...ADJUST_PROPS, ...CROP_PROPS]);
 export type KeyframeProp = z.infer<typeof KeyframeProp>;
 
 // `at` counts frames from the clip's start. It may be negative or past the end: a keyframe outside the clip only
 // shapes the curve, so trimming a clip never has to throw one away. `ease` is the travel to the next keyframe.
-export const Keyframe = z.strictObject({ at: z.number().int(), value: z.number(), ease: Ease.optional() });
+// `curve` shapes the travel to the next keyframe by hand: the two handles of a cubic bezier from (0, 0) to (1, 1), as
+// x1, y1, x2, y2 (what CSS calls cubic-bezier). Time runs along x, so each x stays between 0 and 1; a y past 0 or 1
+// overshoots and comes back. It takes the place of `ease`, except a "hold", which still holds.
+const BezierX = z.number().min(0).max(1);
+const BezierY = z.number().min(-2).max(3);
+export const KeyframeCurve = z.tuple([BezierX, BezierY, BezierX, BezierY]);
+export type KeyframeCurve = z.infer<typeof KeyframeCurve>;
+export const Keyframe = z.strictObject({ at: z.number().int(), value: z.number(), ease: Ease.optional(), curve: KeyframeCurve.optional() });
 export type Keyframe = z.infer<typeof Keyframe>;
 
 const KeyframeList = z
@@ -184,6 +193,10 @@ export const Keyframes = z
     split: KeyframeList.optional(),
     glitch: KeyframeList.optional(),
     vhs: KeyframeList.optional(),
+    cropLeft: KeyframeList.optional(),
+    cropTop: KeyframeList.optional(),
+    cropRight: KeyframeList.optional(),
+    cropBottom: KeyframeList.optional(),
   })
   .superRefine((k, ctx) => {
     if (k.volume?.some((f) => f.value < 0 || f.value > VOLUME_MAX)) {
@@ -195,6 +208,13 @@ export const Keyframes = z
     if (k.scale?.some((f) => f.value <= 0)) {
       ctx.addIssue({ code: "custom", path: ["scale"], message: "scale keyframes must be above 0" });
     }
+    // A crop side is a share of the picture. Two opposite sides may add up to all of it at some moment: the picture
+    // drawn then keeps a sliver (keyframes.ts), so no keyframe has to know of the others.
+    for (const key of CROP_PROPS) {
+      if (k[key]?.some((f) => f.value < 0 || f.value > CROP_KEY_MAX)) {
+        ctx.addIssue({ code: "custom", path: [key], message: `${key} keyframes must be between 0 and ${CROP_KEY_MAX}` });
+      }
+    }
     // A colour keyframe takes what the colour itself takes.
     for (const key of ADJUST_PROPS) {
       if (k[key]?.some((f) => !Adjust.shape[key].safeParse(f.value).success)) {
@@ -203,6 +223,9 @@ export const Keyframes = z
     }
   });
 export type Keyframes = z.infer<typeof Keyframes>;
+
+// The most one side's keyframe may cut.
+export const CROP_KEY_MAX = 0.95;
 
 const EffectFrames = z.number().int().min(1).max(LIMITS.effectFramesMax);
 

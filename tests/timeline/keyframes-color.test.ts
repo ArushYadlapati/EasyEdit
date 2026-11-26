@@ -15,7 +15,7 @@ const keyed = (keyframes: Record<string, unknown>, adjust: Record<string, number
 
 describe("a picture's colours over time", () => {
   it("every colour change and stylised effect can be keyed", () => {
-    expect(KEYFRAME_PROPS).toEqual(["x", "y", "scale", "rotation", "opacity", "volume", ...ADJUST_KEYS]);
+    expect(KEYFRAME_PROPS.slice(0, 19)).toEqual(["x", "y", "scale", "rotation", "opacity", "volume", ...ADJUST_KEYS]); // then the crop's sides
     expect([isAdjustProp("blur"), isAdjustProp("vhs"), isAdjustProp("opacity"), isAdjustProp("volume")]).toEqual([true, true, false, false]);
   });
   it("travel between their keyframes, and hold the nearest outside them", () => {
@@ -31,7 +31,7 @@ describe("a picture's colours over time", () => {
     expect(at(5).vhs).toBe(0);
     expect(propValue(clip, "brightness", clip.start + 5)).toBeCloseTo(0.5);
     expect(propValue(clip, "contrast", clip.start + 5)).toBe(0.3);
-    expect(basePatch("hue", 20)).toEqual({ adjust: { hue: 20 } });
+    expect(basePatch(clip, "hue", 20)).toEqual({ adjust: { hue: 20 } });
     expect(adjustAt(findClip(d, "x1")!.clip, 0).brightness).toBe(0);
   });
   it("stay in the colour's own range, on pictures only", () => {

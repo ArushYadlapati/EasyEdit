@@ -14,15 +14,20 @@ import { KEYFRAME_PROPS } from "@/lib/timeline/keyframes";
 import type { Units } from "@/lib/editor/settings";
 import { findClip, viewDoc, type EditorStore } from "@/lib/editor/store";
 import { UNIT_SUFFIX, fromUnit, showUnit } from "@/lib/editor/units";
-import { VOLUME_MAX, type Clip, type Ease, type Keyframe, type KeyframeProp, type OpInput } from "@/lib/timeline";
+import { CROP_KEY_MAX, VOLUME_MAX, type Clip, type Ease, type Keyframe, type KeyframeCurve, type KeyframeProp, type OpInput } from "@/lib/timeline";
 import { useEditor, useEditorStore, useSettings } from "./context";
 import { AnimationSection, TransitionsSection } from "./effects-section";
+import { EaseCurve } from "./ease-curve";
 import { KenBurnsButton, PROP_LABEL } from "./keyframe-button";
 
 const TEXT = "text-[13px] leading-5";
 const CAPTION = "text-xs font-medium text-ed-muted";
 // Time, value, and the row's buttons.
 const ROW = "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-1";
+
+// The Ease menu's value for a curve shaped by hand, and the curve it starts as (a gentle ease in and out).
+const CUSTOM = "custom";
+const START_CURVE: KeyframeCurve = [0.4, 0, 0.2, 1];
 
 const EASES: { value: Ease; label: string }[] = [
   { value: "linear", label: "Linear" },
@@ -95,6 +100,11 @@ function valueView(prop: KeyframeProp, value: number, units: Units, frame: { wid
       return { shown: round(value * 100, 1), suffix: "%", step: 1, min: 0, max: 100, kept: (typed) => Math.min(1, Math.max(0, round(typed / 100, 4))) };
     case "volume":
       return { shown: Math.round(value * 100), suffix: "%", step: 10, min: 0, max: VOLUME_MAX * 100, kept: (typed) => Math.min(VOLUME_MAX, Math.max(0, Math.round(typed) / 100)) };
+    case "cropLeft":
+    case "cropTop":
+    case "cropRight":
+    case "cropBottom":
+      return { shown: round(value * 100, 1), suffix: "%", step: 1, min: 0, max: CROP_KEY_MAX * 100, kept: (typed) => Math.min(CROP_KEY_MAX, Math.max(0, round(typed / 100, 4))) };
     default: {
       // A colour change or a stylised effect, shown as its Inspect field shows it: percent, degrees or pixels.
       const range = ADJUST_RANGE[prop];
@@ -140,8 +150,9 @@ function KeyframeRow({ clipId, prop, keyframe, fps, canEdit, onMoved, onDelete }
   const { at } = keyframe;
   const view = valueView(prop, keyframe.value, units, { width, height });
   const shownTime = Number(seconds(at, fps));
-  const ease = keyframe.ease ?? "linear";
-  const edit = (patch: { at?: number; value?: number; ease?: Ease }) => send(store, clipId, (clip) => editKeyframeOps(clip, prop, at, patch));
+  // A hand-shaped curve shows as its own choice; a hold wins over one, as it does when drawn.
+  const ease = keyframe.curve && keyframe.ease !== "hold" ? CUSTOM : (keyframe.ease ?? "linear");
+  const edit = (patch: { at?: number; value?: number; ease?: Ease; curve?: KeyframeCurve | null }) => send(store, clipId, (clip) => editKeyframeOps(clip, prop, at, patch));
 
   // Typed seconds to the nearest frame. True when the keyframe moved.
   function saveTime(typed: number): boolean {
@@ -235,13 +246,14 @@ function KeyframeRow({ clipId, prop, keyframe, fps, canEdit, onMoved, onDelete }
           disabled={!canEdit}
           className="col-span-2"
           value={ease}
-          onChange={(event) => edit({ ease: event.target.value as Ease })}
+          onChange={(event) => (event.target.value === CUSTOM ? edit({ curve: START_CURVE }) : edit({ ease: event.target.value as Ease }))}
         >
           {EASES.map((e) => (
             <option key={e.value} value={e.value}>
               {e.label}
             </option>
           ))}
+          <option value={CUSTOM}>Custom curve</option>
           {/* Not offered, but an agent may set it; shown as it is rather than as Linear. */}
           {ease === "hold" && <option value="hold">Hold</option>}
         </Select>
@@ -249,6 +261,7 @@ function KeyframeRow({ clipId, prop, keyframe, fps, canEdit, onMoved, onDelete }
           <Trash2 />
         </IconButton>
       </div>
+      {ease === CUSTOM && keyframe.curve && <EaseCurve clipId={clipId} prop={prop} at={at} curve={keyframe.curve} canEdit={canEdit} />}
     </div>
   );
 }

@@ -603,6 +603,8 @@ function drawClip(
   resolveFont: (family: string) => string,
 ): void {
   const { t } = draw;
+  // A keyed crop is part of the transform at this frame: the clip is drawn as if it were its own.
+  const shown = t.crop === clip.transform.crop ? clip : ({ ...clip, transform: { ...clip.transform, crop: t.crop } } as Clip);
   ctx.save();
   ctx.globalAlpha = draw.alpha;
   const composite = clip.type === "placeholder" || clip.type === "adjustment" ? null : compositeOf(clip.blend);
@@ -611,9 +613,9 @@ function drawClip(
   ctx.rotate((t.rotation * Math.PI) / 180);
   // A stretch widens text glyphs too. Wrapping happens in local units, so it does not change.
   ctx.scale(t.scale * stretchOf(t), t.scale);
-  if (clip.type === "text") drawText(ctx, doc, clip, resolveFont, draw.text);
-  else if (clip.type === "shape") drawShape(ctx, clip);
-  else if (clip.type === "video" || clip.type === "image") drawMedia(ctx, doc, clip as MediaClip & { type: "video" | "image" }, frame, options);
+  if (shown.type === "text") drawText(ctx, doc, shown, resolveFont, draw.text);
+  else if (shown.type === "shape") drawShape(ctx, shown);
+  else if (shown.type === "video" || shown.type === "image") drawMedia(ctx, doc, shown as MediaClip & { type: "video" | "image" }, frame, options);
   ctx.restore();
 }
 

@@ -29,6 +29,10 @@ export const PROP_LABEL: Record<KeyframeProp, string> = {
   split: "Color split",
   glitch: "Glitch",
   vhs: "VHS",
+  cropLeft: "Crop left",
+  cropTop: "Crop top",
+  cropRight: "Crop right",
+  cropBottom: "Crop bottom",
 };
 
 function stateOf(s: EditorState, clipId: string, prop: KeyframeProp): KeyState {
