@@ -98,7 +98,7 @@ function pretendQueue() {
 
 const never = <T,>() => new Promise<T>(() => {});
 
-function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boolean; files?: MediaFiles; settings?: SettingsStore; drop?: MediaDrop; local?: LocalFolder } = {}) {
+function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boolean; files?: MediaFiles; settings?: SettingsStore; drop?: MediaDrop; local?: LocalFolder; stock?: boolean } = {}) {
   const { api, answers } = pretendApi(options.listed ?? [FIELD, PHOTO], options.setUp);
   const library = createLibraryStore({ api });
   const queue = pretendQueue();
@@ -108,7 +108,7 @@ function setup(options: { canEdit?: boolean; listed?: AssetView[]; setUp?: boole
   const view = render(
     <EditorProvider store={store} settings={options.settings}>
       <ContextMenuProvider>
-        <MediaProvider services={services} drop={options.drop}>
+        <MediaProvider services={services} drop={options.drop} stock={options.stock}>
           <LeftPanel />
         </MediaProvider>
       </ContextMenuProvider>
@@ -845,4 +845,21 @@ it("without a provider the services do nothing: no library, no uploads, no files
   expect(queue.items()).toEqual([]);
   expect(await files.get("f1")).toEqual({ ok: false, problem: "offline" });
   expect(() => result.current.dispose()).not.toThrow();
+});
+
+describe("the stock library", () => {
+  it("has no button on a server without one", async () => {
+    setup();
+    await openMedia();
+    expect(screen.queryByRole("button", { name: "Stock library" })).toBeNull();
+  });
+  it("has a button where the server has one, off for someone who can't edit", async () => {
+    const { view } = setup({ stock: true });
+    await openMedia();
+    expect((screen.getByRole("button", { name: "Stock library" }) as HTMLButtonElement).disabled).toBe(false);
+    view.unmount();
+    setup({ stock: true, canEdit: false });
+    await openMedia();
+    expect((screen.getByRole("button", { name: "Stock library" }) as HTMLButtonElement).disabled).toBe(true);
+  });
 });

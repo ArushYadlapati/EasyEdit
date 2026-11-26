@@ -52,6 +52,7 @@ export type EditorSpace = {
   storageBlock?: StorageBlock;
   ownsConnection?: boolean; // whether the person connected the space's Google account (only they can reconnect it)
   ownerEmail?: string | null; // who did
+  stock?: boolean; // whether this server has a stock library
 };
 
 // Owns the store, the API client, the sync, the media services, the project's dashboard picture and this browser's
@@ -269,6 +270,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
         spaceId={space.id}
         storageReady={space.storageReady}
         storageProblem={space.storageProblem}
+        stock={space.stock === true}
         storageSetup={
           space.kind
             ? {

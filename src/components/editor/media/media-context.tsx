@@ -127,10 +127,11 @@ export type StorageProblem = "none" | "broken" | null;
 export type StorageSetup = { kind: SpaceKind; slug: string; isAdmin: boolean; block: StorageBlock; ownsConnection: boolean; ownerEmail: string | null };
 
 // The space the library belongs to, whether it has storage to upload to, and if not, why, and who can set it up.
-type MediaSpace = { spaceId: string | null; storageReady: boolean; storageProblem: StorageProblem; storageSetup: StorageSetup | null };
+// stock: whether this server has a stock library to offer.
+type MediaSpace = { spaceId: string | null; storageReady: boolean; storageProblem: StorageProblem; storageSetup: StorageSetup | null; stock: boolean };
 // The default agrees with MediaProvider's: with no provider no space is named and storage counts as ready. "Not ready"
 // hides uploading, so it must only ever come from a provider that was told so (the editor page, from storageState).
-const MediaSpaceContext = createContext<MediaSpace>({ spaceId: null, storageReady: true, storageProblem: null, storageSetup: null });
+const MediaSpaceContext = createContext<MediaSpace>({ spaceId: null, storageReady: true, storageProblem: null, storageSetup: null, stock: false });
 const MediaDropContext = createContext<MediaDrop | null>(null);
 const IDLE = idleServices();
 
@@ -144,6 +145,7 @@ export function MediaProvider({
   storageReady = true,
   storageProblem = storageReady ? null : "none",
   storageSetup = null,
+  stock = false,
   drop = null,
   children,
 }: {
@@ -152,6 +154,7 @@ export function MediaProvider({
   storageReady?: boolean;
   storageProblem?: StorageProblem;
   storageSetup?: StorageSetup | null;
+  stock?: boolean;
   drop?: MediaDrop | null;
   children: ReactNode;
 }): ReactNode {
@@ -162,12 +165,13 @@ export function MediaProvider({
       spaceId,
       storageReady,
       storageProblem,
+      stock,
       storageSetup:
         kind !== undefined && slug !== undefined
           ? { kind, slug, isAdmin: isAdmin === true, block: block ?? null, ownsConnection: ownsConnection === true, ownerEmail: ownerEmail ?? null }
           : null,
     }),
-    [spaceId, storageReady, storageProblem, kind, slug, isAdmin, block, ownsConnection, ownerEmail],
+    [spaceId, storageReady, storageProblem, stock, kind, slug, isAdmin, block, ownsConnection, ownerEmail],
   );
   return (
     <MediaContext value={services}>

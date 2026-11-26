@@ -1,6 +1,6 @@
 "use client";
 
-import { Upload } from "lucide-react";
+import { Images, Upload } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type DragEvent, type FormEvent, type HTMLAttributes } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { useEditor, useEditorStore } from "../context";
 import { LeaveLink } from "../leave-link";
 import { AssetTile, type AssetAction, type WatchView } from "./asset-tile";
 import { SourceMonitor } from "./source-monitor";
+import { StockDialog } from "./stock-dialog";
 import { canPickFolder, pickFolder } from "./folder-memory";
 import { type StorageSetup, useLibrary, useLocalFolder, useMedia, useMediaDropState, useMediaSpace } from "./media-context";
 import { UploadRow } from "./upload-row";
@@ -98,7 +99,8 @@ type MediaTabProps = {
 // dropped files.
 export function MediaTab({ panel, onAdd }: MediaTabProps) {
   const { library, queue, local } = useMedia();
-  const { storageReady, storageProblem, storageSetup } = useMediaSpace();
+  const { storageReady, storageProblem, storageSetup, stock } = useMediaSpace();
+  const [stockOpen, setStockOpen] = useState(false);
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const { loaded, setUp, problem, query, kind, uploadEvent } = useLibrary(
@@ -223,6 +225,13 @@ export function MediaTab({ panel, onAdd }: MediaTabProps) {
               Upload
             </Button>
             {canUpload && <p className="text-[13px] leading-5 text-ed-muted">You can also drag files here, onto the timeline or onto the preview.</p>}
+            {stock && (
+              <Button data-edit-control disabled={!canUpload} className="w-full" onClick={() => setStockOpen(true)}>
+                <Images />
+                Stock library
+              </Button>
+            )}
+            {stock && <StockDialog open={stockOpen && canUpload} onClose={() => setStockOpen(false)} onAdd={(file) => queue.add([file])} />}
             <RecordButtons canUpload={canUpload} />
             <input
               ref={picker}
