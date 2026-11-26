@@ -12,7 +12,7 @@ import { escapeQuoted } from "@/lib/timeline";
 import { oneLine } from "../one-line";
 import { quotedSpace } from "../space-label";
 import { stylePageUrl, styleSpace } from "../style-space";
-import { notesLines } from "../style-text";
+import { notesLines, splitNotes } from "../style-text";
 import { fail, ok, type SpaceToolContext, type ToolContext, type ToolResult } from "../types";
 
 // What save_style takes. fields is checked against the style's own rules here, not by the tool's schema, so the tool
@@ -60,8 +60,9 @@ const skipped = (link: string, why: string): LinkOutcome => ({ status: "skipped"
 const SAME_VIDEO = "it's the same video as a link above.";
 
 // Which video a link is, however it was written: a YouTube video by its id (its watch page and its Shorts page are
-// one video), any other by the one address its site gives it.
-const videoKey = (link: VideoLink) => (link.provider === "youtube" ? `youtube:${link.id}` : link.url);
+// one video), a Vimeo video by its id too (with or without an unlisted video's private part), any other by the one
+// address its site gives it. The style's service matches them the same way.
+const videoKey = (link: VideoLink) => (link.provider === "youtube" || link.provider === "vimeo" ? `${link.provider}:${link.id}` : link.url);
 
 // The videos the style already learns from links to, by videoKey.
 async function knownVideos(ctx: SpaceToolContext): Promise<Set<string>> {
@@ -117,10 +118,48 @@ function changes(before: StyleProfile, after: StyleProfile): { set: string[]; cl
   return { set: describeProfile(now), cleared: changed.filter((key) => !isSetValue(after[key])) };
 }
 
-// An editor's agent saves a space's style: fields (each one given replaces the saved one, null clears it), the
-// summary, the notes, and up to five video links to learn from. Bad fields or notes are refused with the Style page's
-// own words and nothing is saved, links included. Links are added after that, side by side: one that can't be added
-// is named with why, and the rest still go in. The answer says what changed and links the Style page. A call that
+// The fields that are lists. A list sent replaces the saved one whole, so items left out of it are gone.
+const LIST_FIELDS = ["formats", "transitionKinds", "always", "never"] as const;
+
+// One line for each list that lost items it had, naming them, so an agent that meant to add one item sees what it
+// took out. A list cleared whole is said under Cleared instead.
+function droppedItems(before: StyleProfile, after: StyleProfile): string[] {
+  return LIST_FIELDS.flatMap((key) => {
+    const now: readonly string[] | undefined = after[key];
+    if (!now || now.length === 0) return [];
+    const gone = ((before[key] ?? []) as readonly string[]).filter((item) => !now.includes(item));
+    return gone.length > 0 ? [`Taken out of ${key}, as the list sent replaced it: ${gone.map(quoted).join(", ")}.`] : [];
+  });
+}
+
+// What the answer adds when new notes left out lines the old ones had: that they are gone (all of the old notes, with
+// how long they were, or the lines taken out), what to do if they should stay, and the old text, quoted, so it can be
+// sent back. Empty when every old line is still there, in a line of its own or inside a longer one, as when an agent
+// read the notes and sent them back with a rule added, and when there were no notes before.
+function replacedNotes(old: string, now: string): string[] {
+  const before = splitNotes(old);
+  const after = splitNotes(now);
+  const gone = before.filter((line) => !after.some((kept) => kept.includes(line)));
+  if (gone.length === 0) return [];
+  if (gone.length < before.length) {
+    const [what, it, those] = gone.length === 1 ? ["a line", "it", "that line"] : [`${gone.length} lines`, "they", "those lines"];
+    return [
+      `That took out ${what} the old notes had. If ${it} should stay, call save_style again with notes holding the full text, ${those} included:`,
+      ...gone.map((line) => `  ${quoted(line)}`),
+    ];
+  }
+  const chars = [...old.trim()].length.toLocaleString("en-US");
+  const cleared = after.length === 0;
+  const what = cleared ? "removed" : "replaced all of";
+  return [`That ${what} the old notes (${chars} characters). If they should stay, call save_style again with notes holding the old text${cleared ? "" : " and the new"}.`, ...notesLines(old, "The old notes")];
+}
+
+// An editor's agent saves a space's style: fields (each one given replaces the saved one, lists whole, null clears it),
+// the summary, the notes (which replace the saved notes whole), and up to five video links to learn from. Bad fields or
+// notes are refused with the Style page's own words and nothing is saved, links included. Links are added after that,
+// side by side: one that can't be added is named with why, and the rest still go in. The answer says what changed,
+// what a list sent took out, and, when new notes left out lines the old ones had, those lines (or all the old notes),
+// then links the Style page. A call that
 // changes nothing says so; it is refused only when a link it asked for couldn't go in.
 export async function saveStyleTool(base: ToolContext, input: SaveStyleInput): Promise<ToolResult> {
   const found = styleSpace(base, input.space);
@@ -154,9 +193,10 @@ export async function saveStyleTool(base: ToolContext, input: SaveStyleInput): P
     const { set, cleared } = changes(before.profile, after.profile);
     const notesChanged = after.notes !== before.notes;
     if (set.length > 0) lines.push("Changed:", ...set.map((line) => `- ${line}`));
+    lines.push(...droppedItems(before.profile, after.profile));
     if (cleared.length > 0) lines.push(`Cleared: ${cleared.join(", ")}.`);
     // What was saved, said back plainly: the guide's longer intro is for agents reading the style before they edit.
-    if (notesChanged) lines.push(...(after.notes === "" ? ["Notes: cleared."] : notesLines(after.notes, "Notes")));
+    if (notesChanged) lines.push(...(after.notes === "" ? ["Notes: cleared."] : notesLines(after.notes, "Notes")), ...replacedNotes(before.notes, after.notes));
     changed = set.length > 0 || cleared.length > 0 || notesChanged;
     fieldsUnchanged = !changed;
   }

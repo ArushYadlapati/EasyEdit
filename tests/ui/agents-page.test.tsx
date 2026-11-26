@@ -183,8 +183,10 @@ describe("video skills", () => {
       "Claude on the web",
     ]);
     expect(within(ways).getByText("Upload the same file under Settings → Capabilities → Skills.")).toBeTruthy();
-    // No words an agent's maker would use and a person wouldn't.
-    expect(section.textContent).not.toMatch(/\b(MCP|oEmbed|JSON|token)\b/i);
+    // No words an agent's maker would use and a person wouldn't, outside the commands people type.
+    const words = section.cloneNode(true) as HTMLElement;
+    for (const code of words.querySelectorAll("code")) code.remove();
+    expect(words.textContent).not.toMatch(/\b(MCP|oEmbed|JSON|token)\b/i);
   });
 
   it("Claude Code gets the two plugin commands, each shown whole and copied on its own", async () => {
@@ -202,6 +204,25 @@ describe("video skills", () => {
     await click(button("Copy the second command", section));
     expect(writeText).toHaveBeenLastCalledWith("/plugin install easyedit@easyedit");
     expect(button("Copy the second command", section).textContent).toBe("Copied");
+  });
+
+  it("Claude Code is told to sign in after the commands, and to skip them when it is already connected", () => {
+    renderView();
+    const section = region("Video skills");
+    const paragraph = (text: string) => within(section).getByText((_, el) => el?.tagName === "P" && el.textContent === text);
+    expect(within(section).queryByText(/in one go/)).toBeNull();
+    // The plugin's connection has no tools until it is signed in.
+    const signIn = paragraph("Then run /mcp in Claude Code, pick easyedit, choose Authenticate and sign in.");
+    expect(signIn.querySelector("code")?.textContent).toBe("/mcp");
+    // Someone set up with claude mcp add would otherwise get EasyEdit twice, with every tool listed twice.
+    const already = paragraph(
+      "Already connected Claude Code with the steps above? Then it has the skills, so you can skip this. To use the plugin instead, first run claude mcp remove easyedit in a terminal.",
+    );
+    expect(already.querySelector("code")?.textContent).toBe("claude mcp remove easyedit");
+    // Both come after the two commands.
+    const second = within(section).getByRole("group", { name: "Second command" });
+    expect(second.compareDocumentPosition(signIn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(signIn.compareDocumentPosition(already) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("other agents download the zip and unzip it into their skills folder", () => {

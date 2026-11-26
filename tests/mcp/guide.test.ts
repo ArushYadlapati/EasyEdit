@@ -201,10 +201,13 @@ describe("the guide", () => {
     expect(guide.startsWith("# EasyEdit editing guide\n")).toBe(true);
   });
 
-  it("tells agents to read the guide with the project's space, and to save a lasting preference only once agreed", () => {
+  it("tells agents to read the guide with the project's space, and to save a lasting preference only once agreed, sending back what's there", () => {
     expect(SERVER_INSTRUCTIONS).toContain("Before your first edit in a conversation, call get_editing_guide with the project's space (it includes that space's style).");
     expect(guide).toContain("- A space can have a saved style. Call get_editing_guide with the project's space to read it, and follow it unless the person asks for something else.");
-    expect(guide).toContain("- When someone states a lasting preference, offer to save it with save_style; save only after they agree.");
+    // Notes and lists replace the saved ones whole, so an agent that sends only the new rule wipes the rest.
+    expect(guide).toContain(
+      "- When someone states a lasting preference, offer to save it with save_style; save only after they agree. The notes and each list replace the saved ones whole, so read the style first and send back the full text with the new part added.",
+    );
     // Seeing inside media is still out: only a style's frames come from the person's videos.
     expect(guide).toContain("You cannot see or hear it yet: go by names, events and lengths");
   });

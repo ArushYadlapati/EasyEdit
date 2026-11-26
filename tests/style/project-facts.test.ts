@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { projectFacts, type AssetKinds } from "@/lib/style/project-facts";
+import { suggestStyle } from "@/lib/style/suggest";
 import { ProjectAnalysis } from "@/lib/style/types";
 import {
   DEFAULT_TRANSFORM,
@@ -63,7 +64,7 @@ describe("a past project's facts", () => {
       seconds: 0,
       format: "long_16x9",
       fps: 30,
-      shots: { count: 0, averageSeconds: 0, medianSeconds: 0, firstSeconds: 0, perMinute: 0 },
+      shots: { count: 0, averageSeconds: 0, medianSeconds: 0, firstSeconds: 0, perMinute: 0, transitions: NO_TRANSITIONS },
       text: { clips: 0, perMinute: 0, fonts: [], averageWords: 0, sizes: { small: 0, medium: 0, large: 0 } },
       captions: null,
       transitions: NO_TRANSITIONS,
@@ -86,7 +87,7 @@ describe("a past project's facts", () => {
     const found = facts(doc);
     expect(found.seconds).toBe(10); // the slot ends at frame 300
     // 2 s, 3 s and 3 s, in the order they play.
-    expect(found.shots).toEqual({ count: 3, averageSeconds: 2.7, medianSeconds: 3, firstSeconds: 2, perMinute: 18 });
+    expect(found.shots).toEqual({ count: 3, averageSeconds: 2.7, medianSeconds: 3, firstSeconds: 2, perMinute: 18, transitions: NO_TRANSITIONS });
   });
 
   it("keep the format and frame rate, and round seconds to 0.1", () => {
@@ -148,6 +149,7 @@ describe("a past project's facts", () => {
     expect(found.music).toEqual({ clips: 1, averageVolume: 0.4 }); // 1 × the nested track's 0.8 × the nest's 0.5
     expect(found.speedChanges).toBe(1);
     expect(found.transitions).toEqual({ ...NO_TRANSITIONS, zoom: 1 });
+    expect(found.shots.transitions).toEqual({ ...NO_TRANSITIONS, zoom: 1 }); // the cut from c1 into the nest
   });
 
   it("count a split nest's clips once, each in the half that plays it, and leave out what a trimmed nest doesn't play", () => {
@@ -259,6 +261,51 @@ describe("a past project's facts", () => {
       track("s1", "shape", [shape]),
     );
     expect(facts(doc).transitions).toEqual({ fade: 2, crossfade: 1, slide: 1, zoom: 0, whip: 1, dip: 1 });
+  });
+
+  it("count the transitions at the cuts between shots, one for each cut, apart from those on every clip", () => {
+    const fade = { kind: "fade", frames: 6 };
+    const doc = project(
+      track("v1", "video", [
+        video("a", 0, 30, { transitionIn: fade }), // the way in to the first shot isn't between shots
+        video("b", 30, 30, { transitionIn: { kind: "crossfade", frames: 6 } }),
+        video("c", 60, 30, { transitionOut: { kind: "dip", frames: 6 } }),
+        video("d", 90, 30, { transitionIn: { kind: "whip", frames: 6 }, transitionOut: fade }), // c → d is one cut: d's way in
+        video("e", 120, 30), // d → e is d's way out; e → f is a straight cut
+        video("f", 150, 30, { transitionOut: fade }), // the way out of the last shot isn't between shots either
+      ]),
+    );
+    const found = facts(doc);
+    expect(found.shots.count).toBe(6);
+    expect(found.shots.transitions).toEqual({ ...NO_TRANSITIONS, crossfade: 1, whip: 1, fade: 1 });
+    expect(found.transitions).toEqual({ ...NO_TRANSITIONS, fade: 3, crossfade: 1, whip: 1, dip: 1 });
+  });
+
+  it("don't count a logo or arrows fading in and out on other tracks as transitions between shots", () => {
+    const fades = { transitionIn: { kind: "fade", frames: 6 }, transitionOut: { kind: "fade", frames: 6 } };
+    const arrow = (id: string, start: number) =>
+      ({ id, type: "shape", shape: "arrow", start, duration: 30, width: 200, height: 40, stroke: "#ffffff", strokeWidth: 6, dash: "solid", transform: { ...DEFAULT_TRANSFORM }, ...fades }) as Clip;
+    const doc = project(
+      track("v1", "video", Array.from({ length: 8 }, (_, i) => video(`s${i}`, i * 30, 30))), // 8 shots, straight cuts
+      track("o1", "overlay", [media("image", "logo", 0, 240, { assetId: "photo", ...fades })]),
+      track("s1", "shape", [arrow("a1", 30), arrow("a2", 120)]),
+    );
+    const found = facts(doc);
+    expect(found.shots).toMatchObject({ count: 8, transitions: NO_TRANSITIONS });
+    expect(found.transitions).toEqual({ ...NO_TRANSITIONS, fade: 6 });
+    // Fill in from my videos says straight cuts, and names no kind.
+    const style = suggestStyle([found]);
+    expect(style.transitions).toBe("cuts");
+    expect(style.transitionKinds).toBeUndefined();
+  });
+
+  it("leave a 9:16 project's captions where the editor puts them, which Fill in calls lower", () => {
+    for (const format of ["short_9x16", "long_16x9"] as const) {
+      const doc = { ...createEmptyDoc(format), tracks: [track("v1", "video", [video("a", 0, 90, { captions: true })]), track("cap", "caption", [])] };
+      const found = facts(doc);
+      expect(found.captions?.y).toBe(defaultCaptionStyle(doc).y);
+      expect(suggestStyle([found]).captions?.position).toBe("lower");
+    }
   });
 
   it("count music: audio clips of audio files, not a video's own sound split off, and not on a muted track", () => {

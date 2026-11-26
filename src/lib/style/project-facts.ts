@@ -128,14 +128,39 @@ function captionFacts(doc: TimelineDoc): ProjectAnalysis["captions"] {
   };
 }
 
-function transitionFacts(clips: readonly Clip[]): ProjectAnalysis["transitions"] {
-  const counts = Object.fromEntries(TransitionKind.options.map((kind) => [kind, 0])) as ProjectAnalysis["transitions"];
+type TransitionCounts = ProjectAnalysis["transitions"];
+
+function noTransitions(): TransitionCounts {
+  return Object.fromEntries(TransitionKind.options.map((kind) => [kind, 0])) as TransitionCounts;
+}
+
+// The kind of a clip's transition in or out, when it has one the editor knows.
+function transitionKind(clip: Clip | undefined, key: "transitionIn" | "transitionOut"): TransitionKind | null {
+  const transition = (clip as { [k in typeof key]?: { kind?: unknown } | null } | undefined)?.[key];
+  const kind = TransitionKind.safeParse(transition?.kind);
+  return kind.success ? kind.data : null;
+}
+
+// Every transition in and out, by kind, on these clips.
+function transitionFacts(clips: readonly Clip[]): TransitionCounts {
+  const counts = noTransitions();
   for (const clip of clips) {
     for (const key of ["transitionIn", "transitionOut"] as const) {
-      const transition = (clip as { [k in typeof key]?: { kind?: unknown } | null })[key];
-      const kind = TransitionKind.safeParse(transition?.kind);
-      if (kind.success) counts[kind.data]++;
+      const kind = transitionKind(clip, key);
+      if (kind) counts[kind]++;
     }
+  }
+  return counts;
+}
+
+// The cuts between shots (in the order they play) that have a transition, by kind: one for each cut, the way in to the
+// shot after it where that has one, else the way out of the shot before it. The first shot's way in and the last
+// one's way out aren't between shots, so they don't count.
+function cutTransitions(shots: readonly Clip[]): TransitionCounts {
+  const counts = noTransitions();
+  for (let i = 1; i < shots.length; i++) {
+    const kind = transitionKind(shots[i], "transitionIn") ?? transitionKind(shots[i - 1], "transitionOut");
+    if (kind) counts[kind]++;
   }
   return counts;
 }
@@ -186,8 +211,10 @@ function colorFacts(clips: readonly Clip[]): { looks: Record<string, number>; ef
 
 // What a style learns from a past project's timeline. assetKinds names the kind of each file it uses (any not named
 // is not counted as music). Shots are the clips on its first video track that isn't hidden (a nest is one shot; empty
-// slots and adjustment layers aren't shots); everything else counts the clips inside nests too, where the nests play
-// them, and leaves out what a hidden or muted track keeps from being seen or heard. Seconds are to 0.1.
+// slots and adjustment layers aren't shots), and shots.transitions counts the transitions at the cuts between them.
+// Everything else counts the clips inside nests too, where the nests play them, and leaves out what a hidden or muted
+// track keeps from being seen or heard: transitions counts every way in and out on every clip that is seen. Seconds
+// are to 0.1.
 export function projectFacts(doc: TimelineDoc, assetKinds: AssetKinds): ProjectAnalysis {
   const fps = frameRate(doc.fps);
   const seconds = clamp(round(docDuration(doc) / fps, 1), 0, ANALYSIS_LIMITS.projectSeconds);
@@ -207,7 +234,7 @@ export function projectFacts(doc: TimelineDoc, assetKinds: AssetKinds): ProjectA
     seconds,
     format: format.success ? format.data : "custom",
     fps,
-    shots: shotFactsOf(shots.map((clip) => clip.duration / fps), seconds),
+    shots: { ...shotFactsOf(shots.map((clip) => clip.duration / fps), seconds), transitions: cutTransitions(shots) },
     text: textFacts(texts, minutes, height),
     captions: captionFacts(doc),
     transitions: transitionFacts(shown),

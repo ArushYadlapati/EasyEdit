@@ -4,11 +4,12 @@ import { requireRole, type Actor } from "@/lib/actor";
 import { DriveError } from "@/lib/drive/token";
 import { ServiceError } from "@/lib/service-error";
 import type { SocialConfig } from "@/lib/social/config";
-import { channelAccess, findConnection } from "@/lib/social/connections";
+import { channelAccess, findConnection, type SocialConnection } from "@/lib/social/connections";
 import { refusalMessage, SOCIAL_MESSAGES } from "@/lib/social/messages";
 import { isVideoId } from "@/lib/social/rules";
 import { channelVideo, listMyUploads, type ChannelUpload } from "@/lib/social/youtube-api";
 import { ConnectionBrokenError, OAuthError } from "@/lib/storage/google-oauth";
+import { dropChannelReference } from "./channel-references";
 import { STYLE_MESSAGES } from "./messages";
 import { addChannelReference } from "./service";
 import type { StyleReference } from "./types";
@@ -17,7 +18,7 @@ import type { StyleReference } from "./types";
 // up. What a reference keeps of a video is read from YouTube with the channel's own permission, never taken from a
 // browser.
 
-// How many of the channel's newest uploads the Style page offers.
+// How many of the channel's newest public uploads the Style page offers.
 export const CHANNEL_UPLOADS = 25;
 
 // What the Style page can offer from the space's YouTube channel. on: false, this server has no YouTube at all.
@@ -67,18 +68,27 @@ export async function channelStatus(db: DB, actor: Actor, cfg: SocialConfig | nu
   }
 }
 
-// An editor adds one of the channel's uploads to the space's style, by its YouTube id. YouTube is asked about the
-// video with the channel's own permission: one on another channel, or one YouTube doesn't show it, is refused, and
-// what the reference keeps is what YouTube said. Adding one already there from the channel refreshes its facts.
-// 404 on a server with no YouTube.
+// Why the space's channel can't give its style a video, or null when it can: none is connected, it is broken, or
+// EasyEdit may not see its videos. Given the channel a video is on, also when another channel has taken its place.
+function cannotAdd(known: SocialConnection | null, channelId?: string): ServiceError | null {
+  if (!known) return new ServiceError("NOT_CONNECTED", 409, SOCIAL_MESSAGES.notConnected);
+  if (known.broken) return brokenChannel();
+  if (known.channelId === null) return new ServiceError("NOT_CONNECTED", 409, STYLE_MESSAGES.channelHidden);
+  if (channelId !== undefined && known.channelId !== channelId) return new ServiceError("INVALID", 400, STYLE_MESSAGES.notOnChannel);
+  return null;
+}
+
+// An editor adds one of the channel's public uploads to the space's style, by its YouTube id. YouTube is asked about
+// the video with the channel's own permission: one on another channel, one that isn't public, or one YouTube doesn't
+// show it, is refused, and what the reference keeps is what YouTube said. Adding one already there from the channel
+// refreshes its facts. A channel disconnected or replaced while YouTube was asked takes the new reference with it, as
+// the disconnect meant, and the editor is told why. 404 on a server with no YouTube.
 export async function addFromChannel(db: DB, actor: Actor, cfg: SocialConfig | null, videoId: string, fetchFn: typeof fetch = fetch): Promise<StyleReference> {
   requireRole(actor, "editor");
   if (!cfg) throw new ServiceError("NOT_FOUND", 404, STYLE_MESSAGES.channelOff);
   if (!isVideoId(videoId)) throw new ServiceError("INVALID", 400, STYLE_MESSAGES.notOnChannel);
-  const known = await findConnection(db, cfg, actor.spaceId);
-  if (!known) throw new ServiceError("NOT_CONNECTED", 409, SOCIAL_MESSAGES.notConnected);
-  if (known.broken) throw brokenChannel();
-  if (known.channelId === null) throw new ServiceError("NOT_CONNECTED", 409, STYLE_MESSAGES.channelHidden);
+  const before = cannotAdd(await findConnection(db, cfg, actor.spaceId));
+  if (before) throw before;
 
   let found: Awaited<ReturnType<typeof channelVideo>>;
   let channelId: string | null;
@@ -91,5 +101,13 @@ export async function addFromChannel(db: DB, actor: Actor, cfg: SocialConfig | n
   }
   if (channelId === null) throw new ServiceError("NOT_CONNECTED", 409, STYLE_MESSAGES.channelHidden);
   if (!found || found.channelId !== channelId) throw new ServiceError("INVALID", 400, STYLE_MESSAGES.notOnChannel);
-  return addChannelReference(db, actor, found);
+  const reference = await addChannelReference(db, actor, found);
+  // Asked once more after the write: a disconnect that came in before it is seen here, and one that comes in after it
+  // deletes the reference itself.
+  const after = cannotAdd(await findConnection(db, cfg, actor.spaceId), channelId);
+  if (after) {
+    await dropChannelReference(db, actor.spaceId, reference.id);
+    throw after;
+  }
+  return reference;
 }

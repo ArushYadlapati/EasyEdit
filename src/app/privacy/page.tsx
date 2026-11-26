@@ -105,10 +105,12 @@ export default function PrivacyPage() {
             and description). It never gets the video itself. The picture is shown from that site&apos;s own servers.
           </p>
           <p>
-            When the space&apos;s YouTube channel is connected, the Style page can list the channel&apos;s newest videos. For each one you pick,
-            EasyEdit keeps its title, channel name, description, tags, length and picture from YouTube. After 30 days EasyEdit stops using
-            them, and within a day it deletes all but the video&apos;s address. Refresh reads them from YouTube again. When the channel is
-            disconnected, or another channel takes its place, those videos are deleted from the style.
+            When the space&apos;s YouTube channel is connected, the Style page can list the channel&apos;s newest public videos. It never
+            lists private or unlisted ones. For each one you pick, EasyEdit keeps its title, channel name, description, tags, length and
+            picture from YouTube. After 30 days EasyEdit stops using them, and within a day it deletes all but the video&apos;s address.
+            Refresh reads them from YouTube again. When the channel is disconnected, or another channel takes its place, those videos are
+            deleted from the style. If you remove EasyEdit on your Google account&apos;s permissions page instead, they are deleted within a
+            day.
           </p>
           <p>
             Everyone in the space, and the AI agents they connect, can see the style and what it learned. Removing a video, link or project from

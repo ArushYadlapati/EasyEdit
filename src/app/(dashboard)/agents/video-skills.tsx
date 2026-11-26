@@ -21,8 +21,9 @@ function Way({ name, children }: { name: string; children: ReactNode }): ReactNo
 }
 
 // The body of the AI agents page's "Video skills" section: connected agents already have the skills; Claude Code adds
-// them, with the connection, from two commands, each shown whole with Copy beside it; agents that read skills from a
-// folder unzip the download; and Claude on the web takes the same file as an upload.
+// them, with the connection, from two commands, each shown whole with Copy beside it, then signs in, and someone
+// already connected is told to skip it; agents that read skills from a folder unzip the download; and Claude on the
+// web takes the same file as an upload.
 export function VideoSkills(): ReactNode {
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -35,6 +36,13 @@ export function VideoSkills(): ReactNode {
               <code className={COMMAND}>{command}</code>
               <CopyButton text={command} label={copyLabel} />
             </div>
+          ))}
+          {[SKILL_WORDS.claudeCode.signIn, SKILL_WORDS.claudeCode.already].map(({ before, code, after }) => (
+            <p key={code} className={TEXT}>
+              {before}
+              <code className="font-mono text-xs">{code}</code>
+              {after}
+            </p>
           ))}
         </Way>
         <Way name={SKILL_WORDS.otherAgents.name}>

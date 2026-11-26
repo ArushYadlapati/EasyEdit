@@ -59,7 +59,9 @@ describe("Claude and the website on one project", () => {
       // video skills: +143 chars (get_editing_guide's topic, 14_827 measured), the cap raised by exactly that; Arush's call
       // style for agents: +845 chars (get_editing_guide's space and the save_style tool, 15_672 measured), the cap
       // raised by exactly that; Arush's call
-      expect(JSON.stringify(tools).length).toBeLessThan(15_673);
+      // style review: +106 chars (save_style says notes and lists replace the saved ones whole, so read first; 15_778
+      // measured), the cap raised by exactly that; Arush's call
+      expect(JSON.stringify(tools).length).toBeLessThan(15_779);
       for (const t of tools) expect(t.annotations?.readOnlyHint, t.name).toBe(["fetch", "get_editing_guide", "get_project", "get_template", "list_assets", "list_projects", "list_templates", "search"].includes(t.name));
       const keysOf = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {}).sort();
       expect(keysOf("list_assets")).toEqual(["cursor", "kind", "search"]);
@@ -71,6 +73,10 @@ describe("Claude and the website on one project", () => {
       for (const t of tools) expect(t.annotations?.openWorldHint, t.name).toBe(t.name === "save_style");
       // It can clear fields and replace notes, like edit_timeline and undo_change can take things away.
       expect(tools.find((t) => t.name === "save_style")?.annotations?.destructiveHint).toBe(true);
+      // An agent with no skill reads only this before "remember, never use emojis": it must know notes and lists go whole.
+      expect(tools.find((t) => t.name === "save_style")?.description).toContain(
+        "Notes and each field (lists too) replace the saved value whole, so read the style first and send back the full text with your change.",
+      );
       for (const side of ["width", "height"]) {
         expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.[side], side).toMatchObject({ type: "integer", minimum: 16, maximum: 4096 });
       }

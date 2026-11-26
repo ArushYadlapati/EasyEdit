@@ -7,7 +7,10 @@ import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { registerTools } from "@/lib/mcp/server";
 import { SKILL_DESCRIPTION, SKILL_MD, SKILL_NAME, SKILL_TOPICS, TOPIC_IDS, skillFiles, skillTopic } from "@/lib/skills";
-import { STYLE_PROFILE_KEYS } from "@/lib/style/types";
+import { CAPTION_POSITION_Y } from "@/lib/style/caption-position";
+import { AGENT_SHEETS } from "@/lib/style/service";
+import { suggestStyle } from "@/lib/style/suggest";
+import { STYLE_PROFILE_KEYS, type ProjectAnalysis } from "@/lib/style/types";
 import { FormatId, OpInput } from "@/lib/timeline";
 import { USE_CLIENT_AT_TOP, importsOf, sources } from "../helpers/sources";
 
@@ -313,5 +316,120 @@ describe("every topic file", () => {
     }
     expect(missing).toEqual([]);
     expect(pointers).toBeGreaterThan(30);
+  });
+});
+
+describe("what the topics say about a style", () => {
+  const OTHER_FORMATS = FormatId.options.filter((format) => format !== "short_9x16");
+  // The y a topic gives a position, for a format it names or for "the other formats" (all the same).
+  const expectedY = (formats: readonly FormatId[], position: "upper" | "middle" | "lower") => {
+    const values = new Set(formats.map((format) => CAPTION_POSITION_Y[format][position]));
+    expect(values.size, `${formats.join(", ")} share one ${position}`).toBe(1);
+    return [...values][0];
+  };
+
+  it("give every caption position the y the editor's own table has, in every format", () => {
+    let checked = 0;
+    const wrong: string[] = [];
+    for (const [file, text] of everyFile()) {
+      for (const line of text.split("\n")) {
+        // A table row per format: | formats | default y | keep y between | upper | middle | lower |
+        const row = /^\| ([a-z0-9_, ]+) \| ([\d.]+) \| [^|]+ \| ([\d.]+) \| ([\d.]+) \| ([\d.]+) \|$/.exec(line);
+        if (row && row[1].split(", ").every((f) => (FormatId.options as string[]).includes(f))) {
+          const formats = row[1].split(", ") as FormatId[];
+          const [, , fallback, upper, middle, lower] = row.map(Number);
+          for (const [position, y] of [["upper", upper], ["middle", middle], ["lower", lower]] as const) {
+            checked++;
+            if (y !== expectedY(formats, position)) wrong.push(`${file}: ${row[1]} ${position} ${y}`);
+          }
+          // Lower is where the editor puts captions before anyone moves them.
+          if (fallback !== expectedY(formats, "lower")) wrong.push(`${file}: ${row[1]} default ${fallback}`);
+          continue;
+        }
+        // "upper 0.25", "middle 0.45, lower 0.558", "Middle captions on short_9x16 sit at y 0.45", in prose.
+        for (const m of line.matchAll(/\b(upper|middle|lower)\b(?: captions)?(?: on ([a-z0-9_]+))?(?: (?:sit at|is|at|as))?(?: y)? (\d+(?:\.\d+)?)\b/gi)) {
+          const position = m[1].toLowerCase() as "upper" | "middle" | "lower";
+          // Which format it is for: named with it, or the last one named before it on the line.
+          const before = line.slice(0, m.index);
+          const named = m[2] ?? [...before.matchAll(/short_9x16|9:16|other formats/g)].at(-1)?.[0];
+          checked++;
+          if (named === undefined) {
+            wrong.push(`${file}: "${m[0]}" doesn't say which format it is for`);
+            continue;
+          }
+          const formats = named === "other formats" ? OTHER_FORMATS : [named === "9:16" ? "short_9x16" : (named as FormatId)];
+          if (Number(m[3]) !== expectedY(formats, position)) wrong.push(`${file}: "${m[0]}" (${named}) should be ${expectedY(formats, position)}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+    // The captions table (6 numbers), your-style and final-check (6 each), and learn-a-style's example.
+    expect(checked).toBeGreaterThanOrEqual(19);
+  });
+
+  it("read transitions at a past project's cuts with the same cutoffs Fill in from my videos uses", () => {
+    const rule = disk.topics["learn-a-style"].split("\n").find((line) => line.startsWith("- Transitions:"))!;
+    expect(rule).toContain('None, or under about 1 cut in 20, is "cuts". Up to about half is "few". More than half, a transition at most cuts, is "lots".');
+    const byTheTopic = (share: number) => (share < 1 / 20 ? "cuts" : share <= 0.5 ? "few" : "lots");
+    const none = { fade: 0, crossfade: 0, slide: 0, zoom: 0, whip: 0, dip: 0 };
+    const project = (shots: number, atCuts: number): ProjectAnalysis => ({
+      kind: "project",
+      seconds: 30,
+      format: "short_9x16",
+      fps: 30,
+      shots: { count: shots, averageSeconds: 1, medianSeconds: 1, firstSeconds: 1, perMinute: 60, transitions: { ...none, whip: atCuts } },
+      text: { clips: 0, perMinute: 0, fonts: [], averageWords: 0, sizes: { small: 0, medium: 0, large: 0 } },
+      captions: null,
+      transitions: { ...none, whip: atCuts },
+      textAnimations: {},
+      music: null,
+      speedChanges: 0,
+      looks: {},
+      effects: [],
+    });
+    // 22 shots have 21 cuts: a transition at 7 of them is a third, which is "few", not "lots".
+    for (const [shots, atCuts] of [[22, 0], [41, 1], [22, 7], [22, 10], [22, 11], [22, 15], [22, 21]]) {
+      expect(suggestStyle([project(shots, atCuts)]).transitions, `${atCuts} of ${shots - 1} cuts`).toBe(byTheTopic(atCuts / (shots - 1)));
+    }
+  });
+
+  it("promise frame sheets from only as many videos as an agent is handed", () => {
+    const promises: string[] = [];
+    for (const [file, text] of everyFile()) {
+      expect(text, file).not.toMatch(/(?:frame )?sheets? (?:of|for) each analyzed|grid of frames[^.]*\bfor each analyzed/);
+      for (const [promise, count] of text.matchAll(/frame sheets from up to (\d+)|frames?[^.]*?, for up to (\d+)/g)) {
+        promises.push(`${file}: ${promise}`);
+        expect(Number(count ?? promise.match(/up to (\d+)/)![1]), `${file}: ${promise}`).toBe(AGENT_SHEETS);
+      }
+    }
+    expect(promises.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("let a saved look sit on one adjustment layer or on each clip in the final check, never both", () => {
+    const row = disk.topics["final-check"].split("\n").find((line) => line.startsWith("| look |"))!;
+    expect(row).toContain("the look is in one place, never two");
+    expect(row).toContain("one adjustment layer over the whole video has that look's numbers, at any amount");
+    expect(row).toContain("When a layer covers the clips, leave their adjust alone");
+    expect(row).not.toMatch(/If not, set them with update_clip/);
+  });
+});
+
+describe("the Claude Code plugin", () => {
+  it("has no version of its own, so each commit that changes a skill reaches people who installed it", () => {
+    // An installed plugin is kept by its version: one left at 1.0.0 would never pick up a later skill edit. With no
+    // version, Claude Code goes by the commit.
+    const manifest = JSON.parse(readFileSync("plugins/easyedit/.claude-plugin/plugin.json", "utf8")) as Record<string, unknown>;
+    expect(manifest.name).toBe("easyedit");
+    expect(manifest).not.toHaveProperty("version");
+  });
+
+  it("tells Claude Code users to sign in after installing, and not to add EasyEdit twice", () => {
+    const readme = readFileSync("plugins/easyedit/README.md", "utf8");
+    expect(readme).toContain("Then run `/mcp`, pick **easyedit**, choose **Authenticate**");
+    expect(readme).toContain("run `claude mcp remove easyedit` first");
+    // The skill's own connect step gives Claude Code's way, sign-in included.
+    const connect = disk.skill.split("\n").find((line) => line.startsWith("- **Connect.**"))!;
+    expect(connect).toContain("In Claude Code, it's `claude mcp add --transport http easyedit https://easyedit.arush.dev/api/mcp`");
+    expect(connect).toContain("then they run `/mcp`, pick easyedit and choose Authenticate");
   });
 });

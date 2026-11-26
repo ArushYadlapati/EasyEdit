@@ -7,7 +7,7 @@ import { usePoster } from "@/components/editor/media/use-poster";
 import { Button } from "@/components/ui/button";
 import { DISABLED, FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { Dialog } from "@/components/ui/dialog";
-import { formatLength } from "@/lib/media/messages";
+import { MEDIA_MESSAGES, formatLength } from "@/lib/media/messages";
 import type { AssetView, UploadItem } from "@/lib/media/types";
 import { STYLE_WORDS } from "@/lib/style/messages";
 
@@ -16,10 +16,13 @@ const TEXT = "text-[13px] leading-5";
 // The video files the Media tab takes.
 const ACCEPT = ".mp4,.m4v,.mov,.webm";
 
-function Tile({ asset, inStyle, disabled, onPick }: { asset: AssetView; inStyle: boolean; disabled: boolean; onPick(asset: AssetView): void }) {
+// One of the space's videos to pick. A video not uploaded yet can't be picked: it is on its way (sending: this page is
+// sending it), or it is the person's own upload that stopped part way, which the same file picks up again.
+function Tile({ asset, inStyle, sending, disabled, onPick }: { asset: AssetView; inStyle: boolean; sending: boolean; disabled: boolean; onPick(asset: AssetView): void }) {
   const poster = usePoster(asset, true);
   const uploading = asset.status !== "ready";
-  const note = inStyle ? W.inStyle : uploading ? W.uploading : asset.durationMs !== null ? formatLength(asset.durationMs) : null;
+  const length = asset.durationMs !== null ? formatLength(asset.durationMs) : null;
+  const note = inStyle ? W.inStyle : uploading ? (sending ? W.uploading : W.uploadStopped) : length;
   return (
     <li>
       <button
@@ -75,14 +78,15 @@ export type AddVideoDialogProps = {
 
 // Picks one of the space's videos for the style to learn from. A video is uploaded the way the Media tab uploads, with
 // Upload a video first in the footer and what happens next beside it: it can be picked here once it is ready. Pictures
-// and sounds aren't offered.
+// and sounds aren't offered. A media folder on this computer that the browser wants a click to open again is offered
+// as the Media tab offers it, with Open folder.
 export function AddVideoDialog({ open, onClose, inStyle, adding, problem, onPick }: AddVideoDialogProps): ReactNode {
   const assets = useLibrary((s) => s.assets);
   const uploads = useLibrary((s) => s.uploads);
   const { queue } = useMedia();
   const setUp = useLibrary((s) => s.setUp);
   const { storageReady } = useMediaSpace();
-  const { state: folderState } = useLocalFolder();
+  const { folder, state: folderState, name: folderName } = useLocalFolder();
   // As in the Media tab: the space's storage takes uploads, or a media folder on this computer is open.
   const canUpload = (storageReady && setUp) || folderState === "ready";
   const input = useRef<HTMLInputElement>(null);
@@ -90,6 +94,8 @@ export function AddVideoDialog({ open, onClose, inStyle, adding, problem, onPick
     .filter((asset) => asset.kind === "video" && !asset.removed)
     .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : a.createdAt < b.createdAt ? 1 : -1));
   const shown = new Set(videos.filter((asset) => asset.status === "ready").map((asset) => asset.id));
+  // The uploads this page is sending; any other unfinished one stopped when the page it was started on was left.
+  const sending = new Set(uploads.flatMap((item) => (item.assetId && item.stage !== "done" && item.stage !== "failed" ? [item.assetId] : [])));
 
   return (
     <Dialog
@@ -115,7 +121,13 @@ export function AddVideoDialog({ open, onClose, inStyle, adding, problem, onPick
               />
             </>
           )}
-          <p className={cx(TEXT, "min-w-0 text-ed-muted")}>{canUpload ? W.uploadsShowHere : W.noStorage}</p>
+          {(canUpload || folderState !== "locked") && <p className={cx(TEXT, "min-w-0 text-ed-muted")}>{canUpload ? W.uploadsShowHere : W.noStorage}</p>}
+          {folderState === "locked" && (
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+              <p className={cx(TEXT, "min-w-0 text-ed-muted")}>{MEDIA_MESSAGES.folderLocked(folderName ?? "your folder")}</p>
+              <Button onClick={() => void folder.unlock()}>{STYLE_WORDS.learn.openFolder}</Button>
+            </div>
+          )}
         </div>
       }
     >
@@ -130,7 +142,7 @@ export function AddVideoDialog({ open, onClose, inStyle, adding, problem, onPick
       ) : (
         <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {videos.map((asset) => (
-            <Tile key={asset.id} asset={asset} inStyle={inStyle.has(asset.id)} disabled={adding} onPick={onPick} />
+            <Tile key={asset.id} asset={asset} inStyle={inStyle.has(asset.id)} sending={sending.has(asset.id)} disabled={adding} onPick={onPick} />
           ))}
         </ul>
       )}

@@ -350,6 +350,16 @@ describe("reference analyses", () => {
     expect(ProjectAnalysis.safeParse({ ...project, format: "custom" }).success).toBe(true);
     expect(ProjectAnalysis.safeParse({ ...project, speedChanges: 1.5 }).success).toBe(false);
   });
+
+  it("a project may count the transitions at the cuts between its shots, every kind, and one counted before may not", () => {
+    const cuts = { fade: 0, crossfade: 1, slide: 0, zoom: 1, whip: 0, dip: 0 };
+    const counted = { ...project, shots: { ...project.shots, transitions: cuts } };
+    expect(ProjectAnalysis.parse(counted)).toEqual(counted);
+    expect(ProjectAnalysis.parse(project).shots).not.toHaveProperty("transitions"); // a row stored before
+    expect(ProjectAnalysis.safeParse({ ...project, shots: { ...project.shots, transitions: { zoom: 1 } } }).success).toBe(false);
+    expect(ProjectAnalysis.safeParse({ ...project, shots: { ...project.shots, transitions: { ...cuts, zoom: -1 } } }).success).toBe(false);
+    expect(ProjectAnalysis.safeParse({ ...project, shots: { ...project.shots, cuts: 3 } }).success).toBe(false); // unknown keys are still refused
+  });
 });
 
 describe("pace", () => {

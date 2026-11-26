@@ -1,6 +1,6 @@
-import { and, asc, count, desc, eq, exists, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, inArray, isNotNull, isNull, like, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { z } from "zod";
+import { z } from "zod";
 import type { DB } from "@/db";
 import { assets, projects, spaceStyle, styleReference } from "@/db/schema";
 import { requireRole, type Actor } from "@/lib/actor";
@@ -13,7 +13,7 @@ import { getUserNames } from "@/lib/projects/user-names";
 import { ServiceError } from "@/lib/service-error";
 import { isStorableText, withSuffix } from "@/lib/text";
 import { everyClip, type TimelineDoc } from "@/lib/timeline";
-import { CAPTION_FIELDS, STYLE_FIELDS, STYLE_NOTES_FIELD } from "./fields";
+import { STYLE_FIELDS } from "./fields";
 import { fetchLinkFacts, linkRefusalMessage, parseVideoLink, type VideoLink } from "./links";
 import { STYLE_MESSAGES } from "./messages";
 import { projectFacts, type AssetKinds } from "./project-facts";
@@ -24,6 +24,7 @@ import {
   ProjectAnalysis,
   ReferenceAnalysis,
   StyleNotes,
+  StyleProfile,
   StyleProfilePatch,
   VideoAnalysis,
   applyStylePatch,
@@ -33,7 +34,6 @@ import {
   type SheetPlan,
   type Style,
   type StylePatch,
-  type StyleProfile,
   type StyleReference,
 } from "./types";
 
@@ -109,19 +109,38 @@ function issueWords(issue: z.core.$ZodIssue): string {
   }
 }
 
-// What a refused profile change says: the field's name on the Style page (a part of Captions by that part's name),
-// then what it must be, as in 'Pace: use "calm", "steady", "quick" or "rapid".'
+// "a", "a and b", "a, b and c".
+function andList(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+// Where a problem is, written the way a change names it: "pace", "lengthSeconds.min", "always[2]".
+function keyPath(path: readonly PropertyKey[]): string {
+  return path.map((part, n) => (typeof part === "number" ? `[${part}]` : `${n === 0 ? "" : "."}${String(part)}`)).join("");
+}
+
+// The keys a field that is a set of fields takes (lengthSeconds: min and max), read from the style's own rules.
+// null for a field that is a single value or a list.
+function subKeys(key: keyof StyleProfile): string[] | null {
+  const field = StyleProfile.shape[key].unwrap();
+  return field instanceof z.ZodObject ? Object.keys(field.shape) : null;
+}
+
+// What a refused profile change says: where the problem is, by its keys, then what it must be, as in
+// 'lengthSeconds.min: should be a number.' or 'pace: use "calm", "steady", "quick" or "rapid".' A field that is a set
+// of fields, given something else or a key it doesn't have, also says which keys it takes. A key that isn't there is
+// told before anything else, since it says the most ("low" where "min" was meant). Agents send these changes; the
+// Style page never sends one that is refused. Every refusal ends by saying where each field's values are explained.
 function profileProblem(error: z.ZodError): string {
-  const issue = error.issues[0];
-  if (!issue) return STYLE_MESSAGES.notAStyleChange;
-  const [key, part] = issue.path;
-  if (typeof key !== "string" || !Object.hasOwn(STYLE_FIELDS, key)) {
-    return issue.code === "unrecognized_keys" ? `${STYLE_MESSAGES.notAStyleChange} A style ${issueWords(issue)}.` : STYLE_MESSAGES.notAStyleChange;
+  const issue = error.issues.find((one) => one.code === "unrecognized_keys") ?? error.issues[0];
+  const [key] = issue?.path ?? [];
+  if (!issue || typeof key !== "string" || !Object.hasOwn(STYLE_FIELDS, key)) {
+    const has = issue?.code === "unrecognized_keys" ? ` A style ${issueWords(issue)}.` : "";
+    return `${STYLE_MESSAGES.notAStyleChange}${has} ${STYLE_MESSAGES.fieldGuide}`;
   }
-  const label = key === "captions" && typeof part === "string" && Object.hasOwn(CAPTION_FIELDS, part)
-    ? CAPTION_FIELDS[part as keyof typeof CAPTION_FIELDS].label
-    : STYLE_FIELDS[key as keyof StyleProfile].label;
-  return `${label}: ${issueWords(issue)}.`;
+  const keys = issue.path.length === 1 && (issue.code === "invalid_type" || issue.code === "unrecognized_keys") ? subKeys(key as keyof StyleProfile) : null;
+  const takes = keys === null ? "" : ` ${key} takes ${andList(keys)}.`;
+  return `${keyPath(issue.path)}: ${issueWords(issue)}.${takes} ${STYLE_MESSAGES.fieldGuide}`;
 }
 
 function checkedProfilePatch(patch: unknown): StyleProfilePatch {
@@ -134,7 +153,7 @@ function checkedNotes(notes: unknown): string {
   const parsed = StyleNotes.safeParse(notes);
   if (parsed.success) return parsed.data;
   const message = parsed.error.issues[0]?.message ?? "";
-  throw invalid(message === STYLE_MESSAGES.notesTooLong ? message : `${STYLE_NOTES_FIELD.label}: ${message}.`);
+  throw invalid(message === STYLE_MESSAGES.notesTooLong ? message : `notes: ${message}.`);
 }
 
 // An editor's change to their space's style. Each profile field given replaces the one kept, and null (or an empty
@@ -315,19 +334,31 @@ export async function listReferences(db: DB, actor: Actor, now: Date = new Date(
   return shownReferences(db, await liveRows(db, actor.spaceId), now);
 }
 
-// Deletes the space's references to a video removed from the library or to a deleted project. Neither ever comes back,
-// so what was learned from them (a video's strip of frames above all) shouldn't stay in the database. A project moved
-// to another space may be moved back, so its reference stays, hidden.
-async function dropGone(db: DB, spaceId: string): Promise<void> {
-  await db.delete(styleReference).where(
-    and(
-      eq(styleReference.spaceId, spaceId),
-      or(
-        exists(db.select({ id: assets.id }).from(assets).where(and(eq(assets.id, styleReference.assetId), isNotNull(assets.removedAt)))),
-        exists(db.select({ id: projects.id }).from(projects).where(and(eq(projects.id, styleReference.projectId), isNotNull(projects.deletedAt)))),
+// Deletes references to a video removed from the library or to a deleted project, in one space or (with none named)
+// in every space. Neither ever comes back, so what was learned from them (a video's strip of frames above all)
+// shouldn't stay in the database. Removing the video or deleting the project deletes them already; this catches any
+// left behind. A project moved to another space may be moved back, so its reference stays, hidden. Answers how many
+// were deleted.
+async function dropGone(db: DB, spaceId?: string): Promise<number> {
+  const dropped = await db
+    .delete(styleReference)
+    .where(
+      and(
+        spaceId === undefined ? undefined : eq(styleReference.spaceId, spaceId),
+        or(
+          exists(db.select({ id: assets.id }).from(assets).where(and(eq(assets.id, styleReference.assetId), isNotNull(assets.removedAt)))),
+          exists(db.select({ id: projects.id }).from(projects).where(and(eq(projects.id, styleReference.projectId), isNotNull(projects.deletedAt)))),
+        ),
       ),
-    ),
-  );
+    )
+    .returning({ id: styleReference.id });
+  return dropped.length;
+}
+
+// The daily clean-up's sweep of references whose video was removed from the library or whose project was deleted,
+// in every space (see dropGone). Answers how many were deleted. No role check: it is nobody's change.
+export function dropGoneReferences(db: DB): Promise<number> {
+  return dropGone(db);
 }
 
 // Refuses one more reference when the space's style already learns from as many as it may, once the references whose
@@ -442,15 +473,25 @@ function addressesOf(link: VideoLink): string[] {
   return [`https://www.youtube.com/watch?v=${link.id}`, `https://www.youtube.com/shorts/${link.id}`];
 }
 
+// The kept references that are the same video as a link, however it was written. A Vimeo video goes by its id, kept
+// with or without an unlisted video's private part (https://vimeo.com/123 and https://vimeo.com/123/abc are one
+// video); its id is only digits, so it can't stand for anything else in a pattern.
+function sameVideo(link: VideoLink): SQL {
+  if (link.provider !== "vimeo") return inArray(styleReference.url, addressesOf(link));
+  const plain = `https://vimeo.com/${link.id}`;
+  return or(eq(styleReference.url, plain), like(styleReference.url, `${plain}/%`))!;
+}
+
 // An editor adds a public YouTube, Vimeo or TikTok link. Its site is asked for the video's public title, author and
 // picture; nothing is downloaded. A link the site says nothing about is still kept, with its address as the title
 // (its analysis says unreadable). Instagram links, TikTok share links and anything else are refused, saying what to
-// do instead. The same video twice is refused, however its link is written.
+// do instead. The same video twice is refused, however its link is written: an unlisted Vimeo video's share link
+// too, when the video is already kept without its private part (removing that one makes room for the share link).
 export async function addLinkReference(db: DB, actor: Actor, url: string, fetchFn: typeof fetch = fetch): Promise<StyleReference> {
   requireRole(actor, "editor");
   const link = parseVideoLink(url);
   if (!link.ok) throw invalid(linkRefusalMessage(link.reason));
-  await checkNew(db, actor, inArray(styleReference.url, addressesOf(link)));
+  await checkNew(db, actor, sameVideo(link));
   await checkRoom(db, actor);
   const facts = await fetchLinkFacts(link, fetchFn);
   return insertReference(db, actor, {

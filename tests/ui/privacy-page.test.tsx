@@ -50,12 +50,18 @@ describe("privacy page", () => {
     );
   });
 
-  it("says how long a YouTube channel's video details are used, and that disconnecting deletes them", () => {
+  it("says how long a YouTube channel's video details are used, and that disconnecting or ending access deletes them", () => {
     const { container } = render(<PrivacyPage />);
     const text = container.textContent;
     expect(text).toContain("For each one you pick, EasyEdit keeps its title, channel name, description, tags, length and picture from YouTube.");
     expect(text).toContain("After 30 days EasyEdit stops using them, and within a day it deletes all but the video's address.");
     expect(text).toContain("When the channel is disconnected, or another channel takes its place, those videos are deleted from the style.");
+    expect(text).toContain("If you remove EasyEdit on your Google account's permissions page instead, they are deleted within a day.");
+  });
+
+  it("says the Style page lists only a channel's public videos", () => {
+    const { container } = render(<PrivacyPage />);
+    expect(container.textContent).toContain("the Style page can list the channel's newest public videos. It never lists private or unlisted ones.");
   });
 
   it("says the YouTube permission is also used to read the channel's videos for a style, linking that section", () => {

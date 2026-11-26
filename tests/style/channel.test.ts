@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { socialConnection, styleReference } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
-import { saveYoutubeConnection } from "@/lib/social/connections";
+import { dropChannel, saveYoutubeConnection } from "@/lib/social/connections";
 import { SOCIAL_MESSAGES } from "@/lib/social/messages";
 import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
 import { addFromChannel, CHANNEL_UPLOADS, channelStatus } from "@/lib/style/channel";
@@ -23,8 +23,8 @@ const viewer = testActor({ userId: "vi", email: "vi@gmail.com", role: "viewer" }
 
 const refusal = (error: unknown) => (error && typeof error === "object" && "code" in error && "status" in error && "message" in error ? { code: error.code, status: error.status, message: error.message } : error);
 
-// A video as YouTube's videos answer describes it, on the space's channel unless told otherwise.
-function video(id: string, over: { channelId?: string; title?: string } = {}) {
+// A video as YouTube's videos answer describes it, public and on the space's channel unless told otherwise.
+function video(id: string, over: { channelId?: string; title?: string; privacy?: "public" | "private" | "unlisted" } = {}) {
   return {
     id,
     snippet: {
@@ -36,6 +36,7 @@ function video(id: string, over: { channelId?: string; title?: string } = {}) {
       thumbnails: { medium: { url: `https://i.ytimg.com/vi/${id}/mqdefault.jpg` } },
     },
     contentDetails: { duration: "PT45S" },
+    status: { privacyStatus: over.privacy ?? "public" },
   };
 }
 
@@ -56,6 +57,8 @@ function channelGoogle() {
     down: false, // every read of the channel's videos gets no answer at all
     badSignIn: false, // Google's sign-in answers a refresh with something that isn't a token
     reads: [] as string[], // "<path> <authorization>" for each read of the channel's videos
+    // Run once, while YouTube is being asked about videos by id: what someone else does in the meantime.
+    meanwhile: null as (() => Promise<unknown>) | null,
     fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = new Request(input, init);
       const url = new URL(request.url);
@@ -72,6 +75,9 @@ function channelGoogle() {
         return Response.json({ items: world.uploads.slice(0, max).map((upload) => ({ contentDetails: { videoId: upload.id } })) });
       }
       const ids = (url.searchParams.get("id") ?? "").split(",");
+      const meanwhile = world.meanwhile;
+      world.meanwhile = null;
+      await meanwhile?.();
       return Response.json({ items: [...world.uploads, ...world.elsewhere].filter((item) => ids.includes(item.id)) });
     }) as typeof fetch,
   };
@@ -135,6 +141,13 @@ describe("channelStatus", () => {
       tags: ["robotics", "FTC"],
     });
     expect(world.reads).toEqual([`channels ${TOKEN}`, `playlistItems ${TOKEN}`, `videos ${TOKEN}`]);
+  });
+
+  it("lists only the public ones, never a private or unlisted video", async () => {
+    const { status, world } = await setup();
+    world.uploads = [video("aaaaaaaaaa1", { privacy: "private" }), video("aaaaaaaaaa2"), video("aaaaaaaaaa3", { privacy: "unlisted" })];
+    const answer = await status();
+    expect(answer.on && answer.connected && answer.videos.map((upload) => upload.id)).toEqual(["aaaaaaaaaa2"]);
   });
 
   it(`offers at most the ${CHANNEL_UPLOADS} newest`, async () => {
@@ -246,6 +259,47 @@ describe("addFromChannel", () => {
     for (const id of ["", "abc", "aaaaaaaaaa1,bbbbbbbbbb1", "../../videos"]) expect(refusal(await add(id).catch((e) => e)), id).toEqual(notOurs);
     expect(world.google.calls).toHaveLength(asked);
     expect(await references()).toEqual([]);
+  });
+
+  it("refuses a private or unlisted video on the channel, and keeps nothing of it", async () => {
+    const { add, references, world } = await setup();
+    world.uploads = [video("aaaaaaaaaa1", { privacy: "private" }), video("aaaaaaaaaa2", { privacy: "unlisted" })];
+    for (const id of ["aaaaaaaaaa1", "aaaaaaaaaa2"]) {
+      expect(refusal(await add(id).catch((e) => e)), id).toEqual({ code: "INVALID", status: 400, message: STYLE_MESSAGES.notOnChannel });
+    }
+    expect(await references()).toEqual([]);
+  });
+
+  it("keeps nothing when the channel is disconnected while YouTube is asked", async () => {
+    const { db, add, references, world } = await setup();
+    world.meanwhile = () => dropChannel(db, world.cfg, { spaceId: SEED_TEAM_ID }, { revoke: async () => {}, fetch: world.fetch });
+    expect(refusal(await add("aaaaaaaaaa1").catch((e) => e))).toEqual({ code: "NOT_CONNECTED", status: 409, message: SOCIAL_MESSAGES.notConnected });
+    expect(await references()).toEqual([]);
+  });
+
+  it("keeps nothing when another channel is connected in its place while YouTube is asked", async () => {
+    const { db, add, references, world } = await setup();
+    world.meanwhile = () =>
+      saveYoutubeConnection(db, world.cfg, {
+        spaceId: SEED_TEAM_ID,
+        connectedBy: "u1",
+        googleSub: "g-yt-1",
+        email: "team@gmail.com",
+        channel: { id: "UCother", title: "Another channel" },
+        refreshToken: "1//yt-refresh-1",
+        scopes: [],
+      });
+    expect(refusal(await add("aaaaaaaaaa1").catch((e) => e))).toEqual({ code: "INVALID", status: 400, message: STYLE_MESSAGES.notOnChannel });
+    expect(await references()).toEqual([]);
+  });
+
+  it("keeps nothing, and drops what it kept, when Google ends the connection", async () => {
+    const { db, add, references, world } = await setup();
+    await add("aaaaaaaaaa1");
+    world.google.refreshRefusal = "invalid_grant";
+    expect(refusal(await add("aaaaaaaaaa2").catch((e) => e))).toEqual({ code: "CONNECTION_BROKEN", status: 409, message: SOCIAL_MESSAGES.broken });
+    expect(await references()).toEqual([]);
+    expect((await db.select().from(socialConnection))[0].brokenReason).toBe("revoked");
   });
 
   it("is refused on a server without YouTube, and in a space with no channel it can read", async () => {

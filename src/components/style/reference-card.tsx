@@ -8,7 +8,7 @@ import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
 import type { AssetView } from "@/lib/media/types";
 import { sheetUrl } from "@/lib/style/client";
-import { progressWords, referenceFacts, referenceTitle } from "@/lib/style/describe";
+import { canTryAgain, progressWords, referenceFacts, referenceTitle } from "@/lib/style/describe";
 import { isThumbnailHost } from "@/lib/style/links";
 import { STYLE_WORDS } from "@/lib/style/messages";
 import type { SheetPlan, StyleReference } from "@/lib/style/types";
@@ -82,16 +82,35 @@ export type ReferenceCardProps = {
   error: string | null; // what this browser couldn't save just now, in the person's words
   canEdit: boolean;
   stale: boolean; // a channel video whose details were cut back, which Refresh reads again
-  busy: boolean; // a remove or a refresh is on its way
+  busy: boolean; // a remove, a refresh, a look-up for Try again or opening the media folder is on its way
+  // The name of the media folder on this computer that a video's files are kept in, while the browser wants a click
+  // to open it again; null otherwise, and always for a viewer.
+  lockedFolder: string | null;
   onRemove(): void;
   onTryAgain(): void;
+  onOpenFolder(): void;
   onRefresh?(): void; // without it there is no Refresh
 };
 
 // One thing the style learns from, as a row: its picture, its title (a link's opens its video), one line of facts, and
-// where it is: being looked at, not looked at yet, or why it couldn't be, with Try again. Editors can remove it. A
-// viewer is told that a video couldn't be looked at, but not the reason, which is for the editor whose browser tried.
-export function ReferenceCard({ reference, asset, progress, error, canEdit, stale, busy, onRemove, onTryAgain, onRefresh }: ReferenceCardProps): ReactNode {
+// where it is: being looked at, not looked at yet, or why it couldn't be, with Try again where trying again can help.
+// A video waiting on a media folder this computer has to open again says so, with Open folder. Editors can remove
+// it. A viewer is told that a video couldn't be looked at, but not the reason, which is for the editor whose browser
+// tried.
+export function ReferenceCard({
+  reference,
+  asset,
+  progress,
+  error,
+  canEdit,
+  stale,
+  busy,
+  lockedFolder,
+  onRemove,
+  onTryAgain,
+  onOpenFolder,
+  onRefresh,
+}: ReferenceCardProps): ReactNode {
   const facts = referenceFacts(reference);
   const title = referenceTitle(reference);
   const failure = error ?? (reference.status === "failed" ? (reference.failure ?? STYLE_WORDS.analysisFailed.unknown) : null);
@@ -100,13 +119,28 @@ export function ReferenceCard({ reference, asset, progress, error, canEdit, stal
     status = <p className="text-xs leading-4 text-ed-text tabular-nums">{progressWords(progress)}</p>;
   } else if (reference.kind === "video" && failure && !canEdit) {
     status = <p className="text-xs leading-4 text-ed-muted">{W.failedViewer}</p>;
+  } else if (reference.kind === "video" && canEdit && lockedFolder !== null && (failure ? canTryAgain(failure, asset?.durationMs) : reference.status === "pending")) {
+    // Its file can't be read until the folder is open, so that is the one thing to do; what failed before may not
+    // fail again once it is. A failure that would only come back (too long) is shown as it is, with no way to retry.
+    status = (
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <p className="min-w-0 text-xs leading-4 text-ed-muted">{W.folderLocked(lockedFolder)}</p>
+        <Button disabled={busy} onClick={onOpenFolder}>
+          {W.openFolder}
+        </Button>
+      </div>
+    );
   } else if (reference.kind === "video" && failure) {
     status = (
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <p role={error ? "alert" : undefined} className="min-w-0 text-xs leading-4 text-ed-danger">
           {failure}
         </p>
-        <Button onClick={onTryAgain}>{W.tryAgain}</Button>
+        {canTryAgain(failure, asset?.durationMs) && (
+          <Button disabled={busy} onClick={onTryAgain}>
+            {W.tryAgain}
+          </Button>
+        )}
       </div>
     );
   } else if (reference.kind === "video" && reference.status === "pending" && canEdit && asset?.removed) {

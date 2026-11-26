@@ -29,12 +29,14 @@ export const STYLE_MESSAGES = {
   badAnalysis: "What we measured in that video didn't come through right, so it wasn't saved. Try again.",
   notesTooLong: `Notes can be up to ${LIMITS.styleNotesChars.toLocaleString("en-US")} characters.`,
   notAStyleChange: "That isn't a style change.",
+  // How a refused field value ends, for the agent that sent it: where each field's values are explained.
+  fieldGuide: 'get_editing_guide with topic "learn-a-style" says what each field takes.',
   referenceGone: "That isn't in your style anymore.",
   projectGone: "That project isn't in this space anymore.",
   // Picking videos from the space's YouTube channel.
   channelOff: "YouTube isn't set up on this server, so videos can't be added from a channel.",
   channelHidden: "EasyEdit can't see this channel's videos yet. An admin can connect the channel again in Settings, Socials, and leave every box ticked.",
-  notOnChannel: "That video isn't on this space's YouTube channel.",
+  notOnChannel: "Only public videos on this space's YouTube channel can be added.",
   channelUnreadable: "YouTube couldn't share this channel's videos just now. Try again in a little while.",
 } as const;
 
@@ -47,12 +49,13 @@ export const STYLE_WORDS = {
     listening: "Listening",
     saving: "Saving",
   },
-  // Why a video couldn't be looked over. Kept with the video in the style and shown on its card, beside Try again.
-  // tooLong says ANALYSIS_LIMITS.seconds (in types.ts) in hours; a test keeps the two alike.
+  // Why a video couldn't be looked over. Kept with the video in the style and shown on its card, beside Try again
+  // (but for tooLong, which would only fail again). tooLong says ANALYSIS_LIMITS.seconds (in types.ts) in hours; a
+  // test keeps the two alike.
   analysisFailed: {
     missing: "This video isn't in your media anymore.",
     notReady: "This video is still uploading. Try again once it's ready.",
-    tooLong: "This video is longer than 4 hours, which is more than we can look at. Try a shorter one.",
+    tooLong: "This video is longer than 4 hours, which is more than we can look at. Remove it and add a shorter one.",
     unreadable: "We couldn't open this video. If it's kept on another computer, open this page there, or try again.",
     noPicture: "We couldn't see any frames in this video. Try uploading it again.",
     unknown: "Something went wrong while we looked at this video. Try again.",
@@ -84,6 +87,10 @@ export const STYLE_WORDS = {
     // A video that couldn't be looked at, as a viewer sees it: the reason is for the editor whose browser tried.
     failedViewer: "We couldn't look at this video. An editor can try again here.",
     tryAgain: "Try again",
+    // A video kept in a media folder, while the one this browser remembers wants a click to open again, as each visit.
+    // Until it's open, nobody can tell whether the video is in it (a teammate's may be in a folder of their own).
+    folderLocked: (folder: string) => `To look at this video, we need to open "${folder}", the media folder on this computer.`,
+    openFolder: "Open folder",
     refresh: "Refresh",
     channelStale: "YouTube's details for this video were cleared after 30 days, as YouTube asks.",
   },
@@ -96,6 +103,8 @@ export const STYLE_WORDS = {
     uploadsShowHere: "New uploads appear here once they're ready to pick.",
     noStorage: "To upload a video here, this space's storage needs setting up first.",
     uploading: "Uploading…",
+    // The person's own upload that never finished, as when the page it started on was left.
+    uploadStopped: "Upload stopped. Upload the same file again to finish.",
     inStyle: "In your style",
     pick: (name: string) => `Add ${name}`,
   },
@@ -129,8 +138,8 @@ export const STYLE_WORDS = {
     notConnected: "This space hasn't connected a YouTube channel yet.",
     connect: "Connect one in Socials",
     askAdmin: "An admin can connect one in Settings, Socials.",
-    empty: "There are no videos on this channel yet.",
-    newest: (channel: string) => `The newest videos on ${channel}.`,
+    empty: "There are no public videos on this channel yet.",
+    newest: (channel: string) => `The newest public videos on ${channel}.`,
     note: "We keep each video's public details from YouTube, never the video, and clear them after 30 days.",
     add: "Add",
     addLabel: (title: string) => `Add ${title}`,
@@ -141,9 +150,10 @@ export const STYLE_WORDS = {
   form: {
     heading: "Your style",
     fillIn: "Fill in from my videos",
-    // Beside Fill in while it can't be used yet: nothing added, or nothing looked at yet.
+    // Beside Fill in while it can't be used yet: nothing added, nothing looked at yet, or nothing could be.
     fillInFirst: "Add a video, link or project above first, then we'll fill in what we can.",
     fillInWaiting: "We can fill this in once a video above has been looked at.",
+    fillInFailed: "We couldn't look at the videos above. Try one again, or add something else.",
     fillInNothing: "Nothing new to fill in. We can't tell anything more about the fields that are still empty.",
     // read: the kinds of reference Fill in read, so the line names just those ("from your videos and links").
     filledSome: (count: number, read: readonly ("video" | "link" | "project")[]) =>
@@ -170,6 +180,16 @@ export const STYLE_WORDS = {
     alwaysPlaceholder: "For example: open on the best moment",
     neverPlaceholder: "For example: long intros",
     empty: "Nothing yet. An editor can fill this in.",
+  },
+
+  // Asked before the page is left while something on it would be lost: one line for each thing.
+  leave: {
+    title: "Leave this page?",
+    unsaved: "Your style has changes you haven't saved.",
+    uploading: "A video is still uploading. Leaving stops it.",
+    looking: "We're still looking at a video. Leaving stops that, and it starts over next time an editor opens this page.",
+    stay: "Stay",
+    leave: "Leave",
   },
 
   // How a set field reads when it can only be looked at.

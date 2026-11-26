@@ -2,15 +2,20 @@
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { MediaServices } from "@/components/editor/media/media-context";
+import type { MediaApi } from "@/lib/media/api";
+import { createLibraryStore } from "@/lib/media/library-store";
+import { createLocalFolder } from "@/lib/media/local-folder";
+import { MEDIA_MESSAGES } from "@/lib/media/messages";
 import type { StyleApi } from "@/components/style/style-api";
 import { StylePage, type StyleProject } from "@/components/style/style-page";
 import type { AnalyzeReferenceOptions, ReferenceProgress } from "@/components/style/use-analyze-reference";
-import type { AssetView } from "@/lib/media/types";
+import type { AssetView, UploadItem } from "@/lib/media/types";
 import type { ChannelStatus } from "@/lib/style/channel";
 import { STYLE_MESSAGES, STYLE_WORDS } from "@/lib/style/messages";
 import { applyStylePatch, DEFAULT_STYLE, type Style, type StylePatch, type StyleReference, type VideoAnalysis } from "@/lib/style/types";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { act, fireEvent, render, screen, waitFor, within } from "../helpers/dom";
+import { fakeFolder } from "../helpers/fake-folder";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 
 // The hook that looks videos over in the browser is tested on its own (use-analyze-reference.test.tsx). Here it only
@@ -543,7 +548,7 @@ describe("learning from the YouTube channel", () => {
     page({ channelOn: true, api });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "From your YouTube channel" })));
     const dialog = screen.getByRole("dialog", { name: "From your YouTube channel" });
-    expect(within(dialog).getByText("The newest videos on Paper Planes Club.")).toBeTruthy();
+    expect(within(dialog).getByText("The newest public videos on Paper Planes Club.")).toBeTruthy();
     expect(within(dialog).getByText("1 min 35 s")).toBeTruthy();
     expect(dialog.querySelector("img")).toBeNull(); // a picture from anywhere else isn't shown
     await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Add Paper planes" })));
@@ -674,6 +679,16 @@ describe("the style form", () => {
     expect(fill().hasAttribute("aria-describedby")).toBe(false);
   });
 
+  it("says so when nothing added could be looked at, rather than to add a video or wait", () => {
+    const failed = reference("r1", { status: "failed", analysis: null, hasSheet: false, failure: STYLE_WORDS.analysisFailed.unreadable });
+    page({ references: [failed], assets: [assetView({ id: "asset-r1" })] });
+    const fill = screen.getByRole("button", { name: "Fill in from my videos" }) as HTMLButtonElement;
+    expect(fill.disabled).toBe(true);
+    expect(within(yourStyle()).getByText(STYLE_WORDS.form.fillInFailed).id).toBe(fill.getAttribute("aria-describedby"));
+    expect(within(yourStyle()).queryByText(STYLE_WORDS.form.fillInFirst)).toBeNull();
+    expect(within(yourStyle()).queryByText(STYLE_WORDS.form.fillInWaiting)).toBeNull();
+  });
+
   it("names what it filled in from: the videos, links or projects it read", () => {
     const project = reference("r2", {
       kind: "project",
@@ -722,5 +737,288 @@ describe("the style form", () => {
     fireEvent.click(within(screen.getByRole("radiogroup", { name: "Pace" })).getByRole("radio", { name: "Steady" }));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
     expect(screen.getByRole("alert").textContent).toBe('Pace: use "calm", "steady", "quick" or "rapid".');
+  });
+});
+
+// A video kept in a media folder on this computer, with its copies there too.
+const localVideo = (id: string) => assetView({ id, originalFileId: `local:${id}`, previewFileId: `local:${id}:preview`, posterFileId: `local:${id}:poster` });
+
+// Media services whose media folder this browser remembers, as the browser answers for it now and once asked. load: when
+// the remembered folder is found (at once unless given).
+function withFolder(services: MediaServices, permission: Parameters<typeof fakeFolder>[1], load?: Promise<void>) {
+  const kept = fakeFolder("Footage", permission);
+  const local = createLocalFolder({ load: async () => (await load, kept), save: async () => {} });
+  return { services: { ...services, local }, kept };
+}
+
+describe("a video kept in a media folder on this computer", () => {
+  it("isn't looked at while the browser wants a click to open the folder again, and is once Open folder is pressed", async () => {
+    const waiting = reference("r1", { status: "pending", analysis: null, hasSheet: false });
+    const { services, kept } = withFolder(pretendMediaServices([localVideo("asset-r1")]), { now: "prompt", onAsk: "granted" });
+    page({ references: [waiting], services });
+    const card = await within(learn()).findByText(STYLE_WORDS.learn.folderLocked("Footage"));
+    expect(analyze.run).not.toHaveBeenCalled();
+    expect(within(learn()).queryByText(STYLE_WORDS.learn.notLookedAt)).toBeNull();
+    await act(async () => fireEvent.click(within(card.parentElement!).getByRole("button", { name: "Open folder" })));
+    expect(kept.asked).toBe(1);
+    expect(analyze.run).toHaveBeenCalledWith(waiting, expect.objectContaining({ id: "asset-r1" }));
+    expect(within(learn()).queryByText(STYLE_WORDS.learn.folderLocked("Footage"))).toBeNull();
+  });
+
+  it("waits for the folder to be looked up before looking at the video, so it isn't marked unreadable by mistake", async () => {
+    let found!: () => void;
+    const lookup = new Promise<void>((resolve) => (found = resolve));
+    const { services } = withFolder(pretendMediaServices([localVideo("asset-r1"), assetView({ id: "asset-r2" })]), { now: "granted" }, lookup);
+    page({ references: [reference("r1", { status: "pending", analysis: null, hasSheet: false }), reference("r2", { status: "pending", analysis: null, hasSheet: false })], services });
+    // A video in the space's storage needn't wait.
+    expect(analyze.run).toHaveBeenCalledTimes(1);
+    expect(analyze.run).toHaveBeenCalledWith(expect.objectContaining({ id: "r2" }), expect.objectContaining({ id: "asset-r2" }));
+    await act(async () => found());
+    expect(analyze.run).toHaveBeenCalledTimes(2);
+    expect(analyze.run).toHaveBeenLastCalledWith(expect.objectContaining({ id: "r1" }), expect.objectContaining({ id: "asset-r1" }));
+  });
+
+  it("offers Open folder in place of Try again, and tries again once it's open", async () => {
+    const failed = reference("r1", { status: "failed", analysis: null, hasSheet: false, failure: STYLE_WORDS.analysisFailed.unreadable });
+    const { services } = withFolder(pretendMediaServices([localVideo("asset-r1")]), { now: "prompt", onAsk: "granted" });
+    page({ references: [failed], services });
+    await within(learn()).findByText(STYLE_WORDS.learn.folderLocked("Footage"));
+    expect(within(learn()).queryByRole("button", { name: "Try again" })).toBeNull();
+    await act(async () => fireEvent.click(within(learn()).getByRole("button", { name: "Open folder" })));
+    expect(analyze.run).toHaveBeenCalledWith(failed, expect.objectContaining({ id: "asset-r1" }));
+  });
+
+  it("doesn't offer Open folder for a video that would only fail again, or one taken out of the media", async () => {
+    const tooLong = reference("r1", { status: "failed", analysis: null, hasSheet: false, failure: STYLE_WORDS.analysisFailed.tooLong });
+    const removed = reference("r2", { status: "pending", analysis: null, hasSheet: false });
+    const { services } = withFolder(pretendMediaServices([localVideo("asset-r1"), { ...localVideo("asset-r2"), removed: true }]), { now: "prompt", onAsk: "granted" });
+    page({ references: [tooLong, removed], services });
+    await waitFor(() => expect(services.local.state()).toBe("locked"));
+    expect(within(learn()).queryByRole("button", { name: "Open folder" })).toBeNull();
+    expect(within(learn()).queryByText(STYLE_WORDS.learn.folderLocked("Footage"))).toBeNull();
+    expect(within(learn()).getByText(STYLE_WORDS.analysisFailed.tooLong)).toBeTruthy();
+    expect(within(learn()).queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(within(learn()).getByText(STYLE_WORDS.analysisFailed.missing)).toBeTruthy();
+  });
+
+  it("keeps offering Open folder when the browser is told no", async () => {
+    const { services } = withFolder(pretendMediaServices([localVideo("asset-r1")]), { now: "prompt", onAsk: "denied" });
+    page({ references: [reference("r1", { status: "pending", analysis: null, hasSheet: false })], services });
+    await act(async () => fireEvent.click(await within(learn()).findByRole("button", { name: "Open folder" })));
+    expect(analyze.run).not.toHaveBeenCalled();
+    expect(within(learn()).getByRole("button", { name: "Open folder" })).toBeTruthy();
+  });
+
+  it("is offered in Add a video, as the Media tab offers it, rather than saying the space has no storage", async () => {
+    const { services } = withFolder(pretendMediaServices([]), { now: "prompt", onAsk: "granted" });
+    page({ services, storageReady: false });
+    fireEvent.click(screen.getByRole("button", { name: "Add a video" }));
+    const dialog = screen.getByRole("dialog", { name: "Add a video" });
+    await within(dialog).findByText(MEDIA_MESSAGES.folderLocked("Footage"));
+    expect(within(dialog).queryByText(STYLE_WORDS.video.noStorage)).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: STYLE_WORDS.video.upload })).toBeNull();
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Open folder" })));
+    expect(within(dialog).getByRole("button", { name: STYLE_WORDS.video.upload })).toBeTruthy();
+    expect(within(dialog).queryByText(MEDIA_MESSAGES.folderLocked("Footage"))).toBeNull();
+  });
+});
+
+describe("Try again", () => {
+  // A library whose full list doesn't hold the video (still on its way, or the video is older than the newest it
+  // lists), and whose answer for the video by its id is given.
+  function libraryAsked(byId: (ids: string[]) => ReturnType<MediaApi["list"]>) {
+    const base = pretendMediaServices([], { loaded: false });
+    const list = vi.fn((ids?: string[]) => (ids ? byId(ids) : new Promise<never>(() => {})));
+    return { services: { ...base, library: createLibraryStore({ api: { list } as unknown as MediaApi }) }, list };
+  }
+  const failed = reference("r1", { status: "failed", analysis: null, hasSheet: false, failure: STYLE_WORDS.analysisFailed.unreadable });
+
+  it("asks for a video the library hasn't listed yet before saying it's gone", async () => {
+    const { services, list } = libraryAsked(async () => ({ ok: true, assets: [assetView({ id: "asset-r1" })], setUp: true }));
+    page({ references: [failed], services });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Try again" })));
+    expect(list).toHaveBeenCalledWith(["asset-r1"]);
+    expect(screen.queryByText(STYLE_WORDS.analysisFailed.missing)).toBeNull();
+    expect(analyze.run).toHaveBeenCalledWith(failed, expect.objectContaining({ id: "asset-r1" }));
+  });
+
+  it("says the server couldn't be reached, not that the video is gone, when there's no answer", async () => {
+    const { services } = libraryAsked(async () => ({ ok: false, kind: "network", message: "" }));
+    page({ references: [failed], services });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Try again" })));
+    expect(screen.getByRole("alert").textContent).toBe(MEDIA_MESSAGES.noAnswer);
+    expect(analyze.run).not.toHaveBeenCalled();
+  });
+
+  it("says the video is gone when the server says so", async () => {
+    const { services } = libraryAsked(async () => ({ ok: true, assets: [], setUp: true }));
+    page({ references: [failed], services });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Try again" })));
+    expect(screen.getByRole("alert").textContent).toBe(STYLE_WORDS.analysisFailed.missing);
+    expect(analyze.run).not.toHaveBeenCalled();
+  });
+
+  it("isn't offered for a video longer than a style looks at, which would only fail again", () => {
+    const tooLong = reference("r1", { status: "failed", analysis: null, hasSheet: false, failure: STYLE_WORDS.analysisFailed.tooLong });
+    const { view } = page({ references: [tooLong], assets: [assetView({ id: "asset-r1" })] });
+    expect(screen.getByText(STYLE_WORDS.analysisFailed.tooLong)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove Video r1" })).toBeTruthy();
+    view.unmount();
+
+    // Known from the library to be too long, whatever went wrong.
+    const other = reference("r1", { status: "failed", analysis: null, hasSheet: false, failure: STYLE_WORDS.analysisFailed.unknown });
+    page({ references: [other], assets: [assetView({ id: "asset-r1", durationMs: 5 * 60 * 60 * 1000 })] });
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+});
+
+describe("leaving the page", () => {
+  const upload = (over: Partial<UploadItem> = {}): UploadItem => ({
+    key: "k1",
+    fileName: "match.mp4",
+    sizeBytes: 400_000_000,
+    durationMs: 60_000,
+    stage: "uploading",
+    sentBytes: 1000,
+    previewFraction: 0,
+    assetId: "up1",
+    message: null,
+    canRetry: false,
+    ...over,
+  });
+  // Whether closing or reloading the tab now would make the browser ask first.
+  const asksBeforeUnload = () => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  // A link elsewhere in the app, as the settings tabs and the sidebar are. followed: each click it got, with whether
+  // the app's own handling was stopped.
+  function appLink(href = "/s/seattle-solvers/settings/brand") {
+    const link = document.createElement("a");
+    link.href = href;
+    link.textContent = "Brand kit";
+    const followed: boolean[] = [];
+    link.addEventListener("click", (event) => {
+      followed.push(event.defaultPrevented);
+      event.preventDefault(); // the test's window stays where it is
+    });
+    document.body.append(link);
+    return { link, followed, [Symbol.dispose]: () => link.remove() };
+  }
+
+  it("asks first while an upload started here is running, since leaving stops it", async () => {
+    const services = pretendMediaServices([]);
+    page({ services });
+    expect(asksBeforeUnload()).toBe(false);
+    act(() => services.library.getState().setUploads([upload()]));
+    expect(asksBeforeUnload()).toBe(true);
+
+    using app = appLink();
+    fireEvent.click(app.link);
+    const dialog = screen.getByRole("dialog", { name: STYLE_WORDS.leave.title });
+    expect(within(dialog).getByText(STYLE_WORDS.leave.uploading)).toBeTruthy();
+    expect(app.followed).toEqual([]);
+    fireEvent.click(within(dialog).getByRole("button", { name: STYLE_WORDS.leave.stay }));
+    expect(screen.queryByRole("dialog", { name: STYLE_WORDS.leave.title })).toBeNull();
+    expect(app.followed).toEqual([]);
+
+    fireEvent.click(app.link);
+    await act(async () => fireEvent.click(within(screen.getByRole("dialog", { name: STYLE_WORDS.leave.title })).getByRole("button", { name: STYLE_WORDS.leave.leave })));
+    expect(app.followed).toEqual([false]);
+    expect(screen.queryByRole("dialog", { name: STYLE_WORDS.leave.title })).toBeNull();
+  });
+
+  it("lets a link go once the upload is done, and leaves links to other sites and new tabs to the browser", () => {
+    const services = pretendMediaServices([]);
+    page({ services });
+    act(() => services.library.getState().setUploads([upload()]));
+    {
+      using elsewhere = appLink("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+      fireEvent.click(elsewhere.link);
+      expect(elsewhere.followed).toEqual([false]);
+    }
+    {
+      using app = appLink();
+      fireEvent.click(app.link, { metaKey: true });
+      expect(app.followed).toEqual([false]);
+    }
+    act(() => services.library.getState().setUploads([upload({ stage: "done" })]));
+    expect(asksBeforeUnload()).toBe(false);
+    using app = appLink();
+    fireEvent.click(app.link);
+    expect(app.followed).toEqual([false]);
+    expect(screen.queryByRole("dialog", { name: STYLE_WORDS.leave.title })).toBeNull();
+  });
+
+  it("asks first while there are changes Save hasn't sent, and not once they're saved", async () => {
+    page();
+    expect(asksBeforeUnload()).toBe(false);
+    fireEvent.change(screen.getByLabelText("Voice and tone"), { target: { value: "Friendly" } });
+    expect(asksBeforeUnload()).toBe(true);
+    {
+      using app = appLink();
+      fireEvent.click(app.link);
+      const dialog = screen.getByRole("dialog", { name: STYLE_WORDS.leave.title });
+      expect(within(dialog).getByText(STYLE_WORDS.leave.unsaved)).toBeTruthy();
+      expect(within(dialog).queryByText(STYLE_WORDS.leave.uploading)).toBeNull();
+      fireEvent.click(within(dialog).getByRole("button", { name: STYLE_WORDS.leave.stay }));
+    }
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect(asksBeforeUnload()).toBe(false);
+  });
+
+  it("counts a number box typed into as a change, even before it holds a number", () => {
+    page({ style: DEFAULT_STYLE });
+    fireEvent.change(screen.getByLabelText("Typical shot"), { target: { value: "abc" } });
+    expect(asksBeforeUnload()).toBe(true);
+  });
+
+  it("asks first while a video is being looked at", () => {
+    analyze.progress = { r1: { stage: "shots", done: 0.3 } };
+    page({ references: [reference("r1", { status: "pending", analysis: null, hasSheet: false })], assets: [assetView({ id: "asset-r1" })] });
+    expect(asksBeforeUnload()).toBe(true);
+    using app = appLink();
+    fireEvent.click(app.link);
+    expect(within(screen.getByRole("dialog", { name: STYLE_WORDS.leave.title })).getByText(STYLE_WORDS.leave.looking)).toBeTruthy();
+  });
+
+  it("never asks a viewer, who has nothing to lose", () => {
+    analyze.progress = { r1: { stage: "shots", done: 0.3 } };
+    page({ canEdit: false, references: [reference("r1", { status: "pending", analysis: null, hasSheet: false })] });
+    expect(asksBeforeUnload()).toBe(false);
+  });
+
+  it("shows an upload that stopped when its page was left as stopped, with how to finish it, not as still uploading", () => {
+    const services = pretendMediaServices([assetView({ id: "up1", name: "match", status: "uploading", originalFileId: null }), assetView({ id: "up2", name: "pit tour", status: "uploading", originalFileId: null })]);
+    services.library.getState().setUploads([upload({ assetId: "up2", fileName: "pit tour.mp4" })]);
+    page({ services });
+    fireEvent.click(screen.getByRole("button", { name: "Add a video" }));
+    const dialog = screen.getByRole("dialog", { name: "Add a video" });
+    const tile = (name: string) => within(dialog).getByRole("button", { name: `Add ${name}` });
+    expect(within(tile("match")).getByText(STYLE_WORDS.video.uploadStopped)).toBeTruthy();
+    expect((tile("match") as HTMLButtonElement).disabled).toBe(true);
+    expect(within(tile("pit tour")).getByText(STYLE_WORDS.video.uploading)).toBeTruthy();
+  });
+});
+
+describe("Try it", () => {
+  it("waits until the style has something for an agent to read", async () => {
+    const api = fakeApi({ addReference: vi.fn(async () => linkReference("r9")) });
+    page({ api, style: DEFAULT_STYLE });
+    expect(screen.queryByRole("region", { name: "Try it" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Paste a link" }));
+    fireEvent.change(screen.getByLabelText("Video link"), { target: { value: "https://vimeo.com/76979871" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add link" })));
+    expect(screen.getByRole("region", { name: "Try it" })).toBeTruthy();
+  });
+
+  it("shows once a field is saved", async () => {
+    page({ style: DEFAULT_STYLE });
+    fireEvent.change(screen.getByLabelText("Voice and tone"), { target: { value: "Friendly" } });
+    expect(screen.queryByRole("region", { name: "Try it" })).toBeNull(); // not before it's saved
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    expect(screen.getByRole("region", { name: "Try it" })).toBeTruthy();
   });
 });

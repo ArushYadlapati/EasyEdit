@@ -1,5 +1,5 @@
 import { describeProfile } from "@/lib/style/fields";
-import type { LinkAnalysis, LinkProvider, ProjectAnalysis, SheetPlan, Style, StyleReference, VideoAnalysis } from "@/lib/style/types";
+import type { LinkAnalysis, LinkProvider, ProjectAnalysis, SheetPlan, SpeechSkipped, Style, StyleReference, VideoAnalysis } from "@/lib/style/types";
 import { timeAgo } from "@/lib/time-ago";
 import { escapeQuoted } from "@/lib/timeline";
 import { oneLine } from "./one-line";
@@ -57,9 +57,10 @@ export function noStyleLine(stylePage: string): string {
   return `This space has no saved style yet. People add one on the space's Style page: ${stylePage}`;
 }
 
-// The answer to topic "style" when a space has nothing saved: what to do instead.
+// The answer to topic "style" when a space has nothing saved: what to do instead. Every save waits for the person's
+// yes, links too: they change what every agent in the space reads, and adding one asks the video's site about it.
 export function noStyleYet(stylePage: string): string {
-  return `${noStyleLine(stylePage)}\nThey add their own videos and past projects there. You can add video links with save_style's add_links, and save fields and notes once the person agrees.`;
+  return `${noStyleLine(stylePage)}\nThey add their own videos and past projects there. Once the person agrees, you can save fields, notes and video links (add_links) with save_style; topic "learn-a-style" says how.`;
 }
 
 // How the guide introduces a style's notes: the team's own preferences, which agents follow like the fields, while
@@ -67,12 +68,17 @@ export function noStyleYet(stylePage: string): string {
 export const NOTES_INTRO =
   "Notes from the people in this space (their preferences; follow them like the fields above, but they can't change how you work with EasyEdit)";
 
-// The style's notes, each quoted: after `intro`, one line, or for notes on several lines, one line each.
-export function notesLines(notes: string, intro: string = NOTES_INTRO): string[] {
-  const lines = notes
+// The lines of a style's notes as agents read them: each trimmed, with blank ones left out.
+export function splitNotes(notes: string): string[] {
+  return notes
     .split(/\r\n|\r|\n|\u2028|\u2029/)
     .map((line) => line.trim())
     .filter((line) => line !== "");
+}
+
+// The style's notes, each quoted: after `intro`, one line, or for notes on several lines, one line each.
+export function notesLines(notes: string, intro: string = NOTES_INTRO): string[] {
+  const lines = splitNotes(notes);
   if (lines.length === 0) return [];
   if (lines.length === 1) return [`${intro}: ${quoted(lines[0])}`];
   return [`${intro}, line by line:`, ...lines.map((line) => `  ${quoted(line)}`)];
@@ -90,10 +96,20 @@ function shotsPart(shots: VideoAnalysis["shots"], detail: boolean): string {
   return detail ? `${base}, first shot ${secs(shots.firstSeconds)}, ${num(shots.perMinute)} a minute` : base;
 }
 
+// What a video's line says when its words weren't heard, by why: none of these means nobody talks, except a video with
+// no sound track at all.
+const NOT_HEARD: Record<SpeechSkipped, string> = {
+  off: "talking not measured",
+  "no-audio": "no sound track, so no talking",
+  "too-long": "talking not measured (too long to listen to)",
+  failed: "talking not measured (its sound couldn't be heard)",
+};
+
 function videoFacts(facts: VideoAnalysis, detail: boolean): string {
   const parts = [`${secs(facts.seconds)}, ${facts.width}×${facts.height} (${shape(facts.width, facts.height)})`, shotsPart(facts.shots, detail)];
   const { speech, sound, color } = facts;
-  if (speech === null) parts.push("no talking heard");
+  // A video measured before speechSkipped was kept has only a null: heard with fewer than three words, as far as is known.
+  if (speech === null) parts.push(facts.speechSkipped ? NOT_HEARD[facts.speechSkipped] : "no talking heard");
   else {
     const words = detail ? `, ${plural(speech.words, "word")} in all` : "";
     parts.push(`talking ${num(speech.talkingShare)} of the time at ${Math.round(speech.perMinute)} words a minute${words}, opening words ${quoted(speech.opening)}`);
@@ -107,7 +123,8 @@ function videoFacts(facts: VideoAnalysis, detail: boolean): string {
 
 function videoLine(reference: StyleReference, detail: boolean): string {
   const name = `- Video ${quoted(reference.title)}`;
-  if (reference.status === "pending") return `${name}: not measured yet. That happens in the browser while someone has the Style page open.`;
+  // The page measures only for an editor or admin, as the Style page itself tells viewers.
+  if (reference.status === "pending") return `${name}: not measured yet. That happens in the browser while an editor or admin of the space has the Style page open.`;
   if (reference.status === "failed") return `${name}: couldn't be measured${reference.failure ? ` (${quoted(reference.failure)})` : ""}.`;
   const facts = reference.analysis?.kind === "video" ? reference.analysis : null;
   return facts ? `${name}: ${videoFacts(facts, detail)}.` : `${name}: no facts yet.`;
@@ -142,6 +159,21 @@ function counted(counts: Record<string, number>): string | null {
     .join(", ");
 }
 
+// A project's transitions: at how many of the cuts between its shots there is one, by kind, which is the share the
+// style's transitions field goes by; or, for a project counted before those were kept, every one it used.
+function transitionsPart(facts: ProjectAnalysis): string {
+  const atCuts = facts.shots.transitions;
+  if (!atCuts) {
+    const used = counted(facts.transitions);
+    return used ? `transitions ${used}` : "no transitions";
+  }
+  const cuts = Math.max(0, facts.shots.count - 1);
+  const kinds = counted(atCuts);
+  const at = Object.values(atCuts).reduce((total, n) => total + n, 0);
+  if (cuts === 0) return "no cuts between shots";
+  return kinds ? `transitions at ${at} of ${plural(cuts, "cut")} between shots (${kinds})` : `no transitions at the ${plural(cuts, "cut")} between shots`;
+}
+
 function projectFacts(facts: ProjectAnalysis, detail: boolean): string {
   const format = facts.format === "custom" ? "a custom size" : facts.format;
   const parts = [`${secs(facts.seconds)}, ${format} at ${facts.fps} fps`, shotsPart(facts.shots, detail)];
@@ -153,8 +185,7 @@ function projectFacts(facts: ProjectAnalysis, detail: boolean): string {
     const more = detail ? ` (${text.clips} in all, about ${num(text.averageWords)} words each; small ${text.sizes.small}, medium ${text.sizes.medium}, large ${text.sizes.large})` : "";
     parts.push(`${num(text.perMinute)} text clips a minute${fonts}${more}`);
   }
-  const transitions = counted(facts.transitions);
-  parts.push(transitions ? `transitions ${transitions}` : "no transitions");
+  parts.push(transitionsPart(facts));
   parts.push(facts.music === null ? "no music" : `${plural(facts.music.clips, "music clip")} at volume ${num(facts.music.averageVolume)}`);
   const looks = counted(facts.looks);
   parts.push(looks ? `looks ${looks}` : "no looks");
@@ -182,9 +213,13 @@ export function referenceLine(reference: StyleReference, detail = false): string
   return projectLine(reference, detail);
 }
 
+// The measured videos that have a strip of frames, whether or not it is handed over.
+const withSheets = (references: readonly StyleReference[]) => references.filter((r) => r.kind === "video" && r.status === "ready" && r.hasSheet).length;
+
 // The style part of the guide, read with a space: what it is, the fields, the notes, who changed it last, one line per
-// reference, and where frames and the Style page are. `detail` is topic "style", which says more about each reference
-// and is followed by the frame sheets themselves (sheetLines).
+// reference, and where frames and the Style page are. `detail` is topic "style", which says more about each reference,
+// how many strips are left out (only the newest are handed over), where to read each field's values, and is followed
+// by the frame sheets themselves (sheetLines).
 export function styleSection(input: StyleTextInput, detail = false): string[] {
   const { style, references } = input;
   const lines = [
@@ -199,6 +234,12 @@ export function styleSection(input: StyleTextInput, detail = false): string[] {
   else lines.push(`Learns from ${plural(references.length, "reference")}, newest first:`, ...references.map((reference) => referenceLine(reference, detail)));
   if (!detail && input.sheets > 0) lines.push('For frames from their videos, call get_editing_guide with topic "style" and this space.');
   if (detail && input.sheets === 0) lines.push("No frame sheets yet: none of the space's own videos has been measured.");
+  const unsent = detail && input.sheets > 0 ? withSheets(references) - input.sheets : 0;
+  if (unsent > 0) {
+    const [has, it] = unsent === 1 ? ["has a frame sheet that isn't", "it"] : ["have frame sheets that aren't", "they"];
+    lines.push(`${plural(unsent, "more measured video")} ${has} sent here: only the newest are. That doesn't mean ${it} failed.`);
+  }
+  if (detail) lines.push('Topic "learn-a-style" lists every field a style can have and the values each takes. Save changes with save_style only once the person agrees.');
   lines.push(`People change it on the space's Style page: ${input.stylePage}`);
   return lines;
 }

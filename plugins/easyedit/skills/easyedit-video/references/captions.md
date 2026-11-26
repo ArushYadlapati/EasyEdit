@@ -102,7 +102,7 @@ y is where the middle of the caption lines sits, as a share of the frame's heigh
 
 | Format | Default y | Keep y between | Upper | Middle | Lower |
 |---|---|---|---|---|---|
-| short_9x16 | 0.558 | 0.2 and 0.6 | 0.25 | 0.5 | 0.558 |
+| short_9x16 | 0.558 | 0.2 and 0.6 | 0.25 | 0.45 | 0.558 |
 | feed_4x5, square_1x1, long_16x9, long_4k, custom | 0.788 | 0.2 and 0.8 | 0.2 | 0.5 | 0.788 |
 
 - On 9:16, the bottom 35% is where TikTok, Reels and Shorts put the username, description and buttons. Captions lower than about y 0.6 get covered.
@@ -169,7 +169,7 @@ words=first-last are the places of the line's words in the file's word list, cou
 When you read the guide with the project's space (`get_editing_guide` with space), it may end with "## This space's style". Its captions line reads like "Captions: on, One word look (preset word), all caps, near the top of the frame." Follow it:
 
 - on true: captions on for every talking clip. on false: leave them off unless the person asks.
-- The preset in brackets is the look, and "all caps" means uppercase true. "Near the top", "in the middle" and "near the bottom" are the positions upper, middle and lower: use the y values in the table above.
+- The preset in brackets is the look, and "all caps" means uppercase true. "Near the top", "in the middle" and "near the bottom" are the positions upper, middle and lower: use the y values in the table above. Lower is where the editor puts captions before anyone moves them.
 - No captions field? Past projects listed as references name the caption look they used. Follow that.
 - `get_editing_guide` with topic "style" and the space gives frame sheets from their videos, where your client can show images. Look at how big their captions are and where they sit, and match the closest look.
 - Reference videos list words a minute. For a fast talker (over about 180), karaoke or block works better than word.

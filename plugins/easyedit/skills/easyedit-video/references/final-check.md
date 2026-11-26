@@ -170,11 +170,11 @@ Have the style in front of you: `get_editing_guide` with the project's space. `l
 | lengthSeconds | The duration is between min and max. |
 | pace, shotSeconds | The video's length divided by its shots: the main track's clips, plus b-roll cut in over them. 30 s with 16 shots is about 1.9 s a shot. Rapid is under 1.2 s, quick under 2.5, steady 2.5 to 4, calm over 4. |
 | hook | The opening does what it says, in their words. |
-| captions | on: captions=on on every talking clip (or none, if on is false). look, uppercase and position match the "Captions:" line. In 9:16, take upper as y 0.25, middle 0.45 and lower 0.558; in other formats 0.2, 0.5 and 0.8 (see the your-style topic). |
+| captions | on: captions=on on every talking clip (or none, if on is false). look, uppercase and position match the "Captions:" line. Position as y, from the table in the captions topic: on short_9x16 upper 0.25, middle 0.45, lower 0.558; on the other formats upper 0.2, middle 0.5, lower 0.788. |
 | text | none: no text clips beyond what the person asked for. light: a few lines. lots: text through most of the video. |
 | music | none: no music clip. soft: quiet, at the low end of the levels above. upbeat or intense: go by the song's name, and ask if you're unsure. |
 | transitions, transitionKinds | Count the in= and out= transitions. cuts: none, or almost none. few: a handful, at big moments. lots: most cuts. Every kind used is in transitionKinds. |
-| look | natural: no adjust= or grade= on the video clips or an adjustment layer, beyond fixes the person asked for. A look id: each video clip's adjust= has that look's numbers (the color-and-looks topic lists them). If not, set them with update_clip, or ask. |
+| look | natural: no adjust= or grade= on the video clips or an adjustment layer, beyond fixes the person asked for. A look id: the look is in one place, never two. Either one adjustment layer over the whole video has that look's numbers, at any amount, or each video clip's adjust= has them (the color-and-looks topic lists them). When a layer covers the clips, leave their adjust alone: the look on both comes out twice as strong. If neither has it, add the layer as the color-and-looks topic shows, or ask. |
 | voice | Text you wrote sounds like them. |
 | always, never | Go line by line. "Never open on our logo" and "always end with the shop's hours" are easy to break by accident. |
 

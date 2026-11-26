@@ -237,8 +237,15 @@ export type SheetPlan = z.infer<typeof SheetPlan>;
 
 const Side = z.number().int("a whole number").min(1).max(ANALYSIS_LIMITS.side);
 
+// Why a video's words weren't heard, when they weren't: it wasn't asked to listen, the video has no sound to hear, it
+// runs longer than Auto captions hears (with no words saved for it), or hearing it went wrong.
+export const SpeechSkipped = z.enum(["off", "no-audio", "too-long", "failed"]);
+export type SpeechSkipped = z.infer<typeof SpeechSkipped>;
+
 // What a browser measured in one of the space's own videos. Browsers post it, so every number is checked: finite, in
-// range, and times inside the video. Cut times are in seconds to two places, in order.
+// range, and times inside the video. Cut times are in seconds to two places, in order. speech is null both when the
+// words were heard and fewer than three were found, and when they weren't heard at all; speechSkipped, given only with
+// a null speech, says why they weren't (videos measured before it was kept don't have it).
 export const VideoAnalysis = z
   .strictObject({
     kind: z.literal("video"),
@@ -250,12 +257,14 @@ export const VideoAnalysis = z
       .array(Seconds.refine(twoPlaces, "seconds to two places"))
       .max(ANALYSIS_LIMITS.cuts, `at most ${ANALYSIS_LIMITS.cuts} cuts`),
     speech: SpeechFacts.nullable(),
+    speechSkipped: SpeechSkipped.optional(),
     sound: SoundFacts.nullable(),
     color: ColorFacts,
     sheet: SheetPlan.nullable(),
     analyzedAt: z.iso.datetime(),
   })
   .superRefine((video, ctx) => {
+    if (video.speechSkipped !== undefined && video.speech !== null) ctx.addIssue({ code: "custom", message: "only when no words were heard", path: ["speechSkipped"] });
     const end = video.seconds + END_SLACK;
     video.cuts.forEach((t, i) => {
       if (t > end) ctx.addIssue({ code: "custom", message: "after the video ends", path: ["cuts", i] });
@@ -319,13 +328,17 @@ const Counts = z
   .record(Name, tally())
   .refine((counts) => Object.keys(counts).length <= ANALYSIS_LIMITS.names, `at most ${ANALYSIS_LIMITS.names} names`);
 
-// What EasyEdit counted in one of the space's past projects.
+const TransitionCounts = z.record(TransitionKind, tally());
+
+// What EasyEdit counted in one of the space's past projects. shots.transitions counts the cuts between its shots that
+// have a transition, by kind (one for each cut); transitions counts every transition in and out on every clip that is
+// seen. Projects counted before shots.transitions was added don't have it.
 export const ProjectAnalysis = z.strictObject({
   kind: z.literal("project"),
   seconds: ProjectSeconds,
   format: FormatId,
   fps: z.number().int().min(1).max(240),
-  shots: ShotFacts,
+  shots: ShotFacts.extend({ transitions: TransitionCounts.optional() }),
   text: z.strictObject({
     clips: tally(),
     perMinute: range(0, 3600),
@@ -334,7 +347,7 @@ export const ProjectAnalysis = z.strictObject({
     sizes: z.strictObject({ small: tally(), medium: tally(), large: tally() }),
   }),
   captions: z.strictObject({ look: CaptionPreset, uppercase: z.boolean(), y: range(0, 1) }).nullable(),
-  transitions: z.record(TransitionKind, tally()),
+  transitions: TransitionCounts,
   textAnimations: Counts,
   music: z.strictObject({ clips: tally(), averageVolume: range(0, 4) }).nullable(),
   speedChanges: tally(),

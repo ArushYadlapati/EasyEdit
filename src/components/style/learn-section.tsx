@@ -2,10 +2,11 @@
 
 import { Clapperboard, Film, Link2, ListVideo } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { useLibrary, useMedia } from "@/components/editor/media/media-context";
+import { useLibrary, useLocalFolder, useMedia } from "@/components/editor/media/media-context";
 import { Button } from "@/components/ui/button";
 import { LIMITS } from "@/lib/limits";
-import type { AssetView } from "@/lib/media/types";
+import { MEDIA_MESSAGES } from "@/lib/media/messages";
+import { isLocalFile, type AssetView } from "@/lib/media/types";
 import type { ChannelUpload } from "@/lib/social/youtube-api";
 import { channelFactsStale } from "@/lib/style/describe";
 import { parseVideoLink } from "@/lib/style/links";
@@ -21,6 +22,8 @@ import { useAnalyzeReference } from "./use-analyze-reference";
 
 const W = STYLE_WORDS.learn;
 const MUTED = "text-[13px] leading-5 text-ed-muted";
+// A media folder whose name the browser doesn't give, as the Media tab calls it.
+const MEDIA_FOLDER = "your folder";
 
 type Opened = "video" | "link" | "projects" | "channel" | null;
 
@@ -32,22 +35,25 @@ export type LearnSectionProps = {
   spaceSlug: string;
   canEdit: boolean;
   isAdmin: boolean;
-  channelOn: boolean; // this server can read a YouTube channel's uploads
+  channelOn: boolean; // the space has a YouTube channel connected whose uploads this server can read
   references: StyleReference[];
   setReferences: Dispatch<SetStateAction<StyleReference[]>>;
   projects: readonly StyleProject[];
   api: StyleApi;
   now?: Date;
+  onLooking?(looking: boolean): void; // whether a video is being looked at, or waits its turn, as that changes
 };
 
 // "Learn from your videos": what the style learns from, as a list of cards, and for editors the ways to add to it (a
 // video from the space's media or a new upload, a pasted link, past projects, and the space's YouTube channel where
 // this server can read one). A video added, or still waiting, is looked over in this browser straight away, once,
-// one video at a time; a video that couldn't be offers Try again. A viewer, who can't add anything, sees the list
-// under "What your style learns from".
-export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, references, setReferences, projects, api, now }: LearnSectionProps): ReactNode {
+// one video at a time; a video that couldn't be offers Try again. A video kept in a media folder on this computer is
+// looked at once the folder is open: while the browser wants a click to open it again, its card offers Open folder.
+// A viewer, who can't add anything, sees the list under "What your style learns from".
+export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, references, setReferences, projects, api, now, onLooking }: LearnSectionProps): ReactNode {
   const headingId = useId();
   const { library } = useMedia();
+  const { folder, state: folderState, name: folderName } = useLocalFolder();
   const assets = useLibrary((s) => s.assets);
   const loaded = useLibrary((s) => s.loaded);
   const [opened, setOpened] = useState<Opened>(null);
@@ -73,6 +79,27 @@ export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, 
     onDone: looked,
     onError: (reference, message) => setErrors((shown) => ({ ...shown, [reference.id]: message })),
   });
+  const looking = Object.keys(progress).length > 0;
+  useEffect(() => {
+    onLooking?.(looking);
+  }, [looking, onLooking]);
+
+  // The media folder this browser remembers is looked up once more here, so the page knows when that is done: until
+  // then a video kept on this computer can't be told from one kept on another, and looking at it would fail.
+  // restore() can be asked again; it answers once it has looked.
+  const [folderChecked, setFolderChecked] = useState(false);
+  const folderCheck = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    let live = true;
+    const check = folder.restore().catch(() => {});
+    folderCheck.current = check;
+    void check.then(() => {
+      if (live) setFolderChecked(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [folder]);
 
   // Each waiting video is looked over once while the page is open, as soon as its video is in the library. Leaving the
   // page stops the runner, so what was started is forgotten too: React's development mode leaves and comes back once
@@ -88,10 +115,12 @@ export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, 
       if (reference.kind !== "video" || reference.status !== "pending" || !reference.assetId || started.current.has(reference.id)) continue;
       const asset = assets[reference.assetId];
       if (!asset || asset.removed || asset.status !== "ready") continue;
+      // A video kept in the media folder waits until the folder is looked up, and while it needs a click to open.
+      if (isLocalFile(asset.originalFileId) && (!folderChecked || folderState === "locked")) continue;
       started.current.add(reference.id);
       void run(reference, asset);
     }
-  }, [canEdit, references, assets, run]);
+  }, [canEdit, references, assets, run, folderChecked, folderState]);
   // A waiting video the library didn't list is asked for by its id.
   useEffect(() => {
     if (!canEdit || !loaded) return;
@@ -99,19 +128,54 @@ export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, 
     if (missing.length > 0) library.getState().ensure(missing).catch(() => {});
   }, [canEdit, loaded, references, assets, library]);
 
-  function tryAgain(reference: StyleReference) {
-    const asset = reference.assetId ? assets[reference.assetId] : undefined;
-    if (!asset || asset.removed) {
-      setErrors((shown) => ({ ...shown, [reference.id]: STYLE_WORDS.analysisFailed.missing }));
-      return;
+  const hold = (id: string) => setBusy((held) => new Set([...held, id]));
+  const release = (id: string) => setBusy((held) => without(held, id));
+  const showError = (id: string, message: string) => setErrors((shown) => ({ ...shown, [id]: message }));
+
+  // A video the library hasn't listed yet (it is still loading, or the video is older than the newest it lists) is
+  // asked for by its id first. It is missing only when the server says it is gone, not when the server can't be
+  // reached. A video kept on this computer waits for the media folder to be looked up.
+  async function tryAgain(reference: StyleReference) {
+    const id = reference.assetId;
+    let asset = id ? library.getState().assets[id] : undefined;
+    if (id && !asset) {
+      hold(reference.id);
+      let unanswered = true;
+      try {
+        unanswered = (await library.getState().ensure([id])).includes(id);
+      } catch {
+        // as unanswered
+      } finally {
+        release(reference.id);
+      }
+      asset = library.getState().assets[id];
+      if (!asset && unanswered) return showError(reference.id, MEDIA_MESSAGES.noAnswer);
+    }
+    if (!asset || asset.removed) return showError(reference.id, STYLE_WORDS.analysisFailed.missing);
+    if (isLocalFile(asset.originalFileId)) {
+      await folderCheck.current;
+      if (folder.state() === "locked") return; // its card now offers Open folder
     }
     setErrors((shown) => withoutKey(shown, reference.id));
     started.current.add(reference.id);
     void run(reference, asset);
   }
 
+  // Asks the browser for the media folder again, from the click. A waiting video is then looked at by itself; one that
+  // couldn't be before is tried again. Nothing changes when the person says no.
+  async function openFolder(reference: StyleReference) {
+    hold(reference.id);
+    let open = false;
+    try {
+      open = await folder.unlock();
+    } finally {
+      release(reference.id);
+    }
+    if (open && (reference.status === "failed" || errors[reference.id])) await tryAgain(reference);
+  }
+
   async function remove(reference: StyleReference) {
-    setBusy((held) => new Set([...held, reference.id]));
+    hold(reference.id);
     setProblem(null);
     try {
       await api.removeReference(reference.id);
@@ -121,7 +185,7 @@ export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, 
     } catch (error) {
       setProblem(failureWords(error));
     } finally {
-      setBusy((held) => without(held, reference.id));
+      release(reference.id);
     }
   }
 
@@ -129,7 +193,7 @@ export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, 
   async function refresh(reference: StyleReference) {
     const link = reference.url ? parseVideoLink(reference.url) : null;
     if (!link?.ok) return;
-    setBusy((held) => new Set([...held, reference.id]));
+    hold(reference.id);
     setProblem(null);
     try {
       put(await api.addChannelVideo(spaceId, link.id));
@@ -137,7 +201,7 @@ export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, 
     } catch (error) {
       setErrors((shown) => ({ ...shown, [reference.id]: failureWords(error) }));
     } finally {
-      setBusy((held) => without(held, reference.id));
+      release(reference.id);
     }
   }
 
@@ -236,18 +300,21 @@ export function LearnSection({ spaceId, spaceSlug, canEdit, isAdmin, channelOn, 
         <ul className="flex min-w-0 flex-col divide-y divide-ed-line rounded-md border border-ed-line">
           {references.map((reference) => {
             const stale = channelFactsStale(reference, drawnAt);
+            const asset = reference.assetId ? assets[reference.assetId] : undefined;
             return (
               <ReferenceCard
                 key={reference.id}
                 reference={reference}
-                asset={reference.assetId ? assets[reference.assetId] : undefined}
+                asset={asset}
                 progress={progress[reference.id]}
                 error={errors[reference.id] ?? null}
                 canEdit={canEdit}
                 stale={stale}
                 busy={busy.has(reference.id)}
+                lockedFolder={canEdit && folderState === "locked" && asset && !asset.removed && isLocalFile(asset.originalFileId) ? (folderName ?? MEDIA_FOLDER) : null}
                 onRemove={() => void remove(reference)}
-                onTryAgain={() => tryAgain(reference)}
+                onTryAgain={() => void tryAgain(reference)}
+                onOpenFolder={() => void openFolder(reference)}
                 onRefresh={channelOn ? () => void refresh(reference) : undefined}
               />
             );

@@ -11,7 +11,7 @@ import { playbackFileFor } from "@/lib/media/playback";
 import type { AssetView } from "@/lib/media/types";
 import type { ResolvedSource } from "@/lib/render/compositor";
 import { STYLE_WORDS } from "@/lib/style/messages";
-import { ANALYSIS_LIMITS, VideoAnalysis, type SheetPlan, type SoundFacts, type SpeechFacts } from "@/lib/style/types";
+import { ANALYSIS_LIMITS, VideoAnalysis, type SheetPlan, type SoundFacts, type SpeechFacts, type SpeechSkipped } from "@/lib/style/types";
 import { createColorMeter, cutList, sheetGrid, sheetTimes, shotStats, speechStats } from "@/lib/style/video-facts";
 import type { CaptionWord } from "@/lib/timeline";
 import { decodeVideoFrame, loadMediabunny, scanFrames } from "../editor/media/frame-decode";
@@ -322,10 +322,15 @@ async function measureSound(
 // the sound, getting the speech model (quick once this browser has it), then the words.
 const LISTEN_PARTS: Record<TranscribeProgress["stage"], [number, number]> = { sound: [0, 0.1], model: [0.1, 0.3], speech: [0.3, 1] };
 
+// What was heard in a video: its speech facts (null when fewer than three words were found), or, when it couldn't be
+// heard at all, why not.
+type Heard = { speech: SpeechFacts | null; skipped?: SpeechSkipped };
+
 // What is said in the video. The words Auto captions saved for it are used when there are some, in whatever language
 // they were heard; else it is heard here, as English, from the first file that has sound it can read, and the words are
 // saved for Auto captions. Saved words are never heard again, so a transcript in another language is never written
-// over. null when nothing was said, or anything went wrong: a video's other facts are worth keeping without its words.
+// over. A video that couldn't be heard (too long, with no sound track, or hearing it went wrong) has no speech facts
+// and says why, so it isn't taken for one where nobody talks: a video's other facts are worth keeping without its words.
 async function listen(
   deps: AnalyzeDeps,
   asset: AssetView,
@@ -335,20 +340,25 @@ async function listen(
   seconds: number,
   signal: AbortSignal | undefined,
   report: (done: number) => void,
-): Promise<SpeechFacts | null> {
+): Promise<Heard> {
   report(0);
   const saved = await deps.fetchSavedTranscript(asset.id).catch(() => null);
   if (signal?.aborted) throw canceled();
   if (saved && saved.length > 0) {
     report(1);
-    return speechStats(saved, seconds);
+    return { speech: speechStats(saved, seconds) };
   }
   // Auto captions hears no more than this either; its worker would refuse it after reading the whole sound.
-  if (seconds > LIMITS.captionAudioMinutes * 60) return null;
+  if (seconds > LIMITS.captionAudioMinutes * 60) return { speech: null, skipped: "too-long" };
+  // Whether every file tried had no sound track at all, rather than one that couldn't be read.
+  let onlySilent = true;
   for (let i = from; i < tries; i++) {
     const blob = await read(i);
     if (signal?.aborted) throw canceled();
-    if (!blob) continue;
+    if (!blob) {
+      onlySilent = false;
+      continue;
+    }
     let words: CaptionWord[];
     try {
       words = await deps.transcribe(blob, {
@@ -362,8 +372,11 @@ async function listen(
       if (signal?.aborted) throw canceled();
       const code = error instanceof TranscribeError ? error.code : "unknown";
       // A preview copy with no sound it can read: the original may have it.
-      if (code === "no-sound" || code === "undecodable") continue;
-      return null;
+      if (code === "no-sound" || code === "undecodable") {
+        if (code === "undecodable") onlySilent = false;
+        continue;
+      }
+      return { speech: null, skipped: code === "too-long" ? "too-long" : "failed" };
     }
     if (signal?.aborted) throw canceled();
     report(1);
@@ -372,9 +385,9 @@ async function listen(
       await deps.saveTranscript(asset.id, words).catch(() => undefined);
       if (signal?.aborted) throw canceled();
     }
-    return speechStats(words, seconds);
+    return { speech: speechStats(words, seconds) };
   }
-  return null;
+  return { speech: null, skipped: onlySilent ? "no-audio" : "failed" };
 }
 
 // Looks over one of the space's own videos: one pass over its frames at 64 px for where it cuts and its colours; the
@@ -432,7 +445,11 @@ export async function analyzeVideo(
   const tries = ids.length;
   const sound = asset.hasAudio && seconds <= SOUND_MAX_SECONDS ? await measureSound(deps, read, index, tries, signal) : null;
   if (signal?.aborted) throw canceled();
-  const speech = listening && asset.hasAudio ? await listen(deps, asset, read, index, tries, seconds, signal, (done) => step("listening", done)) : null;
+  const heard: Heard = !listening
+    ? { speech: null, skipped: "off" }
+    : !asset.hasAudio
+      ? { speech: null, skipped: "no-audio" }
+      : await listen(deps, asset, read, index, tries, seconds, signal, (done) => step("listening", done));
   if (signal?.aborted) throw canceled();
 
   const candidate = {
@@ -442,7 +459,8 @@ export async function analyzeVideo(
     height,
     shots: shotStats(scan.cuts, seconds),
     cuts: cutList(scan.cuts, seconds),
-    speech,
+    speech: heard.speech,
+    ...(heard.skipped !== undefined && { speechSkipped: heard.skipped }),
     sound,
     color: scan.color,
     sheet: plan,

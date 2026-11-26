@@ -55,7 +55,7 @@ All projects run at 30 frames per second. Times in the timeline are whole frames
 
 ## Style limits
 
-- A space's style learns from up to 12 videos, links and past projects in all. The Style page offers the space's 20 most recent projects to pick from, and the 25 newest videos of its YouTube channel.
+- A space's style learns from up to 12 videos, links and past projects in all. The Style page offers the space's 20 most recent projects to pick from, and the 25 newest public videos of its YouTube channel.
 - Anyone in the space can read its style. Editors and admins change it and what it learns from.
 - The summary (In a sentence or two) can be up to 600 characters, and the notes for AI agents up to 2,000. How you open and Voice and tone can be up to 200 characters each.
 - Always and Never hold up to 8 things each, and each thing can be up to 140 characters.

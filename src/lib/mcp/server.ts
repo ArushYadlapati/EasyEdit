@@ -330,7 +330,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "Save a space's style",
       description:
-        "Save a space's style, which get_editing_guide gives agents. Pass space and any of: summary, fields (style fields; each replaces the saved one, null clears it), notes, add_links (video links to learn from). Ask the person first.",
+        "Save a space's style, which get_editing_guide gives agents. Pass space and any of: summary, fields (style fields; null clears one), notes, add_links (video links to learn from). Notes and each field (lists too) replace the saved value whole, so read the style first and send back the full text with your change. Ask the person first.",
       // fields is checked against the style's rules when it is saved, so its schema here stays small.
       inputSchema: z.object({
         space: z.string().max(100),

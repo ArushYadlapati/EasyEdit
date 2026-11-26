@@ -12,15 +12,17 @@ export function promptLinks(links: string | undefined): string[] {
   return [...new Set((links ?? "").split(/[\s,]+/).filter((link) => link !== ""))];
 }
 
-// learn-my-style: read the space's style and what it learns from, ask at most two questions, propose a style, and save
-// it with save_style once the person agrees, adding any links they gave.
+// learn-my-style: read the space's style and what it learns from, then topic "learn-a-style" for the fields a style has
+// and the values each takes (so the proposal the person agrees to is one save_style can save as it is), ask at most two
+// questions, propose a style, and save it with save_style once the person agrees, adding any links they gave.
 export function learnMyStylePrompt(space: string, links?: string): string {
   const given = promptLinks(links);
   const steps = [
     `Call get_editing_guide with topic "style" and space ${quoted(space)}. Read what's saved, the facts for each video, link and past project, and the frame sheets if you can see pictures.`,
+    'Call get_editing_guide with topic "learn-a-style". It says how to read those facts, and lists every field a style has and the values each one takes.',
     ...(given.length > 0 ? [`I'd also like it to learn from these links: ${given.map(quoted).join(", ")}. You'll add them when you save.`] : []),
     "Ask me at most two questions, only about things the facts and frames can't tell you.",
-    "Propose a style in a few short lines: a summary, the fields you'd fill in, and any notes. Leave out what the facts don't back up.",
+    "Propose a style in a few short lines: a summary, the fields you'd fill in, and any notes. Use only those fields and values, and leave out what the facts don't back up. Saved notes and lists are replaced whole, so keep what's there unless I say otherwise.",
     `Once I say yes, save it with save_style${given.length > 0 ? ", with the links in add_links" : ""}. Then tell me what you saved and give me the Style page link.`,
   ];
   return [

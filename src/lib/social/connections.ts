@@ -1,13 +1,13 @@
 import "server-only";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, exists, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { rowsOf, type DB } from "@/db";
-import { socialConnection, socialPost } from "@/db/schema";
+import { socialConnection, socialPost, styleReference } from "@/db/schema";
 import { ServiceError } from "@/lib/service-error";
 import { roleIn } from "@/lib/spaces/service";
 import { ConnectionBrokenError, refreshAccess, revokeGrant } from "@/lib/storage/google-oauth";
 import { open, SecretBoxError, seal } from "@/lib/storage/secret-box";
-import { dropChannelReferences } from "@/lib/style/channel-references";
+import { dropChannelReferences, KEY_REASON } from "@/lib/style/channel-references";
 import type { SocialConfig } from "./config";
 import { cancelUpload, type Channel } from "./youtube-api";
 
@@ -23,9 +23,6 @@ export type SocialConnection = {
 };
 
 type Row = typeof socialConnection.$inferSelect;
-
-// Why a row is broken when its sealed token won't open with the server's key. It mends itself once the key is back.
-const KEY_REASON = "key";
 
 const toConnection = (row: Row, broken = row.brokenAt !== null): SocialConnection => ({
   id: row.id,
@@ -144,17 +141,23 @@ const brokenReason = (reason: string | null): ConnectionBrokenError["reason"] =>
 
 // An access token for the space's channel, from its sealed refresh token. Throws a ConnectionBrokenError when the
 // connection is gone (Google says so, or the key can't open the token), marking the row broken; a connection already
-// marked broken is not tried again. NOT_CONNECTED when the space has no channel.
+// marked broken is not tried again. When it is Google that ended the access, what the space's style kept from the
+// channel is deleted too, as a disconnect would: EasyEdit may no longer read the channel it came from. A wrong key is
+// the server's own trouble and mends itself, so it keeps them. NOT_CONNECTED when the space has no channel.
 export async function channelAccess(db: DB, cfg: SocialConfig, spaceId: string, fetchFn: typeof fetch = fetch): Promise<{ accessToken: string; connection: SocialConnection }> {
   const row = await findConnectionRow(db, spaceId);
   if (!row) throw new ServiceError("NOT_CONNECTED", 409, "This space has no YouTube channel connected.");
   if (row.brokenAt !== null && !(await healKeyBroken(db, cfg, row))) throw new ConnectionBrokenError(brokenReason(row.brokenReason));
   // Only while the row still holds the token that failed: a reconnect that saved a new one must not be marked broken.
-  const markBroken = (reason: string) =>
-    db
+  // Answers whether it was.
+  const markBroken = async (reason: string) => {
+    const marked = await db
       .update(socialConnection)
       .set({ brokenAt: sql`now()`, brokenReason: reason })
-      .where(and(eq(socialConnection.id, row.id), eq(socialConnection.refreshTokenEnc, row.refreshTokenEnc)));
+      .where(and(eq(socialConnection.id, row.id), eq(socialConnection.refreshTokenEnc, row.refreshTokenEnc)))
+      .returning({ id: socialConnection.id });
+    return marked.length > 0;
+  };
   let refresh: string;
   try {
     refresh = open(row.refreshTokenEnc, cfg.tokenKey);
@@ -167,9 +170,45 @@ export async function channelAccess(db: DB, cfg: SocialConfig, spaceId: string, 
     const { accessToken } = await refreshAccess(cfg, refresh, fetchFn);
     return { accessToken, connection: toConnection(row, false) };
   } catch (error) {
-    if (error instanceof ConnectionBrokenError) await markBroken(error.reason);
+    if (error instanceof ConnectionBrokenError && (await markBroken(error.reason))) await dropChannelReferences(db, spaceId);
     throw error;
   }
+}
+
+// The daily check that Google still lets EasyEdit read each channel whose videos a space's style keeps: a channel
+// Google says is gone (removed in the Google account's permissions, or lapsed) is marked broken, and what the style
+// kept from it is deleted (channelAccess), so YouTube's data doesn't outlast the access it was read with by more than
+// a day. A failure that says nothing about the connection (no network, a 500) leaves it for the next day, and a token
+// the server's key can't open is the server's own trouble (channelAccess). Answers how many channels Google said were
+// gone. No role check: it is nobody's change.
+export async function checkChannelAccess(db: DB, cfg: SocialConfig, fetchFn: typeof fetch = fetch): Promise<number> {
+  const rows = await db
+    .select({ spaceId: socialConnection.spaceId })
+    .from(socialConnection)
+    .where(
+      and(
+        eq(socialConnection.platform, "youtube"),
+        isNull(socialConnection.brokenAt),
+        exists(
+          db
+            .select({ id: styleReference.id })
+            .from(styleReference)
+            .where(and(eq(styleReference.spaceId, socialConnection.spaceId), eq(styleReference.provider, "channel"))),
+        ),
+      ),
+    );
+  let gone = 0;
+  for (const { spaceId } of rows) {
+    try {
+      await channelAccess(db, cfg, spaceId, fetchFn);
+    } catch (error) {
+      // "unknown" is the key's failure: Google said nothing, and the style keeps the channel's videos.
+      if (error instanceof ConnectionBrokenError) {
+        if (error.reason !== "unknown") gone++;
+      } else if (!(error instanceof ServiceError)) console.error("Checking a YouTube channel's access failed:", error instanceof Error ? error.name : "unknown");
+    }
+  }
+  return gone;
 }
 
 // The space's channel goes: its uploads still open are ended, the row is deleted, what the space's style kept from the

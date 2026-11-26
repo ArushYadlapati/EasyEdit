@@ -13,7 +13,7 @@ import {
 } from "./fields";
 import { parseVideoLink } from "./links";
 import { STYLE_MESSAGES, STYLE_WORDS } from "./messages";
-import { isSetValue, type ShotFacts, type StyleProfile, type StyleReference } from "./types";
+import { ANALYSIS_LIMITS, isSetValue, type ShotFacts, type StyleProfile, type StyleReference } from "./types";
 
 // What the Style page says about a reference and a style, in plain words, from what is saved. Pure, so the page and
 // its tests read the same lines.
@@ -117,6 +117,22 @@ export function progressWords(progress: { stage: keyof typeof STYLE_WORDS.analyz
   const counted = progress.stage === "shots" || progress.stage === "listening";
   const share = Math.round(Math.min(1, Math.max(0, progress.done)) * 100);
   return counted && share > 0 ? `${label} ${share}%` : label;
+}
+
+// Why Fill in from my videos can't be used yet, as the line beside it says, or null once something it can read is
+// ready: nothing has been added; a video is still waiting to be looked at; or nothing added could be looked at.
+export function fillInWaitsFor(references: readonly StyleReference[]): string | null {
+  const F = STYLE_WORDS.form;
+  if (references.some((r) => r.status === "ready" && r.analysis)) return null;
+  if (references.length === 0) return F.fillInFirst;
+  return references.some((r) => r.status === "pending") ? F.fillInWaiting : F.fillInFailed;
+}
+
+// Whether Try again can help a video that couldn't be looked at: not when it is longer than a style looks at, which
+// it always will be. failure: the words its card shows; durationMs: its length as the library knows it, if it does.
+export function canTryAgain(failure: string, durationMs: number | null | undefined): boolean {
+  if (failure === STYLE_WORDS.analysisFailed.tooLong) return false;
+  return !(typeof durationMs === "number" && durationMs / 1000 > ANALYSIS_LIMITS.seconds);
 }
 
 // A choice as someone reading the style sees it: its name and what it means ("Quick: A new shot every 1.2 to 2.5

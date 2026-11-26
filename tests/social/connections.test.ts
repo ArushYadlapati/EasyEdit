@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { socialConnection, socialPost, styleReference } from "@/db/schema";
-import { channelAccess, disconnectYoutube, dropChannel, findConnection, saveYoutubeConnection } from "@/lib/social/connections";
+import { channelAccess, checkChannelAccess, disconnectYoutube, dropChannel, findConnection, saveYoutubeConnection } from "@/lib/social/connections";
 import { seal } from "@/lib/storage/secret-box";
 import { SEED_TEAM_ID } from "@/lib/spaces/types";
 import { saveConnection } from "@/lib/storage/connections";
@@ -153,12 +153,34 @@ describe("channelAccess", () => {
     expect(google.refreshes).toHaveLength(1);
   });
 
-  it("a failure that says nothing about the connection leaves it whole", async () => {
-    const { db, cfg, google, save } = await setup();
+  it("Google ending the connection drops what the space's style kept from the channel, and links pasted by hand stay", async () => {
+    const { db, cfg, google, save, team, references, referenceIds } = await setup();
     await save();
+    const other = await team("team_b");
+    await save({ spaceId: other });
+    await references();
+    await references(other);
+    google.refreshRefusal = "invalid_grant";
+    await expect(channelAccess(db, cfg, SEED_TEAM_ID, google.fetch)).rejects.toBeInstanceOf(ConnectionBrokenError);
+    expect(await referenceIds()).toEqual([`ch_${other}`, `yt_${SEED_TEAM_ID}`, `yt_${other}`].sort());
+  });
+
+  it("a failure that says nothing about the connection leaves it whole", async () => {
+    const { db, cfg, google, save, references, referenceIds } = await setup();
+    await save();
+    await references();
     google.refreshRefusal = "internal_failure";
     await expect(channelAccess(db, cfg, SEED_TEAM_ID, google.fetch)).rejects.toMatchObject({ name: "DriveError" });
     expect((await findConnection(db, cfg, SEED_TEAM_ID))?.broken).toBe(false);
+    expect(await referenceIds()).toEqual([`ch_${SEED_TEAM_ID}`, `yt_${SEED_TEAM_ID}`]);
+  });
+
+  it("a token the server's key can't open keeps what the style kept: Google's access stands", async () => {
+    const { db, cfg, google, save, references, referenceIds } = await setup();
+    await save();
+    await references();
+    await expect(channelAccess(db, { ...cfg, tokenKey: randomBytes(32) }, SEED_TEAM_ID, google.fetch)).rejects.toBeInstanceOf(ConnectionBrokenError);
+    expect(await referenceIds()).toEqual([`ch_${SEED_TEAM_ID}`, `yt_${SEED_TEAM_ID}`]);
   });
 
   it("a token the server's key can't open reads as broken, and is whole again once the key is back", async () => {
@@ -170,6 +192,58 @@ describe("channelAccess", () => {
     expect((await findConnection(db, wrong, SEED_TEAM_ID))?.broken).toBe(true);
     expect((await findConnection(db, cfg, SEED_TEAM_ID))?.broken).toBe(false);
     expect((await channelAccess(db, cfg, SEED_TEAM_ID, google.fetch)).accessToken).toBe("ya29.for.1//yt-refresh-1");
+  });
+});
+
+describe("checkChannelAccess", () => {
+  it("asks Google about each channel a style keeps videos from, and one whose access ended takes them with it", async () => {
+    const { db, cfg, google, save, team, references, referenceIds } = await setup();
+    await save();
+    await references();
+    const quiet = await team("team_b");
+    await save({ spaceId: quiet, googleSub: "g-yt-2", refreshToken: "1//yt-refresh-2" }); // keeps nothing from its channel
+    const elsewhere = await team("team_c");
+    await save({ spaceId: elsewhere, googleSub: "g-yt-3", refreshToken: "1//yt-refresh-3" });
+    await references(elsewhere);
+
+    // Removed in the team's Google account: Google refuses that one token.
+    const answer = google.fetch;
+    const revoked = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? init.body : init?.body instanceof URLSearchParams ? init.body.toString() : "";
+      if (String(input) === "https://oauth2.googleapis.com/token" && body.includes(encodeURIComponent("1//yt-refresh-1"))) return Response.json({ error: "invalid_grant" }, { status: 400 });
+      return answer(input, init);
+    }) as typeof fetch;
+    expect(await checkChannelAccess(db, cfg, revoked)).toBe(1);
+    expect(await referenceIds()).toEqual([`ch_${elsewhere}`, `yt_${SEED_TEAM_ID}`, `yt_${elsewhere}`].sort());
+    expect((await findConnection(db, cfg, SEED_TEAM_ID))?.broken).toBe(true);
+    expect((await findConnection(db, cfg, elsewhere))?.broken).toBe(false);
+    // Only channels a style keeps videos from are asked about, and a broken one isn't asked again.
+    expect(google.refreshes).toEqual(["1//yt-refresh-3"]);
+    expect(await checkChannelAccess(db, cfg, revoked)).toBe(0);
+    expect(google.refreshes).toEqual(["1//yt-refresh-3", "1//yt-refresh-3"]);
+  });
+
+  it("leaves everything as it was when Google can't be reached", async () => {
+    const { db, cfg, save, references, referenceIds } = await setup();
+    await save();
+    await references();
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const down = (async () => {
+      throw new TypeError("fetch failed");
+    }) as typeof fetch;
+    expect(await checkChannelAccess(db, cfg, down)).toBe(0);
+    expect(await referenceIds()).toEqual([`ch_${SEED_TEAM_ID}`, `yt_${SEED_TEAM_ID}`]);
+    expect((await findConnection(db, cfg, SEED_TEAM_ID))?.broken).toBe(false);
+    logged.mockRestore();
+  });
+
+  it("doesn't count a token the server's key can't open as a channel gone, and keeps what the style kept", async () => {
+    const { db, cfg, google, save, references, referenceIds } = await setup();
+    await save();
+    await references();
+    expect(await checkChannelAccess(db, { ...cfg, tokenKey: randomBytes(32) }, google.fetch)).toBe(0);
+    expect(await referenceIds()).toEqual([`ch_${SEED_TEAM_ID}`, `yt_${SEED_TEAM_ID}`]);
+    expect(google.refreshes).toEqual([]);
   });
 });
 

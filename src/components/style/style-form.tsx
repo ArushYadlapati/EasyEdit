@@ -12,7 +12,7 @@ import { TextArea } from "@/components/ui/text-area";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { LIMITS } from "@/lib/limits";
-import { profileValueWords } from "@/lib/style/describe";
+import { fillInWaitsFor, profileValueWords } from "@/lib/style/describe";
 import { numberText, profilePatch, typedLength, typedShot } from "@/lib/style/draft";
 import {
   CAPTION_FIELDS,
@@ -277,14 +277,17 @@ export type StyleFormProps = {
   references: readonly StyleReference[]; // what Fill in from my videos reads
   save(spaceId: string, patch: StylePatch): Promise<Style>;
   now?: Date; // when the page was drawn, for "2 hours ago"; a test gives one
+  onChanged?(changed: boolean): void; // whether there are changes Save hasn't sent, as that changes
+  onSaved?(style: Style): void; // the style as the server saved it
 };
 
 // "Your style": every field of the space's style, with the words from fields.ts, and Save, which sends only what
 // changed. Fill in from my videos fills the fields still empty from what the references showed, never one the person
-// set, and tags each until it's saved; until a reference is ready to read it is switched off, with a line saying what
-// it waits for. Who changed the style last, and when, sits under the heading (at the right of Fill in on a wide
-// window). Viewers see the fields that are set, with nothing to change.
-export function StyleForm({ spaceId, canEdit, initial, references, save, now }: StyleFormProps): ReactNode {
+// set, and tags each until it's saved; until a reference is ready to read it is switched off, with a line saying why:
+// nothing added, a video still to be looked at, or nothing that could be. Who changed the style last, and when, sits
+// under the heading (at the right of Fill in on a wide window). Viewers see the fields that are set, with nothing to
+// change.
+export function StyleForm({ spaceId, canEdit, initial, references, save, now, onChanged, onSaved }: StyleFormProps): ReactNode {
   const headingId = useId();
   const fillHintId = useId();
   const [saved, setSaved] = useState(initial);
@@ -312,6 +315,11 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now }: 
   const notesChanged = notes.trim() !== saved.notes;
   const changed = Object.keys(patch).length > 0 || notesChanged;
   const blocked = !typedLengthNow.ok || !typedShotNow.ok;
+  // A box typed into that doesn't hold a number yet is a change too, which leaving would lose.
+  const unsent = changed || length.min !== savedLength.min || length.max !== savedLength.max || shot !== numberText(saved.profile.shotSeconds);
+  useEffect(() => {
+    onChanged?.(canEdit && unsent);
+  }, [canEdit, unsent, onChanged]);
 
   // A field changed by hand is no longer what Fill in put there, so it loses its tag.
   function untag(key: Key) {
@@ -352,8 +360,8 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now }: 
   }
 
   const analyses = references.flatMap((r) => (r.status === "ready" && r.analysis ? [r.analysis] : []));
-  // Why Fill in can't be used yet: nothing added, or nothing looked at yet. null once something is ready.
-  const fillHint = analyses.length > 0 ? null : references.length === 0 ? W.fillInFirst : W.fillInWaiting;
+  // Why Fill in can't be used yet; null once something is ready.
+  const fillHint = fillInWaitsFor(references);
 
   function fillIn() {
     if (analyses.length === 0) return;
@@ -384,6 +392,7 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now }: 
     try {
       const next = await save(spaceId, body);
       setSaved(next);
+      onSaved?.(next);
       setDraft(withoutNumbers(next.profile));
       setNotes(next.notes);
       setLength(lengthTexts(next.profile));

@@ -27,7 +27,9 @@ plugins/easyedit/
 /plugin install easyedit@easyedit
 ```
 
-That adds the skill and the connector together. Then run `/mcp`, pick **easyedit**, choose **Authenticate**, sign in and choose **Allow**.
+That adds the skill and the connector together. Then run `/mcp`, pick **easyedit**, choose **Authenticate**, sign in and choose **Allow**. Until you do, the skill is there but EasyEdit's tools aren't.
+
+Already added EasyEdit with `claude mcp add`? Then it has the skill's topics already, so you can skip the plugin. To use the plugin instead, run `claude mcp remove easyedit` first, or you'll have EasyEdit twice, with every tool listed twice.
 
 ### Codex, Cursor, Gemini CLI and VS Code (Copilot)
 

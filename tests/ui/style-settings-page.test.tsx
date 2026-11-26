@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StyleSettingsPage from "@/app/(dashboard)/s/[space]/settings/style/page";
 import type { StylePageProps } from "@/components/style/style-page";
 import type { DB } from "@/db";
+import { socialConnection } from "@/db/schema";
 import type { CurrentUser } from "@/lib/access-rules";
 import { createProject } from "@/lib/projects/service";
 import { personalSpaceId, SEED_TEAM_ID } from "@/lib/spaces/types";
@@ -114,11 +115,27 @@ describe("the Style settings page", () => {
     expect(props.now).toBeInstanceOf(Date);
   });
 
-  it("says the YouTube picker is there once this server has its YouTube settings", async () => {
+  it("offers the YouTube picker only where the space's channel is connected and its videos can be read", async () => {
+    // A server without its YouTube settings has no channel to read, connected or not.
+    const channel = { id: "sc_1", spaceId: SEED_TEAM_ID, platform: "youtube" as const, connectedBy: ada.id, googleSub: "g1", email: "c@gmail.com", refreshTokenEnc: "sealed", scopes: "" };
+    await testDb.insert(socialConnection).values({ ...channel, channelId: "UCchannel", channelTitle: "Seattle Solvers" });
+    expect((await open(bea)).channelOn).toBe(false);
+
     vi.stubEnv("YOUTUBE_CLIENT_ID", "yt-client");
     vi.stubEnv("YOUTUBE_CLIENT_SECRET", "yt-secret");
     vi.stubEnv("STORAGE_TOKEN_KEY", randomBytes(32).toString("base64"));
     vi.stubEnv("BETTER_AUTH_URL", "https://app.test");
     expect((await open(bea)).channelOn).toBe(true);
+    expect((await open(ada)).channelOn).toBe(true);
+    // A viewer can't add from it.
+    expect((await open(cy)).channelOn).toBe(false);
+
+    // Connected without leave to see its videos, broken, or not connected at all: nothing to pick from.
+    await testDb.update(socialConnection).set({ channelId: null });
+    expect((await open(bea)).channelOn).toBe(false);
+    await testDb.update(socialConnection).set({ channelId: "UCchannel", brokenAt: new Date(), brokenReason: "revoked" });
+    expect((await open(bea)).channelOn).toBe(false);
+    await testDb.delete(socialConnection);
+    expect((await open(bea)).channelOn).toBe(false);
   });
 });

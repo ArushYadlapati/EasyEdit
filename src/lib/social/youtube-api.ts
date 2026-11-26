@@ -98,9 +98,15 @@ function thumbnailOf(thumbnails: unknown): string | undefined {
   return undefined;
 }
 
-// One video from YouTube's answer, with the channel it is on. null when it isn't one: no id, or no title.
+// Whether YouTube's answer says anyone may find and watch the video. The channel's own token is also shown its
+// private and unlisted videos (drafts, videos not out yet), which never go further than YouTube shows them: a video
+// whose answer doesn't say it is public is left out.
+const isPublic = (item: Record<string, unknown>) => isRecord(item.status) && item.status.privacyStatus === "public";
+
+// One public video from YouTube's answer, with the channel it is on. null when it isn't one: no id, no title, or not
+// public.
 function videoOf(item: unknown): { upload: ChannelUpload; channelId: string | null } | null {
-  if (!isRecord(item) || !isVideoId(item.id) || !isRecord(item.snippet)) return null;
+  if (!isRecord(item) || !isVideoId(item.id) || !isRecord(item.snippet) || !isPublic(item)) return null;
   const { snippet } = item;
   const title = oneLine(snippet.title, LIMITS.socialTitleChars);
   if (title === undefined) return null;
@@ -124,10 +130,10 @@ function videoOf(item: unknown): { upload: ChannelUpload; channelId: string | nu
   return { upload, channelId };
 }
 
-// Videos by their ids (at most 50, already checked), as the token sees them, by id. A video YouTube doesn't show it
-// is left out.
+// The public videos among these ids (at most 50, already checked), as the token sees them, by id. A video YouTube
+// doesn't show it, or one that isn't public, is left out.
 async function videosById(accessToken: string, ids: string[], fetchFn: typeof fetch): Promise<Map<string, { upload: ChannelUpload; channelId: string | null }>> {
-  const answer = await reach(fetchFn, "youtube_video", `${API}/youtube/v3/videos?part=snippet,contentDetails&id=${ids.join(",")}`, {
+  const answer = await reach(fetchFn, "youtube_video", `${API}/youtube/v3/videos?part=snippet,contentDetails,status&id=${ids.join(",")}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!answer.ok) throw await refused("youtube_video", answer);
@@ -147,9 +153,10 @@ function playlistVideoId(item: unknown): unknown {
   return isRecord(item.snippet) && isRecord(item.snippet.resourceId) ? item.snippet.resourceId.videoId : undefined;
 }
 
-// The newest uploads of the channel the token speaks for, newest first, at most max (and at most 50): each one's
-// title, channel name, picture, length, description and tags, read with the channel's permission to view it. Only
-// that channel's own videos. Empty when the account has no channel or the channel has no uploads.
+// The newest public uploads of the channel the token speaks for, newest first, at most max (and at most 50): each
+// one's title, channel name, picture, length, description and tags, read with the channel's permission to view it.
+// Only that channel's own videos, and only public ones, picked from its 50 newest uploads, so private and unlisted
+// ones don't crowd them out. Empty when the account has no channel or the channel has no public uploads.
 export async function listMyUploads(accessToken: string, fetchFn: typeof fetch = fetch, max = 25): Promise<ChannelUpload[]> {
   const auth = { headers: { Authorization: `Bearer ${accessToken}` } };
   const channel = await reach(fetchFn, "youtube_channel", `${API}/youtube/v3/channels?part=contentDetails&mine=true&maxResults=1`, auth);
@@ -164,7 +171,7 @@ export async function listMyUploads(accessToken: string, fetchFn: typeof fetch =
   const listed = await reach(
     fetchFn,
     "youtube_playlist",
-    `${API}/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${encodeURIComponent(playlistId)}&maxResults=${count}`,
+    `${API}/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${encodeURIComponent(playlistId)}&maxResults=${UPLOADS_PAGE}`,
     auth,
   );
   if (!listed.ok) {
@@ -174,19 +181,22 @@ export async function listMyUploads(accessToken: string, fetchFn: typeof fetch =
     throw failure;
   }
   const playlist = (await objectIn(listed)).items;
-  const ids = [...new Set((Array.isArray(playlist) ? playlist : []).map(playlistVideoId).filter(isVideoId))].slice(0, count);
+  const ids = [...new Set((Array.isArray(playlist) ? playlist : []).map(playlistVideoId).filter(isVideoId))].slice(0, UPLOADS_PAGE);
   if (ids.length === 0) return [];
 
   const found = await videosById(accessToken, ids, fetchFn);
   const channelId = typeof first.id === "string" && first.id !== "" ? first.id : null;
-  return ids.flatMap((id) => {
-    const video = found.get(id);
-    return video && (channelId === null || video.channelId === channelId) ? [video.upload] : [];
-  });
+  return ids
+    .flatMap((id) => {
+      const video = found.get(id);
+      return video && (channelId === null || video.channelId === channelId) ? [video.upload] : [];
+    })
+    .slice(0, count);
 }
 
-// One video as YouTube shows it to the channel's token, described as listMyUploads describes an upload, with the
-// channel it is on. null when YouTube shows no such video to it (or the id isn't a YouTube video's).
+// One public video as YouTube shows it to the channel's token, described as listMyUploads describes an upload, with
+// the channel it is on. null when YouTube shows no such video to it, when it isn't public, or when the id isn't a
+// YouTube video's.
 export async function channelVideo(accessToken: string, videoId: string, fetchFn: typeof fetch = fetch): Promise<(ChannelUpload & { channelId: string }) | null> {
   if (!isVideoId(videoId)) return null;
   const video = (await videosById(accessToken, [videoId], fetchFn)).get(videoId);

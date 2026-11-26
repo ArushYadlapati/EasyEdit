@@ -29,6 +29,8 @@ function link(over: Partial<LinkAnalysis> = {}): LinkAnalysis {
   return { kind: "link", provider: "youtube", title: "Match day recap", fetchedAt: "2026-11-25T21:00:00.000Z", ...over };
 }
 
+const NO_TRANSITIONS = { fade: 0, crossfade: 0, slide: 0, zoom: 0, whip: 0, dip: 0 };
+
 // A past project: 60 s of 9:16 cut every 2 s, with no text, captions, transitions, music or looks.
 function project(over: Partial<ProjectAnalysis> = {}): ProjectAnalysis {
   return {
@@ -36,7 +38,7 @@ function project(over: Partial<ProjectAnalysis> = {}): ProjectAnalysis {
     seconds: 60,
     format: "short_9x16",
     fps: 30,
-    shots: shots(2, 30),
+    shots: { ...shots(2, 30), transitions: NO_TRANSITIONS },
     text: { clips: 0, perMinute: 0, fonts: [], averageWords: 0, sizes: { small: 0, medium: 0, large: 0 } },
     captions: null,
     transitions: { fade: 0, crossfade: 0, slide: 0, zoom: 0, whip: 0, dip: 0 },
@@ -48,7 +50,9 @@ function project(over: Partial<ProjectAnalysis> = {}): ProjectAnalysis {
     ...over,
   };
 }
-const transitions = (counts: Partial<ProjectAnalysis["transitions"]>) => ({ ...project().transitions, ...counts });
+const transitions = (counts: Partial<ProjectAnalysis["transitions"]>) => ({ ...NO_TRANSITIONS, ...counts });
+// A project's shots with these transitions at the cuts between them: 30 shots (29 cuts) of 2 s unless given.
+const cutWith = (counts: Partial<ProjectAnalysis["transitions"]>, count = 30, seconds = 2) => ({ shots: { ...shots(seconds, count), transitions: transitions(counts) } });
 
 // The suggestion, checked against what a style may hold.
 function suggest(...analyses: (VideoAnalysis | LinkAnalysis | ProjectAnalysis)[]): StyleProfile {
@@ -131,12 +135,40 @@ describe("a suggested style", () => {
     expect(suggest(project({ captions: { look: "word", uppercase: false, y: 0.2 } })).captions).toEqual({ on: true, look: "word", uppercase: false, position: "upper" });
   });
 
+  it("reads where captions are by the project's format, so a 9:16 project's untouched captions are lower", () => {
+    const at = (y: number, format: ProjectAnalysis["format"] = "short_9x16") => suggest(project({ format, captions: { look: "karaoke", uppercase: false, y } })).captions?.position;
+    // 9:16: where the editor puts them (0.558), and near it, is lower; 0.45 is the middle; 0.25 is upper.
+    expect([0.558, 0.52, 0.6, 0.45, 0.4, 0.25, 0.3].map((y) => at(y))).toEqual(["lower", "lower", "lower", "middle", "middle", "upper", "upper"]);
+    // The other formats: 0.788 (where the editor puts them) is lower, 0.5 the middle, 0.2 upper.
+    expect([0.788, 0.7, 0.5, 0.6, 0.2].map((y) => at(y, "long_16x9"))).toEqual(["lower", "lower", "middle", "middle", "upper"]);
+    expect(at(0.558, "square_1x1")).toBe("middle");
+    // Two 9:16 projects at the default and one 16:9 in the middle: lower.
+    const mixed = suggest(
+      project({ captions: { look: "karaoke", uppercase: false, y: 0.558 } }),
+      project({ captions: { look: "karaoke", uppercase: false, y: 0.558 } }),
+      project({ format: "long_16x9", captions: { look: "karaoke", uppercase: false, y: 0.5 } }),
+    );
+    expect(mixed.captions?.position).toBe("lower");
+  });
+
   it("turns captions on when most videos have talking and no project shows a caption look", () => {
     expect(suggest(video({ speech: talking() }), video({ speech: talking() }), video()).captions).toEqual({ on: true });
     expect(suggest(video({ speech: talking() }), project()).captions).toEqual({ on: true });
     expect(suggest(video({ speech: talking(0.3) }), video()).captions).toBeUndefined(); // a few words isn't talking
     expect(suggest(video({ speech: talking() }), video()).captions).toBeUndefined(); // half isn't most
     expect(suggest(project()).captions).toBeUndefined();
+  });
+
+  it("leaves a video whose words weren't heard out of whether most videos talk", () => {
+    // A 75-minute talking video isn't heard; it doesn't count as one where nobody talks.
+    const longTalk = video({ speech: null, speechSkipped: "too-long" });
+    expect(suggest(video({ speech: talking() }), longTalk).captions).toEqual({ on: true });
+    expect(suggest(video({ speech: talking() }), video({ speech: null, speechSkipped: "failed" })).hook).toBe(`Starts talking straight away: "Okay so today we're making pasta."`);
+    // Nothing heard at all says nothing either way.
+    expect(suggest(longTalk).captions).toBeUndefined();
+    // No sound track, or heard with no words, still counts as not talking.
+    expect(suggest(video({ speech: talking() }), video({ speech: null, speechSkipped: "no-audio" })).captions).toBeUndefined();
+    expect(suggest(video({ speech: talking() }), video({ speech: null })).captions).toBeUndefined();
   });
 
   it("says they start talking straight away when most videos have talking, with the first words of the first one", () => {
@@ -155,18 +187,18 @@ describe("a suggested style", () => {
     expect(suggest(video({ speech: talking(0.8, "x".repeat(190)) })).hook).toBe("Starts talking straight away");
   });
 
-  it("says how many transitions there are from how many of the projects' shots have one, and names the three kinds used most", () => {
-    // Each project has 30 shots.
+  it("says how many transitions there are from how many of the cuts between the projects' shots have one, and names the three kinds used most", () => {
+    // Each project has 30 shots, so 29 cuts.
     expect(suggest(project(), project()).transitions).toBe("cuts");
-    expect(suggest(project({ transitions: transitions({ fade: 1 }) })).transitions).toBe("cuts"); // 1 shot in 30
-    expect(suggest(project({ transitions: transitions({ fade: 2 }) })).transitions).toBe("few"); // 1 in 15
-    expect(suggest(project({ transitions: transitions({ fade: 2 }) }), project(), project()).transitions).toBe("cuts"); // 1 in 45
-    expect(suggest(project({ transitions: transitions({ fade: 15 }) })).transitions).toBe("few"); // half isn't most
-    expect(suggest(project({ transitions: transitions({ fade: 16 }) })).transitions).toBe("lots");
+    expect(suggest(project(cutWith({ fade: 1 }))).transitions).toBe("cuts"); // 1 cut in 29
+    expect(suggest(project(cutWith({ fade: 2 }))).transitions).toBe("few"); // 1 in 14.5
+    expect(suggest(project(cutWith({ fade: 2 })), project(), project()).transitions).toBe("cuts"); // 1 in 43.5
+    expect(suggest(project(cutWith({ fade: 15 }, 31))).transitions).toBe("few"); // half of 30 cuts isn't most
+    expect(suggest(project(cutWith({ fade: 16 }, 31))).transitions).toBe("lots");
     // Fast cuts with 3 transitions a minute is still mostly cuts; slow shots with as many have one between most.
-    expect(suggest(project({ shots: shots(1, 60), transitions: transitions({ whip: 3 }) })).transitions).toBe("few");
-    expect(suggest(project({ shots: shots(10, 6), transitions: transitions({ crossfade: 4 }) })).transitions).toBe("lots");
-    const lots = suggest(project({ transitions: transitions({ fade: 2, whip: 4, zoom: 8, slide: 4, dip: 0 }) }));
+    expect(suggest(project(cutWith({ whip: 3 }, 60, 1))).transitions).toBe("few");
+    expect(suggest(project(cutWith({ crossfade: 4 }, 6, 10))).transitions).toBe("lots");
+    const lots = suggest(project(cutWith({ fade: 2, whip: 4, zoom: 8, slide: 4, dip: 0 })));
     expect(lots.transitions).toBe("lots");
     // Zoom most, then whip and slide (equal, in the editor's order); fade is fourth.
     expect(lots.transitionKinds).toEqual(["zoom", "slide", "whip"]);
@@ -174,11 +206,28 @@ describe("a suggested style", () => {
     expect(suggest(video()).transitions).toBeUndefined();
   });
 
-  it("says nothing of how many transitions there are when the projects have no shots, but still names the kinds", () => {
-    const empty = { count: 0, averageSeconds: 0, medianSeconds: 0, firstSeconds: 0, perMinute: 0 };
-    const style = suggest(project({ shots: empty, transitions: transitions({ fade: 2 }) }));
-    expect(style.transitions).toBeUndefined();
-    expect(style.transitionKinds).toEqual(["fade"]);
+  it("goes by the transitions between shots, not every fade on every clip", () => {
+    // 8 shots joined by straight cuts, and a logo and two arrows that each fade in and out: 6 fades on the clips.
+    const style = suggest(project({ shots: { ...shots(2, 8), transitions: NO_TRANSITIONS }, transitions: transitions({ fade: 6 }) }));
+    expect(style.transitions).toBe("cuts");
+    expect(style.transitionKinds).toBeUndefined();
+    // Every cut has a whip and the overlays all fade: lots of whips.
+    const whips = suggest(project({ ...cutWith({ whip: 7 }, 8), transitions: transitions({ whip: 7, fade: 20 }) }));
+    expect(whips).toMatchObject({ transitions: "lots", transitionKinds: ["whip"] });
+  });
+
+  it("says nothing of transitions from a project counted before the cuts' transitions were kept", () => {
+    const old = project({ shots: shots(2, 30), transitions: transitions({ fade: 20 }) });
+    expect(suggest(old).transitions).toBeUndefined();
+    expect(suggest(old).transitionKinds).toBeUndefined();
+    // Next to one counted since, only that one counts.
+    expect(suggest(old, project(cutWith({ zoom: 20 })))).toMatchObject({ transitions: "lots", transitionKinds: ["zoom"] });
+  });
+
+  it("says nothing of how many transitions there are when the projects have no cuts", () => {
+    const empty = { count: 0, averageSeconds: 0, medianSeconds: 0, firstSeconds: 0, perMinute: 0, transitions: NO_TRANSITIONS };
+    expect(suggest(project({ shots: empty })).transitions).toBeUndefined();
+    expect(suggest(project(cutWith({}, 1))).transitions).toBeUndefined(); // one shot: no cut
   });
 
   it("takes the color look the projects use most, else natural", () => {

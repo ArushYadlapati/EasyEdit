@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { rowsOf } from "@/db";
 import { assets, projects, styleReference } from "@/db/schema";
 import { LIMITS } from "@/lib/limits";
+import { UNSTORABLE_TEXT } from "@/lib/text";
 import { personalSpaceId } from "@/lib/spaces/types";
 import { STYLE_MESSAGES } from "@/lib/style/messages";
 import {
@@ -13,6 +14,7 @@ import {
   addProjectReference,
   addVideoReference,
   channelFacts,
+  dropGoneReferences,
   failVideoAnalysis,
   getStyle,
   listReferences,
@@ -174,27 +176,35 @@ describe("a space's style", () => {
     expect(await updateStyle(db, agent, { notes: "Hi" })).toMatchObject({ updatedBy: "claude:ada", updatedByName: "Claude (for ADA)" });
   });
 
-  it("refuses a change that doesn't check, saying which field in plain words", async () => {
+  it("refuses a change that doesn't check, naming where by its keys and pointing to the guide", async () => {
     const { db } = await setup();
+    const guide = STYLE_MESSAGES.fieldGuide;
+    expect(guide).toBe('get_editing_guide with topic "learn-a-style" says what each field takes.');
+    const captionKeys = "captions takes on, look, uppercase and position.";
     const bad: { patch: Parameters<typeof updateStyle>[2]; says: string }[] = [
-      { patch: { profile: { summary: "x".repeat(LIMITS.styleSummaryChars + 1) } }, says: `In a sentence or two: at most ${LIMITS.styleSummaryChars} characters.` },
-      { patch: { profile: { summary: 5 as never } }, says: "In a sentence or two: should be text." },
-      { patch: { profile: { pace: "slow" as never } }, says: 'Pace: use "calm", "steady", "quick" or "rapid".' },
-      { patch: { profile: { lengthSeconds: { min: 50, max: 10 } } }, says: "Typical length: min can't be more than max." },
-      { patch: { profile: { lengthSeconds: { min: 0, max: 10 } } }, says: "Typical length: a number from 1 to 3600." },
-      { patch: { profile: { always: Array.from({ length: LIMITS.styleListItems + 1 }, (_, i) => `rule ${i}`) } }, says: `Always: at most ${LIMITS.styleListItems} items.` },
-      { patch: { profile: { always: "Show the score" as never } }, says: "Always: should be a list." },
-      { patch: { profile: { captions: { on: true, look: "big" as never } } }, says: 'Caption look: use "block", "karaoke", "word" or "bar".' },
-      { patch: { profile: { captions: { on: "yes" as never } } }, says: "Show captions: should be true or false." },
-      { patch: { profile: { captions: { on: true, size: 2 } as never } }, says: 'Captions: has no "size".' },
-      { patch: { profile: { colour: "red" } as never }, says: `${STYLE_MESSAGES.notAStyleChange} A style has no "colour".` },
+      { patch: { profile: { summary: "x".repeat(LIMITS.styleSummaryChars + 1) } }, says: `summary: at most ${LIMITS.styleSummaryChars} characters. ${guide}` },
+      { patch: { profile: { summary: 5 as never } }, says: `summary: should be text. ${guide}` },
+      { patch: { profile: { pace: "slow" as never } }, says: `pace: use "calm", "steady", "quick" or "rapid". ${guide}` },
+      { patch: { profile: { lengthSeconds: { min: 50, max: 10 } } }, says: `lengthSeconds: min can't be more than max. ${guide}` },
+      { patch: { profile: { lengthSeconds: { min: 0, max: 10 } } }, says: `lengthSeconds.min: a number from 1 to 3600. ${guide}` },
+      { patch: { profile: { lengthSeconds: { min: "30" as never, max: 40 } } }, says: `lengthSeconds.min: should be a number. ${guide}` },
+      // A key the field doesn't have is told before the ones it misses, with the keys it takes.
+      { patch: { profile: { lengthSeconds: { low: 30, high: 40 } as never } }, says: `lengthSeconds: has no "low" or "high". lengthSeconds takes min and max. ${guide}` },
+      { patch: { profile: { lengthSeconds: 35 as never } }, says: `lengthSeconds: should be a set of fields. lengthSeconds takes min and max. ${guide}` },
+      { patch: { profile: { always: Array.from({ length: LIMITS.styleListItems + 1 }, (_, i) => `rule ${i}`) } }, says: `always: at most ${LIMITS.styleListItems} items. ${guide}` },
+      { patch: { profile: { always: "Show the score" as never } }, says: `always: should be a list. ${guide}` },
+      { patch: { profile: { always: ["Show the score", ""] } }, says: `always[1]: can't be blank. ${guide}` },
+      { patch: { profile: { captions: { on: true, look: "big" as never } } }, says: `captions.look: use "block", "karaoke", "word" or "bar". ${guide}` },
+      { patch: { profile: { captions: { on: "yes" as never } } }, says: `captions.on: should be true or false. ${guide}` },
+      { patch: { profile: { captions: { on: true, size: 2 } as never } }, says: `captions: has no "size". ${captionKeys} ${guide}` },
+      { patch: { profile: { captions: { enabled: true, style: "karaoke" } as never } }, says: `captions: has no "enabled" or "style". ${captionKeys} ${guide}` },
+      { patch: { profile: { colour: "red" } as never }, says: `${STYLE_MESSAGES.notAStyleChange} A style has no "colour". ${guide}` },
+      { patch: { profile: "quick" as never }, says: `${STYLE_MESSAGES.notAStyleChange} ${guide}` },
       { patch: { notes: "x".repeat(LIMITS.styleNotesChars + 1) }, says: STYLE_MESSAGES.notesTooLong },
-      { patch: { notes: "bad \u0000 text" }, says: "Notes for AI agents" },
+      { patch: { notes: "bad \u0000 text" }, says: `notes: ${UNSTORABLE_TEXT}.` },
     ];
     for (const { patch, says } of bad) {
-      const refused = updateStyle(db, ada, patch);
-      await expect(refused, JSON.stringify(patch).slice(0, 60)).rejects.toMatchObject({ code: "INVALID", status: 400 });
-      await expect(updateStyle(db, ada, patch)).rejects.toThrow(says);
+      await expect(updateStyle(db, ada, patch), JSON.stringify(patch).slice(0, 60)).rejects.toMatchObject({ code: "INVALID", status: 400, message: says });
     }
     expect(await getStyle(db, ada)).toEqual(DEFAULT_STYLE);
   });
@@ -367,6 +377,24 @@ describe("learning from links", () => {
     await expect(addLinkReference(db, mine, "https://youtu.be/abcdefghijk", fetchFn)).resolves.toMatchObject({ kind: "link" });
   });
 
+  it("refuses a Vimeo video twice, with or without an unlisted video's private part", async () => {
+    const { db } = await setup();
+    const { fetchFn } = fakeSite(null);
+    await addLinkReference(db, ada, "https://vimeo.com/76979871", fetchFn);
+    for (const again of ["https://vimeo.com/76979871/abc123def", "https://player.vimeo.com/video/76979871?h=abc123def", "vimeo.com/channels/staffpicks/76979871"]) {
+      await expect(addLinkReference(db, ada, again, fetchFn), again).rejects.toMatchObject({ code: "INVALID", message: STYLE_MESSAGES.alreadyAdded });
+    }
+    // And the other way round: a share link kept first.
+    await addLinkReference(db, ada, "https://vimeo.com/22222/abc123def", fetchFn);
+    for (const again of ["https://vimeo.com/22222", "https://vimeo.com/22222/fedcba987"]) {
+      await expect(addLinkReference(db, ada, again, fetchFn), again).rejects.toMatchObject({ message: STYLE_MESSAGES.alreadyAdded });
+    }
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    // A video whose id starts the same way is another video.
+    await expect(addLinkReference(db, ada, "https://vimeo.com/222221", fetchFn)).resolves.toMatchObject({ provider: "vimeo", url: "https://vimeo.com/222221" });
+    expect((await listReferences(db, ada)).map((reference) => reference.url).sort()).toEqual(["https://vimeo.com/22222/abc123def", "https://vimeo.com/222221", "https://vimeo.com/76979871"]);
+  });
+
   it(`learns from at most ${LIMITS.styleReferences} things`, async () => {
     const { db, video } = await setup();
     const { fetchFn } = fakeSite();
@@ -427,6 +455,28 @@ describe("removing, and what goes with a video or project", () => {
     // Neither comes back, so the next one added clears them out, strip of frames and all.
     await addLinkReference(db, ada, youtube(1), fakeSite().fetchFn);
     expect(await countRows(db)).toBe(1);
+  });
+
+  it("the daily sweep clears out every space's references to a removed video or a deleted project", async () => {
+    const { db, video, song } = await setup();
+    const cam = await video();
+    await addVideoReference(db, ada, cam);
+    const tune = await song();
+    const deleted = await addProjectReference(db, ada, await insertProject(db, { id: "p1", cam: await video(), song: tune }));
+    const moved = await addProjectReference(db, ada, await insertProject(db, { id: "p2", cam: await video(), song: tune }));
+    const theirs = await addVideoReference(db, mine, await video({ spaceId: mine.spaceId }));
+    await addLinkReference(db, ada, youtube(1), fakeSite().fetchFn);
+    // Gone without the service that would have cleared them (as before it did), and a project moved away.
+    await db.update(assets).set({ removedAt: new Date(), removedBy: "ada" }).where(eq(assets.id, cam));
+    await db.update(projects).set({ deletedAt: new Date() }).where(eq(projects.id, deleted.projectId!));
+    await db.update(projects).set({ spaceId: mine.spaceId }).where(eq(projects.id, moved.projectId!));
+    await db.update(assets).set({ removedAt: new Date(), removedBy: "ada" }).where(eq(assets.id, theirs.assetId!));
+    expect(await countRows(db)).toBe(5);
+    expect(await dropGoneReferences(db)).toBe(3);
+    const left = rowsOf<{ id: string }>(await db.execute(sql`select id from style_reference`)).map((row) => row.id);
+    expect(left).toContain(moved.id); // it may be moved back
+    expect(left).toHaveLength(2);
+    expect(await dropGoneReferences(db)).toBe(0);
   });
 
   it("a project moved to another space is hidden, and is back when it is moved back", async () => {

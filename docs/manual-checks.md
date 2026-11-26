@@ -122,7 +122,7 @@ A video is looked at in a real browser, and an agent reads the style through a r
 12. Ask Claude "Show me the frames from my style videos." It calls `get_editing_guide` with topic `style` and your team, gets the strips as pictures, and can say what is in them: the caption looks, the framing and the colors.
 13. Ask Claude to add "no zoom transitions" under Never. It tells you what it will save and waits for a yes, then calls `save_style`. Reload the Style page: **Never** has the new line, and it says "Last changed by Claude (for <your name>)" and how long ago.
 14. Open the **AI agents** page. Under **Video skills**, the two Claude Code commands are shown whole, and wrap onto more lines in a phone-narrow window. Click **Download easyedit-video.zip**. Unzipped, it holds an `easyedit-video` folder with `SKILL.md` and a `references` folder of 14 files. Open `/skills/easyedit-video.zip` in a private window: it downloads there too, with no sign-in.
-15. On a server with posting to YouTube set up, and the team's channel connected in **Socials**: click **From your YouTube channel**. It lists the channel's newest videos. Click **Add** on one: its card says "Your YouTube channel". Then **Disconnect** the channel in Socials and come back to Style: that card is gone, and the YouTube link from step 4 is still there.
+15. On a server with posting to YouTube set up, and the team's channel connected in **Socials**: click **From your YouTube channel**. It lists the channel's newest public videos. Click **Add** on one: its card says "Your YouTube channel". Then **Disconnect** the channel in Socials and come back to Style: that card is gone, and the YouTube link from step 4 is still there.
 
 ## Checking an exported file
 

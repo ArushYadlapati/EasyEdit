@@ -22,7 +22,18 @@ export const SKILL_WORDS = {
   intro: "Skills teach AI agents how to make good videos: strong openings, pacing, captions, music, and how to follow your style.",
   connected: "Agents you connect here already have them. You can also add them yourself:",
   ways: "Other ways to add them",
-  claudeCode: { name: "Claude Code", text: "Run these two commands in Claude Code. They add the skills and connect EasyEdit in one go." },
+  // The plugin's connection needs a sign-in before its tools work, and someone already set up from "Set up an agent"
+  // would get EasyEdit twice: each command shown in code, between the words before and after it.
+  claudeCode: {
+    name: "Claude Code",
+    text: "Run these two commands in Claude Code. They add the skills and connect EasyEdit.",
+    signIn: { before: "Then run ", code: "/mcp", after: " in Claude Code, pick easyedit, choose Authenticate and sign in." },
+    already: {
+      before: "Already connected Claude Code with the steps above? Then it has the skills, so you can skip this. To use the plugin instead, first run ",
+      code: "claude mcp remove easyedit",
+      after: " in a terminal.",
+    },
+  },
   otherAgents: { name: "Codex, Cursor, Gemini CLI and Copilot", before: "Download the skill and unzip it into ", after: "." },
   claudeWeb: { name: "Claude on the web", text: "Upload the same file under Settings → Capabilities → Skills." },
   download: `Download ${SKILL_ZIP_NAME}`,

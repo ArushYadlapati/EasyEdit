@@ -30,8 +30,8 @@ const channelAnswer = (uploads: string | null = UPLOADS) =>
 const playlistAnswer = (videoIds: string[]) =>
   Response.json({ items: videoIds.map((videoId, n) => ({ id: `item${n}`, snippet: { title: "ignored", resourceId: { kind: "youtube#video", videoId } }, contentDetails: { videoId } })) });
 
-// A video as YouTube's videos answer describes it.
-function video(id: string, over: { snippet?: Record<string, unknown>; duration?: string } = {}) {
+// A video as YouTube's videos answer describes it, public unless told otherwise (null: the answer doesn't say).
+function video(id: string, over: { snippet?: Record<string, unknown>; duration?: string; privacy?: string | null } = {}) {
   return {
     id,
     snippet: {
@@ -48,6 +48,7 @@ function video(id: string, over: { snippet?: Record<string, unknown>; duration?:
       ...over.snippet,
     },
     contentDetails: { duration: over.duration ?? "PT1M5S" },
+    ...(over.privacy !== null && { status: { privacyStatus: over.privacy ?? "public", uploadStatus: "processed" } }),
   };
 }
 const videosAnswer = (...items: unknown[]) => Response.json({ items });
@@ -58,8 +59,8 @@ describe("listMyUploads", () => {
     const uploads = await listMyUploads("tok", fetchFn);
     expect(calls.map((call) => call.url)).toEqual([
       `${API}/channels?part=contentDetails&mine=true&maxResults=1`,
-      `${API}/playlistItems?part=snippet,contentDetails&playlistId=UU123&maxResults=25`,
-      `${API}/videos?part=snippet,contentDetails&id=aaaaaaaaaa1,aaaaaaaaaa2,aaaaaaaaaa3`,
+      `${API}/playlistItems?part=snippet,contentDetails&playlistId=UU123&maxResults=50`,
+      `${API}/videos?part=snippet,contentDetails,status&id=aaaaaaaaaa1,aaaaaaaaaa2,aaaaaaaaaa3`,
     ]);
     expect(calls.every((call) => call.method === "GET" && call.headers.authorization === "Bearer tok")).toBe(true);
     expect(uploads).toHaveLength(3);
@@ -80,16 +81,28 @@ describe("listMyUploads", () => {
     expect((await listMyUploads("tok", fetchFn)).map((upload) => upload.id)).toEqual(ids);
   });
 
-  it("asks for as many as it's told, at most 50", async () => {
-    let yt = youtube(channelAnswer(), playlistAnswer(ids.slice(0, 1)), videosAnswer(video(ids[0])));
-    await listMyUploads("tok", yt.fetchFn, 5);
-    expect(yt.calls[1].url).toContain("maxResults=5");
-    yt = youtube(channelAnswer(), playlistAnswer(ids.slice(0, 1)), videosAnswer(video(ids[0])));
-    await listMyUploads("tok", yt.fetchFn, 500);
+  it("keeps as many as it's told, at most 50, picked from the 50 newest uploads", async () => {
+    const many = Array.from({ length: 60 }, (_, n) => `vid${String(n).padStart(8, "0")}`);
+    let yt = youtube(channelAnswer(), playlistAnswer(many), videosAnswer(...many.map((id) => video(id))));
+    expect((await listMyUploads("tok", yt.fetchFn, 5)).map((upload) => upload.id)).toEqual(many.slice(0, 5));
     expect(yt.calls[1].url).toContain("maxResults=50");
+    expect(yt.calls[2].url).toBe(`${API}/videos?part=snippet,contentDetails,status&id=${many.slice(0, 50).join(",")}`);
+    yt = youtube(channelAnswer(), playlistAnswer(many), videosAnswer(...many.map((id) => video(id))));
+    expect(await listMyUploads("tok", yt.fetchFn, 500)).toHaveLength(50);
     yt = youtube(channelAnswer(), playlistAnswer(ids), videosAnswer(...ids.map((id) => video(id))));
     expect(await listMyUploads("tok", yt.fetchFn, 2)).toHaveLength(2);
-    expect(yt.calls[2].url).toBe(`${API}/videos?part=snippet,contentDetails&id=aaaaaaaaaa1,aaaaaaaaaa2`);
+  });
+
+  it("offers only public videos: private and unlisted ones, and one whose answer doesn't say, are left out", async () => {
+    const all = ["aaaaaaaaaa1", "aaaaaaaaaa2", "aaaaaaaaaa3", "aaaaaaaaaa4", "aaaaaaaaaa5"];
+    const { fetchFn, calls } = youtube(
+      channelAnswer(),
+      playlistAnswer(all),
+      videosAnswer(video(all[0], { privacy: "private" }), video(all[1]), video(all[2], { privacy: "unlisted" }), video(all[3], { privacy: null }), video(all[4])),
+    );
+    // Asked for two, it still finds two public ones past the private and unlisted ones.
+    expect((await listMyUploads("tok", fetchFn, 2)).map((upload) => upload.id)).toEqual([all[1], all[4]]);
+    expect(new URL(calls[2].url).searchParams.get("part")).toBe("snippet,contentDetails,status");
   });
 
   it("is empty for an account with no channel, or a channel with no uploads", async () => {
@@ -110,7 +123,7 @@ describe("listMyUploads", () => {
     const { fetchFn, calls } = youtube(channelAnswer("UU1&x=2"), playlistAnswer(["short", "aaaaaaaaaa1", "aaaaaaaaaa1", "a/b?c=dddddd"]), videosAnswer(video(ids[0])));
     expect((await listMyUploads("tok", fetchFn)).map((upload) => upload.id)).toEqual(["aaaaaaaaaa1"]);
     expect(calls[1].url).toContain("playlistId=UU1%26x%3D2&");
-    expect(calls[2].url).toBe(`${API}/videos?part=snippet,contentDetails&id=aaaaaaaaaa1`);
+    expect(calls[2].url).toBe(`${API}/videos?part=snippet,contentDetails,status&id=aaaaaaaaaa1`);
   });
 
   it("leaves out a video YouTube didn't describe, one with no title, and one on another channel", async () => {
@@ -196,7 +209,7 @@ describe("channelVideo", () => {
       tags: ["robotics", "FTC"],
       channelId: CHANNEL,
     });
-    expect(calls).toEqual([{ url: `${API}/videos?part=snippet,contentDetails&id=${ids[0]}`, method: "GET", headers: { authorization: "Bearer tok" } }]);
+    expect(calls).toEqual([{ url: `${API}/videos?part=snippet,contentDetails,status&id=${ids[0]}`, method: "GET", headers: { authorization: "Bearer tok" } }]);
   });
 
   it("is null for a video YouTube doesn't show, one that names no channel, and an id that isn't a video's, which isn't asked about", async () => {
@@ -206,6 +219,12 @@ describe("channelVideo", () => {
     const { fetchFn, calls } = youtube();
     for (const id of ["", "short", "aaaaaaaaaa1,aaaaaaaaaa2", "aaaaaaa/../"]) expect(await channelVideo("tok", id, fetchFn)).toBeNull();
     expect(calls).toEqual([]);
+  });
+
+  it("is null for a private or unlisted video, and one whose answer doesn't say it is public", async () => {
+    for (const privacy of ["private", "unlisted", "", null]) {
+      expect(await channelVideo("tok", ids[0], youtube(videosAnswer(video(ids[0], { privacy }))).fetchFn), String(privacy)).toBeNull();
+    }
   });
 
   it("keeps YouTube's reason when it refuses", async () => {

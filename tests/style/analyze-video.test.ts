@@ -172,6 +172,7 @@ describe("looking over a video", () => {
     expect(deps.saveTranscript).toHaveBeenCalledWith("a", WORDS);
     expect(analysis.speech).toEqual(speechStats(WORDS, 6));
     expect(analysis.speech?.opening.split(" ")).toHaveLength(12);
+    expect(analysis).not.toHaveProperty("speechSkipped");
     expect(VideoAnalysis.parse(analysis)).toEqual(analysis);
   });
 
@@ -191,6 +192,8 @@ describe("looking over a video", () => {
     const { analysis, sheet } = await analyzeVideo(VIDEO, deps);
     expect(deps.transcribe).toHaveBeenCalledOnce();
     expect(analysis.speech).toBeNull();
+    // Not heard is not silent: agents are told the words weren't measured, not that nobody talks.
+    expect(analysis.speechSkipped).toBe("failed");
     expect(analysis.sound).not.toBeNull();
     expect(sheet).not.toBeNull();
     expect(VideoAnalysis.parse(analysis)).toEqual(analysis);
@@ -215,7 +218,31 @@ describe("looking over a video", () => {
     deps.transcribe.mockResolvedValue([]);
     const { analysis } = await analyzeVideo(VIDEO, deps);
     expect(analysis.speech).toBeNull();
+    // It was heard, and nobody talks: nothing was skipped.
+    expect(analysis).not.toHaveProperty("speechSkipped");
     expect(deps.saveTranscript).not.toHaveBeenCalled();
+  });
+
+  it("says why the words weren't heard when no file has sound to hear, or none can be read", async () => {
+    const silent = fakeDeps();
+    silent.deps.transcribe.mockRejectedValue(new TranscribeError("no-sound", "No sound."));
+    const none = await analyzeVideo(VIDEO, silent.deps);
+    expect(silent.deps.transcribe).toHaveBeenCalledTimes(2); // the preview, then the original
+    expect(none.analysis).toMatchObject({ speech: null, speechSkipped: "no-audio" });
+
+    const garbled = fakeDeps();
+    garbled.deps.transcribe.mockRejectedValueOnce(new TranscribeError("no-sound", "No sound.")).mockRejectedValueOnce(new TranscribeError("undecodable", "Can't decode."));
+    expect((await analyzeVideo(VIDEO, garbled.deps)).analysis).toMatchObject({ speech: null, speechSkipped: "failed" });
+
+    const refused = fakeDeps();
+    refused.deps.transcribe.mockRejectedValue(new TranscribeError("too-long", "Too long."));
+    const long = await analyzeVideo(VIDEO, refused.deps);
+    expect(long.analysis).toMatchObject({ speech: null, speechSkipped: "too-long" });
+    expect(VideoAnalysis.parse(long.analysis)).toEqual(long.analysis);
+
+    // Why words weren't heard is kept only beside no words.
+    const talking = (await analyzeVideo(VIDEO, fakeDeps().deps)).analysis;
+    expect(VideoAnalysis.safeParse({ ...talking, speechSkipped: "failed" }).success).toBe(false);
   });
 
   it("doesn't listen when asked not to, or to a video with no sound", async () => {
@@ -224,13 +251,14 @@ describe("looking over a video", () => {
     expect(quiet.deps.fetchSavedTranscript).not.toHaveBeenCalled();
     expect(quiet.deps.transcribe).not.toHaveBeenCalled();
     expect(analysis.speech).toBeNull();
+    expect(analysis.speechSkipped).toBe("off");
     expect(analysis.sound).not.toBeNull();
 
     const silent = fakeDeps();
     const mute = await analyzeVideo(assetView({ ...VIDEO, hasAudio: false }), silent.deps);
     expect(silent.deps.decodeSound).not.toHaveBeenCalled();
     expect(silent.deps.transcribe).not.toHaveBeenCalled();
-    expect(mute.analysis).toMatchObject({ speech: null, sound: null });
+    expect(mute.analysis).toMatchObject({ speech: null, speechSkipped: "no-audio", sound: null });
     expect(VideoAnalysis.parse(mute.analysis)).toEqual(mute.analysis);
   });
 
@@ -299,10 +327,13 @@ describe("looking over a video", () => {
     const { analysis } = await analyzeVideo(long, deps);
     expect(deps.transcribe).not.toHaveBeenCalled();
     expect(analysis.speech).toBeNull();
+    expect(analysis.speechSkipped).toBe("too-long");
 
     const saved = fakeDeps();
     saved.deps.fetchSavedTranscript.mockResolvedValue(WORDS);
-    expect((await analyzeVideo(long, saved.deps)).analysis.speech).toEqual(speechStats(WORDS, long.durationMs! / 1000));
+    const heard = (await analyzeVideo(long, saved.deps)).analysis;
+    expect(heard.speech).toEqual(speechStats(WORDS, long.durationMs! / 1000));
+    expect(heard).not.toHaveProperty("speechSkipped");
   });
 
   it("measures the sound of a video up to an hour long, and not of a longer one, whose sound would be held in memory whole", async () => {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { CHANNEL_DAYS, channelFactsStale, lengthWords, profileValueWords, progressWords, referenceFacts, referenceTitle } from "@/lib/style/describe";
+import { CHANNEL_DAYS, canTryAgain, channelFactsStale, fillInWaitsFor, lengthWords, profileValueWords, progressWords, referenceFacts, referenceTitle } from "@/lib/style/describe";
 import { STYLE_MESSAGES, STYLE_WORDS } from "@/lib/style/messages";
 import { CHANNEL_FACTS_DAYS } from "@/lib/style/service";
-import type { LinkAnalysis, ProjectAnalysis, StyleReference, VideoAnalysis } from "@/lib/style/types";
+import { ANALYSIS_LIMITS, type LinkAnalysis, type ProjectAnalysis, type StyleReference, type VideoAnalysis } from "@/lib/style/types";
 
 const shots = (count: number, medianSeconds: number) => ({ count, averageSeconds: medianSeconds, medianSeconds, firstSeconds: medianSeconds, perMinute: 60 / medianSeconds });
 
@@ -187,6 +187,48 @@ describe("a field's value for someone who can only read it", () => {
     expect(profileValueWords("lengthSeconds", { lengthSeconds: { min: 30, max: 30 } })).toBe("About 30 seconds");
     expect(profileValueWords("hook", {})).toBeNull();
     expect(profileValueWords("always", { always: [] })).toBeNull();
+  });
+});
+
+describe("why Fill in from my videos waits", () => {
+  const F = STYLE_WORDS.form;
+  const waiting = reference({ status: "pending", analysis: null, hasSheet: false });
+  const failed = reference({ status: "failed", analysis: null, hasSheet: false, failure: STYLE_WORDS.analysisFailed.unreadable });
+
+  it("asks for something to learn from when nothing is added", () => {
+    expect(fillInWaitsFor([])).toBe(F.fillInFirst);
+  });
+
+  it("waits for a video still to be looked at, never asking for one that is there", () => {
+    expect(fillInWaitsFor([waiting])).toBe(F.fillInWaiting);
+    expect(fillInWaitsFor([failed, waiting])).toBe(F.fillInWaiting);
+  });
+
+  it("says so when nothing added could be looked at, rather than to wait for ever", () => {
+    expect(fillInWaitsFor([failed])).toBe(F.fillInFailed);
+    expect(fillInWaitsFor([failed, reference({ id: "r2", status: "failed", analysis: null, hasSheet: false })])).toBe(F.fillInFailed);
+  });
+
+  it("waits for nothing once anything it can read is ready", () => {
+    expect(fillInWaitsFor([failed, waiting, reference({ id: "r3" })])).toBeNull();
+    expect(fillInWaitsFor([reference({ id: "r4", kind: "link", analysis: link() })])).toBeNull();
+  });
+});
+
+describe("whether Try again can help", () => {
+  const hours = (n: number) => n * 3600 * 1000;
+
+  it("offers it for a failure that may not happen again", () => {
+    for (const failure of [STYLE_WORDS.analysisFailed.unreadable, STYLE_WORDS.analysisFailed.unknown, STYLE_WORDS.analysisNotSaved, STYLE_MESSAGES.badAnalysis]) {
+      expect(canTryAgain(failure, hours(1))).toBe(true);
+      expect(canTryAgain(failure, null)).toBe(true);
+    }
+  });
+
+  it("doesn't for a video longer than a style looks at, which it always will be", () => {
+    expect(canTryAgain(STYLE_WORDS.analysisFailed.tooLong, null)).toBe(false);
+    expect(canTryAgain(STYLE_WORDS.analysisFailed.unknown, ANALYSIS_LIMITS.seconds * 1000 + 1)).toBe(false);
+    expect(canTryAgain(STYLE_WORDS.analysisFailed.unknown, ANALYSIS_LIMITS.seconds * 1000)).toBe(true);
   });
 });
 

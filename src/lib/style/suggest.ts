@@ -1,5 +1,6 @@
 import { LIMITS } from "@/lib/limits";
 import { CaptionPreset, LOOKS, PresetId, TransitionKind } from "@/lib/timeline";
+import { positionOfCaption } from "./caption-position";
 import {
   CaptionPosition,
   STYLE_LENGTH_SECONDS,
@@ -59,18 +60,11 @@ function formatOfShape(width: number, height: number): PresetId | null {
   return "long_16x9";
 }
 
-// Where captions at this share of the frame's height sit.
-function positionOf(y: number): CaptionPosition {
-  if (y < 1 / 3) return "upper";
-  if (y < 2 / 3) return "middle";
-  return "lower";
-}
-
-// The amount of transitions that many of them for each shot stands for, as the Style page words them: straight cuts
-// when under 1 shot in 20 has one, lots when most shots do (over half), a few in between.
-function transitionAmount(perShot: number): TransitionAmount {
-  if (perShot < 0.05) return "cuts";
-  if (perShot <= 0.5) return "few";
+// The amount of transitions that share of the cuts between shots having one stands for, as the Style page words
+// them: straight cuts when under 1 cut in 20 has one, lots when most do (over half), a few in between.
+function transitionAmount(perCut: number): TransitionAmount {
+  if (perCut < 0.05) return "cuts";
+  if (perCut <= 0.5) return "few";
   return "lots";
 }
 
@@ -100,11 +94,12 @@ function talkingHook(opening: string | undefined): string {
 //   are none (a link is often someone else's video): the middle half once there are 4 or more, else from the shortest
 //   to the longest, leaving out one more than 3 times the middle one or under a third of it; to 5 seconds;
 // - where they post from the projects' formats, the videos' shapes and links to Shorts or other tall clips;
-// - captions on, in the projects' most used look, when projects show captions, else on when most videos talk (someone
-//   talking through over 40% of the video);
-// - transitions from how many of the projects' shots have one, and transition kinds (the 3 most used), color look
-//   (natural when none), on-screen text (from text clips a minute) and music from the projects (music is soft when
-//   it's set at 35% or quieter on average; intense is left for people to pick);
+// - captions on when projects show captions, in their most used look and at the position most of them are at (by
+//   their format, as positionOfCaption says), else on when most videos talk (someone talking through over 40% of the
+//   video);
+// - transitions from how many of the cuts between the projects' shots have one, and transition kinds (the 3 most used
+//   at those cuts), color look (natural when none), on-screen text (from text clips a minute) and music from the
+//   projects (music is soft when it's set at 35% or quieter on average; intense is left for people to pick);
 // - how they open ("Starts talking straight away", with the first words of the first video that talks), when most
 //   videos talk.
 // Summary, voice and tone, and the Always and Never lists are left for people to write.
@@ -151,26 +146,34 @@ export function suggestStyle(analyses: readonly ReferenceAnalysis[]): StyleProfi
     profile.formats = PresetId.options.filter((id) => uses(id) > 0).sort((a, b) => uses(b) - uses(a));
   }
 
-  const talking = videos.flatMap((v) => (v.speech && v.speech.talkingShare > 0.4 ? [v.speech] : []));
-  const mostlyTalk = videos.length > 0 && talking.length * 2 > videos.length;
+  // A video whose words weren't heard (too long to, hearing went wrong, or not asked to) says nothing about talking, so
+  // it is left out of "most"; one with no sound track doesn't talk.
+  const heard = videos.filter((v) => v.speech !== null || v.speechSkipped === undefined || v.speechSkipped === "no-audio");
+  const talking = heard.flatMap((v) => (v.speech && v.speech.talkingShare > 0.4 ? [v.speech] : []));
+  const mostlyTalk = heard.length > 0 && talking.length * 2 > heard.length;
 
-  const captioned = projects.flatMap((p) => (p.captions ? [p.captions] : []));
+  const captioned = projects.flatMap((p) => (p.captions ? [{ ...p.captions, format: p.format }] : []));
   if (captioned.length > 0) {
     profile.captions = {
       on: true,
       look: mostCommon(captioned.map((c) => c.look), CaptionPreset.options),
       uppercase: captioned.filter((c) => c.uppercase).length * 2 > captioned.length,
-      position: mostCommon(captioned.map((c) => positionOf(c.y)), CaptionPosition.options),
+      position: mostCommon(captioned.map((c) => positionOfCaption(c.format, c.y)), CaptionPosition.options),
     };
   } else if (mostlyTalk) {
     profile.captions = { on: true };
   }
 
-  if (projects.length > 0) {
-    const counted = TransitionKind.options.map((kind) => [kind, sum(projects.map((p) => p.transitions[kind] ?? 0))] as const);
+  // Only the transitions between shots: a logo or arrow fading in on another track isn't one shot moving to the next.
+  // A project counted before those were kept says nothing about them.
+  const cutProjects = projects.flatMap((p) =>
+    p.shots.transitions ? [{ cuts: Math.max(0, p.shots.count - 1), kinds: p.shots.transitions }] : [],
+  );
+  if (cutProjects.length > 0) {
+    const counted = TransitionKind.options.map((kind) => [kind, sum(cutProjects.map((p) => p.kinds[kind] ?? 0))] as const);
     const kinds = Object.fromEntries(counted) as Record<TransitionKind, number>;
-    const shotCount = sum(projects.map((p) => p.shots.count));
-    if (shotCount > 0) profile.transitions = transitionAmount(round(sum(Object.values(kinds)) / shotCount, 2));
+    const cuts = sum(cutProjects.map((p) => p.cuts));
+    if (cuts > 0) profile.transitions = transitionAmount(round(Math.min(1, sum(Object.values(kinds)) / cuts), 2));
     const used = TransitionKind.options.filter((kind) => kinds[kind] > 0).sort((a, b) => kinds[b] - kinds[a]);
     if (used.length > 0) profile.transitionKinds = used.slice(0, 3);
   }

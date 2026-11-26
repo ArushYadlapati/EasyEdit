@@ -120,7 +120,9 @@ describe("create_project while personal spaces are not offered", () => {
     // video skills: +143 chars (get_editing_guide's topic, 14_867 measured), the cap raised by exactly that; Arush's call
     // style for agents: +845 chars (get_editing_guide's space and the save_style tool, 15_712 measured), the cap raised
     // by exactly that; Arush's call
-    expect(JSON.stringify(await toolList(await toolContext(db))).length).toBeLessThan(15_773);
+    // style review: +106 chars (save_style says notes and lists replace the saved ones whole, so read first; 15_818
+    // measured), the cap raised by exactly that; Arush's call
+    expect(JSON.stringify(await toolList(await toolContext(db))).length).toBeLessThan(15_879);
   });
 
   it("someone in no team is told to make one", async () => {

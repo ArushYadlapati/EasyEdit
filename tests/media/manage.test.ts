@@ -1,5 +1,5 @@
 import { eq, sql, type SQL } from "drizzle-orm";
-import { templates } from "@/db/schema";
+import { styleReference, templates } from "@/db/schema";
 import { describe, expect, it } from "vitest";
 import { rowsOf, type DB } from "@/db";
 import type { Actor } from "@/lib/actor";
@@ -179,6 +179,23 @@ describe("removing an asset", () => {
     // The other asset is untouched.
     expect(await rowOf(ctx, other.id)).toMatchObject({ removed_at: null, removed_by: null });
     expect(isTrashed(ctx, other.originalFileId)).toBe(false);
+  });
+
+  it("deletes what a space's style learned from the video, strip of frames and all, in the same write", async () => {
+    const ctx = await mediaContext();
+    const asset = await readyAsset(ctx);
+    const used = await readyAsset(ctx, ctx.ada, LATER);
+    await projectUsing(ctx, "Qual recap", used.id);
+    const learned = (id: string, assetId: string) => ({ id, spaceId: SEED_TEAM_ID, kind: "video" as const, title: "IMG_4821", assetId, sheet: new Uint8Array([0xff, 0xd8, 0xff]), createdBy: ctx.ada.userId });
+    await ctx.db.insert(styleReference).values([learned("r1", asset.id), learned("r2", used.id)]);
+    const kept = async () => (await ctx.db.select({ id: styleReference.id }).from(styleReference)).map((row) => row.id).sort();
+    // A refused removal leaves what was learned from the video.
+    await expect(removeAsset(ctx.deps, ctx.vera, asset.id)).rejects.toMatchObject(FORBIDDEN);
+    await expect(removeAsset(ctx.deps, ctx.ada, used.id)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await kept()).toEqual(["r1", "r2"]);
+    await removeAsset(ctx.deps, ctx.ada, asset.id);
+    expect(await kept()).toEqual(["r2"]);
+    expect(isTrashed(ctx, asset.originalFileId)).toBe(true);
   });
 
   it("lets any editor remove a ready asset, records who did, and lets no viewer", async () => {
