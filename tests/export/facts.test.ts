@@ -4,7 +4,7 @@ import {
 } from "@/lib/export/facts";
 import { planExportMedia } from "@/lib/export/media-sources";
 import { videoSettings, type EncoderConfig } from "@/lib/export/presets";
-import { checkSupport, type SupportProbe } from "@/lib/export/support";
+import { checkSupport, type SupportProbe, canMake, sizesFor, soundFor } from "@/lib/export/support";
 import type { AssetView } from "@/lib/media/types";
 import { DEFAULT_TRANSFORM, createEmptyDoc, type Clip } from "@/lib/timeline";
 import { sampleDoc, text, video } from "../editor/fixtures";
@@ -162,17 +162,36 @@ describe("what the dialog says about the media", () => {
 
 describe("what this browser and computer can export", () => {
   const probe = (over: Partial<SupportProbe> = {}): SupportProbe =>
-    ({ hasWorkers: true, hasOffscreenCanvas: true, hasVideoEncoder: true, canEncode: async () => true, canEncodeAudio: async () => true, ...over });
+    ({ hasWorkers: true, hasOffscreenCanvas: true, hasVideoEncoder: true, canEncode: async () => true, canEncodeAudio: async () => true, canEncodeOpus: async () => true, ...over });
   const tall = { width: 1080, height: 1920, fps: 30 };
   const uhd = { width: 3840, height: 2160, fps: 30 };
 
   it("says yes to every size an able browser can encode", async () => {
-    expect(await checkSupport(probe(), tall)).toEqual({ browser: true, sizes: { project: true, draft: true }, audio: true });
-    expect(await checkSupport(probe(), uhd)).toEqual({ browser: true, sizes: { project: true, "1080p": true, draft: true }, audio: true });
+    const both = { project: true, draft: true };
+    expect(await checkSupport(probe(), tall)).toEqual({ browser: true, sizes: both, audio: true, webm: both, opus: true });
+    const three = { project: true, "1080p": true, draft: true };
+    expect(await checkSupport(probe(), uhd)).toEqual({ browser: true, sizes: three, audio: true, webm: three, opus: true });
+  });
+
+  it("asks about an MP4 and a WebM apart: H.264 with its frames in an MP4's form, VP9 without", async () => {
+    const asked: EncoderConfig[] = [];
+    const canEncode = async (config: EncoderConfig) => (asked.push(config), config.codec.startsWith("vp09"));
+    const support = await checkSupport(probe({ canEncode, canEncodeAudio: async () => false }), tall);
+    // No H.264 here, as in a browser built without it: a WebM is still on offer, and so is a GIF.
+    expect(support).toEqual({ browser: true, sizes: { project: false, draft: false }, audio: false, webm: { project: true, draft: true }, opus: true });
+    expect([...new Set(asked.map((c) => c.codec))]).toEqual(["avc1.640028", "vp09.00.40.08", "avc1.64001f", "vp09.00.31.08"]);
+    expect(asked.filter((c) => c.codec.startsWith("avc1")).every((c) => c.avc?.format === "avc")).toBe(true);
+    expect(asked.filter((c) => c.codec.startsWith("vp09")).every((c) => !("avc" in c))).toBe(true);
+    expect((["mp4", "webm", "gif", "m4a", "wav"] as const).map((f) => canMake(support, f))).toEqual([false, true, true, false, true]);
+    expect((["mp4", "webm", "gif", "m4a", "wav"] as const).map((f) => soundFor(support, f))).toEqual([false, true, false, false, true]);
+    expect([sizesFor(support, "mp4"), sizesFor(support, "webm"), sizesFor(support, "gif")]).toEqual([{ project: false, draft: false }, { project: true, draft: true }, { project: true, draft: true }]);
+    // A probe that knows nothing of Opus counts as no.
+    expect((await checkSupport({ ...probe(), canEncodeOpus: undefined }, tall)).opus).toBe(false);
+    expect(canMake({ browser: false, sizes: {}, audio: false, webm: {}, opus: false }, "wav")).toBe(false);
   });
 
   it("says whether the file can carry a sound track, without making AAC a condition", async () => {
-    expect(await checkSupport(probe({ canEncodeAudio: async () => false }), tall)).toEqual({ browser: true, sizes: { project: true, draft: true }, audio: false });
+    expect(await checkSupport(probe({ canEncodeAudio: async () => false }), tall)).toMatchObject({ browser: true, sizes: { project: true, draft: true }, audio: false });
     expect((await checkSupport(probe({ canEncodeAudio: async () => { throw new Error("x"); } }), tall)).audio).toBe(false);
   });
 
@@ -182,19 +201,21 @@ describe("what this browser and computer can export", () => {
       asked.push(`${config.width} ${config.hardwareAcceleration}`);
       return config.width <= 1920 && config.hardwareAcceleration === "prefer-software";
     };
-    expect(await checkSupport(probe({ canEncode }), uhd)).toEqual({ browser: true, sizes: { project: false, "1080p": true, draft: true }, audio: true });
-    expect(asked).toEqual(["3840 no-preference", "3840 prefer-software", "1920 no-preference", "1920 prefer-software", "1280 no-preference", "1280 prefer-software"]);
+    expect(await checkSupport(probe({ canEncode }), uhd)).toMatchObject({ browser: true, sizes: { project: false, "1080p": true, draft: true }, audio: true });
+    // Each size is asked about for an MP4, then for a WebM.
+    const each = (width: number) => [`${width} no-preference`, `${width} prefer-software`, `${width} no-preference`, `${width} prefer-software`];
+    expect(asked).toEqual([...each(3840), ...each(1920), ...each(1280)]);
   });
 
   it("asks no further once the browser's choice of encoder says yes", async () => {
     const asked: string[] = [];
     const canEncode = async (config: EncoderConfig) => (asked.push(config.hardwareAcceleration), true);
     await checkSupport(probe({ canEncode }), tall);
-    expect(asked).toEqual(["no-preference", "no-preference"]);
+    expect(asked).toEqual(["no-preference", "no-preference", "no-preference", "no-preference"]); // two sizes, two kinds of video
   });
 
   it("calls a browser unsupported when a feature is missing or nothing can be encoded", async () => {
-    const no = { browser: false, sizes: {}, audio: false };
+    const no = { browser: false, sizes: {}, audio: false, webm: {}, opus: false };
     expect(await checkSupport(probe({ hasWorkers: false }), tall)).toEqual(no);
     expect(await checkSupport(probe({ hasOffscreenCanvas: false }), tall)).toEqual(no);
     expect(await checkSupport(probe({ hasVideoEncoder: false }), tall)).toEqual(no);

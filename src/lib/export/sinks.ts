@@ -64,7 +64,7 @@ export function fileTarget(handle: FileHandleLike): ExportTarget {
 
 // The bytes held in memory, for a browser without a save dialog. The muxer writes in order and goes back once, at the
 // end, to patch the start of the file, so a write may overwrite bytes already held but never leave a gap.
-export function memoryTarget(onSaved: (blob: Blob) => void, limit: number = MEMORY_LIMIT_BYTES): ExportTarget {
+export function memoryTarget(onSaved: (blob: Blob) => void, limit: number = MEMORY_LIMIT_BYTES, mime = "video/mp4"): ExportTarget {
   return {
     limit,
     async open() {
@@ -92,7 +92,7 @@ export function memoryTarget(onSaved: (blob: Blob) => void, limit: number = MEMO
           }
         },
         async close() {
-          onSaved(new Blob(parts, { type: "video/mp4" }));
+          onSaved(new Blob(parts, { type: mime }));
           parts = [];
           size = 0;
         },

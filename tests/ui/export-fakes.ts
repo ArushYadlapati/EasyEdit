@@ -32,6 +32,7 @@ export function fakeExportDeps(over: Partial<ExportDeps> = {}): MadeDeps {
       hasVideoEncoder: true,
       canEncode: async () => true,
       canEncodeAudio: async () => true,
+      canEncodeOpus: async () => true,
     },
     savesToFile: true,
     pickTarget: async (name) => {

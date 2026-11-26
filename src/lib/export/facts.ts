@@ -2,14 +2,14 @@ import { graphemes } from "@/lib/text";
 import { slotsOf } from "@/lib/timeline/slots";
 import type { TimelineDoc } from "@/lib/timeline";
 import type { ClipPlan, ExportMediaPlan } from "./media-sources";
-import { AUDIO, type ExportPresetId, type ExportSize, type VideoSettings } from "./presets";
+import { formatFacts, soundBitrate, type ExportFormat, type ExportPresetId, type ExportSize, type VideoSettings } from "./presets";
 
 // What the export dialog says about the file before and while it is made: its largest size, its name, the time
 // left, what it will hold, and why it cannot start yet.
 
 // The largest the file should get: both tracks at their full bitrate for the whole length.
-export function maxBytes(video: VideoSettings, totalFrames: number): number {
-  return Math.ceil(((video.bitrate + AUDIO.bitrate) * totalFrames) / video.fps / 8);
+export function maxBytes(video: VideoSettings, totalFrames: number, format: ExportFormat = "mp4"): number {
+  return Math.ceil(((video.bitrate + soundBitrate(format)) * totalFrames) / video.fps / 8);
 }
 
 // Counted in thousands, as file managers do.
@@ -35,8 +35,10 @@ function cleanName(projectName: string): string {
 
 const PRESET_SUFFIX: Record<ExportPresetId, string> = { project: "", "1080p": " (1080p)", draft: " (draft)" };
 
-export function exportFileName(projectName: string, preset: ExportPresetId): string {
-  return `${cleanName(projectName)}${PRESET_SUFFIX[preset]}.mp4`;
+// A GIF and a file of sound alone come in one size, so their names carry none.
+export function exportFileName(projectName: string, preset: ExportPresetId, format: ExportFormat = "mp4"): string {
+  const facts = formatFacts(format);
+  return `${cleanName(projectName)}${facts.encodes ? PRESET_SUFFIX[preset] : ""}.${facts.extension}`;
 }
 
 export function frameFileName(projectName: string, frame: number): string {
@@ -72,7 +74,9 @@ const clipsEither = (plan: ExportMediaPlan, matches: Matches) => {
 
 // What the person should know before exporting at this size. audio: this browser can encode AAC. doc: the project, to
 // name the template slots that are still empty (they export as black and silent gaps).
-export function exportNotes(plan: ExportMediaPlan, size: ExportSize, audio: boolean, doc?: TimelineDoc): string[] {
+export function exportNotes(plan: ExportMediaPlan, size: ExportSize, audio: boolean, doc?: TimelineDoc, format: ExportFormat = "mp4"): string[] {
+  const facts = formatFacts(format);
+  if (!facts.picture) return soundNotes(plan, audio);
   const notes: string[] = [];
   const empty = doc ? slotsOf(doc).filter((slot) => slot.kind !== "text" && !slot.filled).map((slot) => slot.name) : [];
   if (empty.length === 1) notes.push(`1 slot is still empty: ${empty[0]}.`);
@@ -82,10 +86,16 @@ export function exportNotes(plan: ExportMediaPlan, size: ExportSize, audio: bool
   else if (placeholders > 1) notes.push(`${placeholders} clips have no media to show, so they export as the placeholders in the preview.`);
   const fromCopies = countOf(plan, (clip) => clip.kind === "use" && clip.from === "preview") > 0;
   if (Math.min(size.width, size.height) > 720 && fromCopies) notes.push("Video clips export from their 720p preview copies.");
+  if (!facts.sound) return notes; // a GIF: its format already says it has no sound
+  return [...notes, ...soundNotes(plan, audio, true)];
+}
+
+// The notes about the sound. picturesCounted: a clip already counted for having no picture is not counted again here.
+function soundNotes(plan: ExportMediaPlan, audio: boolean, picturesCounted = false): string[] {
+  const notes: string[] = [];
   if (audio) {
-    // A clip the line above counts is not counted again for its sound.
     const silent = Object.entries(plan.sounds)
-      .filter(([id, clip]) => clip.kind === "placeholder" && plan.clips[id]?.kind !== "placeholder").length;
+      .filter(([id, clip]) => clip.kind === "placeholder" && !(picturesCounted && plan.clips[id]?.kind === "placeholder")).length;
     if (silent === 1) notes.push("1 sound clip has no media, so it exports silent, as in the preview.");
     else if (silent > 1) notes.push(`${silent} sound clips have no media, so they export silent, as in the preview.`);
   } else if (plan.soundClips > 0) {

@@ -6,7 +6,7 @@ import type { PostInput, PostOutcome, Posting } from "@/lib/social/post-client";
 import type { PostingStatus } from "@/lib/social/posts";
 import { act, fireEvent, screen } from "../helpers/dom";
 import { fakeTarget } from "../export/fakes";
-import { click, dialog, emit, flush, show, startExport } from "./export-helpers";
+import { click, dialog, emit, flush, openDialog, show, startExport } from "./export-helpers";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -245,5 +245,38 @@ describe("posting an export to YouTube", () => {
     await click("Post to YouTube");
     await click("Post");
     expect(posts[0].file).toBe(held);
+  });
+});
+
+describe("what can be posted", () => {
+  // The export finishes as a file of this name: the dialog tells the format by it.
+  async function finished(format: string, label: string, status: PostingStatus = CHANNEL) {
+    const { posting } = fakePosting(status);
+    const target = fakeTarget();
+    const made = show({ posting, pickTarget: async (name) => ({ target, fileName: name, held: null, read: async () => FILE }) });
+    const d = await openDialog();
+    await act(async () => { fireEvent.change(d.getByRole("combobox", { name: "Format" }), { target: { value: format } }); });
+    await click(label);
+    await emit(made.workers[0], { type: "done", bytes: 10, hasAudio: format !== "gif" });
+    return { ...made, d };
+  }
+  it("is an MP4 only: the upload says it sends one", async () => {
+    const mp4 = await finished("mp4", "Export video");
+    expect(mp4.d.getByRole("button", { name: "Post to YouTube" })).toBeTruthy();
+    mp4.view.unmount();
+    for (const [format, label] of [["webm", "Export video"], ["gif", "Export GIF"], ["wav", "Export sound"]]) {
+      const other = await finished(format, label);
+      expect(other.d.getByRole("status").textContent).toContain("Saved Qual recap.");
+      expect(other.d.queryByRole("button", { name: "Post to YouTube" })).toBeNull();
+      other.view.unmount();
+    }
+  });
+  it("and a GIF is not told to connect a channel", async () => {
+    const noChannel: PostingStatus = { ...CHANNEL, channel: null, canConnect: true };
+    const mp4 = await finished("mp4", "Export video", noChannel);
+    expect(mp4.d.getByText(/Connect a YouTube channel/)).toBeTruthy();
+    mp4.view.unmount();
+    const gif = await finished("gif", "Export GIF", noChannel);
+    expect(gif.d.queryByText(/YouTube/)).toBeNull();
   });
 });

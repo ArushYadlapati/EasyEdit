@@ -14,16 +14,19 @@ import {
   Output,
   Quality,
   StreamTarget,
+  WavOutputFormat,
+  WebMOutputFormat,
   type WrappedCanvas,
 } from "mediabunny";
-import { canEncodeAac } from "@/lib/export/aac";
-import { CHUNK_BYTES, type ChunkBridge } from "@/lib/export/chunk-bridge";
+import { canEncodeAac, canEncodeOpus } from "@/lib/export/aac";
+import { CHUNK_BYTES, type ChunkBridge, type MuxerChunk } from "@/lib/export/chunk-bridge";
+import { createGif, gifDelay, gifStep } from "@/lib/export/gif";
 import { fileGone, type MediaIO } from "@/lib/export/decode-pool";
 import { jobFontResolver, type FontFaceSpec } from "@/lib/export/fonts";
 import { createFinisher } from "@/lib/render/finish-gl";
 import { exportPlaceholderLabel } from "@/lib/export/media-schedule";
 import { runPipeline, type OpenOptions, type PipelineIO, type PipelineOutput } from "@/lib/export/pipeline";
-import { AUDIO, KEYFRAME_SECONDS, encoderConfig, type Acceleration, type VideoSettings } from "@/lib/export/presets";
+import { AUDIO, KEYFRAME_SECONDS, encoderConfig, type Acceleration, type SoundCodec, type VideoSettings } from "@/lib/export/presets";
 import type { ExportJob, ToWorker } from "@/lib/export/protocol";
 import type { SoundIO } from "@/lib/export/sound-pool";
 import { createWorkerSession } from "@/lib/export/worker-session";
@@ -174,38 +177,77 @@ async function* pictures(canvases: AsyncGenerator<WrappedCanvas | null, void, un
   }
 }
 
+// Whether this worker can make a format's sound. The mix itself (a WAV) needs no encoder.
+const canEncodeSound = (codec: SoundCodec): Promise<boolean> => (codec === "pcm" ? Promise.resolve(true) : codec === "opus" ? canEncodeOpus() : canEncodeAac());
+
+// A GIF: no encoder and no muxer. Each frame is read back from the canvas, written as a GIF frame (gif.ts) and sent to
+// the page in order; nothing is ever gone back to.
+async function openGif(video: VideoSettings, bridge: ChunkBridge, draw: PipelineOutput["draw"], ctx: OffscreenCanvasRenderingContext2D): Promise<PipelineOutput> {
+  const writer = new WritableStream<MuxerChunk>(bridge.sink).getWriter();
+  const gif = createGif(video.width, video.height);
+  const step = gifStep(video.fps);
+  let position = 0;
+  const write = async (data: Uint8Array<ArrayBuffer>) => {
+    await writer.write({ type: "write", data, position });
+    position += data.byteLength;
+  };
+  await write(gif.header as Uint8Array<ArrayBuffer>);
+  return {
+    draw,
+    addFrame: (frame) => write(gif.frame(ctx.getImageData(0, 0, video.width, video.height).data, gifDelay(frame, step, video.fps)) as Uint8Array<ArrayBuffer>),
+    async addSound() {},
+    async finish() {
+      await write(gif.trailer as Uint8Array<ArrayBuffer>);
+      await writer.close();
+      return bridge.bytes();
+    },
+    cancel: () => writer.abort().catch(() => {}),
+  };
+}
+
 async function open(job: ExportJob, options: OpenOptions, bridge: ChunkBridge): Promise<PipelineOutput> {
-  const { video } = options;
+  const { video, format } = options;
   const canvas = new OffscreenCanvas(video.width, video.height);
-  const ctx = canvas.getContext("2d"); // default options, like the preview's canvas, so text is drawn the same way
+  // Default options, like the preview's canvas, so text is drawn the same way. A GIF's frames are read back from it.
+  const ctx = canvas.getContext("2d", format === "gif" ? { willReadFrequently: true } : undefined);
   if (!ctx) throw new Error("The export canvas has no 2D context."); // Task 20 finds this string in the built worker
   ctx.setTransform(video.width / job.doc.width, 0, 0, video.height / job.doc.height, 0, 0); // drawFrame draws in project pixels
   const resolveFont = jobFontResolver(job.fonts.families);
   const placeholderLabel = exportPlaceholderLabel(job.media.clips);
+  const draw: PipelineOutput["draw"] = (frame, sources) =>
+    drawFrame(ctx, job.doc, frame, { resolveFont, placeholderLabel, finish: finisher, resolveSource: (clip) => sources.get(clip.id) ?? null });
+  if (format === "gif") return openGif(video, bridge, draw, ctx);
 
+  const webm = format === "webm";
+  const soundOnly = format === "m4a" || format === "wav";
   const output = new Output({
     // The index at the end on every path: the worker never holds the file, and every destination patches the start (Task 10).
-    format: new Mp4OutputFormat({ fastStart: false }),
+    format: format === "wav" ? new WavOutputFormat() : webm ? new WebMOutputFormat() : new Mp4OutputFormat({ fastStart: false }),
     target: new StreamTarget(new WritableStream(bridge.sink), { chunked: true, chunkSize: CHUNK_BYTES }),
   });
-  const picture = new CanvasSource(canvas, {
-    codec: "avc",
-    quality: new Quality({ bitrate: video.bitrate }),
-    fullCodecString: video.codec,
-    hardwareAcceleration: options.acceleration,
-    latencyMode: "quality", // never drop a frame
-    keyFrameInterval: KEYFRAME_SECONDS,
-  });
-  output.addVideoTrack(picture, { frameRate: video.fps }); // snaps every timestamp to the frame rate: the length is exact
+  const picture = soundOnly
+    ? null
+    : new CanvasSource(canvas, {
+        codec: webm ? "vp9" : "avc",
+        quality: new Quality({ bitrate: video.bitrate }),
+        fullCodecString: video.codec,
+        hardwareAcceleration: options.acceleration,
+        latencyMode: "quality", // never drop a frame
+        keyFrameInterval: KEYFRAME_SECONDS,
+      });
+  if (picture) output.addVideoTrack(picture, { frameRate: video.fps }); // snaps every timestamp to the frame rate: the length is exact
   // No `transform` here: its resampler holds five seconds back, and every block is already 48 kHz stereo.
-  const sound = options.audio ? new AudioSampleSource({ codec: "aac", quality: new Quality({ bitrate: AUDIO.bitrate }) }) : null;
+  const sound = !options.audio
+    ? null
+    : format === "wav"
+      ? new AudioSampleSource({ codec: "pcm-s16" })
+      : new AudioSampleSource({ codec: webm ? "opus" : "aac", quality: new Quality({ bitrate: AUDIO.bitrate }) });
   if (sound) output.addAudioTrack(sound);
   await output.start();
 
   return {
-    draw: (frame, sources) =>
-      drawFrame(ctx, job.doc, frame, { resolveFont, placeholderLabel, finish: finisher, resolveSource: (clip) => sources.get(clip.id) ?? null }),
-    addFrame: (_frame, seconds, duration, keyFrame) => picture.add(seconds, duration, { keyFrame }),
+    draw: picture ? draw : () => {},
+    addFrame: async (_frame, seconds, duration, keyFrame) => void (await picture?.add(seconds, duration, { keyFrame })),
     async addSound(startSample, _sampleCount, data) {
       const sample = new AudioSample({
         data, format: "f32",
@@ -218,7 +260,7 @@ async function open(job: ExportJob, options: OpenOptions, bridge: ChunkBridge): 
       }
     },
     async finish() {
-      picture.close();
+      picture?.close();
       sound?.close();
       await output.finalize();
       return bridge.bytes();
@@ -229,7 +271,7 @@ async function open(job: ExportJob, options: OpenOptions, bridge: ChunkBridge): 
 
 // The PipelineIO for one job.
 function makeIO(job: ExportJob, bridge: ChunkBridge): PipelineIO {
-  return { supported, loadFace, measure, canFinish, canEncode, canEncodeAudio: canEncodeAac, media, sound: soundIO, open: (options) => open(job, options, bridge) };
+  return { supported, loadFace, measure, canFinish, canEncode, canEncodeAudio: canEncodeSound, media, sound: soundIO, open: (options) => open(job, options, bridge) };
 }
 
 const session = createWorkerSession(

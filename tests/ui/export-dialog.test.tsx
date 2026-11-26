@@ -265,10 +265,10 @@ it("checks this browser each time the dialog opens, at the project's size then",
   const canEncode = vi.fn(async () => true);
   show({ supportProbe: { ...SUPPORTED, canEncode } });
   await openDialog();
-  expect(canEncode).toHaveBeenCalledTimes(2); // Same as project, then Draft
+  expect(canEncode).toHaveBeenCalledTimes(4); // Same as project, then Draft, each as an MP4 and as a WebM
   await click("Close");
   await openDialog();
-  expect(canEncode).toHaveBeenCalledTimes(4);
+  expect(canEncode).toHaveBeenCalledTimes(8);
 });
 
 it("waits for the media library before it offers Export video", async () => {
@@ -741,4 +741,82 @@ it("a part of the project can be exported: the selected clips, or from the playh
   expect(d.getByText("0:01:00")).toBeTruthy(); // c2 is one second long
   await act(async () => { fireEvent.change(what, { target: { value: "playhead" } }); });
   expect(d.getByText("0:02:15")).toBeTruthy(); // frame 45 to 120
+});
+
+const pickFormat = async (d: ReturnType<typeof dialog>, value: string) => {
+  await act(async () => { fireEvent.change(d.getByRole("combobox", { name: "Format" }), { target: { value } }); });
+};
+
+it("offers five kinds of file, an MP4 first", async () => {
+  show();
+  const d = await openDialog();
+  const menu = d.getByRole("combobox", { name: "Format" }) as HTMLSelectElement;
+  expect([...menu.options].map((o) => [o.text, o.disabled])).toEqual([["MP4 video", false], ["WebM video", false], ["Animated GIF", false], ["Sound only (M4A)", false], ["Sound only (WAV)", false]]);
+  expect(menu.value).toBe("mp4");
+});
+
+it("exports a WebM at the size picked, with VP9 and a name that ends .webm", async () => {
+  const { workers, picked } = show();
+  const d = await openDialog();
+  await pickFormat(d, "webm");
+  expect(d.getByText("WebM, VP9 video")).toBeTruthy();
+  await act(async () => { fireEvent.change(d.getByRole("combobox", { name: "Size" }), { target: { value: "draft" } }); });
+  await click("Export video");
+  expect(picked).toEqual(["Qual recap (draft).webm"]);
+  expect(workers[0].posted[0]).toMatchObject({ job: { format: "webm", sound: true, video: { width: 720, height: 1280, codec: "vp09.00.31.08" } } });
+});
+
+it("a GIF has no size or quality to pick: it says how small and slow it is, and is not posted or called silent", async () => {
+  const { workers, picked } = show({ posting: undefined });
+  const d = await openDialog();
+  await pickFormat(d, "gif");
+  expect(d.queryByRole("combobox", { name: "Size" })).toBeNull();
+  expect(d.queryByRole("combobox", { name: "Quality" })).toBeNull();
+  for (const fact of ["270 × 480", "15 fps", "0:04:00", "GIF, no sound, plays over and over"]) expect(d.getByText(fact)).toBeTruthy();
+  expect(d.queryByText(COPIES)).toBeNull();
+  expect(d.queryByText(NO_TRACK)).toBeNull();
+  expect(d.queryByRole("button", { name: "Export video" })).toBeNull();
+  await click("Export GIF");
+  expect(picked).toEqual(["Qual recap.gif"]);
+  expect(workers[0].posted[0]).toMatchObject({ job: { format: "gif", sound: false, video: { width: 270, height: 480, fps: 30, codec: "gif" } } });
+  await emit(workers[0], { type: "done", bytes: 900_000, hasAudio: false });
+  expect(d.getByRole("status").textContent).toContain("Saved Qual recap.gif");
+  expect(d.queryByText("This file has no sound track.")).toBeNull();
+});
+
+it("sound alone shows no picture facts, and is exported with the sound planned", async () => {
+  const { workers, picked } = show({}, { doc: sampleDoc(), assets: [assetView()] });
+  const d = await openDialog();
+  await pickFormat(d, "wav");
+  expect(d.queryByRole("combobox", { name: "Size" })).toBeNull();
+  expect(d.queryByText("1080 × 1920")).toBeNull();
+  expect(d.queryByText("30 fps")).toBeNull();
+  expect(d.queryByText(COPIES)).toBeNull();
+  for (const fact of ["0:04:00", "Up to about 768 KB", "WAV, sound as it is mixed, no picture"]) expect(d.getByText(fact)).toBeTruthy();
+  await click("Export sound");
+  expect(picked).toEqual(["Qual recap.wav"]);
+  expect(workers[0].posted[0]).toMatchObject({ job: { format: "wav", sound: true, video: { codec: "none" } } });
+});
+
+it("where the browser has no H.264, an MP4 is shown turned off and a WebM is what is exported", async () => {
+  const { workers, picked } = show({ supportProbe: { ...SUPPORTED, canEncode: async (config) => config.codec.startsWith("vp09"), canEncodeAudio: async () => false, canEncodeOpus: async () => true } });
+  const d = await openDialog();
+  const menu = d.getByRole("combobox", { name: "Format" }) as HTMLSelectElement;
+  expect([...menu.options].map((o) => [o.text, o.disabled])).toEqual([
+    ["MP4 video (not supported in this browser)", true], ["WebM video", false], ["Animated GIF", false],
+    ["Sound only (M4A) (not supported in this browser)", true], ["Sound only (WAV)", false],
+  ]);
+  expect(menu.value).toBe("webm");
+  expect(d.queryByText(NO_TRACK)).toBeNull(); // Opus carries the sound
+  await click("Export video");
+  expect(picked).toEqual(["Qual recap.webm"]);
+  expect(workers[0].posted[0]).toMatchObject({ job: { format: "webm", sound: true } });
+});
+
+it("asks for a second click by the name on the button", async () => {
+  show({ pickTarget: async () => "again" });
+  const d = await openDialog();
+  await pickFormat(d, "gif");
+  await click("Export GIF");
+  expect(d.getByRole("alert").textContent).toBe("Click Export GIF again to choose where to save.");
 });

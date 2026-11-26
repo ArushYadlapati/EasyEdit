@@ -4,9 +4,18 @@ import { AUDIO } from "@/lib/export/presets";
 // ask it the same way. It asks the browser itself, never through mediabunny: the export worker imports mediabunny
 // statically, and a second, dynamic import of it beside that one breaks the chunk the workers share.
 export async function canEncodeAac(): Promise<boolean> {
+  return canEncodeSound(AUDIO.codec);
+}
+
+// The same question for a WebM's sound track.
+export async function canEncodeOpus(): Promise<boolean> {
+  return canEncodeSound("opus");
+}
+
+async function canEncodeSound(codec: string): Promise<boolean> {
   if (typeof AudioEncoder === "undefined") return false;
   try {
-    const config = { codec: AUDIO.codec, sampleRate: AUDIO.sampleRate, numberOfChannels: AUDIO.channels, bitrate: AUDIO.bitrate };
+    const config = { codec, sampleRate: AUDIO.sampleRate, numberOfChannels: AUDIO.channels, bitrate: AUDIO.bitrate };
     return (await AudioEncoder.isConfigSupported(config)).supported === true;
   } catch {
     return false;

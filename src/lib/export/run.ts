@@ -2,7 +2,7 @@ import { maxBytes } from "@/lib/export/facts";
 import type { FontBundle } from "@/lib/export/fonts";
 import type { MediaOptions } from "@/lib/export/gather-media";
 import { ExportError, failureOf } from "@/lib/export/messages";
-import { ACCELERATION_ORDER, videoSettings, type Acceleration, type ExportQuality, type ExportSize, type VideoSettings } from "@/lib/export/presets";
+import { ACCELERATION_ORDER, formatFacts, videoSettings, type Acceleration, type ExportFormat, type ExportQuality, type ExportSize, type VideoSettings } from "@/lib/export/presets";
 import type { ExportFailure, ExportMedia, ExportOutcome, FromWorker, ToWorker } from "@/lib/export/protocol";
 import { frameCount } from "@/lib/export/schedule";
 import type { ByteSink, ExportTarget } from "@/lib/export/sinks";
@@ -30,6 +30,7 @@ export type ExportRequest = {
   sound: boolean; // the file will carry a sound track (Support.audio): only then is sound planned and read
   originals?: boolean; // full quality: pictures from each video's original file, where this browser can read it
   quality?: ExportQuality; // how many bits the picture gets; standard when left out
+  format?: ExportFormat; // the kind of file; an MP4 when left out
 };
 
 export type RunDeps = {
@@ -78,7 +79,7 @@ type Try = {
   attempt: number; // numbered from 1
   acceleration: Acceleration;
   sink: ByteSink;
-  job: { doc: TimelineDoc; video: VideoSettings; fonts: FontBundle; media: ExportMedia; sound: boolean };
+  job: { doc: TimelineDoc; video: VideoSettings; fonts: FontBundle; media: ExportMedia; sound: boolean; format: ExportFormat };
 };
 
 // One worker, from its start message to an end. Messages are handled in the order they arrive; a chunk's write and
@@ -207,9 +208,10 @@ async function steps(request: ExportRequest, deps: RunDeps, held: Held): Promise
 
   const frames = frameCount(doc);
   if (frames === 0) return failed("empty", "");
-  const video = videoSettings(size, doc.fps, request.quality);
+  const format = request.format ?? "mp4";
+  const video = videoSettings(size, doc.fps, request.quality, format);
   if (!video) return failed("size", `${size.width}×${size.height} at ${doc.fps} fps`);
-  if (target.limit !== null && maxBytes(video, frames) > target.limit) return failed("too-long", `${frames} frames`);
+  if (target.limit !== null && maxBytes(video, frames, format) > target.limit) return failed("too-long", `${frames} frames`);
   if (signal.aborted) return CANCELED;
 
   let fonts: FontBundle;
@@ -232,9 +234,11 @@ async function steps(request: ExportRequest, deps: RunDeps, held: Held): Promise
     return { status: "failed", ...failureOf(error, "media") };
   }
 
-  const job = { doc, video, fonts, media, sound: request.sound };
+  const job = { doc, video, fonts, media, sound: request.sound, format };
+  // The second try is the video encoder in software: a format that uses no video encoder has nothing to try again.
+  const tries = formatFacts(format).encodes ? ACCELERATION_ORDER : ACCELERATION_ORDER.slice(0, 1);
   let first: ExportOutcome | null = null;
-  for (const [index, acceleration] of ACCELERATION_ORDER.entries()) {
+  for (const [index, acceleration] of tries.entries()) {
     if (index > 0) {
       try {
         held.sink = await target.open();
@@ -248,7 +252,7 @@ async function steps(request: ExportRequest, deps: RunDeps, held: Held): Promise
     if (first && outcome.status === "failed" && outcome.code === "size") return first;
     first ??= outcome;
     const again =
-      outcome.status === "failed" && RETRIED.includes(outcome.code) && index + 1 < ACCELERATION_ORDER.length && !signal.aborted;
+      outcome.status === "failed" && RETRIED.includes(outcome.code) && index + 1 < tries.length && !signal.aborted;
     if (!again) return outcome;
     // The next try starts again from frame 0: say so now, so Cancel and the slower-encoder line show while the file is
     // reopened and the worker starts.

@@ -13,12 +13,12 @@ import {
 } from "@/lib/export/facts";
 import { planExportMedia } from "@/lib/export/media-sources";
 import { failureMessage, failureOf, frameFailureMessage } from "@/lib/export/messages";
-import { EXPORT_QUALITIES, exportOptions, videoSettings, type ExportPresetId, type ExportQuality } from "@/lib/export/presets";
+import { EXPORT_FORMATS, EXPORT_QUALITIES, exportOptions, formatFacts, shownFps, videoSettings, type ExportFormat, type ExportPresetId, type ExportQuality, type FormatFacts } from "@/lib/export/presets";
 import { RANGE_LABEL, rangeDoc, spanOf, type RangeKind } from "@/lib/editor/export-range";
 import { frameCount } from "@/lib/export/schedule";
 import { MEMORY_LIMIT_BYTES } from "@/lib/export/sinks";
 import { isBusy, type ExportState } from "@/lib/export/state";
-import { checkSupport, type Support } from "@/lib/export/support";
+import { canMake, checkSupport, sizesFor, soundFor, type Support } from "@/lib/export/support";
 import { useEditor, useEditorStore, useExportDeps } from "../context";
 import { useLibrary } from "../media/media-context";
 import { Timecode } from "../timecode";
@@ -36,7 +36,12 @@ type ExportDialogProps = { open: boolean; onClose(): void; exporter: Exporter };
 // full: Full quality is switched on.
 // quality: how many bits the picture gets.
 // range: which part of the project is exported.
-type ChoiceProps = { support: Support | null; selected: ExportPresetId | null; full: boolean; quality: ExportQuality; range: RangeKind };
+// format: the kind of file.
+type ChoiceProps = { support: Support | null; selected: ExportPresetId | null; full: boolean; quality: ExportQuality; range: RangeKind; format: ExportFormat };
+
+// The format a finished file was made in, told by its name: only an MP4 can be posted, and only a video is "your video".
+const madeAs = (fileName: string): FormatFacts => EXPORT_FORMATS.find((f) => fileName.toLowerCase().endsWith(`.${f.extension}`)) ?? formatFacts("mp4");
+const START_LABEL = (format: FormatFacts) => (!format.picture ? "Export sound" : format.id === "gif" ? "Export GIF" : "Export video");
 
 const MUTED = "text-ed-muted";
 
@@ -48,6 +53,7 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
   const [full, setFull] = useState(false); // off each time the editor opens: it is slower, so it is asked for
   const [quality, setQuality] = useState<ExportQuality>("standard");
   const [range, setRange] = useState<RangeKind>("all");
+  const [format, setFormat] = useState<ExportFormat>("mp4");
   // Each opening asks this browser again, at the project's size then: an edit can change the size.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
@@ -74,7 +80,7 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
     onClose();
   };
 
-  const choice: ChoiceProps = { support, selected, full, quality, range };
+  const choice: ChoiceProps = { support, selected, full, quality, range, format };
   return (
     <Dialog
       title="Export"
@@ -83,13 +89,13 @@ export function ExportDialog({ open, onClose, exporter }: ExportDialogProps): Re
       onClose={onClose}
       footer={posting ? <PostFooter panel={post} onDone={finish} /> : <ExportFooter exporter={exporter} onDone={finish} post={post} {...choice} />}
     >
-      {posting ? <PostBody panel={post} /> : <ExportBody exporter={exporter} onSelect={setSelected} onFull={setFull} onQuality={setQuality} onRange={setRange} post={post} {...choice} />}
+      {posting ? <PostBody panel={post} /> : <ExportBody exporter={exporter} onSelect={setSelected} onFull={setFull} onQuality={setQuality} onRange={setRange} onFormat={setFormat} post={post} {...choice} />}
     </Dialog>
   );
 }
 
 // The project's facts at the picked size, the media plan, and whether Export video may be clicked now.
-function useChoices({ support, selected, quality, full, range }: ChoiceProps) {
+function useChoices({ support, selected, quality, full, range, format }: ChoiceProps) {
   const deps = useExportDeps();
   const whole = useEditor((s) => s.doc);
   const selection = useEditor(useShallow((s) => s.selection.clipIds));
@@ -101,15 +107,21 @@ function useChoices({ support, selected, quality, full, range }: ChoiceProps) {
   const assets = useLibrary((s) => s.assets);
   const loaded = useLibrary((s) => s.loaded);
   return useMemo(() => {
+    // The format in effect: the one picked, or the first this browser can make.
+    const made = support ? EXPORT_FORMATS.filter((f) => canMake(support, f.id)) : [];
+    const kind = made.find((f) => f.id === format) ?? made[0] ?? formatFacts("mp4");
+    const sound = support ? soundFor(support, kind.id) : false;
     // Planned as it will be exported, so the notes say which files the pictures come from.
-    const plan = planExportMedia(doc, { assets, loaded }, support?.audio ?? false, full);
+    const plan = planExportMedia(doc, { assets, loaded }, sound, full);
     // A size the check did not ask about is not offered; one it said no to is shown, turned off.
-    const options = support ? exportOptions(doc).filter((option) => support.sizes[option.id] !== undefined) : [];
-    const usable = options.filter((option) => support?.sizes[option.id] === true);
-    const option = usable.find((o) => o.id === selected) ?? usable[0] ?? null;
+    const sizes = support ? sizesFor(support, kind.id) : {};
+    const options = exportOptions(doc).filter((option) => sizes[option.id] !== undefined);
+    const usable = options.filter((option) => sizes[option.id] === true);
+    // A GIF and a file of sound alone are made from the project as it is: they have no size to pick.
+    const option = usable.find((o) => o.id === (kind.encodes ? selected : "project")) ?? usable[0] ?? null;
     const frames = frameCount(doc);
-    const video = option ? videoSettings(option.size, doc.fps, quality) : null;
-    const bytes = video ? maxBytes(video, frames) : null;
+    const video = option ? videoSettings(option.size, doc.fps, quality, kind.id) : null;
+    const bytes = video ? maxBytes(video, frames, kind.id) : null;
     const empty = frames === 0;
     const waiting = waitingReason(plan);
     // Without a save dialog the whole file is held in memory, so a video too long for it is refused before the click.
@@ -118,22 +130,22 @@ function useChoices({ support, selected, quality, full, range }: ChoiceProps) {
     // Save frame is off only while the media is not ready: a too-long video is no reason not to save one frame of it.
     // A frame has no sound, so only its pictures' media counts.
     const canSaveFrame = option !== null && !empty && waitingReason(planExportMedia(doc, { assets, loaded })) === null;
-    return { doc, plan, options, option, frames, bytes, empty, blocked, canStart: option !== null && blocked === null, canSaveFrame, ranges, span };
-  }, [doc, assets, loaded, support, selected, quality, full, deps, ranges, span]);
+    return { doc, plan, options, option, frames, bytes, empty, blocked, canStart: option !== null && video !== null && blocked === null, canSaveFrame, ranges, span, kind, sound, sizes, video };
+  }, [doc, assets, loaded, support, selected, quality, full, format, deps, ranges, span]);
 }
 
 const choosing = (state: ExportState) => state.phase === "idle" || state.phase === "canceled";
 
-type ChoiceSetters = { onSelect(id: ExportPresetId): void; onFull(on: boolean): void; onQuality(quality: ExportQuality): void; onRange(range: RangeKind): void };
+type ChoiceSetters = { onSelect(id: ExportPresetId): void; onFull(on: boolean): void; onQuality(quality: ExportQuality): void; onRange(range: RangeKind): void; onFormat(format: ExportFormat): void };
 
-function ExportBody({ exporter, onSelect, onFull, onQuality, onRange, post, ...choice }: ChoiceProps & ChoiceSetters & { exporter: Exporter; post: PostPanel }) {
+function ExportBody({ exporter, onSelect, onFull, onQuality, onRange, onFormat, post, ...choice }: ChoiceProps & ChoiceSetters & { exporter: Exporter; post: PostPanel }) {
   const state = useStore(exporter.store);
-  if (choosing(state)) return <Choices onSelect={onSelect} onFull={onFull} onQuality={onQuality} onRange={onRange} canceled={state.phase === "canceled"} {...choice} />;
+  if (choosing(state)) return <Choices onSelect={onSelect} onFull={onFull} onQuality={onQuality} onRange={onRange} onFormat={onFormat} canceled={state.phase === "canceled"} {...choice} />;
   return <Progress state={state} post={post} />;
 }
 
-function Choices({ support, selected, full, quality, range, onSelect, onFull, onQuality, onRange, canceled }: ChoiceProps & ChoiceSetters & { canceled: boolean }) {
-  const { doc, plan, options, option, frames, bytes, empty, blocked, ranges } = useChoices({ support, selected, full, quality, range });
+function Choices({ support, selected, full, quality, range, format, onSelect, onFull, onQuality, onRange, onFormat, canceled }: ChoiceProps & ChoiceSetters & { canceled: boolean }) {
+  const { doc, plan, options, option, frames, bytes, empty, blocked, ranges, kind, sound, sizes, video } = useChoices({ support, selected, full, quality, range, format });
   // Full quality has something to give only where a video plays from a smaller copy of itself.
   const hasCopies = Object.values(plan.clips).some((clip) => clip.kind === "use" && (clip.from === "preview" || clip.fallback !== undefined));
   if (support === null) return <p className={MUTED}>Checking this browser…</p>;
@@ -141,15 +153,26 @@ function Choices({ support, selected, full, quality, range, onSelect, onFull, on
   if (empty) return <p>{blocked}</p>;
   return (
     <div className="flex flex-col gap-4">
-      <Field label="Size">
-        <Select value={option?.id ?? ""} onChange={(event) => onSelect(event.target.value as ExportPresetId)}>
-          {options.map((o) => (
-            <option key={o.id} value={o.id} disabled={support.sizes[o.id] !== true}>
-              {support.sizes[o.id] === true ? o.label : `${o.label} (not supported on this computer)`}
+      <Field label="Format">
+        <Select value={kind.id} onChange={(event) => onFormat(event.target.value as ExportFormat)}>
+          {EXPORT_FORMATS.map((f) => (
+            <option key={f.id} value={f.id} disabled={!canMake(support, f.id)}>
+              {canMake(support, f.id) ? f.label : `${f.label} (not supported in this browser)`}
             </option>
           ))}
         </Select>
       </Field>
+      {kind.encodes && (
+        <Field label="Size">
+          <Select value={option?.id ?? ""} onChange={(event) => onSelect(event.target.value as ExportPresetId)}>
+            {options.map((o) => (
+              <option key={o.id} value={o.id} disabled={sizes[o.id] !== true}>
+                {sizes[o.id] === true ? o.label : `${o.label} (not supported on this computer)`}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
       {ranges.length > 1 && (
         <Field label="What to export">
           <Select value={ranges.includes(range) ? range : "all"} onChange={(event) => onRange(event.target.value as RangeKind)}>
@@ -161,27 +184,29 @@ function Choices({ support, selected, full, quality, range, onSelect, onFull, on
           </Select>
         </Field>
       )}
-      <Field label="Quality">
-        <Select value={quality} onChange={(event) => onQuality(event.target.value as ExportQuality)}>
-          {EXPORT_QUALITIES.map((q) => (
-            <option key={q.id} value={q.id}>
-              {q.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      {option && (
+      {kind.encodes && (
+        <Field label="Quality">
+          <Select value={quality} onChange={(event) => onQuality(event.target.value as ExportQuality)}>
+            {EXPORT_QUALITIES.map((q) => (
+              <option key={q.id} value={q.id}>
+                {q.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+      {option && video && (
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
-          <Fact term="Size">{`${option.size.width} × ${option.size.height}`}</Fact>
-          <Fact term="Frame rate">{`${doc.fps} fps`}</Fact>
+          {kind.picture && <Fact term="Size">{`${video.width} × ${video.height}`}</Fact>}
+          {kind.picture && <Fact term="Frame rate">{`${Number(shownFps(kind.id, doc.fps).toFixed(1))} fps`}</Fact>}
           <Fact term="Length">
             <Timecode frame={frames} fps={doc.fps} />
           </Fact>
           {bytes !== null && <Fact term="File size">{`Up to about ${formatBytes(bytes)}`}</Fact>}
-          <Fact term="Format">MP4, H.264 video</Fact>
+          <Fact term="Format">{kind.says}</Fact>
         </dl>
       )}
-      {hasCopies && (
+      {hasCopies && kind.picture && (
         <div className="flex flex-col gap-1">
           <Toggle label="Full quality" checked={full} onChange={onFull} />
           <p className={MUTED}>
@@ -191,7 +216,7 @@ function Choices({ support, selected, full, quality, range, onSelect, onFull, on
       )}
       {option && (
         <div className="flex flex-col gap-1">
-          {exportNotes(plan, option.size, support.audio, doc).map((note) => (
+          {exportNotes(plan, video ?? option.size, sound, doc, kind.id).map((note) => (
             <p key={note} className={MUTED}>
               {note}
             </p>
@@ -246,14 +271,14 @@ function Progress({ state, post }: { state: Exclude<ExportState, { phase: "idle"
       return (
         <div className="flex flex-col gap-2">
           <div role="status" className="flex flex-col gap-1">
-            <p className="font-medium">{state.held ? "Your video is ready." : `Saved ${state.fileName}`}</p>
+            <p className="font-medium">{state.held ? (madeAs(state.fileName).encodes ? "Your video is ready." : "Your file is ready.") : `Saved ${state.fileName}`}</p>
             <p className={MUTED}>{formatBytes(state.bytes)}</p>
           </div>
           {state.changed && (
             <p>The project changed while this was exporting. The file shows it as it was when the export started.</p>
           )}
-          {!state.hasAudio && <p className={MUTED}>This file has no sound track.</p>}
-          <PostOffer panel={post} />
+          {!state.hasAudio && madeAs(state.fileName).sound && <p className={MUTED}>This file has no sound track.</p>}
+          {madeAs(state.fileName).id === "mp4" && <PostOffer panel={post} />}
         </div>
       );
     case "failed":
@@ -268,6 +293,8 @@ function Progress({ state, post }: { state: Exclude<ExportState, { phase: "idle"
 function ExportFooter({ exporter, onDone, post, ...choice }: ChoiceProps & { exporter: Exporter; onDone(): void; post: PostPanel }) {
   const phase = useStore(exporter.store, (s) => s.phase);
   const held = useStore(exporter.store, (s) => s.phase === "done" && s.held);
+  // Only an MP4 is posted: it is what the upload says it sends.
+  const postable = useStore(exporter.store, (s) => s.phase === "done" && madeAs(s.fileName).id === "mp4");
   const finishing = useStore(exporter.store, (s) => s.phase === "running" && s.framesDone >= s.totalFrames);
   const busy = useStore(exporter.store, isBusy);
 
@@ -283,7 +310,7 @@ function ExportFooter({ exporter, onDone, post, ...choice }: ChoiceProps & { exp
   if (!held) {
     return (
       <>
-        <PostButton panel={post} />
+        {postable && <PostButton panel={post} />}
         <Button variant="primary" onClick={onDone}>
           Done
         </Button>
@@ -292,7 +319,7 @@ function ExportFooter({ exporter, onDone, post, ...choice }: ChoiceProps & { exp
   }
   return (
     <>
-      <PostButton panel={post} />
+      {postable && <PostButton panel={post} />}
       <Button onClick={onDone}>Done</Button>
       {/* Inside the click, so the browser treats it as the person's own download. */}
       <Button
@@ -308,25 +335,25 @@ function ExportFooter({ exporter, onDone, post, ...choice }: ChoiceProps & { exp
   );
 }
 
-const AGAIN = "Click Export video again to choose where to save.";
+const again = (label: string) => `Click ${label} again to choose where to save.`;
 
 function StartButton({ exporter, ...choice }: ChoiceProps & { exporter: Exporter }) {
   const deps = useExportDeps();
   const editor = useEditorStore();
-  const { option, frames, canStart, canSaveFrame, span } = useChoices(choice);
+  const { option, frames, canStart, canSaveFrame, span, kind, sound } = useChoices(choice);
   // The footer's one alert line: a second click wanted, or why a frame wasn't saved. Each click clears it.
   const [alert, setAlert] = useState<string | null>(null);
   // One frame saved at a time. The ref refuses a second click in the same tick, before the button is drawn off.
   const [saving, setSaving] = useState(false);
   const savingNow = useRef(false);
   if (!choice.support?.browser) return null;
-  const audio = choice.support.audio;
+  const label = START_LABEL(kind);
   // The second click of a double-click lands on what replaced the first's button, or on the same one again: it starts
   // nothing. A key press has detail 0.
   const start = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.detail > 1 || !option) return;
     setAlert(null);
-    void exporter.start(option.id, audio, choice.full, choice.quality, span).then((answer) => setAlert(answer === "again" ? AGAIN : null));
+    void exporter.start(option.id, sound, choice.full && kind.picture, choice.quality, span, kind.id).then((answer) => setAlert(answer === "again" ? again(label) : null));
   };
   const saveFrame = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.detail > 1 || !option || savingNow.current) return;
@@ -357,7 +384,7 @@ function StartButton({ exporter, ...choice }: ChoiceProps & { exporter: Exporter
         Save frame as image
       </Button>
       <Button variant="primary" disabled={!canStart} onClick={start}>
-        Export video
+        {label}
       </Button>
     </>
   );

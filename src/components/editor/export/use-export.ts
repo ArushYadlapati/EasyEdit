@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createStore, type StoreApi } from "zustand";
 import { exportFileName, sameDoc } from "@/lib/export/facts";
-import { exportSize, type ExportPresetId, type ExportQuality } from "@/lib/export/presets";
+import { exportSize, type ExportFormat, type ExportPresetId, type ExportQuality } from "@/lib/export/presets";
 import { rangeDoc, type Span } from "@/lib/editor/export-range";
 import type { ExportOutcome } from "@/lib/export/protocol";
 import { exportVideo } from "@/lib/export/run";
@@ -20,7 +20,8 @@ export type Exporter = {
   // originals: full quality, with each video's picture from its original file.
   // quality: how many bits the picture gets; standard when left out.
   // span: the part of the project to export; all of it when left out.
-  start(preset: ExportPresetId, sound: boolean, originals?: boolean, quality?: ExportQuality, span?: Span | null): Promise<"again" | void>;
+  // format: the kind of file; an MP4 when left out.
+  start(preset: ExportPresetId, sound: boolean, originals?: boolean, quality?: ExportQuality, span?: Span | null, format?: ExportFormat): Promise<"again" | void>;
   cancel(): void;
   reset(): void; // also drops a held file
   download(): void; // hands a held file to the browser; call it inside a click
@@ -67,7 +68,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
       if (running.current.mounted) store.setState(exportReducer(store.getState(), event), true);
     };
 
-    async function start(preset: ExportPresetId, sound: boolean, originals = false, quality: ExportQuality = "standard", span: Span | null = null): Promise<"again" | void> {
+    async function start(preset: ExportPresetId, sound: boolean, originals = false, quality: ExportQuality = "standard", span: Span | null = null, format: ExportFormat = "mp4"): Promise<"again" | void> {
       const now = running.current;
       if (now.busy) return;
       now.busy = true;
@@ -78,7 +79,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
         const size = exportSize(doc, preset);
         if (!size) return;
         // Asked before anything else is awaited: the browser opens its save dialog only inside the click.
-        const picked = await deps.pickTarget(exportFileName(name, preset));
+        const picked = await deps.pickTarget(exportFileName(name, preset, format), format);
         if (picked === "again") return "again";
         // Closed without a choice, or the editor closed while it was open: nothing starts. The empty file the save
         // dialog made stays where the person saved it.
@@ -107,6 +108,7 @@ export function useExport(options: ExportOptions = {}): Exporter {
             sound,
             originals,
             quality,
+            format,
           },
           deps,
         );

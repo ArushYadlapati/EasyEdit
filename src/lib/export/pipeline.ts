@@ -4,7 +4,8 @@ import { mismatchedProbe, type FontFaceSpec } from "@/lib/export/fonts";
 import { mediaSchedule } from "@/lib/export/media-schedule";
 import { clipSizes } from "@/lib/export/needed-size";
 import { ExportError, failureOf } from "@/lib/export/messages";
-import { AUDIO, type Acceleration, type VideoSettings } from "@/lib/export/presets";
+import { gifStep } from "@/lib/export/gif";
+import { AUDIO, formatFacts, soundCodec, type Acceleration, type ExportFormat, type SoundCodec, type VideoSettings } from "@/lib/export/presets";
 import type { ExportFailure, ExportJob, FromWorker } from "@/lib/export/protocol";
 import { PROGRESS_INTERVAL_MS, audioBlocks, frameCount, frameTime, isKeyFrame, type AudioBlock } from "@/lib/export/schedule";
 import { createSoundPool, type SoundIO, type SoundPool } from "@/lib/export/sound-pool";
@@ -15,7 +16,7 @@ import type { ResolvedSource } from "@/lib/render/compositor";
 // passes or ends the export with the failure it names. The frame loop waits only on the encoder's and the decoders'
 // promises, never on a timer, so a slow disk, encoder or decoder holds the next frame back and a hidden tab does not.
 
-export type OpenOptions = { video: VideoSettings; acceleration: Acceleration; audio: boolean };
+export type OpenOptions = { video: VideoSettings; acceleration: Acceleration; audio: boolean; format: ExportFormat };
 
 // One open encoder and file writer. The worker entry builds it from an OffscreenCanvas and Mediabunny.
 export type PipelineOutput = {
@@ -32,7 +33,7 @@ export type PipelineIO = {
   measure(font: string, text: string): number;
   canFinish(): boolean; // whether the graphics card is there to grade and stylise a picture (render/finish-gl.ts)
   canEncode(video: VideoSettings, acceleration: Acceleration): Promise<boolean>;
-  canEncodeAudio(): Promise<boolean>;
+  canEncodeAudio(codec: SoundCodec): Promise<boolean>; // whether the format's sound can be made here
   media: MediaIO;
   sound: SoundIO;
   open(options: OpenOptions): Promise<PipelineOutput>;
@@ -77,6 +78,8 @@ function letGo(release: () => Promise<unknown>): void {
 async function steps(job: ExportJob, io: PipelineIO, control: PipelineControl, held: Held): Promise<PipelineResult> {
   const { video, acceleration } = job;
   const fps = video.fps;
+  const format = job.format ?? "mp4";
+  const kind = formatFacts(format);
 
   // 1–2. A browser that can export, and something to export.
   if (!io.supported()) return failed("unsupported");
@@ -96,25 +99,30 @@ async function steps(job: ExportJob, io: PipelineIO, control: PipelineControl, h
   // plain where the preview is not, so the export stops instead.
   if (needsFinisher(job.doc) && !io.canFinish()) return failed("effects");
 
-  // 5. This computer can encode this size.
-  if (!(await io.canEncode(video, acceleration))) return failed("size");
+  // 5. This computer can encode this size. A GIF and a file of sound alone use no video encoder.
+  if (kind.encodes && !(await io.canEncode(video, acceleration))) return failed("size");
 
   // 6. Every video file can be decoded here, before the encoder opens. Each clip's picture is decoded at the size this
-  // export draws it.
-  let pool: DecodePool;
-  try {
-    const sizeOf = clipSizes(job.doc, { width: video.width, height: video.height });
-    pool = createDecodePool(mediaSchedule(job.doc, job.media.clips), job.media.files, io.media, sizeOf);
-    await pool.open();
-  } catch (error) {
-    const { code, detail } = failureOf(error, "decode");
-    return failed(code, detail);
+  // export draws it. A file of sound alone draws nothing, so it opens no picture.
+  let pool: DecodePool | null = null;
+  if (kind.picture) {
+    try {
+      const sizeOf = clipSizes(job.doc, { width: video.width, height: video.height });
+      pool = createDecodePool(mediaSchedule(job.doc, job.media.clips), job.media.files, io.media, sizeOf);
+      await pool.open();
+    } catch (error) {
+      const { code, detail } = failureOf(error, "decode");
+      return failed(code, detail);
+    }
+    held.pool = pool;
   }
-  held.pool = pool;
 
-  // 7. A sound track only when the page planned one and this worker can encode AAC: the page and the worker ask
-  // separately, so a page that said "no sound track" never gets a silent one.
-  const audio = job.sound && (await answer(() => io.canEncodeAudio()));
+  // 7. A sound track only when the page planned one and this worker can encode it: the page and the worker ask
+  // separately, so a page that said "no sound track" never gets a silent one. A GIF has none.
+  const codec = soundCodec(format);
+  const audio = job.sound && codec !== null && (await answer(() => io.canEncodeAudio(codec)));
+  // A file of sound alone with no sound would be empty.
+  if (!kind.picture && !audio) return failed("unsupported", "no sound encoder for a sound-only file");
 
   // 7b. Every sounding file can be decoded here, before the file is made.
   let sounds: SoundPool | null = null;
@@ -132,13 +140,15 @@ async function steps(job: ExportJob, io: PipelineIO, control: PipelineControl, h
   // 8. The encoder.
   let out: PipelineOutput;
   try {
-    out = await io.open({ video, acceleration, audio });
+    out = await io.open({ video, acceleration, audio, format });
   } catch (error) {
     return failed("encoder", failureOf(error, "encoder").detail);
   }
   held.out = out;
 
-  // 9. Each frame waits for its sound block, its pictures and the encoder's room before the next is drawn.
+  // 9. Each frame waits for its sound block, its pictures and the encoder's room before the next is drawn. A GIF
+  // draws every few frames, each shown until the next; a file of sound alone draws none.
+  const step = format === "gif" ? gifStep(fps) : 1;
   const blocks = new Map<number, AudioBlock>(audio ? audioBlocks(total, fps, AUDIO.sampleRate).map((block) => [block.beforeFrame, block]) : []);
   let reported: number | null = null;
   for (let n = 0; n < total; n++) {
@@ -150,16 +160,21 @@ async function steps(job: ExportJob, io: PipelineIO, control: PipelineControl, h
       });
       await as("encoder", () => out.addSound(block.startSample, block.sampleCount, data));
     }
-    const sources = await pool.frame(n).catch((error: unknown) => {
-      const { code, detail } = failureOf(error, "decode"); // the pool names media, decode or encoder itself
-      throw new ExportError(code, detail);
-    });
-    try {
-      out.draw(n, sources);
-    } catch (error) {
-      throw new ExportError("unknown", failureOf(error, "unknown").detail);
+    if (pool) {
+      // Asked for every frame, drawn or not: the decoders read each file in order.
+      const sources = await pool.frame(n).catch((error: unknown) => {
+        const { code, detail } = failureOf(error, "decode"); // the pool names media, decode or encoder itself
+        throw new ExportError(code, detail);
+      });
+      if (n % step === 0) {
+        try {
+          out.draw(n, sources);
+        } catch (error) {
+          throw new ExportError("unknown", failureOf(error, "unknown").detail);
+        }
+        await as("encoder", () => out.addFrame(n, frameTime(n, fps), Math.min(step, total - n) / fps, isKeyFrame(n, fps)));
+      }
     }
-    await as("encoder", () => out.addFrame(n, frameTime(n, fps), 1 / fps, isKeyFrame(n, fps)));
 
     const now = control.now();
     if (reported === null || now - reported >= PROGRESS_INTERVAL_MS || n + 1 === total) {

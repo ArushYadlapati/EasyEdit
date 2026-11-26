@@ -1,4 +1,4 @@
-import type { ExportSize } from "@/lib/export/presets";
+import type { ExportFormat, ExportSize } from "@/lib/export/presets";
 import type { RunDeps } from "@/lib/export/run";
 import type { ExportTarget } from "@/lib/export/sinks";
 import type { SupportProbe } from "@/lib/export/support";
@@ -15,7 +15,8 @@ export type PickedTarget = { target: ExportTarget; fileName: string; held: (() =
 export type ExportDeps = RunDeps & {
   supportProbe: SupportProbe;
   savesToFile: boolean; // this browser has a save dialog; without one the bytes are held for a Download click
-  pickTarget(suggestedName: string): Promise<PickedTarget | null | "again">; // null: closed without a choice; "again": the dialog could not open
+  // null: closed without a choice; "again": the dialog could not open. format: the kind of file; an MP4 when left out.
+  pickTarget(suggestedName: string, format?: ExportFormat): Promise<PickedTarget | null | "again">;
   download(blob: Blob, fileName: string): void; // hands a held file to the browser; call it inside a click
   keepRunning(): () => void; // tells the browser the tab is busy; call the result when the export ends
   now(): number;

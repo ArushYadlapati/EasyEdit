@@ -1,6 +1,6 @@
 import type { ClipMedia } from "@/lib/export/media-schedule";
 import type { FontBundle } from "@/lib/export/fonts";
-import type { Acceleration, VideoSettings } from "@/lib/export/presets";
+import type { Acceleration, ExportFormat, VideoSettings } from "@/lib/export/presets";
 import type { TimelineDoc } from "@/lib/timeline";
 
 // The one place the shapes an export passes between the page and its worker are written. Types only.
@@ -18,6 +18,7 @@ export type ExportJob = {
   fonts: FontBundle;
   media: ExportMedia;
   sound: boolean; // the page's answer: the file carries a sound track only if the page said so too
+  format?: ExportFormat; // the kind of file; an MP4 when left out
 };
 
 // Every destination takes a write at any position it already holds, so the worker always writes the index at the

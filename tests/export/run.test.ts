@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FontBundle } from "@/lib/export/fonts";
 import { ExportError } from "@/lib/export/messages";
-import type { ExportSize } from "@/lib/export/presets";
+import type { ExportFormat, ExportSize } from "@/lib/export/presets";
 import type { ExportMedia, ExportOutcome } from "@/lib/export/protocol";
 import { exportVideo, type ExportRequest, type RunDeps } from "@/lib/export/run";
 import { MEMORY_LIMIT_BYTES } from "@/lib/export/sinks";
@@ -11,7 +11,7 @@ import { NO_FONTS, NO_MEDIA, fakeTarget, fakeWorker, file, tick, type FakeTarget
 
 type Over = {
   doc?: TimelineDoc; size?: ExportSize; target?: FakeTarget; collectFonts?: () => Promise<FontBundle>; createWorker?: () => FakeWorker;
-  collectMedia?: RunDeps["collectMedia"]; aborted?: boolean; sound?: boolean;
+  collectMedia?: RunDeps["collectMedia"]; aborted?: boolean; sound?: boolean; format?: ExportFormat;
 };
 
 function start(over: Over = {}) {
@@ -27,6 +27,7 @@ function start(over: Over = {}) {
     doc: over.doc ?? sampleDoc(), size: over.size ?? { width: 1080, height: 1920 }, target, signal: abort.signal,
     onProgress: (p) => progress.push([p.attempt, p.framesDone, p.totalFrames]),
     onReading: (filesRead, totalFiles) => reading.push([filesRead, totalFiles]), sound: over.sound ?? true,
+    ...(over.format ? { format: over.format } : {}),
   };
   const createWorker = over.createWorker ?? (() => { const worker = fakeWorker(); workers.push(worker); return worker; });
   const done = exportVideo(request, {
@@ -52,7 +53,7 @@ describe("an ordinary export", () => {
     const [worker] = run.workers;
     expect(worker.posted).toEqual([{ type: "start", job: {
       doc: sampleDoc(), video: { width: 1080, height: 1920, fps: 30, codec: "avc1.640028", bitrate: 8_000_000 },
-      acceleration: "no-preference", fonts: NO_FONTS, media: NO_MEDIA, sound: true,
+      acceleration: "no-preference", fonts: NO_FONTS, media: NO_MEDIA, sound: true, format: "mp4",
     } }]);
     worker.emit(chunk(0));
     worker.emit(chunk(1));
@@ -283,6 +284,43 @@ describe("a cancel never waits", () => {
       await tick();
       expect([run.target.sinks[0].closed, run.target.sinks[0].aborted, run.target.discarded, run.workers[0].terminated], name).toEqual([1, 0, 0, 1]);
     }
+  });
+});
+
+describe("another kind of file", () => {
+  const job = async (format: ExportFormat) => {
+    const run = start({ format });
+    await tick();
+    const [message] = run.workers[0].posted;
+    return { run, job: message.type === "start" ? message.job : null };
+  };
+  it("is asked of the worker with its own picture: VP9 for a WebM, small and slow for a GIF, none for sound alone", async () => {
+    expect((await job("webm")).job).toMatchObject({ format: "webm", video: { width: 1080, height: 1920, fps: 30, codec: "vp09.00.40.08", bitrate: 8_000_000 } });
+    expect((await job("gif")).job).toMatchObject({ format: "gif", video: { width: 270, height: 480, fps: 30, codec: "gif" } });
+    expect((await job("m4a")).job).toMatchObject({ format: "m4a", video: { fps: 30, codec: "none", bitrate: 0 } });
+    expect((await job("wav")).job).toMatchObject({ format: "wav", video: { codec: "none" } });
+  });
+  it.each(["gif", "m4a", "wav"] as const)("a %s uses no video encoder, so a failed encoder is not tried again in software", async (format) => {
+    const { run } = await job(format);
+    run.workers[0].emit({ type: "failed", code: "encoder", detail: "x" });
+    expect(await run.done).toEqual({ status: "failed", code: "encoder", detail: "x" });
+    expect(run.workers).toHaveLength(1);
+  });
+  it("a WebM is tried again in software like an MP4", async () => {
+    const { run } = await job("webm");
+    run.workers[0].emit({ type: "failed", code: "encoder", detail: "x" });
+    await tick();
+    expect(run.workers[1].posted[0]).toMatchObject({ type: "start", job: { acceleration: "prefer-software", format: "webm" } });
+  });
+  it("a WAV too long to hold in memory is refused before anything is read: it is far larger than a video's sound", async () => {
+    // Ten minutes: 115 MB as a WAV, under 10 MB as an M4A.
+    const long = sampleDoc();
+    long.tracks[1].clips = [text("long", 0, 30 * 600)];
+    const limited = () => Object.assign(fakeTarget(), { limit: 50_000_000 });
+    expect(await start({ doc: long, format: "wav", target: limited() }).done).toMatchObject({ status: "failed", code: "too-long" });
+    const m4a = start({ doc: long, format: "m4a", target: limited() });
+    await tick();
+    expect(m4a.workers).toHaveLength(1);
   });
 });
 

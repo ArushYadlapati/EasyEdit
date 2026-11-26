@@ -387,3 +387,68 @@ describe("sound", () => {
     expect(soundLog.slice(-2)).toEqual(["dispose a.mp4", "stop a.mp4"]);
   });
 });
+
+describe("other kinds of file", () => {
+  const made = (format: NonNullable<ExportJob["format"]>, frames = 6, over: Partial<ExportJob> = {}) =>
+    job(frames, { format, video: videoSettings({ width: 1080, height: 1920 }, 30, "standard", format)!, ...over });
+  const opened = (over: Partial<PipelineIO> = {}) => {
+    const formats: string[] = [];
+    const asked: string[] = [];
+    const base = setup(over);
+    const open = base.io.open;
+    base.io.open = (options) => (formats.push(`${options.format} ${options.video.width}×${options.video.height}`), open(options));
+    if (!over.canEncodeAudio) base.io.canEncodeAudio = async (codec) => (asked.push(codec), true);
+    return { ...base, formats, asked };
+  };
+
+  it("a WebM goes through the same steps as an MP4, with Opus for its sound", async () => {
+    const { io, log, formats, asked, control } = opened();
+    expect(await runPipeline(made("webm", 3), io, control)).toEqual({ type: "done", bytes: 4_321, hasAudio: true });
+    expect([formats, asked]).toEqual([["webm 1080×1920"], ["opus"]]);
+    expect(log.slice(2)).toEqual(["can no-preference", "open no-preference audio=true", "sound 0+4800", "draw 0", "frame 0 key", "draw 1", "frame 1", "draw 2", "frame 2", "finish"]);
+  });
+
+  it("a GIF asks for no encoder, has no sound, and draws every second frame, each shown until the next", async () => {
+    const { io, log, times, formats, asked, reports, control } = opened({ canEncode: async () => { throw new Error("a GIF never asks"); } });
+    expect(await runPipeline(made("gif", 7), io, control)).toEqual({ type: "done", bytes: 4_321, hasAudio: false });
+    expect([formats, asked]).toEqual([["gif 270×480"], []]);
+    expect(log.slice(2)).toEqual(["open no-preference audio=false", "draw 0", "frame 0 key", "draw 2", "frame 2", "draw 4", "frame 4", "draw 6", "frame 6", "finish"]);
+    // Two frames each, and the last one only the frame that is left.
+    expect(times.map(([frame, , duration]) => [frame, Math.round(duration * 30)])).toEqual([[0, 2], [2, 2], [4, 2], [6, 1]]);
+    expect(reports.at(-1)).toEqual([7, 7]);
+  });
+
+  it("a GIF still reads every frame's pictures in order, drawn or not", async () => {
+    const d = docWithCaptions("short_9x16");
+    d.tracks[0].clips = [video("v", 0, 4)];
+    const { io, log, control } = opened();
+    const media = { files: { f: file("f") }, clips: { v: { fileId: "f" } }, sounds: {} };
+    expect(await runPipeline({ ...made("gif"), doc: d, media }, io, control)).toMatchObject({ type: "done" });
+    expect(log.filter((l) => l.startsWith("draw"))).toEqual(["draw 0", "draw 2"]);
+  });
+
+  it.each(["m4a", "wav"] as const)("a %s draws nothing and opens no picture: only the sound is written", async (format) => {
+    const d = docWithCaptions("short_9x16");
+    d.tracks[0].clips = [video("v", 0, 45)];
+    const { io, log, formats, asked, reports, control } = opened({ canEncode: async () => { throw new Error("sound alone never asks"); } });
+    const media = { files: { f: file("f") }, clips: { v: { fileId: "f" } }, sounds: {} };
+    expect(await runPipeline({ ...made(format), doc: d, media }, io, control)).toEqual({ type: "done", bytes: 4_321, hasAudio: true });
+    expect(asked).toEqual([format === "wav" ? "pcm" : "aac"]);
+    expect(formats).toEqual([`${format} 1080×1920`]);
+    expect(log.filter((l) => !l.startsWith("face"))).toEqual(["open no-preference audio=true", "sound 0+48000", "sound 48000+24000", "finish"]);
+    expect(reports.at(-1)).toEqual([45, 45]);
+  });
+
+  it("a file of sound alone that cannot have its sound is refused, not written empty", async () => {
+    const { io, log, control } = opened({ canEncodeAudio: async () => false });
+    expect(await runPipeline(made("m4a"), io, control)).toMatchObject({ type: "failed", code: "unsupported" });
+    expect(await runPipeline(made("wav", 6, { sound: false }), io, control)).toMatchObject({ type: "failed", code: "unsupported" });
+    expect(log.filter((l) => l.startsWith("open"))).toEqual([]);
+  });
+
+  it("a job that names no format is an MP4", async () => {
+    const { io, formats, asked, control } = opened();
+    await runPipeline(job(2), io, control);
+    expect([formats, asked]).toEqual([["mp4 1080×1920"], ["aac"]]);
+  });
+});

@@ -1,7 +1,8 @@
-import { canEncodeAac } from "@/lib/export/aac";
+import { canEncodeAac, canEncodeOpus } from "@/lib/export/aac";
 import { gatherMedia, type ExportMediaDeps } from "@/lib/export/gather-media";
 import { ExportError } from "@/lib/export/messages";
-import { fileTarget, memoryTarget } from "@/lib/export/sinks";
+import { formatFacts, type ExportFormat } from "@/lib/export/presets";
+import { MEMORY_LIMIT_BYTES, fileTarget, memoryTarget } from "@/lib/export/sinks";
 import type { SupportProbe } from "@/lib/export/support";
 import { createPosting } from "@/lib/social/post-client";
 import { loadMediabunny } from "../media/frame-decode";
@@ -18,7 +19,7 @@ import { savePageFrame } from "./save-frame";
 type SaveDialogOptions = {
   suggestedName: string;
   id: string;
-  startIn: "videos";
+  startIn: "videos" | "music" | "pictures";
   types: { description: string; accept: Record<string, string[]> }[];
 };
 type WithSaveDialog = { showSaveFilePicker?: (options: SaveDialogOptions) => Promise<FileSystemFileHandle> };
@@ -27,16 +28,17 @@ const page = () => globalThis as WithSaveDialog;
 
 const errorName = (error: unknown) => (typeof error === "object" && error !== null && "name" in error ? error.name : null);
 
-async function pickTarget(suggestedName: string): Promise<PickedTarget | null | "again"> {
+async function pickTarget(suggestedName: string, format: ExportFormat = "mp4"): Promise<PickedTarget | null | "again"> {
   const scope = page();
+  const facts = formatFacts(format);
   if (typeof scope.showSaveFilePicker === "function") {
     try {
       // Asked at once, inside the click that started the export: the browser opens the dialog only then.
       const handle = await scope.showSaveFilePicker({
         suggestedName,
         id: "easyedit-export",
-        startIn: "videos",
-        types: [{ description: "MP4 video", accept: { "video/mp4": [".mp4"] } }],
+        startIn: !facts.picture ? "music" : format === "gif" ? "pictures" : "videos",
+        types: [{ description: facts.saveAs, accept: { [facts.mime]: [`.${facts.extension}`] } }],
       });
       // The save dialog gave leave to write the file, which covers reading it back.
       const read = async () => {
@@ -56,9 +58,13 @@ async function pickTarget(suggestedName: string): Promise<PickedTarget | null | 
   }
   let saved: Blob | null = null;
   return {
-    target: memoryTarget((blob) => {
-      saved = blob;
-    }),
+    target: memoryTarget(
+      (blob) => {
+        saved = blob;
+      },
+      MEMORY_LIMIT_BYTES,
+      facts.mime,
+    ),
     fileName: suggestedName,
     held: () => saved,
   };
@@ -76,6 +82,7 @@ const supportProbe = (): SupportProbe => ({
     }
   },
   canEncodeAudio: canEncodeAac,
+  canEncodeOpus,
 });
 
 // Tells the browser the tab is busy for as long as the export runs, with a Web Lock of this export's own: one shared

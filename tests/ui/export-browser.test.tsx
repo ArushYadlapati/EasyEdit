@@ -73,8 +73,9 @@ it("holds the bytes when there is no save dialog, and leaves saving them to a cl
 
 it("says no where the browser has no video encoder", async () => {
   expect(deps().supportProbe.hasVideoEncoder).toBe(false); // happy-dom has none
-  expect(await checkSupport(deps().supportProbe, { width: 1080, height: 1920, fps: 30 })).toEqual({ browser: false, sizes: {}, audio: false });
+  expect(await checkSupport(deps().supportProbe, { width: 1080, height: 1920, fps: 30 })).toEqual({ browser: false, sizes: {}, audio: false, webm: {}, opus: false });
   expect(await deps().supportProbe.canEncodeAudio()).toBe(false);
+  expect(await deps().supportProbe.canEncodeOpus?.()).toBe(false);
 });
 
 it("holds a lock of its own for as long as the export runs, and copes without Web Locks", async () => {
