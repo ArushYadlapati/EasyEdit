@@ -1,15 +1,18 @@
 import type { Metadata, Viewport } from "next";
 import { DARK_READER_LOCK_WHEN_DARK } from "@/lib/color-scheme";
+import { SITE_DESCRIPTION } from "@/lib/home/site-description";
 import { FONT_VARIABLE_CLASSES } from "./fonts";
 import "./globals.css";
 
-const DESCRIPTION = "The AI-first video editor for teams, right in your browser.";
+const DESCRIPTION = SITE_DESCRIPTION;
 
-// Link previews (Discord, Slack, iMessage) read the Open Graph tags first, so they carry the same text.
+// Link previews (Discord, Slack, iMessage) read the Open Graph tags first, so they carry the same text, with the
+// picture in opengraph-image.tsx shown large.
 export const metadata: Metadata = {
   title: "EasyEdit",
   description: DESCRIPTION,
   openGraph: { title: "EasyEdit", description: DESCRIPTION, siteName: "EasyEdit", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 // <meta name="color-scheme">: pages follow the computer's light or dark setting, and the editor, the dashboard and the

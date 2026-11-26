@@ -49,7 +49,7 @@ describe("where sign-in may send a person next", () => {
 });
 
 describe("the home page's project, kept in the tab", () => {
-  const kept = { name: "Beach day recap", format: "long_16x9", width: "1080", height: "1080", asked: true };
+  const kept = { name: "Beach day recap", format: "long_16x9" as const, width: "1080", height: "1080", asked: true };
 
   it("reads back what the form wrote", () => {
     expect(parseDraft(JSON.stringify(kept))).toEqual(kept);
