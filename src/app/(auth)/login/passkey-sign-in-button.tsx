@@ -17,9 +17,14 @@ function isRedirect(data: unknown): boolean {
 const DEFAULT_LOOK =
   "h-11 w-full rounded-full bg-foreground/15 px-5 font-medium text-foreground transition-[background-color,opacity] hover:bg-foreground/20 disabled:opacity-60";
 
-// openSignUp: whether anyone may make an account, as the login page read it on the server. className: the button's
-// look, which the sign-in page sets to the public site's quieter pill.
-export function PasskeySignInButton({ openSignUp = false, className = DEFAULT_LOOK }: { openSignUp?: boolean; className?: string } = {}) {
+// openSignUp: whether anyone may make an account, as the login page read it on the server. next: where to go once signed
+// in, an address on this site the page has already checked (the dashboard when left out). className: the button's look,
+// which the sign-in page sets to the public site's quieter pill.
+export function PasskeySignInButton({
+  openSignUp = false,
+  next = "/dashboard",
+  className = DEFAULT_LOOK,
+}: { openSignUp?: boolean; next?: string; className?: string } = {}) {
   // The server and hydration render without the button; the browser then shows it only if it has WebAuthn.
   const supported = useSyncExternalStore(
     noSubscription,
@@ -42,8 +47,8 @@ export function PasskeySignInButton({ openSignUp = false, className = DEFAULT_LO
       if (!error) {
         // Stays disabled while the browser leaves.
         if (isRedirect(data)) return;
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full load, as after Google's sign-in, so the app starts fresh with the new session.
-        window.location.assign("/dashboard");
+        // A full load, as after Google's sign-in, so the app starts fresh with the new session.
+        window.location.assign(next);
         return;
       }
       message = passkeySignInErrorMessage(error, openSignUp);

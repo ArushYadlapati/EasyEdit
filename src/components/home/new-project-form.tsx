@@ -1,27 +1,43 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
 import { BlankFrame } from "@/components/dashboard/blank-frame";
 import { FormatCards } from "@/components/dashboard/format-cards";
 import { Field } from "@/components/ui/field";
 import { TextInput } from "@/components/ui/text-input";
+import { readDraft, START_PATH, UNTITLED, writeDraft, type FirstProjectDraft } from "@/lib/home/first-project";
+import { loginHref } from "@/lib/home/safe-next";
 import { LIMITS } from "@/lib/limits";
 import { DEFAULT_FPS, FORMAT_PRESETS, FRAME_SIZE_MESSAGE, isFrameSize, type FormatId, type FrameSize } from "@/lib/timeline";
 
 // The dashboard's New project dialog (components/dashboard/new-project-dialog.tsx) made simpler for the home page:
 // the same Name field, format cards and blank frame, with sizes in pixels only and no folder, set at the page's own
 // sizes (home.css). The frame shows a still of real footage in the chosen shape, with the name on it as the project's
-// title: a text clip with your selection round it, as the editor draws it. Nothing is created here; Create project
-// goes to sign in, where the real dialog waits on the dashboard.
+// title: a text clip with your selection round it, as the editor draws it. What is typed and chosen is kept in this tab
+// (lib/home/first-project.ts), so Back to the page finds it again; Create project goes to sign in, which carries on to
+// /new, where the project is made with the dashboard's own create and opened in the editor.
 
 const DEFAULT_FORMAT = "short_9x16" satisfies FormatId;
 
+const noSubscription = () => () => {};
+
+// The server, and the browser while it takes the page over, draw the defaults; then the form starts again from what was
+// kept in this tab (Back from sign-in), and only from then on keeps what changes, so the defaults never overwrite it.
 export function NewProjectForm() {
+  const inBrowser = useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false,
+  );
+  return inBrowser ? <Form key="kept" kept={readDraft()} keep /> : <Form key="first" kept={null} keep={false} />;
+}
+
+function Form({ kept, keep }: { kept: FirstProjectDraft | null; keep: boolean }) {
   const router = useRouter();
-  const [name, setName] = useState("My first video");
-  const [format, setFormat] = useState<FormatId>(DEFAULT_FORMAT);
-  const [custom, setCustom] = useState({ width: "1080", height: "1080" });
+  const [name, setName] = useState(kept?.name ?? "My first video");
+  const [format, setFormat] = useState<FormatId>(kept?.format ?? DEFAULT_FORMAT);
+  const [custom, setCustom] = useState({ width: kept?.width ?? "1080", height: kept?.height ?? "1080" });
 
   const typed = { width: Number(custom.width), height: Number(custom.height) };
   const customFits = Number.isInteger(typed.width) && Number.isInteger(typed.height) && isFrameSize(typed.width, typed.height);
@@ -29,9 +45,15 @@ export function NewProjectForm() {
   const [shown, setShown] = useState<FrameSize>(FORMAT_PRESETS[DEFAULT_FORMAT]); // the last size that fits, drawn
   if (size && (size.width !== shown.width || size.height !== shown.height)) setShown(size);
 
+  useEffect(() => {
+    if (keep) writeDraft({ name, format, width: custom.width, height: custom.height, asked: false });
+  }, [keep, name, format, custom]);
+
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (size) router.push("/login");
+    if (!size) return;
+    writeDraft({ name, format, width: custom.width, height: custom.height, asked: true });
+    router.push(loginHref(START_PATH));
   }
 
   // The fields come first for the keyboard and on a phone; on a computer the picture sits on the left and the fields,
@@ -86,7 +108,7 @@ export function NewProjectForm() {
             decoding="async"
           />
           <span className="h-npName">
-            <span className="h-npNameText">{name.trim() || "Untitled project"}</span>
+            <span className="h-npNameText">{name.trim() || UNTITLED}</span>
             <span className="h-npSel">
               <span className="h-edPeerTag">You</span>
               <span className="h-edHandle" data-at="tl" />
@@ -104,7 +126,7 @@ export function NewProjectForm() {
         <button type="submit" className="h-btn" disabled={!size}>
           Create project
         </button>
-        <p className="h-npNote">You&apos;ll sign in with Google first.</p>
+        <p className="h-npNote">You&apos;ll sign in with Google, then it opens in the editor.</p>
       </div>
     </form>
   );

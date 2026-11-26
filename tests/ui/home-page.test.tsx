@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "@/app/page";
 import { AgentDemo, REQUESTS } from "@/components/home/agent-demo";
 import { NewProjectForm } from "@/components/home/new-project-form";
+import { FIRST_PROJECT_KEY } from "@/lib/home/first-project";
 import PrivacyPage from "@/app/privacy/page";
 import TermsPage from "@/app/terms/page";
 import type { CurrentUser } from "@/lib/access-rules";
@@ -743,7 +744,10 @@ describe("home page stylesheet (home.css)", () => {
 });
 
 describe("home page new project form", () => {
-  beforeEach(() => push.mockClear());
+  beforeEach(() => {
+    push.mockClear();
+    window.sessionStorage.clear();
+  });
 
   it("shows the typed name in the preview and the chosen format's size", () => {
     render(<NewProjectForm />);
@@ -762,10 +766,40 @@ describe("home page new project form", () => {
     expect(screen.getByRole("button", { name: "Create project" }).hasAttribute("disabled")).toBe(true);
   });
 
-  it("Create project goes to sign in", () => {
+  it("Create project keeps the name and format in the tab and goes to sign in, which carries on to /new", () => {
     render(<NewProjectForm />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Beach day recap" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Landscape 16:9/ }));
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
-    expect(push).toHaveBeenCalledWith("/login");
+    expect(push).toHaveBeenCalledWith("/login?next=%2Fnew");
+    expect(JSON.parse(window.sessionStorage.getItem(FIRST_PROJECT_KEY)!)).toEqual({
+      name: "Beach day recap",
+      format: "long_16x9",
+      width: "1080",
+      height: "1080",
+      asked: true,
+    });
+  });
+
+  it("finds what was typed again on the way Back from sign-in, not yet asked for", () => {
+    const first = render(<NewProjectForm />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Dog park" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Custom size/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Width (px)" }), { target: { value: "1200" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+    first.unmount();
+
+    render(<NewProjectForm />);
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Name" }).value).toBe("Dog park");
+    expect(screen.getByRole("radio", { name: /Custom size/ }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Width (px)" }).value).toBe("1200");
+    expect(JSON.parse(window.sessionStorage.getItem(FIRST_PROJECT_KEY)!).asked).toBe(false);
+  });
+
+  it("starts from the defaults when nothing usable was kept", () => {
+    window.sessionStorage.setItem(FIRST_PROJECT_KEY, "{not json");
+    render(<NewProjectForm />);
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Name" }).value).toBe("My first video");
   });
 
   it("puts the preview's frame in a box with a definite height", () => {
@@ -848,7 +882,7 @@ describe("home page new project form", () => {
     const form = container.querySelector("form")!;
     const order = [".h-npFields", ".h-npPreview", ".h-npActions"].map((s) => form.querySelector(s));
     expect([...form.children]).toEqual(order);
-    expect(within(order[2] as HTMLElement).getByText("You'll sign in with Google first.")).toBeTruthy();
+    expect(within(order[2] as HTMLElement).getByText("You'll sign in with Google, then it opens in the editor.")).toBeTruthy();
     // No dialog chrome around it any more: the section's heading names it.
     expect(form.querySelector(".h-npHead, .h-npFoot")).toBeNull();
     expect(screen.queryByText("New project")).toBeNull();

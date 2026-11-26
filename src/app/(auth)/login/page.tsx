@@ -9,6 +9,8 @@ import { isConnectorRequest, readConsentRequest } from "@/lib/connector/consent"
 import { requiredEnv } from "@/lib/env";
 import { openSignUp } from "@/lib/signup";
 import { loginErrorMessage } from "@/lib/login-error-message";
+import { START_PATH } from "@/lib/home/first-project";
+import { loginHref, safeNext } from "@/lib/home/safe-next";
 import { PasskeySignInButton } from "./passkey-sign-in-button";
 import { SignInButton } from "./sign-in-button";
 import { SignInPicture } from "./sign-in-picture";
@@ -28,8 +30,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const errorMessage = loginErrorMessage(Array.isArray(error) ? error[0] : error, open);
   // Sent here by the sign-in server while connecting an AI agent: signing in carries on with that request.
   const forClaude = isConnectorRequest(params);
+  // Where to go once signed in (`next`, only an address on this site): the home page's Create project sends /new, which
+  // makes the project the visitor asked for and opens it. Not while connecting an agent, which carries on its own way.
+  const next = forClaude ? null : safeNext(params.next);
   // Decided by the allowlist, not by cookie presence, so a removed user's stale cookie cannot loop.
-  if (!forClaude && (await getCurrentUser())) redirect("/dashboard");
+  if (!forClaude && (await getCurrentUser())) redirect(next ?? "/dashboard");
   // The same check as the consent page: a request that has expired or was changed cannot carry on after sign-in.
   const request = forClaude ? await readConsentRequest(getDb(), requiredEnv("BETTER_AUTH_SECRET"), params) : null;
   const expired = request !== null && !request.ok;
@@ -42,6 +47,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <div className="h-plainColumn h-signColumn">
           <h1 className="h-plainTitle">Sign in</h1>
           {forClaude && !expired && <p className="h-plainLead h-plainInk">{`Sign in to connect ${agentName}.`}</p>}
+          {next === START_PATH && <p className="h-plainLead h-plainInk">Sign in, and your project opens in the editor.</p>}
           {expired && (
             <p role="alert" className={PLAIN_ERROR}>
               This connection request has expired. Go back to your AI agent and connect again.
@@ -64,8 +70,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           </p>
           {/* The site's own pills: white for Google, the quieter tint for a passkey. */}
           <div className="flex flex-col gap-3">
-            <SignInButton className="h-btn w-full" />
-            <PasskeySignInButton openSignUp={open} className="h-btn h-btnGhost w-full" />
+            <SignInButton
+              className="h-btn w-full"
+              {...(next ? { callbackURL: next, errorCallbackURL: loginHref(next) } : {})}
+            />
+            <PasskeySignInButton openSignUp={open} next={next ?? undefined} className="h-btn h-btnGhost w-full" />
           </div>
           {/* What signing in hands over, said before the Google screen asks, in the privacy page's own terms. */}
           <p className="h-signNote">
