@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPresenceApi, createProjectApi } from "@/lib/editor/api";
 import { createClipboard } from "@/lib/editor/clipboard";
 import type { Layout } from "@/lib/editor/layout";
@@ -14,6 +14,8 @@ import { createSync } from "@/lib/editor/sync";
 import { renderThumbnail } from "@/lib/editor/thumbnail";
 import { startThumbnailTrigger } from "@/lib/editor/thumbnail-trigger";
 import type { EditorInit } from "@/lib/editor/types";
+import { createReviewApi } from "@/lib/review/client";
+import { editorPath } from "@/lib/spaces/paths";
 import { docAssetIds } from "@/lib/media/library-store";
 import { readCookie, readKeymap, writeKeymap, writePrefsCookie } from "./browser-prefs";
 import { EditorProvider, useEditor, useEditorStore } from "./context";
@@ -25,6 +27,7 @@ import { BrandProvider } from "./brand/brand-context";
 import { CaptionsProvider } from "./captions/captions-context";
 import { MediaProvider, createMediaServices, gateStorage, useLibrary, type StorageProblem } from "./media/media-context";
 import { PresenceProvider } from "./presence-context";
+import { ReviewProvider } from "./review/review-context";
 import { browserThumbnailDeps } from "./thumbnail-deps";
 
 const ACTIVITY_THROTTLE_MS = 1000;
@@ -63,7 +66,7 @@ export type EditorSpace = {
 // (storageProblem: "none", no storage; "broken", its Google connection needs reconnecting; null when it is ready;
 // left out, it follows storageReady as MediaProvider says).
 export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: { initial: EditorInit; space: EditorSpace; layout?: Layout; prefs?: Prefs }) {
-  const [{ store, api, sync, clipboard, media, drop, settings, savePrefs, presenceStore }] = useState(() => {
+  const [{ store, api, sync, clipboard, media, drop, settings, savePrefs, presenceStore, review }] = useState(() => {
     const store = createEditorStore(initial, {
       view: { snapping: prefs.snapping, showSafeZones: prefs.safeZones, showGuides: prefs.guides, showAudioMeter: prefs.meter, audioMeterWidth: prefs.meterWidth },
     });
@@ -83,7 +86,8 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
     const settings = createSettingsStore({ prefs }, { prefs: savePrefs, keymap: (k) => writeKeymap(localStore, k) });
     const media = gateStorage(createMediaServices(space.id), space.storageReady);
     const drop = createMediaDrop({ store, library: media.library, queue: media.queue });
-    return { store, api, sync, clipboard: createClipboard(localStore), media, drop, settings, savePrefs, presenceStore };
+    const review = createReviewApi(initial.projectId);
+    return { store, api, sync, clipboard: createClipboard(localStore), media, drop, settings, savePrefs, presenceStore, review };
   });
 
   useEffect(() => {
@@ -263,6 +267,8 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
     };
   }, [store, sync, media, drop]);
 
+  const projectHref = useCallback((projectId: string) => editorPath(space.slug, projectId), [space.slug]);
+
   return (
     <EditorProvider store={store} api={api} clipboard={clipboard} settings={settings}>
       <MediaProvider
@@ -288,7 +294,9 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
         <EditorBrand spaceId={space.id}>
           <CaptionsProvider>
             <PresenceProvider store={presenceStore}>
-              <EditorScreen spaceSlug={space.slug} spaceId={space.id} initialLayout={layout} />
+              <ReviewProvider api={review} projectHref={projectHref}>
+                <EditorScreen spaceSlug={space.slug} spaceId={space.id} initialLayout={layout} />
+              </ReviewProvider>
             </PresenceProvider>
           </CaptionsProvider>
         </EditorBrand>

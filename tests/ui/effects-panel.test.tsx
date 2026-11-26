@@ -32,11 +32,11 @@ const row = (name: string) => screen.getByRole("group", { name });
 const box = (scope: HTMLElement, name: string) => within(scope).getByLabelText(name) as HTMLInputElement;
 
 describe("the right panel", () => {
-  it("has Inspect, Activity and Effects, in that order, and Effects shows the clip's effects", () => {
+  it("has Inspect, Activity, Effects and Review, in that order, and Effects shows the clip's effects", () => {
     const store = makeStore();
     store.getState().select(["c1"]);
     render(<EditorProvider store={store}><RightPanel /></EditorProvider>);
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Inspect", "Activity", "Effects"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Inspect", "Activity", "Effects", "Review"]);
     // Inspect no longer has the effects, and keeps the diamonds.
     expect(screen.queryByRole("heading", { name: "Transitions" })).toBeNull();
     expect(screen.getByRole("button", { name: "Add Scale keyframe" })).toBeTruthy();

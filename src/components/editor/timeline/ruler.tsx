@@ -4,6 +4,7 @@ import { memo, useMemo, useRef, type PointerEvent } from "react";
 import { HEADER_WIDTH, RULER_HEIGHT, frameToPx, pxToFrame, rulerTicks } from "@/lib/editor/geometry";
 import { markerLabel, sortedMarkers } from "@/lib/editor/markers";
 import { useEditor, useEditorStore } from "../context";
+import { useReview } from "../review/review-context";
 import { LANE_GUTTER, PlayheadHead } from "./playhead";
 
 type RulerProps = {
@@ -25,6 +26,9 @@ export const Ruler = memo(function Ruler({ zoom, fps, fromFrame, toFrame, max, e
   const { ticks } = useMemo(() => rulerTicks({ zoom, fps, fromFrame, toFrame }), [zoom, fps, fromFrame, toFrame]);
   const doc = useEditor((s) => s.doc);
   const markers = useMemo(() => sortedMarkers(doc).filter((m) => m.at >= fromFrame && m.at <= toFrame), [doc, fromFrame, toFrame]);
+  // The open comments' moments in the rendered range, one pin per thread.
+  const comments = useReview()?.comments;
+  const pins = useMemo(() => (comments ?? []).filter((c) => c.parentId === null && !c.resolved && c.frame >= fromFrame && c.frame <= toFrame), [comments, fromFrame, toFrame]);
 
   // The pointer's distance from frame 0; the gutter before frame 0 is part of the ruler.
   const lanePx = (clientX: number) => clientX - (laneRef.current?.getBoundingClientRect().left ?? 0) - LANE_GUTTER;
@@ -73,6 +77,18 @@ export const Ruler = memo(function Ruler({ zoom, fps, fromFrame, toFrame, max, e
             aria-hidden
             className="absolute bottom-0 h-3 w-2 -translate-x-1/2 bg-ed-accent [clip-path:polygon(0_0,100%_0,100%_60%,50%_100%,0_60%)]"
             style={{ left: LANE_GUTTER + frameToPx(marker.at, zoom) }}
+          />
+        ))}
+        {pins.map((pin) => (
+          // An open comment's moment: a dot on the ruler's bottom edge, under the time labels. A press on it is a
+          // press on the ruler, so it seeks there.
+          <span
+            key={pin.id}
+            data-comment-pin={pin.id}
+            title={`${pin.author}: ${pin.body.length > 80 ? `${pin.body.slice(0, 80)}…` : pin.body}`}
+            aria-hidden
+            className="absolute bottom-px size-2 -translate-x-1/2 rounded-full bg-ed-warn"
+            style={{ left: LANE_GUTTER + frameToPx(pin.frame, zoom) }}
           />
         ))}
         <PlayheadHead zoom={zoom} fps={fps} max={max} end={end} />

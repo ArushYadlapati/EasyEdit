@@ -12,6 +12,7 @@ export type TabsProps = {
   autoFocusSelected?: boolean; // marks the selected tab data-autofocus, so a Dialog focuses it on opening
   className?: string;
   compact?: boolean; // tighter padding, for a narrow panel
+  dense?: boolean; // tighter still, and closer together: four tabs in the editor's narrowest side panel
   wrap?: boolean; // tabs that don't fit go onto another row, each read in full, rather than being cut off
 };
 
@@ -30,7 +31,7 @@ const KEY_MOVES: Record<string, (index: number, count: number) => number> = {
 
 // A row of tabs. The arrow keys, Home and End move to a tab and show it. The caller renders the
 // panel: role="tabpanel", with id and aria-labelledby from tabIds(idPrefix, value).
-export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected = false, className, compact = false, wrap = false }: TabsProps) {
+export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected = false, className, compact = false, dense = false, wrap = false }: TabsProps) {
   const ownPrefix = useId();
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const current = tabs.findIndex((t) => t.id === value);
@@ -46,7 +47,7 @@ export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected
   }
 
   return (
-    <div role="tablist" aria-label={label} className={cx("flex min-w-0 items-center gap-1", wrap && "flex-wrap", className)}>
+    <div role="tablist" aria-label={label} className={cx("flex min-w-0 items-center", dense ? "gap-0.5" : "gap-1", wrap && "flex-wrap", className)}>
       {tabs.map((tab, index) => (
         <button
           key={tab.id}
@@ -63,7 +64,7 @@ export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected
           className={cx(
             "h-7 rounded-md text-xs font-medium text-ed-muted select-none hover:bg-ed-hover hover:text-ed-text",
             wrap ? "whitespace-nowrap" : "truncate",
-            compact ? "px-2" : "px-3",
+            dense ? "px-1.5" : compact ? "px-2" : "px-3",
             "aria-selected:bg-ed-accent-weak aria-selected:text-ed-accent aria-selected:hover:bg-ed-accent-weak aria-selected:hover:text-ed-accent",
             FOCUS_RING,
             FADE,

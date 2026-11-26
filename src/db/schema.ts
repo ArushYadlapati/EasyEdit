@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { AgentKind } from "@/lib/connector/agents";
 import type { CaptionWord, FormatId, Op, TimelineDoc } from "@/lib/timeline";
 import { organization, user } from "./auth-schema";
@@ -450,4 +450,43 @@ export const assetTranscripts = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [index("asset_transcripts_space_id_idx").on(t.spaceId)],
+);
+
+// Review comments: notes left at a moment (a frame) of a project by the people of its space. A reply names the
+// comment it answers (one level deep) and goes when that comment does. Only a thread's first comment is resolved.
+export const projectComments = pgTable(
+  "project_comments",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    author: text("author").notNull(), // a user id
+    frame: integer("frame").notNull(),
+    body: text("body").notNull(),
+    parentId: text("parent_id").references((): AnyPgColumn => projectComments.id, { onDelete: "cascade" }),
+    resolvedAt: timestamp("resolved_at"),
+    resolvedBy: text("resolved_by"), // a user id
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    editedAt: timestamp("edited_at"),
+  },
+  (t) => [index("project_comments_project_id_frame_idx").on(t.projectId, t.frame), check("project_comments_frame_check", sql`${t.frame} >= 0`)],
+);
+
+// Named versions of a project: its timeline as it was when someone kept it under a name. `version` is the project
+// version the timeline was copied at.
+export const projectVersions = pgTable(
+  "project_versions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    doc: jsonb("doc").$type<TimelineDoc>().notNull(),
+    version: integer("version").notNull(),
+    createdBy: text("created_by").notNull(), // a user id
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("project_versions_project_id_created_at_idx").on(t.projectId, t.createdAt)],
 );
