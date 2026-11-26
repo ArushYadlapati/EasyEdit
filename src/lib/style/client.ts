@@ -1,4 +1,6 @@
 import { packBytes } from "@/lib/color/cube";
+import type { ChannelUpload } from "@/lib/social/youtube-api";
+import type { ChannelStatus } from "./channel";
 import type { ReferenceSource, Style, StylePatch, StyleReference, VideoAnalysis } from "./types";
 
 // The browser's calls to /api/style. A refusal throws with the server's own message, which is written for people;
@@ -10,6 +12,7 @@ const SAVE_FAILED = "Your style couldn't be saved. Try again.";
 const REFERENCE_FAILED = "That couldn't be added to your style. Try again.";
 const REMOVE_FAILED = "That couldn't be removed from your style. Try again.";
 const ANALYSIS_FAILED = "What we found in that video couldn't be saved. Try again.";
+const CHANNEL_FAILED = "Your channel's videos couldn't be loaded. Try again.";
 
 const isString = (v: unknown): v is string => typeof v === "string";
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -46,6 +49,30 @@ async function answer<T>(response: Response, isShape: (body: unknown) => body is
   return body;
 }
 
+const isOptionalString = (v: unknown) => v === undefined || isString(v);
+
+function isUpload(body: unknown): body is ChannelUpload {
+  if (!isRecord(body)) return false;
+  const { id, url, title, author, thumbnailUrl, seconds, description, tags } = body;
+  return (
+    isString(id) &&
+    isString(url) &&
+    isString(title) &&
+    isOptionalString(author) &&
+    isOptionalString(thumbnailUrl) &&
+    (seconds === undefined || typeof seconds === "number") &&
+    isOptionalString(description) &&
+    (tags === undefined || (Array.isArray(tags) && tags.every(isString)))
+  );
+}
+
+function isChannelStatus(body: unknown): body is ChannelStatus {
+  if (!isRecord(body) || typeof body.on !== "boolean") return false;
+  if (!body.on) return true;
+  if (body.connected === false) return body.message === undefined || isString(body.message);
+  return body.connected === true && isString(body.channelTitle) && Array.isArray(body.videos) && body.videos.every(isUpload);
+}
+
 const hasReference = (body: unknown): body is { reference: StyleReference } => isRecord(body) && isReference(body.reference);
 const hasReferences = (body: unknown): body is { references: StyleReference[] } =>
   isRecord(body) && Array.isArray(body.references) && body.references.every(isReference);
@@ -75,6 +102,19 @@ export async function fetchReferences(spaceId: string): Promise<StyleReference[]
 // pending, for the page to measure it and save what it found with saveAnalysis.
 export async function addReference(spaceId: string, source: ReferenceSource): Promise<StyleReference> {
   const body = await answer(await fetch(referencesUrl(spaceId), json("POST", source)), hasReference, REFERENCE_FAILED);
+  return body.reference;
+}
+
+// What the Style page can offer from the space's YouTube channel: nothing on a server without YouTube, no channel
+// (and why, when there's something to say), or the channel's name and newest uploads. For editors only.
+export async function fetchChannel(spaceId: string): Promise<ChannelStatus> {
+  return answer(await fetch(`/api/style/channel?space=${encodeURIComponent(spaceId)}`, { cache: "no-store" }), isChannelStatus, CHANNEL_FAILED);
+}
+
+// Adds one of the channel's uploads to a space's style by its YouTube id, and answers the new reference (ready at
+// once, with what YouTube says about the video). Adding one again refreshes what it says.
+export async function addChannelVideo(spaceId: string, videoId: string): Promise<StyleReference> {
+  const body = await answer(await fetch(referencesUrl(spaceId), json("POST", { kind: "channel", videoId })), hasReference, REFERENCE_FAILED);
   return body.reference;
 }
 

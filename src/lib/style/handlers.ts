@@ -5,7 +5,9 @@ import { requireRole, type Actor } from "@/lib/actor";
 import { apiRoute } from "@/lib/api-route";
 import { unpackBytes } from "@/lib/color/cube";
 import { LIMITS } from "@/lib/limits";
+import type { SocialConfig } from "@/lib/social/config";
 import { actorIn, spaceQuery } from "@/lib/spaces/access";
+import { addFromChannel, channelStatus } from "./channel";
 import { STYLE_MESSAGES } from "./messages";
 import {
   addLinkReference,
@@ -23,8 +25,14 @@ import {
 import type { StyleProfilePatch } from "./types";
 
 // What the /api/style routes need: the database, and who is signed in (authentication only; the role comes from the
-// space). fetch is what a pasted link's site is asked with; the real one when left out.
-export type StyleHandlerDeps = { db: () => DB; auth: (req: Request) => Promise<CurrentUser | Response>; fetch?: typeof fetch };
+// space). fetch is what a pasted link's site, and YouTube, are asked with; the real one when left out. config is this
+// server's YouTube settings, for picking videos from the space's channel; left out, there is no YouTube.
+export type StyleHandlerDeps = {
+  db: () => DB;
+  auth: (req: Request) => Promise<CurrentUser | Response>;
+  fetch?: typeof fetch;
+  config?: () => SocialConfig | null;
+};
 
 // The id a reference route names in its path.
 export type StyleReferenceRouteContext = { params: Promise<{ id: string }> };
@@ -51,6 +59,7 @@ const referenceBody = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("video"), assetId: ID }),
   z.strictObject({ kind: z.literal("link"), url: z.string() }),
   z.strictObject({ kind: z.literal("project"), projectId: ID }),
+  z.strictObject({ kind: z.literal("channel"), videoId: ID }),
 ]);
 // A browser's measurements of a video and its strip of frames as base64 JPEG, or why it couldn't measure it.
 const analysisBody = z.union([z.strictObject({ analysis: z.unknown(), sheet: z.string().optional() }), z.strictObject({ failed: z.string().max(2000) })]);
@@ -92,10 +101,13 @@ async function referenceActor(deps: StyleHandlerDeps, req: Request, ctx: StyleRe
 
 // GET /api/style?space=<id>: any member reads the style. PATCH: an editor changes the fields named.
 // GET /api/style/references?space=<id>: any member lists what the style learns from. POST: an editor adds a video,
-// a link or a past project. DELETE /api/style/references/<id>: an editor removes one. PUT …/<id>/analysis: an
-// editor's browser saves what it measured in a video, or says why it couldn't. GET …/<id>/sheet: a measured video's
-// strip of frames, a JPEG.
+// a link, a past project or an upload of the space's YouTube channel (by its id). DELETE /api/style/references/<id>:
+// an editor removes one. PUT …/<id>/analysis: an editor's browser saves what it measured in a video, or says why it
+// couldn't. GET …/<id>/sheet: a measured video's strip of frames, a JPEG. GET /api/style/channel?space=<id>: an
+// editor sees the space's YouTube channel and its newest uploads, to pick from.
 export function makeStyleHandlers(deps: StyleHandlerDeps) {
+  const youtube = () => deps.config?.() ?? null;
+
   return {
     get: apiRoute(async (req: Request): Promise<Response> => {
       const actor = await spaceActor(deps, req);
@@ -128,8 +140,16 @@ export function makeStyleHandlers(deps: StyleHandlerDeps) {
           ? await addVideoReference(db, actor, body.assetId)
           : body.kind === "link"
             ? await addLinkReference(db, actor, body.url, deps.fetch)
-            : await addProjectReference(db, actor, body.projectId);
+            : body.kind === "project"
+              ? await addProjectReference(db, actor, body.projectId)
+              : await addFromChannel(db, actor, youtube(), body.videoId, deps.fetch);
       return Response.json({ reference }, { status: 201 });
+    }),
+
+    channel: apiRoute(async (req: Request): Promise<Response> => {
+      const actor = await spaceActor(deps, req);
+      if (actor instanceof Response) return actor;
+      return Response.json(await channelStatus(deps.db(), actor, youtube(), deps.fetch), { headers: { "cache-control": "no-store" } });
     }),
 
     removeReference: apiRoute(async (req: Request, ctx: StyleReferenceRouteContext): Promise<Response> => {

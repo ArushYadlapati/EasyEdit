@@ -116,6 +116,12 @@ export function Sidebar({ folders, pinned = [], collapsed, view, canEdit, spaceS
             Brand kit
           </SidebarLink>
         )}
+        {/* The space's style, which AI agents read before they edit: right under its brand kit, shown to the same people. */}
+        {current && !(personalSoon && current.kind === "personal") && (
+          <SidebarLink href={settingsTabPath(spaceSlug, "style")} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
+            Style
+          </SidebarLink>
+        )}
         {current && !(personalSoon && current.kind === "personal") && (
           <SidebarLink href={settingsTabPath(spaceSlug, "templates")} current={false} folderId={null} takesDrops={false} onDropProject={onDropProject}>
             Templates

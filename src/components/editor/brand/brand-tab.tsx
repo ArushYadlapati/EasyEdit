@@ -10,9 +10,11 @@ import type { PanelProps } from "../media/media-tab";
 import { useBrand, withLibrary } from "./brand-context";
 import { useLibrary } from "../media/media-context";
 import { LogoPicker } from "./logo-picker";
+import { StyleCard } from "./style-card";
 
 // The left panel's Brand kit tab: the space's kit, where a font adds that kind of text at the playhead, a color
 // recolors the selected text and a logo is added at the playhead, on top of the video at a medium size. Editors change the kit here too.
+// At the bottom, the space's style at a glance, with the way to its Style page (see StyleCard).
 export function BrandTab({ panel }: { panel: PanelProps }) {
   const store = useEditorStore();
   const settings = useSettingsStore();
@@ -42,6 +44,7 @@ export function BrandTab({ panel }: { panel: PanelProps }) {
           onUseLogo={canEditProject ? (asset) => addLogo(store, asset, { stillSeconds: settings.getState().stillSeconds }) : undefined}
           onAddLogo={() => setPicking(true)}
         />
+        <StyleCard />
       </div>
       <LogoPicker
         open={picking}
