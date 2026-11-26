@@ -1,0 +1,24 @@
+{
+  "name": "easyedit",
+  "displayName": "EasyEdit",
+  "version": "1.0.0",
+  "description": "Edit Shorts, Reels, TikToks and YouTube videos in EasyEdit: the EasyEdit connector, plus a skill on hooks, pacing, captions, text, sound, color, story and your own style.",
+  "author": {
+    "name": "Arush Yadlapati"
+  },
+  "homepage": "https://easyedit.arush.dev",
+  "repository": "https://github.com/ArushYadlapati/EasyEdit",
+  "license": "MIT",
+  "keywords": [
+    "easyedit",
+    "video",
+    "video-editing",
+    "shorts",
+    "reels",
+    "tiktok",
+    "youtube",
+    "captions",
+    "mcp",
+    "skill"
+  ]
+}

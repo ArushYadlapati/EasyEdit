@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "easyedit": {
+      "type": "http",
+      "url": "https://easyedit.arush.dev/api/mcp"
+    }
+  }
+}
