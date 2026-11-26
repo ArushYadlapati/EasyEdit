@@ -470,8 +470,10 @@ function FontField({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
   );
 }
 
-// Styling some of a text's words: the stretch selected in the Text box above made bold, italic, underlined or another
-// colour, while the rest keeps the clip's own look. stretch: what is selected there, null for nothing.
+// Bold, italic and underline in one row: on the stretch selected in the Text box above, which can also take another
+// colour while the rest keeps the clip's own look; with nothing selected, on the whole text (Bold between the font's
+// regular and bold weights). stretch: what is selected there, null for nothing.
+const STYLE_NAME = { bold: "Bold", italic: "Italic", underline: "Underline" } as const;
 function WordStyles({ clip, canEdit, stretch }: { clip: TextClip; canEdit: boolean; stretch: { from: number; to: number } | null }) {
   const store = useEditorStore();
   const styled = clip.spans?.length ?? 0;
@@ -479,14 +481,28 @@ function WordStyles({ clip, canEdit, stretch }: { clip: TextClip; canEdit: boole
   const apply = (ops: OpInput[]) => {
     if (ops.length > 0) store.getState().edit(ops, "text style");
   };
-  const off = !canEdit || stretch === null;
+  const whole = { bold: clip.style.fontWeight >= 600, italic: clip.style.italic ?? false, underline: clip.style.underline ?? false };
+  function toggleWhole(what: keyof typeof STYLE_NAME) {
+    if (what !== "bold") return editField(store, clip.id, what, whole[what] ? "off" : "on");
+    // The font's own weights: regular (or the nearest under 600) and bold (or the nearest from 600).
+    const weights = weightOptions(clip.style.fontFamily, clip.style.fontWeight).map((w) => w.value);
+    const light = weights.includes(400) ? 400 : (weights.filter((w) => w < 600).at(-1) ?? weights[0]);
+    const heavy = weights.includes(700) ? 700 : (weights.find((w) => w >= 600) ?? weights.at(-1)!);
+    editField(store, clip.id, "fontWeight", String(whole.bold ? light : heavy));
+  }
   return (
-    <div className="flex flex-col gap-2" role="group" aria-label="Style the selected words">
-      <span className={CAPTION}>Selected words</span>
+    <div className="flex flex-col gap-2" role="group" aria-label="Text style">
+      <span className={CAPTION}>{stretch ? "Style of the selected words" : "Style"}</span>
       <div className="flex flex-wrap items-center gap-1">
         {(["bold", "italic", "underline"] as const).map((what) => (
-          <Button key={what} data-edit-control aria-pressed={stretch !== null && look[what]} disabled={off} onClick={() => stretch && apply(toggleStretchOps(clip, stretch, what))}>
-            {what === "bold" ? "Bold" : what === "italic" ? "Italic" : "Underline"}
+          <Button
+            key={what}
+            data-edit-control
+            aria-pressed={stretch !== null ? look[what] : whole[what]}
+            disabled={!canEdit}
+            onClick={() => (stretch ? apply(toggleStretchOps(clip, stretch, what)) : toggleWhole(what))}
+          >
+            {STYLE_NAME[what]}
           </Button>
         ))}
         <Button data-edit-control variant="ghost" disabled={!canEdit || styled === 0} onClick={() => apply(plainStretchOps(clip, stretch))}>
@@ -499,7 +515,7 @@ function WordStyles({ clip, canEdit, stretch }: { clip: TextClip; canEdit: boole
           ? "Changes only the words selected in the box above."
           : styled > 0
             ? `${styled === 1 ? "1 stretch has a look of its own" : `${styled} stretches have a look of their own`}. Select words above to change them.`
-            : "Select some of the words above to make just those bold, italic, underlined or another color."}
+            : "Changes the whole text. Select some of the words above to change just those."}
       </Hint>
     </div>
   );
@@ -578,10 +594,6 @@ function TextSection({ clip, canEdit }: { clip: Clip; canEdit: boolean }) {
           options={[...ALIGN_OPTIONS]}
           onChange={(align) => editField(store, clip.id, "align", align)}
         />
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Toggle label="Italic" data-edit-control checked={clip.style.italic ?? false} disabled={!canEdit} onChange={(on) => toggle("italic", on)} />
-        <Toggle label="Underline" data-edit-control checked={clip.style.underline ?? false} disabled={!canEdit} onChange={(on) => toggle("underline", on)} />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <NumberField clipId={clip.id} field="letterSpacing" label="Letter spacing" suffix="%" min={-20} max={200} />
