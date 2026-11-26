@@ -10,10 +10,11 @@ import {
   olderRange,
   recentRange,
   summarizeOps,
+  undoLinks,
   whoLabel,
 } from "@/lib/editor/activity";
 import { ACTIVITY_LIMIT } from "@/lib/editor/store";
-import type { Op } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, type Clip, type Op } from "@/lib/timeline";
 import { makeFakeServer } from "./fake-server";
 import { entry, makeStore, sampleDoc, text, video } from "./fixtures";
 
@@ -148,8 +149,8 @@ describe("the activity list", () => {
       entry(7, [{ op: "set_format", format: "long_16x9" }], "claude:u2", "Claude (for Grace)"),
     ], "u1", new Date("2026-11-11T10:05:00.000Z"));
     expect(rows).toEqual([
-      { version: 7, who: "Claude (for Grace)", summary: "Changed the format to Landscape 16:9", when: "5 minutes ago", canUndo: false, beforeMove: false },
-      { version: 6, who: "You", summary: "Deleted a clip", when: "5 minutes ago", canUndo: true, beforeMove: false },
+      { version: 7, who: "Claude (for Grace)", summary: "Changed the format to Landscape 16:9", when: "5 minutes ago", canUndo: false, beforeMove: false, undone: false, clipIds: [] },
+      { version: 6, who: "You", summary: "Deleted a clip", when: "5 minutes ago", canUndo: true, beforeMove: false, undone: false, clipIds: [] },
     ]);
   });
 
@@ -158,7 +159,7 @@ describe("the activity list", () => {
       { ...entry(5, [rm("a")], "u1", "Ada"), inverse: [rm("b")] },
       entry(6, [{ op: "update_clip", clipId: "c1", patch: { assetId: "copy-a" } }], "u2", "Grace"),
       { ...entry(7, [rm("c")], "u1", "Ada"), inverse: [rm("d")] },
-    ], "u1", new Date("2026-11-11T10:05:00.000Z"), undefined, 6);
+    ], "u1", new Date("2026-11-11T10:05:00.000Z"), { movedAtVersion: 6 });
     expect(rows.map(({ version, who, summary, canUndo, beforeMove }) => ({ version, who, summary, canUndo, beforeMove }))).toEqual([
       { version: 7, who: "You", summary: "Deleted a clip", canUndo: true, beforeMove: false },
       { version: 6, who: "Grace", summary: "Moved here from another space", canUndo: false, beforeMove: false },
@@ -175,8 +176,64 @@ describe("the activity list", () => {
     const rows = activityRows([
       entry(3, [{ op: "move_clip", clipId: textClip.id, start: 300 }]),
       { ...entry(4, [rm("gone")]), inverse: [{ op: "add_clip", trackId: "v1", clip: video("gone", 0, 30) }] },
-    ], "u1", new Date("2026-11-11T10:05:00.000Z"), doc);
-    expect(rows.map((r) => r.summary)).toEqual(["Deleted a video clip", "Moved text"]);
+    ], "u1", new Date("2026-11-11T10:05:00.000Z"), { doc });
+    expect(rows.map((r) => r.summary)).toEqual(["Deleted a video clip on Video 1", "Moved text “hi”"]);
+    expect(rows.map((r) => r.clipIds)).toEqual([[], [textClip.id]]);
+  });
+
+  it("names each clip by its words, its file's name, or its kind and track", () => {
+    const doc = sampleDoc();
+    doc.tracks[1].clips[0] = text("x1", 0, 60, { text: "Kickoff day at the lake with everyone from school" });
+    const now = new Date("2026-11-11T10:05:00.000Z");
+    const shape = { id: "s1", type: "shape", shape: "rect", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM } } as unknown as Clip;
+    const rows = activityRows([
+      entry(3, [{ op: "move_clip", clipId: "x1", start: 300 }]),
+      entry(4, [{ op: "update_clip", clipId: "c1", patch: { volume: 0.5 } }]),
+      entry(5, [{ op: "update_clip", clipId: "x2", patch: { text: "Summer trip" } }]),
+      entry(6, [{ op: "update_clip", clipId: "x2", patch: { text: "Summer", style: { color: "#ff0000" } } }]),
+      entry(7, [{ op: "add_clip", trackId: "t1", clip: shape }]),
+    ], "u1", now, { doc, assetName: (id) => (id === "a" ? "beach.mp4" : undefined) });
+    expect(rows.map((r) => r.summary).reverse()).toEqual([
+      "Moved text “Kickoff day at the lake with ev…”",
+      "Changed “beach.mp4”: volume",
+      "Changed text to “Summer trip”",
+      "Changed text “hi”: wording and color",
+      "Added a shape on Text 1",
+    ]);
+  });
+
+  it("an undo reads as one and marks what it undid; undoing it again is a redo", () => {
+    const add: Op[] = [{ op: "add_clip", trackId: "t1", clip: text("n1", 200, 30) }];
+    const remove: Op[] = [{ op: "remove_clip", clipId: "n1" }];
+    const now = new Date("2026-11-11T10:05:00.000Z");
+    const log = [
+      { ...entry(6, add, "u2", "Theo"), inverse: remove },
+      { ...entry(7, remove, "u1", "Ada"), inverse: add },
+    ];
+    expect(activityRows(log, "u1", now).map(({ summary, canUndo, undone }) => ({ summary, canUndo, undone }))).toEqual([
+      { summary: "Undid: Added text “hi” (Theo's)", canUndo: true, undone: false },
+      { summary: "Added text “hi”", canUndo: false, undone: true },
+    ]);
+    const redone = activityRows([...log, { ...entry(8, add, "u1", "Ada"), inverse: remove }], "u1", now);
+    expect(redone.map(({ summary, undone }) => ({ summary, undone }))).toEqual([
+      { summary: "Redid: Added text “hi” (Theo's)", undone: false },
+      { summary: "Undid: Added text “hi” (Theo's)", undone: true },
+      { summary: "Added text “hi”", undone: false },
+    ]);
+    // A teammate undoing my change says it was mine.
+    const mine = [{ ...entry(6, add, "u1", "Ada"), inverse: remove }, { ...entry(7, remove, "u2", "Theo"), inverse: add }];
+    expect(activityRows(mine, "u1", now)[0].summary).toBe("Undid: Added text “hi” (yours)");
+  });
+
+  it("an undo sent by the store matches the change it undoes as the log keeps it", async () => {
+    const server = makeFakeServer(sampleDoc(), 5);
+    server.remote([{ op: "update_clip", clipId: "x1", patch: { text: "GO", style: { color: "#ff0000" } } }]);
+    server.remote([{ op: "move_clip", clipId: "x2", start: 200 }]);
+    const store = makeStore({ doc: server.doc(), version: 7 });
+    store.getState().undoChange(server.log[0]);
+    const sent = store.getState().queue[0];
+    expect((await server.api.postOps({ baseVersion: 7, ops: sent.ops })).ok).toBe(true);
+    expect(undoLinks(server.log).undid).toEqual(new Map([[8, 6]]));
   });
 
   it("loads the last 50 changes, then earlier ones on request", async () => {

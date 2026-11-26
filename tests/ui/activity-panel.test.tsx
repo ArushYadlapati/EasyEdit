@@ -175,3 +175,28 @@ it("Undo on a change from before the move does nothing", () => {
   store.getState().undoChange({ ...entry(6, [{ op: "move_clip", clipId: "x2", start: 100 }]), inverse: [{ op: "move_clip", clipId: "x2", start: 90 }] });
   expect(store.getState().queue).toEqual([]);
 });
+
+it("an undo from Activity reads as one, the change it undid says Undone, and a row selects what it changed", async () => {
+  const server = makeFakeServer(sampleDoc(), 0);
+  server.remote([{ op: "move_clip", clipId: "x2", start: 200 }], "u2", "Theo");
+  const store = makeStore({ doc: server.doc(), version: 1 });
+  render(
+    <EditorProvider store={store} api={server.api}>
+      <ActivityPanel />
+    </EditorProvider>,
+  );
+  const moved = await screen.findByRole("button", { name: "Theo · Moved text “hi”" });
+  act(() => fireEvent.click(moved));
+  expect(store.getState().selection.clipIds).toEqual(["x2"]);
+  expect(store.getState().playhead).toBe(200);
+
+  act(() => fireEvent.click(screen.getByRole("button", { name: "Undo this change" })));
+  const sent = store.getState().queue[0];
+  await act(async () => {
+    const answer = await server.api.postOps({ baseVersion: 1, ops: sent.ops, requestId: sent.id });
+    if (answer.ok) store.getState().ack(sent.id, answer.version, answer.inverse);
+  });
+  await screen.findByText("You · Undid: Moved text “hi” (Theo's)");
+  expect(screen.getByText("Undone")).toBeTruthy();
+  expect(screen.getAllByRole("button", { name: "Undo this change" })).toHaveLength(1);
+});
