@@ -1215,7 +1215,8 @@ describe("privacy page", () => {
     render(<PrivacyPage />);
     const text = document.body.textContent ?? "";
     expect(text).toContain("stored in the Google Drive the space uses, not on EasyEdit's own servers");
-    expect(text).toContain("For Seattle Solvers, that is the team's shared drive.");
+    expect(text).toContain("keeps its media in a folder of its own shared drive that it shared with EasyEdit instead. There, EasyEdit can see only that folder.");
+    expect(text).not.toContain("Seattle Solvers");
   });
 });
 

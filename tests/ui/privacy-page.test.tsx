@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import PrivacyPage from "@/app/privacy/page";
-import { render } from "../helpers/dom";
+import { render, screen } from "../helpers/dom";
 
 describe("privacy page", () => {
   it("states the Google API Services User Data Policy and Limited Use requirements", () => {
@@ -79,5 +79,42 @@ describe("privacy page", () => {
     expect(container.textContent).toContain(
       "Auto captions run in your browser. Your audio is not sent anywhere to be transcribed. The first time you use them, your browser downloads the speech model from Hugging Face.",
     );
+  });
+
+  it("carries the date it was last changed, set like the terms' date", () => {
+    render(<PrivacyPage />);
+    expect(screen.getByText("Last updated November 26, 2026.").className).toBe("text-sm text-(--h-muted)");
+  });
+
+  it("names everything EasyEdit keeps about a person and what they make", () => {
+    const { container } = render(<PrivacyPage />);
+    const text = container.textContent!;
+    for (const kept of [
+      "your IP address and the name your browser gives itself",
+      "a small picture of each project for the dashboard",
+      "the history of every change and who made it (Activity)",
+      "review comments, named versions",
+      "EasyEdit keeps the email address the admin entered",
+      "their words are saved in EasyEdit's database with the video",
+      "If you add a passkey",
+    ]) {
+      expect(text, kept).toContain(kept);
+    }
+    // The founding team isn't named: the page is for everyone.
+    expect(text).not.toContain("Seattle Solvers");
+  });
+
+  it("says what a connected agent reads, that it goes to the agent's maker, and how to disconnect", () => {
+    const { container } = render(<PrivacyPage />);
+    const text = container.textContent!;
+    expect(text).toContain("What an agent reads goes to the company that makes it, such as Anthropic for Claude or OpenAI for ChatGPT");
+    expect(text).toContain("You can disconnect an agent at any time on the AI agents page.");
+    expect(text).toContain("Every change it makes is listed in Activity with its name on it.");
+  });
+
+  it("says the background remover's model comes from the same place as the speech model, and export stays on the computer", () => {
+    const { container } = render(<PrivacyPage />);
+    expect(container.textContent).toContain("Removing the background from a picture also runs in your browser, with a model your browser downloads from Hugging Face");
+    expect(container.textContent).toContain("Export makes the video file on your computer; nothing is uploaded for it.");
   });
 });

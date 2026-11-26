@@ -13,7 +13,7 @@ const SECTIONS = [
   "What EasyEdit can see in your Google Drive",
   "Posting to YouTube",
   "Where your data lives",
-  "Auto captions",
+  "What runs in your browser",
   "AI agents",
   "Your style",
   "Deleting your data",
@@ -28,18 +28,42 @@ export default function PrivacyPage() {
         <LegalContents sections={SECTIONS} />
         <article className={LEGAL_ARTICLE}>
           <h1 className={LEGAL_TITLE}>Privacy</h1>
+          <p className="text-sm text-(--h-muted)">Last updated November 26, 2026.</p>
 
           <LegalH2>What we collect</LegalH2>
           <p>
-            When you sign in with Google, EasyEdit gets your name, email address and profile picture. It also keeps what you make: your projects
-            and the media you upload. That media is stored in the Google Drive the space uses, not on EasyEdit&apos;s own servers: a Google
-            account someone in the space connected. For Seattle Solvers, that is the team&apos;s shared drive.
+            When you sign in with Google, EasyEdit gets your name, email address and profile picture. Each time you sign in, it keeps a record
+            of that sign-in: when it was, your IP address and the name your browser gives itself. That record is what keeps you signed in, for
+            about 30 days after your last visit. If you add a passkey, EasyEdit keeps its public key and the name it shows for it.
+          </p>
+          <p>
+            It also keeps what you make in a space: your projects (their names, their timelines and the text in them), a small picture of each
+            project for the dashboard, the history of every change and who made it (Activity), review comments, named versions, folders, pins,
+            templates and the brand kit. It notes which projects you opened and when, for your Recent list, and what you have selected in a
+            project you have open, so the people editing with you can see it.
+          </p>
+          <p>
+            The media you upload is stored in the Google Drive the space uses, not on EasyEdit&apos;s own servers: a Google account someone in
+            the space connected. EasyEdit keeps each file&apos;s name and details (its size, type, length and picture size), so the space&apos;s
+            library can list it.
+          </p>
+          <p>
+            When a team&apos;s admin invites someone, EasyEdit keeps the email address the admin entered, who sent the invite and whether it
+            was used, even if that person has no account yet.
           </p>
 
           <LegalH2>What EasyEdit can see in your Google Drive</LegalH2>
           <p>
             EasyEdit asks Google for one permission, <code>drive.file</code>. It lets EasyEdit see only the files and folders that EasyEdit itself
             creates in your Drive. It cannot see anything else in your Drive.
+          </p>
+          <p>
+            One team, the first to use EasyEdit, keeps its media in a folder of its own shared drive that it shared with EasyEdit instead. There,
+            EasyEdit can see only that folder.
+          </p>
+          <p>
+            In a Personal space you can keep media in a folder on your computer instead of in Drive. Those files stay on that computer, and
+            EasyEdit keeps only their names and details.
           </p>
           <p>
             EasyEdit&apos;s use and transfer of information received from Google APIs to any other app will adhere to the{" "}
@@ -55,7 +79,7 @@ export default function PrivacyPage() {
 
           <LegalH2>Posting to YouTube</LegalH2>
           <p>
-            A space&apos;s admin can connect a YouTube channel so the space can post its videos there. EasyEdit uses YouTube API Services for
+            Where posting is switched on, a space&apos;s admin can connect a YouTube channel so the space can post its videos there. EasyEdit uses YouTube API Services for
             this. It asks Google for permission to upload videos to the channel and to view the channel. EasyEdit reads the channel&apos;s name
             and, when someone picks videos from it for the space&apos;s style, the details of those videos (see{" "}
             <a className="underline underline-offset-4" href="#your-style">
@@ -79,18 +103,33 @@ export default function PrivacyPage() {
 
           <LegalH2>Where your data lives</LegalH2>
           <p>
-            Accounts, projects and styles are kept in a Neon database. The website runs on Vercel. Your media is kept in Google Drive. These
-            companies process the data for us.
+            Accounts, projects, styles and everything else listed above are kept in a Neon database. The website runs on Vercel. Your media
+            is kept in Google Drive. These companies process the data for us. Where stock footage is switched on, what you search for is sent
+            to Pexels to find it.
           </p>
 
-          <LegalH2>Auto captions</LegalH2>
+          <LegalH2>What runs in your browser</LegalH2>
           <p>
             Auto captions run in your browser. Your audio is not sent anywhere to be transcribed. The first time you use them, your browser downloads
-            the speech model from Hugging Face.
+            the speech model from Hugging Face. Once captions are made, their words are saved in EasyEdit&apos;s database with the video, so
+            everyone in the space, and the AI agents they connect, can use them again.
+          </p>
+          <p>
+            Removing the background from a picture also runs in your browser, with a model your browser downloads from Hugging Face the first
+            time. The picture is not sent anywhere. Export makes the video file on your computer; nothing is uploaded for it.
           </p>
 
           <LegalH2>AI agents</LegalH2>
-          <p>An AI agent can work on your projects only after you connect it to your account. It acts with your connection, and you can disconnect it.</p>
+          <p>
+            An AI agent can work on your projects only after you connect it to your account. It acts as you, in the spaces you are in: it can
+            read what EasyEdit keeps there, such as project names, timelines and the text in them, your media&apos;s names and details, caption
+            words and the space&apos;s style, and it can change your projects. Every change it makes is listed in Activity with its name on it.
+          </p>
+          <p>
+            What an agent reads goes to the company that makes it, such as Anthropic for Claude or OpenAI for ChatGPT, and that company&apos;s own
+            terms and privacy policy cover it. For each agent you connect, EasyEdit keeps which agent it is, the access you gave it and when it
+            was last used. You can disconnect an agent at any time on the AI agents page.
+          </p>
 
           <LegalH2>Your style</LegalH2>
           <p>
@@ -119,7 +158,8 @@ export default function PrivacyPage() {
 
           <LegalH2>Deleting your data</LegalH2>
           <p>
-            To have your data deleted, email{" "}
+            Deleting a project hides it from everyone at once. Its record stays in EasyEdit&apos;s database until you ask for your data to be
+            deleted. To have your data deleted, email{" "}
             <a className="underline underline-offset-4" href="mailto:privacy@arush.dev">
               privacy@arush.dev
             </a>
