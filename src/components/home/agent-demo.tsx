@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LogoMark } from "@/components/ui/logo";
 
 // The home page's one live thing: pick a request in plain words and watch a model of the editor change the way an
-// agent's edit changes a real project. Each request is one of the connector's real tools (add_text, trim_clip,
+// agent's edit changes a real project. Above the editor, the request is drawn where a person really types it: in their
+// own agent's app (Claude's, ChatGPT's…), with EasyEdit connected to it. EasyEdit has no chat box of its own, so the
+// two windows show both halves: the words go in one, the edit lands in the other. Each request is one of the connector's real tools (add_text, trim_clip,
 // set_format, split_clip) and its Activity line is the app's own wording (summarizeOps in lib/editor/activity.ts).
 // Once its edit lands, the line under the editor says what happened there and what that shows about agents in
 // EasyEdit.
@@ -39,6 +41,8 @@ const BASE: Doc = {
 type Request = {
   key: string;
   agent: string;
+  logo: string; // its mark, a file in public/home/logos
+
   words: string;
   summary: string;
   result: string;
@@ -50,6 +54,7 @@ export const REQUESTS: Request[] = [
   {
     key: "title",
     agent: "Claude",
+    logo: "claude",
     words: "Add a title that says Summer trip.",
     summary: "Added text",
     result: "Claude adds the text clip. It shows in Activity with Claude's name on it, and Undo takes it back.",
@@ -59,6 +64,7 @@ export const REQUESTS: Request[] = [
   {
     key: "trim",
     agent: "ChatGPT",
+    logo: "openai",
     words: "Make the surf shot two seconds long.",
     summary: "Trimmed a video clip",
     result: "ChatGPT trims the surf clip on the timeline, the same edit you'd make by hand.",
@@ -68,6 +74,7 @@ export const REQUESTS: Request[] = [
   {
     key: "vertical",
     agent: "Codex",
+    logo: "codex",
     words: "Make it vertical for Reels and TikTok.",
     summary: "Changed the format to Vertical 9:16",
     result: "Codex changes the format for you. Each agent acts as you, in the space you choose.",
@@ -77,6 +84,7 @@ export const REQUESTS: Request[] = [
   {
     key: "split",
     agent: "Cursor",
+    logo: "cursor",
     words: "Split the beach clip at the playhead.",
     summary: "Split a video clip",
     result: "Cursor splits the beach clip in two. Connect as many agents as you like.",
@@ -118,6 +126,22 @@ export function AgentDemo({ children }: { children?: ReactNode }) {
       {children}
 
       <div className="h-demoShow">
+        {/* The agent's own app, with the person's words in it. Every request's window is drawn in the one spot, the ones
+            not chosen unseen, so it keeps one height whichever is shown. Hidden from screen readers: the request
+            buttons say the same words, and the lead says where asking happens. */}
+        <div data-ui className="h-ask" aria-hidden="true">
+          {REQUESTS.map((r, i) => (
+            <div key={r.key} className="h-askChat" data-agent={r.agent} data-on={i === chosen || undefined}>
+              <div className="h-askBar">
+                <span className="h-askLogo" style={{ maskImage: `url(/home/logos/${r.logo}.svg)` }} />
+                <span className="h-askApp">{r.agent}</span>
+                <span className="h-askTool">EasyEdit connector</span>
+              </div>
+              <p className="h-askMsg">{r.words}</p>
+            </div>
+          ))}
+        </div>
+
         <figure className="h-demoStage" aria-label="A working model of the editor">
           <div data-ui className="h-ui" data-agent={phase === "done" ? request.agent : undefined}>
             <div className="h-uiBar">
