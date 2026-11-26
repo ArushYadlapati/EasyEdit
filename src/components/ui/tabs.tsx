@@ -1,12 +1,14 @@
 "use client";
 
-import { useId, useRef, type KeyboardEvent } from "react";
+import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { FADE, FOCUS_RING, cx } from "./cx";
 
 export type TabsProps = {
   label: string;
   value: string;
-  tabs: { id: string; label: string }[];
+  // icon: drawn before the name in data-tab-icon, the name in data-tab-label, so a narrow row can show one or the other
+  // (the tab is named by its label either way).
+  tabs: { id: string; label: string; icon?: ReactNode }[];
   onChange(id: string): void;
   idPrefix?: string; // given: each tab controls the panel with id tabIds(idPrefix, id).panel
   autoFocusSelected?: boolean; // marks the selected tab data-autofocus, so a Dialog focuses it on opening
@@ -59,6 +61,7 @@ export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected
           role="tab"
           aria-controls={idPrefix === undefined ? undefined : tabIds(idPrefix, tab.id).panel}
           aria-selected={tab.id === value}
+          aria-label={tab.icon ? tab.label : undefined}
           data-autofocus={autoFocusSelected && tab.id === value ? "" : undefined}
           tabIndex={index === tabStop ? 0 : -1}
           className={cx(
@@ -74,7 +77,16 @@ export function Tabs({ label, value, tabs, onChange, idPrefix, autoFocusSelected
           }}
           onKeyDown={(event) => handleKeyDown(event, index)}
         >
-          {tab.label}
+          {tab.icon ? (
+            <>
+              <span aria-hidden data-tab-icon className="flex items-center justify-center [&_svg]:size-4">
+                {tab.icon}
+              </span>
+              <span data-tab-label>{tab.label}</span>
+            </>
+          ) : (
+            tab.label
+          )}
         </button>
       ))}
     </div>
