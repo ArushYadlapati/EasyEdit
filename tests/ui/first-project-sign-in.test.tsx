@@ -15,7 +15,7 @@ class Redirected extends Error {
 }
 const { replace, social, passkey, signedIn } = vi.hoisted(() => ({
   replace: vi.fn(),
-  social: vi.fn(async (_: unknown) => ({ error: null })),
+  social: vi.fn<(options: unknown) => Promise<{ error: null }>>(async () => ({ error: null })),
   passkey: vi.fn(async () => ({ data: null, error: null })),
   signedIn: { user: null as CurrentUser | null },
 }));
@@ -95,7 +95,7 @@ describe("the new project page", () => {
 
   it("makes the project the home page asked for, once, with what was typed", async () => {
     ask(true);
-    const action = vi.fn(async (_: FormData) => ({}));
+    const action = vi.fn<(form: FormData) => Promise<{ error?: string }>>(async () => ({}));
     render(<StartProject action={action} />);
     expect(screen.getByRole("heading", { name: "Making your project" })).toBeTruthy();
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
@@ -106,7 +106,7 @@ describe("the new project page", () => {
 
   it("goes on to the dashboard when nothing was asked for in this tab, as from a link elsewhere", async () => {
     ask(false);
-    const action = vi.fn(async (_: FormData) => ({}));
+    const action = vi.fn<(form: FormData) => Promise<{ error?: string }>>(async () => ({}));
     render(<StartProject action={action} />);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/dashboard"));
     expect(action).not.toHaveBeenCalled();
@@ -114,7 +114,7 @@ describe("the new project page", () => {
 
   it("says why when the project can't be made, with a way on, and asks no second time by itself", async () => {
     ask(true);
-    const action = vi.fn(async (_: FormData) => ({ error: "You've made 25 projects today." }));
+    const action = vi.fn<(form: FormData) => Promise<{ error?: string }>>(async () => ({ error: "You've made 25 projects today." }));
     render(<StartProject action={action} />);
     expect((await screen.findByRole("alert")).textContent).toBe("You've made 25 projects today.");
     expect(screen.getByRole("heading", { name: "Your project wasn't made" })).toBeTruthy();
