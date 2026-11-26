@@ -94,7 +94,7 @@ export const SHORTCUTS: Shortcut[] = [
   row("Timeline", "zoom-out", ["-"], "Zoom out", REPEATS),
   row("Timeline", "zoom-fit", ["Shift+Z"], "Fit the timeline"),
   row("Timeline", "toggle-snapping", ["N"], "Snapping on or off"),
-  row("Timeline", "next-trim-mode", ["W"], "What dragging a clip's edge does: trim, ripple trim, roll", EDITS),
+  row("Timeline", "next-trim-mode", ["W"], "What dragging a clip's edge does: trim, ripple trim, roll; or slide, for dragging a clip between its neighbours", EDITS),
   row("Timeline", "toggle-audio-meter", ["Shift+M"], "Show or hide the audio meter"),
   row("General", "export", ["Mod+E"], "Export"),
   row("General", "show-shortcuts", ["?"], "Show shortcuts"),

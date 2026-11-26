@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createClipboard } from "@/lib/editor/clipboard";
-import { TRIM_MODES, TRIM_MODE_LABEL, beginTrim, resolveDrag, type DragInput, type TrimMode } from "@/lib/editor/drag";
+import { TRIM_MODES, TRIM_MODE_LABEL, beginMove, beginTrim, resolveDrag, type DragInput, type TrimMode } from "@/lib/editor/drag";
 import { clipFieldOps, clipFieldValue, fieldContext, slipRange } from "@/lib/editor/inspector-fields";
 import { runCommand } from "@/lib/editor/run-command";
 import { findClip } from "@/lib/editor/store";
@@ -94,18 +94,75 @@ describe("a roll", () => {
   });
 });
 
+describe("a slide", () => {
+  // The clip is dragged by its body: where the pointer is, less where it took hold.
+  const slid = (d: TimelineDoc, clipId: string, by: number, lengthOf: (() => number) | undefined = () => L) => {
+    const clip = findClip(d, clipId)!.clip;
+    const move = beginMove(d, clipId, [clipId], clip.start + 5, lengthOf)!;
+    const result = resolveDrag(d, move, at("slide", clip.start + 5 + by))!;
+    const applied = applyOps(d, prepareOps(result.ops));
+    return { result, doc: applied.doc, inverse: applied.inverse };
+  };
+
+  it("moves a clip between its neighbours, which give and take the frames; the clip keeps its footage and length", () => {
+    const later = slid(row(), "c2", 10);
+    expect(later.result.label).toBe("slide");
+    // c1 runs ten frames longer, c3 starts ten frames later, on frame 10 of its file.
+    expect(places(later.doc)).toEqual([["c1", 0, 40, 30], ["c2", 40, 30, 100], ["c3", 70, 20, 10], ["c4", 120, 30, 0]]);
+    expect(later.result.ghost).toEqual([{ clipId: "c2", trackId: "v1", start: 40, duration: 30 }]);
+    expect(applyOps(later.doc, later.inverse).doc).toEqual(row());
+    // The other way c3 starts earlier in its file, so it needs footage before where it starts now.
+    const headed = row();
+    (headed.tracks[0].clips[2] as MediaClip).in = 20;
+    const earlier = slid(headed, "c2", -10);
+    expect(places(earlier.doc)).toEqual([["c1", 0, 20, 30], ["c2", 20, 30, 100], ["c3", 50, 40, 10], ["c4", 120, 30, 0]]);
+  });
+
+  it("leaves each neighbour a frame, and stops where a neighbour's footage does", () => {
+    // c3 can give all but a frame.
+    expect(places(slid(row(), "c2", 500).doc).slice(0, 3)).toEqual([["c1", 0, 59, 30], ["c2", 59, 30, 100], ["c3", 89, 1, 29]]);
+    // Leftward c3 would have to start before its file does (it starts on frame 0), so the clip cannot go that way.
+    expect(slid(row(), "c2", -500).result.ops).toEqual([]);
+    // With some of c3's head to spare, it goes as far as that head reaches.
+    const spare = row();
+    (spare.tracks[0].clips[2] as MediaClip).in = 12;
+    expect(places(slid(spare, "c2", -500).doc).slice(0, 3)).toEqual([["c1", 0, 18, 30], ["c2", 18, 30, 100], ["c3", 48, 42, 0]]);
+    // And c1 can only grow while its file lasts: 240 frames more.
+    const short = row();
+    expect(places(slid(short, "c2", 500, () => 70).doc).slice(0, 2)).toEqual([["c1", 0, 40, 30], ["c2", 40, 30, 100]]);
+  });
+
+  it("with a neighbour on one side only, that one gives and takes and the other side stops at the next clip", () => {
+    // c3 has c2 before it and a gap after: it can slide into the gap, up to c4.
+    const right = slid(row(), "c3", 500);
+    expect(places(right.doc)).toEqual([["c1", 0, 30, 30], ["c2", 30, 60, 100], ["c3", 90, 30, 0], ["c4", 120, 30, 0]]);
+    // c4 touches nothing: it is moved as usual.
+    const alone = slid(row(), "c4", 30);
+    expect(alone.result.label).toBe("move");
+    expect(places(alone.doc)[3]).toEqual(["c4", 150, 30, 0]);
+  });
+
+  it("is a plain move for several clips at once, and in any other mode", () => {
+    const d = row();
+    const many = resolveDrag(d, beginMove(d, "c2", ["c2", "c3"], 35, () => L)!, at("slide", 45))!;
+    expect(many.label).toBe("move");
+    const plain = resolveDrag(d, beginMove(d, "c4", ["c4"], 125, () => L)!, at("trim", 135))!;
+    expect(plain.label).toBe("move");
+  });
+});
+
 describe("the trim mode", () => {
-  it("is Trim when the editor opens, and one key steps through the three", () => {
+  it("is Trim when the editor opens, and one key steps through the four", () => {
     const store = makeStore();
     const ctx = { store, clipboard: createClipboard(), openShortcuts: () => {} };
-    expect(TRIM_MODES).toEqual(["trim", "ripple", "roll"]);
-    expect(TRIM_MODES.map((mode) => TRIM_MODE_LABEL[mode])).toEqual(["Trim", "Ripple trim", "Roll"]);
+    expect(TRIM_MODES).toEqual(["trim", "ripple", "roll", "slide"]);
+    expect(TRIM_MODES.map((mode) => TRIM_MODE_LABEL[mode])).toEqual(["Trim", "Ripple trim", "Roll", "Slide"]);
     const seen = [store.getState().trimMode];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       runCommand("next-trim-mode", ctx);
       seen.push(store.getState().trimMode);
     }
-    expect(seen).toEqual(["trim", "ripple", "roll", "trim"]);
+    expect(seen).toEqual(["trim", "ripple", "roll", "slide", "trim"]);
   });
 
   it("is an editor's: a viewer's key does nothing", () => {

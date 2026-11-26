@@ -12,23 +12,27 @@ import { clipEdges, snap } from "./snap";
 // headRoom: how many frames a start trim could add at the clip's head if the timeline had room for them, when known.
 export type DragOrigin = { clipId: string; start: number; duration: number; trackId: string; minStart?: number; maxEnd?: number; headRoom?: number };
 
+// reach: for a slide, how far the neighbours' media lets the cuts go: the latest end of the clip before the dragged
+// one and the earliest start of the clip after it, each when known.
 export type Drag =
-  | { type: "move"; grabFrame: number; primary: string; origins: DragOrigin[] }
+  | { type: "move"; grabFrame: number; primary: string; origins: DragOrigin[]; reach?: { prevMaxEnd?: number; nextMinStart?: number } }
   | { type: "trim"; edge: "start" | "end"; grabFrame: number; primary: string; origins: DragOrigin[] };
 
 // What a drag on a clip's edge does to the clips around it. trim: nothing; a gap opens or the clip stops at its
 // neighbour. ripple: every later clip on the track moves with the edge, so no gap opens and nothing is covered. roll:
-// the cut between the clip and the one touching that edge moves, one clip growing as the other shrinks.
-export type TrimMode = "trim" | "ripple" | "roll";
-export const TRIM_MODES: readonly TrimMode[] = ["trim", "ripple", "roll"];
-export const TRIM_MODE_LABEL: Record<TrimMode, string> = { trim: "Trim", ripple: "Ripple trim", roll: "Roll" };
+// the cut between the clip and the one touching that edge moves, one clip growing as the other shrinks. slide is for
+// dragging a clip itself: it moves along its track between the clips touching it, the one before ending later or
+// sooner and the one after starting later or sooner, so the clip keeps its footage and nothing around it moves.
+export type TrimMode = "trim" | "ripple" | "roll" | "slide";
+export const TRIM_MODES: readonly TrimMode[] = ["trim", "ripple", "roll", "slide"];
+export const TRIM_MODE_LABEL: Record<TrimMode, string> = { trim: "Trim", ripple: "Ripple trim", roll: "Roll", slide: "Slide" };
 
 export type DragInput = { frame: number; rowTrackId: string | null; playhead: number; zoom: number; snapping: boolean; trimMode?: TrimMode };
 
 // Where a dragged clip would be for this pointer position, drawn when the drop is not allowed.
 export type DragGhost = { clipId: string; trackId: string; start: number; duration: number };
 
-export type DragResult = { ops: OpInput[]; guide: number | null; label: "move" | "trim" | "ripple trim" | "roll"; ghost: DragGhost[] };
+export type DragResult = { ops: OpInput[]; guide: number | null; label: "move" | "trim" | "ripple trim" | "roll" | "slide"; ghost: DragGhost[] };
 
 // The clips with these ids on unlocked tracks, in document order.
 function originsOf(doc: TimelineDoc, ids: Set<string>): DragOrigin[] {
@@ -44,10 +48,48 @@ function originsOf(doc: TimelineDoc, ids: Set<string>): DragOrigin[] {
 
 // The selection moves when it holds the grabbed clip; otherwise the grabbed clip moves alone. Null
 // when that clip is missing or on a locked track.
-export function beginMove(doc: TimelineDoc, clipId: string, selection: string[], grabFrame: number): Drag | null {
+// lengthOf gives the length of an asset in this document's frames, when it is known: a slide then stops where a
+// neighbour's media runs out.
+export function beginMove(doc: TimelineDoc, clipId: string, selection: string[], grabFrame: number, lengthOf?: (assetId: string) => number | undefined): Drag | null {
   const origins = originsOf(doc, new Set(selection.includes(clipId) ? selection : [clipId]));
-  if (!origins.some((o) => o.clipId === clipId)) return null;
-  return { type: "move", grabFrame, primary: clipId, origins };
+  const grabbed = origins.find((o) => o.clipId === clipId);
+  if (!grabbed) return null;
+  const drag: Drag = { type: "move", grabFrame, primary: clipId, origins };
+  if (origins.length === 1 && lengthOf) {
+    const { prev, next } = touchingClips(doc, grabbed);
+    const bounds = (clip: typeof prev) => (clip && isMediaClip(clip) ? trimBounds(clip, lengthOf(clip.assetId)) : undefined);
+    drag.reach = { prevMaxEnd: bounds(prev)?.maxEnd, nextMinStart: bounds(next)?.minStart };
+  }
+  return drag;
+}
+
+// The clips on a clip's own track that end where it starts and start where it ends.
+function touchingClips(doc: TimelineDoc, at: { clipId: string; trackId: string; start: number; duration: number }) {
+  const clips = doc.tracks.find((t) => t.id === at.trackId)?.clips ?? [];
+  return {
+    prev: clips.find((c) => c.id !== at.clipId && c.start + c.duration === at.start),
+    next: clips.find((c) => c.id !== at.clipId && c.start === at.start + at.duration),
+    others: clips.filter((c) => c.id !== at.clipId),
+  };
+}
+
+// A slide of one clip by delta frames, or null when it has no clip touching it (it is then moved as usual). Each
+// neighbour keeps a frame at least and stays inside its media; a side with no neighbour stops at the next clip.
+function slide(doc: TimelineDoc, drag: Extract<Drag, { type: "move" }>, primary: DragOrigin, wanted: number): { ops: OpInput[]; delta: number } | null {
+  const { prev, next, others } = touchingClips(doc, primary);
+  if (!prev && !next) return null;
+  const end = primary.start + primary.duration;
+  const before = Math.max(0, ...others.filter((c) => c.start + c.duration <= primary.start).map((c) => c.start + c.duration));
+  const after = Math.min(Infinity, ...others.filter((c) => c.start >= end).map((c) => c.start));
+  const least = Math.max(prev ? prev.start + 1 - primary.start : before - primary.start, next ? (drag.reach?.nextMinStart ?? -Infinity) - end : -Infinity);
+  const most = Math.min(next ? next.start + next.duration - 1 - end : after - end, prev ? (drag.reach?.prevMaxEnd ?? Infinity) - primary.start : Infinity);
+  const delta = Math.min(most, Math.max(least, wanted));
+  if (delta === 0 || least > most) return { ops: [], delta: 0 };
+  const move: OpInput = { op: "move_clip", clipId: primary.clipId, start: primary.start + delta };
+  const tail: OpInput[] = prev ? [{ op: "trim_clip", clipId: prev.id, edge: "end", to: primary.start + delta }] : [];
+  const head: OpInput[] = next ? [{ op: "trim_clip", clipId: next.id, edge: "start", to: end + delta }] : [];
+  // The neighbour that shrinks goes first and the one that grows last, so no two clips overlap on the way.
+  return { ops: delta > 0 ? [...head, move, ...tail] : [...tail, move, ...head], delta };
 }
 
 // lengthOf gives the length of an asset in this document's frames, when it is known.
@@ -89,6 +131,15 @@ export function resolveDrag(doc: TimelineDoc, drag: Drag, input: DragInput): Dra
   if (drag.type === "move") {
     const snapped = snapTo([primary.start + delta, primary.start + primary.duration + delta], [primary.start, primary.start + primary.duration]);
     if (snapped) delta += snapped.delta;
+    const slid = input.trimMode === "slide" && origins.length === 1 ? slide(doc, drag, primary, delta) : null;
+    if (slid) {
+      return {
+        ops: slid.ops,
+        guide: snapped && slid.delta === delta ? snapped.guide : null,
+        label: "slide",
+        ghost: [{ clipId: primary.clipId, trackId: primary.trackId, start: primary.start + slid.delta, duration: primary.duration }],
+      };
+    }
     const tracks = new Set(origins.map((o) => o.trackId));
     const toTrack = tracks.size === 1 && input.rowTrackId !== null && !tracks.has(input.rowTrackId) ? input.rowTrackId : undefined;
     const ops = moveOps(origins.map(({ clipId, start }) => ({ clipId, start })), delta, toTrack);

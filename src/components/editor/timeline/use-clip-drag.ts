@@ -235,7 +235,7 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
         const { doc, selection } = store.getState();
         const lengthOf = assetOf ? (assetId: string) => mediaLengthFrames(assetOf(assetId), doc.fps) : undefined;
         s.drag =
-          s.grab === "move" ? beginMove(doc, s.clipId, selection.clipIds, s.grabFrame) : beginTrim(doc, s.clipId, s.grab, s.grabFrame, lengthOf);
+          s.grab === "move" ? beginMove(doc, s.clipId, selection.clipIds, s.grabFrame, lengthOf) : beginTrim(doc, s.clipId, s.grab, s.grabFrame, lengthOf);
         if (!s.drag) {
           if (!findClip(doc, s.clipId)) store.getState().notify("error", MESSAGES.clipGone);
           return end(false);

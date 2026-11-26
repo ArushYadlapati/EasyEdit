@@ -91,7 +91,7 @@ const COMMAND_WORDS: Partial<Record<CommandId, string[]>> = {
   "zoom-out": ["smaller", "timeline"],
   "zoom-fit": ["zoom", "whole", "fit"],
   "toggle-snapping": ["snap", "magnet", "align"],
-  "next-trim-mode": ["ripple", "roll", "rolling", "trim", "edge", "edit", "gap"],
+  "next-trim-mode": ["ripple", "roll", "rolling", "slide", "trim", "edge", "edit", "gap"],
   "toggle-audio-meter": ["sound", "level", "levels", "volume", "loudness", "vu", "db", "show", "hide"],
   "group-clips": ["link", "group", "together", "join", "lock"],
   "ungroup-clips": ["unlink", "ungroup", "separate", "apart"],

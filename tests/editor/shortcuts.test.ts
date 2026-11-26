@@ -152,7 +152,7 @@ describe("matching keys", () => {
       ["zoom-out", "-", "Zoom out"],
       ["zoom-fit", "Shift+Z", "Fit the timeline"],
       ["toggle-snapping", "N", "Snapping on or off"],
-      ["next-trim-mode", "W", "What dragging a clip's edge does: trim, ripple trim, roll"],
+      ["next-trim-mode", "W", "What dragging a clip's edge does: trim, ripple trim, roll; or slide, for dragging a clip between its neighbours"],
       ["toggle-audio-meter", "Shift+M", "Show or hide the audio meter"],
       ["export", "Mod+E", "Export"],
       ["show-shortcuts", "?", "Show shortcuts"],

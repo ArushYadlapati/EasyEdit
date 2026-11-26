@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightToLine, ChevronsLeftRight, Magnet, MoveHorizontal, Plus, UnfoldHorizontal, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeftRight, ArrowRightToLine, ChevronsLeftRight, Magnet, MoveHorizontal, Plus, UnfoldHorizontal, ZoomIn, ZoomOut } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { addTrack } from "@/lib/editor/actions";
@@ -74,7 +74,7 @@ export function ControlRow({ duration, fps }: { duration: number; fps: number })
         {/* What dragging a clip's edge does to its neighbours. Trim is the plain one, so only the other two light up. */}
         <IconButton
           label={TRIM_MODE_LABEL[trimMode]}
-          hint="Dragging a clip's edge: trim, ripple trim (what follows moves with it) or roll (the cut between two clips moves)"
+          hint="Dragging a clip's edge: trim, ripple trim (what follows moves with it) or roll (the cut between two clips moves). Slide: dragging a clip moves it between its neighbours, which grow and shrink around it"
           shortcut={key("next-trim-mode")}
           data-edit-control
           data-trim-mode={trimMode}
@@ -82,7 +82,7 @@ export function ControlRow({ duration, fps }: { duration: number; fps: number })
           pressed={trimMode !== "trim"}
           onClick={() => setTrimMode(TRIM_MODES[(TRIM_MODES.indexOf(trimMode) + 1) % TRIM_MODES.length])}
         >
-          {trimMode === "roll" ? <ChevronsLeftRight /> : trimMode === "ripple" ? <ArrowRightToLine /> : <MoveHorizontal />}
+          {trimMode === "slide" ? <ArrowLeftRight /> : trimMode === "roll" ? <ChevronsLeftRight /> : trimMode === "ripple" ? <ArrowRightToLine /> : <MoveHorizontal />}
         </IconButton>
         <IconButton label="Zoom timeline out" shortcut={key("zoom-out")} disabled={zoom <= minZoom} onClick={() => zoomBy(1 / ZOOM_STEP)}>
           <ZoomOut />
