@@ -59,7 +59,7 @@ export function DashboardSettingsDialog({ onClose }: { onClose(): void }): React
   return (
     <SettingsProvider settings={settings}>
       <Dialog
-        title="Settings"
+        title="Editor preferences"
         open
         onClose={onClose}
         className="h-[min(80vh,640px)]"

@@ -75,7 +75,7 @@ describe("the account menu", () => {
   it("in a space it lists Settings, Passkeys, AI agents, then Sign out", () => {
     render(<AccountMenu name="Ada Lovelace" image={null} />);
     fireEvent.click(account());
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Settings", "Passkeys", "AI agents", "Sign out"]);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Editor preferences", "Passkeys", "AI agents", "Sign out"]);
   });
 
   it("off the space pages there is no Settings: the preferences cookie belongs to /s", () => {
@@ -146,15 +146,15 @@ describe("the account menu", () => {
     const openSettings = async () => {
       fireEvent.click(account());
       await act(async () => {
-        fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: "Editor preferences" }));
       });
-      return screen.getByRole("dialog", { name: "Settings" });
+      return screen.getByRole("dialog", { name: "Editor preferences" });
     };
     const kept = () => /(?:^|; )easyedit-prefs=([^;]*)/.exec(document.cookie)?.[1] ?? null;
 
     it("opens the editor's General and Shortcuts, without the project's section", async () => {
       render(<AccountMenu name="Ada Lovelace" image={null} />);
-      expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "Editor preferences" })).toBeNull();
       const dialog = await openSettings();
       expect(within(dialog).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["General", "Shortcuts"]);
       expect(within(dialog).getByText(/Saved in this browser only\./)).toBeTruthy();
@@ -163,7 +163,7 @@ describe("the account menu", () => {
       expect(within(dialog).getByRole("tab", { name: "Shortcuts" }).getAttribute("aria-selected")).toBe("true");
       expect(within(dialog).queryByRole("switch", { name: "Snapping" })).toBeNull();
       fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-      expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "Editor preferences" })).toBeNull();
     });
 
     it("shows what the editor kept, and keeps each change in the same cookie", async () => {
@@ -218,7 +218,7 @@ describe("the guide in the account menu", () => {
 
   it("Learn sits after AI agents on every dashboard page, when the server has the guide's videos", () => {
     const { unmount } = render(menu(false));
-    expect(items()).toEqual(["Settings", "Passkeys", "AI agents", "Learn", "Sign out"]);
+    expect(items()).toEqual(["Editor preferences", "Passkeys", "AI agents", "Learn", "Sign out"]);
     unmount();
     at.path = "/agents";
     render(menu(false));

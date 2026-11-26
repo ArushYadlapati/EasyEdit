@@ -38,13 +38,20 @@ export type ProjectCardProps = {
 
 const OPEN: MenuItem = { id: "open", label: "Open" };
 const VIEWER_ITEMS: MenuItem[] = [OPEN];
+// What Delete asks: who loses the project, that it can't be brought back, and that its media stays. (The row is only
+// marked deleted, but nothing in the app brings it back.)
+function deleteQuestion(name: string, space: MySpace | undefined): string {
+  const who = space?.kind === "team" ? ` for everyone in ${space.name}` : "";
+  return `Delete "${name}"${who}? You can't undo this. Its media stays in Media.`;
+}
+
 // Pin or Unpin, after Move to folder…, as the project is in the space's Pinned list or not.
 const editorItems = (pinned: boolean, canMoveToSpace: boolean): MenuItem[] => [
   OPEN,
   { id: "rename", label: "Rename" },
   { id: "duplicate", label: "Duplicate" },
   { id: "move", label: "Move to folder…" },
-  ...(canMoveToSpace ? [{ id: "move-space", label: "Move to…" }] : []),
+  ...(canMoveToSpace ? [{ id: "move-space", label: "Move to another space…" }] : []),
   pinned ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin" },
   { id: "delete", label: "Delete", danger: true, separatorBefore: true },
 ];
@@ -60,7 +67,7 @@ const withId = (id: string, more: Record<string, string> = {}) => {
 
 // A project on the dashboard: its picture in a frame of its shape (a blank frame until it has one) and its name, which
 // open it in the editor, then its format, who changed it last and when, and its folder. Its ⋯ button and a right-click
-// on it open the same menu: Open for everyone, and for editors Rename (in place), Duplicate, Move to folder…, Move to… (another of your spaces), Pin or
+// on it open the same menu: Open for everyone, and for editors Rename (in place), Duplicate, Move to folder…, Move to another space…, Pin or
 // Unpin (the space's Pinned list in the sidebar) and Delete (after asking).
 export function ProjectCard({ project, folderName, now, canEdit, pinned, folders, actions, spaceSlug, fromSpace, moveTargets, onGone }: ProjectCardProps): ReactNode {
   const router = useRouter();
@@ -82,6 +89,7 @@ export function ProjectCard({ project, folderName, now, canEdit, pinned, folders
   // the card's edits wait while one of them runs
   const busy = rename.pending || duplicate.pending || remove.pending || pin.pending || unpin.pending;
   const canMoveToSpace = fromSpace !== undefined && moveTargets !== undefined && moveTargets.length > 0;
+  const changed = `Changed ${timeAgo(project.updatedAt, now, "short")} by ${project.changedBy}`;
   const editor = editorItems(pinned, canMoveToSpace);
   const items = !canEdit
     ? VIEWER_ITEMS
@@ -213,14 +221,23 @@ export function ProjectCard({ project, folderName, now, canEdit, pinned, folders
             className={cx("group flex min-w-0 flex-col gap-2 rounded-md", FOCUS_RING)}
           >
             {picture}
-            <div className="truncate text-sm font-medium text-ed-text">{project.name}</div>
+            <div title={project.name} className="truncate text-sm font-medium text-ed-text">
+              {project.name}
+            </div>
           </Link>
         )}
         <div className="flex min-w-0 items-start gap-1">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-xs text-ed-muted">
             <span className="truncate">{formatLabel(project)}</span>
-            <span className="truncate">{`Changed ${timeAgo(project.updatedAt, now, "short")} by ${project.changedBy}`}</span>
-            {folderName !== null && <span className="truncate">{folderName}</span>}
+            {/* Cut short on a narrow card ("by Claude (for Maya)"), so the whole line is there on hover. */}
+            <span title={changed} className="truncate">
+              {changed}
+            </span>
+            {folderName !== null && (
+              <span title={folderName} className="truncate">
+                {folderName}
+              </span>
+            )}
           </div>
           <Menu data-card-options label={LABEL} icon={<Ellipsis />} items={items} onSelect={choose} />
         </div>
@@ -253,7 +270,7 @@ export function ProjectCard({ project, folderName, now, canEdit, pinned, folders
           )}
           <ConfirmDialog
             title="Delete project"
-            question={`Delete "${project.name}"?`}
+            question={deleteQuestion(project.name, fromSpace)}
             confirmLabel="Delete"
             open={deleting}
             pending={remove.pending}

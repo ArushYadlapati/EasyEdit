@@ -260,7 +260,7 @@ describe("the guide in the dashboard's frame", () => {
     await frame();
     expect(welcome()).toBeNull();
     expect(screen.queryByRole("link", { name: "Learn" })).toBeNull();
-    expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Sign out"]);
+    expect(menuItems()).toEqual(["Editor preferences", "Passkeys", "AI agents", "Sign out"]);
     expect(hasSeenTutorial).not.toHaveBeenCalled();
   });
 
@@ -284,7 +284,7 @@ describe("the guide in the dashboard's frame", () => {
     expect(welcome()).toBeNull();
     // The header's way back to it, on every dashboard page.
     expect(screen.getByRole("link", { name: "Learn" }).getAttribute("href")).toBe("/learn");
-    expect(menuItems()).toEqual(["Settings", "Passkeys", "AI agents", "Learn", "Sign out"]);
+    expect(menuItems()).toEqual(["Editor preferences", "Passkeys", "AI agents", "Learn", "Sign out"]);
   });
 
   it("when the seen marks cannot be read the dashboard still opens, with no welcome", async () => {

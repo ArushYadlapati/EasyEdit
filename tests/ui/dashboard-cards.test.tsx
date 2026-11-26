@@ -67,7 +67,7 @@ describe("a card's Move to… item", () => {
   it("shows after Move to folder… for an editor with a target", () => {
     renderDashboard({ fromSpace: HOME, moveTargets: [OTHER] });
     fireEvent.click(options(card("Qual recap")));
-    expect(menuItems()).toEqual(["Open", "Rename", "Duplicate", "Move to folder…", "Move to…", "Pin", "Delete"]);
+    expect(menuItems()).toEqual(["Open", "Rename", "Duplicate", "Move to folder…", "Move to another space…", "Pin", "Delete"]);
   });
 
   it("is hidden with no target, and for a viewer", () => {
@@ -83,7 +83,7 @@ describe("a card's Move to… item", () => {
   it("gives focus back to the ⋯ button once the dialog has left the page", async () => {
     renderDashboard({ fromSpace: HOME, moveTargets: [OTHER] });
     const li = card("Qual recap");
-    await pick(li, "Move to…");
+    await pick(li, "Move to another space…");
     const dialogEl = screen.getByRole("dialog");
     // The page is inert while the dialog is open, so focus must not be moved inside the close handler.
     const focus = vi.spyOn(options(li), "focus");
@@ -95,7 +95,7 @@ describe("a card's Move to… item", () => {
 
   it("opens the dialog with the targets", async () => {
     renderDashboard({ fromSpace: HOME, moveTargets: [OTHER] });
-    await pick(card("Qual recap"), "Move to…");
+    await pick(card("Qual recap"), "Move to another space…");
     expect(within(screen.getByRole("radiogroup", { name: "Space" })).getByRole("radio", { name: "Robo Club" })).toBeTruthy();
   });
 });
@@ -170,7 +170,7 @@ describe("a card's menu", () => {
   it("a right-click in a card's dialog keeps the browser's own menu", async () => {
     renderDashboard();
     await pick(card("Qual recap"), "Delete");
-    expect(fireEvent.contextMenu(within(dialog("Delete project")).getByText('Delete "Qual recap"?'), { clientX: 5, clientY: 5 })).toBe(true);
+    expect(fireEvent.contextMenu(within(dialog("Delete project")).getByText(`Delete "Qual recap"? You can't undo this. Its media stays in Media.`), { clientX: 5, clientY: 5 })).toBe(true);
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
@@ -516,12 +516,25 @@ describe("moving a card to a folder", () => {
 });
 
 describe("deleting a card", () => {
+  it("in a team, says it is gone for everyone there", async () => {
+    renderDashboard({ fromSpace: HOME });
+    await pick(card("Qual recap"), "Delete");
+    expect(within(dialog("Delete project")).getByText(`Delete "Qual recap" for everyone in Seattle Solvers? You can't undo this. Its media stays in Media.`)).toBeTruthy();
+  });
+
+  it("a long name and who changed it can be read whole on hover", () => {
+    renderDashboard();
+    const li = card("Poster");
+    expect(within(li).getByText("Poster").getAttribute("title")).toBe("Poster");
+    expect(within(li).getByText("Changed 1 hr ago by Sam").getAttribute("title")).toBe("Changed 1 hr ago by Sam");
+  });
+
   it("Delete asks first", async () => {
     const { actions } = renderDashboard();
     const li = card("Qual recap");
     await pick(li, "Delete");
     const asking = dialog("Delete project");
-    expect(within(asking).getByText('Delete "Qual recap"?')).toBeTruthy();
+    expect(within(asking).getByText(`Delete "Qual recap"? You can't undo this. Its media stays in Media.`)).toBeTruthy();
     expect(document.activeElement).toBe(button(asking, "Cancel"));
     expect(button(asking, "Delete").className).toContain("text-ed-danger");
     await click(button(asking, "Cancel"));

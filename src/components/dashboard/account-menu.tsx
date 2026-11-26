@@ -31,7 +31,7 @@ function makingFirstProject(): boolean {
 // come only for someone still to be welcomed: nobody else is shown the dialog.
 export type AccountTutorial = TutorialVideo & { firstVisit: boolean; markSeen(): Promise<unknown>; lesson?: Lesson; credit?: string | null };
 
-// The header's account button: the person's picture and name, opening a menu with Settings, Passkeys, AI agents,
+// The header's account button: the person's picture and name, opening a menu with Editor preferences, Passkeys, AI agents,
 // Learn and Sign out. Settings (the editor's General and Shortcuts) is offered on the space pages only: the
 // preferences cookie it edits belongs to /s, so the Admin and AI agents pages cannot read it. Learn (the guide's
 // page) is offered when the server has the videos (tutorial).
@@ -113,7 +113,7 @@ export function AccountMenu({ name, image, openSignUp = false, tutorial }: { nam
           )
         }
         items={[
-          ...(inSpace ? [{ id: "settings", label: "Settings" } satisfies MenuItem] : []),
+          ...(inSpace ? [{ id: "settings", label: "Editor preferences" } satisfies MenuItem] : []),
           { id: "passkeys", label: "Passkeys" },
           { id: "agents", label: "AI agents" },
           ...(tutorial ? [{ id: "tutorial", label: TUTORIAL_WORDS.learn } satisfies MenuItem] : []),

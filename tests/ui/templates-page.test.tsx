@@ -63,7 +63,7 @@ it("lists starters first, then saved templates, with the Starter tag and slots",
   const names = screen.getAllByRole("listitem").map((li) => li.querySelector("span")!.textContent);
   expect(names).toEqual(["Quick promo", "Match recap"]);
   expect(screen.getAllByText("Starter")).toHaveLength(1);
-  expect(screen.getByText("Slots: hero_clip, title_text, music")).toBeTruthy();
+  expect(screen.getByText("Slots: Hero clip, Title text, Music")).toBeTruthy();
   expect(screen.getAllByText("Vertical 9:16 · 1080×1920")).toHaveLength(2);
   expect(screen.getByText("Our recap.")).toBeTruthy();
   expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
