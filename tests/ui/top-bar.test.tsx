@@ -688,3 +688,40 @@ it("below the lg width who else is here is one count that names them", () => {
   expect(goneBelowLg(dots)).toBe(false);
   expect(dots.parentElement!.className).toContain("max-lg:[&>[role=group]]:hidden");
 });
+
+it("Undo that takes the last change hands focus to Redo, and Redo the last undone one hands it back", () => {
+  const store = makeStore();
+  render(
+    <EditorProvider store={store}>
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
+    </EditorProvider>,
+  );
+  act(() => store.getState().edit([{ op: "remove_clip", clipId: "c1" }], "Delete"));
+  const undo = screen.getByRole("button", { name: /^Undo/ }) as HTMLButtonElement;
+  act(() => undo.focus());
+  fireEvent.click(undo);
+  const redo = screen.getByRole("button", { name: /^Redo/ }) as HTMLButtonElement;
+  expect(undo.disabled).toBe(true);
+  expect(document.activeElement).toBe(redo);
+  fireEvent.click(redo);
+  expect(redo.disabled).toBe(true);
+  expect(document.activeElement).toBe(undo);
+});
+
+it("Undo with more to undo keeps focus where it is", () => {
+  const store = makeStore();
+  render(
+    <EditorProvider store={store}>
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
+    </EditorProvider>,
+  );
+  act(() => {
+    store.getState().edit([{ op: "remove_clip", clipId: "c1" }], "Delete");
+    store.getState().edit([{ op: "remove_clip", clipId: "c2" }], "Delete");
+  });
+  const undo = screen.getByRole("button", { name: /^Undo/ }) as HTMLButtonElement;
+  act(() => undo.focus());
+  fireEvent.click(undo);
+  expect(undo.disabled).toBe(false);
+  expect(document.activeElement).toBe(undo);
+});

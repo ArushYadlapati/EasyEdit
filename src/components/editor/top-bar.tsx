@@ -1,7 +1,7 @@
 "use client";
 
 import { Keyboard, Redo2, SettingsIcon, Undo2 } from "lucide-react";
-import { useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/icon-button";
@@ -82,6 +82,21 @@ export function TopBar({
   const redo = useEditor((s) => s.redo);
   const keyFor = useShortcutLabel();
   const toItems = useToMenuItems();
+  // Undo that takes the last change (or Redo the last undone one) turns itself off, and focus would drop to the
+  // page; it goes to the other button instead, which that same press has just turned on.
+  const undoButton = useRef<HTMLButtonElement>(null);
+  const redoButton = useRef<HTMLButtonElement>(null);
+  const handOver = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    const to = handOver.current;
+    handOver.current = null;
+    if (to && !to.disabled) to.focus();
+  }, [undoLabel, redoLabel]);
+  function pressThenHandOver(e: MouseEvent<HTMLButtonElement>, run: () => void, stack: "undoStack" | "redoStack", other: RefObject<HTMLButtonElement | null>) {
+    const focused = e.currentTarget === document.activeElement;
+    run();
+    if (focused && store.getState()[stack].length === 0) handOver.current = other.current;
+  }
 
   const itemsOf = (menu: (input: TopMenuInput) => MenuEntry[]) => () =>
     toItems(menu(topMenuInput(store.getState(), clipboard.read() !== null)));
@@ -203,7 +218,8 @@ export function TopBar({
           label={undoLabel ? `Undo ${undoLabel}` : "Undo"}
           shortcut={keyFor("undo")}
           disabled={!canEdit || deleted || undoLabel === undefined}
-          onClick={() => undo()}
+          ref={undoButton}
+          onClick={(e) => pressThenHandOver(e, () => undo(), "undoStack", redoButton)}
         >
           <Undo2 />
         </IconButton>
@@ -212,7 +228,8 @@ export function TopBar({
           label={redoLabel ? `Redo ${redoLabel}` : "Redo"}
           shortcut={keyFor("redo")}
           disabled={!canEdit || deleted || redoLabel === undefined}
-          onClick={() => redo()}
+          ref={redoButton}
+          onClick={(e) => pressThenHandOver(e, () => redo(), "redoStack", undoButton)}
         >
           <Redo2 />
         </IconButton>
