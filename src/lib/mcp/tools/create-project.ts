@@ -37,7 +37,8 @@ export function whichSpace(ctx: ToolContext): string {
   return `Ask the person which space this project should go in, then call create_project again with space set. Their spaces: ${spaceList(creatableSpaces(ctx))}.`;
 }
 
-const teamList = (ctx: ToolContext) =>
+// The person's teams, as "Name" (space: slug), for a sentence that names where something can go.
+export const teamList = (ctx: ToolContext) =>
   ctx.spaces.filter((s) => s.kind === "team").map((s) => `${quotedSpace(s.name)} (space: ${s.slug})`).join(", ");
 
 // Personal spaces are not offered yet: a project goes in a team.

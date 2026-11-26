@@ -479,14 +479,19 @@ export async function removeAsset(deps: MediaDeps, actor: Actor, assetId: string
     .returning({ uploadUrl: assets.uploadUrl });
   if (canceled.length > 0) return cancelQuietly(deps, canceled[0].uploadUrl);
 
-  // One statement looks for a project that uses the asset and marks it, so none can take it up in between.
+  // One statement looks for a project that uses the asset and marks it, so none can take it up in between. A removed
+  // video never comes back, so what a style learned from it (its strip of frames above all) goes in the same statement.
   const marked = rowsOf<Record<string, string | null>>(
     await db.execute(sql`
-      update assets set removed_at = now(), removed_by = ${actor.userId}::text
-      where id = ${assetId}::text and space_id = ${actor.spaceId}::text and status = 'ready' and removed_at is null and move_id is null
-        and not exists (select 1 from ${projects} where ${usedBy(assetId, actor.spaceId)})
-        and not exists (select 1 from ${templates} where ${usedByTemplate(assetId, actor.spaceId)})
-      returning drive_file_id, preview_file_id, poster_file_id
+      with marked as (
+        update assets set removed_at = now(), removed_by = ${actor.userId}::text
+        where id = ${assetId}::text and space_id = ${actor.spaceId}::text and status = 'ready' and removed_at is null and move_id is null
+          and not exists (select 1 from ${projects} where ${usedBy(assetId, actor.spaceId)})
+          and not exists (select 1 from ${templates} where ${usedByTemplate(assetId, actor.spaceId)})
+        returning id, drive_file_id, preview_file_id, poster_file_id
+      ),
+      unstyled as (delete from style_reference where asset_id in (select id from marked))
+      select drive_file_id, preview_file_id, poster_file_id from marked
     `),
   );
   if (marked.length > 0) return trashQuietly(deps, Object.values(marked[0]));

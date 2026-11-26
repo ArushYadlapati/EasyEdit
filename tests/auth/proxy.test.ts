@@ -65,6 +65,7 @@ describe("proxy", () => {
       "/api/mcp",
       "/api/mcp/sse",
       "/api/cron/db-size",
+      "/api/cron/style-trim",
       "/.well-known/oauth-authorization-server",
       "/.well-known/oauth-protected-resource/api/mcp",
       "/_next/static/chunks/main.js",

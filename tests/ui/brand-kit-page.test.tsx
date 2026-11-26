@@ -18,11 +18,11 @@ function page(canEdit: boolean) {
   return save;
 }
 
-it("the settings tabs add Brand kit for every member", () => {
+it("the settings tabs add Brand kit and Style for every member", () => {
   const tabs = (kind: "team" | "personal", role: MySpace["role"]) => settingsTabsFor({ kind, role }).map((t) => t.id);
-  expect(tabs("team", "viewer")).toEqual(["members", "brand", "templates"]);
-  expect(tabs("team", "admin")).toEqual(["members", "storage", "brand", "templates"]);
-  expect(tabs("personal", "admin")).toEqual(["storage", "brand", "templates"]);
+  expect(tabs("team", "viewer")).toEqual(["members", "brand", "style", "templates"]);
+  expect(tabs("team", "admin")).toEqual(["members", "storage", "brand", "style", "templates"]);
+  expect(tabs("personal", "admin")).toEqual(["storage", "brand", "style", "templates"]);
 });
 
 it("an editor changes the title font", async () => {
@@ -63,10 +63,20 @@ it("a Brand kit link sits under the spaces", () => {
   expect(spaces.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
-it("no Brand kit link in a personal space while personal spaces are closed", () => {
+it("a Style link sits right under Brand kit", () => {
+  sidebarIn([team("viewer")], "robots");
+  const brand = screen.getByRole("link", { name: "Brand kit" });
+  const style = screen.getByRole("link", { name: "Style" });
+  expect(style.getAttribute("href")).toBe("/s/robots/settings/style");
+  const links = screen.getAllByRole("link");
+  expect(links.indexOf(style)).toBe(links.indexOf(brand) + 1);
+});
+
+it("no Brand kit or Style link in a personal space while personal spaces are closed", () => {
   const personal: MySpace = { id: personalSpaceId("u1"), slug: personalSpaceId("u1"), name: "Personal", kind: "personal", role: "admin" };
   sidebarIn([personal, team("admin")], "personal", true);
   expect(screen.queryByRole("link", { name: "Brand kit" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "Style" })).toBeNull();
 });
 
 it("a later save that works clears the error line of one that failed", async () => {

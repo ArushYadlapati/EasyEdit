@@ -8,6 +8,7 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   { id: "members", label: "Members" },
   { id: "storage", label: "Storage" },
   { id: "brand", label: "Brand kit" },
+  { id: "style", label: "Style" },
   { id: "templates", label: "Templates" },
   { id: "socials", label: "Socials" },
 ];
@@ -15,8 +16,8 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
 export const settingsTabPath = (slug: string, id: string) => `/s/${slug}/settings/${id}`;
 
 // The tabs this member of the space may open: Members in a team, for everyone in it; Storage for its admins (the owner
-// of a personal space is its admin); Brand kit and Templates for everyone; Socials for its admins, on a server where
-// posting is set up (`socials`). Each page checks again for itself.
+// of a personal space is its admin); Brand kit, Style and Templates for everyone; Socials for its admins, on a server
+// where posting is set up (`socials`). Each page checks again for itself.
 export function settingsTabsFor(space: Pick<MySpace, "kind" | "role">, server: { socials?: boolean } = {}): SettingsTab[] {
   return SETTINGS_TABS.filter((tab) => {
     if (tab.id === "members") return space.kind === "team";

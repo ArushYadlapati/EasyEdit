@@ -21,7 +21,7 @@ beforeAll(async () => {
 });
 afterAll(() => app.stop());
 
-const TOOLS = ["add_media", "add_text", "create_project", "edit_timeline", "fetch", "fill_template", "get_editing_guide", "get_project", "get_template", "list_assets", "list_projects", "list_templates", "search", "undo_change"];
+const TOOLS = ["add_media", "add_text", "create_project", "edit_timeline", "fetch", "fill_template", "get_editing_guide", "get_project", "get_template", "list_assets", "list_projects", "list_templates", "save_style", "search", "undo_change"];
 
 // A conversation: one connected client, and a helper that calls a tool and returns its text.
 async function converse(email: string) {
@@ -48,7 +48,7 @@ const clipIn = (text: string) => /clip (\S+) on track/.exec(text)![1];
 const logRows = async (id: string) => rowsOf<{ version: number; actor: string }>(await app.db.execute(sql`select version, actor from project_ops where project_id = ${id} order by version`));
 
 describe("Claude and the website on one project", () => {
-  it("offers exactly the fourteen tools, in a list small enough to load into every conversation", async () => {
+  it("offers exactly the fifteen tools, in a list small enough to load into every conversation", async () => {
     const { client } = await converse("ada@gmail.com");
     try {
       const { tools } = await client.listTools();
@@ -56,12 +56,27 @@ describe("Claude and the website on one project", () => {
       // search and fetch carry output schemas, the shape ChatGPT documents for them.
       // templates (Plan 8) added 1_607 chars (14_599 vs 12_992 on main); raising past 13_000 is Arush's call;
       // captions added 85 chars; Arush's call
-      expect(JSON.stringify(tools).length).toBeLessThan(14_685);
+      // video skills: +143 chars (get_editing_guide's topic, 14_827 measured), the cap raised by exactly that; Arush's call
+      // style for agents: +845 chars (get_editing_guide's space and the save_style tool, 15_672 measured), the cap
+      // raised by exactly that; Arush's call
+      // style review: +106 chars (save_style says notes and lists replace the saved ones whole, so read first; 15_778
+      // measured), the cap raised by exactly that; Arush's call
+      expect(JSON.stringify(tools).length).toBeLessThan(15_779);
       for (const t of tools) expect(t.annotations?.readOnlyHint, t.name).toBe(["fetch", "get_editing_guide", "get_project", "get_template", "list_assets", "list_projects", "list_templates", "search"].includes(t.name));
       const keysOf = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {}).sort();
       expect(keysOf("list_assets")).toEqual(["cursor", "kind", "search"]);
       expect(keysOf("add_media")).toEqual(["expected_version", "items", "project_id"]);
       expect(keysOf("create_project")).toEqual(["format", "height", "name", "space", "template", "width"]);
+      expect(keysOf("get_editing_guide")).toEqual(["space", "topic"]);
+      expect(keysOf("save_style")).toEqual(["add_links", "fields", "notes", "space", "summary"]);
+      // save_style asks YouTube, Vimeo or TikTok about a link; no other tool reaches outside EasyEdit.
+      for (const t of tools) expect(t.annotations?.openWorldHint, t.name).toBe(t.name === "save_style");
+      // It can clear fields and replace notes, like edit_timeline and undo_change can take things away.
+      expect(tools.find((t) => t.name === "save_style")?.annotations?.destructiveHint).toBe(true);
+      // An agent with no skill reads only this before "remember, never use emojis": it must know notes and lists go whole.
+      expect(tools.find((t) => t.name === "save_style")?.description).toContain(
+        "Notes and each field (lists too) replace the saved value whole, so read the style first and send back the full text with your change.",
+      );
       for (const side of ["width", "height"]) {
         expect(tools.find((t) => t.name === "create_project")?.inputSchema.properties?.[side], side).toMatchObject({ type: "integer", minimum: 16, maximum: 4096 });
       }

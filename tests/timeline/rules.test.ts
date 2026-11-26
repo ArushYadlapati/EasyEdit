@@ -28,7 +28,9 @@ describe("limits", () => {
       folderNameChars: 60, teamNameChars: 60, teamsPerDay: 10, teamMembers: 100, teamPendingInvites: 50, socialTitleChars: 100, socialDescriptionBytes: 5000, socialPostsPerSpacePerDay: 10, socialFileBytes: 8_589_934_592, dashboardRecent: 6, thumbnailBytes: 307_200, presenceClipIds: 100, presenceIdChars: 64,
       presenceBodyBytes: 16_384, presencePeers: 20, presenceTabsPerPerson: 5, presenceRefreshMs: 15_000,
       presenceTtlMs: 50_000, presenceKeepMs: 600_000, moveAbandonAfterMs: 86_400_000, presenceSweepRows: 50,
-      captionWordChars: 80, captionWordsPerFile: 10_000, captionFilesPerProject: 50, captionAudioMinutes: 60 });
+      captionWordChars: 80, captionWordsPerFile: 10_000, captionFilesPerProject: 50, captionAudioMinutes: 60,
+      styleReferences: 12, styleSheetBytes: 300_000, styleNotesChars: 2000, styleSummaryChars: 600, styleListItems: 8,
+      styleListItemChars: 140, styleShortTextChars: 200 });
   });
 
   it("text up to 2,000 characters is accepted; 2,001 is INVALID on add and on update", () => {

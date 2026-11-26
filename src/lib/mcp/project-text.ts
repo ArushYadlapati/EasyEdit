@@ -3,13 +3,15 @@ import { pageLines } from "./paging";
 
 export type ProjectText = { text: string; next: number | null };
 
+// One page of a project as text: its name and id, its header line, any `notes` (lines a tool adds after the header,
+// such as get_project's pointer to the space's style), then the page of tracks and clips from `cursor`.
 export function projectPage(
   project: { id: string; name: string; doc: TimelineDoc; version: number },
-  opts: { cursor?: number; maxChars: number },
+  opts: { cursor?: number; maxChars: number; notes?: string[] },
 ): ProjectText {
   const [head, ...body] = describe(project.doc, { version: project.version, detail: true }).split("\n");
   const page = pageLines(body, opts.cursor ?? 0, opts.maxChars);
-  const out = [`Project "${escapeQuoted(project.name)}" (id ${project.id})`, head];
+  const out = [`Project "${escapeQuoted(project.name)}" (id ${project.id})`, head, ...(opts.notes ?? [])];
   if (page.lines.length > 0) out.push(...page.lines);
   else out.push("(no more lines)");
   if (page.next !== null) {

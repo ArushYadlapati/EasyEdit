@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { rowsOf, type DB } from "@/db";
-import { driveConnection, socialConnection, spaceStorage, user } from "@/db/schema";
+import { driveConnection, socialConnection, spaceStorage, styleReference, user } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
 import type { Role } from "@/lib/allowlist/service";
 import { LIMITS } from "@/lib/limits";
@@ -78,10 +78,19 @@ describe("a team's YouTube channel and the person who connected it", () => {
     await joinSpace(db, { id: "u2" }, "admin", team);
     await joinSpace(db, { id: "u3" }, "editor", team);
     await db.insert(socialConnection).values(channel(team, "u2"));
+    // A video the team's style learned from the channel, and a link someone pasted.
+    const link = { kind: "link" as const, spaceId: team, title: "Match day", createdBy: "u3" };
+    await db.insert(styleReference).values([
+      { ...link, id: "from_channel", url: "https://www.youtube.com/watch?v=aaaaaaaaaa1", provider: "channel" },
+      { ...link, id: "pasted", url: "https://www.youtube.com/watch?v=aaaaaaaaaa2", provider: "youtube" },
+    ]);
+    const references = async () => (await db.select({ id: styleReference.id }).from(styleReference)).map((row) => row.id).sort();
     await removeMember(db, await as(db, "u1", team), "u3");
     expect(await db.select().from(socialConnection)).toHaveLength(1);
+    expect(await references()).toEqual(["from_channel", "pasted"]);
     await leaveTeam(db, await as(db, "u2", team));
     expect(await db.select().from(socialConnection)).toEqual([]);
+    expect(await references()).toEqual(["pasted"]); // what was learned from the channel goes with it
 
     await joinSpace(db, { id: "u4" }, "admin", team);
     await db.insert(socialConnection).values(channel(team, "u4"));

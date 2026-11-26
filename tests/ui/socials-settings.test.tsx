@@ -66,11 +66,11 @@ afterEach(() => {
 describe("the Socials tab", () => {
   it("is for a space's admins, and only on a server where posting is set up", () => {
     const ids = (role: "admin" | "editor", socials?: boolean) => settingsTabsFor({ kind: "team", role }, { socials }).map((tab) => tab.id);
-    expect(ids("admin", true)).toEqual(["members", "storage", "brand", "templates", "socials"]);
+    expect(ids("admin", true)).toEqual(["members", "storage", "brand", "style", "templates", "socials"]);
     expect(ids("admin", false)).not.toContain("socials");
     expect(ids("admin")).not.toContain("socials");
     expect(ids("editor", true)).not.toContain("socials");
-    expect(settingsTabsFor({ kind: "personal", role: "admin" }, { socials: true }).map((tab) => tab.id)).toEqual(["storage", "brand", "templates", "socials"]);
+    expect(settingsTabsFor({ kind: "personal", role: "admin" }, { socials: true }).map((tab) => tab.id)).toEqual(["storage", "brand", "style", "templates", "socials"]);
   });
 
   it("shows in the settings tab row once the server has its YouTube settings", async () => {

@@ -3,11 +3,13 @@
 import { useId, useState, type ReactNode } from "react";
 import { TextInput } from "@/components/ui/text-input";
 import { PRIMARY_AGENT, type AgentKind } from "@/lib/connector/agents";
+import { SKILL_WORDS } from "@/lib/skills/words";
 import { AgentSetup, TOKENS_ANCHOR } from "./agent-setup";
 import { ConnectedAgents } from "./connected-agents";
 import { CopyButton } from "./copy";
 import { TokenForm, tokenAgentFor } from "./token-form";
 import type { AgentActions, AgentConnection, AgentTokenSummary } from "./types";
+import { VideoSkills } from "./video-skills";
 
 export type AgentsViewProps = {
   serverUrl: string;
@@ -34,7 +36,8 @@ function Section({ id, title, description, children }: { id?: string; title: str
 }
 
 // The AI agents page below its heading: the server address, the setup steps for each agent (Claude picked first),
-// what is connected now, and access tokens. The agent picked for setup is also the token form's agent when it takes one.
+// the video skills and how to add them, what is connected now, and access tokens. The agent picked for setup is also
+// the token form's agent when it takes one.
 export function AgentsView({ serverUrl, connections, tokens, nameLimit, now, actions }: AgentsViewProps): ReactNode {
   const [picked, setPicked] = useState<AgentKind>(PRIMARY_AGENT);
 
@@ -55,6 +58,9 @@ export function AgentsView({ serverUrl, connections, tokens, nameLimit, now, act
       </Section>
       <Section title="Set up an agent">
         <AgentSetup url={serverUrl} picked={picked} onPick={setPicked} />
+      </Section>
+      <Section title={SKILL_WORDS.title} description={SKILL_WORDS.intro}>
+        <VideoSkills />
       </Section>
       <Section title="Connected agents">
         <ConnectedAgents connections={connections} tokens={tokens} now={now} actions={actions} />

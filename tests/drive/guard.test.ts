@@ -6,8 +6,9 @@ const MEDIA_SERVER_FILES = ["src/lib/media/service.ts", "src/lib/media/handlers.
 const SPACES_STORAGE = "src/lib/spaces/storage.ts";
 // Moving a project copies its media between two spaces' Drives (server-only).
 const MOVE_SERVER_FILES = ["src/lib/projects/move.ts", "src/lib/projects/move-handlers.ts"];
-// Posting to YouTube calls Google from the server, through the Drive code's request and error helpers (server-only).
-const SOCIAL_SERVER_FILES = ["src/lib/social/youtube-api.ts", "src/lib/social/connect-handlers.ts", "src/lib/social/posts.ts"];
+// Posting to YouTube, and reading the channel's uploads for a style, call Google from the server, through the Drive
+// code's request and error helpers (server-only).
+const SOCIAL_SERVER_FILES = ["src/lib/social/youtube-api.ts", "src/lib/social/connect-handlers.ts", "src/lib/social/posts.ts", "src/lib/style/channel.ts"];
 const mayImportDrive = (file: string) =>
   file.startsWith("src/lib/drive/") || file.startsWith("src/lib/storage/") || MEDIA_SERVER_FILES.includes(file) || file === SPACES_STORAGE || MOVE_SERVER_FILES.includes(file) || SOCIAL_SERVER_FILES.includes(file) || file.startsWith("src/app/api/");
 const DRIVE_IMPORT = importsFrom("@/lib/drive");

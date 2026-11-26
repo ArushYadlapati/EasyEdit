@@ -89,6 +89,13 @@ export const LIMITS = {
   captionWordsPerFile: 10_000, // words kept for one media file
   captionFilesPerProject: 50, // media files with words kept in one project
   captionAudioMinutes: 60, // the longest sound one auto-captions run takes
+  styleReferences: 12, // videos, links and projects one space's style learns from
+  styleSheetBytes: 300_000, // one reference video's strip of frames, a JPEG
+  styleNotesChars: 2000, // a style's notes for AI agents
+  styleSummaryChars: 600, // a style's summary, a sentence or two
+  styleListItems: 8, // things on a style's Always or Never list
+  styleListItemChars: 140, // one thing on those lists
+  styleShortTextChars: 200, // a style's other words: how they open, voice and tone, a reference's title
 } as const;
 
 export type Limits = { readonly [K in keyof typeof LIMITS]: number };

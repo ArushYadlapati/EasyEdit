@@ -1,0 +1,13 @@
+{
+  "name": "easyedit",
+  "owner": {
+    "name": "Arush Yadlapati"
+  },
+  "plugins": [
+    {
+      "name": "easyedit",
+      "source": "./plugins/easyedit",
+      "description": "Edit Shorts, Reels, TikToks and YouTube videos in EasyEdit with your agent: the EasyEdit connector and a video editing skill."
+    }
+  ]
+}

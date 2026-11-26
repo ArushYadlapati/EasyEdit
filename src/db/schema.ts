@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, unique, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { AgentKind } from "@/lib/connector/agents";
+import type { ReferenceAnalysis, StyleProfile } from "@/lib/style/types";
 import type { CaptionWord, FormatId, Op, TimelineDoc } from "@/lib/timeline";
 import { organization, user } from "./auth-schema";
 
@@ -489,4 +490,58 @@ export const projectVersions = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("project_versions_project_id_created_at_idx").on(t.projectId, t.createdAt)],
+);
+
+// A space's style: how its videos look and feel, filled in by its people or by agents acting for them, and read by
+// agents before they edit. No row is a style nobody has filled in (src/lib/style/service.ts).
+export const spaceStyle = pgTable("space_style", {
+  spaceId: text("space_id")
+    .primaryKey()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  profile: jsonb("profile").$type<StyleProfile>().notNull().default({}),
+  notes: text("notes").notNull().default(""),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedBy: text("updated_by"), // an actor id: a person's, or an agent's acting for them
+});
+
+// What a space's style learns from: one of its videos (analyzed later in a browser, so it waits as pending), a public
+// link (its site's public facts only, never the video), or one of its past projects (counted when added). Each is
+// added once per space, and goes when its video or project does.
+export const styleReference = pgTable(
+  "style_reference",
+  {
+    id: text("id").primaryKey(),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["video", "link", "project"] }).notNull(),
+    title: text("title").notNull(),
+    assetId: text("asset_id").references(() => assets.id, { onDelete: "cascade" }), // kind video
+    projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }), // kind project
+    url: text("url"), // kind link: the video's one address on its site
+    provider: text("provider", { enum: ["youtube", "vimeo", "tiktok", "channel"] }), // kind link; "channel" is from the space's connected channel
+    author: text("author"),
+    thumbnailUrl: text("thumbnail_url"), // only on the video sites' own image servers
+    status: text("status", { enum: ["pending", "ready", "failed"] }).notNull().default("ready"),
+    failure: text("failure"), // why a failed video's analysis failed, in plain words
+    analysis: jsonb("analysis").$type<ReferenceAnalysis | Record<string, never>>().notNull().default({}),
+    sheet: bytea("sheet"), // kind video: its strip of frames, a JPEG; only referenceSheet and styleForAgents select it
+    fetchedAt: timestamp("fetched_at"), // when a link's facts were read; a channel's are trimmed after 30 days
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("style_reference_kind_check", sql`${t.kind} in ('video', 'link', 'project')`),
+    check("style_reference_status_check", sql`${t.status} in ('pending', 'ready', 'failed')`),
+    check("style_reference_provider_check", sql`${t.provider} is null or ${t.provider} in ('youtube', 'vimeo', 'tiktok', 'channel')`),
+    check(
+      "style_reference_source_check",
+      sql`(${t.kind} = 'video' and ${t.assetId} is not null) or (${t.kind} = 'link' and ${t.url} is not null) or (${t.kind} = 'project' and ${t.projectId} is not null)`,
+    ),
+    index("style_reference_space_id_idx").on(t.spaceId),
+    uniqueIndex("style_reference_space_asset_unique").on(t.spaceId, t.assetId),
+    uniqueIndex("style_reference_space_project_unique").on(t.spaceId, t.projectId),
+    uniqueIndex("style_reference_space_url_unique").on(t.spaceId, t.url),
+  ],
 );

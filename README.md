@@ -42,6 +42,7 @@ EasyEdit is an AI-first video editor built for teams. Everyone on a team works i
 - **Shared media library.** Uploads of up to 2 GB go straight from the browser to a Google shared drive and resume after an interruption. Each video gets a 720p preview copy, so phone footage plays smoothly on any laptop.
 - **Formats for every platform.** Short 9:16, Feed 4:5, Square 1:1, Long 16:9, Long 4K, or a custom size, at 24, 25, 30, 50 or 60 fps, with safe-zone guides.
 - **AI agents over MCP.** Claude, ChatGPT, Cursor, VS Code, Codex and other MCP clients can list, read, create and edit projects for a signed-in member. Every agent change is listed in Activity and can be undone.
+- **Video skills and your style.** Agents get a video editing skill (hooks, pacing, captions, sound, color and more), and each space keeps a Style they read before editing, learned from your own videos, links and past projects. The skill also installs as a Claude Code plugin from [`plugins/easyedit`](plugins/easyedit/README.md).
 - **Roles and access control.** Viewers, editors and admins, with an Admin page for managing who can sign in.
 - **Keyboard-first editing.** J/K/L playback, frame stepping, and a full shortcut list behind `?`.
 - **Versioned project API.** JSON endpoints for reading projects and applying edits, with conflict detection and safe retries.
@@ -162,6 +163,7 @@ src/
   lib/          Core logic: timeline model, editor, export, rendering, media, Drive, auth, MCP connector
   workers/      Web workers for export and for making video preview copies
 drizzle/        SQL migrations
+plugins/        The easyedit Claude Code plugin: the easyedit-video skill and the connector
 scripts/        Hand-run checks for Drive uploads and exported files
 tests/          Vitest suites
 docs/           Guides
@@ -173,11 +175,11 @@ docs/           Guides
 | --- | --- |
 | [Setup](docs/setup.md) | Step-by-step Google, Neon, settings and media storage setup, plus a first-run checklist |
 | [Deploy to Vercel](docs/deploy.md) | Deploying, and the migrations to run before each release |
-| [AI agents](docs/ai-agents.md) | Connecting Claude and other MCP clients, their tools, limits and security |
+| [AI agents](docs/ai-agents.md) | Connecting Claude and other MCP clients, their tools, video skills and a space's style, limits and security |
 | [Project API](docs/api.md) | Routes, versioned edits and error codes |
-| [Roles, formats and limits](docs/reference.md) | Who can do what, video formats, and media limits |
+| [Roles, formats and limits](docs/reference.md) | Who can do what, video formats, and media and style limits |
 | [Project status](docs/status.md) | What the current release can do, and what's planned next |
-| [Manual checks](docs/manual-checks.md) | Click-through checks for the editor and export, and checking an exported file |
+| [Manual checks](docs/manual-checks.md) | Click-through checks for the editor, captions, export, posting to YouTube and the Style page, and checking an exported file |
 | [Troubleshooting](docs/troubleshooting.md) | Common sign-in, connector, upload and export errors |
 
 ## Contributing
