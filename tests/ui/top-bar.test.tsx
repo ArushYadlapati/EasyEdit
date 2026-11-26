@@ -565,11 +565,11 @@ it("Edit and View are greyed once the project is deleted", () => {
   expect(trigger("View").disabled).toBe(true);
 });
 
-it("the top row reads Projects, Edit, View, Help, the name, Undo, Redo, Settings, Keyboard shortcuts, Export", () => {
+it("the top row reads Projects, (Menu on a phone,) Edit, View, Help, the name, Undo, Redo, Settings, Keyboard shortcuts, Export", () => {
   showMenus();
   const header = screen.getByRole("banner");
   const names = [...header.querySelectorAll<HTMLElement>("a, button")].map((el) => el.getAttribute("aria-label") ?? el.textContent);
-  expect(names).toEqual(["Projects", "Edit", "View", "Help", "Qual recap", "Undo", "Redo", "Settings", "Keyboard shortcuts", "Export"]);
+  expect(names).toEqual(["Projects", "Menu", "Edit", "View", "Help", "Qual recap", "Undo", "Redo", "Settings", "Keyboard shortcuts", "Export"]);
   // For a viewer the name is a heading, between View and the "View only" badge.
   cleanup();
   showMenus({ canEdit: false });
@@ -730,4 +730,23 @@ it("Undo with more to undo keeps focus where it is", () => {
   fireEvent.click(undo);
   expect(undo.disabled).toBe(false);
   expect(document.activeElement).toBe(undo);
+});
+
+it("below the lg width the Edit, View and Help menus are one Menu button, so the bar keeps room on a phone", () => {
+  const store = makeStore();
+  render(
+    <EditorProvider store={store}>
+      <TopBar spaceSlug="seattle-solvers" onShowShortcuts={() => {}} />
+    </EditorProvider>,
+  );
+  const menu = screen.getByRole("button", { name: "Menu" });
+  expect(menu.closest("[class~='lg:hidden']")).not.toBeNull();
+  expect(screen.getByRole("button", { name: "View" }).closest("[class~='max-lg:hidden']")).not.toBeNull();
+  expect(menu.closest("[class~='max-lg:hidden']")).toBeNull();
+  fireEvent.click(menu);
+  const names = screen.getAllByRole("menuitem").map((item) => item.textContent ?? "");
+  // One of the Edit menu's, one of the View menu's and one of the Help menu's.
+  expect(names.some((n) => n.startsWith("Undo"))).toBe(true);
+  expect(names.some((n) => n.startsWith("Zoom in"))).toBe(true);
+  expect(names.some((n) => n.startsWith("AI agents"))).toBe(true);
 });

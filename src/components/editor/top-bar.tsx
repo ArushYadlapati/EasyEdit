@@ -1,6 +1,6 @@
 "use client";
 
-import { Keyboard, Redo2, SettingsIcon, Undo2 } from "lucide-react";
+import { Keyboard, Menu as MenuIcon, Redo2, SettingsIcon, Undo2 } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { FADE, FOCUS_RING, cx } from "@/components/ui/cx";
@@ -101,6 +101,12 @@ export function TopBar({
 
   const itemsOf = (menu: (input: TopMenuInput) => MenuEntry[]) => () =>
     toItems(menu(topMenuInput(store.getState(), clipboard.read() !== null)));
+  // Below the lg width the Edit, View and Help menus are one menu behind a single button, so the project's name and
+  // the bar's right-hand side keep their room on a phone.
+  const allMenus = (input: TopMenuInput): MenuEntry[] => {
+    const after = (list: MenuEntry[]) => list.map((entry, i) => (i === 0 ? { ...entry, separatorBefore: true } : entry));
+    return [...editMenu(input), ...after(viewMenu(input)), ...after(helpMenu(input, guide))];
+  };
   function pick(id: string) {
     const lesson = guideLinkOf(id, guide);
     if (lesson) openLesson(lesson.path);
@@ -185,8 +191,13 @@ export function TopBar({
         </LeaveLink>
         <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
         <div className="flex shrink-0 items-center">
-          <Menu label="Edit" disabled={deleted} items={itemsOf(editMenu)} onSelect={pick} />
-          <Menu label="View" disabled={deleted} items={itemsOf(viewMenu)} onSelect={pick} />
+          <div className="contents lg:hidden">
+            <Menu label="Menu" icon={<MenuIcon />} disabled={deleted} items={itemsOf(allMenus)} onSelect={pick} />
+          </div>
+          <div className="contents max-lg:hidden">
+            <Menu label="Edit" disabled={deleted} items={itemsOf(editMenu)} onSelect={pick} />
+            <Menu label="View" disabled={deleted} items={itemsOf(viewMenu)} onSelect={pick} />
+          </div>
           {/* The guide's lessons, the AI agents page and the shortcuts, for a window with room for them; a deleted
               project's editor can still be learnt from. */}
           <div className="contents max-lg:hidden">

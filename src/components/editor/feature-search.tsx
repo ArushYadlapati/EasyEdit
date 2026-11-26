@@ -17,12 +17,13 @@ type FeatureSearchProps = {
 };
 
 // The folded field's looks, all below the lg width only. Folded, the field is a bare 28 px button-like square with
-// the mark in its middle; with focus it takes the top bar's width, 8 px from its top, with its usual looks.
+// the mark in its middle; with focus it takes the top bar's width, 8 px from its top, with its usual looks. Its
+// placeholder goes by opacity as well as colour, since forced colours repaint transparent words.
 const FOLD_BOX =
   "max-lg:size-7 max-lg:shrink-0 max-lg:focus-within:absolute max-lg:focus-within:inset-x-1.5 max-lg:focus-within:top-2 max-lg:focus-within:z-50 max-lg:focus-within:w-auto";
 const FOLD_FIELD = cx(
   "max-lg:not-focus:cursor-pointer max-lg:not-focus:border-transparent max-lg:not-focus:bg-transparent max-lg:not-focus:px-0",
-  "max-lg:not-focus:text-transparent max-lg:not-focus:placeholder:text-transparent max-lg:not-focus:hover:bg-ed-hover",
+  "max-lg:not-focus:text-transparent max-lg:not-focus:placeholder:text-transparent max-lg:not-focus:placeholder:opacity-0 max-lg:not-focus:hover:bg-ed-hover",
 );
 const FOLD_MARK = "max-lg:left-[7px] max-lg:group-focus-within/search:left-2";
 
