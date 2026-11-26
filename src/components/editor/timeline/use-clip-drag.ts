@@ -73,6 +73,7 @@ export type TimelineDrag = {
   pressTrack(e: ReactPointerEvent | PointerEvent, trackId: string): void;
   pointAt(clientX: number, clientY: number): TimelinePoint;
   scrollNear(clientX: number): void; // one step of the sideways autoscroll, for a pointer near either side of the lanes
+  cancel(): void; // ends a press or drag as Escape does, as when a second finger turns it into a pinch
   dispose(): void;
 };
 
@@ -452,6 +453,11 @@ export function createTimelineDrag(store: EditorStore, assetOf?: (assetId: strin
     // A drag from outside the timeline sends dragover over and over, so each one is a step.
     scrollNear(clientX) {
       autoscroll(clientX);
+    },
+    cancel() {
+      const s = session;
+      if (s?.kind === "box" && s.started) store.getState().select(s.base);
+      end(false);
     },
     dispose() {
       end(false);

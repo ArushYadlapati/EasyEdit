@@ -744,3 +744,42 @@ it("the click after a mouse press changes nothing the press did not", () => {
   fireEvent.click(clip("x1"), { detail: 1, shiftKey: true });
   expect(st().selection.clipIds).toEqual(["x2"]);
 });
+
+// A touch event with these fingers down, as the browser sends it.
+function fingers(type: "touchstart" | "touchmove" | "touchend", target: HTMLElement, points: [number, number][]) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  const touches = points.map(([clientX, clientY], identifier) => ({ identifier, clientX, clientY, target }));
+  Object.defineProperty(event, "touches", { value: touches });
+  act(() => {
+    target.dispatchEvent(event);
+  });
+  return event;
+}
+
+it("one finger pans the timeline and two zoom it around the point between them, not the page", () => {
+  const { st, scroller } = renderTimeline();
+  expect(scroller.className.split(" ")).toEqual(expect.arrayContaining(["touch-pan-x", "touch-pan-y"]));
+  const before = st().zoom;
+  expect(fingers("touchstart", scroller, [[400, T1], [500, T1]]).defaultPrevented).toBe(true);
+  expect(fingers("touchmove", scroller, [[350, T1], [550, T1]]).defaultPrevented).toBe(true);
+  expect(st().zoom).toBeCloseTo(before * 2);
+  fingers("touchmove", scroller, [[425, T1], [475, T1]]);
+  expect(st().zoom).toBeCloseTo(before / 2);
+  // One finger left: the pinch is over, and that finger's moves are the browser's pan again.
+  fingers("touchend", scroller, [[425, T1]]);
+  expect(fingers("touchmove", scroller, [[300, T1]]).defaultPrevented).toBe(false);
+  expect(st().zoom).toBeCloseTo(before / 2);
+});
+
+it("a second finger turns a clip drag into a pinch: the drag is dropped and the clip stays", () => {
+  const { st, clip, scroller, press, move, release, frame, startOf } = renderTimeline();
+  press(clip("x2"), x(94), T1, { pointerType: "touch" });
+  move(x(114), T1);
+  frame();
+  expect(st().gesture).not.toBeNull();
+  fingers("touchstart", scroller, [[x(114), T1], [x(160), T1]]);
+  expect(st().gesture).toBeNull();
+  release(x(114), T1);
+  expect(startOf("x2")).toBe(90);
+  expect(st().queue).toHaveLength(0);
+});
