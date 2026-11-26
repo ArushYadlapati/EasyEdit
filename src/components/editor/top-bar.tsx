@@ -105,7 +105,11 @@ export function TopBar({
   // the bar's right-hand side keep their room on a phone.
   const allMenus = (input: TopMenuInput): MenuEntry[] => {
     const after = (list: MenuEntry[]) => list.map((entry, i) => (i === 0 ? { ...entry, separatorBefore: true } : entry));
-    return [...editMenu(input), ...after(viewMenu(input)), ...after(helpMenu(input, guide))];
+    // An entry in two of them (the keyboard shortcuts) is listed once.
+    const seen = new Set<string>();
+    return [...editMenu(input), ...after(viewMenu(input)), ...after(helpMenu(input, guide))].filter((entry) =>
+      seen.has(entry.id) ? false : (seen.add(entry.id), true),
+    );
   };
   function pick(id: string) {
     const lesson = guideLinkOf(id, guide);
@@ -175,8 +179,10 @@ export function TopBar({
     // The middle column keeps its width while the sides can give way: the project name first, as before.
     // Below the lg width (a phone, a narrow window) everything stays but in a smaller form: the search folds to its
     // mark and opens across the bar, the save status is a mark (with a word when something needs knowing), who else
-    // is here is one count, and the keyboard list gives way. The search key opens the search at every width.
-    <header className="relative grid min-w-0 items-center gap-3 bg-ed-panel px-3 max-lg:grid-cols-[minmax(0,1fr)_auto_auto] max-lg:gap-1 max-lg:px-1.5 lg:col-span-3 lg:grid-cols-[minmax(0,1fr)_minmax(9rem,clamp(12rem,28vw,24rem))_minmax(max-content,1fr)]">
+    // is here is one count, and the keyboard list gives way. The search key opens the search at every width. The
+    // project's name keeps 8rem of the left side with its menu; when the right side is crowded, the save mark's word
+    // shortens first (its mark and colour stay, and the full words stay with a screen reader).
+    <header className="relative grid min-w-0 items-center gap-3 bg-ed-panel px-3 max-lg:grid-cols-[minmax(8rem,1fr)_auto_minmax(0,auto)] max-lg:gap-1 max-lg:px-1.5 lg:col-span-3 lg:grid-cols-[minmax(0,1fr)_minmax(9rem,clamp(12rem,28vw,24rem))_minmax(max-content,1fr)]">
       <div className="flex min-w-0 items-center gap-2 overflow-hidden max-lg:gap-1">
         <LeaveLink
           href={spacePath(spaceSlug)}
@@ -204,7 +210,7 @@ export function TopBar({
             <Menu label="Help" items={itemsOf((input) => helpMenu(input, guide))} onSelect={pick} />
           </div>
         </div>
-        <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line" />
+        <span aria-hidden className="h-4 w-px shrink-0 bg-ed-line max-lg:hidden" />
         <ProjectName renameRequest={renameRequest} />
         {/* A moved project's editing is off too, and its banner says why. */}
         {!canEdit && !moved && (
@@ -215,7 +221,7 @@ export function TopBar({
       </div>
       <FeatureSearch items={searchList} onRun={runFound} inputRef={searchRef ?? ownSearch} fold />
       <TimelineFileDialog mode={timelineFile} onClose={() => setTimelineFile(null)} />
-      <div className="flex items-center justify-end gap-2 max-lg:gap-0.5">
+      <div className="flex min-w-0 items-center justify-end gap-2 max-lg:gap-0.5">
         {/* One of each at every width, so what a screen reader hears never doubles; below the lg width the dots and
             the words are kept for it and the count and mark beside them are what shows. */}
         <div className="contents max-lg:[&>[role=group]]:hidden max-lg:[&>[role=status]]:sr-only">

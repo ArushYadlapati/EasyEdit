@@ -47,6 +47,9 @@ export function SaveMark({ className }: { className?: string }) {
   const moved = useEditor((s) => s.moved);
   const label = moved ? "Moved" : saveStatusLabel(status, pending, canEdit, limitMessage);
   const { icon, word, tone } = markOf(status, moved, label);
+  // With the people count beside it on a phone-width bar, there is no room for the word as well: the mark and its colour
+  // say it, and the full words stay with a screen reader. A wider bar keeps the word.
+  const crowded = usePresence((st) => st.peers.length > 0);
   return (
     <span
       aria-hidden
@@ -54,8 +57,9 @@ export function SaveMark({ className }: { className?: string }) {
       title={label}
       data-word={word ?? undefined}
       className={cx(
-        "flex h-7 min-w-0 shrink-0 items-center gap-1 px-1 text-xs leading-4 whitespace-nowrap",
+        "flex h-7 min-w-7 shrink items-center gap-1 px-1 text-xs leading-4 whitespace-nowrap",
         word && "after:min-w-0 after:truncate after:content-[attr(data-word)]",
+        word && crowded && "max-[30rem]:after:hidden",
         tone,
         className,
       )}

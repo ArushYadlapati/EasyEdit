@@ -749,4 +749,6 @@ it("below the lg width the Edit, View and Help menus are one Menu button, so the
   expect(names.some((n) => n.startsWith("Undo"))).toBe(true);
   expect(names.some((n) => n.startsWith("Zoom in"))).toBe(true);
   expect(names.some((n) => n.startsWith("AI agents"))).toBe(true);
+  // The keyboard shortcuts are in both View and Help, and listed once here.
+  expect(names.filter((n) => n.startsWith("Keyboard shortcuts"))).toHaveLength(1);
 });
