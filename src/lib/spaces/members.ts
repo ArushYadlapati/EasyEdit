@@ -23,7 +23,7 @@ const managedElsewhere = () => new ServiceError("MANAGED_ELSEWHERE", 409, "Seatt
 const forbidden = () => new ServiceError("FORBIDDEN", 403, FORBIDDEN_BODY.message);
 const lastAdmin = () => new ServiceError("LAST_ADMIN", 409, "A team needs at least one admin. Make someone else an admin first.");
 const ownerStays = () =>
-  new ServiceError("STORAGE_OWNER", 409, "This team's videos are stored in their Google Drive, so they can't leave or be removed yet.");
+  new ServiceError("STORAGE_OWNER", 409, "This team's videos are stored in their Google Drive, so they can't leave or be removed. Moving a team's videos to another Google account isn't built yet.");
 // Only the owner, as an admin, can reconnect the team's storage.
 const ownerStaysAdmin = () =>
   new ServiceError("STORAGE_OWNER", 409, "This team's videos are stored in their Google Drive, so they need to stay an admin.");

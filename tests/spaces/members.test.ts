@@ -17,7 +17,7 @@ const MANAGED = { code: "MANAGED_ELSEWHERE", status: 409, message: "Seattle Solv
 const FORBIDDEN = { code: "FORBIDDEN", status: 403 };
 const NOT_IN_TEAM = { code: "NOT_FOUND", status: 404, message: "They're not in this team." };
 const LAST_ADMIN = { code: "LAST_ADMIN", status: 409, message: "A team needs at least one admin. Make someone else an admin first." };
-const OWNER_STAYS = { code: "STORAGE_OWNER", status: 409, message: "This team's videos are stored in their Google Drive, so they can't leave or be removed yet." };
+const OWNER_STAYS = { code: "STORAGE_OWNER", status: 409, message: "This team's videos are stored in their Google Drive, so they can't leave or be removed. Moving a team's videos to another Google account isn't built yet." };
 const OWNER_ADMIN = { code: "STORAGE_OWNER", status: 409, message: "This team's videos are stored in their Google Drive, so they need to stay an admin." };
 const LEAVE_INSTEAD = { code: "INVALID", status: 400, message: "To leave the team, use Leave team." };
 
