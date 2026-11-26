@@ -24,6 +24,16 @@ export const MESSAGES = {
   nothingToSeparate: "Select a video clip that has sound to separate its audio.",
   nothingToGroup: "Select two or more clips on unlocked tracks to link them.",
   nothingToUngroup: "None of the selected clips is linked.",
+  followRefused: {
+    "not-a-follower": "Select one text, shape or image, with the playhead on it, to make it follow something.",
+    "no-video": "There's no video under it at the playhead to follow.",
+    turned: "The video under it is rotated, flipped or moved by keyframes, so nothing in it can be followed yet.",
+    "too-long": "That is more than 30 seconds to follow. Trim the clip to the part where it should follow.",
+  },
+  followUnreadable: "Couldn't read that video to follow it.",
+  followLost: "Couldn't follow anything there. Put the clip on something with clear edges or a pattern, and try again.",
+  followed: "It now follows what was under it. Its position keyframes are in the Effects tab.",
+  followedPart: (seconds: number) => `It follows what was under it for ${seconds.toFixed(1)} s, then loses it. Its position keyframes are in the Effects tab.`,
   nestRefused: {
     nothing: "Select the clips to nest.",
     slot: "An empty slot can't be nested: a template fills it by its name.",

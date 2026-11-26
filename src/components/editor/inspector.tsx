@@ -64,6 +64,7 @@ import { Scopes } from "./scopes";
 import { Timecode } from "./timecode";
 import { fieldOps, useFieldGesture, useTextField, type FieldView } from "./use-field-gesture";
 import { useLevelVolume } from "./use-level-volume";
+import { useFollow } from "./use-follow";
 import { useSceneSplit } from "./use-scene-split";
 import { useSyncSound } from "./use-sync-sound";
 
@@ -769,6 +770,20 @@ function TimingSection({ clipId, slips }: { clipId: string; slips: boolean }) {
   );
 }
 
+// Follow: a text, a shape or an image kept on something in the video under it.
+function FollowSection({ clipId }: { clipId: string }) {
+  const canEdit = useEditor((s) => s.canEdit);
+  const { run, busy } = useFollow();
+  return (
+    <Section title="Follow">
+      <Hint>Put this where something is in the video under it at the playhead, then press Follow: it gets position keyframes that keep it on that thing.</Hint>
+      <Button data-edit-control className="self-start" disabled={!canEdit || busy} onClick={() => void run(clipId)}>
+        {busy ? "Following…" : "Follow what is under it"}
+      </Button>
+    </Section>
+  );
+}
+
 // A nest: several clips as one. What it holds, how loud it is on top of its clips' own volumes, and taking it apart.
 function NestSection({ clip, canEdit }: { clip: NestClip; canEdit: boolean }) {
   const store = useEditorStore();
@@ -1265,6 +1280,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
       {(clip.type === "video" || clip.type === "audio") && <SpeedSection clip={clip} />}
       <TimingSection clipId={clip.id} slips={clip.type === "video" || clip.type === "audio"} />
       {clip.type === "video" && clip.speed > 0 && <ScenesSection clipId={clip.id} />}
+      {(clip.type === "text" || clip.type === "shape" || clip.type === "image") && <FollowSection clipId={clip.id} />}
       <SlotSection clip={clip} />
     </>
   );

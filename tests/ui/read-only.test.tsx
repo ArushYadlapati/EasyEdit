@@ -91,7 +91,7 @@ const STATES: [string, (store: EditorStore) => void, string[]][] = [
       "input X", "button Add X keyframe", "input Y", "button Add Y keyframe", "input Width", "button Lock aspect ratio", "input Height",
       "input Scale", "button Add Scale keyframe", "input Rotation", "button Add Rotation keyframe", "input Opacity", "button Add Opacity keyframe",
       "input Crop left", "button Add Crop left keyframe", "input Crop top", "button Add Crop top keyframe", "input Crop right", "button Add Crop right keyframe", "input Crop bottom", "button Add Crop bottom keyframe", "button Reset crop", "select Blend mode",
-      "input Start", "input Length", "button Make this a slot",
+      "input Start", "input Length", "button Follow what is under it", "button Make this a slot",
     ],
   ],
   ["nothing selected", (store) => store.getState().select([]), ["select Format", "button Add at playhead"]],
