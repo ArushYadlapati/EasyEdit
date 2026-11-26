@@ -8,6 +8,7 @@ import type { CurrentUser } from "@/lib/access-rules";
 import type { Role } from "@/lib/allowlist/service";
 import type { MySpace } from "@/lib/spaces/types";
 import { AGENT_KINDS, AGENTS, fillTemplate } from "@/lib/connector/agents";
+import { SKILL_WORDS } from "@/lib/skills/words";
 import { act, fireEvent, render, screen, within } from "../helpers/dom";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), bfcacheId: "b0" }));
@@ -164,6 +165,73 @@ describe("setting up an agent", () => {
     await click(tab("OpenAI API"));
     expect(within(panel()).getByText(/This agent needs an access token/)).toBeTruthy();
     expect(within(panel()).getByText(/"authorization": "<your access token>"/)).toBeTruthy();
+  });
+});
+
+describe("video skills", () => {
+  it("come after the setup steps, say connected agents already have them, and give three other ways in", () => {
+    renderView();
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual(["Server address", "Set up an agent", "Video skills", "Connected agents", "Access tokens"]);
+    const section = region("Video skills");
+    expect(within(section).getByText(SKILL_WORDS.intro)).toBeTruthy();
+    expect(within(section).getByText("Agents you connect here already have them. You can also add them yourself:")).toBeTruthy();
+    const ways = within(section).getByRole("list", { name: "Other ways to add them" });
+    expect(within(ways).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "Claude Code",
+      "Codex, Cursor, Gemini CLI and Copilot",
+      "Claude on the web",
+    ]);
+    expect(within(ways).getByText("Upload the same file under Settings → Capabilities → Skills.")).toBeTruthy();
+    // No words an agent's maker would use and a person wouldn't, outside the commands people type.
+    const words = section.cloneNode(true) as HTMLElement;
+    for (const code of words.querySelectorAll("code")) code.remove();
+    expect(words.textContent).not.toMatch(/\b(MCP|oEmbed|JSON|token)\b/i);
+  });
+
+  it("Claude Code gets the two plugin commands, each shown whole and copied on its own", async () => {
+    renderView();
+    const section = region("Video skills");
+    // Shown as text that wraps, not in a one-line box that a phone cuts off.
+    const command = (name: string) => within(section).getByRole("group", { name }).querySelector("code");
+    expect([command("First command")?.textContent, command("Second command")?.textContent]).toEqual([
+      "/plugin marketplace add ArushYadlapati/EasyEdit",
+      "/plugin install easyedit@easyedit",
+    ]);
+    expect(within(section).queryByRole("textbox")).toBeNull();
+    await click(button("Copy the first command", section));
+    expect(writeText).toHaveBeenLastCalledWith("/plugin marketplace add ArushYadlapati/EasyEdit");
+    await click(button("Copy the second command", section));
+    expect(writeText).toHaveBeenLastCalledWith("/plugin install easyedit@easyedit");
+    expect(button("Copy the second command", section).textContent).toBe("Copied");
+  });
+
+  it("Claude Code is told to sign in after the commands, and to skip them when it is already connected", () => {
+    renderView();
+    const section = region("Video skills");
+    const paragraph = (text: string) => within(section).getByText((_, el) => el?.tagName === "P" && el.textContent === text);
+    expect(within(section).queryByText(/in one go/)).toBeNull();
+    // The plugin's connection has no tools until it is signed in.
+    const signIn = paragraph("Then run /mcp in Claude Code, pick easyedit, choose Authenticate and sign in.");
+    expect(signIn.querySelector("code")?.textContent).toBe("/mcp");
+    // Someone set up with claude mcp add would otherwise get EasyEdit twice, with every tool listed twice.
+    const already = paragraph(
+      "Already connected Claude Code with the steps above? Then it has the skills, so you can skip this. To use the plugin instead, first run claude mcp remove easyedit in a terminal.",
+    );
+    expect(already.querySelector("code")?.textContent).toBe("claude mcp remove easyedit");
+    // Both come after the two commands.
+    const second = within(section).getByRole("group", { name: "Second command" });
+    expect(second.compareDocumentPosition(signIn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(signIn.compareDocumentPosition(already) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("other agents download the zip and unzip it into their skills folder", () => {
+    renderView();
+    const section = region("Video skills");
+    expect(within(section).getByText((_, el) => el?.tagName === "P" && el.textContent === "Download the skill and unzip it into ~/.agents/skills.")).toBeTruthy();
+    const download = within(section).getByRole("link", { name: "Download easyedit-video.zip" });
+    expect(download.getAttribute("href")).toBe("/skills/easyedit-video.zip");
+    expect(download.getAttribute("download")).toBe("easyedit-video.zip");
   });
 });
 

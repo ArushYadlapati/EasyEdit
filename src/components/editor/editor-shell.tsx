@@ -24,6 +24,7 @@ import { EditorScreen } from "./editor-screen";
 import type { SpaceKind } from "@/lib/spaces/types";
 import type { StorageBlock } from "@/lib/storage/messages";
 import { BrandProvider } from "./brand/brand-context";
+import { StyleCardProvider } from "./brand/style-card";
 import { CaptionsProvider } from "./captions/captions-context";
 import { MediaProvider, createMediaServices, gateStorage, keepsLocalFolder, useLibrary, type StorageProblem } from "./media/media-context";
 import { PresenceProvider } from "./presence-context";
@@ -46,6 +47,8 @@ const quietly = (work: Promise<unknown>) => void work.catch(() => {});
 // The space a project is in, as the editor page hands it over.
 // kind, isAdmin, storageBlock: for the Media tab's setup card (see StorageSetup); left out, it offers no setup.
 // kind also says whether media may be kept in a folder on this computer: in a Personal space only.
+// personalSoon: this server doesn't offer personal spaces yet, so a personal space's settings can't be opened and its
+// Brand kit tab has no Style card (the dashboard's sidebar leaves out the same links).
 export type EditorSpace = {
   id: string;
   slug: string;
@@ -57,6 +60,7 @@ export type EditorSpace = {
   ownsConnection?: boolean; // whether the person connected the space's Google account (only they can reconnect it)
   ownerEmail?: string | null; // who did
   stock?: boolean; // whether this server has a stock library
+  personalSoon?: boolean;
 };
 
 // Owns the store, the API client, the sync, the media services, the project's dashboard picture and this browser's
@@ -292,7 +296,7 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
         }
         drop={drop}
       >
-        <EditorBrand spaceId={space.id}>
+        <EditorBrand spaceId={space.id} styleSlug={space.personalSoon && space.kind === "personal" ? null : space.slug}>
           <CaptionsProvider>
             <PresenceProvider store={presenceStore}>
               <ReviewProvider api={review} projectHref={projectHref}>
@@ -307,15 +311,18 @@ export function EditorShell({ initial, space, layout, prefs = DEFAULT_PREFS }: {
 }
 
 // The space's brand kit for the editor: editors change it as they can change the project, a refused change is told as
-// the editor tells any other, and images in the media library show as logos the moment they are added.
-function EditorBrand({ spaceId, children }: { spaceId: string; children: ReactNode }) {
+// the editor tells any other, and images in the media library show as logos the moment they are added. With
+// styleSlug, the Brand kit tab also shows the space's style, linked to its Style page by that slug.
+function EditorBrand({ spaceId, styleSlug, children }: { spaceId: string; styleSlug: string | null; children: ReactNode }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const assets = useLibrary((s) => s.assets);
   const knownLogos = useMemo(() => Object.values(assets).filter((a) => a.kind === "image"), [assets]);
   return (
     <BrandProvider spaceId={spaceId} canEdit={canEdit} knownLogos={knownLogos} onError={(message) => store.getState().notify("error", message)}>
-      {children}
+      <StyleCardProvider spaceId={spaceId} slug={styleSlug}>
+        {children}
+      </StyleCardProvider>
     </BrandProvider>
   );
 }

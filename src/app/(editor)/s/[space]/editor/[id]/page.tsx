@@ -11,6 +11,7 @@ import { PREFS_COOKIE, parsePrefs } from "@/lib/editor/settings";
 import { getProject } from "@/lib/projects/service";
 import { actorIn } from "@/lib/spaces/access";
 import { editorPath, slugFor } from "@/lib/spaces/paths";
+import { personalSpacesOpen } from "@/lib/spaces/personal";
 import { findMySpace, listMySpaces, spaceOfProject } from "@/lib/spaces/service";
 import { storageState } from "@/lib/spaces/storage";
 import { storageBlock } from "@/lib/storage/availability";
@@ -74,7 +75,7 @@ export default async function EditorPage({ params }: PageProps<"/s/[space]/edito
           thumbnailVersion: project.thumbnailVersion,
           movedAtVersion: project.movedAtVersion,
         }}
-        space={{ id: space.id, slug: slugFor(space), storageReady, storageProblem, kind: space.kind, isAdmin, storageBlock: block, ownsConnection: owner?.userId === user.id, ownerEmail: owner?.email ?? null, stock: stockConfig() !== null }}
+        space={{ id: space.id, slug: slugFor(space), storageReady, storageProblem, kind: space.kind, isAdmin, storageBlock: block, ownsConnection: owner?.userId === user.id, ownerEmail: owner?.email ?? null, stock: stockConfig() !== null, personalSoon: !personalSpacesOpen() }}
         layout={layout}
         prefs={prefs}
       />

@@ -37,7 +37,10 @@ const { Shell } = vi.hoisted(() => ({ Shell: vi.fn(() => null) }));
 vi.mock("@/components/editor/editor-shell", () => ({ EditorShell: Shell }));
 vi.mock("@/components/keep-signed-in", () => ({ KeepSignedIn: () => null }));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 
 describe("the editor page", () => {
   it("is always dark, and says so to Dark Reader and to the browser's own dark mode", () => {
@@ -68,5 +71,17 @@ describe("the editor page", () => {
       version: 0,
       thumbnailVersion: 3,
     });
+  });
+
+  it("tells the editor whether personal spaces are offered yet, for the Brand kit tab's Style card", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    const space = async () => {
+      render(await EditorPage({ params: Promise.resolve({ space: "seattle-solvers", id: "p1" }) } as never));
+      await act(async () => {});
+      return vi.mocked(EditorShell).mock.calls.at(-1)![0].space;
+    };
+    expect(await space()).toMatchObject({ slug: "seattle-solvers", kind: "team", personalSoon: false });
+    vi.stubEnv("PERSONAL_SPACES", "");
+    expect(await space()).toMatchObject({ personalSoon: true });
   });
 });

@@ -1,0 +1,192 @@
+import {
+  CAPTION_LOOK_OPTIONS,
+  CAPTION_POSITION_OPTIONS,
+  FORMAT_OPTIONS,
+  LOOK_OPTIONS,
+  MUSIC_OPTIONS,
+  PACE_OPTIONS,
+  TEXT_OPTIONS,
+  TRANSITION_KIND_OPTIONS,
+  TRANSITION_OPTIONS,
+  optionFor,
+  type StyleOption,
+} from "./fields";
+import { parseVideoLink } from "./links";
+import { STYLE_MESSAGES, STYLE_WORDS } from "./messages";
+import { ANALYSIS_LIMITS, isSetValue, type ShotFacts, type StyleProfile, type StyleReference } from "./types";
+
+// What the Style page says about a reference and a style, in plain words, from what is saved. Pure, so the page and
+// its tests read the same lines.
+
+const FACTS = STYLE_WORDS.facts;
+
+// How long a channel video's facts are kept before the server cuts them back: CHANNEL_FACTS_DAYS in service.ts, which
+// the browser can't import. A test keeps the two alike.
+export const CHANNEL_DAYS = 30;
+const CHANNEL_MS = CHANNEL_DAYS * 24 * 60 * 60 * 1000;
+
+const oneDecimal = (n: number) => String(Number(n.toFixed(1)));
+
+// A space that never breaks a line. A length is one fact, so it stays on one line: never "8 min" on one and "32 s" on
+// the next.
+const NB = "\u00a0";
+// Between the facts on a card's line: a line may break after the dot, never before it.
+const BETWEEN = `${NB}· `;
+
+// How long something runs, in short words: "38 s", "2 min 5 s", "1 h 12 min", with spaces that never break a line.
+export function lengthWords(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  if (total < 60) return `${total}${NB}s`;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const rest = total % 60;
+  if (hours > 0) return minutes > 0 ? `${hours}${NB}h${NB}${minutes}${NB}min` : `${hours}${NB}h`;
+  return rest > 0 ? `${minutes}${NB}min${NB}${rest}${NB}s` : `${minutes}${NB}min`;
+}
+
+// A shot's length, to a tenth of a second under 10 seconds: "1.6 s", "12 s".
+function shotWords(seconds: number): string {
+  return seconds < 10 ? `${oneDecimal(seconds)}${NB}s` : `${Math.round(seconds)}${NB}s`;
+}
+
+function shotsLine(shots: ShotFacts): string {
+  return FACTS.shots(shots.count, shotWords(shots.medianSeconds));
+}
+
+// The one line of facts a reference's card shows under its title, or null when there is nothing to say yet (a video
+// not looked at). A video: "38 s · 24 shots, about 1.6 s each · talks 170 words a minute". A link: its site and author
+// ("YouTube · Paper Planes Club"), or that its details couldn't be read. A project: "Project · 42 s · 18 shots, about
+// 2.1 s each · 3 transitions". On a narrow card the line wraps between facts or between words, never between a number
+// and its unit ("8 min 32 s", "2.1 s each") and never before a dot.
+export function referenceFacts(reference: StyleReference): string | null {
+  const facts = reference.analysis;
+  if (reference.kind === "link") {
+    const link = facts?.kind === "link" ? facts : null;
+    if (link?.unreadable) return STYLE_MESSAGES.linkUnreadable;
+    const provider = reference.provider ?? link?.provider;
+    const parts: string[] = [];
+    if (provider) parts.push(provider === "youtube" && link?.short ? FACTS.youtubeShort : FACTS.providers[provider]);
+    const author = reference.author ?? link?.author;
+    if (author) parts.push(author);
+    if (link?.seconds) parts.push(lengthWords(link.seconds));
+    return parts.length > 0 ? parts.join(BETWEEN) : null;
+  }
+  if (facts?.kind === "video") {
+    const parts = [lengthWords(facts.seconds), shotsLine(facts.shots)];
+    if (facts.speech) parts.push(facts.speech.words > 0 ? FACTS.talks(Math.round(facts.speech.perMinute)) : FACTS.noTalking);
+    return parts.join(BETWEEN);
+  }
+  if (facts?.kind === "project") {
+    const transitions = Object.values(facts.transitions).reduce((a, b) => a + b, 0);
+    const parts = [FACTS.project, lengthWords(facts.seconds), shotsLine(facts.shots), transitions > 0 ? FACTS.transitions(transitions) : FACTS.noTransitions];
+    if (facts.captions) parts.push(FACTS.captions);
+    return parts.join(BETWEEN);
+  }
+  return null;
+}
+
+// What a reference's card calls it. A link whose site's details couldn't be read, or were cleared after
+// CHANNEL_DAYS, has only its address for a title, which a narrow card cuts off just before the part that says which
+// video it is. It is called by its site instead ("YouTube video", "YouTube Short", "Vimeo video", or "TikTok video
+// from @account", from the address); the address stays where the card's link goes. Anything else keeps its title.
+export function referenceTitle(reference: StyleReference): string {
+  const { title, url } = reference;
+  if (reference.kind !== "link" || !url || (title !== url && !/^https?:\/\//i.test(title))) return title;
+  const link = parseVideoLink(url);
+  if (!link.ok) return title;
+  const NAMES = STYLE_WORDS.untitled;
+  if (link.provider === "youtube") return link.short ? NAMES.youtubeShort : NAMES.youtube;
+  if (link.provider === "vimeo") return NAMES.vimeo;
+  // A TikTok video's one address names its account: https://www.tiktok.com/@account/video/123.
+  const account = new URL(link.url).pathname.split("/")[1];
+  return NAMES.tiktok(account);
+}
+
+// Whether a video from the space's YouTube channel has had its facts cut back, or soon will: read more than
+// CHANNEL_DAYS ago, or at a time that can't be told. Reading it from the channel again brings them back.
+export function channelFactsStale(reference: StyleReference, now: Date): boolean {
+  if (reference.provider !== "channel") return false;
+  const fetched = reference.analysis?.kind === "link" ? Date.parse(reference.analysis.fetchedAt) : Number.NaN;
+  return !(now.getTime() - fetched <= CHANNEL_MS);
+}
+
+// Where looking over a video has got to, as its card says it: "Looking at the shots… 30%", "Listening… 42%",
+// "Saving…". Waiting and saving have no share to give; nor does a step that hasn't started.
+export function progressWords(progress: { stage: keyof typeof STYLE_WORDS.analyzing; done: number }): string {
+  const label = `${STYLE_WORDS.analyzing[progress.stage]}…`;
+  const counted = progress.stage === "shots" || progress.stage === "listening";
+  const share = Math.round(Math.min(1, Math.max(0, progress.done)) * 100);
+  return counted && share > 0 ? `${label} ${share}%` : label;
+}
+
+// Why Fill in from my videos can't be used yet, as the line beside it says, or null once something it can read is
+// ready: nothing has been added; a video is still waiting to be looked at; or nothing added could be looked at.
+export function fillInWaitsFor(references: readonly StyleReference[]): string | null {
+  const F = STYLE_WORDS.form;
+  if (references.some((r) => r.status === "ready" && r.analysis)) return null;
+  if (references.length === 0) return F.fillInFirst;
+  return references.some((r) => r.status === "pending") ? F.fillInWaiting : F.fillInFailed;
+}
+
+// Whether Try again can help a video that couldn't be looked at: not when it is longer than a style looks at, which
+// it always will be. failure: the words its card shows; durationMs: its length as the library knows it, if it does.
+export function canTryAgain(failure: string, durationMs: number | null | undefined): boolean {
+  if (failure === STYLE_WORDS.analysisFailed.tooLong) return false;
+  return !(typeof durationMs === "number" && durationMs / 1000 > ANALYSIS_LIMITS.seconds);
+}
+
+// A choice as someone reading the style sees it: its name and what it means ("Quick: A new shot every 1.2 to 2.5
+// seconds."), or the value itself when no list knows it.
+function choiceWords<T extends string>(options: readonly StyleOption<T>[], value: T): string {
+  const option = optionFor(options, value);
+  return option ? `${option.label}: ${option.help}` : value;
+}
+
+const labelOf = <T extends string>(options: readonly StyleOption<T>[], value: T) => optionFor(options, value)?.label ?? value;
+
+// A profile field's value in plain words, for someone who can only read the style, or null when it isn't set. The
+// Always and Never lists are shown one thing a line, so they come back joined only as a fallback.
+export function profileValueWords(key: keyof StyleProfile, profile: StyleProfile): string | null {
+  if (!isSetValue(profile[key])) return null;
+  const V = STYLE_WORDS.values;
+  switch (key) {
+    case "summary":
+    case "hook":
+    case "voice":
+      return profile[key] ?? null;
+    case "formats":
+      return (profile.formats ?? []).map((id) => labelOf(FORMAT_OPTIONS, id)).join(", ");
+    case "lengthSeconds": {
+      const length = profile.lengthSeconds!;
+      return length.min === length.max ? V.about(oneDecimal(length.min)) : V.range(oneDecimal(length.min), oneDecimal(length.max));
+    }
+    case "pace":
+      return choiceWords(PACE_OPTIONS, profile.pace!);
+    case "shotSeconds":
+      return V.about(oneDecimal(profile.shotSeconds!));
+    case "captions": {
+      const captions = profile.captions!;
+      if (!captions.on) return V.off;
+      const parts: string[] = [V.on];
+      if (captions.look) parts.push(labelOf(CAPTION_LOOK_OPTIONS, captions.look));
+      if (captions.uppercase) parts.push(V.allCaps);
+      if (captions.position) parts.push(labelOf(CAPTION_POSITION_OPTIONS, captions.position));
+      return parts.join(" · ");
+    }
+    case "text":
+      return choiceWords(TEXT_OPTIONS, profile.text!);
+    case "music":
+      return choiceWords(MUSIC_OPTIONS, profile.music!);
+    case "transitions":
+      return choiceWords(TRANSITION_OPTIONS, profile.transitions!);
+    case "transitionKinds":
+      return (profile.transitionKinds ?? []).map((kind) => labelOf(TRANSITION_KIND_OPTIONS, kind)).join(", ");
+    case "look":
+      return choiceWords(LOOK_OPTIONS, profile.look!);
+    case "always":
+    case "never":
+      return (profile[key] ?? []).join("; ");
+    default:
+      return null;
+  }
+}

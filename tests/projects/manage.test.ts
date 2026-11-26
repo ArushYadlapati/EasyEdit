@@ -2,6 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { rowsOf, type DB } from "@/db";
+import { styleReference } from "@/db/schema";
 import type { Actor } from "@/lib/actor";
 import { copyName } from "@/lib/projects/schemas";
 import {
@@ -71,6 +72,18 @@ describe("delete", () => {
       await expect(attempt()).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
     }
     expect(await logged(db, id)).toEqual([1]);
+  });
+
+  it("deletes what a space's style learned from the project in the same write, and leaves other references alone", async () => {
+    const db = await makeTestDb();
+    const id = await oneEdit(db);
+    const other = await oneEdit(db);
+    const learned = (refId: string, projectId: string) => ({ id: refId, spaceId: editor.spaceId, kind: "project" as const, title: "Qual recap", projectId, createdBy: editor.userId });
+    await db.insert(styleReference).values([learned("r1", id), learned("r2", other)]);
+    await expect(deleteProject(db, viewer, id)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await db.select({ id: styleReference.id }).from(styleReference)).map((row) => row.id).sort()).toEqual(["r1", "r2"]);
+    await deleteProject(db, editor, id);
+    expect((await db.select({ id: styleReference.id }).from(styleReference)).map((row) => row.id)).toEqual(["r2"]);
   });
 
   it("records who deleted the project and when", async () => {

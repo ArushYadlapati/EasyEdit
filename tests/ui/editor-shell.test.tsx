@@ -1136,3 +1136,50 @@ it("an edit answered 409 MOVED shows the move too, and keeps the edit unsent", a
   await after(60_000);
   expect(server.posts()).toBe(1);
 });
+
+// The shell's server, answering the space's style too (with a summary), so the Brand kit tab can show its Style card.
+function stubServerWithStyle() {
+  const server = stubServer();
+  const rest = globalThis.fetch;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (!url.startsWith("/api/style")) return rest(url, init);
+    server.requests.push(`${init?.method ?? "GET"} ${url}`);
+    return Response.json({ profile: { summary: "Fast match recaps." }, notes: "", updatedAt: null, updatedBy: null });
+  });
+  return server;
+}
+
+const openBrandTab = async () => {
+  await act(() => void fireEvent.click(screen.getByRole("tab", { name: "Brand kit" })));
+  await flush();
+};
+const styleReads = (server: ReturnType<typeof stubServer>) => server.requests.filter((r) => r.includes("/api/style"));
+
+it("the Brand kit tab shows the space's style, with a link to its Style page", async () => {
+  const server = stubServerWithStyle();
+  render(<EditorShell space={SPACE} initial={initial()} />);
+  await flush();
+  expect(styleReads(server)).toEqual([]); // nothing until the tab opens
+  await openBrandTab();
+  expect(styleReads(server)).toEqual(["GET /api/style?space=s1"]);
+  expect(screen.getByText("Fast match recaps.")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Edit style" }).getAttribute("href")).toBe("/s/seattle-solvers/settings/style");
+  await after(120_000);
+  expect(styleReads(server)).toHaveLength(1); // read once, never again on a timer
+});
+
+it("a personal space's Brand kit tab has no Style card while personal spaces are closed", async () => {
+  const server = stubServerWithStyle();
+  const personal = { id: "s1", slug: "personal", storageReady: true, kind: "personal" as const };
+  const { unmount } = render(<EditorShell space={{ ...personal, personalSoon: true }} initial={initial()} />);
+  await flush();
+  await openBrandTab();
+  expect(screen.queryByRole("link", { name: "Edit style" })).toBeNull();
+  expect(styleReads(server)).toEqual([]);
+  unmount();
+  // Once they're offered, it has one like a team's.
+  render(<EditorShell space={{ ...personal, personalSoon: false }} initial={initial()} />);
+  await flush();
+  await openBrandTab();
+  expect(screen.getByRole("link", { name: "Edit style" }).getAttribute("href")).toBe("/s/personal/settings/style");
+});

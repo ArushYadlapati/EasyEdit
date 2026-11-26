@@ -167,7 +167,7 @@ A space's admin can connect a YouTube channel to the space, and after an export 
 1. **`STORAGE_TOKEN_KEY`**, as for [Storage per space](#storage-per-space). It encrypts the channel's token too.
 2. **The YouTube API.** In Google Cloud, open the project your OAuth client is in and enable **YouTube Data API v3**.
 3. **An OAuth client.** Use the one sign-in uses, or make a second one (type "Web application"). Add `<your site>/api/social/youtube/callback` as an authorized redirect URI, for example `http://localhost:3000/api/social/youtube/callback`.
-4. **The YouTube permissions.** On the OAuth consent screen, add the scopes `https://www.googleapis.com/auth/youtube.upload` (to post) and `https://www.googleapis.com/auth/youtube.readonly` (to show the channel's name). Google calls both "sensitive": until Google has verified the app for them, people see a warning screen when they connect a channel, and at most 100 people can connect one.
+4. **The YouTube permissions.** On the OAuth consent screen, add the scopes `https://www.googleapis.com/auth/youtube.upload` (to post) and `https://www.googleapis.com/auth/youtube.readonly` (to show the channel's name, and its newest public videos on the Style page). Google calls both "sensitive": until Google has verified the app for them, people see a warning screen when they connect a channel, and at most 100 people can connect one.
 5. **`YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET`.** The client's id and secret, in `.env.local` (and in Vercel, followed by a redeploy). They are never taken from the sign-in settings by themselves, so a deploy can't show a Connect button before steps 2 to 4 are done.
 
 How it works, and what to know:
@@ -176,6 +176,7 @@ How it works, and what to know:
 - Nothing is posted until someone presses **Post**, and the form starts on Private.
 - One channel per space. Connecting again replaces it. **Disconnect** removes it, stops any upload still running, and ends EasyEdit's access to that Google account, unless another space's channel or Drive uses the same account (then the access stays, and the person can remove EasyEdit in their Google account).
 - A channel is connected with one person's Google account. If that person leaves the team or is removed from it, or the team is deleted, the channel is disconnected.
+- Videos a space's Style adds from its channel keep YouTube's details for 30 days. Once a day (during the 16:00 UTC hour, set in `vercel.json`) Vercel calls `/api/cron/style-trim`, which cuts older ones back to the video's address. It needs `CRON_SECRET`, as the [database size alert](#database-size-alert) does. Disconnecting the channel, or connecting another one, deletes them.
 - A space can post 10 videos in 24 hours. YouTube also gives the whole site a daily allowance; when it is used up, posting says so until the next day.
 - Only the file that was just exported can be posted, from the Export dialog.
 - It needs the migration `0025_socials`, on every server, also one that doesn't post: disconnecting a Google Drive looks in the new table.

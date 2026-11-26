@@ -391,8 +391,9 @@ export async function renameProject(db: DB, actor: Actor, id: string, name: stri
   return { id, name: rows[0].name };
 }
 
-// A soft delete: the row and its op log are kept, and the row records who deleted it. Its picture and its pin are
-// dropped in the same statement, so a deleted project never leaves a pin behind.
+// A soft delete: the row and its op log are kept, and the row records who deleted it. Its picture, its pin and what a
+// style learned from it are dropped in the same statement, so a deleted project never leaves a pin or a style
+// reference behind.
 export async function deleteProject(db: DB, actor: Actor, id: string): Promise<void> {
   requireRole(actor, "editor");
   const result = await db.execute(sql`
@@ -402,7 +403,8 @@ export async function deleteProject(db: DB, actor: Actor, id: string): Promise<v
       where ${liveProject(actor, id)}
       returning id
     ),
-    unpin as (delete from project_pins where project_id in (select id from upd))
+    unpin as (delete from project_pins where project_id in (select id from upd)),
+    unstyle as (delete from style_reference where project_id in (select id from upd))
     select id from upd
   `);
   if (rowsOf(result).length === 0) throw notFound(id);
