@@ -48,6 +48,9 @@ export function InviteCard({ state, notice = null, accept, decline }: { state: I
         {state.kind === "signed-out" && (
           <>
             <p>{invitedLine(state)}</p>
+            <p className="text-sm text-foreground/70">
+              EasyEdit is a free video editor in your browser. Sign in with the Google address this invite was sent to.
+            </p>
             {notice !== null && (
               <p role="alert" className={PLAIN_ERROR}>
                 {notice}
@@ -74,7 +77,8 @@ export function InviteCard({ state, notice = null, accept, decline }: { state: I
         )}
         {state.kind === "wrong-account" && (
           <>
-            <p>{`This invite is for a different email address. You're signed in as ${state.signedInEmail}.`}</p>
+            <p>{`This invite is for a different Google address. You're signed in as ${state.signedInEmail}.`}</p>
+            <p className="text-sm text-foreground/70">{`Sign out, then sign in with the address ${state.invitedBy} invited, or ask them for a new invite.`}</p>
             <button
               type="button"
               disabled={pending}

@@ -76,7 +76,7 @@ describe("the invite page picks one state", () => {
   it("a different account is told so and shown its own email", async () => {
     stub.me = user("bob@example.com");
     await show();
-    expect(screen.getByText("This invite is for a different email address. You're signed in as bob@example.com.")).toBeTruthy();
+    expect(screen.getByText("This invite is for a different Google address. You're signed in as bob@example.com.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
   });
