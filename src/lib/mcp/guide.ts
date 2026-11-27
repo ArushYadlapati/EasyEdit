@@ -3,7 +3,7 @@ import { DEFAULT_TEXT_SECONDS, TEXT_FONT, TOOL_PRESETS } from "@/lib/editor/text
 import { LIMITS } from "@/lib/limits";
 import { safeAreaMargins } from "@/lib/render/safe-zones";
 import { skillIndexLines } from "@/lib/skills";
-import { NO_CROP, type Crop, type Keyframes, type TextAnimationIn, type TextStyle, type Transform, type Transition } from "@/lib/timeline";
+import { EMPHASIS_AMOUNT, EMPHASIS_SPEED, NO_CROP, type Crop, type Keyframes, type TextAnimationIn, type TextStyle, type Transform, type Transition } from "@/lib/timeline";
 
 // The clip shown in the op reference. The test adds it to a project, so the example cannot go stale.
 export const EXAMPLE_TEXT_CLIP: { type: "text"; start: number; duration: number; text: string; transform: Transform; style: TextStyle } = {
@@ -94,10 +94,10 @@ export const EFFECTS_REFERENCE = `Effects all go through update_clip: ${JSON.str
 keyframes (video, image, text) is {"x"|"y"|"scale"|"rotation"|"opacity":[{"at":F,"value":N,"ease":E}]}; keyframes merges per property: patching keyframes.x leaves the others alone, and [] removes a property's keyframes. A keyframed property ignores its transform value. at counts frames from the clip's start, in time order. ease is optional (linear when left out) and is how the value travels to the next keyframe: "linear"|"ease_in"|"ease_out"|"ease_in_out"|"hold". Opacity stays 0 to 1, scale above 0.
 get_project shows each keyframed property's list as kf.<prop>=at:value~ease,... (~ease left out when linear), e.g. kf.scale=0:1,89:1.15~ease_out. To change one keyframe, send that property's whole list back with the one changed.
 transitionIn / transitionOut (video and image, and a visual slot's placeholder: the clip that fills it keeps them and its keyframes) is {"kind":K,"frames":F,"direction":D,"color":HEX}; K is "fade"|"crossfade"|"slide"|"zoom"|"whip"|"dip". ${JSON.stringify({ op: "update_clip", clipId: "C", patch: { transitionIn: EXAMPLE_TRANSITION } })}
-Give the full transition; null removes it. frames runs from 1 to ${LIMITS.effectFramesMax}. direction ("left"|"right"|"up"|"down", slide and whip) names the way the clip moves: "left" enters from the right moving left. color (dip) is hex. Defaults: direction "left", dip color "#000000", highlight_word color "#FFD400".
+Give the full transition; null removes it. frames runs from 1 to ${LIMITS.effectFramesMax}. direction ("left"|"right"|"up"|"down", slide and whip) names the way the clip moves: "left" enters from the right moving left. color (dip) is hex. Defaults: direction "left", dip color "#000000".
 Crossfade is in-only (transitionIn). It blends from the clip that ends exactly where this one starts, on the same track. A crossfade owns its cut: the outgoing clip's own transitionOut is ignored.
 animationIn / animationOut / emphasis (text only) are replaced whole too; null removes it. ${JSON.stringify({ op: "update_clip", clipId: "C", patch: { animationIn: EXAMPLE_TEXT_ANIMATION } })}
-animationIn is {"preset":P,"frames":F}, P is "fade"|"pop"|"slide_up"|"slide_down"|"slide_left"|"slide_right"|"typewriter"|"scale_punch". animationOut is the same without "typewriter" and "scale_punch". slide_up rises into place. emphasis is {"preset":"shake"|"pulse"|"highlight_word","color":HEX} for the whole clip; color is for highlight_word.`;
+animationIn is {"preset":P,"frames":F}, P is "fade"|"pop"|"slide_up"|"slide_down"|"slide_left"|"slide_right"|"typewriter"|"scale_punch". animationOut is the same without "typewriter" and "scale_punch". slide_up rises into place. emphasis is {"preset":"shake"|"pulse","amount":N,"speed":N} for the whole clip: shake jitters, pulse grows and shrinks by 5% every 0.8 s. amount (${EMPHASIS_AMOUNT.min} to ${EMPHASIS_AMOUNT.max}) scales how far it moves and speed (${EMPHASIS_SPEED.min} to ${EMPHASIS_SPEED.max}) how fast; 1, or left out, is its own look. A shake is near the fastest a frame can show, so past about 1.8 at 30 fps (3.5 at 60) it gets no faster. Use it rarely: one line in a video at most, at a small amount.`;
 
 // Captions are taught here and not in OP_REFERENCE, which is part of the size-capped tool list. Agents never write a
 // transcript by hand, so set_transcript is not shown.

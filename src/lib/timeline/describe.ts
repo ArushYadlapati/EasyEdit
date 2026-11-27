@@ -8,7 +8,7 @@ import { nestClips, nestLength } from "./nest";
 import { shapeToolOf } from "./shapes";
 import { TEXT_EXTRA_KEYS, TEXT_STYLE_DEFAULTS } from "./text-style";
 import { isColorClip } from "./types";
-import type { Clip, Grade, Keyframe, KeyframeProp, MediaClip, NestClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
+import type { Clip, Emphasis, Grade, Keyframe, KeyframeProp, MediaClip, NestClip, ShapeClip, Slot, TextStyle, Track, TimelineDoc, Transform, Transition } from "./types";
 
 const TEXT_PREVIEW_CHARS = 40;
 
@@ -49,6 +49,16 @@ function transitionToken(t: Transition): string {
   return `${t.kind}${detail}`;
 }
 
+// The preset, then what it is set to apart from its own look: a highlight's colour, or a shake's or pulse's amount and
+// speed (factors, as update_clip takes them; 1 is left out).
+function emphasisToken(e: Emphasis): string {
+  if (e.preset === "highlight_word") return `${e.preset} ${e.color ?? "#FFD400"}`;
+  let out: string = e.preset;
+  if ((e.amount ?? 1) !== 1) out += ` amount ${e.amount}`;
+  if ((e.speed ?? 1) !== 1) out += ` speed ${e.speed}`;
+  return out;
+}
+
 // One property's keyframes, at:value~ease each, so a list can be patched back whole with only one keyframe changed.
 // Linear, the default, is left out.
 function keyframeList(clip: Clip, prop: KeyframeProp): string {
@@ -80,7 +90,7 @@ function describeEffects(clip: Clip, fps: number, detail: boolean): string {
   if (clip.type === "text") {
     if (clip.animationIn) out += ` anim-in=${clip.animationIn.preset} ${framesToSeconds(clip.animationIn.frames, fps)}s`;
     if (clip.animationOut) out += ` anim-out=${clip.animationOut.preset} ${framesToSeconds(clip.animationOut.frames, fps)}s`;
-    if (clip.emphasis) out += ` emphasis=${clip.emphasis.preset}${clip.emphasis.preset === "highlight_word" ? ` ${clip.emphasis.color ?? "#FFD400"}` : ""}`;
+    if (clip.emphasis) out += ` emphasis=${emphasisToken(clip.emphasis)}`;
     // The stretches of its words with a look of their own, as update_clip takes them.
     if (detail && clip.spans && clip.spans.length > 0) out += ` spans=${JSON.stringify(clip.spans)}`;
   } else if (clip.type !== "adjustment") {

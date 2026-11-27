@@ -169,12 +169,14 @@ function cutTransitions(shots: readonly Clip[]): TransitionCounts {
 }
 
 // Text animations by preset: "pop in" and "fade out" for the ways in and out, the preset alone for an emphasis.
+// Highlight word isn't counted: agents copy what these facts count, and neither the editor nor the agents' guide
+// offers it any more.
 function textAnimationFacts(texts: readonly TextClip[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const clip of texts) {
     if (clip.animationIn?.preset) tallyUp(counts, `${clip.animationIn.preset} in`);
     if (clip.animationOut?.preset) tallyUp(counts, `${clip.animationOut.preset} out`);
-    if (clip.emphasis?.preset) tallyUp(counts, clip.emphasis.preset);
+    if (clip.emphasis?.preset && clip.emphasis.preset !== "highlight_word") tallyUp(counts, clip.emphasis.preset);
   }
   return counts;
 }

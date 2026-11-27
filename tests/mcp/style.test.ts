@@ -207,6 +207,15 @@ describe("the style as agents read it", () => {
     expect(full).toContain("text animations pop in 2; 1 clip at another speed; effects grain.");
   });
 
+  it("leaves highlight word out of a past project's text animations, where facts counted before it left still have it", () => {
+    const counted = { ...PROJECT_FACTS, textAnimations: { "pop in": 2, highlight_word: 3, pulse: 1 } };
+    const full = referenceLine(reference({ kind: "project", title: "Spring cup final", analysis: counted, hasSheet: false }), true);
+    expect(full).toContain("text animations pop in 2, pulse 1; ");
+    expect(full).not.toContain("highlight");
+    const only = { ...PROJECT_FACTS, textAnimations: { highlight_word: 3 } };
+    expect(referenceLine(reference({ kind: "project", title: "Spring cup final", analysis: only, hasSheet: false }), true)).not.toContain("text animations");
+  });
+
   it("says at how many of a project's cuts there is a transition, the share the transitions field goes by", () => {
     const cutsOf = (transitions: ProjectAnalysis["transitions"]) =>
       referenceLine(reference({ kind: "project", title: "Spring cup final", analysis: { ...PROJECT_FACTS, shots: { ...PROJECT_FACTS.shots, transitions } } }));

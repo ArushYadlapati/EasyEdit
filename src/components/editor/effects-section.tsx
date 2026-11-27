@@ -10,15 +10,19 @@ import {
   ANIMATION_IN,
   ANIMATION_OUT,
   DIRECTIONS,
-  EMPHASIS,
+  EMPHASIS_FIELDS,
   TRANSITION_KINDS,
   animationOps,
   clampEffectFrames,
   defaultEffectFrames,
   emphasisOps,
+  emphasisOptions,
+  emphasisPercent,
+  movesText,
   pickEmphasis,
   pickTransition,
   transitionOps,
+  withEmphasisPercent,
 } from "@/lib/editor/effect-fields";
 import type { EditorStore } from "@/lib/editor/store";
 import { LIMITS } from "@/lib/limits";
@@ -233,7 +237,7 @@ export function AnimationSection({ clip }: { clip: TextClip }) {
       <Heading>Transitions</Heading>
       <AnimationSide clip={clip} side="in" canEdit={canEdit} fps={fps} />
       <AnimationSide clip={clip} side="out" canEdit={canEdit} fps={fps} />
-      <Field label="Emphasis">
+      <Field label="Emphasis" hint={emphasis?.preset === "highlight_word" ? "No longer offered: it lights the words on a timer, not as they're said. Captions follow speech." : undefined}>
         <Select
           data-edit-control
           disabled={!canEdit}
@@ -244,13 +248,34 @@ export function AnimationSection({ clip }: { clip: TextClip }) {
           }}
         >
           <option value="">None</option>
-          {EMPHASIS.map((o) => (
+          {emphasisOptions(emphasis?.preset).map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
         </Select>
       </Field>
+      {movesText(emphasis) && (
+        <div className="grid grid-cols-2 gap-2">
+          {EMPHASIS_FIELDS.map(({ key, label, range }) => (
+            <Field key={key} label={label}>
+              <NumberInput
+                ariaLabel={`Emphasis ${label.toLowerCase()}`}
+                data-edit-control
+                disabled={!canEdit}
+                value={emphasisPercent(emphasis, key)}
+                suffix="%"
+                min={range.min * 100}
+                max={range.max * 100}
+                step={5}
+                scrub={1}
+                decimals={0}
+                onCommit={(percent) => setEmphasis(withEmphasisPercent(emphasis, key, percent))}
+              />
+            </Field>
+          ))}
+        </div>
+      )}
       {emphasis?.preset === "highlight_word" && (
         <EffectColor label="Highlight color" value={emphasis.color ?? DEFAULT_HIGHLIGHT_COLOR} canEdit={canEdit} onCommit={(color) => setEmphasis({ ...emphasis, color })} />
       )}
