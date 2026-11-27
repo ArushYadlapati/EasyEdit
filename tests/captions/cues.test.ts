@@ -339,3 +339,13 @@ describe("retextCue", () => {
     }
   });
 });
+
+describe("docCues: a switched-on clip beside caption clips of its file", () => {
+  it("shows its own lines when no caption clip of its file lies over it", () => {
+    const d = docWithCaptions("short_9x16");
+    d.tracks.find((t) => t.id === "v1")!.clips = [clip({ id: "c1", captions: undefined }), clip({ id: "c2", start: 400, captions: true })];
+    d.tracks.find((t) => t.kind === "caption")!.clips = [{ id: "k1", type: "caption", assetId: "a", start: 0, duration: 300, transform: { ...DEFAULT_TRANSFORM } }];
+    d.captions = { transcripts: { a: SENTENCE } };
+    expect(docCues(d).map((c) => [c.clipId, c.captionId])).toEqual([["c1", "k1"], ["c2", null]]);
+  });
+});

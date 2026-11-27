@@ -86,7 +86,7 @@ function build(clip: MediaClip, words: readonly CaptionWord[], fps: number, pres
 // Every line in the project. A caption clip on the Captions track shows the lines of its file's video and audio clips
 // (on any track) that fall inside it: the words that start inside it, the line ending where it ends. Two caption clips
 // of one file never show a word twice. A clip with its own captions flag on (how captions were switched on before
-// caption clips) shows all its lines, unless its file has caption clips. Hidden and muted tracks still count: the
+// caption clips) shows all its lines, unless a caption clip of its file lies over it. Hidden and muted tracks still count: the
 // caption track decides what shows, not the track the sound is on. Earliest first; lines that start together keep
 // the order of their tracks.
 export function docCues(doc: TimelineDoc): Cue[] {
@@ -97,10 +97,9 @@ export function docCues(doc: TimelineDoc): Cue[] {
   }
   const lines = (clip: MediaClip) => clipCues(clip, transcriptOf(doc, clip.assetId)!, doc.fps, preset);
   const captions = captionClipsOf(doc);
-  const captioned = new Set(captions.map((c) => c.assetId));
 
   const all: Cue[] = [];
-  for (const clip of media) if (clip.captions && !captioned.has(clip.assetId)) all.push(...lines(clip));
+  for (const clip of media) if (clip.captions && !captions.some((c) => c.assetId === clip.assetId && overlaps(c, clip))) all.push(...lines(clip));
   // The words caption clips show already, each as its place in the file and the frame it lands on: a video and the
   // sound taken from it (Separate audio) play the same words at the same frames, and show them once.
   const shown = new Set<string>();
