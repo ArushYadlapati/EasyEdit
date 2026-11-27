@@ -6,6 +6,7 @@ import {
   isCaptioned,
   retextOps,
   runAutoCaptions,
+  upgradeCaptionOps,
   type AutoCaptionDeps,
   type AutoCaptionProgress,
 } from "@/lib/captions/actions";
@@ -581,5 +582,46 @@ describe("captions in another language", () => {
     const unknown = await run({ language: "klingon", translate: true });
     expect(unknown.asked).toEqual([{ language: "english", translate: false }]);
     expect(unknown.deps.save).toHaveBeenCalledWith("a", HELLO, SPEECH_MODEL);
+  });
+});
+
+describe("upgradeCaptionOps", () => {
+  // A project from before caption clips: c1 with its captions switched on, the words in the project, a Captions track.
+  function oldDoc(): TimelineDoc {
+    const doc = plainDoc();
+    doc.tracks.splice(2, 0, { id: "cap", kind: "caption", name: "Captions", muted: false, hidden: false, locked: false, clips: [] });
+    (doc.tracks[0].clips[0] as Clip & { captions?: boolean }).captions = true;
+    doc.captions = { transcripts: { a: HELLO } };
+    return doc;
+  }
+
+  it("gives each switched-on clip its caption clip, linked, with ids made from the clip's, and switches the flag off", () => {
+    const doc = oldDoc();
+    const ops = upgradeCaptionOps(doc);
+    expect(ops).toEqual([
+      { op: "add_clip", trackId: "cap", clip: { id: "cap-c1", type: "caption", assetId: "a", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, group: "cap-c1" } },
+      { op: "update_clip", clipId: "c1", patch: { captions: false, group: "cap-c1" } },
+    ]);
+    const before = docCues(doc).map((c) => [c.text, c.start, c.end]);
+    const after = apply(doc, ops);
+    // The same lines show, now in a caption clip; and there is nothing more to do.
+    expect(docCues(after).map((c) => [c.text, c.start, c.end])).toEqual(before);
+    expect(docCues(after)[0].captionId).toBe("cap-c1");
+    expect(upgradeCaptionOps(after)).toEqual([]);
+  });
+
+  it("made twice, as by two people opening the project at once, the second is refused", () => {
+    const doc = oldDoc();
+    const once = apply(doc, upgradeCaptionOps(doc));
+    expect(() => applyOps(once, prepareOps(upgradeCaptionOps(doc), () => "x"))).toThrow();
+  });
+
+  it("does nothing without a Captions track, on a locked one, or for a file with no words", () => {
+    const doc = oldDoc();
+    expect(upgradeCaptionOps({ ...doc, tracks: doc.tracks.filter((t) => t.kind !== "caption") })).toEqual([]);
+    const locked = structuredClone(doc);
+    locked.tracks.find((t) => t.kind === "caption")!.locked = true;
+    expect(upgradeCaptionOps(locked)).toEqual([]);
+    expect(upgradeCaptionOps({ ...doc, captions: undefined })).toEqual([]);
   });
 });

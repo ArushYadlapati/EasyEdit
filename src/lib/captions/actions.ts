@@ -95,6 +95,37 @@ export function captionOps(doc: TimelineDoc, input: { assetId: string; words: Ca
   return [...ops, ...changes];
 }
 
+// Projects from before caption clips switched captions on with a flag on each clip. This edit gives each such clip
+// its caption clip (as Auto captions would, linked with it, only where the Captions track is free) and switches the
+// flag off. The ids are made from the clip's, so two people opening the project at once make the same edit and the
+// second is refused rather than doubling the captions. Nothing without a Captions track to put them on, or when it is
+// locked; nothing for a flag on a clip whose file has no words (it shows nothing either way).
+export function upgradeCaptionOps(doc: TimelineDoc): OpInput[] {
+  const track = captionTrack(doc);
+  if (!track || track.locked) return [];
+  const taken = track.clips.map((clip) => ({ start: clip.start, duration: clip.duration, assetId: clip.type === "caption" ? clip.assetId : null }));
+  const ops: OpInput[] = [];
+  for (const t of doc.tracks) {
+    if (t.locked) continue;
+    for (const clip of t.clips) {
+      if (!hasSpeech(clip) || !clip.captions || !transcriptOf(doc, clip.assetId)?.length) continue;
+      const patch: { group?: string; captions: boolean } = { captions: false };
+      if (!taken.some((x) => x.assetId === clip.assetId && overlaps(x, clip))) {
+        const gaps = freeSpans(clip.start, clip.start + clip.duration, taken);
+        const group = clip.group ?? `cap-${clip.id}`.slice(0, 40);
+        if (gaps.length > 0 && !clip.group) patch.group = group;
+        gaps.forEach((gap, i) => {
+          const id = `cap-${clip.id}${i === 0 ? "" : `-${i}`}`;
+          ops.push({ op: "add_clip", trackId: track.id, clip: { id, type: "caption", assetId: clip.assetId, start: gap.start, duration: gap.duration, transform: { ...DEFAULT_TRANSFORM }, group } });
+          taken.push({ ...gap, assetId: clip.assetId });
+        });
+      }
+      ops.push({ op: "update_clip", clipId: clip.id, patch });
+    }
+  }
+  return ops;
+}
+
 // The parts of [from, to) no span covers, in order.
 function freeSpans(from: number, to: number, spans: readonly { start: number; duration: number }[]): { start: number; duration: number }[] {
   const sorted = [...spans].sort((a, b) => a.start - b.start);

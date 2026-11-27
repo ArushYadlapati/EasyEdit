@@ -462,3 +462,26 @@ it("remembers the language in this browser, and reads back anything else as Engl
   setup();
   expect(language().value).toBe("english");
 });
+
+// A project from before caption clips: c1's captions switched on with its own flag.
+function oldCaptionedDoc(): TimelineDoc {
+  const doc = sampleDoc();
+  doc.tracks[0].clips = [video("c1", 0, 90, { captions: true }), video("c2", 90, 30)];
+  doc.captions = { transcripts: { a: WORDS } };
+  return doc;
+}
+
+it("a project with captions switched on the old way gets caption clips once someone who can edit opens it", () => {
+  const { store } = setup({ doc: oldCaptionedDoc() });
+  const doc = store.getState().doc;
+  const caps = doc.tracks.find((t) => t.kind === "caption")!.clips;
+  expect(caps.map((c) => [c.id, c.type, c.start, c.duration])).toEqual([["cap-c1", "caption", 0, 90]]);
+  expect(clipOf(doc, "c1").captions).toBe(false);
+  expect(store.getState().undoStack.map((e) => e.label)).toEqual(["captions as clips"]);
+});
+
+it("a viewer's copy keeps the old captions as they are", () => {
+  const { store } = setup({ doc: oldCaptionedDoc(), canEdit: false });
+  expect(store.getState().doc.tracks.find((t) => t.kind === "caption")!.clips).toEqual([]);
+  expect(store.getState().queue).toEqual([]);
+});
