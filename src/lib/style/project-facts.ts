@@ -4,6 +4,8 @@ import {
   CaptionPreset,
   DEFAULT_FPS,
   FormatId,
+  LOOKS,
+  RETIRED_LOOKS,
   STYLE_KEYS,
   TransitionKind,
   captionStyleOf,
@@ -11,6 +13,7 @@ import {
   expandNests,
   isColorClip,
   isMediaClip,
+  keptLook,
   lookMatch,
   type Adjust,
   type Clip,
@@ -189,6 +192,10 @@ function musicFacts(played: readonly Played[], assetKinds: AssetKinds): ProjectA
   return { clips: volumes.length, averageVolume: clamp(round(volumes.reduce((a, b) => a + b, 0) / volumes.length, 2), 0, 4) };
 }
 
+// Every look a clip's colours may be: the editor's, then the ones it took out, which count as the kept look nearest
+// each, so a project graded with one still teaches its look.
+const EVERY_LOOK = [...LOOKS, ...RETIRED_LOOKS];
+
 // The colour looks clips have, by look id (clips with no look, or colours that are no look's, aren't counted), and the
 // effects any clip has on, in a fixed order. Dark edges count as an effect only where they aren't part of a look.
 function colorFacts(clips: readonly Clip[]): { looks: Record<string, number>; effects: string[] } {
@@ -198,8 +205,8 @@ function colorFacts(clips: readonly Clip[]): { looks: Record<string, number>; ef
     if (!isColorClip(clip)) continue;
     const adjust: Adjust | undefined = clip.adjust;
     if (!adjust) continue;
-    const look = lookMatch(adjust);
-    if (look && look.id !== "none") tallyUp(looks, look.id);
+    const look = lookMatch(adjust, EVERY_LOOK);
+    if (look && look.id !== "none") tallyUp(looks, keptLook(look.id));
     for (const key of EFFECT_KEYS) {
       if (numberOr(adjust[key], 0) === 0) continue;
       if (key === "vignette" && look) continue;

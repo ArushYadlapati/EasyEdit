@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, WandSparkles, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { FADE, FOCUS_RING, TAG, cx } from "@/components/ui/cx";
@@ -423,7 +423,7 @@ export function StyleForm({ spaceId, canEdit, initial, references, save, now, on
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           {canEdit && (
             <Button disabled={fillHint !== null} aria-describedby={fillHint ? fillHintId : undefined} onClick={fillIn}>
-              <WandSparkles aria-hidden /> {W.fillIn}
+              {W.fillIn}
             </Button>
           )}
           {lastChanged && <p className={cx("text-xs text-ed-muted", canEdit && "sm:ml-auto")}>{lastChanged}</p>}
