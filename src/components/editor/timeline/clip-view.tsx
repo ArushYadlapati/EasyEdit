@@ -32,12 +32,13 @@ const FILL: Record<Clip["type"], string> = {
   shape: "bg-ed-clip-shape",
   adjustment: "bg-ed-clip-adjustment",
   nest: "bg-ed-clip-nest",
+  caption: "bg-ed-clip-text",
 };
 
 // An empty slot's body: diagonal hatching in the line colour, so it reads as a hole to fill.
 const HATCH = "repeating-linear-gradient(135deg, transparent 0 5px, var(--ed-line-strong) 5px 6px)";
 
-const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot", shape: "Shape", adjustment: "Adjustment", nest: "Nest" };
+const KIND: Record<Clip["type"], string> = { video: "Video", image: "Image", text: "Text", audio: "Audio", placeholder: "Slot", shape: "Shape", adjustment: "Adjustment", nest: "Nest", caption: "Captions" };
 
 const ADJUSTMENT_NAME = "Adjustment layer";
 
@@ -325,7 +326,7 @@ function drawsTheSame(a: ClipViewProps, b: ClipViewProps): boolean {
     a.clip.duration === b.clip.duration &&
     (a.clip.group ?? null) === (b.clip.group ?? null) &&
     clipLabel(a.clip, undefined) === clipLabel(b.clip, undefined) &&
-    (!("assetId" in a.clip) || !("assetId" in b.clip) || (a.clip.assetId === b.clip.assetId && a.clip.in === b.clip.in)) &&
+    (!("assetId" in a.clip) || !("assetId" in b.clip) || (a.clip.assetId === b.clip.assetId && ("in" in a.clip ? a.clip.in : 0) === ("in" in b.clip ? b.clip.in : 0))) &&
     sameSample(a.clip, b.clip) &&
     sameMarks(a, b)
   );

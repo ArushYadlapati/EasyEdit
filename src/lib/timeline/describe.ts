@@ -139,6 +139,8 @@ function describeClip(clip: Clip, fps: number): string {
   if (clip.type === "adjustment") return `  ${clip.id}  adjustment  ${range}  amount=${clip.transform.opacity}${describeEffects(clip, fps, false)}`;
   // A nest is several clips as one; what it holds is listed with the project's details.
   if (clip.type === "nest") return `  ${clip.id}  nest  ${range}  ${nestSummary(clip, fps)}${describeEffects(clip, fps, false)}`;
+  // Captions of one file, shown while it lasts.
+  if (clip.type === "caption") return `  ${clip.id}  caption  ${range}  asset=${clip.assetId}`;
   return `  ${clip.id}  ${clip.type}  ${range}  asset=${clip.assetId} in=${framesToSeconds(clip.in, fps)}s speed=${clip.speed} vol=${clip.volume}${fadeSuffix(clip)}${captionsSuffix(clip)}${slotSuffix(clip.slot)}${describeEffects(clip, fps, false)}`;
 }
 
@@ -196,6 +198,7 @@ function describeClipInDetail(clip: Clip, fps: number): string {
   }
   if (clip.type === "shape") return `${head}  ${describeShape(clip)}  x=${t.x} y=${t.y}` + describeTransformChanges(t, clip.type) + describeEffects(clip, fps, true);
   if (clip.type === "adjustment") return `${head}  amount=${t.opacity}` + describeEffects(clip, fps, true);
+  if (clip.type === "caption") return `${head}  asset="${escapeQuoted(clip.assetId)}"`;
   if (clip.type === "nest") {
     // Its own line, then what it holds, each clip as it is on the nest's own timeline (which starts at 0).
     const inner = clip.tracks.flatMap((track) => track.clips.map((held) => `\n      in ${track.kind} "${track.name}": ${describeClipInDetail(held, fps).trimStart()}`));

@@ -52,7 +52,8 @@ import type { Cutter } from "@/lib/media/cutout/client";
 import { CUTOUT_MODEL_BYTES } from "@/lib/media/cutout/protocol";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, nestClips, nestLength, nestName, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type NestClip, type OpInput, type ShapeClip, type TextClip, type Track } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, nestClips, nestLength, nestName, type AdjustmentClip, type CaptionClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type NestClip, type OpInput, type ShapeClip, type TextClip, type Track } from "@/lib/timeline";
+import { CaptionStyleControls } from "./captions/caption-style-controls";
 import { colorStretchOps, plainStretchOps, stretchLook, toggleStretchOps } from "@/lib/editor/text-spans";
 import type { SteadyStrength } from "@/lib/media/steady";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
@@ -81,7 +82,7 @@ import { useSyncSound } from "./use-sync-sound";
 const TEXT = "text-[13px] leading-5";
 const CAPTION = "text-xs font-medium text-ed-muted";
 
-const MEDIA_TITLE: Record<Exclude<Clip["type"], "text" | "placeholder" | "shape" | "adjustment" | "nest">, string> = {
+const MEDIA_TITLE: Record<Exclude<Clip["type"], "text" | "placeholder" | "shape" | "adjustment" | "nest" | "caption">, string> = {
   video: "Video clip",
   image: "Image",
   audio: "Audio clip",
@@ -1379,10 +1380,23 @@ function AdjustmentInspector({ clip }: { clip: AdjustmentClip }) {
   );
 }
 
+// Captions: how every caption in the project looks, and when this piece shows. The words are fixed in the Captions tab.
+function CaptionClipInspector({ clip, canEdit }: { clip: CaptionClip; canEdit: boolean }) {
+  return (
+    <>
+      <h2 className="text-sm leading-5 font-semibold text-ed-text">Captions</h2>
+      <Hint>Split it to show captions in parts, or delete a part to hide them there. Fix the words in the Captions tab.</Hint>
+      <CaptionStyleControls canEdit={canEdit} />
+      <TimingSection clipId={clip.id} slips={false} />
+    </>
+  );
+}
+
 function ClipInspector({ clip }: { clip: Clip }) {
   const canEdit = useEditor((s) => s.canEdit);
   const drawsOnCanvas = clip.type !== "audio" && !(clip.type === "placeholder" && clip.accepts === "audio");
   if (clip.type === "adjustment") return <AdjustmentInspector clip={clip} />;
+  if (clip.type === "caption") return <CaptionClipInspector clip={clip} canEdit={canEdit} />;
   return (
     <>
       {clip.type === "text" ? (

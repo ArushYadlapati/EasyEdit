@@ -32,7 +32,8 @@ export type CanvasItem = {
 export function canvasItems(doc: TimelineDoc, frame: number, sizer: Sizer): CanvasItem[] {
   const items: CanvasItem[] = [];
   for (const { track, clip } of activeClips(doc, frame)) {
-    if (clip.type === "audio" || clip.type === "adjustment" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
+    // Captions are not boxes of their own: their lines are found by captionItems.
+    if (clip.type === "audio" || clip.type === "adjustment" || clip.type === "caption" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
     // Keyframes move the box with the picture, and a keyed crop cuts it. Transitions do not: they play for a moment
     // and the box stays at rest.
     const t = effectiveTransform(clip, frame);

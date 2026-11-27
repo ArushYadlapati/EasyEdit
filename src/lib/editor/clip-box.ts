@@ -20,8 +20,8 @@ export const CROP_MIN_SHOWN = 0.05;
 // A clip's box as the preview draws it, from its centre, before scale, stretch and rotation: the whole picture or
 // text box, and the part the crop keeps. Audio has none.
 export function clipRects(doc: TimelineDoc, clip: Clip, sizer: Sizer): { full: LocalRect; kept: LocalRect } | null {
-  // Sound and an adjustment layer have no box on the frame.
-  if (clip.type === "audio" || clip.type === "adjustment" || (clip.type === "placeholder" && clip.accepts === "audio")) return null;
+  // Sound, an adjustment layer and captions have no box of their own on the frame.
+  if (clip.type === "audio" || clip.type === "adjustment" || clip.type === "caption" || (clip.type === "placeholder" && clip.accepts === "audio")) return null;
   const full =
     clip.type === "text"
       ? textRect(clip, doc.width, (s) => sizer.measure(clip, s), sizer.measureSpan ? (s, span) => sizer.measureSpan!(clip, s, span) : undefined)

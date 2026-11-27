@@ -91,6 +91,7 @@ const CLIP_EFFECTS: Record<Exclude<Clip["type"], "placeholder">, readonly string
   shape: [...VISUAL_EFFECTS, "blend"],
   adjustment: ["keyframes", "adjust", "grade", "mask"], // its opacity's and colours' keyframes only (assertKeyframesFit)
   nest: [...VISUAL_EFFECTS, "adjust", "grade", "blend", "mask", "name"], // one picture: placed, faded, graded and masked whole
+  caption: [], // its lines take the project's caption style
 };
 
 // A clip's ways in and out, each with the value that means it has none. A split takes the way out off the left piece

@@ -54,8 +54,9 @@ export function activeClips(doc: TimelineDoc, frame: number): { track: Track; cl
   for (const track of doc.tracks) {
     if (track.hidden) continue;
     for (const clip of track.clips) {
-      // Sound has no picture, and an adjustment layer has none of its own: drawFrame works it in by itself.
-      if (clip.type === "audio" || clip.type === "adjustment" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
+      // Sound has no picture, and an adjustment layer has none of its own: drawFrame works it in by itself. Captions
+      // are drawn from their lines (drawCaptions), at their track's place.
+      if (clip.type === "audio" || clip.type === "adjustment" || clip.type === "caption" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
       if (clip.start <= frame && frame < clip.start + clip.duration) active.push({ track, clip });
     }
   }

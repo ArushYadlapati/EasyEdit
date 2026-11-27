@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { LIMITS } from "@/lib/limits";
 import { graphemes } from "@/lib/text";
 import { CUE_RULES, captionsShow, clipCues, cuesAt, docCues, retextCue } from "@/lib/captions/cues";
-import { DEFAULT_TRANSFORM, applyOps, type CaptionWord, type Clip, type MediaClip, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, applyOps, type CaptionClip, type CaptionWord, type Clip, type MediaClip, type TimelineDoc } from "@/lib/timeline";
 import { docWithCaptions } from "../helpers/docs";
 
 const w = (t: string, s: number, e: number): CaptionWord => ({ t, s, e });
@@ -197,6 +197,59 @@ describe("docCues, cuesAt and captionsShow", () => {
     expect(captionsShow(d)).toBe(false);
     d.tracks = d.tracks.filter((t) => t.kind !== "caption");
     expect(captionsShow(d)).toBe(false);
+  });
+});
+
+describe("docCues: caption clips", () => {
+  // The words are those of SENTENCE: hello 0–12, brave 13–24, new 27–33, world. 36–51 (frames, from the clip's start).
+  const cap = (extra: Partial<CaptionClip> = {}): CaptionClip => ({ id: "k1", type: "caption", assetId: "a", start: 0, duration: 300, transform: { ...DEFAULT_TRANSFORM }, ...extra });
+  const withCaps = (media: Clip[], caps: CaptionClip[]) => {
+    const d = docWith(media);
+    d.tracks.find((t) => t.kind === "caption")!.clips = caps;
+    return d;
+  };
+
+  it("a caption clip shows its file's lines, as heard in its clips, and says which caption clip they are in", () => {
+    const d = withCaps([clip({ captions: undefined })], [cap()]);
+    expect(docCues(d).map((c) => [c.text, c.start, c.clipId, c.captionId])).toEqual([["hello brave new world.", 0, "c1", "k1"]]);
+  });
+
+  it("only the part inside the caption clip shows: the words that start in it, the line cut to it", () => {
+    // Window 13–34: brave, new; world. starts at 36, past it.
+    const d = withCaps([clip({ captions: undefined })], [cap({ start: 13, duration: 21 })]);
+    const [cue] = docCues(d);
+    expect(cue.words.map((x) => x.text)).toEqual(["brave", "new"]);
+    expect(cue.text).toBe("brave new");
+    expect([cue.start, cue.end]).toEqual([13, 34]);
+    expect(cue.words[0].index).toBe(1);
+  });
+
+  it("two pieces of a split caption clip share the line between them, neither holding a word twice", () => {
+    const d = withCaps([clip({ captions: undefined })], [cap({ id: "k1", start: 0, duration: 27 }), cap({ id: "k2", start: 27, duration: 273 })]);
+    expect(docCues(d).map((c) => [c.captionId, c.text, c.start, c.end])).toEqual([
+      ["k1", "hello brave", 0, 27],
+      ["k2", "new world.", 27, 63],
+    ]);
+  });
+
+  it("a caption clip of another file, or with no clip of its file, shows nothing; one with no words in it neither", () => {
+    expect(docCues(withCaps([clip({ captions: undefined })], [cap({ assetId: "zzz" })]))).toEqual([]);
+    expect(docCues(withCaps([], [cap()]))).toEqual([]);
+    expect(docCues(withCaps([clip({ captions: undefined })], [cap({ start: 100, duration: 50 })]))).toEqual([]);
+  });
+
+  it("a clip with captions switched on the old way still shows them, without a caption clip, and is never shown twice", () => {
+    const old = docCues(withCaps([clip({ captions: true })], []));
+    expect(old.map((c) => [c.text, c.captionId])).toEqual([["hello brave new world.", null]]);
+    // Both: the caption clip's lines, once.
+    const both = docCues(withCaps([clip({ captions: true })], [cap()]));
+    expect(both.map((c) => [c.text, c.captionId])).toEqual([["hello brave new world.", "k1"]]);
+  });
+
+  it("a caption clip on a track other than Captions is not read", () => {
+    const d = withCaps([clip({ captions: undefined })], []);
+    d.tracks.find((t) => t.id === "t1")!.clips = [cap() as unknown as Clip];
+    expect(docCues(d)).toEqual([]);
   });
 });
 
