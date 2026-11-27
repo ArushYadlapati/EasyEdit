@@ -75,20 +75,31 @@ export type Look = { id: string; label: string; adjust: Partial<FullAdjust> };
 // Ready-made colour looks, each a set of the same numbers a person could type.
 export const LOOKS: readonly Look[] = [
   { id: "vivid", label: "Vivid", adjust: { contrast: 0.15, saturation: 0.35 } },
-  { id: "pop", label: "Pop", adjust: { brightness: 0.03, contrast: 0.25, saturation: 0.6 } },
   { id: "warm", label: "Warm", adjust: { temperature: 0.35, saturation: 0.1 } },
-  { id: "golden", label: "Golden", adjust: { brightness: 0.05, contrast: 0.05, saturation: 0.2, temperature: 0.5 } },
   { id: "cool", label: "Cool", adjust: { temperature: -0.35, saturation: 0.05 } },
   { id: "dusk", label: "Dusk", adjust: { contrast: 0.1, saturation: 0.15, temperature: -0.2, hue: -12, vignette: 0.25 } },
-  { id: "soft", label: "Soft", adjust: { brightness: 0.06, contrast: -0.12, saturation: 0.1, temperature: 0.1 } },
   { id: "fade", label: "Fade", adjust: { brightness: 0.08, contrast: -0.2, saturation: -0.15 } },
   { id: "vintage", label: "Vintage", adjust: { contrast: -0.1, saturation: -0.25, temperature: 0.3, vignette: 0.45 } },
   { id: "moody", label: "Moody", adjust: { brightness: -0.1, contrast: 0.2, saturation: -0.3, temperature: -0.15, vignette: 0.3 } },
   { id: "drama", label: "Drama", adjust: { brightness: -0.05, contrast: 0.35, saturation: -0.1, vignette: 0.35 } },
   { id: "mono", label: "B&W", adjust: { saturation: -1, contrast: 0.15 } },
-  { id: "noir", label: "Noir", adjust: { brightness: -0.05, contrast: 0.45, saturation: -1, vignette: 0.5 } },
   { id: "sepia", label: "Sepia", adjust: { contrast: 0.05, saturation: -1, temperature: 0.55 } },
 ];
+
+// Looks the editor once had and took out as near copies of the ones above, each with the kept look nearest it (now).
+// A clip keeps the numbers such a look gave it, which the Color section shows as Custom. A space's Style names its
+// look by id, and a past project's facts count looks by id, so these are kept to read old ones as the kept look.
+export const RETIRED_LOOKS: readonly (Look & { now: string })[] = [
+  { id: "pop", label: "Pop", now: "vivid", adjust: { brightness: 0.03, contrast: 0.25, saturation: 0.6 } },
+  { id: "golden", label: "Golden", now: "warm", adjust: { brightness: 0.05, contrast: 0.05, saturation: 0.2, temperature: 0.5 } },
+  { id: "soft", label: "Soft", now: "fade", adjust: { brightness: 0.06, contrast: -0.12, saturation: 0.1, temperature: 0.1 } },
+  { id: "noir", label: "Noir", now: "mono", adjust: { brightness: -0.05, contrast: 0.45, saturation: -1, vignette: 0.5 } },
+];
+
+// The kept look a look id stands for: a retired look's nearest kept one, any other id as it is.
+export function keptLook(id: string): string {
+  return RETIRED_LOOKS.find((look) => look.id === id)?.now ?? id;
+}
 
 const places = (n: number) => Number(n.toFixed(4));
 
@@ -104,11 +115,12 @@ export function lookPatch(look: Look | null, strength = 1): Record<(typeof LOOK_
 const NEAR = 0.00016;
 
 // The look a picture's colours are, and how much of it: every colour the same share of the look's own, above none and
-// at most the whole. "none" when every colour key is 0; null when the colours are no look's.
-export function lookMatch(adjust: Adjust | undefined): { id: string; strength: number } | null {
+// at most the whole. "none" when every colour key is 0; null when the colours are no look's. looks: the looks it may
+// be, the editor's own unless said.
+export function lookMatch(adjust: Adjust | undefined, looks: readonly Look[] = LOOKS): { id: string; strength: number } | null {
   const now = adjustOf(adjust);
   if (LOOK_KEYS.every((key) => now[key] === 0)) return { id: "none", strength: 1 };
-  for (const look of LOOKS) {
+  for (const look of looks) {
     // The share is read off the look's largest colour, where rounding moves it least.
     const lead = LOOK_KEYS.reduce((a, b) => (Math.abs(look.adjust[b] ?? 0) > Math.abs(look.adjust[a] ?? 0) ? b : a));
     const strength = now[lead] / look.adjust[lead]!;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyLook } from "@/lib/editor/actions";
 import { ADJUST_RANGE, clipFieldOps, clipFieldValue, fieldContext, type ClipField } from "@/lib/editor/inspector-fields";
 import { findClip } from "@/lib/editor/store";
-import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_ADJUST, adjustOf, applyOps, describe as describeDoc, isAdjusted, lookMatch, lookOf, lookPatch, prepareOps, type MediaClip, type Op, type OpInput, type TimelineDoc } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_ADJUST, RETIRED_LOOKS, adjustOf, applyOps, describe as describeDoc, isAdjusted, keptLook, lookMatch, lookOf, lookPatch, prepareOps, type MediaClip, type Op, type OpInput, type TimelineDoc } from "@/lib/timeline";
 import { makeStore, sampleDoc, video } from "../editor/fixtures";
 
 const c1 = (d: TimelineDoc) => findClip(d, "c1")!.clip as MediaClip;
@@ -73,9 +73,22 @@ describe("a picture's colours in the ops", () => {
 
 describe("looks", () => {
   it("each has a name and sets colours within range", () => {
-    expect(LOOKS.map((l) => l.label)).toEqual(["Vivid", "Pop", "Warm", "Golden", "Cool", "Dusk", "Soft", "Fade", "Vintage", "Moody", "Drama", "B&W", "Noir", "Sepia"]);
+    expect(LOOKS.map((l) => l.label)).toEqual(["Vivid", "Warm", "Cool", "Dusk", "Fade", "Vintage", "Moody", "Drama", "B&W", "Sepia"]);
     for (const look of LOOKS) expect(() => run(sampleDoc(), patch("c1", { adjust: lookPatch(look) }))).not.toThrow();
     expect(new Set(LOOKS.map((l) => l.id)).size).toBe(LOOKS.length);
+  });
+
+  it("a look taken out stands for the kept look nearest it, and its numbers are no look's in the editor", () => {
+    expect(RETIRED_LOOKS.map((l) => [l.id, keptLook(l.id)])).toEqual([["pop", "vivid"], ["golden", "warm"], ["soft", "fade"], ["noir", "mono"]]);
+    expect(keptLook("warm")).toBe("warm");
+    expect(keptLook("sunset")).toBe("sunset");
+    for (const look of RETIRED_LOOKS) {
+      expect(LOOKS.some((l) => l.id === look.id)).toBe(false);
+      expect(LOOKS.some((l) => l.id === look.now)).toBe(true);
+      // A clip a retired look was put on keeps its colours, which the Color section shows as Custom.
+      expect(lookMatch(lookPatch(look))).toBeNull();
+      expect(lookMatch(lookPatch(look, 0.5), RETIRED_LOOKS)).toEqual({ id: look.id, strength: 0.5 });
+    }
   });
 
   it("a look sets every colour and leaves the blur", () => {

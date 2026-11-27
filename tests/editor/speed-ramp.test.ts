@@ -22,8 +22,8 @@ function ramped(d: TimelineDoc, rampId: (typeof RAMPS)[number]["id"], clipId = "
 }
 
 describe("the ramps", () => {
-  it("each has a name, a sentence, and speeds a clip can be set to all the way through", () => {
-    expect(RAMPS.map((r) => r.label)).toEqual(["Speed up", "Slow down", "Hero", "Bullet", "Flash in", "Flash out"]);
+  it("each has a name in plain words, a sentence, and speeds a clip can be set to all the way through", () => {
+    expect(RAMPS.map((r) => r.label)).toEqual(["Speed up", "Slow down", "Fast, slow, fast", "Slow-motion moment", "Fast start", "Fast finish"]);
     for (const ramp of RAMPS) {
       expect(ramp.says.length).toBeGreaterThan(10);
       for (let p = 0; p <= 1; p += 0.05) {

@@ -210,7 +210,7 @@ describe("adding an adjustment layer", () => {
     const added = findClip(store.getState().doc, id)!.clip;
     expect(added).toMatchObject({ type: "adjustment", start: 15 });
     expect(store.getState().selection.clipIds).toEqual([id]);
-    applyLook(store, id, "noir");
+    applyLook(store, id, "mono");
     expect((findClip(store.getState().doc, id)!.clip as AdjustmentClip).adjust).toMatchObject({ saturation: -1 });
     store.getState().undo();
     store.getState().undo();

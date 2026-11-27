@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "@/lib/limits";
 import { UNSTORABLE_TEXT, isStorableText } from "@/lib/text";
-import { CaptionPreset, FormatId, LOOKS, PresetId, TransitionKind } from "@/lib/timeline";
+import { CaptionPreset, FormatId, LOOKS, PresetId, TransitionKind, keptLook } from "@/lib/timeline";
 import { STYLE_MESSAGES } from "./messages";
 
 const count = (n: number) => n.toLocaleString("en-US");
@@ -46,8 +46,10 @@ export type MusicKind = z.infer<typeof MusicKind>;
 export const TransitionAmount = z.enum(["cuts", "few", "lots"]);
 export type TransitionAmount = z.infer<typeof TransitionAmount>;
 
-// The colour look of the videos: "natural" for none, else one of the editor's ready-made looks by id.
-export const StyleLook = z.enum(["natural", ...LOOKS.map((look) => look.id)]);
+// The colour look of the videos: "natural" for none, else one of the editor's ready-made looks by id. A look the editor
+// took out (a style saved before, or an agent going by older words) is read as the kept look nearest it, so "golden"
+// is kept as "warm"; a refusal names only the kept ones.
+export const StyleLook = z.preprocess((value) => (typeof value === "string" ? keptLook(value) : value), z.enum(["natural", ...LOOKS.map((look) => look.id)]));
 export type StyleLook = z.infer<typeof StyleLook>;
 
 // The longest and shortest a style's typical video length may be, in seconds.
@@ -125,7 +127,8 @@ export function applyStylePatch(profile: StyleProfile, patch: StyleProfilePatch)
 }
 
 // A profile read back from the database: each field that still checks is kept and the rest are dropped, so one field
-// that no longer fits (a look the editor took away, a cap made smaller) doesn't lose the whole style. Not an object: {}.
+// that no longer fits (a choice no longer offered, a cap made smaller) doesn't lose the whole style. A look the editor
+// took out still checks, as the kept look nearest it (see StyleLook). Not an object: {}.
 export function storedProfile(value: unknown): StyleProfile {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
   const stored = value as Record<string, unknown>;
@@ -328,6 +331,14 @@ const Counts = z
   .record(Name, tally())
   .refine((counts) => Object.keys(counts).length <= ANALYSIS_LIMITS.names, `at most ${ANALYSIS_LIMITS.names} names`);
 
+// Looks counted by id. A project counted before the editor took a look out may have that look's id: it is read as the
+// kept look nearest it, added to that one's count.
+const LookCounts = Counts.transform((counts) => {
+  const kept: Record<string, number> = {};
+  for (const [id, n] of Object.entries(counts)) kept[keptLook(id)] = (kept[keptLook(id)] ?? 0) + n;
+  return kept;
+});
+
 const TransitionCounts = z.record(TransitionKind, tally());
 
 // What EasyEdit counted in one of the space's past projects. shots.transitions counts the cuts between its shots that
@@ -351,7 +362,7 @@ export const ProjectAnalysis = z.strictObject({
   textAnimations: Counts,
   music: z.strictObject({ clips: tally(), averageVolume: range(0, 4) }).nullable(),
   speedChanges: tally(),
-  looks: Counts,
+  looks: LookCounts,
   effects: z.array(Name).max(ANALYSIS_LIMITS.names),
 });
 export type ProjectAnalysis = z.infer<typeof ProjectAnalysis>;

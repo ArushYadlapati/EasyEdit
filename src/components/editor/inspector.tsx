@@ -52,7 +52,7 @@ import type { Cutter } from "@/lib/media/cutout/client";
 import { CUTOUT_MODEL_BYTES } from "@/lib/media/cutout/protocol";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
-import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, nestClips, nestLength, nestName, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type NestClip, type OpInput, type ShapeClip, type TextClip, type Track } from "@/lib/timeline";
+import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, nestClips, nestLength, nestName, type AdjustmentClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type NestClip, type OpInput, type ShapeClip, type StyleKey, type TextClip, type Track } from "@/lib/timeline";
 import { colorStretchOps, plainStretchOps, stretchLook, toggleStretchOps } from "@/lib/editor/text-spans";
 import type { SteadyStrength } from "@/lib/media/steady";
 import { SHAPE_COLOR, arrowLook, arrowThrough, shapeName, takesRadius } from "@/lib/timeline/shapes";
@@ -1012,16 +1012,20 @@ const ADJUST_FIELDS: { field: keyof typeof ADJUST_RANGE; label: string; suffix: 
   { field: "blur", label: "Blur", suffix: "px" },
 ];
 
-const STYLE_FIELDS: { field: keyof typeof ADJUST_RANGE; label: string; suffix: string }[] = [
+const STYLE_FIELDS: { field: StyleKey; label: string; suffix: string }[] = [
   { field: "sharpen", label: "Sharpen", suffix: "%" },
   { field: "grain", label: "Film grain", suffix: "%" },
   { field: "pixelate", label: "Pixelate", suffix: "px" },
+];
+
+// The loud effects, folded away under More effects.
+const MORE_STYLE_FIELDS: { field: StyleKey; label: string; suffix: string }[] = [
   { field: "split", label: "Color split", suffix: "%" },
   { field: "glitch", label: "Glitch", suffix: "%" },
   { field: "vhs", label: "VHS", suffix: "%" },
 ];
 
-// A video's or image's colours: ready-made looks, each a set of the numbers below them, the numbers themselves, and
+// A video's or image's colours: a ready-made look, each a set of the numbers below it, the numbers themselves, and
 // under a fold the grade (wheels, curves and a look-up table). 0 everywhere is the picture as recorded. Reset takes
 // every one back there, the blur and the grade too.
 function ColorSection({ clip }: { clip: ColorClip }) {
@@ -1050,21 +1054,27 @@ function ColorSection({ clip }: { clip: ColorClip }) {
         </Button>
       }
     >
-      <div role="group" aria-label="Looks" className="flex flex-wrap gap-1.5">
-        {[{ id: "none", label: "None" }, ...LOOKS].map((look) => (
-          <Button
-            key={look.id}
+      {/* First, as a look sets the numbers under it. Custom is there only while the numbers are no look's, so the menu
+          always says what the picture has; the strength shows while a look is on. */}
+      <div className="grid grid-cols-2 items-end gap-2">
+        <Field label="Look">
+          <Select
             data-edit-control
-            size="sm"
-            aria-pressed={current === look.id}
             disabled={!canEdit}
-            onClick={() => applyLook(store, clip.id, look.id === "none" ? null : look.id)}
+            value={current ?? "custom"}
+            onChange={(event) => applyLook(store, clip.id, event.target.value === "none" ? null : event.target.value)}
           >
-            {look.label}
-          </Button>
-        ))}
+            <option value="none">None</option>
+            {LOOKS.map((look) => (
+              <option key={look.id} value={look.id}>
+                {look.label}
+              </option>
+            ))}
+            {current === null && <option value="custom">Custom</option>}
+          </Select>
+        </Field>
+        {current !== null && current !== "none" && <NumberField clipId={clip.id} field="lookStrength" label="Look strength" suffix="%" min={1} max={100} step={5} />}
       </div>
-      {current !== null && current !== "none" && <NumberField clipId={clip.id} field="lookStrength" label="Look strength" suffix="%" min={1} max={100} step={5} />}
       <div className="grid grid-cols-2 gap-2">
         {ADJUST_FIELDS.map(({ field, label, suffix }) => (
           <Keyed key={field} clipId={clip.id} prop={field}>
@@ -1145,13 +1155,26 @@ function MaskSection({ clip }: { clip: ColorClip }) {
 }
 
 // A video's or image's stylised effects, each as how much of it: 0 is off. They are drawn on the graphics card, after
-// the colours, on the picture as it sits in the frame.
+// the colours, on the picture as it sits in the frame. Sharpen, grain and pixelate are always there; the loud ones wait
+// under More effects until asked for, or while this clip has one on or keyframed.
 function StylizeSection({ clip }: { clip: ColorClip }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
   const keyed = STYLE_KEYS.filter((key) => (clip.keyframes?.[key]?.length ?? 0) > 0);
+  const more = MORE_STYLE_FIELDS.some(({ field }) => (clip.adjust?.[field] ?? 0) !== 0 || keyed.includes(field));
+  const [open, setOpen] = useState<boolean | null>(null);
+  const shown = open ?? more;
   const reset = () =>
     store.getState().edit([{ op: "update_clip", clipId: clip.id, patch: { adjust: { ...NO_STYLE }, ...(keyed.length > 0 && { keyframes: Object.fromEntries(keyed.map((key) => [key, []])) }) } }], "effect change");
+  const fields = (list: typeof STYLE_FIELDS) => (
+    <div className="grid grid-cols-2 gap-2">
+      {list.map(({ field, label, suffix }) => (
+        <Keyed key={field} clipId={clip.id} prop={field}>
+          <NumberField clipId={clip.id} field={field} label={label} suffix={suffix} min={ADJUST_RANGE[field].min} max={ADJUST_RANGE[field].max} step={suffix === "%" ? 5 : 1} />
+        </Keyed>
+      ))}
+    </div>
+  );
   return (
     <Section
       title="Stylize"
@@ -1161,13 +1184,11 @@ function StylizeSection({ clip }: { clip: ColorClip }) {
         </Button>
       }
     >
-      <div className="grid grid-cols-2 gap-2">
-        {STYLE_FIELDS.map(({ field, label, suffix }) => (
-          <Keyed key={field} clipId={clip.id} prop={field}>
-            <NumberField clipId={clip.id} field={field} label={label} suffix={suffix} min={ADJUST_RANGE[field].min} max={ADJUST_RANGE[field].max} step={suffix === "%" ? 5 : 1} />
-          </Keyed>
-        ))}
-      </div>
+      {fields(STYLE_FIELDS)}
+      <Button size="sm" variant="ghost" className="self-start" aria-expanded={shown} onClick={() => setOpen(!shown)}>
+        {shown ? "Hide more effects" : "More effects"}
+      </Button>
+      {shown && fields(MORE_STYLE_FIELDS)}
     </Section>
   );
 }
@@ -1199,8 +1220,9 @@ function MixSection({ clip }: { clip: Exclude<Clip, { type: "placeholder" | "adj
 }
 
 // How fast a video or audio clip plays, in percent of as recorded: its length follows, so twice as fast is half as
-// long. A video can also be turned round to play backward, and the frame under the playhead held as a freeze frame; a
-// clip that does either plays without sound, and a held frame has no speed to set.
+// long. A video can also be turned round to play backward, the frame under the playhead held as a freeze frame, and
+// its speed ramped; a clip that is turned or held plays without sound, and a held frame has no speed to set. A ramp is
+// for pictures, so an audio clip has none here.
 function SpeedSection({ clip }: { clip: MediaClip }) {
   const store = useEditorStore();
   const canEdit = useEditor((s) => s.canEdit);
@@ -1230,7 +1252,7 @@ function SpeedSection({ clip }: { clip: MediaClip }) {
           {backward && <Hint>Plays backward, without sound.</Hint>}
         </>
       )}
-      {!held && !backward && <SpeedRamp canEdit={canEdit} />}
+      {clip.type === "video" && !held && !backward && <SpeedRamp canEdit={canEdit} />}
     </Section>
   );
 }

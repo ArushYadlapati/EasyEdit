@@ -120,8 +120,8 @@ describe("style profile", () => {
   });
 
   it("choices come from the editor's own lists", () => {
-    expect(StyleLook.options).toEqual(["natural", ...LOOKS.map((look) => look.id)]);
-    expect(StyleProfile.safeParse({ look: "noir", captions: { on: true, look: "bar" }, transitionKinds: [...TransitionKind.options] }).success).toBe(true);
+    expect(StyleLook.out.options).toEqual(["natural", ...LOOKS.map((look) => look.id)]);
+    expect(StyleProfile.safeParse({ look: "mono", captions: { on: true, look: "bar" }, transitionKinds: [...TransitionKind.options] }).success).toBe(true);
     refused({ look: "sunset" });
     refused({ look: "none" });
     refused({ captions: { on: true, look: "neon" } });
@@ -185,6 +185,15 @@ describe("a profile read back from the database", () => {
 
   it("gives an empty profile for anything that isn't an object", () => {
     for (const value of [null, undefined, "quick", 3, ["pace"]]) expect(storedProfile(value)).toEqual({});
+  });
+
+  it("reads a look the editor took out as the kept look nearest it", () => {
+    const now = { pop: "vivid", golden: "warm", soft: "fade", noir: "mono" };
+    for (const [old, kept] of Object.entries(now)) {
+      expect(storedProfile({ ...full, look: old })).toEqual({ ...full, look: kept });
+      expect(StyleProfilePatch.parse({ look: old })).toEqual({ look: kept });
+    }
+    expect(StyleProfilePatch.parse({ look: null })).toEqual({ look: null });
   });
 });
 
@@ -360,6 +369,11 @@ describe("reference analyses", () => {
     expect(ProjectAnalysis.safeParse({ ...project, shots: { ...project.shots, transitions: { ...cuts, zoom: -1 } } }).success).toBe(false);
     expect(ProjectAnalysis.safeParse({ ...project, shots: { ...project.shots, cuts: 3 } }).success).toBe(false); // unknown keys are still refused
   });
+
+  it("a project counted before the editor took a look out counts that look as the kept one nearest it", () => {
+    expect(ProjectAnalysis.parse({ ...project, looks: { golden: 2, warm: 1, noir: 3, drama: 1 } }).looks).toEqual({ warm: 3, mono: 3, drama: 1 });
+    expect(ProjectAnalysis.parse({ ...project, looks: { pop: 1, soft: 4 } }).looks).toEqual({ vivid: 1, fade: 4 });
+  });
 });
 
 describe("pace", () => {
@@ -395,8 +409,10 @@ describe("field words", () => {
     expect(values(MUSIC_OPTIONS)).toEqual(MusicKind.options);
     expect(values(TRANSITION_OPTIONS)).toEqual(TransitionAmount.options);
     expect(values(TRANSITION_KIND_OPTIONS)).toEqual(TransitionKind.options);
-    expect(values(LOOK_OPTIONS)).toEqual(StyleLook.options);
+    expect(values(LOOK_OPTIONS)).toEqual(StyleLook.out.options);
     for (const look of LOOKS) expect(LOOK_HELP[look.id], look.id).toBeTruthy();
+    // The looks the editor took out are no choice of their own.
+    expect(Object.keys(LOOK_HELP).sort()).toEqual(LOOKS.map((look) => look.id).sort());
   });
 
   it("says what each choice means in plain words", () => {
