@@ -52,13 +52,23 @@ function roundTrip(doc: TimelineDoc, ops: Op[]) {
 }
 
 describe("defaults and helpers", () => {
-  it("defaultCaptionStyle sizes from the width and sits low in the safe area", () => {
+  it("defaultCaptionStyle sizes from the shorter side and sits low in the safe area", () => {
     const style = defaultCaptionStyle(createEmptyDoc("short_9x16"));
     expect(style).toMatchObject({ preset: "karaoke", fontFamily: "Geist", fontWeight: 700, fontSize: 70, color: "#ffffff", highlight: "#FFD400", uppercase: false });
     const safe = safeAreaOf(createEmptyDoc("short_9x16"));
     expect(style.y).toBe(Math.round((safe.top + safe.height * 0.82) * 1000) / 1000);
     expect(style.y).toBeGreaterThan(0.5);
     expect(String(style.y).split(".")[1]?.length ?? 0).toBeLessThanOrEqual(3);
+  });
+
+  it("defaultCaptionStyle lights the spoken word on upright and square frames, and is block on wide ones", () => {
+    for (const format of ["short_9x16", "feed_4x5", "square_1x1"] as const) {
+      expect(defaultCaptionStyle(createEmptyDoc(format)), format).toMatchObject({ preset: "karaoke", fontSize: 70 });
+    }
+    expect(defaultCaptionStyle(createEmptyDoc("long_16x9"))).toMatchObject({ preset: "block", fontSize: 70, highlight: "#FFD400" });
+    expect(defaultCaptionStyle(createEmptyDoc("long_4k"))).toMatchObject({ preset: "block", fontSize: 140 });
+    expect(defaultCaptionStyle(createEmptyDoc("custom", { width: 1000, height: 400 }))).toMatchObject({ preset: "block", fontSize: 26 });
+    expect(defaultCaptionStyle(createEmptyDoc("custom", { width: 400, height: 1000 }))).toMatchObject({ preset: "karaoke", fontSize: 26 });
   });
 
   it("captionStyleOf, transcriptOf and captionTrack read the document", () => {
