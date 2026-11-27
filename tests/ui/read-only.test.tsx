@@ -4,7 +4,6 @@ import { EditorProvider } from "@/components/editor/context";
 import { EditorScreen } from "@/components/editor/editor-screen";
 import { TAG } from "@/components/ui/cx";
 import type { EditorStore } from "@/lib/editor/store";
-import { STICKERS } from "@/lib/editor/stickers";
 import { makeStore, sampleDoc } from "../editor/fixtures";
 import { fireEvent, render, screen } from "../helpers/dom";
 import { rect } from "../helpers/layout";
@@ -73,7 +72,6 @@ it("an editor sees those controls working", () => {
 // exact, so a control that loses data-edit-control (or a new one without it) is noticed.
 const TOP = [
   "button Undo", "button Redo", "button Add title", "button Add subtitle", "button Add body text",
-  ...STICKERS.map((sticker) => `button Add the ${sticker.name} sticker`),
   "button Razor", "button Text", "button Shape: Rectangle", "button Arrow", "button Guide", "button Crop", "button Split", "button Delete", "button Ripple delete",
 ];
 const TIMELINE = [

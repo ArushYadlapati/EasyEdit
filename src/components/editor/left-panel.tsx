@@ -4,9 +4,7 @@ import { useEffect, useId, useState, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { menuPoint, useContextMenu } from "@/components/ui/context-menu";
 import { Tabs, tabIds } from "@/components/ui/tabs";
-import { DISABLED, FADE, FOCUS_RING, cx } from "@/components/ui/cx";
-import { addMedia, addSticker, addText } from "@/lib/editor/actions";
-import { STICKER_GROUPS } from "@/lib/editor/stickers";
+import { addMedia, addText } from "@/lib/editor/actions";
 import { presetMenu, rightClickEntries } from "@/lib/editor/menus";
 import { cssFontFamily } from "@/lib/editor/fonts";
 import { TEXT_PRESETS, presetFont, type TextPreset } from "@/lib/editor/text-presets";
@@ -80,26 +78,6 @@ function TextTab({ panel }: { panel: PanelProps }) {
           );
         })}
         <p className="text-[13px] leading-5 text-ed-muted">Adds at the playhead.</p>
-        {/* Stickers: one picture character each, added large as a text clip that pops in. */}
-        <h3 className="mt-2 text-xs font-medium text-ed-muted">Stickers</h3>
-        {STICKER_GROUPS.map((group) => (
-          <div key={group.name} role="group" aria-label={`${group.name} stickers`} className="grid grid-cols-8 gap-1">
-            {group.stickers.map((sticker) => (
-              <button
-                key={sticker.name}
-                type="button"
-                data-edit-control
-                disabled={!canEdit}
-                aria-label={`Add the ${sticker.name} sticker`}
-                title={sticker.name}
-                className={cx("flex aspect-square items-center justify-center rounded-md text-lg leading-none enabled:hover:bg-ed-hover", FOCUS_RING, FADE, DISABLED)}
-                onClick={() => addSticker(store, sticker, settings.getState().textSeconds)}
-              >
-                <span aria-hidden>{sticker.emoji}</span>
-              </button>
-            ))}
-          </div>
-        ))}
       </div>
     </div>
   );
