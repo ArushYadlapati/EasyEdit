@@ -7,9 +7,12 @@ import { LIMITS } from "@/lib/limits";
 import type { MediaFiles } from "@/lib/media/media-files";
 import { playbackFileFor } from "@/lib/media/playback";
 import type { AssetView } from "@/lib/media/types";
-import { captionTrack, defaultCaptionStyle, transcriptOf, type CaptionWord, type Clip, type MediaClip, type OpInput, type TimelineDoc } from "@/lib/timeline";
+import { nanoid } from "nanoid";
+import { DEFAULT_TRANSFORM, captionTrack, defaultCaptionStyle, transcriptOf, type CaptionClip, type CaptionWord, type Clip, type MediaClip, type OpInput, type TimelineDoc } from "@/lib/timeline";
 import type { Cue } from "./cues";
-import { retextCue } from "./cues";
+import { captionsOver, clipsUnder, isCaptioned, overlaps, retextCue } from "./cues";
+
+export { isCaptioned };
 import { TranscribeError, type Transcriber } from "./speech/client";
 import { DEFAULT_SPEECH, speechChoice, speechTag, type SpeechChoice } from "./speech/languages";
 import type { TranscribeStage } from "./speech/protocol";
@@ -19,14 +22,19 @@ import type { TranscribeStage } from "./speech/protocol";
 
 const hasSpeech = (clip: Clip): clip is MediaClip => clip.type === "video" || clip.type === "audio";
 
-// The selected video and audio clips; with nothing selected, every video and audio clip in the project. A selection of
-// only other kinds of clip has nothing to caption: it never falls back to the whole project.
+// The selected video and audio clips; with nothing selected, every video and audio clip in the project. A selected
+// caption clip stands for the clips of its file under it. A selection of only other kinds of clip has nothing to
+// caption: it never falls back to the whole project.
 export function captionTargets(doc: TimelineDoc, selectedClipIds: readonly string[]): MediaClip[] {
   if (selectedClipIds.length === 0) return doc.tracks.flatMap((track) => track.clips.filter(hasSpeech));
-  return selectedClipIds.flatMap((id) => {
+  const out = new Map<string, MediaClip>();
+  for (const id of selectedClipIds) {
     const clip = findClip(doc, id)?.clip;
-    return clip && hasSpeech(clip) ? [clip] : [];
-  });
+    if (!clip) continue;
+    if (hasSpeech(clip)) out.set(clip.id, clip);
+    else if (clip.type === "caption") for (const under of clipsUnder(doc, clip)) out.set(under.id, under);
+  }
+  return [...out.values()];
 }
 
 const sameWords = (a: readonly CaptionWord[] | undefined, b: readonly CaptionWord[]) =>
@@ -40,12 +48,18 @@ export function unusedTranscripts(doc: TimelineDoc): string[] {
 }
 
 // Everything one file's captions need, and only what is missing: the Captions track; the style, in the kit's title
-// font, when none is stored (so captions look like the brand from the start); the file's words; the switch on each clip.
-// Words differing from the file's are written over them. The same edit drops the words of files no clip uses, before
-// the new ones, so a project does not keep growing and the drop is undone with the rest.
-export function captionOps(doc: TimelineDoc, input: { assetId: string; words: CaptionWord[]; clipIds: string[]; fonts: BrandFonts }): OpInput[] {
-  const { assetId, words, clipIds, fonts } = input;
-  const ops: OpInput[] = [...addTrackOps(doc, "caption")];
+// font, when none is stored (so captions look like the brand from the start); the file's words; and for each clip a
+// caption clip as long as it, linked with it so the two move together. A clip that already has a caption clip of its
+// file over it keeps what it has (a person may have split it, or deleted a part), and a caption clip only fills the
+// Captions track where it is free. Clips of the file with their captions switched on the old way get caption clips
+// too, and the switch goes off. Words differing from the file's are written over them. The same edit drops the words of
+// files no clip uses, before the new ones, so a project does not keep growing and the drop is undone with the rest.
+export function captionOps(doc: TimelineDoc, input: { assetId: string; words: CaptionWord[]; clipIds: string[]; fonts: BrandFonts; genId?: () => string }): OpInput[] {
+  const { assetId, words, clipIds, fonts, genId = () => nanoid(10) } = input;
+  const ops: OpInput[] = [];
+  const track = captionTrack(doc);
+  const trackId = track?.id ?? genId();
+  if (!track) ops.push(...addTrackOps(doc, "caption").map((op) => (op.op === "add_track" ? { ...op, track: { ...op.track, id: trackId } } : op)));
   if (!doc.captions?.style) {
     const font = fonts.title;
     ops.push({ op: "set_caption_style", patch: { ...defaultCaptionStyle(doc), fontFamily: font, fontWeight: nearestWeight(font, 700) } });
@@ -53,15 +67,48 @@ export function captionOps(doc: TimelineDoc, input: { assetId: string; words: Ca
   const before = transcriptOf(doc, assetId);
   const changes: OpInput[] = [];
   if (!sameWords(before, words)) changes.push({ op: "set_transcript", assetId, words, expect: { words: before?.length ?? null } });
-  for (const clipId of clipIds) {
+
+  const taken = (track?.clips ?? []).map((clip) => ({ start: clip.start, duration: clip.duration, assetId: clip.type === "caption" ? clip.assetId : null }));
+  const flagged = doc.tracks.flatMap((t) => t.clips.filter((clip) => hasSpeech(clip) && clip.assetId === assetId && clip.captions)).map((clip) => clip.id);
+  for (const clipId of [...new Set([...clipIds, ...flagged])]) {
     const clip = findClip(doc, clipId)?.clip;
-    if (clip && hasSpeech(clip) && !clip.captions) changes.push({ op: "update_clip", clipId, patch: { captions: true } });
+    if (!clip || !hasSpeech(clip)) continue;
+    const patch: { group?: string; captions?: boolean } = {};
+    if (clip.captions) patch.captions = false;
+    if (!taken.some((t) => t.assetId === clip.assetId && overlaps(t, clip))) {
+      const gaps = freeSpans(clip.start, clip.start + clip.duration, taken);
+      if (gaps.length > 0) {
+        const group = clip.group ?? genId();
+        if (!clip.group) patch.group = group;
+        for (const gap of gaps) {
+          changes.push({ op: "add_clip", trackId, clip: { type: "caption", assetId: clip.assetId, start: gap.start, duration: gap.duration, transform: { ...DEFAULT_TRANSFORM }, group } });
+          taken.push({ ...gap, assetId: clip.assetId });
+        }
+      }
+    }
+    if (Object.keys(patch).length > 0) changes.push({ op: "update_clip", clipId, patch });
   }
   if (ops.length === 0 && changes.length === 0) return [];
   for (const unused of unusedTranscripts(doc)) {
     if (unused !== assetId) ops.push({ op: "set_transcript", assetId: unused, words: null, expect: { words: transcriptOf(doc, unused)!.length } });
   }
   return [...ops, ...changes];
+}
+
+// The parts of [from, to) no span covers, in order.
+function freeSpans(from: number, to: number, spans: readonly { start: number; duration: number }[]): { start: number; duration: number }[] {
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const out: { start: number; duration: number }[] = [];
+  let at = from;
+  for (const span of sorted) {
+    const end = span.start + span.duration;
+    if (end <= at || span.start >= to) continue;
+    if (span.start > at) out.push({ start: at, duration: span.start - at });
+    at = Math.max(at, end);
+    if (at >= to) break;
+  }
+  if (at < to) out.push({ start: at, duration: to - at });
+  return out;
 }
 
 // The edit that makes a caption line read as typed. Nothing when the text is the same, or when the line's words have
@@ -77,12 +124,25 @@ export function retextOps(doc: TimelineDoc, cue: Cue, text: string): OpInput[] {
   return [{ op: "splice_caption_words", assetId: cue.assetId, ...splice, expect: { words: now } }];
 }
 
-// Turns captions off for the listed clips that have them on. The words stay, so turning them on again needs no wait.
+// Turns captions off for the listed clips that have them: the caption clips of their file over them go, and so does
+// their own switch. A listed caption clip goes itself. The words stay, so turning them on again needs no wait.
 export function captionsOffOps(doc: TimelineDoc, clipIds: readonly string[]): OpInput[] {
-  return clipIds.flatMap((clipId): OpInput[] => {
+  const removed = new Set<string>();
+  const ops: OpInput[] = [];
+  const remove = (caption: CaptionClip) => {
+    if (removed.has(caption.id)) return;
+    removed.add(caption.id);
+    ops.push({ op: "remove_clip", clipId: caption.id });
+  };
+  for (const clipId of clipIds) {
     const clip = findClip(doc, clipId)?.clip;
-    return clip && hasSpeech(clip) && clip.captions ? [{ op: "update_clip", clipId, patch: { captions: false } }] : [];
-  });
+    if (!clip) continue;
+    if (clip.type === "caption") remove(clip);
+    if (!hasSpeech(clip)) continue;
+    captionsOver(doc, clip).forEach(remove);
+    if (clip.captions) ops.push({ op: "update_clip", clipId, patch: { captions: false } });
+  }
+  return ops;
 }
 
 // What a run needs from the page; tests pass fakes. The real ones are made in captions-context.tsx.

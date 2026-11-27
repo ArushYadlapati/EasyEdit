@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
-import { captionTargets, captionsOffOps, type AutoCaptionProgress } from "@/lib/captions/actions";
+import { captionTargets, captionsOffOps, isCaptioned, type AutoCaptionProgress } from "@/lib/captions/actions";
 import { docCues } from "@/lib/captions/cues";
 import { SPEECH_LANGUAGES, speechChoice, speechLanguage, type SpeechChoice } from "@/lib/captions/speech/languages";
 import { importSubtitleOps, parseSubtitles, subtitlesText, type SubtitleFormat } from "@/lib/captions/subtitles";
@@ -169,18 +169,18 @@ export function CaptionsTab({ panel }: { panel: PanelProps }) {
     const sound = clips.filter((c) => c.type === "video" || c.type === "audio");
     const anyInProject = doc.tracks.some((t) => t.clips.some((c) => c.type === "video" || c.type === "audio"));
     return {
-      selectedCaptioned: sound.some((c) => "captions" in c && c.captions),
+      selectedCaptioned: clips.some((c) => c.type === "caption" || isCaptioned(doc, c)),
       targets: captionTargets(doc, selection).length,
       hint: !anyInProject
         ? "Add a video or audio clip to caption it."
         : selection.length === 0
           ? "Captions every clip with sound."
-          : sound.length > 0
+          : sound.length > 0 || clips.some((c) => c.type === "caption")
             ? "Captions the selected clips."
             : "Select a video or audio clip, or select nothing to caption every clip with sound.",
     };
   }, [doc, selection]);
-  const hasCaptions = doc.captions !== undefined || doc.tracks.some((t) => t.clips.some((c) => "captions" in c && c.captions));
+  const hasCaptions = doc.captions !== undefined || doc.tracks.some((t) => t.clips.some((c) => c.type === "caption" || isCaptioned(doc, c)));
   const stage = run.progress ? stageText(run.progress, run.slowModel) : null;
 
   return (

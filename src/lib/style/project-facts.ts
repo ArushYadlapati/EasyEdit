@@ -1,4 +1,4 @@
-import { captionsShow } from "@/lib/captions/cues";
+import { captionsShow, isCaptioned } from "@/lib/captions/cues";
 import { LIMITS } from "@/lib/limits";
 import {
   CaptionPreset,
@@ -117,7 +117,7 @@ function textFacts(texts: readonly TextClip[], minutes: number, height: number):
 // own with captions on. As where the editor finds caption lines (docCues): a clip on any track counts, since the
 // caption track decides what shows, but one inside a nest doesn't.
 function captionFacts(doc: TimelineDoc): ProjectAnalysis["captions"] {
-  const captioned = doc.tracks.some((track) => track.clips.some((clip) => isMediaClip(clip) && clip.captions === true));
+  const captioned = doc.tracks.some((track) => track.clips.some((clip) => isCaptioned(doc, clip)));
   if (!captionsShow(doc) || !captioned) return null;
   const style = captionStyleOf(doc);
   const look = CaptionPreset.safeParse(style.preset);

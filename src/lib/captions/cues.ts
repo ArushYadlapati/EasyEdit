@@ -1,5 +1,5 @@
 import { captionStyleOf, captionTrack, rewordRun, transcriptOf } from "@/lib/timeline/captions";
-import type { CaptionClip, CaptionPreset, CaptionWord, MediaClip, TimelineDoc } from "@/lib/timeline/types";
+import type { CaptionClip, CaptionPreset, CaptionWord, Clip, MediaClip, TimelineDoc } from "@/lib/timeline/types";
 
 // A spoken word placed on the timeline. index is its place in the file's word list; start and end are timeline frames.
 export type CueWord = { index: number; text: string; start: number; end: number };
@@ -101,19 +101,20 @@ export function docCues(doc: TimelineDoc): Cue[] {
 
   const all: Cue[] = [];
   for (const clip of media) if (clip.captions && !captioned.has(clip.assetId)) all.push(...lines(clip));
-  const shown = new Map<string, Set<number>>(); // per media clip, the words a caption clip already shows
+  // The words caption clips show already, each as its place in the file and the frame it lands on: a video and the
+  // sound taken from it (Separate audio) play the same words at the same frames, and show them once.
+  const shown = new Set<string>();
   for (const caption of captions) {
     const from = caption.start;
     const to = caption.start + caption.duration;
     for (const clip of media) {
       if (clip.assetId !== caption.assetId || clip.start >= to || clip.start + clip.duration <= from) continue;
-      let used = shown.get(clip.id);
-      if (!used) shown.set(clip.id, (used = new Set()));
       for (const cue of lines(clip)) {
         if (cue.end <= from || cue.start >= to) continue;
-        const words = cue.words.filter((word) => word.start >= from && word.start < to && !used.has(word.index));
+        const key = (word: CueWord) => `${clip.assetId}:${word.index}@${word.start}`;
+        const words = cue.words.filter((word) => word.start >= from && word.start < to && !shown.has(key(word)));
         if (words.length === 0) continue;
-        for (const word of words) used.add(word.index);
+        for (const word of words) shown.add(key(word));
         const whole = words.length === cue.words.length;
         const start = words[0].start;
         const end = Math.min(cue.end, to);
@@ -123,6 +124,24 @@ export function docCues(doc: TimelineDoc): Cue[] {
     }
   }
   return all.map((cue, i) => ({ cue, i })).sort((a, b) => a.cue.start - b.cue.start || a.i - b.i).map((x) => x.cue);
+}
+
+export const overlaps = (a: { start: number; duration: number }, b: { start: number; duration: number }) => a.start < b.start + b.duration && b.start < a.start + a.duration;
+
+// The video and audio clips of a caption clip's file that play while it lasts.
+export function clipsUnder(doc: TimelineDoc, caption: CaptionClip): MediaClip[] {
+  return doc.tracks.flatMap((track) => track.clips.filter((clip): clip is MediaClip => (clip.type === "video" || clip.type === "audio") && clip.assetId === caption.assetId && overlaps(clip, caption)));
+}
+
+// The caption clips of a clip's file that show while the clip plays.
+export function captionsOver(doc: TimelineDoc, clip: MediaClip): CaptionClip[] {
+  return captionClipsOf(doc).filter((caption) => caption.assetId === clip.assetId && overlaps(caption, clip));
+}
+
+// Whether a video or audio clip shows captions: a caption clip of its file over it, or its own captions switch (how
+// captions were switched on before caption clips).
+export function isCaptioned(doc: TimelineDoc, clip: Clip): boolean {
+  return (clip.type === "video" || clip.type === "audio") && (!!clip.captions || captionsOver(doc, clip).length > 0);
 }
 
 // The caption clips on the Captions track, in time order.

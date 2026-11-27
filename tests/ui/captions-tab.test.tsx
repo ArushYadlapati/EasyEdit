@@ -6,7 +6,7 @@ import { EditorProvider } from "@/components/editor/context";
 import { LeftPanel } from "@/components/editor/left-panel";
 import { MediaProvider } from "@/components/editor/media/media-context";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
-import { captionOps, type AutoCaptionDeps } from "@/lib/captions/actions";
+import { captionOps, isCaptioned, type AutoCaptionDeps } from "@/lib/captions/actions";
 import { TranscribeError, type TranscribeProgress, type Transcriber } from "@/lib/captions/speech/client";
 import { DEFAULT_BRAND_KIT, type BrandKit } from "@/lib/brand/types";
 import { findClip } from "@/lib/editor/store";
@@ -151,7 +151,7 @@ it("shows each stage while it runs, and captions the file when the words come", 
   expect(autoButton().disabled).toBe(false);
   expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
   expect(store.getState().undoStack.map((e) => e.label)).toEqual(["auto captions"]);
-  expect(clipOf(store.getState().doc, "c1").captions).toBe(true);
+  expect(isCaptioned(store.getState().doc, clipOf(store.getState().doc, "c1"))).toBe(true);
 });
 
 it("says it is checking for saved captions while it asks, using them only once found, and names the file when there are several", async () => {
@@ -232,7 +232,7 @@ it("offers Transcribe again and Remove captions for selected captioned clips", a
   expect(screen.queryByRole("button", { name: "Remove captions" })).toBeNull();
   act(() => store.getState().select(["c1"]));
   fireEvent.click(screen.getByRole("button", { name: "Remove captions" }));
-  expect(store.getState().queue.at(-1)).toMatchObject({ label: "remove captions", ops: [{ op: "update_clip", clipId: "c1", patch: { captions: false } }] });
+  expect(store.getState().queue.at(-1)).toMatchObject({ label: "remove captions", ops: [{ op: "remove_clip", clipId: "g" }] });
 
   act(() => store.getState().undo());
   fireEvent.click(screen.getByRole("button", { name: "Transcribe again" }));
@@ -394,7 +394,7 @@ it("an imported subtitle file becomes the selected clip's captions", async () =>
   fireEvent.change(screen.getByLabelText("Subtitle file"), { target: { files: [file] } });
   await flush();
   await flush();
-  expect(clipOf(store.getState().doc, "c1").captions).toBe(true);
+  expect(isCaptioned(store.getState().doc, clipOf(store.getState().doc, "c1"))).toBe(true);
   expect(store.getState().notice?.text).toBe("Imported 1 line of captions.");
   expect((screen.getByRole("textbox", { name: "Caption at 0:00" }) as HTMLInputElement).value).toBe("from a file");
 });
