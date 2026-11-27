@@ -1,4 +1,7 @@
+import { captionsShow } from "@/lib/captions/cues";
+import { captionLayout } from "@/lib/render/captions";
 import { activeClips, type LocalRect } from "@/lib/render/compositor";
+import { captionTrack } from "@/lib/timeline/captions";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
 import { stretchOf } from "@/lib/timeline/presets";
 import type { ShapeClip, TimelineDoc } from "@/lib/timeline";
@@ -15,7 +18,7 @@ import { clipRects, type Sizer } from "./clip-box";
 export type CanvasItem = {
   clipId: string;
   trackId: string;
-  type: "video" | "image" | "text" | "placeholder" | "shape" | "nest";
+  type: "video" | "image" | "text" | "placeholder" | "shape" | "nest" | "caption";
   slot?: string; // an empty slot's name
   shape?: ShapeClip; // a shape's clip, which picking and an arrow's end handles read
   locked: boolean;
@@ -31,7 +34,14 @@ export type CanvasItem = {
 // What is drawn at a frame, back to front: the last item is on top. Audio is never drawn.
 export function canvasItems(doc: TimelineDoc, frame: number, sizer: Sizer): CanvasItem[] {
   const items: CanvasItem[] = [];
+  // The captions showing go in at their track's place, as the compositor draws them: over the tracks before it.
+  const captionAt = captionsShow(doc) ? doc.tracks.findIndex((t) => t.kind === "caption") : -1;
+  let captionsIn = captionAt < 0;
   for (const { track, clip } of activeClips(doc, frame)) {
+    if (!captionsIn && doc.tracks.indexOf(track) > captionAt) {
+      items.push(...captionItems(doc, frame, sizer));
+      captionsIn = true;
+    }
     // Captions are not boxes of their own: their lines are found by captionItems.
     if (clip.type === "audio" || clip.type === "adjustment" || clip.type === "caption" || (clip.type === "placeholder" && clip.accepts === "audio")) continue;
     // Keyframes move the box with the picture, and a keyed crop cuts it. Transitions do not: they play for a moment
@@ -55,7 +65,21 @@ export function canvasItems(doc: TimelineDoc, frame: number, sizer: Sizer): Canv
       rect: rects.kept,
     });
   }
+  if (!captionsIn) items.push(...captionItems(doc, frame, sizer));
   return items;
+}
+
+// The caption lines showing at a frame, one item per block of lines, as captionLayout places them, for the caption clip
+// they show in. Lines of captions switched on the old way (no caption clip) are not items: there is nothing to select.
+export function captionItems(doc: TimelineDoc, frame: number, sizer: Sizer): CanvasItem[] {
+  const track = captionTrack(doc);
+  if (!track || track.hidden) return [];
+  const measure = sizer.measureFont ?? ((font: string, s: string) => s.length * 0.55 * (Number(/(\d+(?:\.\d+)?)px/.exec(font)?.[1]) || 0));
+  return captionLayout(doc, frame, measure, sizer.resolveFont).flatMap((block): CanvasItem[] => {
+    if (block.cue.captionId === null) return [];
+    const box = { left: -block.width / 2, top: -block.extent / 2, right: block.width / 2, bottom: block.extent / 2 };
+    return [{ clipId: block.cue.captionId, trackId: track.id, type: "caption", locked: track.locked, opacity: 1, center: { x: doc.width / 2, y: block.centre }, rotation: 0, sx: 1, sy: 1, full: box, rect: box }];
+  });
 }
 
 const radians = (degrees: number) => (degrees * Math.PI) / 180;

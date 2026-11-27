@@ -40,6 +40,7 @@ import { CLICK_SLOP_PX } from "./timeline/use-clip-drag";
 import { PEER_MORE, peerLook } from "./peer-look";
 import { usePresenceStore } from "./presence-context";
 import { useCanvasDrag } from "./use-canvas-drag";
+import { useCaptionDrag } from "./use-caption-drag";
 import { useGuideDrag } from "./use-guide-drag";
 import { useShapeDraw } from "./use-shape-draw";
 import { useArrowDrag } from "./use-arrow-drag";
@@ -164,6 +165,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const refreshRef = useRef<() => void>(() => {});
   const drag = useCanvasDrag(surface, pane);
   const guideDrag = useGuideDrag(surface);
+  const captionDrag = useCaptionDrag(surface);
   const [drawn] = useState(() => createStore<Drawn>(() => NOTHING_DRAWN));
   const outlines = useStore(drawn, (s) => s.outlines);
   const handles = useStore(drawn, (s) => s.handles);
@@ -376,6 +378,12 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     const hit = hitAt(state, view, e.clientX, e.clientY, false);
     if (!hit) {
       state.select([]);
+      return;
+    }
+    // Captions: a press selects their caption clip alone, and a drag moves every caption up or down.
+    if (hit.type === "caption") {
+      state.select([hit.clipId]);
+      if (state.canEdit && !hit.locked) captionDrag.press(e);
       return;
     }
     const toggle = e.shiftKey || e.metaKey || (!isMac && e.ctrlKey);
@@ -823,8 +831,8 @@ function handlesOf(
   if (ids.length !== 1 || !state.canEdit || state.playing || !visible) return [];
   const item = items.find((i) => i.clipId === ids[0]);
   if (!item || item.locked) return [];
-  // An arrow has its own end handles instead.
-  if (item.shape?.shape === "arrow") return [];
+  // An arrow has its own end handles instead; captions have none (they only move up and down).
+  if (item.shape?.shape === "arrow" || item.type === "caption") return [];
   const k = view.k;
   const width = (item.rect.right - item.rect.left) * item.sx * k;
   const height = (item.rect.bottom - item.rect.top) * item.sy * k;

@@ -275,6 +275,14 @@ export function Preview() {
             ctx.restore();
             return width;
           },
+          measureFont(font, text) {
+            ctx.save();
+            ctx.font = font;
+            const width = ctx.measureText(text).width;
+            ctx.restore();
+            return width;
+          },
+          resolveFont,
           measureSpan(clip, text, span) {
             ctx.save();
             ctx.font = `${(span?.italic ?? clip.style.italic) ? "italic " : ""}${span?.fontWeight ?? clip.style.fontWeight} ${clip.style.fontSize}px ${resolveFont(clip.style.fontFamily)}`;
