@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { clipLook, effectWindows } from "@/lib/render/effects";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
-import type { Clip } from "@/lib/timeline/types";
+import { FRAME_RATES } from "@/lib/timeline/presets";
+import { EMPHASIS_SPEED, type Clip } from "@/lib/timeline/types";
 
 const doc = { width: 1000, height: 500, fps: 30 };
 const tf = { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, fit: "cover" as const };
@@ -209,6 +210,7 @@ describe("clipLook", () => {
   });
 
   it("amount scales how far a shake moves and speed how fast", () => {
+    const at60 = { ...doc, fps: 60 };
     const plain = text({ duration: 240, emphasis: { preset: "shake" } });
     const big = text({ duration: 240, emphasis: { preset: "shake", amount: 2.5 } });
     const fast = text({ duration: 240, emphasis: { preset: "shake", speed: 2 } });
@@ -219,11 +221,77 @@ describe("clipLook", () => {
       expect(b.x - 0.5).toBeCloseTo(2.5 * (p.x - 0.5), 12);
       expect(b.y - 0.5).toBeCloseTo(2.5 * (p.y - 0.5), 12);
       expect(b.rotation).toBeCloseTo(2.5 * p.rotation, 12);
-      // Twice the speed reaches at frame f where the plain shake is at frame 2f.
-      expect(clipLook(fast, f, doc).transform.x).toBeCloseTo(clipLook(plain, 2 * f, doc).transform.x, 12);
-      expect(clipLook(fast, f, doc).transform.rotation).toBeCloseTo(clipLook(plain, 2 * f, doc).transform.rotation, 12);
-      expect(clipLook(slow, 2 * f, doc).transform.y).toBeCloseTo(p.y, 12);
+      // Twice the speed reaches at frame f where the plain shake is at frame 2f. At 60 fps that is a step every frame
+      // that 30 fps already shows, so nothing is held back.
+      const quick = clipLook(fast, f, at60).transform;
+      const later = clipLook(plain, 2 * f, at60).transform;
+      expect(quick.x).toBeCloseTo(later.x, 12);
+      expect(quick.y).toBeCloseTo(later.y, 12);
+      expect(quick.rotation).toBeCloseTo(later.rotation, 12);
+      const calm = clipLook(slow, 2 * f, doc).transform;
+      expect(calm.x).toBeCloseTo(p.x, 12);
+      expect(calm.y).toBeCloseTo(p.y, 12);
+      expect(calm.rotation).toBeCloseTo(p.rotation, 12);
     }
+  });
+
+  // How fast a wobble looks, in radians a frame, from 0 to pi: what the frames show, however fast the sine behind them
+  // runs. Three frames of a sine in a row always have s(n-1) + s(n+1) = 2 cos(step) s(n).
+  function stepShown(values: number[]): number {
+    let num = 0;
+    let den = 0;
+    for (let n = 1; n < values.length - 1; n++) {
+      num += values[n] * (values[n - 1] + values[n + 1]);
+      den += 2 * values[n] ** 2;
+    }
+    return Math.acos(Math.min(1, Math.max(-1, num / den)));
+  }
+  function shownSteps(speed: number, fps: number): { x: number; y: number; turn: number } {
+    const c = text({ duration: 240, emphasis: { preset: "shake", speed } });
+    const looks = Array.from({ length: 60 }, (_, f) => clipLook(c, f, { ...doc, fps }).transform);
+    return {
+      x: stepShown(looks.map((t) => t.x - 0.5)),
+      y: stepShown(looks.map((t) => t.y - 0.5)),
+      turn: stepShown(looks.map((t) => t.rotation)),
+    };
+  }
+
+  it("a faster shake never looks slower, at any frame rate: each wobble speeds up until a frame can show no more", () => {
+    for (const fps of FRAME_RATES) {
+      let before = { x: 0, y: 0, turn: 0 };
+      for (let speed = EMPHASIS_SPEED.min; speed <= EMPHASIS_SPEED.max; speed += 0.05) {
+        const now = shownSteps(speed, fps);
+        for (const key of ["x", "y", "turn"] as const) {
+          expect(now[key], `${key} at ${fps} fps, speed ${speed.toFixed(2)}`).toBeGreaterThanOrEqual(before[key] - 1e-9);
+          // The shake's own fastest step, down at 30 fps, well short of pi.
+          expect(now[key], `${key} at ${fps} fps, speed ${speed.toFixed(2)}`).toBeLessThanOrEqual(2.3 + 1e-9);
+        }
+        before = now;
+      }
+    }
+  });
+
+  it("at 30 fps a shake shows what it always has, and a faster one speeds up across and turning until it is held", () => {
+    const plain = shownSteps(1, 30);
+    expect(plain.x).toBeCloseTo(1.7, 9);
+    expect(plain.y).toBeCloseTo(2.3, 9);
+    expect(plain.turn).toBeCloseTo(1.3, 9);
+    // Down is already as fast as a 30 fps frame shows; across and turning have room.
+    const quicker = shownSteps(1.2, 30);
+    expect(quicker.x).toBeCloseTo(1.7 * 1.2, 9);
+    expect(quicker.y).toBeCloseTo(2.3, 9);
+    expect(quicker.turn).toBeCloseTo(1.3 * 1.2, 9);
+    // Past what a frame shows, every wobble holds there rather than folding back into a slow sway.
+    expect(shownSteps(4, 30)).toEqual(shownSteps(2, 30));
+    const fastest = shownSteps(4, 30);
+    for (const key of ["x", "y", "turn"] as const) expect(fastest[key]).toBeCloseTo(2.3, 9);
+  });
+
+  it("at 24 fps a shake keeps 30 fps's rate in seconds across and turning, and down is held at what a frame shows", () => {
+    const at24 = shownSteps(1, 24);
+    expect(at24.x * 24).toBeCloseTo(1.7 * 30, 6);
+    expect(at24.turn * 24).toBeCloseTo(1.3 * 30, 6);
+    expect(at24.y).toBeCloseTo(2.3, 9);
   });
 
   it("amount scales a pulse's 5% and speed its 0.8 s period", () => {

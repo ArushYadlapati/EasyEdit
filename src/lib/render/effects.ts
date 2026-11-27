@@ -19,6 +19,11 @@ export const ZOOM_TRANSITION_SCALE = 1.25;
 const SHAKE_X = 1.7 * 30;
 const SHAKE_Y = 2.3 * 30;
 const SHAKE_TURN = 1.3 * 30;
+// The furthest, in radians, a wobble turns from one frame to the next. Frames sample it, so a wobble that turned more
+// than half a cycle (pi) between them would show as a slower one, the way a wheel on film seems to turn backwards, and
+// a faster Speed would shake less. This is the largest step the shake has always taken (down, at 30 fps): a faster
+// Speed or a lower frame rate brings a wobble up to it and no further.
+const SHAKE_STEP_MAX = 2.3;
 
 type Dir = "left" | "right" | "up" | "down";
 
@@ -192,17 +197,20 @@ export function clipLook(clip: Clip, frame: number, doc: Doc): Look {
 
   if (clip.type === "text" && clip.emphasis) {
     const e = clip.emphasis;
-    // Seconds into the clip, so a shake runs at the same rate at any frame rate and the same wherever the clip sits.
-    const t = (frame - clip.start) / doc.fps;
+    // Frames into the clip, so a shake looks the same wherever the clip sits.
+    const n = frame - clip.start;
     const amount = e.amount ?? 1;
     const speed = e.speed ?? 1;
     if (e.preset === "shake") {
-      x += amount * 0.006 * Math.sin(t * SHAKE_X * speed);
+      // A wobble's step a frame: its rate a second, so it runs at the same rate at any frame rate, held to what a
+      // frame can show.
+      const step = (perSecond: number) => Math.min((perSecond * speed) / doc.fps, SHAKE_STEP_MAX);
+      x += amount * 0.006 * Math.sin(n * step(SHAKE_X));
       // The vertical jitter is a share of the width too, so a shake is the same distance in both directions.
-      y += amount * 0.006 * (doc.width / doc.height) * Math.sin(t * SHAKE_Y * speed + 1);
-      rotation += amount * 1.5 * Math.sin(t * SHAKE_TURN * speed);
+      y += amount * 0.006 * (doc.width / doc.height) * Math.sin(n * step(SHAKE_Y) + 1);
+      rotation += amount * 1.5 * Math.sin(n * step(SHAKE_TURN));
     } else if (e.preset === "pulse") {
-      scale *= 1 + amount * 0.05 * Math.sin((2 * Math.PI * t * speed) / 0.8);
+      scale *= 1 + amount * 0.05 * Math.sin((2 * Math.PI * (n / doc.fps) * speed) / 0.8);
     } else if (e.preset === "highlight_word") {
       const n = clip.text.split(/\s+/).filter(Boolean).length;
       if (n > 0) {

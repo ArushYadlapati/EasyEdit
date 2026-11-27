@@ -188,6 +188,8 @@ describe("the guide", () => {
   it("teaches emphasis as a rare shake or pulse with an amount and a speed, and no longer highlight_word", () => {
     expect(EFFECTS_REFERENCE).toContain('emphasis is {"preset":"shake"|"pulse","amount":N,"speed":N} for the whole clip');
     expect(EFFECTS_REFERENCE).toContain("amount (0.1 to 3) scales how far it moves and speed (0.25 to 4) how fast; 1, or left out, is its own look.");
+    // A frame can show a wobble only so fast, and the renderer holds a shake there.
+    expect(EFFECTS_REFERENCE).toContain("A shake is near the fastest a frame can show, so past about 1.8 at 30 fps (3.5 at 60) it gets no faster.");
     expect(EFFECTS_REFERENCE).toContain("Use it rarely");
     // Old projects keep it and the ops still take it, but agents aren't taught it.
     expect(buildEditingGuide()).not.toContain("highlight_word");
