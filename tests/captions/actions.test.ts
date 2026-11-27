@@ -6,6 +6,7 @@ import {
   isCaptioned,
   retextOps,
   runAutoCaptions,
+  splitIntoLinesOps,
   upgradeCaptionOps,
   type AutoCaptionDeps,
   type AutoCaptionProgress,
@@ -623,5 +624,51 @@ describe("upgradeCaptionOps", () => {
     locked.tracks.find((t) => t.kind === "caption")!.locked = true;
     expect(upgradeCaptionOps(locked)).toEqual([]);
     expect(upgradeCaptionOps({ ...doc, captions: undefined })).toEqual([]);
+  });
+});
+
+describe("splitIntoLinesOps", () => {
+  const LINES = [w("hello", 0, 400), w("there.", 450, 900), w("second", 1000, 1400), w("line.", 1450, 1800), w("third", 2000, 2300)];
+  const captioned = () => {
+    const doc = plainDoc();
+    doc.tracks[0].clips = [video("c1", 0, 90)];
+    return apply(doc, captionOps(doc, { assetId: "a", words: LINES, clipIds: ["c1"], fonts: FONTS }));
+  };
+  const capOf = (doc: TimelineDoc) => doc.tracks.find((t) => t.kind === "caption")!.clips;
+
+  it("makes one caption clip per line, cut where each next line starts, in the same group", () => {
+    const doc = captioned();
+    const [cap] = capOf(doc);
+    let k = 0;
+    const result = splitIntoLinesOps(doc, [cap.id], () => `p${++k}`);
+    expect(result).toEqual({
+      ok: true,
+      ops: [
+        { op: "split_clip", clipId: cap.id, at: 30, newClipId: "p1" },
+        { op: "split_clip", clipId: "p1", at: 60, newClipId: "p2" },
+      ],
+    });
+    const after = apply(doc, result.ok ? result.ops : []);
+    expect(capOf(after).map((c) => [c.id, c.start, c.duration, c.group])).toEqual([
+      [cap.id, 0, 30, cap.group],
+      ["p1", 30, 30, cap.group],
+      ["p2", 60, 30, cap.group],
+    ]);
+    // Each piece shows its one line.
+    expect(docCues(after).map((c) => [c.captionId, c.text])).toEqual([
+      [cap.id, "hello there."],
+      ["p1", "second line."],
+      ["p2", "third"],
+    ]);
+  });
+
+  it("has nothing to do for one line, for clips that are not captions, or on a locked track", () => {
+    const doc = captioned();
+    const [cap] = capOf(doc);
+    expect(splitIntoLinesOps(doc, ["c1"])).toEqual({ ok: false, why: "one" });
+    const one = apply(doc, [{ op: "trim_clip", clipId: cap.id, edge: "end", to: 20 }]);
+    expect(splitIntoLinesOps(one, [cap.id])).toEqual({ ok: false, why: "one" });
+    const locked = apply(doc, [{ op: "update_track", trackId: doc.tracks.find((t) => t.kind === "caption")!.id, patch: { locked: true } }]);
+    expect(splitIntoLinesOps(locked, [cap.id])).toEqual({ ok: false, why: "locked" });
   });
 });

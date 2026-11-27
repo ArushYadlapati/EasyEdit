@@ -8,6 +8,8 @@ import { LIMITS } from "@/lib/limits";
 import { docDuration } from "@/lib/timeline";
 import { groupSelection as linkSelection, separateAudio, ungroupSelection } from "@/lib/editor/actions";
 import { findClip } from "@/lib/editor/store";
+import { captionOps, splitIntoLines } from "@/lib/captions/actions";
+import { DEFAULT_BRAND_FONTS } from "@/lib/brand/types";
 import { makeStore, sampleDoc, video } from "./fixtures";
 
 // An editor with nothing selected, nothing copied, empty stacks and room to zoom both ways.
@@ -547,3 +549,28 @@ it("a Help entry leads to its lesson, and nothing else is taken for one", () => 
   for (const id of ["guide:2", "guide:", "guide:x", "undo", "xguide:0", "guide:0 "]) expect(guideLinkOf(id, LESSONS)).toBeUndefined();
 });
 
+
+it("a caption clip's menu offers Split into lines, no Crop, and no Nest", () => {
+  const doc = sampleDoc();
+  doc.tracks[0].clips = [video("c1", 0, 90)];
+  const words = [
+    { t: "hello", s: 0, e: 400 },
+    { t: "there.", s: 450, e: 900 },
+    { t: "second", s: 1000, e: 1400 },
+  ];
+  const store = makeStore({ doc });
+  const st = () => store.getState();
+  expect(st().edit(captionOps(st().doc, { assetId: "a", words, clipIds: ["c1"], fonts: DEFAULT_BRAND_FONTS }), "auto captions").ok).toBe(true);
+  const cap = st().doc.tracks.find((t) => t.kind === "caption")!.clips[0];
+  st().select([cap.id]);
+  const entries = clipMenu(st());
+  expect(entries.map((e) => e.id)).not.toContain("crop");
+  expect(byId(entries, "split-lines")).toMatchObject({ label: "Split into lines", disabled: false, edit: true });
+  expect(byId(entries, "nest").disabled).toBe(true);
+  splitIntoLines(store);
+  expect(st().doc.tracks.find((t) => t.kind === "caption")!.clips).toHaveLength(2);
+  expect(st().undoStack.at(-1)?.label).toBe("split captions into lines");
+  // One line each now: nothing more to split.
+  st().select([cap.id]);
+  expect(byId(clipMenu(st()), "split-lines").disabled).toBe(true);
+});

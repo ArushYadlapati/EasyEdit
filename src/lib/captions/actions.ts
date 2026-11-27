@@ -10,7 +10,7 @@ import type { AssetView } from "@/lib/media/types";
 import { nanoid } from "nanoid";
 import { DEFAULT_TRANSFORM, captionTrack, defaultCaptionStyle, transcriptOf, type CaptionClip, type CaptionWord, type Clip, type MediaClip, type OpInput, type TimelineDoc } from "@/lib/timeline";
 import type { Cue } from "./cues";
-import { captionsOver, clipsUnder, isCaptioned, overlaps, retextCue } from "./cues";
+import { captionsOver, clipsUnder, docCues, isCaptioned, overlaps, retextCue } from "./cues";
 
 export { isCaptioned };
 import { TranscribeError, type Transcriber } from "./speech/client";
@@ -124,6 +124,46 @@ export function upgradeCaptionOps(doc: TimelineDoc): OpInput[] {
     }
   }
   return ops;
+}
+
+// Split into lines: each caption clip becomes one caption clip per line it shows, cut where each next line starts, so
+// a line can be moved, trimmed or deleted on its own. The pieces keep the clip's group. "one": a clip with one line or
+// none has nothing to split; "room": the Captions track, or one request, would hold too many clips; "locked": the
+// Captions track is locked.
+export function splitIntoLinesOps(doc: TimelineDoc, clipIds: readonly string[], genId: () => string = () => nanoid(10)): { ok: true; ops: OpInput[] } | { ok: false; why: "one" | "room" | "locked" } {
+  const track = captionTrack(doc);
+  const picked = new Set(clipIds);
+  const captions = (track?.clips ?? []).filter((clip): clip is CaptionClip => clip.type === "caption" && picked.has(clip.id));
+  if (!track || captions.length === 0) return { ok: false, why: "one" };
+  if (track.locked) return { ok: false, why: "locked" };
+  const cues = docCues(doc);
+  const ops: OpInput[] = [];
+  for (const caption of captions) {
+    const starts = [...new Set(cues.filter((cue) => cue.captionId === caption.id).map((cue) => cue.start))]
+      .sort((a, b) => a - b)
+      .filter((at) => at > caption.start && at < caption.start + caption.duration);
+    let piece = caption.id;
+    for (const at of starts) {
+      const next = genId();
+      ops.push({ op: "split_clip", clipId: piece, at, newClipId: next });
+      piece = next;
+    }
+  }
+  if (ops.length === 0) return { ok: false, why: "one" };
+  if (ops.length > LIMITS.opsPerRequest || track.clips.length + ops.length > LIMITS.clipsPerTrack) return { ok: false, why: "room" };
+  return { ok: true, ops };
+}
+
+// Split into lines on the selected caption clips, as one edit; says why when there is nothing to split.
+export function splitIntoLines(store: EditorStore): void {
+  const state = store.getState();
+  if (!state.canEdit) return;
+  const result = splitIntoLinesOps(state.doc, state.selection.clipIds);
+  if (!result.ok) {
+    state.notify(result.why === "one" ? "info" : "error", result.why === "one" ? "These captions have only one line." : result.why === "locked" ? explainOpError("TRACK_LOCKED") : "That would make too many caption clips. Split a shorter piece.");
+    return;
+  }
+  state.edit(result.ops, "split captions into lines");
 }
 
 // The parts of [from, to) no span covers, in order.

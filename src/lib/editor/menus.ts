@@ -1,5 +1,6 @@
 import { LIMITS } from "@/lib/limits";
 import { docDuration, isCropped, isNest, type MediaClip, type TrackKind } from "@/lib/timeline";
+import { splitIntoLinesOps } from "@/lib/captions/actions";
 import { addAdjustmentOps } from "./adjustment";
 import { duplicateTrackOps, reorderTrackOps, splitOps } from "./commands";
 import { soundClipsOf } from "./sound";
@@ -190,7 +191,7 @@ export function editBlocked(state: EditorState): boolean {
 
 export type ClipMenuId =
   | "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "mute-clip" | "separate-audio" | "reverse-clip" | "freeze-frame"
-  | "group-clips" | "ungroup-clips" | "nest" | "unnest" | "delete";
+  | "group-clips" | "ungroup-clips" | "split-lines" | "nest" | "unnest" | "delete";
 
 // A clip's menu (label "Clip actions"), for the selection the right-click made. Cut and Delete are
 // greyed when a selected clip is on a locked track, Split when the playhead crosses none of the
@@ -211,7 +212,7 @@ export function clipMenu(state: EditorState): MenuEntry[] {
     return { id: command, label, command, disabled: (edit && blocked) || unavailable, ...extra, ...(edit && { edit }) };
   };
   const single = selection.clipIds.length === 1 ? (findClip(doc, selection.clipIds[0])?.clip ?? null) : null;
-  const croppable = single !== null && single.type !== "audio" && !(single.type === "placeholder" && single.accepts === "audio");
+  const croppable = single !== null && single.type !== "audio" && single.type !== "caption" && !(single.type === "placeholder" && single.accepts === "audio");
   const typeable = single !== null && single.type === "text";
   const sounding = soundClipsOf(doc, selection.clipIds);
   const audible = sounding.some(({ clip }) => clip.volume > 0);
@@ -226,6 +227,10 @@ export function clipMenu(state: EditorState): MenuEntry[] {
     entry("copy", "Copy", false),
     entry("duplicate", "Duplicate", false, { separatorBefore: true }),
     entry("split", "Split at the playhead", splitOps(doc, playhead, selection.clipIds).length === 0, { separatorBefore: true }),
+    // Captions: one caption clip per line, to move, trim or delete each on its own.
+    ...(picked.some((clip) => clip.type === "caption")
+      ? [{ id: "split-lines", label: "Split into lines", disabled: blocked || onLocked || !splitIntoLinesOps(doc, selection.clipIds, () => "").ok, edit: true }]
+      : []),
     ...(typeable ? [{ id: "edit-text", label: "Edit text", disabled: blocked || onLocked, edit: true }] : []),
     ...(croppable
       ? [

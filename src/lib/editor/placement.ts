@@ -41,6 +41,7 @@ export function homeKind(type: Clip["type"]): TrackKind {
   if (type === "text") return "text";
   if (type === "audio") return "audio";
   if (type === "shape") return "shape";
+  if (type === "caption") return "caption";
   return "video";
 }
 
@@ -126,6 +127,8 @@ export function placeClips(doc: TimelineDoc, items: PlaceItem[], genId: () => st
     } else {
       if (doc.tracks.length + newTracks + 1 > LIMITS.tracksPerProject) return { ok: false };
       const newKind = only ?? homeKindOf(group[0].clip);
+      // A project has one Captions track: captions with no room on it have nowhere to go.
+      if (newKind === "caption" && (doc.tracks.some((t) => t.kind === "caption") || kinds.some((t) => t.kind === "caption"))) return { ok: false };
       const name = nextTrackName(doc, newKind, newNames);
       newNames.push(name);
       newTracks++;
