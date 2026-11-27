@@ -119,6 +119,7 @@ const press = (x: number, y: number) => fireEvent.pointerDown(overlay(), { clien
 const move = (x: number, y: number) => fireEvent.pointerMove(overlay(), { clientX: x, clientY: y, pointerId: 1 });
 const release = (x: number, y: number) => fireEvent.pointerUp(overlay(), { clientX: x, clientY: y, pointerId: 1 });
 const labels = (s: EditorState) => s.queue.map((e) => e.label);
+const editor = () => document.querySelector<HTMLInputElement>("[data-caption-editor]");
 
 describe("captions on the board", () => {
   it("a press on the captions selects their caption clip, alone, outlined and with no handles", () => {
@@ -160,4 +161,79 @@ describe("captions on the board", () => {
     expect(st().selection.clipIds).toEqual(["k1"]);
     expect(st().queue).toEqual([]);
   });
+
+  it("a double-click on a caption opens it for typing over the line; Enter saves the words as one edit", () => {
+    const { st } = show();
+    const y = captionStyleOf(st().doc).y;
+    fireEvent.doubleClick(overlay(), { clientX: X(0.5), clientY: Y(y) });
+    const box = editor()!;
+    expect(box).toBeTruthy();
+    expect(box.value).toBe("hello there.");
+    expect(document.activeElement).toBe(box);
+    expect(st().captionEdit).toEqual({ clipId: "c1", captionId: "k1", index: 0 });
+    // The line being typed is not drawn under its box.
+    frame();
+    expect(vi.mocked(drawFrame).mock.calls.at(-1)?.[3]).toMatchObject({ hideCue: "c1:0" });
+    fireEvent.change(box, { target: { value: "hi there!" } });
+    // Shown at once, saved as a held edit: unsaved until a pause or Enter.
+    expect(st().gesture?.label).toBe("edit caption");
+    expect(viewDoc(st()).captions?.transcripts?.a.map((w) => w.t)).toEqual(["hi", "there!"]);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(labels(st())).toEqual(["edit caption"]);
+    expect(st().doc.captions?.transcripts?.a.map((w) => w.t)).toEqual(["hi", "there!"]);
+    expect(editor()).toBeNull();
+    expect(st().captionEdit).toBeNull();
+  });
+
+  it("Escape puts the line back and closes the box; leaving the box saves", () => {
+    const { st } = show();
+    const y = captionStyleOf(st().doc).y;
+    fireEvent.doubleClick(overlay(), { clientX: X(0.5), clientY: Y(y) });
+    fireEvent.change(editor()!, { target: { value: "nope" } });
+    fireEvent.keyDown(editor()!, { key: "Escape" });
+    expect(editor()).toBeNull();
+    expect(st().gesture).toBeNull();
+    expect(st().queue).toEqual([]);
+    expect(st().doc.captions?.transcripts?.a.map((w) => w.t)).toEqual(["hello", "there."]);
+
+    fireEvent.doubleClick(overlay(), { clientX: X(0.5), clientY: Y(y) });
+    fireEvent.change(editor()!, { target: { value: "bye now" } });
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    fireEvent.blur(editor()!);
+    expect(labels(st())).toEqual(["edit caption"]);
+    expect(st().doc.captions?.transcripts?.a.map((w) => w.t)).toEqual(["bye", "now"]);
+    expect(editor()).toBeNull();
+  });
+
+  it("a caption line is one line: Shift+Enter saves too and adds no line", () => {
+    const { st } = show();
+    const y = captionStyleOf(st().doc).y;
+    fireEvent.doubleClick(overlay(), { clientX: X(0.5), clientY: Y(y) });
+    expect(editor()!.tagName).toBe("INPUT");
+    fireEvent.change(editor()!, { target: { value: "one line" } });
+    fireEvent.keyDown(editor()!, { key: "Enter", shiftKey: true });
+    expect(st().doc.captions?.transcripts?.a.map((w) => w.t)).toEqual(["one", "line"]);
+  });
+
+  it("a viewer can't type a caption, and a locked Captions track says so", () => {
+    const viewer = show({ canEdit: false });
+    const y = captionStyleOf(viewer.st().doc).y;
+    fireEvent.doubleClick(overlay(), { clientX: X(0.5), clientY: Y(y) });
+    expect(editor()).toBeNull();
+    expect(viewer.st().captionEdit).toBeNull();
+  });
+
+  it("on a locked Captions track the box does not open", () => {
+    const { st } = show();
+    const cap = st().doc.tracks.find((t) => t.kind === "caption")!;
+    act(() => {
+      st().edit([{ op: "update_track", trackId: cap.id, patch: { locked: true } }], "track change");
+    });
+    frame();
+    const y = captionStyleOf(st().doc).y;
+    fireEvent.doubleClick(overlay(), { clientX: X(0.5), clientY: Y(y) });
+    expect(editor()).toBeNull();
+    expect(st().notice?.text).toMatch(/locked/i);
+  });
 });
+

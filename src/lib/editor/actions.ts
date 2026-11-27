@@ -1,3 +1,5 @@
+import { findCue, type CueKey } from "@/lib/captions/cues";
+import { captionTrack } from "@/lib/timeline/captions";
 import { LIMITS } from "@/lib/limits";
 import { nanoid } from "nanoid";
 import type { AssetView } from "@/lib/media/types";
@@ -586,6 +588,26 @@ export function editTextInPlace(store: EditorStore, clipId: string, opts?: { sel
   }
   focusClip(store, clipId);
   store.getState().setTextEdit(clipId, opts);
+}
+
+// Opens a caption line for typing in place on the preview: pauses and selects its caption clip, keeping the playhead
+// on the line. On a locked or hidden Captions track it says so instead. Nothing for a viewer, while a drag or a typed
+// value is live, or for a line of captions switched on the old way (no caption clip to type in).
+export function editCaptionInPlace(store: EditorStore, key: CueKey): void {
+  const state = store.getState();
+  if (!state.canEdit || state.gesture !== null || key.captionId === null || !findCue(state.doc, key)) return;
+  const track = captionTrack(state.doc);
+  if (track?.locked) {
+    state.notify("error", explainOpError("TRACK_LOCKED"));
+    return;
+  }
+  if (track?.hidden) {
+    state.notify("error", MESSAGES.trackHidden);
+    return;
+  }
+  state.pause();
+  state.select([key.captionId]);
+  store.getState().setCaptionEdit(key);
 }
 
 // Track runners, used by the track headers, the timeline toolbar and the inspector.

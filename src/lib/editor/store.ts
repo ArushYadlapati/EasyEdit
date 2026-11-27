@@ -14,6 +14,8 @@ import {
   type TimelineDoc,
   type Track,
 } from "@/lib/timeline";
+import { findCue, type CueKey } from "@/lib/captions/cues";
+import { captionTrack } from "@/lib/timeline/captions";
 import { canUndoChange, isBeforeMove, shortActorName } from "./activity";
 import type { TrimMode } from "./drag";
 import { clampZoom, fitZoom } from "./geometry";
@@ -80,6 +82,9 @@ export type EditorState = {
   textEditId: string | null;
   // The text opened for typing starts with all of it selected (new text from the Text tool), else with the caret at the end.
   textEditSelectAll: boolean;
+  // The caption line being typed in place on the preview. The line's going, a lock or hide of the Captions track, or the
+  // loss of edit access clears it.
+  captionEdit: CueKey | null;
   tool: Tool; // the rail's current tool, this person's own
   shapeTool: BoxShape; // the shape the Shape tool draws, this person's own; Rectangle when the editor opens
   lineTool: LineTool; // what the Line tool draws, a line or an arrow, this person's own; an arrow when the editor opens
@@ -139,6 +144,7 @@ export type EditorState = {
   setAudioMeterWidth(px: number): void; // held within what the meter can be
   setBoardScale(k: number): void;
   setTextEdit(clipId: string | null, opts?: { selectAll?: boolean }): boolean; // false: a viewer, a missing clip, a locked or hidden track, not a text clip
+  setCaptionEdit(key: CueKey | null): boolean; // false: a viewer, a line not there, a locked or hidden Captions track
   setExporting(on: boolean): void;
   setExportHeld(on: boolean): void;
 };
@@ -162,6 +168,12 @@ export function findClip(doc: TimelineDoc, clipId: string): { clip: Clip; track:
 function typeableText(doc: TimelineDoc, clipId: string): boolean {
   const found = findClip(doc, clipId);
   return !!found && found.clip.type === "text" && !found.track.locked && !found.track.hidden;
+}
+
+// A caption line that can be typed now: still there, on a Captions track that is neither locked nor hidden.
+function typeableCue(doc: TimelineDoc, key: CueKey): boolean {
+  const track = captionTrack(doc);
+  return !!track && !track.locked && !track.hidden && findCue(doc, key) !== null;
 }
 
 function hasGuide(doc: TimelineDoc, guideId: string): boolean {
@@ -254,6 +266,7 @@ export function createEditorStore(
       const patch: Partial<EditorState> = { doc, selection: pruneSelection(doc, state.selection) };
       if (state.cropArmed !== null && !findClip(doc, state.cropArmed)) patch.cropArmed = null;
       if (state.textEditId !== null && !typeableText(doc, state.textEditId)) patch.textEditId = null;
+      if (state.captionEdit !== null && !typeableCue(doc, state.captionEdit)) patch.captionEdit = null;
       if (state.guideId !== null && !hasGuide(doc, state.guideId)) patch.guideId = null;
       const gesture = state.gesture;
       if (gesture) {
@@ -383,6 +396,7 @@ export function createEditorStore(
       cropArmed: null,
       textEditId: null,
       textEditSelectAll: false,
+      captionEdit: null,
       exporting: false,
       exportHeld: false,
 
@@ -648,6 +662,7 @@ export function createEditorStore(
           selection: pruneSelection(server.doc, selection),
           cropArmed: null,
           textEditId: null,
+          captionEdit: null,
           tool: "select",
           guideId: null,
           notice: makeNotice("error", MESSAGES.lostAccess),
@@ -658,7 +673,7 @@ export function createEditorStore(
         if (get().moved) return;
         // A notice asking the person to sign in to save goes too: nothing more is saved here, and the banner says why.
         set({
-          moved: true, movedElsewhere: elsewhere, canEdit: false, gesture: null, cropArmed: null, textEditId: null, tool: "select", guideId: null,
+          moved: true, movedElsewhere: elsewhere, canEdit: false, gesture: null, cropArmed: null, textEditId: null, captionEdit: null, tool: "select", guideId: null,
           ...withoutSignedOutNotice(get().notice),
         });
       },
@@ -757,6 +772,15 @@ export function createEditorStore(
         if (clipId !== null && (!state.canEdit || !typeableText(state.doc, clipId))) return false;
         const selectAll = clipId !== null && opts?.selectAll === true;
         if (clipId !== state.textEditId || selectAll !== state.textEditSelectAll) set({ textEditId: clipId, textEditSelectAll: selectAll });
+        return true;
+      },
+
+      setCaptionEdit(key) {
+        const state = get();
+        if (key !== null && (!state.canEdit || !typeableCue(state.doc, key))) return false;
+        const now = state.captionEdit;
+        const same = now === key || (now !== null && key !== null && now.clipId === key.clipId && now.captionId === key.captionId && now.index === key.index);
+        if (!same) set({ captionEdit: key });
         return true;
       },
 

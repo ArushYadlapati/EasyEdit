@@ -115,6 +115,24 @@ describe("drawing captions", () => {
     expect(moves[1]).toBeCloseTo(960 - (48 + 8), 5); // one line is 1.2 × 40, plus a 0.2 × 40 gap
   });
 
+  it("leaves out the line being typed in place, and the others keep their places", () => {
+    const d = make({}, [speaker("c1")]);
+    d.tracks[1].clips = [speaker("c2")];
+    const { ctx, calls } = fakeCtx();
+    drawCaptions(ctx, d, 5, defaultResolveFont, "c1:0");
+    const moves = named(calls, "translate").map((c) => c[2] as number);
+    // Only c2's line is drawn, still above where c1's would be.
+    expect(moves).toHaveLength(1);
+    expect(moves[0]).toBeCloseTo(960 - (48 + 8), 5);
+    // An export never sets it: drawFrame without it draws both.
+    const both = fakeCtx();
+    drawFrame(both.ctx, d, 5);
+    expect(texts(both.calls).filter((t) => t === "hello brave new world.")).toHaveLength(2);
+    const hidden = fakeCtx();
+    drawFrame(hidden.ctx, d, 5, { hideCue: "c2:0" });
+    expect(texts(hidden.calls).filter((t) => t === "hello brave new world.")).toHaveLength(1);
+  });
+
   it("stacked bar captions keep 0.2 × the font size between their boxes, not between their text", () => {
     const d = make({ preset: "bar" }, [speaker("c1")]);
     d.tracks[1].clips = [speaker("c2")];

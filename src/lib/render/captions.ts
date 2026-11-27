@@ -1,4 +1,4 @@
-import { cuesAt, type Cue } from "@/lib/captions/cues";
+import { cueKey, cueKeyText, cuesAt, type Cue } from "@/lib/captions/cues";
 import { isRightToLeft } from "@/lib/captions/speech/languages";
 import { captionStyleOf } from "@/lib/timeline/captions";
 import type { TimelineDoc } from "@/lib/timeline";
@@ -72,8 +72,9 @@ export function captionLayout(doc: TimelineDoc, frame: number, measure: (font: s
   return blocks;
 }
 
-// Draws every caption line showing at a frame, in the project's caption style, where captionLayout puts it.
-export function drawCaptions(ctx: Ctx2D, doc: TimelineDoc, frame: number, resolveFont: (family: string) => string): void {
+// Draws every caption line showing at a frame, in the project's caption style, where captionLayout puts it. hideCue
+// (cueKeyText): a line left out, which the preview's in-place box shows instead; the others keep their places.
+export function drawCaptions(ctx: Ctx2D, doc: TimelineDoc, frame: number, resolveFont: (family: string) => string, hideCue?: string): void {
   const measureIn = (font: string, s: string) => {
     ctx.font = font;
     return ctx.measureText(s).width;
@@ -87,6 +88,7 @@ export function drawCaptions(ctx: Ctx2D, doc: TimelineDoc, frame: number, resolv
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   for (const { cue, lit, font, size, lineHeight, text, words, lines, extent, centre } of blocks) {
+    if (hideCue !== undefined && cueKeyText(cueKey(cue)) === hideCue) continue;
     ctx.font = font;
     const measure = (s: string) => ctx.measureText(s).width;
     ctx.save();

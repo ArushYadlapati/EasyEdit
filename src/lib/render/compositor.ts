@@ -29,6 +29,8 @@ export type DrawOptions = {
   resolveFont?: (family: string) => string; // a document font name to a CSS font-family list
   // A clip left out: the preview's in-place text box shows that text instead. Never set for an export.
   hideClipId?: string;
+  // A caption line left out (cueKeyText), which the preview's in-place caption box shows instead. Never set for an export.
+  hideCue?: string;
   // A context on a canvas of this size for a picture that is finished on its own before it joins the frame, the
   // same one each time for the same use: "tone" for a picture being warmed, cooled or vignetted, "finish" for one on
   // its way to the graphics card, "under" for the copy of the frame an adjustment layer works on, "mask" for a
@@ -858,7 +860,7 @@ function drawNest(ctx: Ctx2D, doc: TimelineDoc, nest: NestClip, frame: number, o
   layer.globalAlpha = 1;
   layer.globalCompositeOperation = "source-over";
   const inner: TimelineDoc = { ...doc, tracks: nestTracks(nest), captions: undefined };
-  drawTracks(layer, inner, nestFrame(nest, frame), { ...options, hideClipId: undefined }, options.resolveFont ?? defaultResolveFont);
+  drawTracks(layer, inner, nestFrame(nest, frame), { ...options, hideClipId: undefined, hideCue: undefined }, options.resolveFont ?? defaultResolveFont);
   layer.restore();
   const picture: ResolvedSource = { image: layer.canvas as CanvasImageSource, width, height };
   // From here on it is a picture like any other: one that fills the frame.
@@ -885,7 +887,7 @@ function drawTracks(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: DrawOp
   const place = (track: Track) => doc.tracks.indexOf(track);
   const reach = (trackAt: number) => {
     if (!captionsDrawn && trackAt > captionAt) {
-      drawCaptions(ctx, doc, frame, resolveFont);
+      drawCaptions(ctx, doc, frame, resolveFont, options.hideCue);
       captionsDrawn = true;
     }
   };
@@ -899,7 +901,7 @@ function drawTracks(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: DrawOp
   for (const { track, clip, tail } of drawnClips(doc, frame)) {
     if (layers.length > 0) adjustUpTo(place(track));
     if (!captionsDrawn && doc.tracks.indexOf(track) > captionAt) {
-      drawCaptions(ctx, doc, frame, resolveFont);
+      drawCaptions(ctx, doc, frame, resolveFont, options.hideCue);
       captionsDrawn = true;
     }
     if (clip.id === options.hideClipId) continue;
@@ -921,5 +923,5 @@ function drawTracks(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: DrawOp
     }
   }
   if (layers.length > 0) adjustUpTo(Infinity);
-  if (!captionsDrawn) drawCaptions(ctx, doc, frame, resolveFont);
+  if (!captionsDrawn) drawCaptions(ctx, doc, frame, resolveFont, options.hideCue);
 }

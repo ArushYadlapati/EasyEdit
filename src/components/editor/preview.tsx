@@ -10,6 +10,7 @@ import { mediaWants, upcomingAssetIds } from "@/lib/editor/media-plan";
 import { previewSize } from "@/lib/editor/preview-size";
 import { BOARD_ZOOM_MAX, BOARD_ZOOM_MIN, clampPercent, type BoardZoom } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
+import { cueKeyText } from "@/lib/captions/cues";
 import { probeRequests } from "@/lib/export/fonts";
 import { drawFrame } from "@/lib/render/compositor";
 import { SAFE_AREA_LABEL, safeAreaMargins } from "@/lib/render/safe-zones";
@@ -230,8 +231,11 @@ export function Preview() {
       if (!ctx) return;
       const { scale } = previewSize(doc);
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
-      // Text being typed in place is shown by its box, so it is not drawn under it as well.
-      const hidden = s.textEditId !== null ? { hideClipId: s.textEditId } : {};
+      // Text or a caption line being typed in place is shown by its box, so it is not drawn under it as well.
+      const hidden = {
+        ...(s.textEditId !== null && { hideClipId: s.textEditId }),
+        ...(s.captionEdit !== null && { hideCue: cueKeyText(s.captionEdit) }),
+      };
       drawFrame(ctx, doc, s.playhead, { resolveFont, resolveSource: pool.resolveSource, placeholderLabel: pool.label, ...hidden });
       surface.changed();
       tap.drawn();
@@ -315,7 +319,7 @@ export function Preview() {
       if (prev.playing && !s.playing) {
         pool.sync(mediaWants(doc, s.playhead, { playing: false, rate: s.rate }), upcomingWants(doc, s.playhead));
       }
-      if (docChanged || s.playhead !== prev.playhead || s.textEditId !== prev.textEditId) schedule();
+      if (docChanged || s.playhead !== prev.playhead || s.textEditId !== prev.textEditId || s.captionEdit !== prev.captionEdit) schedule();
     });
     const unsubscribeLibrary = media.library.subscribe((s, prev) => {
       if (s.assets !== prev.assets || s.loaded !== prev.loaded) schedule();

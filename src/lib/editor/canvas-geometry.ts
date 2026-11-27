@@ -1,4 +1,4 @@
-import { captionsShow } from "@/lib/captions/cues";
+import { captionsShow, cueKey, type CueKey } from "@/lib/captions/cues";
 import { captionLayout } from "@/lib/render/captions";
 import { activeClips, type LocalRect } from "@/lib/render/compositor";
 import { captionTrack } from "@/lib/timeline/captions";
@@ -21,6 +21,7 @@ export type CanvasItem = {
   type: "video" | "image" | "text" | "placeholder" | "shape" | "nest" | "caption";
   slot?: string; // an empty slot's name
   shape?: ShapeClip; // a shape's clip, which picking and an arrow's end handles read
+  cue?: CueKey; // a caption line's own key, for typing it in place
   locked: boolean;
   opacity: number;
   center: Point;
@@ -78,7 +79,7 @@ export function captionItems(doc: TimelineDoc, frame: number, sizer: Sizer): Can
   return captionLayout(doc, frame, measure, sizer.resolveFont).flatMap((block): CanvasItem[] => {
     if (block.cue.captionId === null) return [];
     const box = { left: -block.width / 2, top: -block.extent / 2, right: block.width / 2, bottom: block.extent / 2 };
-    return [{ clipId: block.cue.captionId, trackId: track.id, type: "caption", locked: track.locked, opacity: 1, center: { x: doc.width / 2, y: block.centre }, rotation: 0, sx: 1, sy: 1, full: box, rect: box }];
+    return [{ clipId: block.cue.captionId, trackId: track.id, type: "caption", cue: cueKey(block.cue), locked: track.locked, opacity: 1, center: { x: doc.width / 2, y: block.centre }, rotation: 0, sx: 1, sy: 1, full: box, rect: box }];
   });
 }
 

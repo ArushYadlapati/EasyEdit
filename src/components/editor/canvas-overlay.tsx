@@ -24,7 +24,7 @@ import {
   type PreviewSurface,
   type View,
 } from "@/lib/editor/canvas-geometry";
-import { addText, editTextInPlace } from "@/lib/editor/actions";
+import { addText, editCaptionInPlace, editTextInPlace } from "@/lib/editor/actions";
 import { guideAt } from "@/lib/editor/guides";
 import { TEXT_PRESETS } from "@/lib/editor/text-presets";
 import { previewMenu, rightClickEntries } from "@/lib/editor/menus";
@@ -33,6 +33,7 @@ import { findClip, viewDoc, type EditorState } from "@/lib/editor/store";
 import { drawsShape } from "@/lib/editor/tools";
 import type { ShapeClip, TimelineDoc } from "@/lib/timeline";
 import { useBrand } from "./brand/brand-context";
+import { CanvasCaptionEditor } from "./canvas-caption-editor";
 import { CanvasTextEditor } from "./canvas-text-editor";
 import { useClipboard, useEditor, useEditorStore, useSettingsStore } from "./context";
 import { useToMenuItems } from "./menu-items";
@@ -193,6 +194,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
   const handlesShown = handles.length > 0;
   const arrowDrag = useArrowDrag(surface);
   const textEditId = useEditor((s) => s.textEditId);
+  const captionEdit = useEditor((s) => s.captionEdit);
   const settings = useSettingsStore();
   const { fonts, colors } = useBrand().kit;
   // A new shape takes the brand kit's first colour; the drag reads it when it starts.
@@ -485,7 +487,8 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     store.getState().select([p.clipId], p.then === "toggle" ? "toggle" : "replace");
   }
 
-  // A double-click on text, locked or not, opens it for typing; a video or image starts nothing. The press before it
+  // A double-click on text, locked or not, opens it for typing, and so does one on a caption line; a video or image
+  // starts nothing. The press before it
   // has already selected what a press takes. With the Guide tool its presses place guides, so it opens nothing.
   // A double-click on one of a line's points takes that point off the line.
   function onDoubleClick(e: MouseEvent<HTMLDivElement>) {
@@ -503,6 +506,11 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
     const view = surface.view();
     if (!view) return;
     const hit = hitAt(state, view, e.clientX, e.clientY, true);
+    // A caption opens the line under the pointer for typing.
+    if (hit?.type === "caption") {
+      if (hit.cue) editCaptionInPlace(store, hit.cue);
+      return;
+    }
     if (hit) editTextInPlace(store, hit.clipId);
   }
 
@@ -769,6 +777,7 @@ export function CanvasOverlay({ surface, pane }: { surface: PreviewSurface; pane
         </div>
       ))}
       {textEditId !== null && <CanvasTextEditor key={textEditId} clipId={textEditId} surface={surface} />}
+      {captionEdit !== null && <CanvasCaptionEditor key={`${captionEdit.clipId}:${captionEdit.index}`} cueKey={captionEdit} surface={surface} />}
     </div>
   );
 }
