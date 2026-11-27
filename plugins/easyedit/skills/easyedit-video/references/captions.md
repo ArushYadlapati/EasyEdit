@@ -46,8 +46,8 @@ To turn one clip's captions off, patch it with `"captions": false`. To hide ever
 
 One style covers every caption in the project. These are the four looks. The editor calls them Block, Karaoke, One word and Bar.
 
-- **karaoke** (the default): white words with a black outline, and the word being spoken lit in the highlight color. The best fit for most talking shorts: a cooking creator walking through a recipe, a bike shop owner showing a brake fix. Eyes follow the lit word. Lines in a right-to-left language (Arabic, Hebrew) show no lit word.
-- **block**: the same lines with no lit word. Calmer. Good for a study channel, an interview, or a student council update, where a moving color would distract.
+- **karaoke** (the default on upright and square frames): white words with a black outline, and the word being spoken lit in the highlight color. The best fit for most talking shorts: a cooking creator walking through a recipe, a bike shop owner showing a brake fix. Eyes follow the lit word. Lines in a right-to-left language (Arabic, Hebrew) show no lit word.
+- **block** (the default on wide frames): the same lines with no lit word. Calmer. Good for a study channel, an interview, or a student council update, where a moving color would distract.
 - **word**: one word at a time, drawn 1.3 times the font size, popping in over 3 frames. Loud and quick: a soccer club's goal of the week, a 15-second promo. It gets tiring past about 30 seconds, and it flickers when someone talks faster than about 180 words a minute.
 - **bar**: lines on a dark rounded box, with no outline, up to 42 characters a line. It reads on any background, so it suits bright or busy footage (snow, a white kitchen, a crowd) and wide 16:9 frames. On 9:16 its long lines reach close to the sides, so prefer the other looks there.
 
@@ -78,10 +78,10 @@ You don't set line length directly. Each look breaks speech into lines for you:
 - A line stays up 0.4 seconds (12 frames at 30 fps) after its last word, unless the next line or the end of the clip comes first.
 - A line wraps onto a second row when it is wider than 80% of the frame (90% for bar).
 
-So what you control is the size. The default is 6.5% of the frame's width: 70 px on a 1080-wide frame, 125 px on 1920×1080, 250 px on 4K. On 9:16 at 70 px, a full 28-character line wraps to two rows. That's fine, and two rows is the most you want. Around 56 px, most lines fit on one row.
+So what you control is the size. The default is 6.5% of the frame's shorter side: 70 px on a 1080-wide frame and on 1920×1080, 140 px on 4K. On 9:16 at 70 px, a full 28-character line wraps to two rows. That's fine, and two rows is the most you want. Around 56 px, most lines fit on one row.
 
 - On a 1080-wide frame (9:16, 4:5, 1:1), use 56 to 80 px. Don't go below about 48 px. People read these on phones.
-- On 16:9, 64 to 80 px reads well and keeps most lines to one row. The default 125 px gives big, Shorts-style captions, which can be right for a loud vlog but heavy for a calm tutorial. On long_4k, double these numbers.
+- On 16:9, 64 to 80 px reads well and keeps most lines to one row, and the default is 70 px. Big, Shorts-style captions, around 110 px, can be right for a loud vlog but are heavy for a calm tutorial. On long_4k, double these numbers.
 - The word look draws 1.3 times bigger, so its fontSize can sit a little lower: 64 draws at about 83 px.
 
 If a line breaks in an awkward place, you can end it with punctuation using `splice_caption_words`: a word ending in a period ends its line. Only do this where the punctuation is right anyway.

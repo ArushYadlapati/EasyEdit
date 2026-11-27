@@ -43,7 +43,7 @@ To change an existing project's shape, use `set_format`:
 
 Clips keep their x and y as shares of the new frame, and text keeps its size in pixels. So a title that fit across 1920 pixels may wrap in 1080, and a wide shot shows less of itself in a tall frame. Read the project again and check every text clip, the "Captions:" line and how each video is framed (see below).
 
-A caption look someone set in the old shape keeps its y and size. From 16:9 that's y 0.79, behind the description in 9:16, and 125 px, too big for 1080 pixels across. If the "Captions:" line still shows the old numbers, set them for the new shape (the 9:16 defaults are y 0.56 and 70 px):
+A caption look someone set in the old shape keeps its look, y and size. From 16:9 that's y 0.79, behind the description in 9:16, and often block, the calmer look a wide project starts on. If the "Captions:" line still shows the old numbers, set them for the new shape (the 9:16 defaults are y 0.56 and 70 px, on karaoke):
 
 ```json
 {"op":"set_caption_style","patch":{"y":0.56,"fontSize":70}}

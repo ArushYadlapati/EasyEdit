@@ -3,14 +3,17 @@ import { graphemes } from "@/lib/text";
 import { safeAreaOf } from "./presets";
 import type { CaptionStyle, CaptionWord, TimelineDoc, Track } from "./types";
 
-// The look a project gets before anyone changes it: big white words, the spoken one in yellow, low in the safe area.
+// The look a project gets before anyone changes it: white words with a black outline, low in the safe area, sized
+// from the frame's shorter side. An upright or square frame lights the spoken word in yellow, the way Shorts, Reels
+// and TikTok captions look. A wide frame gets the calmer block look: a lit word moving through an interview or a
+// tutorial reads as phone-app captions there, and sizing by the width made 16:9 words 125 px (250 px in 4K).
 export function defaultCaptionStyle(doc: TimelineDoc): CaptionStyle {
   const safe = safeAreaOf(doc);
   return {
-    preset: "karaoke",
+    preset: doc.width > doc.height ? "block" : "karaoke",
     fontFamily: "Geist",
     fontWeight: 700,
-    fontSize: Math.round(doc.width * 0.065),
+    fontSize: Math.round(Math.min(doc.width, doc.height) * 0.065),
     color: "#ffffff",
     highlight: "#FFD400",
     y: Math.round((safe.top + safe.height * 0.82) * 1000) / 1000,
