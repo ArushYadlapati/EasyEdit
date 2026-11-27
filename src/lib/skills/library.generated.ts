@@ -1340,7 +1340,7 @@ If someone asks for "some transitions" and doesn't say where, find the two or th
 | "dip" | Going out, the frame fills with one color. Coming in, the color clears. Use them as a pair. | A clear break: a new day, a new chapter | 6–10 on each side |
 | "slide" | The clip travels a whole frame in from one side, or out to one side. | Lists, screen recordings, a playful "next" | 10–15 |
 | "zoom" | Coming in, the clip shrinks from 1.25 times its size to its own while fading in. Going out, it grows to 1.25 while fading out. | An energetic arrival; a picture or arrow popping in | 8–12 |
-| "whip" | A fast move across a whole frame, with motion trails. | Reveals and big beats in a fast edit | 6–8 on each side |
+| "whip" | A fast move across a whole frame, motion-blurred along the way it moves: most blurred at its fastest, sharp once it stops. A shorter whip is faster and blurs more. | Reveals and big beats in a fast edit | 6–8 on each side |
 
 The frame counts above are at 30 fps. The first line of \`get_project\` gives the project's fps, and frames = seconds × fps. So 10 frames at 30 fps is 20 at 60 fps and 8 at 24 or 25 fps.
 
