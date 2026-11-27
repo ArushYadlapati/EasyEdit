@@ -9,6 +9,7 @@ import type { BrandFonts } from "@/lib/brand/types";
 import { useBrand } from "../brand/brand-context";
 import { useEditorStore } from "../context";
 import { useMedia, type MediaServices } from "../media/media-context";
+import { useCaptionUpgrade } from "./use-caption-upgrade";
 
 // The real deps of Auto captions in this page: speech to text in a worker, the saved words on the server, and the
 // editor's own media library and files. Nothing here starts until a run asks for it.
@@ -48,6 +49,7 @@ const CaptionsContext = createContext<CaptionsValue | null>(null);
 // comes back. Leaving the editor cancels it. deps: tests pass fakes; without them the page's own are made.
 export function CaptionsProvider({ deps: given, children }: { deps?: AutoCaptionDeps; children: ReactNode }) {
   const store = useEditorStore();
+  useCaptionUpgrade(store);
   const media = useMedia();
   const { fonts } = useBrand().kit;
   // A run uses the kit's fonts as they were when it started.

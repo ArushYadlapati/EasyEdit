@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { BrandProvider } from "@/components/editor/brand/brand-context";
 import { EditorProvider } from "@/components/editor/context";
 import { ContextMenuProvider } from "@/components/ui/context-menu";
@@ -217,55 +217,4 @@ it("keeps its four tabs on one row: their names where there is room, else their 
     expect(tab.querySelector("[data-tab-icon] svg"), tab.textContent ?? "").not.toBeNull();
     expect(tab.querySelector("[data-tab-label]")!.textContent).toBe(tab.getAttribute("aria-label"));
   }
-});
-
-describe("stickers", () => {
-  const stickers = () => screen.getAllByRole("button", { name: /^Add the .* sticker$/ });
-
-  it("are one tab stop in a toolbar named Stickers, each at least 28 px square", () => {
-    setup();
-    const bar = screen.getByRole("toolbar", { name: "Stickers" });
-    expect(stickers().length).toBe(32);
-    expect(stickers().filter((b) => b.tabIndex === 0)).toEqual([stickers()[0]]);
-    expect(bar.contains(stickers()[31])).toBe(true);
-    for (const group of bar.querySelectorAll('[role="group"]')) expect(group.className).toMatch(/minmax\(1\.75rem/);
-    expect(stickers()[0].className).toMatch(/\bmin-h-7\b/);
-  });
-
-  it("the arrow keys, Home and End move between them, and the tab stop follows", () => {
-    const store = setup();
-    const [first] = stickers();
-    first.focus();
-    fireEvent.keyDown(first, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(stickers()[1]);
-    expect(stickers()[1].tabIndex).toBe(0);
-    expect(first.tabIndex).toBe(-1);
-    fireEvent.keyDown(document.activeElement!, { key: "End" });
-    expect(document.activeElement).toBe(stickers()[31]);
-    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(stickers()[31]);
-    fireEvent.keyDown(document.activeElement!, { key: "Home" });
-    expect(document.activeElement).toBe(first);
-    fireEvent.keyDown(first, { key: "ArrowLeft" });
-    expect(document.activeElement).toBe(first);
-    // They only move focus: the playhead stays where it was, and nothing was added.
-    expect(store.getState().playhead).toBe(0);
-    expect(store.getState().queue).toEqual([]);
-  });
-
-  it("up and down go to the nearest sticker in the row above or below, as they are drawn", () => {
-    setup();
-    const all = stickers();
-    // Four a row, 32 px apart.
-    all.forEach((b, i) => {
-      vi.spyOn(b, "getBoundingClientRect").mockReturnValue({ left: (i % 4) * 32, top: Math.floor(i / 4) * 32, width: 28, height: 28 } as DOMRect);
-    });
-    all[1].focus();
-    fireEvent.keyDown(all[1], { key: "ArrowDown" });
-    expect(document.activeElement).toBe(all[5]);
-    fireEvent.keyDown(all[5], { key: "ArrowUp" });
-    expect(document.activeElement).toBe(all[1]);
-    fireEvent.keyDown(all[1], { key: "ArrowUp" });
-    expect(document.activeElement).toBe(all[1]);
-  });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LIMITS } from "@/lib/limits";
 import { mergeSuggestion, suggestStyle } from "@/lib/style/suggest";
-import { STYLE_PROFILE_KEYS, StyleProfile, type LinkAnalysis, type ProjectAnalysis, type VideoAnalysis } from "@/lib/style/types";
+import { ProjectAnalysis, STYLE_PROFILE_KEYS, StyleProfile, type LinkAnalysis, type VideoAnalysis } from "@/lib/style/types";
 
 const shots = (medianSeconds: number, count = 10) => ({ count, averageSeconds: medianSeconds, medianSeconds, firstSeconds: medianSeconds, perMinute: 60 / medianSeconds });
 
@@ -236,6 +236,13 @@ describe("a suggested style", () => {
     expect(suggest(project({ looks: { nolook: 9 } })).look).toBe("natural");
     expect(suggest(project()).look).toBe("natural");
     expect(suggest(video()).look).toBeUndefined();
+  });
+
+  it("counts a look a project used before the editor took it out as the kept look nearest it", () => {
+    // Golden 2 and Warm 1 are three Warm, more than the two Cool.
+    const before = ProjectAnalysis.parse(project({ looks: { golden: 2, warm: 1 } }));
+    expect(suggest(before, project({ looks: { cool: 2 } })).look).toBe("warm");
+    expect(suggest(ProjectAnalysis.parse(project({ looks: { noir: 1 } }))).look).toBe("mono");
   });
 
   it("says how much on-screen text there is from the projects' text clips a minute", () => {

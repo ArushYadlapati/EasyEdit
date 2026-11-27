@@ -461,6 +461,12 @@ function ontoCopies(doc: TimelineDoc, copyOf: Map<string, string>): { doc: Timel
   const ops: Op[] = [];
   for (const track of moved.tracks) {
     for (const clip of track.clips) {
+      // A caption clip names its file too; one whose file has no copy shows nothing either way, and keeps its name.
+      if (clip.type === "caption" && copyOf.has(clip.assetId)) {
+        clip.assetId = copyOf.get(clip.assetId)!;
+        ops.push({ op: "update_clip", clipId: clip.id, patch: { assetId: clip.assetId } });
+        continue;
+      }
       if (!isMediaClip(clip)) continue;
       clip.assetId = copyOf.get(clip.assetId)!;
       ops.push({ op: "update_clip", clipId: clip.id, patch: { assetId: clip.assetId } });

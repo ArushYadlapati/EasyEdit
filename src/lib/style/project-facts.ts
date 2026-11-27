@@ -1,9 +1,11 @@
-import { captionsShow } from "@/lib/captions/cues";
+import { captionsShow, isCaptioned } from "@/lib/captions/cues";
 import { LIMITS } from "@/lib/limits";
 import {
   CaptionPreset,
   DEFAULT_FPS,
   FormatId,
+  LOOKS,
+  RETIRED_LOOKS,
   STYLE_KEYS,
   TransitionKind,
   captionStyleOf,
@@ -11,6 +13,7 @@ import {
   expandNests,
   isColorClip,
   isMediaClip,
+  keptLook,
   lookMatch,
   type Adjust,
   type Clip,
@@ -117,7 +120,7 @@ function textFacts(texts: readonly TextClip[], minutes: number, height: number):
 // own with captions on. As where the editor finds caption lines (docCues): a clip on any track counts, since the
 // caption track decides what shows, but one inside a nest doesn't.
 function captionFacts(doc: TimelineDoc): ProjectAnalysis["captions"] {
-  const captioned = doc.tracks.some((track) => track.clips.some((clip) => isMediaClip(clip) && clip.captions === true));
+  const captioned = doc.tracks.some((track) => track.clips.some((clip) => isCaptioned(doc, clip)));
   if (!captionsShow(doc) || !captioned) return null;
   const style = captionStyleOf(doc);
   const look = CaptionPreset.safeParse(style.preset);
@@ -166,12 +169,14 @@ function cutTransitions(shots: readonly Clip[]): TransitionCounts {
 }
 
 // Text animations by preset: "pop in" and "fade out" for the ways in and out, the preset alone for an emphasis.
+// Highlight word isn't counted: agents copy what these facts count, and neither the editor nor the agents' guide
+// offers it any more.
 function textAnimationFacts(texts: readonly TextClip[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const clip of texts) {
     if (clip.animationIn?.preset) tallyUp(counts, `${clip.animationIn.preset} in`);
     if (clip.animationOut?.preset) tallyUp(counts, `${clip.animationOut.preset} out`);
-    if (clip.emphasis?.preset) tallyUp(counts, clip.emphasis.preset);
+    if (clip.emphasis?.preset && clip.emphasis.preset !== "highlight_word") tallyUp(counts, clip.emphasis.preset);
   }
   return counts;
 }
@@ -189,6 +194,10 @@ function musicFacts(played: readonly Played[], assetKinds: AssetKinds): ProjectA
   return { clips: volumes.length, averageVolume: clamp(round(volumes.reduce((a, b) => a + b, 0) / volumes.length, 2), 0, 4) };
 }
 
+// Every look a clip's colours may be: the editor's, then the ones it took out, which count as the kept look nearest
+// each, so a project graded with one still teaches its look.
+const EVERY_LOOK = [...LOOKS, ...RETIRED_LOOKS];
+
 // The colour looks clips have, by look id (clips with no look, or colours that are no look's, aren't counted), and the
 // effects any clip has on, in a fixed order. Dark edges count as an effect only where they aren't part of a look.
 function colorFacts(clips: readonly Clip[]): { looks: Record<string, number>; effects: string[] } {
@@ -198,8 +207,8 @@ function colorFacts(clips: readonly Clip[]): { looks: Record<string, number>; ef
     if (!isColorClip(clip)) continue;
     const adjust: Adjust | undefined = clip.adjust;
     if (!adjust) continue;
-    const look = lookMatch(adjust);
-    if (look && look.id !== "none") tallyUp(looks, look.id);
+    const look = lookMatch(adjust, EVERY_LOOK);
+    if (look && look.id !== "none") tallyUp(looks, keptLook(look.id));
     for (const key of EFFECT_KEYS) {
       if (numberOr(adjust[key], 0) === 0) continue;
       if (key === "vignette" && look) continue;

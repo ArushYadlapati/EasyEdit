@@ -5,9 +5,9 @@ import { Inspector } from "@/components/editor/inspector";
 import { MediaProvider } from "@/components/editor/media/media-context";
 import { MESSAGES } from "@/lib/editor/messages";
 import { findClip } from "@/lib/editor/store";
-import { LOOKS, lookPatch, type MediaClip, type TimelineDoc } from "@/lib/timeline";
-import { makeStore, noticesOf, sampleDoc } from "../editor/fixtures";
-import { act, fireEvent, render, screen, waitFor, within } from "../helpers/dom";
+import { LOOKS, RETIRED_LOOKS, lookPatch, type MediaClip, type TimelineDoc } from "@/lib/timeline";
+import { makeStore, noticesOf, sampleDoc, video } from "../editor/fixtures";
+import { act, fireEvent, render, screen, waitFor } from "../helpers/dom";
 import { assetView, pretendMediaServices } from "../helpers/media-services";
 import { openEverySection } from "../helpers/folds";
 
@@ -49,24 +49,64 @@ const cubeFile = (name: string, size = 2) => {
   return new File([text], name, { type: "text/plain" });
 };
 
-it("lists every look and shows a strength only while a look is on", () => {
+const lookMenu = () => screen.getByLabelText("Look") as HTMLSelectElement;
+const lookNames = () => [...lookMenu().options].map((o) => o.text);
+const shownLook = () => lookMenu().options[lookMenu().selectedIndex].text;
+
+it("picks a look from one menu above the numbers, with a strength only while a look is on", () => {
   const { clip, field, type } = show();
-  const looks = within(screen.getByRole("group", { name: "Looks" })).getAllByRole("button");
-  expect(looks.map((b) => b.textContent)).toEqual(["None", ...LOOKS.map((l) => l.label)]);
+  expect(lookNames()).toEqual(["None", ...LOOKS.map((l) => l.label)]);
+  expect(shownLook()).toBe("None");
   expect(screen.queryByLabelText("Look strength")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Noir" }));
-  expect(screen.getByRole("button", { name: "Noir" }).getAttribute("aria-pressed")).toBe("true");
+  // A look sets the numbers, so it comes before them.
+  expect(lookMenu().compareDocumentPosition(field("Brightness")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.change(lookMenu(), { target: { value: "drama" } });
+  expect(clip().adjust).toMatchObject(lookPatch(LOOKS.find((l) => l.id === "drama")!));
+  expect(shownLook()).toBe("Drama");
   expect(field("Look strength").value).toBe("100");
   type("Look strength", "50");
-  expect(clip().adjust).toMatchObject(lookPatch(LOOKS.find((l) => l.id === "noir")!, 0.5));
+  expect(clip().adjust).toMatchObject(lookPatch(LOOKS.find((l) => l.id === "drama")!, 0.5));
   // Half a look is still that look.
-  expect(screen.getByRole("button", { name: "Noir" }).getAttribute("aria-pressed")).toBe("true");
+  expect(shownLook()).toBe("Drama");
   expect(field("Look strength").value).toBe("50");
   // It stops at 1%, so the field never goes away under the hand dragging it: None takes a look off.
   type("Look strength", "0");
   expect(field("Look strength").value).toBe("1");
-  fireEvent.click(screen.getByRole("button", { name: "None" }));
+  fireEvent.change(lookMenu(), { target: { value: "none" } });
+  expect(shownLook()).toBe("None");
   expect(screen.queryByLabelText("Look strength")).toBeNull();
+});
+
+it("says Custom while the colours are no look's, and only then", () => {
+  const { clip, type } = show({ doc: withClip((c) => void (c.adjust = lookPatch(LOOKS.find((l) => l.id === "warm")!))) });
+  expect(shownLook()).toBe("Warm");
+  expect(lookNames()).not.toContain("Custom");
+  type("Brightness", "10");
+  expect(clip().adjust).toMatchObject({ brightness: 0.1, temperature: 0.35 });
+  expect(lookMenu().value).toBe("custom");
+  expect(shownLook()).toBe("Custom");
+  expect(screen.queryByLabelText("Look strength")).toBeNull();
+  // A look picked from there goes on whole, and Custom goes away.
+  fireEvent.change(lookMenu(), { target: { value: "cool" } });
+  expect(clip().adjust).toMatchObject({ brightness: 0, temperature: -0.35 });
+  expect(shownLook()).toBe("Cool");
+  expect(lookNames()).not.toContain("Custom");
+});
+
+it("a clip given a look the editor took out keeps its colours and shows them as Custom", () => {
+  const golden = RETIRED_LOOKS.find((l) => l.id === "golden")!;
+  const { clip, field } = show({ doc: withClip((c) => void (c.adjust = lookPatch(golden))) });
+  expect(shownLook()).toBe("Custom");
+  expect(lookNames()).not.toContain("Golden");
+  expect(field("Warmth").value).toBe("50");
+  expect(clip().adjust).toMatchObject(lookPatch(golden));
+});
+
+it("a viewer sees the look but cannot change it", () => {
+  show({ canEdit: false, doc: withClip((c) => void (c.adjust = lookPatch(LOOKS.find((l) => l.id === "sepia")!))) });
+  expect(shownLook()).toBe("Sepia");
+  expect(lookMenu().disabled).toBe(true);
+  expect(lookMenu().hasAttribute("data-edit-control")).toBe(true);
 });
 
 it("sets each stylised effect and takes them all off without touching the colours", () => {
@@ -74,14 +114,42 @@ it("sets each stylised effect and takes them all off without touching the colour
   expect(screen.getByRole("heading", { name: "Stylize" })).toBeTruthy();
   const reset = screen.getByRole("button", { name: "Reset effects" }) as HTMLButtonElement;
   expect(reset.disabled).toBe(true);
-  expect((["Sharpen", "Film grain", "Pixelate", "Color split", "Glitch", "VHS"] as const).map((name) => field(name).value)).toEqual(["0", "0", "0", "0", "0", "0"]);
+  expect((["Sharpen", "Film grain", "Pixelate"] as const).map((name) => field(name).value)).toEqual(["0", "0", "0"]);
+  fireEvent.click(screen.getByRole("button", { name: "More effects" }));
+  expect((["Color split", "Glitch", "VHS"] as const).map((name) => field(name).value)).toEqual(["0", "0", "0"]);
   type("Film grain", "40");
   type("Pixelate", "16");
-  expect(clip().adjust).toMatchObject({ grain: 0.4, pixelate: 16, brightness: 0.2 });
+  type("VHS", "30");
+  expect(clip().adjust).toMatchObject({ grain: 0.4, pixelate: 16, vhs: 0.3, brightness: 0.2 });
   expect(store.getState().queue.at(-1)).toMatchObject({ label: "effect change" });
   fireEvent.click(reset);
   expect(clip().adjust).toMatchObject({ grain: 0, pixelate: 0, vhs: 0, brightness: 0.2 });
   expect((screen.getByRole("button", { name: "Reset color" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it("keeps Color split, Glitch and VHS folded under More effects until asked for", () => {
+  show();
+  const more = screen.getByRole("button", { name: "More effects" });
+  expect(more.getAttribute("aria-expanded")).toBe("false");
+  expect(["Color split", "Glitch", "VHS"].map((name) => screen.queryByLabelText(name))).toEqual([null, null, null]);
+  fireEvent.click(more);
+  expect(more.getAttribute("aria-expanded")).toBe("true");
+  expect(more.textContent).toBe("Hide more effects");
+  expect(screen.getByLabelText("Glitch")).toBeTruthy();
+  fireEvent.click(more);
+  expect(screen.queryByLabelText("Glitch")).toBeNull();
+});
+
+it("opens More effects by itself while the clip has one of them on", () => {
+  const { field } = show({ doc: withClip((c) => void (c.adjust = { glitch: 0.2 })) });
+  expect(screen.getByRole("button", { name: "Hide more effects" }).getAttribute("aria-expanded")).toBe("true");
+  expect(field("Glitch").value).toBe("20");
+});
+
+it("opens More effects by itself while one of them has keyframes, even at 0", () => {
+  show({ doc: withClip((c) => void (c.keyframes = { split: [{ at: 0, value: 0 }, { at: 20, value: 0.6 }] })) });
+  expect(screen.getByRole("button", { name: "Hide more effects" }).getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByLabelText("Color split")).toBeTruthy();
 });
 
 it("keeps the grade folded away until asked for, and open for a picture that has one", () => {
@@ -243,6 +311,7 @@ it("every colour and effect has a keyframe diamond: a keyed one is typed at the 
   const start = clip().start;
   const seek = (frame: number) => act(() => store.getState().seek(frame));
   seek(start + 4);
+  fireEvent.click(screen.getByRole("button", { name: "More effects" }));
   for (const name of ["Brightness", "Warmth", "Blur", "Film grain", "VHS"]) expect(screen.getByRole("button", { name: `Add ${name} keyframe` })).toBeTruthy();
   type("Film grain", "20");
   fireEvent.click(screen.getByRole("button", { name: "Add Film grain keyframe" }));
@@ -272,8 +341,9 @@ it("an adjustment layer shows its amount, the colours, the effects and its timin
   type("Amount", "40");
   expect(layer().transform.opacity).toBe(0.4);
   expect(screen.getByRole("button", { name: "Add Opacity keyframe" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Vintage" }));
+  fireEvent.change(lookMenu(), { target: { value: "vintage" } });
   expect(layer().adjust).toMatchObject({ temperature: 0.3, vignette: 0.45 });
+  fireEvent.click(screen.getByRole("button", { name: "More effects" }));
   type("VHS", "50");
   expect(layer().adjust).toMatchObject({ vhs: 0.5 });
   openGrade();
@@ -311,14 +381,24 @@ it("scopes are counted only while shown, and name which one is on", () => {
 it("a speed ramp is picked by name, says what it does, and is applied to the clip in one change", () => {
   const { store } = show();
   const menu = screen.getByLabelText("Speed ramp") as HTMLSelectElement;
-  expect([...menu.options].map((o) => o.text)).toEqual(["Speed up", "Slow down", "Hero", "Bullet", "Flash in", "Flash out"]);
+  expect([...menu.options].map((o) => o.text)).toEqual(["Speed up", "Slow down", "Fast, slow, fast", "Slow-motion moment", "Fast start", "Fast finish"]);
   expect(screen.getByText("Starts as it is and ends at a third of the speed.")).toBeTruthy();
   fireEvent.change(menu, { target: { value: "hero" } });
-  expect(screen.getByText("Fast, slow in the middle, fast again.")).toBeTruthy();
+  expect(screen.getByText("Starts fast, slows to under half speed in the middle, then speeds up again.")).toBeTruthy();
   const before = store.getState().doc;
   fireEvent.click(screen.getByRole("button", { name: "Apply ramp" }));
   expect(store.getState().selection.clipIds.length).toBeGreaterThan(2);
   expect(store.getState().queue.at(-1)).toMatchObject({ label: "speed ramp" });
   act(() => store.getState().undo());
   expect(store.getState().doc).toEqual(before);
+});
+
+it("an audio clip has a speed but no speed ramp", () => {
+  const d = sampleDoc();
+  d.tracks.find((t) => t.kind === "audio")!.clips = [video("m1", 0, 60, { type: "audio" })];
+  show({ doc: d, select: ["m1"] });
+  expect(screen.getByRole("heading", { name: "Speed" })).toBeTruthy();
+  expect(screen.getByLabelText("Speed")).toBeTruthy();
+  expect(screen.queryByLabelText("Speed ramp")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Apply ramp" })).toBeNull();
 });

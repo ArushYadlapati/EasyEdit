@@ -3,8 +3,11 @@ import {
   captionOps,
   captionTargets,
   captionsOffOps,
+  isCaptioned,
   retextOps,
   runAutoCaptions,
+  splitIntoLinesOps,
+  upgradeCaptionOps,
   type AutoCaptionDeps,
   type AutoCaptionProgress,
 } from "@/lib/captions/actions";
@@ -35,7 +38,8 @@ function plainDoc(): TimelineDoc {
   return doc;
 }
 
-const apply = (doc: TimelineDoc, ops: OpInput[]) => applyOps(doc, prepareOps(ops, () => "gen1")).doc;
+let made = 0;
+const apply = (doc: TimelineDoc, ops: OpInput[]) => applyOps(doc, prepareOps(ops, () => `gen${++made}`)).doc;
 const clipOf = (doc: TimelineDoc, id: string) => findClip(doc, id)!.clip as Clip & { captions?: boolean };
 
 describe("captionTargets", () => {
@@ -53,15 +57,33 @@ describe("captionTargets", () => {
 });
 
 describe("captionOps", () => {
-  it("adds the track, the style in the kit's title font, the words and the clip switches, in that order", () => {
+  let n = 0;
+  const gen = () => `g${++n}`;
+  const capClips = (doc: TimelineDoc) => doc.tracks.find((t) => t.kind === "caption")!.clips;
+
+  it("adds the track, the style in the kit's title font, the words, and one caption clip linked with the clip, in that order", () => {
+    n = 0;
     const doc = plainDoc();
-    const ops = captionOps(doc, { assetId: "a", words: HELLO, clipIds: ["c1"], fonts: FONTS });
-    expect(ops.map((o) => o.op)).toEqual(["add_track", "set_caption_style", "set_transcript", "update_clip"]);
-    expect(ops[0]).toMatchObject({ track: { kind: "caption" } });
+    const ops = captionOps(doc, { assetId: "a", words: HELLO, clipIds: ["c1"], fonts: FONTS, genId: gen });
+    expect(ops.map((o) => o.op)).toEqual(["add_track", "set_caption_style", "set_transcript", "add_clip", "update_clip"]);
+    expect(ops[0]).toMatchObject({ track: { id: "g1", kind: "caption" } });
     // Anton has only 400, so the bold the default asks for comes out as its nearest weight.
     expect(ops[1]).toEqual({ op: "set_caption_style", patch: { ...defaultCaptionStyle(doc), fontFamily: "Anton", fontWeight: 400 } });
     expect(ops[2]).toEqual({ op: "set_transcript", assetId: "a", words: HELLO, expect: { words: null } });
-    expect(ops[3]).toEqual({ op: "update_clip", clipId: "c1", patch: { captions: true } });
+    expect(ops[3]).toEqual({ op: "add_clip", trackId: "g1", clip: { type: "caption", assetId: "a", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, group: "g2" } });
+    expect(ops[4]).toEqual({ op: "update_clip", clipId: "c1", patch: { group: "g2" } });
+    const after = apply(doc, ops);
+    expect(capClips(after)).toHaveLength(1);
+    // One block for the whole clip, however many lines it holds.
+    expect(docCues(after).map((c) => c.captionId)).toEqual([capClips(after)[0].id]);
+  });
+
+  it("joins the clip's own group when it has one (a video and its separated sound)", () => {
+    const doc = plainDoc();
+    (doc.tracks[0].clips[0] as Clip).group = "pair";
+    const ops = captionOps(doc, { assetId: "a", words: HELLO, clipIds: ["c1"], fonts: FONTS, genId: gen });
+    expect(ops.filter((o) => o.op === "add_clip")).toMatchObject([{ clip: { group: "pair" } }]);
+    expect(ops.some((o) => o.op === "update_clip")).toBe(false);
   });
 
   // Different words for a file that has some are written over them: that is "Transcribe again". A run that is not
@@ -70,10 +92,28 @@ describe("captionOps", () => {
     const once = apply(plainDoc(), captionOps(plainDoc(), { assetId: "a", words: HELLO, clipIds: ["c1"], fonts: FONTS }));
     expect(captionOps(once, { assetId: "a", words: HELLO, clipIds: ["c1"], fonts: FONTS })).toEqual([]);
     const more = [...HELLO, w("again", 1000, 1300)];
-    expect(captionOps(once, { assetId: "a", words: more, clipIds: ["c1", "c2"], fonts: FONTS })).toEqual([
-      { op: "set_transcript", assetId: "a", words: more, expect: { words: 2 } },
-      { op: "update_clip", clipId: "c2", patch: { captions: true } },
-    ]);
+    const ops = captionOps(once, { assetId: "a", words: more, clipIds: ["c1"], fonts: FONTS });
+    expect(ops).toEqual([{ op: "set_transcript", assetId: "a", words: more, expect: { words: 2 } }]);
+  });
+
+  it("keeps a split or trimmed caption clip as it is, and fills only where the Captions track is free", () => {
+    let doc = apply(plainDoc(), captionOps(plainDoc(), { assetId: "a", words: HELLO, clipIds: ["c1"], fonts: FONTS }));
+    const first = capClips(doc)[0].id;
+    doc = apply(doc, [{ op: "trim_clip", clipId: first, edge: "end", to: 10 }]);
+    // c1 has its (shorter) caption clip: nothing new.
+    expect(captionOps(doc, { assetId: "a", words: HELLO, clipIds: ["c1"], fonts: FONTS }).filter((o) => o.op === "add_clip")).toEqual([]);
+    // s1 (0–60, another file) gets the part of the track that is free: 10–60.
+    const ops = captionOps(doc, { assetId: "m", words: HELLO, clipIds: ["s1"], fonts: FONTS });
+    expect(ops.filter((o) => o.op === "add_clip").map((o) => o.op === "add_clip" && [o.clip.start, o.clip.duration])).toEqual([[10, 50]]);
+  });
+
+  it("gives the file's clips switched on the old way caption clips too, and switches them off", () => {
+    const doc = plainDoc();
+    doc.tracks[0].clips.push(video("c3", 60, 30, { captions: true }));
+    const ops = captionOps(doc, { assetId: "a", words: HELLO, clipIds: ["c1"], fonts: FONTS, genId: gen });
+    const after = apply(doc, ops);
+    expect(capClips(after).map((c) => [c.start, c.duration])).toEqual([[0, 30], [60, 30]]);
+    expect((findClip(after, "c3")!.clip as Clip & { captions?: boolean }).captions).toBe(false);
   });
 
   it("drops, in the same edit, the words of files no clip uses any more, before adding new ones", () => {
@@ -87,6 +127,7 @@ describe("captionOps", () => {
       ["set_caption_style", undefined, undefined],
       ["set_transcript", "gone", null],
       ["set_transcript", "a", HELLO],
+      ["add_clip", undefined, undefined],
       ["update_clip", undefined, undefined],
     ]);
     const drop = captionOps(doc, { assetId: "a", words: HELLO, clipIds: ["c1"], fonts: FONTS })[2];
@@ -113,11 +154,24 @@ describe("retextOps and captionsOffOps", () => {
     expect(retextOps(changed, cue, "new words")).toEqual([]);
   });
 
-  it("turns captions off for the listed clips that have them on, keeping the words", () => {
+  it("turns captions off for the listed clips that have them, keeping the words", () => {
     const doc = captioned();
+    const capId = doc.tracks.find((t) => t.kind === "caption")!.clips[0].id;
     const ops = captionsOffOps(doc, ["c1", "c2", "x1"]);
-    expect(ops).toEqual([{ op: "update_clip", clipId: "c1", patch: { captions: false } }]);
-    expect(apply(doc, ops).captions?.transcripts?.a).toEqual(HELLO);
+    expect(ops).toEqual([{ op: "remove_clip", clipId: capId }]);
+    const off = apply(doc, ops);
+    expect(off.captions?.transcripts?.a).toEqual(HELLO);
+    expect(isCaptioned(off, clipOf(off, "c1"))).toBe(false);
+    // A selected caption clip goes itself; a clip switched on the old way is switched off.
+    expect(captionsOffOps(doc, [capId])).toEqual([{ op: "remove_clip", clipId: capId }]);
+    const old = apply(plainDoc(), [{ op: "update_clip", clipId: "c2", patch: { captions: true } }]);
+    expect(captionsOffOps(old, ["c2"])).toEqual([{ op: "update_clip", clipId: "c2", patch: { captions: false } }]);
+  });
+
+  it("a selected caption clip stands for its file's clips under it", () => {
+    const doc = captioned();
+    const capId = doc.tracks.find((t) => t.kind === "caption")!.clips[0].id;
+    expect(captionTargets(doc, [capId]).map((c) => c.id)).toEqual(["c1"]);
   });
 });
 
@@ -129,8 +183,9 @@ it("one undo of an edit that dropped a file's words brings them back exactly", (
   expect(store.getState().doc.captions?.transcripts).toEqual({ a: HELLO });
   store.getState().undo();
   expect(store.getState().doc.captions?.transcripts).toStrictEqual({ gone: HELLO });
+  // The clip's link with its caption clip is undone too (the way back writes the neutral null).
   const off = structuredClone(before);
-  (off.tracks[0].clips[0] as Clip & { captions?: boolean }).captions = false;
+  off.tracks[0].clips[0].group = null;
   expect(store.getState().doc).toStrictEqual(off);
 });
 
@@ -142,10 +197,10 @@ it("one undo after captioning a file restores the project exactly, and redo brin
   const after = structuredClone(store.getState().doc);
   expect(after.captions?.transcripts?.a).toEqual(HELLO);
   store.getState().undo();
-  // The track, the stored style and the words are gone; the clip's switch is back off (update_clip's way back writes
-  // the neutral false, which draws exactly as no switch).
+  // The track, the caption clip, the stored style and the words are gone; the clip's link is undone (update_clip's way
+  // back writes the neutral null, which is exactly no group).
   const off = structuredClone(before);
-  (off.tracks[0].clips[0] as Clip & { captions?: boolean }).captions = false;
+  off.tracks[0].clips[0].group = null;
   expect(store.getState().doc).toStrictEqual(off);
   expect(store.getState().doc.captions).toBeUndefined();
   expect(docCues(store.getState().doc)).toEqual([]);
@@ -215,7 +270,7 @@ describe("runAutoCaptions", () => {
     expect(deps.save).not.toHaveBeenCalled();
     const doc = store.getState().doc;
     expect(doc.captions?.transcripts?.a).toEqual(HELLO);
-    expect(clipOf(doc, "c1").captions).toBe(true);
+    expect(isCaptioned(doc, clipOf(doc, "c1"))).toBe(true);
     expect(doc.tracks.some((t) => t.kind === "caption")).toBe(true);
     expect(store.getState().undoStack.map((e) => e.label)).toEqual(["auto captions"]);
   });
@@ -287,7 +342,7 @@ describe("runAutoCaptions", () => {
     expect(outcome.captioned).toBe(1);
     const doc = store.getState().doc;
     expect(doc.captions?.transcripts).toEqual({ m: HELLO });
-    expect(clipOf(doc, "c1").captions).toBeUndefined();
+    expect(isCaptioned(doc, clipOf(doc, "c1"))).toBe(false);
   });
 
   it("says why a file can't be read: removed, still uploading, or its file unreadable", async () => {
@@ -319,7 +374,7 @@ describe("runAutoCaptions", () => {
     });
     const outcome = await runAutoCaptions(store, deps, {});
     expect(outcome.captioned).toBe(1);
-    expect(clipOf(store.getState().doc, "c1").captions).toBe(true);
+    expect(isCaptioned(store.getState().doc, clipOf(store.getState().doc, "c1"))).toBe(true);
     expect(findClip(store.getState().doc, "c3")).toBeNull();
   });
 
@@ -345,7 +400,7 @@ describe("runAutoCaptions", () => {
     expect(heard).toEqual(["prev-a", "prev-b"]);
     const doc = store.getState().doc;
     expect(Object.keys(doc.captions?.transcripts ?? {})).toEqual(["a"]);
-    expect(clipOf(doc, "c2").captions).toBeUndefined();
+    expect(isCaptioned(doc, clipOf(doc, "c2"))).toBe(false);
     expect(store.getState().undoStack.map((e) => e.label)).toEqual(["auto captions"]);
   });
 
@@ -367,8 +422,9 @@ describe("runAutoCaptions", () => {
     expect(second.deps.fetchSaved).not.toHaveBeenCalled();
     expect(second.heard).toEqual([]);
     expect(store.getState().doc.captions?.transcripts?.a).toEqual(fixed);
-    expect(clipOf(store.getState().doc, "c3").captions).toBe(true);
-    expect(store.getState().undoStack.at(-1)?.ops.map((o) => o.op)).toEqual(["update_clip"]);
+    expect(isCaptioned(store.getState().doc, clipOf(store.getState().doc, "c3"))).toBe(true);
+    // Its own caption clip, linked with it: nothing fetched, nothing heard, no words written.
+    expect(store.getState().undoStack.at(-1)?.ops.map((o) => o.op)).toEqual(["update_clip", "remove_clip"]);
 
     // Nothing selected, with another file in the project: the fix stays and the other file is captioned.
     store.getState().select([]);
@@ -380,7 +436,7 @@ describe("runAutoCaptions", () => {
     const after = store.getState().doc;
     expect(after.captions?.transcripts?.a).toEqual(fixed);
     expect(after.captions?.transcripts?.b).toEqual(HELLO);
-    expect(clipOf(after, "c2").captions).toBe(true);
+    expect(isCaptioned(after, clipOf(after, "c2"))).toBe(true);
   });
 
   it("Transcribe again still replaces the project's words", async () => {
@@ -527,5 +583,92 @@ describe("captions in another language", () => {
     const unknown = await run({ language: "klingon", translate: true });
     expect(unknown.asked).toEqual([{ language: "english", translate: false }]);
     expect(unknown.deps.save).toHaveBeenCalledWith("a", HELLO, SPEECH_MODEL);
+  });
+});
+
+describe("upgradeCaptionOps", () => {
+  // A project from before caption clips: c1 with its captions switched on, the words in the project, a Captions track.
+  function oldDoc(): TimelineDoc {
+    const doc = plainDoc();
+    doc.tracks.splice(2, 0, { id: "cap", kind: "caption", name: "Captions", muted: false, hidden: false, locked: false, clips: [] });
+    (doc.tracks[0].clips[0] as Clip & { captions?: boolean }).captions = true;
+    doc.captions = { transcripts: { a: HELLO } };
+    return doc;
+  }
+
+  it("gives each switched-on clip its caption clip, linked, with ids made from the clip's, and switches the flag off", () => {
+    const doc = oldDoc();
+    const ops = upgradeCaptionOps(doc);
+    expect(ops).toEqual([
+      { op: "add_clip", trackId: "cap", clip: { id: "cap-c1", type: "caption", assetId: "a", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM }, group: "cap-c1" } },
+      { op: "update_clip", clipId: "c1", patch: { captions: false, group: "cap-c1" } },
+    ]);
+    const before = docCues(doc).map((c) => [c.text, c.start, c.end]);
+    const after = apply(doc, ops);
+    // The same lines show, now in a caption clip; and there is nothing more to do.
+    expect(docCues(after).map((c) => [c.text, c.start, c.end])).toEqual(before);
+    expect(docCues(after)[0].captionId).toBe("cap-c1");
+    expect(upgradeCaptionOps(after)).toEqual([]);
+  });
+
+  it("made twice, as by two people opening the project at once, the second is refused", () => {
+    const doc = oldDoc();
+    const once = apply(doc, upgradeCaptionOps(doc));
+    expect(() => applyOps(once, prepareOps(upgradeCaptionOps(doc), () => "x"))).toThrow();
+  });
+
+  it("does nothing without a Captions track, on a locked one, or for a file with no words", () => {
+    const doc = oldDoc();
+    expect(upgradeCaptionOps({ ...doc, tracks: doc.tracks.filter((t) => t.kind !== "caption") })).toEqual([]);
+    const locked = structuredClone(doc);
+    locked.tracks.find((t) => t.kind === "caption")!.locked = true;
+    expect(upgradeCaptionOps(locked)).toEqual([]);
+    expect(upgradeCaptionOps({ ...doc, captions: undefined })).toEqual([]);
+  });
+});
+
+describe("splitIntoLinesOps", () => {
+  const LINES = [w("hello", 0, 400), w("there.", 450, 900), w("second", 1000, 1400), w("line.", 1450, 1800), w("third", 2000, 2300)];
+  const captioned = () => {
+    const doc = plainDoc();
+    doc.tracks[0].clips = [video("c1", 0, 90)];
+    return apply(doc, captionOps(doc, { assetId: "a", words: LINES, clipIds: ["c1"], fonts: FONTS }));
+  };
+  const capOf = (doc: TimelineDoc) => doc.tracks.find((t) => t.kind === "caption")!.clips;
+
+  it("makes one caption clip per line, cut where each next line starts, in the same group", () => {
+    const doc = captioned();
+    const [cap] = capOf(doc);
+    let k = 0;
+    const result = splitIntoLinesOps(doc, [cap.id], () => `p${++k}`);
+    expect(result).toEqual({
+      ok: true,
+      ops: [
+        { op: "split_clip", clipId: cap.id, at: 30, newClipId: "p1" },
+        { op: "split_clip", clipId: "p1", at: 60, newClipId: "p2" },
+      ],
+    });
+    const after = apply(doc, result.ok ? result.ops : []);
+    expect(capOf(after).map((c) => [c.id, c.start, c.duration, c.group])).toEqual([
+      [cap.id, 0, 30, cap.group],
+      ["p1", 30, 30, cap.group],
+      ["p2", 60, 30, cap.group],
+    ]);
+    // Each piece shows its one line.
+    expect(docCues(after).map((c) => [c.captionId, c.text])).toEqual([
+      [cap.id, "hello there."],
+      ["p1", "second line."],
+      ["p2", "third"],
+    ]);
+  });
+
+  it("has nothing to do for one line, for clips that are not captions, or on a locked track", () => {
+    const doc = captioned();
+    const [cap] = capOf(doc);
+    expect(splitIntoLinesOps(doc, ["c1"])).toEqual({ ok: false, why: "one" });
+    const one = apply(doc, [{ op: "trim_clip", clipId: cap.id, edge: "end", to: 20 }]);
+    expect(splitIntoLinesOps(one, [cap.id])).toEqual({ ok: false, why: "one" });
+    const locked = apply(doc, [{ op: "update_track", trackId: doc.tracks.find((t) => t.kind === "caption")!.id, patch: { locked: true } }]);
+    expect(splitIntoLinesOps(locked, [cap.id])).toEqual({ ok: false, why: "locked" });
   });
 });

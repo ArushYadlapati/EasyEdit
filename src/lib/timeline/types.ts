@@ -271,10 +271,17 @@ export const TextAnimationOut = z.strictObject({
 });
 export type TextAnimationOut = z.infer<typeof TextAnimationOut>;
 
-// Runs for the whole clip; highlight_word lights the words in `color` (default #FFD400).
+// How far and how fast a shake or pulse moves, as factors of its own look: 1, or absent, is the look it has always had.
+export const EMPHASIS_AMOUNT = { min: 0.1, max: 3 };
+export const EMPHASIS_SPEED = { min: 0.25, max: 4 };
+
+// Runs for the whole clip. highlight_word lights the words in `color` (default #FFD400) and ignores amount and speed;
+// the editor and the agents' guide no longer offer it, but projects that have it keep it and draw it as before.
 export const Emphasis = z.strictObject({
   preset: z.enum(["shake", "pulse", "highlight_word"]),
   color: HexColor.optional(),
+  amount: z.number().min(EMPHASIS_AMOUNT.min).max(EMPHASIS_AMOUNT.max).optional(),
+  speed: z.number().min(EMPHASIS_SPEED.min).max(EMPHASIS_SPEED.max).optional(),
 });
 export type Emphasis = z.infer<typeof Emphasis>;
 
@@ -522,8 +529,29 @@ export const NestClip = z.object({
 });
 export type NestClip = z.infer<typeof NestClip>;
 
-export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip, ShapeClip, AdjustmentClip, NestClip]);
+// A caption clip: the captions of one media file, shown while it lasts. It lives on the Captions track only. Its lines
+// are the words heard in the file's video and audio clips (captions/cues.ts), those that fall inside the clip; it
+// draws them in the project's caption style and nothing else. It is linked (by group) to the clip it was made for, so
+// the two move together; split it, trim it or delete a piece to change where captions show.
+export const CaptionClip = z.object({
+  ...ClipBase,
+  type: z.literal("caption"),
+  assetId: z.string().min(1),
+  // None of these: named only so code that reads them from any clip may (they are always absent).
+  keyframes: z.undefined().optional(),
+  transitionIn: z.undefined().optional(),
+  transitionOut: z.undefined().optional(),
+  blend: z.undefined().optional(),
+  slot: z.undefined().optional(),
+});
+export type CaptionClip = z.infer<typeof CaptionClip>;
+
+export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip, ShapeClip, AdjustmentClip, NestClip, CaptionClip]);
 export type Clip = z.infer<typeof Clip>;
+
+export function isCaptionClip(clip: Clip): clip is CaptionClip {
+  return clip.type === "caption";
+}
 
 export function isPlaceholder(clip: Clip): clip is PlaceholderClip {
   return clip.type === "placeholder";

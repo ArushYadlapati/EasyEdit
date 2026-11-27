@@ -414,6 +414,25 @@ describe("what the topics say about a style", () => {
   });
 });
 
+describe("what the topics say about emphasis", () => {
+  it("never teach highlight word: old projects keep it, but agents are pointed at captions and spans", () => {
+    for (const [file, text] of everyFile()) expect(text, file).not.toMatch(/highlight[_ ]word/i);
+  });
+
+  it("never sell a shake or a pulse for a moment: it's a rare accent, not a call to action or a punch line", () => {
+    const sentences = everyFile().flatMap(([file, text]) => text.split(/(?<=[.!?])\s+|\n/).map((sentence) => [file, sentence] as const));
+    const about = sentences.filter(([, sentence]) => /\b(shake|pulse|emphasis)\b/i.test(sentence));
+    expect(about.length).toBeGreaterThanOrEqual(5);
+    for (const [file, sentence] of about) expect(sentence, file).not.toMatch(/call to action|punch line|a fail\b|a joke/i);
+  });
+
+  it("set every shake or pulse they show small, in code blocks and inline", () => {
+    const shown = everyFile().flatMap(([file, text]) => [...text.matchAll(/\{"preset":"(?:shake|pulse)"[^}]*\}/g)].map((m) => [file, m[0]] as const));
+    expect(shown.length).toBeGreaterThanOrEqual(1);
+    for (const [file, emphasis] of shown) expect(Number(emphasis.match(/"amount":([\d.]+)/)?.[1] ?? 1), `${file}: ${emphasis}`).toBeLessThan(1);
+  });
+});
+
 describe("the Claude Code plugin", () => {
   it("has no version of its own, so each commit that changes a skill reaches people who installed it", () => {
     // An installed plugin is kept by its version: one left at 1.0.0 would never pick up a later skill edit. With no

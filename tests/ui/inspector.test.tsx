@@ -1014,3 +1014,17 @@ describe("template slot section", () => {
     expect((screen.getByLabelText("Hint") as HTMLInputElement).disabled).toBe(true);
   });
 });
+
+it("a selected caption clip shows the captions' style and its timing, and changing the look is one edit", () => {
+  const doc = sampleDoc();
+  doc.tracks.find((t) => t.kind === "caption")!.clips = [{ id: "k1", type: "caption", assetId: "a", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM } }];
+  const store = makeStore({ doc });
+  store.getState().select(["k1"]);
+  render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+  expect(screen.getByRole("heading", { name: "Captions" })).toBeTruthy();
+  expect(screen.getByText(/Fix the words in the Captions tab/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Bar" }));
+  expect(store.getState().queue).toMatchObject([{ label: "caption style", ops: [{ op: "set_caption_style", patch: { preset: "bar" } }] }]);
+  // No picture's fields: a caption clip has no place, size or crop of its own.
+  expect(screen.queryByText("Crop")).toBeNull();
+});

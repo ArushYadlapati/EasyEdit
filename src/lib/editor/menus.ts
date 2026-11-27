@@ -1,5 +1,6 @@
 import { LIMITS } from "@/lib/limits";
 import { docDuration, isCropped, isNest, type MediaClip, type TrackKind } from "@/lib/timeline";
+import { splitIntoLinesOps } from "@/lib/captions/actions";
 import { addAdjustmentOps } from "./adjustment";
 import { duplicateTrackOps, reorderTrackOps, splitOps } from "./commands";
 import { soundClipsOf } from "./sound";
@@ -197,7 +198,8 @@ export function editBlocked(state: EditorState): boolean {
 }
 
 export type ClipMenuId =
-  | "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "mute-clip" | "separate-audio" | "reverse-clip" | "freeze-frame" | "nest" | "unnest" | "delete";
+  | "cut" | "copy" | "duplicate" | "split" | "edit-text" | "crop" | "reset-crop" | "mute-clip" | "separate-audio" | "reverse-clip" | "freeze-frame"
+  | "group-clips" | "ungroup-clips" | "split-lines" | "nest" | "unnest" | "delete";
 
 // A clip's menu (label "Clip actions"), for the selection the right-click made. Cut and Delete are
 // greyed when a selected clip is on a locked track, Split when the playhead crosses none of the
@@ -206,7 +208,8 @@ export type ClipMenuId =
 // locked track and Reset crop also when it is not cropped; none is a command, so the menu's opener runs them. With a
 // video or audio clip selected there are Mute (Unmute when all of them are silent) and, for a video that still has its
 // sound, Separate audio. With a video clip selected there are Reverse (Play forward when all of them play backward) and
-// Freeze frame, greyed when the playhead is on none of them.
+// Freeze frame, greyed when the playhead is on none of them. Unlink clips is there when one of them is linked (a video
+// and the sound Separate audio took from it are), Link clips for two or more that are not one group already.
 export function clipMenu(state: EditorState): MenuEntry[] {
   const { doc, selection, playhead } = state;
   const selected = new Set(selection.clipIds);
@@ -217,18 +220,25 @@ export function clipMenu(state: EditorState): MenuEntry[] {
     return { id: command, label, command, disabled: (edit && blocked) || unavailable, ...extra, ...(edit && { edit }) };
   };
   const single = selection.clipIds.length === 1 ? (findClip(doc, selection.clipIds[0])?.clip ?? null) : null;
-  const croppable = single !== null && single.type !== "audio" && !(single.type === "placeholder" && single.accepts === "audio");
+  const croppable = single !== null && single.type !== "audio" && single.type !== "caption" && !(single.type === "placeholder" && single.accepts === "audio");
   const typeable = single !== null && single.type === "text";
   const sounding = soundClipsOf(doc, selection.clipIds);
   const audible = sounding.some(({ clip }) => clip.volume > 0);
   const separable = sounding.some(({ clip, track }) => clip.type === "video" && clip.volume > 0 && !track.locked);
   const allLocked = sounding.every(({ track }) => track.locked);
   const videos = doc.tracks.flatMap((t) => t.clips.filter((c) => selected.has(c.id) && c.type === "video")) as MediaClip[];
+  const picked = doc.tracks.flatMap((t) => t.clips.filter((c) => selected.has(c.id)));
+  const linked = picked.some((clip) => !!clip.group);
+  const linkable = picked.length >= 2 && !(picked[0].group && picked.every((clip) => clip.group === picked[0].group));
   return [
     entry("cut", "Cut", onLocked),
     entry("copy", "Copy", false),
     entry("duplicate", "Duplicate", false, { separatorBefore: true }),
     entry("split", "Split at the playhead", splitOps(doc, playhead, selection.clipIds).length === 0, { separatorBefore: true }),
+    // Captions: one caption clip per line, to move, trim or delete each on its own.
+    ...(picked.some((clip) => clip.type === "caption")
+      ? [{ id: "split-lines", label: "Split into lines", disabled: blocked || onLocked || !splitIntoLinesOps(doc, selection.clipIds, () => "").ok, edit: true }]
+      : []),
     ...(typeable ? [{ id: "edit-text", label: "Edit text", disabled: blocked || onLocked, edit: true }] : []),
     ...(croppable
       ? [
@@ -248,10 +258,12 @@ export function clipMenu(state: EditorState): MenuEntry[] {
           entry("freeze-frame", "Freeze frame", !freezeFrameOps(doc, selection.clipIds, playhead, () => "").ok),
         ]
       : []),
+    ...(linkable ? [entry("group-clips", "Link clips", onLocked, { separatorBefore: true })] : []),
+    ...(linked ? [entry("ungroup-clips", "Unlink clips", onLocked, { separatorBefore: !linkable })] : []),
     // Several clips made one, which is then placed, faded and graded as a whole; and a nest taken apart again.
     ...(single !== null && isNest(single)
-      ? [{ id: "unnest", label: "Unnest", disabled: blocked || onLocked, edit: true, separatorBefore: true }]
-      : [{ id: "nest", label: selection.clipIds.length === 1 ? "Nest" : "Nest clips", disabled: blocked || onLocked || !nestOps(doc, selection.clipIds, () => "").ok, edit: true, separatorBefore: true }]),
+      ? [{ id: "unnest", label: "Unnest", disabled: blocked || onLocked, edit: true, separatorBefore: !linkable && !linked }]
+      : [{ id: "nest", label: selection.clipIds.length === 1 ? "Nest" : "Nest clips", disabled: blocked || onLocked || !nestOps(doc, selection.clipIds, () => "").ok, edit: true, separatorBefore: !linkable && !linked }]),
     entry("delete", "Delete", onLocked, { separatorBefore: true, danger: true }),
   ];
 }

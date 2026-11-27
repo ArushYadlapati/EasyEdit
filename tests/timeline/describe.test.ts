@@ -5,6 +5,7 @@ import {
   applyOps,
   describe,
   framesToSeconds,
+  type Clip,
   type TimelineDoc,
 } from "@/lib/timeline";
 import { docWithCaptions } from "../helpers/docs";
@@ -81,6 +82,29 @@ suite("describe", () => {
       expect(line("c2").endsWith(" in=crossfade 0.50s out=dip-#000000 0.50s"), line("c2")).toBe(true);
       expect(line("x1").endsWith(' anim-in=pop 0.40s anim-out=slide_up 0.50s emphasis=highlight_word #FFD400'), line("x1")).toBe(true);
     }
+  });
+
+  it("gives a shake's or pulse's amount and speed when they are not its own look", () => {
+    const text = (id: string, start: number, emphasis: Record<string, unknown>) => ({
+      op: "add_clip" as const,
+      trackId: "t1",
+      clip: { id, type: "text" as const, start, duration: 30, text: "HI", transform: DEFAULT_TRANSFORM, style, emphasis } as Clip,
+    });
+    const d = applyOps(docWithCaptions("short_9x16"), [
+      text("x1", 0, { preset: "shake", amount: 0.5, speed: 2 }),
+      text("x2", 30, { preset: "pulse", speed: 0.75 }),
+      text("x3", 60, { preset: "pulse", amount: 1, speed: 1 }),
+      text("x4", 90, { preset: "shake" }),
+      // A highlight ignores both, so they are not said.
+      text("x5", 120, { preset: "highlight_word", amount: 2 }),
+    ]).doc;
+    const lines = describe(d).split("\n");
+    const line = (id: string) => lines.find((l) => l.startsWith(`  ${id}  `)) ?? "";
+    expect(line("x1").endsWith(" emphasis=shake amount 0.5 speed 2"), line("x1")).toBe(true);
+    expect(line("x2").endsWith(" emphasis=pulse speed 0.75"), line("x2")).toBe(true);
+    expect(line("x3").endsWith(" emphasis=pulse"), line("x3")).toBe(true);
+    expect(line("x4").endsWith(" emphasis=shake"), line("x4")).toBe(true);
+    expect(line("x5").endsWith(" emphasis=highlight_word #FFD400"), line("x5")).toBe(true);
   });
 
   it("in detail gives each keyframed property's list, rounded, with its eases", () => {

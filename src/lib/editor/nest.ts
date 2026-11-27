@@ -5,19 +5,21 @@ import { placeClips, type PlaceItem } from "./placement";
 // Nesting: several clips made into one, and a nest taken apart again. Pure builders: each returns ops and never
 // touches the store.
 
-export type NestRefusal = "nothing" | "slot" | "nest" | "locked" | "too-many" | "no-room";
+export type NestRefusal = "nothing" | "slot" | "nest" | "captions" | "locked" | "too-many" | "no-room";
 export type Nesting = { ok: true; ops: OpInput[]; clipId: string } | { ok: false; why: NestRefusal };
 
 // The ops that make these clips one nest. The nest takes their place in time, from the first one's start to the last
 // one's end, on the first video or overlay track of theirs that is free there once they are gone, else on a track
 // made for it. Inside, each clip stays on a track like the one it was on, as far from the nest's start as it was
-// from the first clip's. An empty slot cannot be nested (a template fills it by name), nor a nest.
+// from the first clip's. An empty slot cannot be nested (a template fills it by name), nor a nest, nor captions.
 export function nestOps(doc: TimelineDoc, clipIds: readonly string[], genId: () => string): Nesting {
   const wanted = new Set(clipIds);
   const picked = doc.tracks.flatMap((track) => track.clips.filter((clip) => wanted.has(clip.id)).map((clip) => ({ track, clip })));
   if (picked.length === 0) return { ok: false, why: "nothing" };
   if (picked.some(({ clip }) => clip.type === "placeholder")) return { ok: false, why: "slot" };
   if (picked.some(({ clip }) => isNest(clip))) return { ok: false, why: "nest" };
+  // Captions belong to the Captions track, which a nest has none of.
+  if (picked.some(({ clip }) => clip.type === "caption")) return { ok: false, why: "captions" };
   if (picked.some(({ track }) => track.locked)) return { ok: false, why: "locked" };
   if (picked.length > LIMITS.clipsPerNest) return { ok: false, why: "too-many" };
   const from = Math.min(...picked.map(({ clip }) => clip.start));

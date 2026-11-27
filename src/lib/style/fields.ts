@@ -131,18 +131,14 @@ export const TRANSITION_KIND_OPTIONS: readonly StyleOption<TransitionKind>[] = T
 // What each of the editor's color looks does, by look id.
 export const LOOK_HELP: Readonly<Record<string, string>> = {
   vivid: "Richer colors, with a bit more contrast.",
-  pop: "Bold, bright colors that stand out.",
   warm: "A warmer, orange tint.",
-  golden: "A sunny, golden-hour glow.",
   cool: "A cooler, blue tint.",
   dusk: "Cool evening colors with darker edges.",
-  soft: "Gentle, a little lighter and warmer.",
   fade: "Washed-out, faded colors.",
   vintage: "Warm, muted colors with dark edges, like old film.",
   moody: "Darker, muted and cool.",
   drama: "Strong contrast with dark edges.",
   mono: "Black and white.",
-  noir: "Black and white with strong contrast and dark edges.",
   sepia: "Brown tones, like an old photo.",
 };
 

@@ -40,7 +40,7 @@ export type ClipKind = Clip["type"];
 // Says what kind of clip an id is, when that is known.
 export type KindOf = (clipId: string) => ClipKind | undefined;
 
-const KIND_NOUN: Record<ClipKind, string> = { text: "text", video: "a video clip", image: "an image", audio: "an audio clip", placeholder: "an empty slot", shape: "a shape", adjustment: "an adjustment layer", nest: "a nest" };
+const KIND_NOUN: Record<ClipKind, string> = { text: "text", video: "a video clip", image: "an image", audio: "an audio clip", placeholder: "an empty slot", shape: "a shape", adjustment: "an adjustment layer", nest: "a nest", caption: "captions" };
 const nounFor = (kind: ClipKind | undefined) => (kind ? KIND_NOUN[kind] : "a clip");
 
 // What a row can say about one clip besides its kind: its words or its file's name, else the name of its track.

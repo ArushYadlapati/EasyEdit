@@ -1,4 +1,4 @@
-import { cuesAt } from "@/lib/captions/cues";
+import { cuesAt, type Cue } from "@/lib/captions/cues";
 import { isRightToLeft } from "@/lib/captions/speech/languages";
 import { captionStyleOf } from "@/lib/timeline/captions";
 import type { TimelineDoc } from "@/lib/timeline";
@@ -34,28 +34,31 @@ function wordIds(words: string[]): number[] {
   return ids;
 }
 
-// Draws every caption line showing at a frame, in the project's caption style. Lines are centred across the frame
-// and the block of them sits on the style's y. Several cues at once stack upward from there.
-export function drawCaptions(ctx: Ctx2D, doc: TimelineDoc, frame: number, resolveFont: (family: string) => string): void {
+// One block of caption lines showing at a frame, laid out as drawCaptions draws it: its cue and lit word, the font,
+// the wrapped lines, the block's height (extent, a bar's box included) and width (the widest line, or a bar's box),
+// and the y of its centre. Centred across the frame.
+export type CaptionBlock = { cue: Cue; lit: number; font: string; size: number; lineHeight: number; text: string; words: string[]; lines: string[]; extent: number; width: number; centre: number };
+
+// Where each caption line showing at a frame goes: lines are centred across the frame and the block of them sits on
+// the style's y; several cues at once stack upward from there. measure: a string's width in a CSS font.
+export function captionLayout(doc: TimelineDoc, frame: number, measure: (font: string, s: string) => number, resolveFont: (family: string) => string = (f) => f): CaptionBlock[] {
   const showing = cuesAt(doc, frame);
-  if (showing.length === 0) return;
+  if (showing.length === 0) return [];
   const style = captionStyleOf(doc);
   const bar = style.preset === "bar";
   const word = style.preset === "word";
   const upper = (s: string) => (style.uppercase ? s.toUpperCase() : s);
-  ctx.save();
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "left";
+  const blocks: CaptionBlock[] = [];
   let bottom = style.y * doc.height; // the centre of the next block to draw, before its own half height
   let first = true;
   for (const { cue, lit } of showing) {
     const size = style.fontSize * (word ? WORD_SCALE : 1);
     const lineHeight = size * LINE_HEIGHT;
-    ctx.font = `${style.fontWeight} ${size}px ${resolveFont(style.fontFamily)}`;
-    const measure = (s: string) => ctx.measureText(s).width;
+    const font = `${style.fontWeight} ${size}px ${resolveFont(style.fontFamily)}`;
+    const width = (s: string) => measure(font, s);
     const words = cue.words.map((w) => upper(w.text));
     const text = words.join(" ");
-    const lines = wrapLines(text, (bar ? 0.9 : 0.8) * doc.width, measure);
+    const lines = wrapLines(text, (bar ? 0.9 : 0.8) * doc.width, width);
     const height = lines.length * lineHeight;
     // What a cue takes up: a bar's box reaches past its text, so the gap is measured from the box.
     const extent = height + (bar ? 2 * BAR_PAD * style.fontSize : 0);
@@ -63,6 +66,29 @@ export function drawCaptions(ctx: Ctx2D, doc: TimelineDoc, frame: number, resolv
     // The next cue goes above this block's top edge.
     bottom = centre - extent / 2;
     first = false;
+    const widest = Math.max(0, ...lines.map(width));
+    blocks.push({ cue, lit, font, size, lineHeight, text, words, lines, extent, width: bar ? widest + style.fontSize : widest + size * OUTLINE, centre });
+  }
+  return blocks;
+}
+
+// Draws every caption line showing at a frame, in the project's caption style, where captionLayout puts it.
+export function drawCaptions(ctx: Ctx2D, doc: TimelineDoc, frame: number, resolveFont: (family: string) => string): void {
+  const measureIn = (font: string, s: string) => {
+    ctx.font = font;
+    return ctx.measureText(s).width;
+  };
+  if (cuesAt(doc, frame).length === 0) return; // nothing showing: the context is not touched
+  ctx.save();
+  const blocks = captionLayout(doc, frame, measureIn, resolveFont);
+  const style = captionStyleOf(doc);
+  const bar = style.preset === "bar";
+  const word = style.preset === "word";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  for (const { cue, lit, font, size, lineHeight, text, words, lines, extent, centre } of blocks) {
+    ctx.font = font;
+    const measure = (s: string) => ctx.measureText(s).width;
     ctx.save();
     ctx.translate(doc.width / 2, centre);
     if (word) {

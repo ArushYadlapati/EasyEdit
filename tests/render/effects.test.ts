@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { clipLook, effectWindows } from "@/lib/render/effects";
+import { WHIP_SHUTTER, clipLook, effectWindows } from "@/lib/render/effects";
 import { effectiveTransform } from "@/lib/timeline/keyframes";
-import type { Clip } from "@/lib/timeline/types";
+import { FRAME_RATES } from "@/lib/timeline/presets";
+import { EMPHASIS_SPEED, type Clip } from "@/lib/timeline/types";
 
 const doc = { width: 1000, height: 500, fps: 30 };
 const tf = { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, fit: "cover" as const };
@@ -20,7 +21,7 @@ describe("clipLook", () => {
   it("a clip with no effects is neutral", () => {
     const c = media();
     expect(clipLook(c, 110, doc)).toEqual({
-      transform: effectiveTransform(c, 110), alpha: 1, ghosts: [], dip: null, reveal: null, litWord: null, litColor: null,
+      transform: effectiveTransform(c, 110), alpha: 1, smear: null, dip: null, reveal: null, litWord: null, litColor: null,
     });
   });
 
@@ -61,12 +62,61 @@ describe("clipLook", () => {
     expect(clipLook(c, 109, doc).transform.scale).toBeCloseTo(1);
   });
 
-  it("whips with three trailing ghosts only inside the window", () => {
+  it("a whip smears along its move, longest where it is fastest and not at all at rest", () => {
     const c = media({ transitionIn: { kind: "whip", frames: 10 } });
-    const look = clipLook(c, 104, doc);
-    expect(look.ghosts.map((g) => g.alpha)).toEqual([0.45, 0.25, 0.12]);
-    expect(look.ghosts[0].dx).toBeCloseTo(0.06 * 1000);
-    expect(clipLook(c, 110, doc).ghosts).toEqual([]);
+    // Halfway in, ease_in_out is at its fastest: 3 frame widths per 10 frames, 9 a second, so a thirtieth of a second
+    // of it is 0.3 of the width. It moves left, so it smears left.
+    expect(clipLook(c, 104, doc).smear).toEqual({ dx: expect.closeTo(-0.3 * 1000, 6), dy: 0 });
+    const lengths = Array.from({ length: 10 }, (_, i) => Math.abs(clipLook(c, 100 + i, doc).smear?.dx ?? 0));
+    expect(lengths.indexOf(Math.max(...lengths))).toBe(4);
+    for (let i = 1; i <= 4; i++) expect(lengths[i]).toBeGreaterThan(lengths[i - 1]);
+    for (let i = 5; i < 10; i++) expect(lengths[i]).toBeLessThan(lengths[i - 1]);
+    expect(clipLook(c, 109, doc).smear).toBeNull(); // the last frame in: at rest
+    expect(clipLook(c, 110, doc).smear).toBeNull();
+    expect(clipLook(c, 109, doc).transform.x).toBe(0.5);
+  });
+
+  it("a faster whip smears further, by its speed a second", () => {
+    const at = (frames: number) => Math.abs(clipLook(media({ transitionIn: { kind: "whip", frames } }), 100 + frames / 2 - 1, doc).smear!.dx);
+    expect(at(10)).toBeCloseTo(2 * at(20));
+    expect(at(20)).toBeCloseTo(3 * (30 / 20) * WHIP_SHUTTER * 1000);
+  });
+
+  it("a whip of the same length in seconds smears the same at any frame rate", () => {
+    const at30 = clipLook(media({ transitionIn: { kind: "whip", frames: 10 } }), 104, doc).smear!;
+    const at60 = clipLook(media({ start: 200, duration: 120, transitionIn: { kind: "whip", frames: 20 } }), 209, { ...doc, fps: 60 }).smear!;
+    expect(at60.dx).toBeCloseTo(at30.dx);
+    const at24 = clipLook(media({ transitionIn: { kind: "whip", frames: 8 } }), 103, { ...doc, fps: 24 }).smear!;
+    expect(at24.dx).toBeCloseTo(at30.dx);
+  });
+
+  it("a whip smears along its own direction, by the frame's height for up and down, and never past half the frame", () => {
+    const up = clipLook(media({ transitionIn: { kind: "whip", frames: 10, direction: "up" } }), 104, doc).smear!;
+    expect(up).toEqual({ dx: 0, dy: expect.closeTo(-0.3 * 500, 6) });
+    const right = clipLook(media({ transitionIn: { kind: "whip", frames: 10, direction: "right" } }), 104, doc).smear!;
+    expect(right.dx).toBeCloseTo(0.3 * 1000);
+    // Two frames: 45 frame widths a second, a smear of 1.5 widths, cut to half.
+    expect(clipLook(media({ transitionIn: { kind: "whip", frames: 2 } }), 100, doc).smear!.dx).toBeCloseTo(-0.5 * 1000);
+    // Any whip of 0.2 s or less reaches the cap at its peak: 6 frames at 30 fps lands right on it, 12 at 60 too, and
+    // 4 frames (0.75 of the width) is cut to it.
+    expect(clipLook(media({ transitionIn: { kind: "whip", frames: 6 } }), 102, doc).smear!.dx).toBeCloseTo(-0.5 * 1000);
+    expect(clipLook(media({ transitionIn: { kind: "whip", frames: 12 } }), 105, { ...doc, fps: 60 }).smear!.dx).toBeCloseTo(-0.5 * 1000);
+    expect(clipLook(media({ transitionIn: { kind: "whip", frames: 4 } }), 101, doc).smear!.dx).toBeCloseTo(-0.5 * 1000);
+    // Just longer than 0.2 s stays under it: 8 frames at 30 fps peaks at 0.375.
+    expect(clipLook(media({ transitionIn: { kind: "whip", frames: 8 } }), 103, doc).smear!.dx).toBeCloseTo(-0.375 * 1000);
+  });
+
+  it("a shape whips and smears as a video does; text never does", () => {
+    const shape = media({ type: "shape", transitionIn: { kind: "whip", frames: 10 } });
+    expect(clipLook(shape, 104, doc).smear).toEqual(clipLook(media({ transitionIn: { kind: "whip", frames: 10 } }), 104, doc).smear);
+    const t = text({ animationIn: { preset: "slide_left", frames: 10 } });
+    expect(clipLook(t, 4, doc).smear).toBeNull();
+  });
+
+  it("a whip cut short by its clip smears by the window it has", () => {
+    // Two 30-frame whips on a 20-frame clip each get 10 frames: as fast as a 10-frame whip.
+    const short = media({ duration: 20, transitionIn: { kind: "whip", frames: 30 }, transitionOut: { kind: "whip", frames: 30 } });
+    expect(clipLook(short, 104, doc).smear).toEqual(clipLook(media({ transitionIn: { kind: "whip", frames: 10 } }), 104, doc).smear);
   });
 
   it("dips in with the chosen colour, fading out the fill", () => {
@@ -180,6 +230,138 @@ describe("clipLook", () => {
     expect(clipLook(c, 24, doc).transform.scale).toBeCloseTo(1);
   });
 
+  it("an old shake and pulse, with no amount or speed, draw at 30 fps as they always have", () => {
+    const shake = text({ duration: 120, emphasis: { preset: "shake" } });
+    const pulse = text({ duration: 120, emphasis: { preset: "pulse" } });
+    for (let f = 0; f < 120; f++) {
+      const t = clipLook(shake, f, doc).transform;
+      // What the shake was, in radians a frame.
+      expect(t.x).toBeCloseTo(0.5 + 0.006 * Math.sin(f * 1.7), 12);
+      expect(t.y).toBeCloseTo(0.5 + 0.006 * (doc.width / doc.height) * Math.sin(f * 2.3 + 1), 12);
+      expect(t.rotation).toBeCloseTo(1.5 * Math.sin(f * 1.3), 12);
+      expect(clipLook(pulse, f, doc).transform.scale).toBeCloseTo(1 + 0.05 * Math.sin((2 * Math.PI * (f / 30)) / 0.8), 12);
+    }
+  });
+
+  it("shakes at the same rate in seconds at 60 fps as at 30, and the same wherever the clip sits", () => {
+    const at60 = { ...doc, fps: 60 };
+    const c = text({ duration: 240, emphasis: { preset: "shake" } });
+    const moved = text({ start: 45, duration: 240, emphasis: { preset: "shake" } });
+    for (let f = 0; f < 120; f++) {
+      const want = clipLook(c, f, doc).transform;
+      // Frame 2f at 60 fps is the moment frame f is at 30.
+      const got = clipLook(c, 2 * f, at60).transform;
+      expect(got.x).toBeCloseTo(want.x, 12);
+      expect(got.y).toBeCloseTo(want.y, 12);
+      expect(got.rotation).toBeCloseTo(want.rotation, 12);
+      expect(clipLook(moved, 45 + f, doc).transform).toEqual(want);
+    }
+  });
+
+  it("amount scales how far a shake moves and speed how fast", () => {
+    const at60 = { ...doc, fps: 60 };
+    const plain = text({ duration: 240, emphasis: { preset: "shake" } });
+    const big = text({ duration: 240, emphasis: { preset: "shake", amount: 2.5 } });
+    const fast = text({ duration: 240, emphasis: { preset: "shake", speed: 2 } });
+    const slow = text({ duration: 240, emphasis: { preset: "shake", speed: 0.5 } });
+    for (let f = 0; f < 60; f++) {
+      const p = clipLook(plain, f, doc).transform;
+      const b = clipLook(big, f, doc).transform;
+      expect(b.x - 0.5).toBeCloseTo(2.5 * (p.x - 0.5), 12);
+      expect(b.y - 0.5).toBeCloseTo(2.5 * (p.y - 0.5), 12);
+      expect(b.rotation).toBeCloseTo(2.5 * p.rotation, 12);
+      // Twice the speed reaches at frame f where the plain shake is at frame 2f. At 60 fps that is a step every frame
+      // that 30 fps already shows, so nothing is held back.
+      const quick = clipLook(fast, f, at60).transform;
+      const later = clipLook(plain, 2 * f, at60).transform;
+      expect(quick.x).toBeCloseTo(later.x, 12);
+      expect(quick.y).toBeCloseTo(later.y, 12);
+      expect(quick.rotation).toBeCloseTo(later.rotation, 12);
+      const calm = clipLook(slow, 2 * f, doc).transform;
+      expect(calm.x).toBeCloseTo(p.x, 12);
+      expect(calm.y).toBeCloseTo(p.y, 12);
+      expect(calm.rotation).toBeCloseTo(p.rotation, 12);
+    }
+  });
+
+  // How fast a wobble looks, in radians a frame, from 0 to pi: what the frames show, however fast the sine behind them
+  // runs. Three frames of a sine in a row always have s(n-1) + s(n+1) = 2 cos(step) s(n).
+  function stepShown(values: number[]): number {
+    let num = 0;
+    let den = 0;
+    for (let n = 1; n < values.length - 1; n++) {
+      num += values[n] * (values[n - 1] + values[n + 1]);
+      den += 2 * values[n] ** 2;
+    }
+    return Math.acos(Math.min(1, Math.max(-1, num / den)));
+  }
+  function shownSteps(speed: number, fps: number): { x: number; y: number; turn: number } {
+    const c = text({ duration: 240, emphasis: { preset: "shake", speed } });
+    const looks = Array.from({ length: 60 }, (_, f) => clipLook(c, f, { ...doc, fps }).transform);
+    return {
+      x: stepShown(looks.map((t) => t.x - 0.5)),
+      y: stepShown(looks.map((t) => t.y - 0.5)),
+      turn: stepShown(looks.map((t) => t.rotation)),
+    };
+  }
+
+  it("a faster shake never looks slower, at any frame rate: each wobble speeds up until a frame can show no more", () => {
+    for (const fps of FRAME_RATES) {
+      let before = { x: 0, y: 0, turn: 0 };
+      for (let speed = EMPHASIS_SPEED.min; speed <= EMPHASIS_SPEED.max; speed += 0.05) {
+        const now = shownSteps(speed, fps);
+        for (const key of ["x", "y", "turn"] as const) {
+          expect(now[key], `${key} at ${fps} fps, speed ${speed.toFixed(2)}`).toBeGreaterThanOrEqual(before[key] - 1e-9);
+          // The shake's own fastest step, down at 30 fps, well short of pi.
+          expect(now[key], `${key} at ${fps} fps, speed ${speed.toFixed(2)}`).toBeLessThanOrEqual(2.3 + 1e-9);
+        }
+        before = now;
+      }
+    }
+  });
+
+  it("at 30 fps a shake shows what it always has, and a faster one speeds up across and turning until it is held", () => {
+    const plain = shownSteps(1, 30);
+    expect(plain.x).toBeCloseTo(1.7, 9);
+    expect(plain.y).toBeCloseTo(2.3, 9);
+    expect(plain.turn).toBeCloseTo(1.3, 9);
+    // Down is already as fast as a 30 fps frame shows; across and turning have room.
+    const quicker = shownSteps(1.2, 30);
+    expect(quicker.x).toBeCloseTo(1.7 * 1.2, 9);
+    expect(quicker.y).toBeCloseTo(2.3, 9);
+    expect(quicker.turn).toBeCloseTo(1.3 * 1.2, 9);
+    // Past what a frame shows, every wobble holds there rather than folding back into a slow sway.
+    expect(shownSteps(4, 30)).toEqual(shownSteps(2, 30));
+    const fastest = shownSteps(4, 30);
+    for (const key of ["x", "y", "turn"] as const) expect(fastest[key]).toBeCloseTo(2.3, 9);
+  });
+
+  it("at 24 fps a shake keeps 30 fps's rate in seconds across and turning, and down is held at what a frame shows", () => {
+    const at24 = shownSteps(1, 24);
+    expect(at24.x * 24).toBeCloseTo(1.7 * 30, 6);
+    expect(at24.turn * 24).toBeCloseTo(1.3 * 30, 6);
+    expect(at24.y).toBeCloseTo(2.3, 9);
+  });
+
+  it("amount scales a pulse's 5% and speed its 0.8 s period", () => {
+    const c = text({ emphasis: { preset: "pulse", amount: 2, speed: 2 } });
+    const scales = Array.from({ length: 12 }, (_, f) => clipLook(c, f, doc).transform.scale);
+    // A quarter of 0.4 s is 3 frames at 30 fps: the top of the swing, 10% up.
+    expect(scales[3]).toBeCloseTo(1.1);
+    expect(Math.max(...scales)).toBeCloseTo(1.1);
+    expect(Math.min(...scales)).toBeCloseTo(0.9);
+    expect(clipLook(c, 12, doc).transform.scale).toBeCloseTo(1);
+    // At 60 fps, the same moment.
+    expect(clipLook(c, 6, { ...doc, fps: 60 }).transform.scale).toBeCloseTo(1.1);
+  });
+
+  it("highlight_word ignores an amount and a speed", () => {
+    const c = text({ text: "go team go", emphasis: { preset: "highlight_word", amount: 3, speed: 4 } });
+    const look = clipLook(c, 15, doc);
+    expect(look.litWord).toBe(1);
+    expect(look.transform).toEqual(effectiveTransform(c, 15));
+  });
+
   it("shake stays within its bounds", () => {
     const c = text({ duration: 400, emphasis: { preset: "shake" } });
     for (let f = 0; f < 400; f++) {
@@ -190,12 +372,13 @@ describe("clipLook", () => {
     }
   });
 
-  it("a whip out trails the same three ghosts behind the exit", () => {
+  it("a whip out smears as it leaves, from a standstill to its fastest and down to nothing once it is off the frame", () => {
     const c = media({ transitionOut: { kind: "whip", frames: 10 } });
-    const look = clipLook(c, 154, doc);
-    expect(look.ghosts.map((g) => g.alpha)).toEqual([0.45, 0.25, 0.12]);
-    expect(look.ghosts[0].dx).toBeCloseTo(0.06 * 1000);
-    expect(clipLook(c, 149, doc).ghosts).toEqual([]);
+    expect(clipLook(c, 149, doc).smear).toBeNull();
+    expect(clipLook(c, 150, doc).smear!.dx).toBeLessThan(0);
+    expect(clipLook(c, 154, doc).smear!.dx).toBeCloseTo(-0.3 * 1000);
+    expect(clipLook(c, 159, doc).smear).toBeNull();
+    expect(clipLook(c, 159, doc).transform.x).toBeCloseTo(-0.5);
   });
 
   it("keeps a lone effect up to the clip's length and cuts only the side that does not fit", () => {

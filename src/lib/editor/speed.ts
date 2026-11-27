@@ -128,10 +128,10 @@ const between = (a: number, b: number, p: number) => a + (b - a) * smooth(Math.m
 export const RAMPS: readonly { id: RampId; label: string; says: string; at(p: number): number }[] = [
   { id: "speed_up", label: "Speed up", says: "Starts as it is and ends three times as fast.", at: (p) => between(1, 3, p) },
   { id: "slow_down", label: "Slow down", says: "Starts as it is and ends at a third of the speed.", at: (p) => between(1, 1 / 3, p) },
-  { id: "hero", label: "Hero", says: "Fast, slow in the middle, fast again.", at: (p) => between(0.4, 2.5, Math.abs(p - 0.5) * 2) },
-  { id: "bullet", label: "Bullet", says: "As it is, with a moment of slow motion in the middle.", at: (p) => between(0.25, 1, (Math.abs(p - 0.5) - 0.1) / 0.2) },
-  { id: "flash_in", label: "Flash in", says: "Rushes in four times as fast, then settles.", at: (p) => between(4, 1, p / 0.35) },
-  { id: "flash_out", label: "Flash out", says: "Plays as it is, then rushes out four times as fast.", at: (p) => between(1, 4, (p - 0.65) / 0.35) },
+  { id: "hero", label: "Fast, slow, fast", says: "Starts fast, slows to under half speed in the middle, then speeds up again.", at: (p) => between(0.4, 2.5, Math.abs(p - 0.5) * 2) },
+  { id: "bullet", label: "Slow-motion moment", says: "Plays as it is, with a moment at a quarter of the speed in the middle.", at: (p) => between(0.25, 1, (Math.abs(p - 0.5) - 0.1) / 0.2) },
+  { id: "flash_in", label: "Fast start", says: "Starts four times as fast and settles to as it is a third of the way in.", at: (p) => between(4, 1, p / 0.35) },
+  { id: "flash_out", label: "Fast finish", says: "Plays as it is, then speeds up to four times as fast over the last third.", at: (p) => between(1, 4, (p - 0.65) / 0.35) },
 ];
 
 export const RAMP_PIECES = 10;

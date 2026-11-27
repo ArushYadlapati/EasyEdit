@@ -73,6 +73,7 @@ export const MESSAGES = {
     nothing: "Select the clips to nest.",
     slot: "An empty slot can't be nested: a template fills it by its name.",
     nest: "A nest can't go inside a nest. Unnest it first.",
+    captions: "Captions stay on the Captions track, so they can't be nested.",
     locked: "One of those clips is on a locked track.",
     "too-many": "That is more clips than one nest holds.",
     "no-room": "There's no room for another track to put the nest on.",
@@ -91,9 +92,9 @@ export const MESSAGES = {
   alreadySynced: "Those clips already line up.",
   synced: (moved: number, unmatched: number) =>
     `${moved === 1 ? "Moved 1 clip" : `Moved ${moved} clips`} to line up by sound.${unmatched === 0 ? "" : unmatched === 1 ? " 1 clip had no matching sound and stayed." : ` ${unmatched} clips had no matching sound and stayed.`}`,
-  rampNeedsOne: "Select one video or audio clip to ramp its speed.",
+  rampNeedsOne: "Select one video clip to ramp its speed.",
   rampRefused: {
-    "not-a-clip": "A speed ramp needs a video or audio clip that plays forward, on an unlocked track.",
+    "not-a-clip": "A speed ramp needs a video clip that plays forward, on an unlocked track.",
     "too-short": "That clip is too short to ramp: it needs a few frames for each change of speed.",
     "no-room": "That track holds as many clips as it can. A speed ramp cuts a clip into several.",
   },

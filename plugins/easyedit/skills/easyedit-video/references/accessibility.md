@@ -150,7 +150,7 @@ If they want a hit on the beat, one soft brighten that settles over 9 frames, on
 ```
 
 - The glitch and VHS effects change 12 times a second. They jitter rather than flash, but on a full frame for long they bother people who are sensitive to flicker. Keep them to short accents.
-- Strong motion can make some people feel sick. Keep the shake emphasis, whips and big zooms to moments, not every cut.
+- Strong motion can make some people feel sick. Keep whips and big zooms to moments, not every cut. Leave text still: if one line has a shake or pulse emphasis, keep its amount small.
 - You can't see the footage. When names or events hint at strobes (a gig, a party, fireworks, a storm), ask. If the flashing stays in, put a warning at the start and in the post's description. Use `add_text` with preset "subtitle", text "Contains flashing lights", start_seconds 0 and duration_seconds 3. Then, with the id from the result, lift it to the top of the safe area and give it a box:
 
 ```json

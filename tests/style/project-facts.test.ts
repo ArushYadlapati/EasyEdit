@@ -5,6 +5,7 @@ import { ProjectAnalysis } from "@/lib/style/types";
 import {
   DEFAULT_TRANSFORM,
   LOOKS,
+  RETIRED_LOOKS,
   applyOps,
   createEmptyDoc,
   defaultCaptionStyle,
@@ -122,9 +123,13 @@ describe("a past project's facts", () => {
         text("a", 0, 30, { animationIn: { preset: "pop", frames: 6 }, animationOut: { preset: "fade", frames: 6 } }),
         text("b", 30, 30, { animationIn: { preset: "pop", frames: 6 }, emphasis: { preset: "pulse" } }),
         text("c", 60, 30, { animationIn: null, animationOut: null, emphasis: null }),
+        // An emphasis counts by its preset alone, however much and however fast it moves.
+        text("d", 90, 30, { emphasis: { preset: "pulse", amount: 0.5, speed: 2 } }),
+        // Highlight word is no longer offered, so it isn't a fact for agents to copy.
+        text("e", 120, 30, { emphasis: { preset: "highlight_word", color: "#FFD400" } }),
       ]),
     );
-    expect(facts(doc).textAnimations).toEqual({ "pop in": 2, "fade out": 1, pulse: 1 });
+    expect(facts(doc).textAnimations).toEqual({ "pop in": 2, "fade out": 1, pulse: 2 });
   });
 
   it("count the clips inside a nest for text, music and the rest, and the nest as one shot", () => {
@@ -344,6 +349,23 @@ describe("a past project's facts", () => {
       track("o1", "overlay", [{ id: "fx", type: "adjustment", start: 0, duration: 150, transform: { ...DEFAULT_TRANSFORM }, adjust: lookPatch(mono) } as Clip]),
     );
     expect(facts(doc).looks).toEqual({ warm: 2, mono: 1 });
+  });
+
+  it("count a clip that keeps the colours of a look the editor took out as the kept look nearest it", () => {
+    const golden = RETIRED_LOOKS.find((look) => look.id === "golden")!;
+    const noir = RETIRED_LOOKS.find((look) => look.id === "noir")!;
+    const warm = LOOKS.find((look) => look.id === "warm")!;
+    const doc = project(
+      track("v1", "video", [
+        video("a", 0, 30, { adjust: lookPatch(golden) }),
+        video("b", 30, 30, { adjust: lookPatch(golden, 0.7) }),
+        video("c", 60, 30, { adjust: lookPatch(warm) }),
+        video("d", 90, 30, { adjust: lookPatch(noir) }),
+      ]),
+    );
+    expect(facts(doc).looks).toEqual({ warm: 3, mono: 1 });
+    // Noir's dark edges are part of its look, not an effect of their own.
+    expect(facts(doc).effects).toEqual([]);
   });
 
   it("list the effects in use, with dark edges only where they aren't part of a look", () => {

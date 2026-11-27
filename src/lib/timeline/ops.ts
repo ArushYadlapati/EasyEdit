@@ -7,6 +7,7 @@ import {
   Adjust,
   AdjustmentClip,
   BlendMode,
+  CaptionClip,
   CaptionStyle,
   CaptionWord,
   CaptionWords,
@@ -103,6 +104,7 @@ const ClipInput = z.discriminatedUnion("type", [
   ShapeClipFields.extend(optionalId).superRefine(shapeRules),
   AdjustmentClip.extend(optionalId),
   NestClip.extend(optionalId),
+  CaptionClip.extend(optionalId),
 ]);
 
 const newTrack = { kind: TrackKind, name: TrackName };

@@ -163,10 +163,10 @@ Options, gentlest first:
 
 Here `at` counts frames from the clip's start, not the timeline's, and the last value holds to the clip's end. A keyframed scale ignores the transform's, so start from the clip's own scale if it isn't 1. Stay between about 1.08 and 1.2: more, and the picture goes soft and heads get cut off. For a calm open, glide instead: 1 to 1.06 over 90 frames (3 seconds) with "ease_in_out" and no hold.
 
-- **Emphasis on the hook text.** "highlight_word" lights each word in turn across the clip, "pulse" makes it breathe and "shake" keeps it jittering. Use one, on text that earns it:
+- **A colored key word on the second line.** Don't shake or pulse hook text: it looks like a gimmick and is harder to read. Give the word that matters its own color with a span instead. In "It's your shaping.", "shaping" runs from 10 to 17:
 
 ```json
-{"op":"update_clip","clipId":"c5","patch":{"emphasis":{"preset":"highlight_word","color":"#FFD400"}}}
+{"op":"update_clip","clipId":"c6","patch":{"spans":[{"from":10,"to":17,"color":"#FFD400"}]}}
 ```
 
 - **A quick whip into the second shot.** Give the first clip a "whip" `transitionOut` and the second a "whip" `transitionIn`, 6 frames each and the same direction, so the motion carries through the cut. Never a `transitionIn` on the first clip:

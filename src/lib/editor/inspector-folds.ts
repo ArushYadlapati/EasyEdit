@@ -39,6 +39,7 @@ export const SECTION_ORDER: Readonly<Record<ClipKind, readonly SectionId[]>> = {
   nest: ["nest", "position", "timing", "color", "stylize", "mask", "blend", "slot"],
   placeholder: ["position", "timing", "slot"],
   adjustment: ["adjustment", "color", "timing", "stylize", "mask"],
+  caption: ["timing"], // a caption clip has its own short inspector (the captions' style, then Timing), not these
 };
 
 // The two or three sections open the first time a kind of clip is selected.
@@ -51,6 +52,7 @@ export const OPEN_BY_DEFAULT: Readonly<Record<ClipKind, readonly SectionId[]>> =
   nest: ["nest", "position", "timing"],
   placeholder: ["position", "timing", "slot"],
   adjustment: ["adjustment", "color", "timing"],
+  caption: ["timing"],
 };
 
 export const FOLDS_KEY = "easyedit-inspector-folds";

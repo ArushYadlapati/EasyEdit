@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_BRAND_KIT } from "@/lib/brand/types";
-import { docCues } from "@/lib/captions/cues";
+import { docCues, isCaptioned } from "@/lib/captions/cues";
 import { importSubtitleOps, parseSubtitles, subtitleTime, subtitleWords, subtitlesText } from "@/lib/captions/subtitles";
 import { findClip } from "@/lib/editor/store";
 import { applyOps, prepareOps, type MediaClip } from "@/lib/timeline";
@@ -26,8 +26,8 @@ describe("writing subtitle files", () => {
 
   it("numbers the lines of an .srt and heads a .vtt", () => {
     const cues = [
-      { clipId: "c", assetId: "a", start: 30, end: 60, words: [], text: "Hello there" },
-      { clipId: "c", assetId: "a", start: 75, end: 120, words: [], text: "second line" },
+      { clipId: "c", assetId: "a", start: 30, end: 60, words: [], text: "Hello there", captionId: null },
+      { clipId: "c", assetId: "a", start: 75, end: 120, words: [], text: "second line", captionId: null },
     ];
     expect(subtitlesText(cues, 30, "srt")).toBe("1\n00:00:01,000 --> 00:00:02,000\nHello there\n\n2\n00:00:02,500 --> 00:00:04,000\nsecond line\n");
     expect(subtitlesText(cues, 30, "vtt")).toBe("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello there\n\n00:00:02.500 --> 00:00:04.000\nsecond line\n");
@@ -58,7 +58,7 @@ describe("reading subtitle files", () => {
   });
 
   it("survives writing and reading back", () => {
-    const cues = [{ clipId: "c", assetId: "a", start: 30, end: 60, words: [], text: "Hello there" }];
+    const cues = [{ clipId: "c", assetId: "a", start: 30, end: 60, words: [], text: "Hello there", captionId: null }];
     for (const format of ["srt", "vtt"] as const) {
       expect(parseSubtitles(subtitlesText(cues, 30, format))).toEqual([{ from: 1000, to: 2000, text: "Hello there" }]);
     }
@@ -93,7 +93,7 @@ describe("a subtitle file as a clip's captions", () => {
     doc.tracks[0].clips = [clip()];
     const ops = importSubtitleOps(doc, findClip(doc, "c1")!.clip as MediaClip, parseSubtitles(SRT), DEFAULT_BRAND_KIT.fonts);
     const after = applyOps(doc, prepareOps(ops, () => "g")).doc;
-    expect((findClip(after, "c1")!.clip as MediaClip).captions).toBe(true);
+    expect(isCaptioned(after, findClip(after, "c1")!.clip as MediaClip)).toBe(true);
     expect(docCues(after).map((cue) => cue.text).join(" ")).toBe("Hello there second line of it");
     expect(importSubtitleOps(doc, findClip(doc, "c1")!.clip as MediaClip, [{ from: 900_000, to: 901_000, text: "late" }], DEFAULT_BRAND_KIT.fonts)).toEqual([]);
   });

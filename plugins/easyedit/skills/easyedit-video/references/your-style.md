@@ -89,26 +89,22 @@ A look is a set of adjust numbers on a video or image clip:
 | id | Feel | adjust |
 |---|---|---|
 | vivid | richer colors, a bit more contrast | contrast 0.15, saturation 0.35 |
-| pop | bold, bright colors | brightness 0.03, contrast 0.25, saturation 0.6 |
 | warm | a warmer, orange tint | temperature 0.35, saturation 0.1 |
-| golden | a sunny, golden-hour glow | brightness 0.05, contrast 0.05, saturation 0.2, temperature 0.5 |
 | cool | a cooler, blue tint | temperature -0.35, saturation 0.05 |
 | dusk | cool evening colors, darker edges | contrast 0.1, saturation 0.15, temperature -0.2, hue -12, vignette 0.25 |
-| soft | gentle, a little lighter and warmer | brightness 0.06, contrast -0.12, saturation 0.1, temperature 0.1 |
 | fade | washed-out, faded colors | brightness 0.08, contrast -0.2, saturation -0.15 |
 | vintage | warm, muted, dark edges, like old film | contrast -0.1, saturation -0.25, temperature 0.3, vignette 0.45 |
 | moody | darker, muted and cool | brightness -0.1, contrast 0.2, saturation -0.3, temperature -0.15, vignette 0.3 |
 | drama | strong contrast, dark edges | brightness -0.05, contrast 0.35, saturation -0.1, vignette 0.35 |
 | mono | black and white (the editor calls it B&W) | saturation -1, contrast 0.15 |
-| noir | black and white, strong contrast, dark edges | brightness -0.05, contrast 0.45, saturation -1, vignette 0.5 |
 | sepia | brown tones, like an old photo | contrast 0.05, saturation -1, temperature 0.55 |
 
-Send all six color keys: brightness, contrast, saturation, temperature, hue and vignette, with 0 for the ones the look doesn't use. adjust merges key by key, so a key you leave out keeps its old value, and the clip ends up with a mix that matches no look. That's what the editor's own look picker sends. A cooking creator whose style says golden, on two clips:
+Send all six color keys: brightness, contrast, saturation, temperature, hue and vignette, with 0 for the ones the look doesn't use. adjust merges key by key, so a key you leave out keeps its old value, and the clip ends up with a mix that matches no look. That's what the editor's own Look menu sends. A cooking creator whose style says warm, on two clips:
 
 ```json
 [
-  {"op":"update_clip","clipId":"c1","patch":{"adjust":{"brightness":0.05,"contrast":0.05,"saturation":0.2,"temperature":0.5,"hue":0,"vignette":0}}},
-  {"op":"update_clip","clipId":"c2","patch":{"adjust":{"brightness":0.05,"contrast":0.05,"saturation":0.2,"temperature":0.5,"hue":0,"vignette":0}}}
+  {"op":"update_clip","clipId":"c1","patch":{"adjust":{"brightness":0,"contrast":0,"saturation":0.1,"temperature":0.35,"hue":0,"vignette":0}}},
+  {"op":"update_clip","clipId":"c2","patch":{"adjust":{"brightness":0,"contrast":0,"saturation":0.1,"temperature":0.35,"hue":0,"vignette":0}}}
 ]
 ```
 
@@ -154,7 +150,7 @@ Fields win over references. Use references to fill a missing field and to sanity
 - **Past projects** are the closest thing to their taste, because they were made in this editor. Each lists its length, format, shots, text clips a minute and fonts, caption look, transitions used, music level and looks used. Copy those numbers when a field is missing.
 - **Videos** list length, shots with their average and median length, and shots a minute. Go by the median, since one long intro pulls the average up. 30 shots a minute is 2 s a shot.
 - A video that talks also lists words a minute and its opening words. The opening words show their tone: do they greet, or start on the point? How much of it is talking tells you what sets the rhythm. Mostly talking means the voice leads, captions matter and music stays soft or out. Loudness and the talking share together help when the music field is empty.
-- Brightness, saturation and warmth help when the look field is empty. Warmth well above 0 leans toward warm or golden, below 0 toward cool or dusk, and saturation near 0 toward mono or noir. These measure the footage as shot, lighting and all, so a kitchen under warm bulbs reads warm with no look on it. Pick a look only when most references point the same way. Otherwise stay natural.
+- Brightness, saturation and warmth help when the look field is empty. Warmth well above 0 leans toward warm, below 0 toward cool or dusk, and saturation near 0 toward mono. These measure the footage as shot, lighting and all, so a kitchen under warm bulbs reads warm with no look on it. Pick a look only when most references point the same way. Otherwise stay natural.
 - **Links** from YouTube and Vimeo give the video's title and who made it, and the Style page shows the person its picture. Vimeo links and videos from the space's connected channel also give a length and a description. TikTok gives almost nothing, so a TikTok link is often saved with only its address. Instagram links can't be read at all. You can't watch a link, so use it for topic and tone, and never say you watched it.
 
 If a reference disagrees with a field, follow the field and mention it once when the gap is big: "Your Style says calm, but your reference videos cut about every 1.5 s. I went with calm. Want it quicker?" If references disagree with each other, follow most of them, or ask which one is closest to what they want now.

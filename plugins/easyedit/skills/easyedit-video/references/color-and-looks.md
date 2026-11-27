@@ -53,7 +53,7 @@ Video and image clips, adjustment layers and nests take `adjust` through an `upd
 | hue | -180 to 180 | Turns every color around the wheel, in degrees. Skin turns too. | leave at 0 | Dusk uses -12 |
 | vignette | 0 to 1 | Darkens the corners. | 0.15 to 0.25 | 0.3 to 0.5 |
 
-Temperature works by taking light away. Warming takes out blue and a little green, and cooling takes out red and a little green. So a strong shift also darkens the picture a little. Past about 0.4, add brightness 0.03 to 0.05 to make up for it. The Golden look does exactly that.
+Temperature works by taking light away. Warming takes out blue and a little green, and cooling takes out red and a little green. So a strong shift also darkens the picture a little. Past about 0.4, add brightness 0.03 to 0.05 to make up for it.
 
 adjust merges one level deep. Keys you send change, and keys you leave out keep their values. To take one change off, send it as 0. To put a clip back to as recorded, send brightness, contrast, saturation, temperature, hue, blur and vignette, all at 0.
 
@@ -63,23 +63,19 @@ The same field also holds blur and the stylized effects (sharpen, grain, pixelat
 
 ## Looks and their strength
 
-A look is a ready-made set of the same numbers. In the editor, the looks are buttons in a clip's Color section. There's no look op. You apply a look by writing its numbers into adjust.
+A look is a ready-made set of the same numbers. In the editor, the looks are in the Look menu at the top of a clip's Color section. There's no look op. You apply a look by writing its numbers into adjust.
 
 | id | editor label | what it sets at full strength | good for |
 | --- | --- | --- | --- |
 | "vivid" | Vivid | contrast 0.15, saturation 0.35 | daylight sports, products, travel |
-| "pop" | Pop | brightness 0.03, contrast 0.25, saturation 0.6 | loud, playful Shorts with few faces |
-| "warm" | Warm | temperature 0.35, saturation 0.1 | food, cozy rooms, family events |
-| "golden" | Golden | brightness 0.05, contrast 0.05, saturation 0.2, temperature 0.5 | golden hour, bakeries, weddings |
+| "warm" | Warm | temperature 0.35, saturation 0.1 | food, cozy rooms, golden hour, weddings |
 | "cool" | Cool | temperature -0.35, saturation 0.05 | clean tech, winter, swimming |
 | "dusk" | Dusk | contrast 0.1, saturation 0.15, temperature -0.2, hue -12, vignette 0.25 | evenings, city lights, calm music |
-| "soft" | Soft | brightness 0.06, contrast -0.12, saturation 0.1, temperature 0.1 | gentle vlogs, beauty, crafts |
-| "fade" | Fade | brightness 0.08, contrast -0.2, saturation -0.15 | washed-out, nostalgic "aesthetic" edits |
+| "fade" | Fade | brightness 0.08, contrast -0.2, saturation -0.15 | washed-out, nostalgic "aesthetic" edits, gentle vlogs |
 | "vintage" | Vintage | contrast -0.1, saturation -0.25, temperature 0.3, vignette 0.45 | throwbacks, anniversaries |
 | "moody" | Moody | brightness -0.1, contrast 0.2, saturation -0.3, temperature -0.15, vignette 0.3 | serious stories, rain, night |
-| "drama" | Drama | brightness -0.05, contrast 0.35, saturation -0.1, vignette 0.35 | trailers, big moments, game day |
+| "drama" | Drama | brightness -0.05, contrast 0.35, saturation -0.1, vignette 0.35 | trailers, big moments, game day, mystery |
 | "mono" | B&W | contrast 0.15, saturation -1 | flashbacks, timeless portraits |
-| "noir" | Noir | brightness -0.05, contrast 0.45, saturation -1, vignette 0.5 | mystery, heavy drama |
 | "sepia" | Sepia | contrast 0.05, saturation -1, temperature 0.55 | old photos, history pieces |
 
 A space's style names a look by its id, so B&W is "mono" there.
@@ -90,14 +86,14 @@ To use a look at a strength, multiply each of its numbers by the strength and ro
 {"op":"update_clip","clipId":"c7","patch":{"adjust":{"brightness":0,"contrast":0,"saturation":0.06,"temperature":0.21,"hue":0,"vignette":0}}}
 ```
 
-When the six numbers are exactly one share of a look, the editor lights that look's button and shows Look strength as a percent, so the person can drag it. Change any one of them by hand and it becomes a custom setting. That's one more reason to keep fixes on the clips and the look on a layer.
+When the six numbers are exactly one share of a look, the editor's Look menu shows that look, with Look strength beside it as a percent, so the person can drag it. Change any one of them by hand and the menu says Custom. That's one more reason to keep fixes on the clips and the look on a layer.
 
 How strong to go:
 
 - 100% is the look as it was designed. On everyday phone footage, 60% to 80% is often right.
-- Pop (saturation 0.6) and Noir (contrast 0.45) are loud. Start Pop at about 50% when people are on screen.
-- Use B&W, Noir and Sepia at full strength. At 50%, B&W is just a muted color picture, and it looks like a mistake.
-- Choose by the mood the person describes, not by the subject. A bakery's cozy morning is Warm or Golden. The same bakery's late-night "how we make it" video could be Moody.
+- Drama (contrast 0.35) and Vivid (saturation 0.35) are the strongest. Start them at about 70% to 80% when people are on screen.
+- Use B&W and Sepia at full strength. At 50%, B&W is just a muted color picture, and it looks like a mistake.
+- Choose by the mood the person describes, not by the subject. A bakery's cozy morning is Warm. The same bakery's late-night "how we make it" video could be Moody.
 
 ## One look over everything: adjustment layers
 
@@ -111,10 +107,10 @@ Little Oven Bakery's Short is 27 seconds long, which is 810 frames at 30 fps. Us
 {"op":"add_track","track":{"kind":"overlay","name":"Color"},"index":1}
 ```
 
-The result gives the new track's id (o1 here). In the next call, add the layer from frame 0 to the end of the last clip. This one is Golden at 70%:
+The result gives the new track's id (o1 here). In the next call, add the layer from frame 0 to the end of the last clip. This one is Warm at 80%:
 
 ```json
-{"op":"add_clip","trackId":"o1","clip":{"type":"adjustment","start":0,"duration":810,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"},"adjust":{"brightness":0.035,"contrast":0.035,"saturation":0.14,"temperature":0.35,"hue":0,"vignette":0}}}
+{"op":"add_clip","trackId":"o1","clip":{"type":"adjustment","start":0,"duration":810,"transform":{"x":0.5,"y":0.5,"scale":1,"rotation":0,"opacity":1,"fit":"cover"},"adjust":{"brightness":0,"contrast":0,"saturation":0.08,"temperature":0.28,"hue":0,"vignette":0}}}
 ```
 
 How the layer behaves:
@@ -157,7 +153,7 @@ With faces on screen, keep the total (the clip's adjust plus the layer's numbers
 - contrast +0.25 or less, so faces don't get hard shadows,
 - hue at 0 in your own fixes. A hue turn moves skin toward green or purple.
 
-So on people talking to camera, use Vivid at 80% or less, Golden at 70%, Drama at 70%, Dusk at 70%, Pop at 50% and Cool at 40%. Warm, Soft, Fade, Vintage, Moody and B&W fit at full strength.
+So on people talking to camera, use Vivid at 80% or less, Drama at 70%, Dusk at 70% and Cool at 40%. Warm, Fade, Vintage, Moody and B&W fit at full strength.
 
 When a face looks wrong, fix that clip:
 
@@ -180,20 +176,20 @@ The mask's x and y are its center and width and height its size, all shares of t
 Before you grade, call `get_editing_guide` with the space. If the guide ends with "## This space's style", read its look field, its always and never lists, and its notes.
 
 - look "natural": no look. Only fix clips that stand out. Don't add a look because it would "pop", unless the person asks.
-- look set to an id, like "golden": put that look on one adjustment layer over the whole video. The style saves the look, not a strength. Start at full strength, and lower it only as far as the skin limits need. Then say so: "Golden at 70%, so faces don't go orange."
+- look set to an id, like "vivid": put that look on one adjustment layer over the whole video. The style saves the look, not a strength. Start at full strength, and lower it only as far as the skin limits need. Then say so: "Vivid at 80%, so faces don't go orange."
 - No look saved and nobody asked: leave the color natural, apart from fixing clips that stand out. You can offer a look in one line.
 - always and never may hold color rules, like "never black and white". The notes may describe it in words, like "bright and clean, like the shop." Follow them.
 
 The references help when the field is empty, or when you want the strength:
 
 - A past project lists the looks its clips used, by id, and how often. If one look leads the count, that's their look. To copy it exactly, find that project with `list_projects`, read it with `get_project`, and copy its adjust numbers and its layer's amount.
-- An analyzed video lists its average brightness and saturation (0 to 1) and warmth (-1 is blue, 1 is orange). Warmth above about 0.2 leans toward Warm, Golden or Soft, and below about -0.2 toward Cool, Dusk or Moody. Low saturation points to Fade, Vintage or Moody, and near 0 is black and white. These are averages of the footage, though. A sunny beach video is warm with no look at all, so treat them as hints.
-- The frame sheets are better. `get_editing_guide` with topic "style" and the space returns a grid of frames, with their times, for up to 6 of the newest analyzed videos, when your client can show images. Look at the whites (creamy is warm, clean is natural, bluish is cool), the shadows (deep black means contrast, milky gray means Fade, Soft or Vintage), how strong the colors are, whether the corners are dark, and the skin.
+- An analyzed video lists its average brightness and saturation (0 to 1) and warmth (-1 is blue, 1 is orange). Warmth above about 0.2 leans toward Warm or Vintage, and below about -0.2 toward Cool, Dusk or Moody. Low saturation points to Fade, Vintage or Moody, and near 0 is black and white. These are averages of the footage, though. A sunny beach video is warm with no look at all, so treat them as hints.
+- The frame sheets are better. `get_editing_guide` with topic "style" and the space returns a grid of frames, with their times, for up to 6 of the newest analyzed videos, when your client can show images. Look at the whites (creamy is warm, clean is natural, bluish is cool), the shadows (deep black means contrast, milky gray means Fade or Vintage), how strong the colors are, whether the corners are dark, and the skin.
 - A link gives a title and an author at most, and from Vimeo a length and a description. Don't guess colors from a title.
 
-When the person settles on a look they want every time ("always this golden feel"), offer to save it. Editors and admins can call `save_style` with the space and `fields` set to `{"look":"golden"}`. Or point them to the Look field on the space's Settings → Style page. Never save a look they haven't agreed to.
+When the person settles on a look they want every time ("always this warm feel"), offer to save it. Editors and admins can call `save_style` with the space and `fields` set to `{"look":"warm"}`. Or point them to the Look field on the space's Settings → Style page. Never save a look they haven't agreed to.
 
-When you're done, read the project with `get_project`. Check that the layer runs the whole video, that no clip carries the look twice, and that the totals stay inside the skin limits. Then tell them plainly, for example: "I added Golden at 70% on a new Color track under the titles, and warmed the gym clip at 0:12 a little. Drag Look strength in the Color section to change it, or hide the Color track to compare." People can undo any change from the editor's Activity list.
+When you're done, read the project with `get_project`. Check that the layer runs the whole video, that no clip carries the look twice, and that the totals stay inside the skin limits. Then tell them plainly, for example: "I added Warm at 80% on a new Color track under the titles, and warmed the gym clip at 0:12 a little. Drag Look strength in the Color section to change it, or hide the Color track to compare." People can undo any change from the editor's Activity list.
 
 ## Common mistakes
 
@@ -201,7 +197,7 @@ When you're done, read the project with `get_project`. Check that the layer runs
 - Switching looks by sending only the new look's keys. The old look's vignette or hue stays behind. Send all six.
 - The adjustment layer on the top track. It recolors titles, captions, shapes and the logo. Put it under them.
 - A layer that ends before the video does, so the last clips play ungraded. Stretch it with `trim_clip`.
-- B&W, Noir or Sepia at half strength. That's a washed-out color picture, not black and white.
-- Pop or Vivid at full strength on people talking. Faces go orange.
+- B&W or Sepia at half strength. That's a washed-out color picture, not black and white.
+- Vivid at full strength on people talking. Faces go orange.
 - Turning hue to fix a color cast. It turns skin too. Use temperature for blue or orange, and ask for the wheels for green.
 - Adding a look when the style says "natural", or saving a look to the style without asking.
