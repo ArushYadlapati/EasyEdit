@@ -12,7 +12,7 @@ import { adjustFilter, compositeOf, needsLayer, temperatureColor } from "./adjus
 import { createFinisher, type FinishPass, type Finisher } from "./finish-gl";
 import { bakeGrade } from "./grade";
 import { keyOut, type ChromaKey } from "./chroma";
-import { clipLook, effectWindows } from "./effects";
+import { clipLook, effectWindows, type Smear } from "./effects";
 import { hasBackground, hasOutline, hasShadow, textExtras } from "@/lib/timeline/text-style";
 import { alignShift, layoutText, letterSpacingOf, lettersWidth, spanRuns, textFont, textRect, type LocalRect, type StyledMeasure, type TextLine } from "./text-layout";
 
@@ -20,7 +20,7 @@ export type { LocalRect };
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type ResolvedSource = { image: CanvasImageSource; width: number; height: number };
-export type LayerUse = "tone" | "finish" | "under" | "mask" | "nest";
+export type LayerUse = "tone" | "finish" | "under" | "mask" | "nest" | "motion" | "motion-spread";
 export type DrawOptions = {
   // The seam where media plugs in. clip: the video or image clip being drawn. frame: the timeline frame being drawn.
   resolveSource?: (clip: MediaClip, frame: number) => ResolvedSource | null;
@@ -32,8 +32,9 @@ export type DrawOptions = {
   // A context on a canvas of this size for a picture that is finished on its own before it joins the frame, the
   // same one each time for the same use: "tone" for a picture being warmed, cooled or vignetted, "finish" for one on
   // its way to the graphics card, "under" for the copy of the frame an adjustment layer works on, "mask" for a
-  // picture being cut to its mask, "nest" for a nest's clips drawn together before the nest is placed. Default: an
-  // OffscreenCanvas; null where there is none.
+  // picture being cut to its mask, "nest" for a nest's clips drawn together before the nest is placed, "motion" for a
+  // whipping clip drawn on its own before it is smeared along its move, and "motion-spread" for the other half of each
+  // step of that smear. Default: an OffscreenCanvas; null where there is none.
   makeLayer?: (width: number, height: number, use: LayerUse) => Ctx2D | null;
   // What grades a picture and draws its stylised effects (finish-gl.ts). Default: one on the graphics card, shared;
   // null draws every picture without them.
@@ -710,13 +711,119 @@ function drawMedia(ctx: Ctx2D, doc: TimelineDoc, clip: MediaClip & { type: "vide
   ctx.fillText(options.placeholderLabel?.(clip) ?? (clip.type === "video" ? "Video" : "Image"), (k.left + k.right) / 2, (k.top + k.bottom) / 2);
 }
 
-// One clip at a transform and alpha, moved dx, dy project pixels before it is turned (a whip's trail).
+// A whip's smear is spread in steps that each double its copies, until they sit at most SMEAR_GAP canvas pixels apart,
+// in at most SMEAR_STEPS_MAX steps: 128 copies. A longer smear has its copies further apart, but each is then a 128th of
+// the picture, too faint to make out.
+const SMEAR_GAP = 2;
+const SMEAR_STEPS_MAX = 7;
+
+// Set while a smeared clip is painted: a whip inside a nest that is itself whipping is smeared with the nest, since the
+// two would need the same layers.
+let smearing = false;
+
+// A whip's motion blur, as a camera's shutter makes one: the clip is drawn once on a layer of its own, then spread
+// evenly along its move, as if drawn at every place it passes while the frame is exposed. Each step adds the layer to
+// itself moved half a step either way, each copy at half strength, so k steps make 2^k evenly weighted copies from 4k
+// quick draws, close enough together to read as one smear. Adding the copies, not stacking them, keeps what is
+// see-through right: the smear fades out at its ends as a real one does, and the whole is exactly as solid as the
+// clip. It then joins the frame with the clip's own opacity and blend. The preview, a saved frame and the export all
+// draw it here, so they match. False when there is no layer, or the smear is under a canvas pixel: the caller then
+// draws the clip as it is.
+function drawSmeared(ctx: Ctx2D, smear: Smear, alpha: number, composite: GlobalCompositeOperation | null, paint: (target: Ctx2D) => void, options: DrawOptions): boolean {
+  if (smearing) return false;
+  const m = ctx.getTransform();
+  // In canvas pixels. A whip moves straight across or straight up and down, and a frame is only ever scaled onto its canvas.
+  const across = Math.abs(m.a * smear.dx + m.c * smear.dy);
+  const down = Math.abs(m.b * smear.dx + m.d * smear.dy);
+  const horizontal = across >= down;
+  const length = horizontal ? across : down;
+  if (length < 1) return false;
+  const { width, height } = ctx.canvas;
+  const make = options.makeLayer ?? defaultLayer;
+  const first = make(width, height, "motion");
+  const second = first && make(width, height, "motion-spread");
+  if (!first || !second) return false;
+  first.save();
+  first.setTransform(1, 0, 0, 1, 0, 0);
+  first.clearRect(0, 0, width, height);
+  first.setTransform(m);
+  smearing = true;
+  try {
+    paint(first);
+  } finally {
+    smearing = false;
+    first.restore();
+  }
+  const steps = Math.min(SMEAR_STEPS_MAX, Math.max(1, Math.ceil(Math.log2(length / SMEAR_GAP))));
+  const gap = length / 2 ** steps;
+  let from = first;
+  let to = second;
+  for (let i = 0; i < steps; i++) {
+    spreadStep(from, to, (gap * 2 ** i) / 2, horizontal, width, height);
+    [from, to] = [to, from];
+  }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = alpha;
+  if (composite) ctx.globalCompositeOperation = composite;
+  ctx.drawImage(from.canvas, 0, 0);
+  ctx.restore();
+  return true;
+}
+
+// One step of a smear: the picture on `from` added to itself `half` canvas pixels either way along the move, each copy
+// at half strength, onto `to`. Where a moved copy leaves a strip bare at the canvas's edge, that edge's own pixels are
+// stretched across it, as if the picture went on past the frame: a clip that crosses the edge smears there as it does
+// everywhere else, and does not fade into black.
+function spreadStep(from: Ctx2D, to: Ctx2D, half: number, horizontal: boolean, width: number, height: number): void {
+  const source = from.canvas;
+  to.save();
+  to.setTransform(1, 0, 0, 1, 0, 0);
+  to.clearRect(0, 0, width, height);
+  to.globalCompositeOperation = "lighter";
+  to.globalAlpha = 0.5;
+  if (horizontal) {
+    to.drawImage(source, -half, 0);
+    to.drawImage(source, width - 1, 0, 1, height, width - half, 0, half, height);
+    to.drawImage(source, half, 0);
+    to.drawImage(source, 0, 0, 1, height, 0, 0, half, height);
+  } else {
+    to.drawImage(source, 0, -half);
+    to.drawImage(source, 0, height - 1, width, 1, 0, height - half, width, half);
+    to.drawImage(source, 0, half);
+    to.drawImage(source, 0, 0, width, 1, 0, 0, width, half);
+  }
+  to.restore();
+}
+
+// One clip at a transform and alpha, smeared along its move when it is whipping.
 function drawClip(
   ctx: Ctx2D,
   doc: TimelineDoc,
   clip: Clip,
   frame: number,
-  draw: { t: Transform; alpha: number; dx: number; dy: number; text: TextLook },
+  draw: { t: Transform; alpha: number; text: TextLook; smear?: Smear | null },
+  options: DrawOptions,
+  resolveFont: (family: string) => string,
+): void {
+  const composite = clip.type === "placeholder" || clip.type === "adjustment" ? null : compositeOf(clip.blend);
+  // On its own layer the clip is drawn whole and plain: the layer takes its opacity and blend as it joins the frame.
+  const own = (target: Ctx2D) => placeClip(target, doc, clip, frame, draw, options, resolveFont);
+  if (draw.smear && drawSmeared(ctx, draw.smear, draw.alpha, composite, own, options)) return;
+  ctx.save();
+  ctx.globalAlpha = draw.alpha;
+  if (composite) ctx.globalCompositeOperation = composite;
+  placeClip(ctx, doc, clip, frame, draw, options, resolveFont);
+  ctx.restore();
+}
+
+// A clip placed, turned and scaled to its transform, and drawn. The caller saves and restores around it.
+function placeClip(
+  ctx: Ctx2D,
+  doc: TimelineDoc,
+  clip: Clip,
+  frame: number,
+  draw: { t: Transform; text: TextLook },
   options: DrawOptions,
   resolveFont: (family: string) => string,
 ): void {
@@ -725,11 +832,7 @@ function drawClip(
   const frameTransform = clip.type === "nest" ? ctx.getTransform() : null;
   // A keyed crop is part of the transform at this frame: the clip is drawn as if it were its own.
   const shown = t.crop === clip.transform.crop ? clip : ({ ...clip, transform: { ...clip.transform, crop: t.crop } } as Clip);
-  ctx.save();
-  ctx.globalAlpha = draw.alpha;
-  const composite = clip.type === "placeholder" || clip.type === "adjustment" ? null : compositeOf(clip.blend);
-  if (composite) ctx.globalCompositeOperation = composite;
-  ctx.translate(t.x * doc.width + draw.dx, t.y * doc.height + draw.dy);
+  ctx.translate(t.x * doc.width, t.y * doc.height);
   ctx.rotate((t.rotation * Math.PI) / 180);
   // A stretch widens text glyphs too. Wrapping happens in local units, so it does not change.
   ctx.scale(t.scale * stretchOf(t), t.scale);
@@ -737,7 +840,6 @@ function drawClip(
   else if (shown.type === "shape") drawShape(ctx, shown);
   else if (shown.type === "video" || shown.type === "image") drawMedia(ctx, doc, shown as MediaClip & { type: "video" | "image" }, frame, options);
   else if (shown.type === "nest" && frameTransform) drawNest(ctx, doc, shown, frame, options, frameTransform);
-  ctx.restore();
 }
 
 // A nest: its tracks are drawn together, at the frame of its own timeline that shows now, on a layer of their own
@@ -803,16 +905,12 @@ function drawTracks(ctx: Ctx2D, doc: TimelineDoc, frame: number, options: DrawOp
     if (tail) {
       // Under a crossfade the outgoing clip plays on as it is: its own out-transition belongs to the cut, not the blend.
       const t = effectiveTransform(clip, frame);
-      drawClip(ctx, doc, clip, frame, { t, alpha: t.opacity, dx: 0, dy: 0, text: PLAIN_TEXT }, options, resolveFont);
+      drawClip(ctx, doc, clip, frame, { t, alpha: t.opacity, text: PLAIN_TEXT }, options, resolveFont);
       continue;
     }
     const look = clipLook(asDrawn(track, clip), frame, doc);
     const t = look.transform;
-    const alpha = t.opacity * look.alpha;
-    for (const ghost of look.ghosts) {
-      drawClip(ctx, doc, clip, frame, { t, alpha: alpha * ghost.alpha, dx: ghost.dx, dy: ghost.dy, text: look }, options, resolveFont);
-    }
-    drawClip(ctx, doc, clip, frame, { t, alpha, dx: 0, dy: 0, text: look }, options, resolveFont);
+    drawClip(ctx, doc, clip, frame, { t, alpha: t.opacity * look.alpha, text: look, smear: look.smear }, options, resolveFont);
     if (look.dip && look.dip.alpha > 0) {
       ctx.save();
       ctx.globalAlpha = look.dip.alpha;

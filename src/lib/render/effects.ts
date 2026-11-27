@@ -6,9 +6,12 @@ export const DEFAULT_DIRECTION = "left" as const;
 export const DEFAULT_DIP_COLOR = "#000000";
 export const DEFAULT_HIGHLIGHT_COLOR = "#FFD400";
 
-// Whip trails: how far apart the copies sit (as a share of the frame) and how strong each one is.
-const GHOST_ALPHAS = [0.45, 0.25, 0.12];
-const GHOST_SPACING = 0.06;
+// A whip is smeared along its move the way a camera's shutter smears a fast pan: by as far as the clip travels in
+// WHIP_SHUTTER seconds at the speed it is going at that frame. So the smear is longest where the move is fastest, gone
+// at rest, and the same at any frame rate. It never runs past WHIP_SMEAR_MAX frame sizes, which only a whip a frame or
+// two long reaches.
+export const WHIP_SHUTTER = 1 / 30;
+export const WHIP_SMEAR_MAX = 0.5;
 
 // A zoom transition draws the clip up to this much larger than its own scale, at the start of a zoom in and the end of
 // a zoom out.
@@ -16,11 +19,13 @@ export const ZOOM_TRANSITION_SCALE = 1.25;
 
 type Dir = "left" | "right" | "up" | "down";
 
-export type Ghost = { dx: number; dy: number; alpha: number }; // project pixels, alpha multiplier
+// How far a clip travels while one frame is exposed, in project pixels along x and y. It is drawn smeared evenly over
+// that distance, centred on where it is placed.
+export type Smear = { dx: number; dy: number };
 export type Look = {
   transform: Transform; // keyframes applied, then in/out offsets and scale factors
   alpha: number; // multiplier on transform.opacity, 0..1
-  ghosts: Ghost[]; // whip trails, drawn before the clip
+  smear: Smear | null; // a whip's motion blur; null when the clip is not moving
   dip: { color: string; alpha: number } | null; // full-frame fill drawn after the clip
   reveal: number | null; // typewriter: graphemes to draw, null = all
   litWord: number | null; // highlight_word: index of the lit word among the text's words, null = none
@@ -63,11 +68,17 @@ function easeOutBack(p: number): number {
   return 1 + (c1 + 1) * (p - 1) ** 3 + c1 * (p - 1) ** 2;
 }
 
-type Pass = { alpha: number; scale: number; dx: number; dy: number; ghosts: Ghost[]; dip: Look["dip"]; reveal: number | null };
+type Pass = { alpha: number; scale: number; dx: number; dy: number; smear: Smear | null; dip: Look["dip"]; reveal: number | null };
 
-const neutral = (): Pass => ({ alpha: 1, scale: 1, dx: 0, dy: 0, ghosts: [], dip: null, reveal: null });
+const neutral = (): Pass => ({ alpha: 1, scale: 1, dx: 0, dy: 0, smear: null, dip: null, reveal: null });
 
-function mediaEffect(clip: Pick<MediaClip | ShapeClip, "transitionIn" | "transitionOut">, isIn: boolean, p: number, doc: Doc): Pass {
+// How fast ease_in_out is going at share p of its time, in whole travels per its time: 3 at the middle, 0 at each end.
+function easeInOutSlope(p: number): number {
+  return p < 0.5 ? 12 * p * p : 3 * (2 - 2 * p) ** 2;
+}
+
+// frames: the effect's window, as it draws, which p is a share of.
+function mediaEffect(clip: Pick<MediaClip | ShapeClip, "transitionIn" | "transitionOut">, isIn: boolean, p: number, frames: number, doc: Doc): Pass {
   const t = isIn ? clip.transitionIn : clip.transitionOut;
   const out = neutral();
   if (!t) return out;
@@ -96,13 +107,11 @@ function mediaEffect(clip: Pick<MediaClip | ShapeClip, "transitionIn" | "transit
       const o = a(ease("ease_in_out", p));
       out.dx = vx * o;
       out.dy = vy * o;
-      // At rest there is nothing to trail. The clip always moves along the direction, so the trail sits behind it.
-      if (!isIn || p < 1) {
-        out.ghosts = GHOST_ALPHAS.map((alpha, i) => {
-          const gap = GHOST_SPACING * (i + 1);
-          return { dx: -vx * gap * doc.width, dy: -vy * gap * doc.height, alpha };
-        });
-      }
+      // Its speed in frame sizes a second: the move's slope over the effect's length in seconds. The clip always moves
+      // along the direction, so that is the way it smears.
+      const speed = easeInOutSlope(p) * (doc.fps / frames);
+      const length = Math.min(WHIP_SMEAR_MAX, speed * WHIP_SHUTTER);
+      if (length > 0) out.smear = { dx: vx * length * doc.width, dy: vy * length * doc.height };
       break;
     }
     case "dip":
@@ -152,7 +161,7 @@ export function clipLook(clip: Clip, frame: number, doc: Doc): Look {
   const look: Look = {
     transform: base,
     alpha: 1,
-    ghosts: [],
+    smear: null,
     dip: null,
     reveal: null,
     litWord: null,
@@ -164,11 +173,11 @@ export function clipLook(clip: Clip, frame: number, doc: Doc): Look {
 
   const { inFrames, outFrames } = effectWindows(clip);
   const passes: Pass[] = [];
-  const effect = (isIn: boolean, p: number) =>
-    clip.type === "text" ? textEffect(clip, isIn, p) : mediaEffect(clip, isIn, p, doc);
-  if (inFrames > 0 && frame - clip.start < inFrames) passes.push(effect(true, progress(frame, clip.start, inFrames)));
+  const effect = (isIn: boolean, p: number, frames: number) =>
+    clip.type === "text" ? textEffect(clip, isIn, p) : mediaEffect(clip, isIn, p, frames, doc);
+  if (inFrames > 0 && frame - clip.start < inFrames) passes.push(effect(true, progress(frame, clip.start, inFrames), inFrames));
   const outStart = clip.start + clip.duration - outFrames;
-  if (outFrames > 0 && frame >= outStart) passes.push(effect(false, progress(frame, outStart, outFrames)));
+  if (outFrames > 0 && frame >= outStart) passes.push(effect(false, progress(frame, outStart, outFrames), outFrames));
 
   let x = base.x;
   let y = base.y;
@@ -179,7 +188,7 @@ export function clipLook(clip: Clip, frame: number, doc: Doc): Look {
     scale *= pass.scale;
     x += pass.dx;
     y += pass.dy;
-    look.ghosts.push(...pass.ghosts);
+    if (pass.smear) look.smear = pass.smear;
     if (pass.dip) look.dip = pass.dip;
     if (pass.reveal !== null) look.reveal = pass.reveal;
   }
