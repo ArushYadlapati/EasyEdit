@@ -8,8 +8,9 @@ export const DEFAULT_HIGHLIGHT_COLOR = "#FFD400";
 
 // A whip is smeared along its move the way a camera's shutter smears a fast pan: by as far as the clip travels in
 // WHIP_SHUTTER seconds at the speed it is going at that frame. So the smear is longest where the move is fastest, gone
-// at rest, and the same at any frame rate. It never runs past WHIP_SMEAR_MAX frame sizes, which only a whip a frame or
-// two long reaches.
+// at rest, and the same at any frame rate. It never runs past WHIP_SMEAR_MAX frame sizes. At its fastest a whip moves
+// 3 / seconds frame sizes a second, so it smears 0.1 / seconds at its peak: any whip of 0.2 s or less (6 frames at
+// 30 fps, 12 at 60) reaches the cap, and the 6-frame whips the skills suggest smear half the frame at their peak.
 export const WHIP_SHUTTER = 1 / 30;
 export const WHIP_SMEAR_MAX = 0.5;
 

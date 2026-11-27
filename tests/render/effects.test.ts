@@ -96,6 +96,13 @@ describe("clipLook", () => {
     expect(right.dx).toBeCloseTo(0.3 * 1000);
     // Two frames: 45 frame widths a second, a smear of 1.5 widths, cut to half.
     expect(clipLook(media({ transitionIn: { kind: "whip", frames: 2 } }), 100, doc).smear!.dx).toBeCloseTo(-0.5 * 1000);
+    // Any whip of 0.2 s or less reaches the cap at its peak: 6 frames at 30 fps lands right on it, 12 at 60 too, and
+    // 4 frames (0.75 of the width) is cut to it.
+    expect(clipLook(media({ transitionIn: { kind: "whip", frames: 6 } }), 102, doc).smear!.dx).toBeCloseTo(-0.5 * 1000);
+    expect(clipLook(media({ transitionIn: { kind: "whip", frames: 12 } }), 105, { ...doc, fps: 60 }).smear!.dx).toBeCloseTo(-0.5 * 1000);
+    expect(clipLook(media({ transitionIn: { kind: "whip", frames: 4 } }), 101, doc).smear!.dx).toBeCloseTo(-0.5 * 1000);
+    // Just longer than 0.2 s stays under it: 8 frames at 30 fps peaks at 0.375.
+    expect(clipLook(media({ transitionIn: { kind: "whip", frames: 8 } }), 103, doc).smear!.dx).toBeCloseTo(-0.375 * 1000);
   });
 
   it("a shape whips and smears as a video does; text never does", () => {
