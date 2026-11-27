@@ -128,7 +128,7 @@ describe("from the editor", () => {
     rampSelection(store, "bullet");
     store.getState().select(["x1"]);
     rampSelection(store, "bullet");
-    expect(notices).toEqual(["Select one video or audio clip to ramp its speed.", "Select one video or audio clip to ramp its speed.", "A speed ramp needs a video or audio clip that plays forward, on an unlocked track."]);
+    expect(notices).toEqual(["Select one video clip to ramp its speed.", "Select one video clip to ramp its speed.", "A speed ramp needs a video clip that plays forward, on an unlocked track."]);
     const viewer = makeStore({ doc: row(), canEdit: false });
     viewer.getState().select(["c1"]);
     rampSelection(viewer, "bullet");
