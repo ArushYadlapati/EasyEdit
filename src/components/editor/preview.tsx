@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cx } from "@/components/ui/cx";
-import { boardLayout, boardScale, centreOf, scrollFor, type BoardLayout, type Size } from "@/lib/editor/board";
+import { boardLayout, boardScale, centreOf, pinchZoom, pointAt, scrollFor, scrollKeeping, type BoardLayout, type Point, type Size } from "@/lib/editor/board";
 import { canvasItems, createPreviewSurface, viewOf, visibleBox } from "@/lib/editor/canvas-geometry";
 import { frameTapOf } from "@/lib/editor/frame-tap";
 import type { Sizer } from "@/lib/editor/clip-box";
 import { mediaWants, upcomingAssetIds } from "@/lib/editor/media-plan";
 import { previewSize } from "@/lib/editor/preview-size";
-import type { BoardZoom } from "@/lib/editor/settings";
+import { BOARD_ZOOM_MAX, BOARD_ZOOM_MIN, clampPercent, type BoardZoom } from "@/lib/editor/settings";
 import { viewDoc } from "@/lib/editor/store";
 import { probeRequests } from "@/lib/export/fonts";
 import { drawFrame } from "@/lib/render/compositor";
@@ -16,7 +16,7 @@ import { SAFE_AREA_LABEL, safeAreaMargins } from "@/lib/render/safe-zones";
 import { platformView } from "@/lib/editor/platform-views";
 import type { TimelineDoc } from "@/lib/timeline";
 import { CanvasOverlay } from "./canvas-overlay";
-import { useEditor, useEditorStore, useSettings } from "./context";
+import { useEditor, useEditorStore, useSettings, useSettingsStore } from "./context";
 import { decodeImage } from "./media/frame-decode";
 import { useMedia, type MediaServices } from "./media/media-context";
 import type { SoundBus } from "@/lib/audio/sound-bus";
@@ -57,6 +57,7 @@ export function Preview() {
   const showSafeZones = useEditor((s) => s.showSafeZones);
   const viewAs = useEditor((s) => s.viewAs);
   const boardZoom = useSettings((s) => s.boardZoom);
+  const settings = useSettingsStore();
   const paneRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -91,21 +92,82 @@ export function Preview() {
   // would keep the scroll, and the view would drift). The scroll it starts from is the one shown before the change,
   // since the browser may already have cut it down to a smaller content. Until the pane was measured, the frame's
   // middle is put there.
+  // A pinch keeps the point under the fingers there instead (pinched: where, and the project point under it).
   const shown = useRef<Shown | null>(null);
+  const pinched = useRef<{ at: Point; point: Point } | null>(null);
   useLayoutEffect(() => {
     const el = paneRef.current;
     if (!el) return;
     const before = shown.current;
+    const anchor = pinched.current;
+    pinched.current = null;
     const paneChanged = before !== null && (before.pane.width !== pane.width || before.pane.height !== pane.height);
     if (before && (before.zoom !== boardZoom || (boardZoom !== "fill" && paneChanged))) {
-      const measured = before.pane.width > 0 && before.pane.height > 0 && before.layout.k > 0;
-      const middle = measured ? centreOf(before.layout, before.pane, before.scroll) : { x: width / 2, y: height / 2 };
-      const next = scrollFor(middle, layout, pane);
+      let next: { left: number; top: number };
+      if (anchor && before.zoom !== boardZoom) next = scrollKeeping(anchor.point, anchor.at, layout, pane);
+      else {
+        const measured = before.pane.width > 0 && before.pane.height > 0 && before.layout.k > 0;
+        const middle = measured ? centreOf(before.layout, before.pane, before.scroll) : { x: width / 2, y: height / 2 };
+        next = scrollFor(middle, layout, pane);
+      }
       el.scrollLeft = next.left;
       el.scrollTop = next.top;
     }
     shown.current = { zoom: boardZoom, layout, pane, scroll: { left: el.scrollLeft, top: el.scrollTop } };
   }, [boardZoom, layout, pane, width, height]);
+
+  // A pinch on a trackpad (which the browser sends as the wheel with Ctrl held), or Ctrl/Cmd with the wheel, zooms the
+  // board around the pointer and never the page. Safari sends its pinch as gesture events instead. React's wheel
+  // listener is passive, so these are added by hand to be allowed to stop the browser's own zoom. The zoom is kept
+  // unrounded between steps (wheelPercent), so many small steps add up.
+  useEffect(() => {
+    const el = paneRef.current;
+    if (!el) return;
+    let wheelPercent: number | null = null;
+    let gestureFrom = 0;
+    const nowPercent = () => {
+      const zoom = settings.getState().boardZoom;
+      return zoom === "fill" ? store.getState().boardScale * 100 : zoom;
+    };
+    const zoomTo = (percent: number, clientX: number, clientY: number) => {
+      wheelPercent = percent;
+      const next = clampPercent(percent);
+      if (next === settings.getState().boardZoom) return;
+      const view = shown.current;
+      if (view && view.layout.k > 0 && !pinched.current) {
+        const box = el.getBoundingClientRect();
+        const at = { x: clientX - box.left, y: clientY - box.top };
+        pinched.current = { at, point: pointAt(view.layout, view.scroll, at) };
+      }
+      settings.getState().set({ boardZoom: next });
+    };
+    const startPercent = () => (wheelPercent !== null && clampPercent(wheelPercent) === settings.getState().boardZoom ? wheelPercent : nowPercent());
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 16 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? e.deltaY * el.clientHeight : e.deltaY;
+      zoomTo(pinchZoom(startPercent(), delta), e.clientX, e.clientY);
+    };
+    type Gesture = Event & { scale?: number; clientX?: number; clientY?: number };
+    const onGestureStart = (e: Gesture) => {
+      e.preventDefault();
+      gestureFrom = startPercent();
+    };
+    const onGestureChange = (e: Gesture) => {
+      e.preventDefault();
+      if (typeof e.scale !== "number" || !(e.scale > 0)) return;
+      const box = el.getBoundingClientRect();
+      zoomTo(Math.min(BOARD_ZOOM_MAX, Math.max(BOARD_ZOOM_MIN, gestureFrom * e.scale)), e.clientX ?? box.left + el.clientWidth / 2, e.clientY ?? box.top + el.clientHeight / 2);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("gesturestart", onGestureStart);
+    el.addEventListener("gesturechange", onGestureChange);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("gesturestart", onGestureStart);
+      el.removeEventListener("gesturechange", onGestureChange);
+    };
+  }, [settings, store]);
 
   // The frame moved on screen: a new pane size or zoom (after the scroll that keeps the middle), or a scroll of the
   // board, told at most once per animation frame.

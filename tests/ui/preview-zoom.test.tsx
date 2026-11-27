@@ -282,6 +282,81 @@ describe("board zoom", () => {
     expect(css).toContain("html:has(.editor) { overscroll-behavior-x: none; }");
   });
 
+  // A trackpad pinch reaches the page as the wheel with Ctrl held (Chrome, Edge, Firefox) and as gesture events in Safari.
+  function wheel(deltaY: number, opts: { ctrlKey?: boolean; metaKey?: boolean; clientX?: number; clientY?: number } = { ctrlKey: true }) {
+    const event = new WheelEvent("wheel", { deltaY, bubbles: true, cancelable: true });
+    // happy-dom's WheelEvent leaves out the keys and the pointer's place.
+    const { ctrlKey = false, metaKey = false, clientX = 0, clientY = 0 } = opts;
+    Object.defineProperties(event, { ctrlKey: { value: ctrlKey }, metaKey: { value: metaKey }, clientX: { value: clientX }, clientY: { value: clientY } });
+    act(() => {
+      board().dispatchEvent(event);
+    });
+    return event;
+  }
+
+  it("a pinch over the board zooms the board, not the page", () => {
+    const { settings } = show();
+    const event = wheel(-20);
+    expect(event.defaultPrevented).toBe(true);
+    // From Fill (50% here), in by e^0.2.
+    expect(settings.getState().boardZoom).toBe(61);
+    expect(frame().style.width).toBe("658.8px");
+    wheel(40);
+    expect(settings.getState().boardZoom).toBe(48);
+  });
+
+  it("Cmd with the wheel zooms too; the wheel alone scrolls", () => {
+    const { settings } = show({ boardZoom: 100 });
+    const plain = wheel(-20, {});
+    expect(plain.defaultPrevented).toBe(false);
+    expect(settings.getState().boardZoom).toBe(100);
+    expect(wheel(-20, { metaKey: true }).defaultPrevented).toBe(true);
+    expect(settings.getState().boardZoom).toBe(122);
+  });
+
+  it("many small pinch steps add up instead of rounding back", () => {
+    const { settings } = show({ boardZoom: 100 });
+    for (let i = 0; i < 10; i++) wheel(-0.5);
+    // 100 · e^0.05 = 105.1: each step alone would round back to 100.
+    expect(settings.getState().boardZoom).toBe(105);
+  });
+
+  it("a mouse wheel's notch zooms by about a quarter, and the zoom stays within 10% to 400%", () => {
+    const { settings } = show({ boardZoom: 100 });
+    wheel(-100);
+    expect(settings.getState().boardZoom).toBe(128);
+    for (let i = 0; i < 20; i++) wheel(-100);
+    expect(settings.getState().boardZoom).toBe(400);
+    for (let i = 0; i < 40; i++) wheel(100);
+    expect(settings.getState().boardZoom).toBe(10);
+  });
+
+  it("a pinch keeps the point under the pointer where it is", () => {
+    show({ boardZoom: 100 });
+    expect(board().scrollLeft).toBe(270);
+    expect(board().scrollTop).toBe(480);
+    // Under (100, 200) of the pane: project point (270 + 100 − 16, 480 + 200 − 16) = (354, 664).
+    wheel(-20, { ctrlKey: true, clientX: 100, clientY: 200 });
+    // At 122%: 16 + 354 · 1.22 − 100 and 16 + 664 · 1.22 − 200.
+    expect(board().scrollLeft).toBeCloseTo(16 + 354 * 1.22 - 100, 5);
+    expect(board().scrollTop).toBeCloseTo(16 + 664 * 1.22 - 200, 5);
+  });
+
+  it("Safari's pinch zooms the board and is kept from the page", () => {
+    const { settings } = show({ boardZoom: 100 });
+    const start = new Event("gesturestart", { cancelable: true });
+    act(() => {
+      board().dispatchEvent(start);
+    });
+    expect(start.defaultPrevented).toBe(true);
+    const change = Object.assign(new Event("gesturechange", { cancelable: true }), { scale: 1.5 });
+    act(() => {
+      board().dispatchEvent(change);
+    });
+    expect(change.defaultPrevented).toBe(true);
+    expect(settings.getState().boardZoom).toBe(150);
+  });
+
   it("a viewer can zoom", () => {
     const { settings } = show({ over: { canEdit: false } });
     expect(trigger().hasAttribute("data-edit-control")).toBe(false);
