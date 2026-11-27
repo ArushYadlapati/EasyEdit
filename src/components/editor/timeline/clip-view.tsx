@@ -20,6 +20,7 @@ import { useLibrary } from "../media/media-context";
 import { usePosterUrl } from "../media/use-poster";
 import { useClipMenu } from "../use-clip-menu";
 import { useIsMac } from "../use-shortcuts";
+import { CaptionPieces } from "./caption-lane";
 import { ClipLook, useClipLook } from "./clip-look";
 import { CLICK_SLOP_PX, useClipDrag } from "./use-clip-drag";
 
@@ -57,6 +58,7 @@ function clipLabel(clip: Clip, assetName: string | undefined): string {
   if (clip.type === "shape") return shapeName(clip);
   if (clip.type === "adjustment") return ADJUSTMENT_NAME;
   if (clip.type === "nest") return nestName(clip);
+  if (clip.type === "caption") return "Captions";
   return assetName ?? KIND[clip.type];
 }
 
@@ -67,6 +69,7 @@ function clipName(clip: Clip, assetName: string | undefined, fps: number): strin
   if (clip.type === "shape") return `${shapeName(clip)} clip, ${range}`;
   if (clip.type === "adjustment") return `${ADJUSTMENT_NAME}, ${range}`;
   if (clip.type === "nest") return `${nestName(clip)}, ${range}`;
+  if (clip.type === "caption") return `Captions, ${range}`;
   return assetName === undefined ? `${KIND[clip.type]} clip, ${range}` : `${KIND[clip.type]} clip "${assetName}", ${range}`;
 }
 
@@ -122,8 +125,9 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
     const { selection, select, doc } = store.getState();
     const toggle = e.shiftKey || e.metaKey || e.ctrlKey;
     const keep = !toggle && selection.clipIds.includes(clip.id);
-    // A linked clip brings its group with it; with Alt held it is taken alone.
-    const picked = e.altKey ? [clip.id] : withGroups(doc, [clip.id]);
+    // A linked clip brings its group with it; with Alt held it is taken alone. Captions are always taken alone, so they
+    // can be styled, split and trimmed without their clip (their words stay with the speech either way).
+    const picked = e.altKey || clip.type === "caption" ? [clip.id] : withGroups(doc, [clip.id]);
     if (toggle) select(picked, "toggle");
     else if (!keep) select(picked);
     if (dragger) {
@@ -136,7 +140,7 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
     const pressed = press.current;
     press.current = null;
     if (!pressed || pressed.pointerId !== e.pointerId) return;
-    if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) < CLICK_SLOP_PX) store.getState().select(e.altKey ? [clip.id] : withGroups(store.getState().doc, [clip.id]));
+    if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) < CLICK_SLOP_PX) store.getState().select(e.altKey || clip.type === "caption" ? [clip.id] : withGroups(store.getState().doc, [clip.id]));
   }
 
   function onContextMenu(e: MouseEvent<HTMLDivElement>) {
@@ -192,7 +196,11 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
       {showLook && clip.type === "text" && <TextSample style={clip.style} />}
       {showLook && clip.type === "shape" && <ShapeSample color={clip.stroke ?? clip.fill ?? "#000000"} round={clip.shape === "ellipse"} line={clip.shape === "arrow"} />}
       {clip.group && width >= MIN_LABEL_PX && <Link2 size={11} aria-hidden data-clip-linked className="relative ml-1.5 shrink-0 text-ed-text" />}
-      {width >= MIN_LABEL_PX && <span className="relative min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>}
+      {clip.type === "caption" ? (
+        <CaptionPieces clip={clip} zoom={zoom} />
+      ) : (
+        width >= MIN_LABEL_PX && <span className="relative min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>
+      )}
       {marks.speed !== null && width >= MIN_VOLUME_PX && <SpeedBadge speed={marks.speed} last={marks.volume === null} />}
       {marks.volume !== null && width >= MIN_VOLUME_PX && <VolumeBadge volume={marks.volume} first={marks.speed === null} />}
       <ClipMarkings marks={marks} zoom={zoom} />
