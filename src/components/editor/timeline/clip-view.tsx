@@ -20,7 +20,6 @@ import { useLibrary } from "../media/media-context";
 import { usePosterUrl } from "../media/use-poster";
 import { useClipMenu } from "../use-clip-menu";
 import { useIsMac } from "../use-shortcuts";
-import { CaptionPieces } from "./caption-lane";
 import { ClipLook, useClipLook } from "./clip-look";
 import { CLICK_SLOP_PX, useClipDrag } from "./use-clip-drag";
 
@@ -64,25 +63,32 @@ function touchTrimEdge(e: PointerEvent<HTMLDivElement>): "start" | "end" | null 
   return x <= reach ? "start" : box.width - x <= reach ? "end" : null;
 }
 
-// A text clip's first line; a media clip's asset name, or its kind before the library knows the asset.
-function clipLabel(clip: Clip, assetName: string | undefined): string {
+// A caption clip's place among the caption clips on its track, from 1, by where it starts (a track's clips are kept in
+// that order). One whole block of captions is "Captions 1"; the pieces a split makes are numbered on from it.
+function captionNumber(track: Track, clip: Clip): number {
+  return track.clips.filter((c) => c.type === "caption").findIndex((c) => c.id === clip.id) + 1;
+}
+
+// A text clip's first line; a media clip's asset name, or its kind before the library knows the asset. A caption clip
+// is named by its number (see captionNumber).
+function clipLabel(clip: Clip, assetName: string | undefined, track?: Track): string {
   if (clip.type === "text") return clip.text.split("\n")[0];
   if (clip.type === "placeholder") return `Slot: ${clip.slot.name}`;
   if (clip.type === "shape") return shapeName(clip);
   if (clip.type === "adjustment") return ADJUSTMENT_NAME;
   if (clip.type === "nest") return nestName(clip);
-  if (clip.type === "caption") return "Captions";
+  if (clip.type === "caption") return track ? `Captions ${captionNumber(track, clip)}` : "Captions";
   return assetName ?? KIND[clip.type];
 }
 
-function clipName(clip: Clip, assetName: string | undefined, fps: number): string {
+function clipName(clip: Clip, assetName: string | undefined, fps: number, track: Track): string {
   const range = `${formatTimecode(clip.start, fps)} to ${formatTimecode(clip.start + clip.duration, fps)}`;
   if (clip.type === "text") return `Text clip "${clipLabel(clip, undefined)}", ${range}`;
   if (clip.type === "placeholder") return `${clipLabel(clip, undefined)}, ${range}`;
   if (clip.type === "shape") return `${shapeName(clip)} clip, ${range}`;
   if (clip.type === "adjustment") return `${ADJUSTMENT_NAME}, ${range}`;
   if (clip.type === "nest") return `${nestName(clip)}, ${range}`;
-  if (clip.type === "caption") return `Captions, ${range}`;
+  if (clip.type === "caption") return `${clipLabel(clip, undefined, track)}, ${range}`;
   return assetName === undefined ? `${KIND[clip.type]} clip, ${range}` : `${KIND[clip.type]} clip "${assetName}", ${range}`;
 }
 
@@ -185,7 +191,7 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
     <div
       role="button"
       tabIndex={0}
-      aria-label={clipName(clip, assetName, fps)}
+      aria-label={clipName(clip, assetName, fps, track)}
       aria-pressed={selected}
       data-clip-id={clip.id}
       data-placeholder={clip.type === "placeholder" || undefined}
@@ -226,11 +232,7 @@ export const ClipView = memo(function ClipView({ clip, track, zoom, fps, selecte
       {showLook && clip.type === "text" && <TextSample style={clip.style} />}
       {showLook && clip.type === "shape" && <ShapeSample color={clip.stroke ?? clip.fill ?? "#000000"} round={clip.shape === "ellipse"} line={clip.shape === "arrow"} />}
       {clip.group && width >= MIN_LABEL_PX && <Link2 size={11} aria-hidden data-clip-linked className="relative ml-1.5 shrink-0 text-ed-text" />}
-      {clip.type === "caption" ? (
-        <CaptionPieces clip={clip} zoom={zoom} />
-      ) : (
-        width >= MIN_LABEL_PX && <span className="relative min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName)}</span>
-      )}
+      {width >= MIN_LABEL_PX && <span className="relative min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{clipLabel(clip, assetName, track)}</span>}
       {marks.speed !== null && width >= MIN_VOLUME_PX && <SpeedBadge speed={marks.speed} last={marks.volume === null} />}
       {marks.volume !== null && width >= MIN_VOLUME_PX && <VolumeBadge volume={marks.volume} first={marks.speed === null} />}
       <ClipMarkings marks={marks} zoom={zoom} />
@@ -363,7 +365,7 @@ function drawsTheSame(a: ClipViewProps, b: ClipViewProps): boolean {
     a.clip.start === b.clip.start &&
     a.clip.duration === b.clip.duration &&
     (a.clip.group ?? null) === (b.clip.group ?? null) &&
-    clipLabel(a.clip, undefined) === clipLabel(b.clip, undefined) &&
+    clipLabel(a.clip, undefined, a.track) === clipLabel(b.clip, undefined, b.track) &&
     (!("assetId" in a.clip) || !("assetId" in b.clip) || (a.clip.assetId === b.clip.assetId && ("in" in a.clip ? a.clip.in : 0) === ("in" in b.clip ? b.clip.in : 0))) &&
     sameSample(a.clip, b.clip) &&
     sameMarks(a, b)

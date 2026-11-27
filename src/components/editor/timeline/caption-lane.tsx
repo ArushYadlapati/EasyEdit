@@ -5,14 +5,13 @@ import { FADE, FOCUS_RING_INSET, cx } from "@/components/ui/cx";
 import { captionClipsOf, docCues, type Cue } from "@/lib/captions/cues";
 import { frameToPx } from "@/lib/editor/geometry";
 import { viewDoc } from "@/lib/editor/store";
-import type { CaptionClip } from "@/lib/timeline";
 import { useEditor, useEditorStore } from "../context";
 import { CLIP_HEIGHT, CLIP_TOP } from "./clip-view";
 import { useHeaderWidth } from "./header-width";
 
-// The Captions track's lane, behind its clips. Caption clips are drawn as clips (ClipView), each with its lines inside
-// (CaptionPieces). Captions switched on the old way, a flag on the clip with no caption clip, show as one block per
-// clip, where its lines show, until someone who can edit opens the project and they become caption clips; a click on
+// The Captions track's lane, behind its clips. Caption clips are drawn as clips (ClipView): one plain block each, named
+// "Captions 1", "Captions 2"…, with nothing drawn inside. Captions switched on the old way, a flag on the clip with no
+// caption clip, show as one plain block per clip, where its lines show, until someone who can edit opens the project and they become caption clips; a click on
 // one moves the playhead to where it starts. With no captions at all the lane says where they come from.
 export function CaptionLane({ zoom, fromFrame, toFrame, hidden }: { zoom: number; fromFrame: number; toFrame: number; hidden: boolean }) {
   const headerWidth = useHeaderWidth();
@@ -35,7 +34,6 @@ export function CaptionLane({ zoom, fromFrame, toFrame, hidden }: { zoom: number
       <button
         key={block.clipId}
         type="button"
-        title={block.text}
         data-cue
         onClick={() => store.getState().seek(block.start)}
         className={cx(
@@ -46,46 +44,22 @@ export function CaptionLane({ zoom, fromFrame, toFrame, hidden }: { zoom: number
         )}
         style={{ left: frameToPx(block.start, zoom), top: CLIP_TOP, width: Math.max(2, frameToPx(block.end - block.start, zoom)), height: CLIP_HEIGHT }}
       >
-        <span className="min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">{block.text}</span>
+        <span className="min-w-0 truncate px-1.5 text-xs leading-4 text-ed-text">Captions</span>
       </button>
     ));
 }
 
 // The lines of clips with no caption clip, one block per clip: from its first line's start to its last line's end.
-function oldBlocks(cues: readonly Cue[]): { clipId: string; start: number; end: number; text: string }[] {
-  const blocks = new Map<string, { clipId: string; start: number; end: number; text: string }>();
+function oldBlocks(cues: readonly Cue[]): { clipId: string; start: number; end: number }[] {
+  const blocks = new Map<string, { clipId: string; start: number; end: number }>();
   for (const cue of cues) {
     if (cue.captionId !== null) continue;
     const block = blocks.get(cue.clipId);
-    if (!block) blocks.set(cue.clipId, { clipId: cue.clipId, start: cue.start, end: cue.end, text: cue.text });
+    if (!block) blocks.set(cue.clipId, { clipId: cue.clipId, start: cue.start, end: cue.end });
     else {
       block.start = Math.min(block.start, cue.start);
       block.end = Math.max(block.end, cue.end);
-      block.text += ` ${cue.text}`;
     }
   }
   return [...blocks.values()];
-}
-
-// Inside a caption clip: each of its lines where it shows, its words cut to the room it has, a thin line at its start.
-// Decoration only: the clip itself takes the presses. With no line in it, the clip says it holds none.
-export function CaptionPieces({ clip, zoom }: { clip: CaptionClip; zoom: number }) {
-  const doc = useEditor(viewDoc);
-  const lines = useMemo(() => docCues(doc).filter((cue) => cue.captionId === clip.id), [doc, clip.id]);
-  if (lines.length === 0) return <span className="relative min-w-0 truncate px-1.5 text-xs leading-4 text-ed-muted">Captions: no words here</span>;
-  return (
-    <>
-      {lines.map((cue, i) => (
-        <span
-          key={`${cue.clipId}:${cue.words[0].index}`}
-          aria-hidden
-          data-caption-line
-          className={cx("pointer-events-none absolute inset-y-0 flex items-center overflow-hidden", i > 0 && "border-l border-ed-line-strong")}
-          style={{ left: frameToPx(cue.start - clip.start, zoom), width: Math.max(1, frameToPx(cue.end - cue.start, zoom)) }}
-        >
-          <span className="min-w-0 truncate px-1 text-xs leading-4 text-ed-text">{cue.text}</span>
-        </span>
-      ))}
-    </>
-  );
 }
