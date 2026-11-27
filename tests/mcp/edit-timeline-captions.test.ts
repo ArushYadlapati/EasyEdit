@@ -45,6 +45,17 @@ describe("edit_timeline: turning captions on", () => {
     expect(captionTrack(doc)).toBeDefined();
   });
 
+  it("brings in the saved words for an added caption clip, and the clip shows them", async () => {
+    const x = await setup();
+    await x.edit(0, [addVideo(x.asset), { op: "add_track", track: { id: "cap1", kind: "caption", name: "Captions" } }]);
+    const result = await x.edit(1, [{ op: "add_clip", trackId: "cap1", clip: { id: "k1", type: "caption", assetId: x.asset, start: 0, duration: 30, transform: { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, fit: "contain" } } }]);
+    expect(result.isError).toBe(false);
+    expect(result.text.split("\n")[0]).toBe(`Brought in saved captions for ${x.asset}.`);
+    const { doc } = await x.project();
+    expect(doc.captions?.transcripts?.[x.asset]).toEqual(WORDS);
+    expect(captionTrack(doc)!.clips.map((c) => c.id)).toEqual(["k1"]);
+  });
+
   it("only adds the words, when the track is already there", async () => {
     const x = await setup();
     await x.edit(0, [addVideo(x.asset), { op: "add_track", track: { kind: "caption", name: "Captions" } }]);

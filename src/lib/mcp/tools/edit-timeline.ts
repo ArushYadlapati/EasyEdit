@@ -18,8 +18,9 @@ function namedSize(op: unknown): unknown {
   return fields.format === "custom" ? op : { ...rest, ...fields };
 }
 
-// The files whose clips these ops turn captions on for: an update_clip that sets captions true (on a clip of the
-// project, or one added earlier in the same batch) and an added video or audio clip that starts with captions on.
+// The files whose captions these ops turn on: an added caption clip's file, an update_clip that sets captions true (on a
+// clip of the project, or one added earlier in the same batch) and an added video or audio clip that starts with
+// captions on (the older way, which the editor turns into caption clips when it next opens the project).
 function captionFilesTurnedOn(doc: TimelineDoc, ops: unknown[]): string[] {
   const assetOf = new Map<string, string>();
   for (const track of doc.tracks) for (const clip of track.clips) if (clip.type === "video" || clip.type === "audio") assetOf.set(clip.id, clip.assetId);
@@ -32,6 +33,7 @@ function captionFilesTurnedOn(doc: TimelineDoc, ops: unknown[]): string[] {
       const media = (type === "video" || type === "audio") && typeof assetId === "string";
       if (media && typeof id === "string") assetOf.set(id, assetId);
       if (media && captions === true) files.add(assetId);
+      if (type === "caption" && typeof assetId === "string") files.add(assetId);
     } else if (op.op === "update_clip" && typeof op.patch === "object" && op.patch !== null) {
       const { captions, assetId } = op.patch;
       if (typeof op.clipId === "string" && typeof assetId === "string" && assetOf.has(op.clipId)) assetOf.set(op.clipId, assetId);
@@ -44,8 +46,8 @@ function captionFilesTurnedOn(doc: TimelineDoc, ops: unknown[]): string[] {
 
 const hasCaptionOps = (ops: unknown[]) =>
   ops.some((raw) => {
-    const op = raw as { op?: unknown; clip?: { captions?: unknown }; patch?: { captions?: unknown } } | null;
-    return op?.op === "add_clip" ? op.clip?.captions === true : op?.op === "update_clip" ? op.patch?.captions === true : false;
+    const op = raw as { op?: unknown; clip?: { captions?: unknown; type?: unknown }; patch?: { captions?: unknown } } | null;
+    return op?.op === "add_clip" ? op.clip?.captions === true || op.clip?.type === "caption" : op?.op === "update_clip" ? op.patch?.captions === true : false;
   });
 
 function noSavedCaptions(assetIds: string[]): string {

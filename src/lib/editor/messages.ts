@@ -68,6 +68,7 @@ export const MESSAGES = {
     nothing: "Select the clips to nest.",
     slot: "An empty slot can't be nested: a template fills it by its name.",
     nest: "A nest can't go inside a nest. Unnest it first.",
+    captions: "Captions stay on the Captions track, so they can't be nested.",
     locked: "One of those clips is on a locked track.",
     "too-many": "That is more clips than one nest holds.",
     "no-room": "There's no room for another track to put the nest on.",

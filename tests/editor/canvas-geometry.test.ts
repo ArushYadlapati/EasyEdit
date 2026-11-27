@@ -4,7 +4,8 @@ import {
   toOverlay, toScreen, toWorld, viewOf, visibleBox, type CanvasItem, type Handle, type View,
 } from "@/lib/editor/canvas-geometry";
 import type { Sizer } from "@/lib/editor/clip-box";
-import { createEmptyDoc, type Clip, type MediaClip, type TextClip, type TimelineDoc, type Transform } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, captionStyleOf, createEmptyDoc, type Clip, type MediaClip, type TextClip, type TimelineDoc, type Transform } from "@/lib/timeline";
+import { docWithCaptions } from "../helpers/docs";
 import { sampleDoc, video } from "./fixtures";
 
 // Text measures half its font size per character, so "hi" at 64 is 64 wide; the 200 × 100 image is known, every
@@ -368,5 +369,56 @@ describe("the preview's surface", () => {
     surface.attach({ items: () => [], view: () => view, visible: () => null });
     detachOld();
     expect(surface.view()).toBe(view);
+  });
+});
+
+describe("captions on the board", () => {
+  // c1 plays "hello there." from frame 0; the caption clip covers it. Every character is 10 px wide in any font.
+  const W = [
+    { t: "hello", s: 0, e: 400 },
+    { t: "there.", s: 450, e: 900 },
+  ];
+  const measured: Sizer = { source: () => null, measure: (_c, s) => s.length * 10, measureFont: (_f, s) => s.length * 10 };
+  function captioned(locked = false): TimelineDoc {
+    const doc = docWithCaptions("short_9x16");
+    doc.tracks[0].clips = [{ id: "c1", type: "video", assetId: "a", start: 0, duration: 60, in: 0, speed: 1, volume: 1, transform: { ...DEFAULT_TRANSFORM } }];
+    const cap = doc.tracks.find((t) => t.kind === "caption")!;
+    cap.locked = locked;
+    cap.clips = [{ id: "k1", type: "caption", assetId: "a", start: 0, duration: 60, transform: { ...DEFAULT_TRANSFORM } }];
+    doc.captions = { transcripts: { a: W } };
+    return doc;
+  }
+
+  it("the lines showing are an item of their caption clip, centred across the frame on the style's y", () => {
+    const doc = captioned();
+    const style = captionStyleOf(doc);
+    const item = canvasItems(doc, 5, measured).find((i) => i.type === "caption")!;
+    expect(item.clipId).toBe("k1");
+    expect(item.center.x).toBe(doc.width / 2);
+    expect(item.center.y).toBeCloseTo(style.y * doc.height, 5);
+    // "hello there." is 12 characters, so 120 px, and the outline adds a little.
+    expect(item.rect.right - item.rect.left).toBeGreaterThanOrEqual(120);
+    expect(item.rect.bottom - item.rect.top).toBeGreaterThan(style.fontSize);
+    // A press on it finds the caption clip; one off it does not.
+    expect(hitTest(canvasItems(doc, 5, measured), item.center)?.clipId).toBe("k1");
+    expect(hitTest(canvasItems(doc, 5, measured), { x: item.center.x, y: 10 })?.type).not.toBe("caption");
+  });
+
+  it("nothing when no line shows, when the Captions track is hidden, or for captions switched on the old way", () => {
+    expect(canvasItems(captioned(), 50, measured).some((i) => i.type === "caption")).toBe(false);
+    const hidden = captioned();
+    hidden.tracks.find((t) => t.kind === "caption")!.hidden = true;
+    expect(canvasItems(hidden, 5, measured).some((i) => i.type === "caption")).toBe(false);
+    const old = captioned();
+    old.tracks.find((t) => t.kind === "caption")!.clips = [];
+    (old.tracks[0].clips[0] as { captions?: boolean }).captions = true;
+    expect(canvasItems(old, 5, measured).some((i) => i.type === "caption")).toBe(false);
+  });
+
+  it("is locked with its track, and sits above the tracks before the Captions track", () => {
+    expect(canvasItems(captioned(true), 5, measured).find((i) => i.type === "caption")!.locked).toBe(true);
+    const items = canvasItems(captioned(), 5, measured);
+    const at = items.findIndex((i) => i.type === "caption");
+    expect(items.findIndex((i) => i.clipId === "c1")).toBeLessThan(at);
   });
 });

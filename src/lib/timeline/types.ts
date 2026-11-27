@@ -529,8 +529,29 @@ export const NestClip = z.object({
 });
 export type NestClip = z.infer<typeof NestClip>;
 
-export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip, ShapeClip, AdjustmentClip, NestClip]);
+// A caption clip: the captions of one media file, shown while it lasts. It lives on the Captions track only. Its lines
+// are the words heard in the file's video and audio clips (captions/cues.ts), those that fall inside the clip; it
+// draws them in the project's caption style and nothing else. It is linked (by group) to the clip it was made for, so
+// the two move together; split it, trim it or delete a piece to change where captions show.
+export const CaptionClip = z.object({
+  ...ClipBase,
+  type: z.literal("caption"),
+  assetId: z.string().min(1),
+  // None of these: named only so code that reads them from any clip may (they are always absent).
+  keyframes: z.undefined().optional(),
+  transitionIn: z.undefined().optional(),
+  transitionOut: z.undefined().optional(),
+  blend: z.undefined().optional(),
+  slot: z.undefined().optional(),
+});
+export type CaptionClip = z.infer<typeof CaptionClip>;
+
+export const Clip = z.discriminatedUnion("type", [MediaClip, TextClip, PlaceholderClip, ShapeClip, AdjustmentClip, NestClip, CaptionClip]);
 export type Clip = z.infer<typeof Clip>;
+
+export function isCaptionClip(clip: Clip): clip is CaptionClip {
+  return clip.type === "caption";
+}
 
 export function isPlaceholder(clip: Clip): clip is PlaceholderClip {
   return clip.type === "placeholder";

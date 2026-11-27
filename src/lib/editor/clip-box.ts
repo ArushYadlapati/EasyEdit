@@ -12,6 +12,10 @@ export type Sizer = {
   measure(clip: TextClip, s: string): number;
   // The same in a styled span's look (bolder, slanted). Without it a text with spans is boxed as if it had none.
   measureSpan?(clip: TextClip, s: string, span: TextSpan | null): number;
+  // A string's width in a CSS font, for the captions' lines, and the font family as the canvas names it. Without
+  // measureFont a character is taken as 0.55 of the size.
+  measureFont?(font: string, s: string): number;
+  resolveFont?(family: string): string;
 };
 
 // The least share of a clip's width or height a crop typed or dragged by hand leaves showing.
@@ -20,8 +24,8 @@ export const CROP_MIN_SHOWN = 0.05;
 // A clip's box as the preview draws it, from its centre, before scale, stretch and rotation: the whole picture or
 // text box, and the part the crop keeps. Audio has none.
 export function clipRects(doc: TimelineDoc, clip: Clip, sizer: Sizer): { full: LocalRect; kept: LocalRect } | null {
-  // Sound and an adjustment layer have no box on the frame.
-  if (clip.type === "audio" || clip.type === "adjustment" || (clip.type === "placeholder" && clip.accepts === "audio")) return null;
+  // Sound, an adjustment layer and captions have no box of their own on the frame.
+  if (clip.type === "audio" || clip.type === "adjustment" || clip.type === "caption" || (clip.type === "placeholder" && clip.accepts === "audio")) return null;
   const full =
     clip.type === "text"
       ? textRect(clip, doc.width, (s) => sizer.measure(clip, s), sizer.measureSpan ? (s, span) => sizer.measureSpan!(clip, s, span) : undefined)

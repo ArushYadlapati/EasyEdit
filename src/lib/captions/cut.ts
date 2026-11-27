@@ -1,5 +1,6 @@
 import { findClip, type EditorStore } from "@/lib/editor/store";
 import { transcriptOf, type CaptionWord, type MediaClip, type OpInput, type TimelineDoc } from "@/lib/timeline";
+import { isCaptioned } from "./cues";
 
 // Cutting a video by its words: the parts of a clip where chosen words are said, a pause runs long or a filler word
 // sits are taken out, and what follows on the clip's track closes up. The words themselves are kept with the file, so
@@ -25,7 +26,7 @@ export function cuttable(doc: TimelineDoc, clipIds: readonly string[] = []): Fou
     track.locked
       ? []
       : track.clips.flatMap((clip): Found[] => {
-          if (!speaks(clip) || !clip.captions || clip.speed <= 0) return [];
+          if (!speaks(clip) || !isCaptioned(doc, clip) || clip.speed <= 0) return [];
           const words = transcriptOf(doc, clip.assetId);
           return words?.length ? [{ clip, words }] : [];
         }),

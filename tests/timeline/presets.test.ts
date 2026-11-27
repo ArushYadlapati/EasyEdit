@@ -64,7 +64,7 @@ describe("timeline presets", () => {
       video: ["video", "image", "adjustment", "nest"],
       overlay: ["image", "video", "adjustment", "nest"],
       text: ["text"],
-      caption: [],
+      caption: ["caption"],
       audio: ["audio"],
       shape: ["shape"],
     });

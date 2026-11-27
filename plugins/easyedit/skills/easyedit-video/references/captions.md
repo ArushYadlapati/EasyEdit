@@ -16,7 +16,7 @@ Read this when you turn captions on, pick or change their look, place them in th
 
 ## When captions go on
 
-Captions show the words heard in a clip's own sound. Each video or audio clip has its own switch, and the project has one Captions track that draws them all.
+Captions show the words heard in a clip's own sound. In the editor each captioned clip has one caption clip on the Captions track (type `"caption"`, with the clip's `assetId`), linked with it so they move together. A caption clip shows only the lines whose words start inside it, so splitting it, trimming it or removing a piece changes where captions show. The project has one Captions track that draws them all.
 
 - **Shorts, Reels and TikToks:** on, for every clip where someone speaks. Once a project has captions, keep them on for all its talking clips, not just some.
 - **Long-form YouTube (16:9):** a choice. Captions drawn into the picture help a tutorial or a fast talker. Many long videos skip them and post a subtitle file instead, which viewers can switch off. The person can download a .srt or .vtt under Subtitle files in the Captions tab. If you can't tell which they want, ask.
@@ -36,7 +36,7 @@ This works when the file already has saved captions, and it adds the Captions tr
 
 Captions follow their clip. Trim it and the cut words go. Move it, split it or change its speed and the lines move with it. A clip that plays backward or holds one frame has no captions. Never try to place caption lines by hand.
 
-To turn one clip's captions off, patch it with `"captions": false`. To hide every caption at once, hide the Captions track (its id is in get_project):
+Turning captions on with `update_clip` gives the clip its caption clip the next time someone opens the project in the editor. To turn one clip's captions off, remove its caption clips with `remove_clip` (their ids are under the Captions track in get_project), and patch the clip with `"captions": false` if it has the switch on. To show captions for only part of a clip, `split_clip` its caption clip and remove the piece you don't want. To hide every caption at once, hide the Captions track (its id is in get_project):
 
 ```json
 {"op":"update_track","trackId":"cap1","patch":{"hidden":true}}
