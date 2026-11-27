@@ -190,7 +190,9 @@ function projectFacts(facts: ProjectAnalysis, detail: boolean): string {
   const looks = counted(facts.looks);
   parts.push(looks ? `looks ${looks}` : "no looks");
   if (detail) {
-    const animations = counted(facts.textAnimations);
+    // Facts counted before highlight word left the editor can still name it. Agents aren't taught it any more, so it
+    // isn't passed on for them to copy.
+    const animations = counted(Object.fromEntries(Object.entries(facts.textAnimations).filter(([name]) => name !== "highlight_word")));
     if (animations) parts.push(`text animations ${animations}`);
     if (facts.speedChanges > 0) parts.push(`${plural(facts.speedChanges, "clip")} at another speed`);
     if (facts.effects.length > 0) parts.push(`effects ${facts.effects.map(oneLine).join(", ")}`);

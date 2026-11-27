@@ -124,6 +124,8 @@ describe("a past project's facts", () => {
         text("c", 60, 30, { animationIn: null, animationOut: null, emphasis: null }),
         // An emphasis counts by its preset alone, however much and however fast it moves.
         text("d", 90, 30, { emphasis: { preset: "pulse", amount: 0.5, speed: 2 } }),
+        // Highlight word is no longer offered, so it isn't a fact for agents to copy.
+        text("e", 120, 30, { emphasis: { preset: "highlight_word", color: "#FFD400" } }),
       ]),
     );
     expect(facts(doc).textAnimations).toEqual({ "pop in": 2, "fade out": 1, pulse: 2 });
