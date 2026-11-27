@@ -271,10 +271,17 @@ export const TextAnimationOut = z.strictObject({
 });
 export type TextAnimationOut = z.infer<typeof TextAnimationOut>;
 
-// Runs for the whole clip; highlight_word lights the words in `color` (default #FFD400).
+// How far and how fast a shake or pulse moves, as factors of its own look: 1, or absent, is the look it has always had.
+export const EMPHASIS_AMOUNT = { min: 0.1, max: 3 };
+export const EMPHASIS_SPEED = { min: 0.25, max: 4 };
+
+// Runs for the whole clip. highlight_word lights the words in `color` (default #FFD400) and ignores amount and speed;
+// the editor and the agents' guide no longer offer it, but projects that have it keep it and draw it as before.
 export const Emphasis = z.strictObject({
   preset: z.enum(["shake", "pulse", "highlight_word"]),
   color: HexColor.optional(),
+  amount: z.number().min(EMPHASIS_AMOUNT.min).max(EMPHASIS_AMOUNT.max).optional(),
+  speed: z.number().min(EMPHASIS_SPEED.min).max(EMPHASIS_SPEED.max).optional(),
 });
 export type Emphasis = z.infer<typeof Emphasis>;
 

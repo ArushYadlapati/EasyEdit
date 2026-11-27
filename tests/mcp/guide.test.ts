@@ -180,9 +180,17 @@ describe("the guide", () => {
       "frames runs from 1 to 600",
       "get_project shows each keyframed property's list as kf.<prop>=at:value~ease",
       '"left" enters from the right moving left',
-      'Defaults: direction "left", dip color "#000000", highlight_word color "#FFD400"',
+      'Defaults: direction "left", dip color "#000000".',
     ]) expect(buildEditingGuide(), phrase).toContain(phrase);
-    for (const value of ["fade", "crossfade", "slide", "zoom", "whip", "dip", "ease_in_out", "hold", "typewriter", "scale_punch", "shake", "pulse", "highlight_word"]) expect(EFFECTS_REFERENCE, value).toContain(value);
+    for (const value of ["fade", "crossfade", "slide", "zoom", "whip", "dip", "ease_in_out", "hold", "typewriter", "scale_punch", "shake", "pulse"]) expect(EFFECTS_REFERENCE, value).toContain(value);
+  });
+
+  it("teaches emphasis as a rare shake or pulse with an amount and a speed, and no longer highlight_word", () => {
+    expect(EFFECTS_REFERENCE).toContain('emphasis is {"preset":"shake"|"pulse","amount":N,"speed":N} for the whole clip');
+    expect(EFFECTS_REFERENCE).toContain("amount (0.1 to 3) scales how far it moves and speed (0.25 to 4) how fast; 1, or left out, is its own look.");
+    expect(EFFECTS_REFERENCE).toContain("Use it rarely");
+    // Old projects keep it and the ops still take it, but agents aren't taught it.
+    expect(buildEditingGuide()).not.toContain("highlight_word");
   });
 
   it("says crop and stretch are possible", () => {

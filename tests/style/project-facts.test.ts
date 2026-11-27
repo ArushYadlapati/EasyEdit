@@ -122,9 +122,11 @@ describe("a past project's facts", () => {
         text("a", 0, 30, { animationIn: { preset: "pop", frames: 6 }, animationOut: { preset: "fade", frames: 6 } }),
         text("b", 30, 30, { animationIn: { preset: "pop", frames: 6 }, emphasis: { preset: "pulse" } }),
         text("c", 60, 30, { animationIn: null, animationOut: null, emphasis: null }),
+        // An emphasis counts by its preset alone, however much and however fast it moves.
+        text("d", 90, 30, { emphasis: { preset: "pulse", amount: 0.5, speed: 2 } }),
       ]),
     );
-    expect(facts(doc).textAnimations).toEqual({ "pop in": 2, "fade out": 1, pulse: 1 });
+    expect(facts(doc).textAnimations).toEqual({ "pop in": 2, "fade out": 1, pulse: 2 });
   });
 
   it("count the clips inside a nest for text, music and the rest, and the nest as one shot", () => {

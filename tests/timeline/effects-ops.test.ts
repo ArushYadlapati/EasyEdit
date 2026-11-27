@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_TRANSFORM, applyOps, prepareOps, type Op, type TimelineDoc } from "@/lib/timeline";
+import { DEFAULT_TRANSFORM, TimelineDoc, applyOps, prepareOps, type Op } from "@/lib/timeline";
 import type { Clip, MediaClip, TextClip } from "@/lib/timeline/types";
 import { docWithCaptions } from "../helpers/docs";
 
@@ -194,7 +194,7 @@ describe("effects: fields that do not fit the clip", () => {
     );
   });
 
-  it("emphasis on text is accepted", () => {
+  it("emphasis on text is accepted, highlight_word too: the editor no longer offers it, but projects keep it", () => {
     const d = withClips([{ trackId: "t1", clip: textClip("t", 0, 60) }]);
     const { doc } = applyOps(d, [
       { op: "update_clip", clipId: "t", patch: { emphasis: { preset: "highlight_word", color: "#FFD400" } } },
@@ -223,6 +223,38 @@ describe("effects: fields that do not fit the clip", () => {
       () => applyOps(doc0(), [{ op: "add_clip", trackId: "v1", clip: clip("c1", 0, 60, { emphasis: { preset: "pulse" } }) }]),
       /add_clip: "emphasis" is not allowed on a.* video clip/,
     );
+  });
+});
+
+describe("effects: an emphasis's amount and speed", () => {
+  it("a saved project's emphasis from before them still loads as it was", () => {
+    const d = withClips([
+      { trackId: "t1", clip: textClip("a", 0, 60, { emphasis: { preset: "shake" } }) },
+      { trackId: "t1", clip: textClip("b", 60, 60, { emphasis: { preset: "pulse" } }) },
+      { trackId: "t1", clip: textClip("c", 120, 60, { emphasis: { preset: "highlight_word", color: "#00ff00" } }) },
+    ]);
+    const loaded = TimelineDoc.parse(JSON.parse(JSON.stringify(d)));
+    expect(loaded).toEqual(d);
+    expect((find(loaded, "a") as TextClip).emphasis).toStrictEqual({ preset: "shake" });
+    expect((find(loaded, "c") as TextClip).emphasis).toStrictEqual({ preset: "highlight_word", color: "#00ff00" });
+  });
+
+  it("are set through update_clip, and undo puts the old emphasis back exactly", () => {
+    const d = withClips([{ trackId: "t1", clip: textClip("t", 0, 60, { emphasis: { preset: "shake" } }) }]);
+    const next = { preset: "shake", amount: 0.4, speed: 1.5 };
+    const { doc, inverse } = applyOps(d, [{ op: "update_clip", clipId: "t", patch: { emphasis: next } }]);
+    expect((find(doc, "t") as TextClip).emphasis).toStrictEqual(next);
+    expect(applyOps(doc, roundTrip(inverse)).doc).toEqual(d);
+  });
+
+  it("stay in range: amount 0.1 to 3, speed 0.25 to 4", () => {
+    const d = withClips([{ trackId: "t1", clip: textClip("t", 0, 60) }]);
+    const set = (emphasis: Record<string, unknown>) => () => applyOps(d, [{ op: "update_clip", clipId: "t", patch: { emphasis } }]);
+    for (const ok of [{ amount: 0.1 }, { amount: 3 }, { speed: 0.25 }, { speed: 4 }]) expect(set({ preset: "pulse", ...ok })).not.toThrow();
+    for (const bad of [{ amount: 0.05 }, { amount: 3.5 }, { speed: 0.2 }, { speed: 5 }, { amount: "big" }]) {
+      refused(set({ preset: "pulse", ...bad }), /patch is invalid: emphasis\.(amount|speed)/);
+    }
+    refused(set({ preset: "pulse", strength: 2 }), /patch is invalid: emphasis: Unrecognized key: "strength"/);
   });
 });
 

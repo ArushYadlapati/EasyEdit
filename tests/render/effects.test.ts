@@ -180,6 +180,71 @@ describe("clipLook", () => {
     expect(clipLook(c, 24, doc).transform.scale).toBeCloseTo(1);
   });
 
+  it("an old shake and pulse, with no amount or speed, draw at 30 fps as they always have", () => {
+    const shake = text({ duration: 120, emphasis: { preset: "shake" } });
+    const pulse = text({ duration: 120, emphasis: { preset: "pulse" } });
+    for (let f = 0; f < 120; f++) {
+      const t = clipLook(shake, f, doc).transform;
+      // What the shake was, in radians a frame.
+      expect(t.x).toBeCloseTo(0.5 + 0.006 * Math.sin(f * 1.7), 12);
+      expect(t.y).toBeCloseTo(0.5 + 0.006 * (doc.width / doc.height) * Math.sin(f * 2.3 + 1), 12);
+      expect(t.rotation).toBeCloseTo(1.5 * Math.sin(f * 1.3), 12);
+      expect(clipLook(pulse, f, doc).transform.scale).toBeCloseTo(1 + 0.05 * Math.sin((2 * Math.PI * (f / 30)) / 0.8), 12);
+    }
+  });
+
+  it("shakes at the same rate in seconds at 60 fps as at 30, and the same wherever the clip sits", () => {
+    const at60 = { ...doc, fps: 60 };
+    const c = text({ duration: 240, emphasis: { preset: "shake" } });
+    const moved = text({ start: 45, duration: 240, emphasis: { preset: "shake" } });
+    for (let f = 0; f < 120; f++) {
+      const want = clipLook(c, f, doc).transform;
+      // Frame 2f at 60 fps is the moment frame f is at 30.
+      const got = clipLook(c, 2 * f, at60).transform;
+      expect(got.x).toBeCloseTo(want.x, 12);
+      expect(got.y).toBeCloseTo(want.y, 12);
+      expect(got.rotation).toBeCloseTo(want.rotation, 12);
+      expect(clipLook(moved, 45 + f, doc).transform).toEqual(want);
+    }
+  });
+
+  it("amount scales how far a shake moves and speed how fast", () => {
+    const plain = text({ duration: 240, emphasis: { preset: "shake" } });
+    const big = text({ duration: 240, emphasis: { preset: "shake", amount: 2.5 } });
+    const fast = text({ duration: 240, emphasis: { preset: "shake", speed: 2 } });
+    const slow = text({ duration: 240, emphasis: { preset: "shake", speed: 0.5 } });
+    for (let f = 0; f < 60; f++) {
+      const p = clipLook(plain, f, doc).transform;
+      const b = clipLook(big, f, doc).transform;
+      expect(b.x - 0.5).toBeCloseTo(2.5 * (p.x - 0.5), 12);
+      expect(b.y - 0.5).toBeCloseTo(2.5 * (p.y - 0.5), 12);
+      expect(b.rotation).toBeCloseTo(2.5 * p.rotation, 12);
+      // Twice the speed reaches at frame f where the plain shake is at frame 2f.
+      expect(clipLook(fast, f, doc).transform.x).toBeCloseTo(clipLook(plain, 2 * f, doc).transform.x, 12);
+      expect(clipLook(fast, f, doc).transform.rotation).toBeCloseTo(clipLook(plain, 2 * f, doc).transform.rotation, 12);
+      expect(clipLook(slow, 2 * f, doc).transform.y).toBeCloseTo(p.y, 12);
+    }
+  });
+
+  it("amount scales a pulse's 5% and speed its 0.8 s period", () => {
+    const c = text({ emphasis: { preset: "pulse", amount: 2, speed: 2 } });
+    const scales = Array.from({ length: 12 }, (_, f) => clipLook(c, f, doc).transform.scale);
+    // A quarter of 0.4 s is 3 frames at 30 fps: the top of the swing, 10% up.
+    expect(scales[3]).toBeCloseTo(1.1);
+    expect(Math.max(...scales)).toBeCloseTo(1.1);
+    expect(Math.min(...scales)).toBeCloseTo(0.9);
+    expect(clipLook(c, 12, doc).transform.scale).toBeCloseTo(1);
+    // At 60 fps, the same moment.
+    expect(clipLook(c, 6, { ...doc, fps: 60 }).transform.scale).toBeCloseTo(1.1);
+  });
+
+  it("highlight_word ignores an amount and a speed", () => {
+    const c = text({ text: "go team go", emphasis: { preset: "highlight_word", amount: 3, speed: 4 } });
+    const look = clipLook(c, 15, doc);
+    expect(look.litWord).toBe(1);
+    expect(look.transform).toEqual(effectiveTransform(c, 15));
+  });
+
   it("shake stays within its bounds", () => {
     const c = text({ duration: 400, emphasis: { preset: "shake" } });
     for (let f = 0; f < 400; f++) {
