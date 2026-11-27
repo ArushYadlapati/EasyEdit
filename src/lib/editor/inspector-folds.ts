@@ -26,7 +26,8 @@ export type SectionId =
   | "follow"
   | "scenes"
   | "background"
-  | "slot";
+  | "slot"
+  | "lines";
 
 // What a clip is and when it plays come first, then its sound, then its looks, then the ones used now and then.
 // A section a clip does not have is skipped where it is drawn.
@@ -39,7 +40,7 @@ export const SECTION_ORDER: Readonly<Record<ClipKind, readonly SectionId[]>> = {
   nest: ["nest", "position", "timing", "color", "stylize", "mask", "blend", "slot"],
   placeholder: ["position", "timing", "slot"],
   adjustment: ["adjustment", "color", "timing", "stylize", "mask"],
-  caption: ["timing"], // a caption clip has its own short inspector (the captions' style, then Timing), not these
+  caption: ["lines", "timing"], // a caption clip has its own short inspector: its lines, the captions' style, then Timing
 };
 
 // The two or three sections open the first time a kind of clip is selected.
@@ -52,7 +53,7 @@ export const OPEN_BY_DEFAULT: Readonly<Record<ClipKind, readonly SectionId[]>> =
   nest: ["nest", "position", "timing"],
   placeholder: ["position", "timing", "slot"],
   adjustment: ["adjustment", "color", "timing"],
-  caption: ["timing"],
+  caption: ["lines", "timing"],
 };
 
 export const FOLDS_KEY = "easyedit-inspector-folds";

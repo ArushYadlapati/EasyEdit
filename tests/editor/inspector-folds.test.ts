@@ -4,9 +4,10 @@ import { text, video } from "./fixtures";
 
 it("opens two or three sections for each kind of clip, all of them sections that kind has", () => {
   for (const [kind, open] of Object.entries(OPEN_BY_DEFAULT)) {
-    // A caption clip has its own short inspector (the captions' style, then Timing), so its one entry is Timing.
+    // A caption clip has its own short inspector: its lines and Timing fold, with the captions' style between them.
     if (kind === "caption") {
-      expect(open).toEqual(["timing"]);
+      expect(open).toEqual(["lines", "timing"]);
+      expect(SECTION_ORDER.caption).toEqual(["lines", "timing"]);
       continue;
     }
     expect(open.length, kind).toBeGreaterThanOrEqual(2);

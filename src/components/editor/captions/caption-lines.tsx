@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button";
 import { FOCUS_RING, cx } from "@/components/ui/cx";
 import { Segmented } from "@/components/ui/segmented";
 import { TextInput } from "@/components/ui/text-input";
-import { retextOps } from "@/lib/captions/actions";
-import { docCues, type Cue } from "@/lib/captions/cues";
+import { cueKey, cueKeyText, docCues, type Cue } from "@/lib/captions/cues";
 import { fillerRanges, pauseRanges, runCut, wordRanges } from "@/lib/captions/cut";
 import { formatClock } from "@/lib/editor/geometry";
 import { useEditor, useEditorStore } from "../context";
+import { useCaptionLine } from "./use-caption-line";
 
 type Mode = "fix" | "cut";
 const pickKey = (clipId: string, index: number) => `${clipId}:${index}`;
@@ -132,22 +132,12 @@ function WordLine({ cue, fps, canEdit, picked, onToggle }: { cue: Cue; fps: numb
   );
 }
 
-// Enter or leaving the box saves the typed words as one edit; Escape puts the line back as it is. The fix is made to
-// the words as they were when typing began: if someone changed them meanwhile it can't apply, and says so.
-function CaptionLine({ cue, fps, canEdit }: { cue: Cue; fps: number; canEdit: boolean }) {
+// One line's box. What is typed shows at once and is held (useCaptionLine): a pause, Enter or leaving the box saves
+// it as one edit; Escape puts the line back as it is. If someone changed the words meanwhile it can't apply, and says so.
+export function CaptionLine({ cue, fps, canEdit }: { cue: Cue; fps: number; canEdit: boolean }) {
   const store = useEditorStore();
-  const [draft, setDraft] = useState<{ text: string; from: Cue } | null>(null);
+  const line = useCaptionLine(store, cueKey(cue), cue.text);
   const time = formatClock(cue.start, fps);
-
-  function save() {
-    if (draft === null) return;
-    const state = store.getState();
-    const ops = retextOps(state.doc, draft.from, draft.text);
-    if (ops.length > 0) state.edit(ops, "edit caption");
-    // Nothing applied, though the text would change the line as it is now: the words moved under the typing.
-    else if (retextOps(state.doc, cue, draft.text).length > 0) state.notify("info", "That caption changed while you were typing. Try again.");
-    setDraft(null);
-  }
 
   return (
     <li className="flex min-w-0 items-center gap-2">
@@ -164,14 +154,29 @@ function CaptionLine({ cue, fps, canEdit }: { cue: Cue; fps: number; canEdit: bo
         disabled={!canEdit}
         spellCheck
         autoComplete="off"
-        value={draft?.text ?? cue.text}
-        onChange={(event) => setDraft({ text: event.target.value, from: draft?.from ?? cue })}
-        onBlur={save}
+        value={line.value}
+        onChange={(event) => line.change(event.target.value)}
+        onBlur={() => line.editing && line.save()}
         onKeyDown={(event) => {
-          if (event.key === "Enter") save();
-          else if (event.key === "Escape") setDraft(null);
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === "Enter") line.save();
+          else if (event.key === "Escape") line.cancel();
         }}
       />
     </li>
+  );
+}
+
+// A caption clip's own lines, in the inspector: the ones that show inside it, each to retype.
+export function CaptionClipLines({ clipId, canEdit }: { clipId: string; canEdit: boolean }) {
+  const doc = useEditor((s) => s.doc);
+  const cues = useMemo(() => docCues(doc).filter((cue) => cue.captionId === clipId), [doc, clipId]);
+  if (cues.length === 0) return <p className="text-[13px] leading-5 text-ed-muted">No words are said in this part.</p>;
+  return (
+    <ol className="flex flex-col gap-1">
+      {cues.map((cue) => (
+        <CaptionLine key={cueKeyText(cueKey(cue))} cue={cue} fps={doc.fps} canEdit={canEdit} />
+      ))}
+    </ol>
   );
 }

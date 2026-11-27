@@ -7,6 +7,19 @@ export type CueWord = { index: number; text: string; start: number; end: number 
 // line of a clip whose captions were switched on the old way (its own captions flag, before caption clips).
 export type Cue = { clipId: string; assetId: string; start: number; end: number; words: CueWord[]; text: string; captionId: string | null };
 
+// Which line a cue is, kept while its words are retyped: its clip, its caption clip, and where its words start in the
+// file's list (a retype replaces the words from there, so that place stays).
+export type CueKey = { clipId: string; captionId: string | null; index: number };
+export const cueKey = (cue: Cue): CueKey => ({ clipId: cue.clipId, captionId: cue.captionId, index: cue.words[0].index });
+// The key as text, for a lookup or a React key.
+export const cueKeyText = (key: CueKey): string => `${key.clipId}:${key.index}`;
+export const sameCue = (cue: Cue, key: CueKey): boolean => cue.clipId === key.clipId && cue.captionId === key.captionId && cue.words[0]?.index === key.index;
+
+// The line a key names in the project as it is now, if it is still there.
+export function findCue(doc: TimelineDoc, key: CueKey): Cue | null {
+  return docCues(doc).find((cue) => sameCue(cue, key)) ?? null;
+}
+
 // A pause longer than pauseMs starts a new line; a line stays up holdMs after its last word; a line holds at most
 // maxChars characters (the "word" preset shows one word, so it has no limit).
 export const CUE_RULES = { pauseMs: 600, holdMs: 400, maxChars: { block: 28, karaoke: 28, bar: 42 } } as const;

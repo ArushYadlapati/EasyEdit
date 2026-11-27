@@ -55,6 +55,7 @@ import { CUTOUT_MODEL_BYTES } from "@/lib/media/cutout/protocol";
 import { formatLength } from "@/lib/media/messages";
 import { PLACEHOLDER_LABELS } from "@/lib/media/playback";
 import { BLEND_LABEL, BLEND_MODES, LOOKS, NO_STYLE, NO_TONE, STYLE_KEYS, TONE_KEYS, VOLUME_MAX, type AdjustmentClip, type CaptionClip, type Clip, type ColorClip, type KeyframeProp, type Marker, type MediaClip, type NestClip, type OpInput, type ShapeClip, type StyleKey, type TextClip, type Track, docDuration, isColorClip, isCropped, isMediaClip, isStyled, isToned, lookOf, nestClips, nestLength, nestName } from "@/lib/timeline";
+import { CaptionClipLines } from "./captions/caption-lines";
 import { CaptionStyleControls } from "./captions/caption-style-controls";
 import { colorStretchOps, plainStretchOps, stretchLook, toggleStretchOps } from "@/lib/editor/text-spans";
 import type { SteadyStrength } from "@/lib/media/steady";
@@ -1458,15 +1459,18 @@ function AdjustmentSection({ clip }: { clip: AdjustmentClip }) {
   );
 }
 
-// Captions: how every caption in the project looks, and when this piece shows. The words are fixed in the Captions tab.
+// Captions: this piece's own lines to retype, how every caption in the project looks, and when this piece shows.
 function CaptionClipInspector({ clip, canEdit }: { clip: CaptionClip; canEdit: boolean }) {
   return (
-    <>
+    <FoldScope.Provider value={clip}>
       <h2 className="text-sm leading-5 font-semibold text-ed-text">Captions</h2>
-      <Hint>Split it to show captions in parts, or delete a part to hide them there. Fix the words in the Captions tab.</Hint>
+      <Hint>Type a line here, or double-click it on the preview. Split this clip to show captions in parts, or delete a part to hide them there.</Hint>
+      <Section title="Lines" fold="lines">
+        <CaptionClipLines clipId={clip.id} canEdit={canEdit} />
+      </Section>
       <CaptionStyleControls canEdit={canEdit} />
       <TimingSection clipId={clip.id} slips={false} />
-    </>
+    </FoldScope.Provider>
   );
 }
 

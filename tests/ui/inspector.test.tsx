@@ -1015,6 +1015,46 @@ describe("template slot section", () => {
   });
 });
 
+it("a selected caption clip lists its own lines to retype, above the style; typing is held, Enter saves one edit", () => {
+  const doc = sampleDoc();
+  doc.tracks.find((t) => t.kind === "caption")!.clips = [{ id: "k1", type: "caption", assetId: "a", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM } }];
+  // c1 (file a) says one line from its start, then another after a long pause, outside k1's span.
+  doc.captions = { transcripts: { a: [{ t: "hello", s: 0, e: 400 }, { t: "there.", s: 450, e: 900 }, { t: "later", s: 5000, e: 5400 }] } };
+  const store = makeStore({ doc });
+  store.getState().select(["k1"]);
+  render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+  const lines = document.querySelector<HTMLElement>('[data-section="lines"]')!;
+  expect(within(lines).getByRole("button", { name: "Lines" }).getAttribute("aria-expanded")).toBe("true");
+  const fields = within(lines).getAllByRole("textbox") as HTMLInputElement[];
+  // Only k1's own line: "later" shows outside it.
+  expect(fields.map((f) => f.value)).toEqual(["hello there."]);
+  // Lines come before the captions' look.
+  expect(lines.compareDocumentPosition(screen.getByRole("button", { name: "Bar" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.change(fields[0], { target: { value: "hi there" } });
+  expect(store.getState().gesture?.label).toBe("edit caption");
+  expect(store.getState().queue).toEqual([]);
+  fireEvent.keyDown(fields[0], { key: "Enter" });
+  expect(store.getState().queue.map((e) => e.label)).toEqual(["edit caption"]);
+  expect(store.getState().doc.captions?.transcripts?.a.map((w) => w.t)).toEqual(["hi", "there", "later"]);
+  // Escape puts a line back.
+  fireEvent.change(fields[0], { target: { value: "nope" } });
+  fireEvent.keyDown(fields[0], { key: "Escape" });
+  expect(fields[0].value).toBe("hi there");
+  expect(store.getState().gesture).toBeNull();
+});
+
+it("a viewer sees a caption clip's lines but can't retype them", () => {
+  const doc = sampleDoc();
+  doc.tracks.find((t) => t.kind === "caption")!.clips = [{ id: "k1", type: "caption", assetId: "a", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM } }];
+  doc.captions = { transcripts: { a: [{ t: "hello", s: 0, e: 400 }] } };
+  const store = makeStore({ doc, canEdit: false });
+  store.getState().select(["k1"]);
+  render(<EditorProvider store={store}><Inspector /></EditorProvider>);
+  const field = within(document.querySelector<HTMLElement>('[data-section="lines"]')!).getByRole("textbox") as HTMLInputElement;
+  expect(field.value).toBe("hello");
+  expect(field.disabled).toBe(true);
+});
+
 it("a selected caption clip shows the captions' style and its timing, and changing the look is one edit", () => {
   const doc = sampleDoc();
   doc.tracks.find((t) => t.kind === "caption")!.clips = [{ id: "k1", type: "caption", assetId: "a", start: 0, duration: 30, transform: { ...DEFAULT_TRANSFORM } }];
@@ -1022,7 +1062,7 @@ it("a selected caption clip shows the captions' style and its timing, and changi
   store.getState().select(["k1"]);
   render(<EditorProvider store={store}><Inspector /></EditorProvider>);
   expect(screen.getByRole("heading", { name: "Captions" })).toBeTruthy();
-  expect(screen.getByText(/Fix the words in the Captions tab/)).toBeTruthy();
+  expect(screen.getByText(/double-click it on the preview/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Bar" }));
   expect(store.getState().queue).toMatchObject([{ label: "caption style", ops: [{ op: "set_caption_style", patch: { preset: "bar" } }] }]);
   // No picture's fields: a caption clip has no place, size or crop of its own.
