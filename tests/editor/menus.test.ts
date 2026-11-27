@@ -6,6 +6,8 @@ import {
 } from "@/lib/editor/menus";
 import { LIMITS } from "@/lib/limits";
 import { docDuration } from "@/lib/timeline";
+import { groupSelection as linkSelection, separateAudio, ungroupSelection } from "@/lib/editor/actions";
+import { findClip } from "@/lib/editor/store";
 import { makeStore, sampleDoc, video } from "./fixtures";
 
 // An editor with nothing selected, nothing copied, empty stacks and room to zoom both ways.
@@ -210,7 +212,7 @@ it("clipMenu follows the selection and the playhead", () => {
   expect(enabled(entries)).toEqual(["cut", "copy", "duplicate", "split", "edit-text", "crop", "nest", "delete"]);
   // Two clips keep the original five; the video among them adds its sound's two and its speed's two.
   st().select(["c1", "x1"]);
-  expect(clipMenu(st()).map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Mute", "Separate audio", "Reverse", "Freeze frame", "Nest clips", "Delete"]);
+  expect(clipMenu(st()).map((e) => e.label)).toEqual(["Cut", "Copy", "Duplicate", "Split at the playhead", "Mute", "Separate audio", "Reverse", "Freeze frame", "Link clips", "Nest clips", "Delete"]);
   st().select(["x1"]);
 
   st().seek(70);
@@ -251,6 +253,38 @@ it("clipMenu offers Mute and Separate audio for clips that sound", () => {
   // On a locked track neither runs.
   lockTrack(store, "a1");
   expect(sound().map((e) => e.disabled)).toEqual([true]);
+});
+
+it("after Separate audio the clip menu offers Unlink clips, which takes the pair apart", () => {
+  const store = makeStore();
+  const st = () => store.getState();
+  const links = () => clipMenu(st()).filter((e) => e.id === "group-clips" || e.id === "ungroup-clips");
+  // One clip on its own: neither.
+  st().select(["c1"]);
+  expect(links()).toEqual([]);
+  // Two clips that are not linked: Link clips, a command with a line above it, and no Unlink.
+  st().select(["c1", "x1"]);
+  expect(links()).toEqual([{ id: "group-clips", label: "Link clips", command: "group-clips", disabled: false, separatorBefore: true, edit: true }]);
+  // Separate audio links the video and its new sound clip.
+  st().select(["c1"]);
+  separateAudio(store);
+  // It selects the new sound clip; that one alone is enough to offer Unlink.
+  const pair = ["c1", ...st().selection.clipIds];
+  expect(pair).toHaveLength(2);
+  expect(findClip(st().doc, "c1")!.clip.group).toBeTruthy();
+  expect(links()).toEqual([{ id: "ungroup-clips", label: "Unlink clips", command: "ungroup-clips", disabled: false, separatorBefore: true, edit: true }]);
+  // The nest entry follows without a line of its own.
+  const entries = clipMenu(st());
+  expect(byId(entries, "nest").separatorBefore).toBe(false);
+  // Unlink runs on the pair: the two are no longer in a group, and the menu stops offering it.
+  st().select(pair);
+  ungroupSelection(store);
+  for (const id of pair) expect(findClip(st().doc, id)!.clip.group ?? null).toBeNull();
+  expect(links().map((e) => e.id)).toEqual(["group-clips"]);
+  // On a locked track Unlink is greyed.
+  linkSelection(store);
+  lockTrack(store, findClip(st().doc, "c1")!.track.id);
+  expect(links().map((e) => [e.id, e.disabled])).toEqual([["ungroup-clips", true]]);
 });
 
 it("the clip menu offers Crop for one video, image or text", () => {
