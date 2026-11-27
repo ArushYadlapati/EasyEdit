@@ -247,10 +247,10 @@ Options, gentlest first:
 
 Here \`at\` counts frames from the clip's start, not the timeline's, and the last value holds to the clip's end. A keyframed scale ignores the transform's, so start from the clip's own scale if it isn't 1. Stay between about 1.08 and 1.2: more, and the picture goes soft and heads get cut off. For a calm open, glide instead: 1 to 1.06 over 90 frames (3 seconds) with "ease_in_out" and no hold.
 
-- **Emphasis on the hook text.** "highlight_word" lights each word in turn across the clip, "pulse" makes it breathe and "shake" keeps it jittering. Use one, on text that earns it:
+- **A colored key word on the second line.** Don't shake or pulse hook text: it looks like a gimmick and is harder to read. Give the word that matters its own color with a span instead. In "It's your shaping.", "shaping" runs from 10 to 17:
 
 \`\`\`json
-{"op":"update_clip","clipId":"c5","patch":{"emphasis":{"preset":"highlight_word","color":"#FFD400"}}}
+{"op":"update_clip","clipId":"c6","patch":{"spans":[{"from":10,"to":17,"color":"#FFD400"}]}}
 \`\`\`
 
 - **A quick whip into the second shot.** Give the first clip a "whip" \`transitionOut\` and the second a "whip" \`transitionIn\`, 6 frames each and the same direction, so the motion carries through the cut. Never a \`transitionIn\` on the first clip:
@@ -736,7 +736,7 @@ Read this when you add a title, a hook line, a list, a name tag or any other wor
 - Leave each clip up long enough to read: about 3 words a second, and never less than 1.5 s. Six words need 2 s, which is 60 frames at 30 fps. Always work from the project's own fps.
 - Keep every line inside the safe area. In 9:16 that means y between 0.14 and 0.65 and x between 0.06 and 0.94, unless get_project shows a "Safe area" line with the project's own box.
 - Make text readable over any footage with a shadow, an outline or a box behind it.
-- Animate in and out quickly (6 to 12 frames at 30 fps). Save emphasis for the one line that matters.
+- Animate in and out quickly (6 to 12 frames at 30 fps). Most videos need no emphasis; use it on one line at most.
 - Stay with the brand fonts and the sizes already in the project unless the person asks for a change.
 
 ## Start from a preset and the brand fonts
@@ -871,15 +871,16 @@ Set these on a text clip with \`update_clip\`, or put them in the clip when you 
 - Lengths at 30 fps: 6 to 12 frames in, 6 to 8 out. Scale these to the project's fps (at 24 fps, 5 to 10 in).
 - "typewriter" reveals the characters evenly over its frames. Give it about one frame per character, and use it only for short lines, never a long hook.
 - Pick one in animation for each job and stick with it. You might use "pop" for hook lines, "slide_up" for list items and "fade" for anything calm.
-- \`emphasis\` runs for the whole clip. "pulse" grows and shrinks by 5% every 0.8 s, which suits a call to action. "shake" jitters, so keep it for one punch line, like a goal or a kitchen fail. "highlight_word" lights one word at a time in its \`color\` (#FFD400 by default). Each word gets an equal share of the clip, so it doesn't follow speech. For one word that stays colored, use a span instead.
+- \`emphasis\` runs for the whole clip: "pulse" grows and shrinks by 5% every 0.8 s, and "shake" jitters. Text that keeps moving looks like a gimmick and is harder to read, so most videos need none. To make a word stand out, give it a span. To light words as they're said, use captions.
+- If one line truly needs emphasis, keep it small. \`amount\` scales how far it moves and \`speed\` how fast, both 1 when left out: \`{"preset":"pulse","amount":0.5}\` is a pulse half as big.
 
-A student council's "Vote Thursday" line pops in, fades out and pulses:
+A student council's "Vote Thursday" line pops in and fades out, with "Thursday" (characters 5 to 13) in gold:
 
 \`\`\`json
-{"op":"update_clip","clipId":"c6","patch":{"animationIn":{"preset":"pop","frames":8},"animationOut":{"preset":"fade","frames":6},"emphasis":{"preset":"pulse"}}}
+{"op":"update_clip","clipId":"c6","patch":{"animationIn":{"preset":"pop","frames":8},"animationOut":{"preset":"fade","frames":6},"spans":[{"from":5,"to":13,"color":"#FFD400"}]}}
 \`\`\`
 
-Keep emphasis to one clip on screen at a time, and never use it on body text. For more on motion, read the transitions-and-motion topic.
+Use emphasis on one line in a video at most, and never on body text. For more on motion, read the transitions-and-motion topic.
 
 ## Common mistakes
 
@@ -891,7 +892,7 @@ Keep emphasis to one clip on screen at a time, and never use it on body text. Fo
 - White text with no shadow, outline or box over footage you haven't seen.
 - A left-aligned name tag left at x 0.5, so it starts right at the frame's edge.
 - A video or overlay track added with \`add_track\` and no index. It goes last, draws on top and hides the text, so give it an index below the text tracks.
-- Animations that use up the reading time, or "shake" on every line.
+- Animations that use up the reading time, or emphasis on more than one line.
 `,
   },
   {
@@ -1455,7 +1456,7 @@ animationIn presets:
 - "typewriter": the letters appear one at a time over its frames. In only.
 - "scale_punch": starts at 1.4 times its size and settles. In only. It's loud, so save it for one word or one number.
 
-animationOut has the same presets except "typewriter" and "scale_punch". emphasis runs for the whole clip: "shake" jitters (a joke, a fail), "pulse" gently grows and shrinks by 5%, once every 0.8 seconds, and "highlight_word" lights the words one at a time, in its color (default "#FFD400"). It gives each word an equal share of the clip, so it doesn't follow speech. To light words as they're said, use karaoke captions instead.
+animationOut has the same presets except "typewriter" and "scale_punch". emphasis runs for the whole clip: "shake" jitters and "pulse" grows and shrinks by 5%, once every 0.8 seconds. amount scales how far it moves and speed how fast, both 1 when left out, so {"preset":"pulse","amount":0.5} is half as big. It's a rare accent: most videos need none. To light words as they're said, use karaoke captions; to make one word stand out, give it a span (see the on-screen text topic).
 
 At 30 fps, good lengths are: fade 6 to 10 frames, pop 8 to 12, slides 8 to 12, scale_punch 6 to 10, and 6 to 8 for any way out. For typewriter, allow about 1.5 frames a character, so a 20-character line takes 30 frames. Keep it under a second, which means short lines.
 
@@ -1474,7 +1475,7 @@ Keep text motion calm and consistent:
 - Give each role one entrance and reuse it: every title pops, every label slides up. A mix of presets looks random.
 - The first text, at frame 0, should look finished on that frame. fade, pop, the slides and typewriter all start see-through or partly drawn. Leave it with no animationIn, or use a short scale_punch, which is drawn in full from its first frame (see the hooks topic).
 - A way out is optional. A hard out keeps the pace, and if the next text appears in the same spot right away, skip the way out.
-- Use emphasis on at most one clip in a Short: the line that matters most. highlight_word needs time, about 10 to 15 frames a word, so four words need about 2 seconds.
+- Leave emphasis off unless one line truly needs it. Then use it on that one clip only, at a small amount, about 0.5.
 - Captions are styled with the \`set_caption_style\` op, not with these presets. Its "karaoke" and "word" looks already change word by word, so don't put moving text right on top of them.
 
 ## One effect at a time
@@ -1487,9 +1488,9 @@ Stick to these limits:
 - One join per cut: a crossfade, a dip pair or a whip pair. A fade out on one clip plus a fade in on the next makes a fade through black. That's fine when you mean it, but don't build it by accident.
 - Text gets one entrance and at most one way out. Add emphasis only to text that comes in plainly, with a fade or no animation.
 - Don't move the picture and the text together. If the picture punches in, let the text land with a hard cut or a fade.
-- A rough budget for a 30-second Short: zero to two transitions (more only when the style says "lots"), punch-ins on at most a third of the talking clips, one style of text entrance, and one emphasis.
+- A rough budget for a 30-second Short: zero to two transitions (more only when the style says "lots"), punch-ins on at most a third of the talking clips, one style of text entrance, and usually no emphasis.
 
-Before you hand it back, read the project with \`get_project\`. Each clip's line lists its effects, such as in=crossfade 0.60s, out=dip-#ffffff 0.27s, anim-in=pop 0.30s, emphasis=pulse and kf.scale=0:1.04,119:1.12. (A media clip's first in=, right after asset=, is where its footage starts, not a transition.) Look for any clip with two motions at once, and remove the extra with null, or [] for keyframes. Then say plainly what you did, for example: "I added a white dip between the prep and the opening, 8 frames on each side, and a slow push on the three photos. Every other join is still a hard cut." People can undo any change from the editor's Activity list.
+Before you hand it back, read the project with \`get_project\`. Each clip's line lists its effects, such as in=crossfade 0.60s, out=dip-#ffffff 0.27s, anim-in=pop 0.30s, emphasis=pulse amount 0.5 and kf.scale=0:1.04,119:1.12. (A media clip's first in=, right after asset=, is where its footage starts, not a transition.) Look for any clip with two motions at once, and remove the extra with null, or [] for keyframes. Then say plainly what you did, for example: "I added a white dip between the prep and the opening, 8 frames on each side, and a slow push on the three photos. Every other join is still a hard cut." People can undo any change from the editor's Activity list.
 
 ## Common mistakes
 
@@ -2744,7 +2745,7 @@ If they want a hit on the beat, one soft brighten that settles over 9 frames, on
 \`\`\`
 
 - The glitch and VHS effects change 12 times a second. They jitter rather than flash, but on a full frame for long they bother people who are sensitive to flicker. Keep them to short accents.
-- Strong motion can make some people feel sick. Keep the shake emphasis, whips and big zooms to moments, not every cut.
+- Strong motion can make some people feel sick. Keep whips and big zooms to moments, not every cut. Leave text still: if one line has a shake or pulse emphasis, keep its amount small.
 - You can't see the footage. When names or events hint at strobes (a gig, a party, fireworks, a storm), ask. If the flashing stays in, put a warning at the start and in the post's description. Use \`add_text\` with preset "subtitle", text "Contains flashing lights", start_seconds 0 and duration_seconds 3. Then, with the id from the result, lift it to the top of the safe area and give it a box:
 
 \`\`\`json

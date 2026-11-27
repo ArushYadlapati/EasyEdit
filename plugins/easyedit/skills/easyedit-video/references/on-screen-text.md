@@ -10,7 +10,7 @@ Read this when you add a title, a hook line, a list, a name tag or any other wor
 - Leave each clip up long enough to read: about 3 words a second, and never less than 1.5 s. Six words need 2 s, which is 60 frames at 30 fps. Always work from the project's own fps.
 - Keep every line inside the safe area. In 9:16 that means y between 0.14 and 0.65 and x between 0.06 and 0.94, unless get_project shows a "Safe area" line with the project's own box.
 - Make text readable over any footage with a shadow, an outline or a box behind it.
-- Animate in and out quickly (6 to 12 frames at 30 fps). Save emphasis for the one line that matters.
+- Animate in and out quickly (6 to 12 frames at 30 fps). Most videos need no emphasis; use it on one line at most.
 - Stay with the brand fonts and the sizes already in the project unless the person asks for a change.
 
 ## Start from a preset and the brand fonts
@@ -145,15 +145,16 @@ Set these on a text clip with `update_clip`, or put them in the clip when you bu
 - Lengths at 30 fps: 6 to 12 frames in, 6 to 8 out. Scale these to the project's fps (at 24 fps, 5 to 10 in).
 - "typewriter" reveals the characters evenly over its frames. Give it about one frame per character, and use it only for short lines, never a long hook.
 - Pick one in animation for each job and stick with it. You might use "pop" for hook lines, "slide_up" for list items and "fade" for anything calm.
-- `emphasis` runs for the whole clip. "pulse" grows and shrinks by 5% every 0.8 s, which suits a call to action. "shake" jitters, so keep it for one punch line, like a goal or a kitchen fail. "highlight_word" lights one word at a time in its `color` (#FFD400 by default). Each word gets an equal share of the clip, so it doesn't follow speech. For one word that stays colored, use a span instead.
+- `emphasis` runs for the whole clip: "pulse" grows and shrinks by 5% every 0.8 s, and "shake" jitters. Text that keeps moving looks like a gimmick and is harder to read, so most videos need none. To make a word stand out, give it a span. To light words as they're said, use captions.
+- If one line truly needs emphasis, keep it small. `amount` scales how far it moves and `speed` how fast, both 1 when left out: `{"preset":"pulse","amount":0.5}` is a pulse half as big.
 
-A student council's "Vote Thursday" line pops in, fades out and pulses:
+A student council's "Vote Thursday" line pops in and fades out, with "Thursday" (characters 5 to 13) in gold:
 
 ```json
-{"op":"update_clip","clipId":"c6","patch":{"animationIn":{"preset":"pop","frames":8},"animationOut":{"preset":"fade","frames":6},"emphasis":{"preset":"pulse"}}}
+{"op":"update_clip","clipId":"c6","patch":{"animationIn":{"preset":"pop","frames":8},"animationOut":{"preset":"fade","frames":6},"spans":[{"from":5,"to":13,"color":"#FFD400"}]}}
 ```
 
-Keep emphasis to one clip on screen at a time, and never use it on body text. For more on motion, read the transitions-and-motion topic.
+Use emphasis on one line in a video at most, and never on body text. For more on motion, read the transitions-and-motion topic.
 
 ## Common mistakes
 
@@ -165,4 +166,4 @@ Keep emphasis to one clip on screen at a time, and never use it on body text. Fo
 - White text with no shadow, outline or box over footage you haven't seen.
 - A left-aligned name tag left at x 0.5, so it starts right at the frame's edge.
 - A video or overlay track added with `add_track` and no index. It goes last, draws on top and hides the text, so give it an index below the text tracks.
-- Animations that use up the reading time, or "shake" on every line.
+- Animations that use up the reading time, or emphasis on more than one line.

@@ -161,7 +161,7 @@ animationIn presets:
 - "typewriter": the letters appear one at a time over its frames. In only.
 - "scale_punch": starts at 1.4 times its size and settles. In only. It's loud, so save it for one word or one number.
 
-animationOut has the same presets except "typewriter" and "scale_punch". emphasis runs for the whole clip: "shake" jitters (a joke, a fail), "pulse" gently grows and shrinks by 5%, once every 0.8 seconds, and "highlight_word" lights the words one at a time, in its color (default "#FFD400"). It gives each word an equal share of the clip, so it doesn't follow speech. To light words as they're said, use karaoke captions instead.
+animationOut has the same presets except "typewriter" and "scale_punch". emphasis runs for the whole clip: "shake" jitters and "pulse" grows and shrinks by 5%, once every 0.8 seconds. amount scales how far it moves and speed how fast, both 1 when left out, so {"preset":"pulse","amount":0.5} is half as big. It's a rare accent: most videos need none. To light words as they're said, use karaoke captions; to make one word stand out, give it a span (see the on-screen text topic).
 
 At 30 fps, good lengths are: fade 6 to 10 frames, pop 8 to 12, slides 8 to 12, scale_punch 6 to 10, and 6 to 8 for any way out. For typewriter, allow about 1.5 frames a character, so a 20-character line takes 30 frames. Keep it under a second, which means short lines.
 
@@ -180,7 +180,7 @@ Keep text motion calm and consistent:
 - Give each role one entrance and reuse it: every title pops, every label slides up. A mix of presets looks random.
 - The first text, at frame 0, should look finished on that frame. fade, pop, the slides and typewriter all start see-through or partly drawn. Leave it with no animationIn, or use a short scale_punch, which is drawn in full from its first frame (see the hooks topic).
 - A way out is optional. A hard out keeps the pace, and if the next text appears in the same spot right away, skip the way out.
-- Use emphasis on at most one clip in a Short: the line that matters most. highlight_word needs time, about 10 to 15 frames a word, so four words need about 2 seconds.
+- Leave emphasis off unless one line truly needs it. Then use it on that one clip only, at a small amount, about 0.5.
 - Captions are styled with the `set_caption_style` op, not with these presets. Its "karaoke" and "word" looks already change word by word, so don't put moving text right on top of them.
 
 ## One effect at a time
@@ -193,9 +193,9 @@ Stick to these limits:
 - One join per cut: a crossfade, a dip pair or a whip pair. A fade out on one clip plus a fade in on the next makes a fade through black. That's fine when you mean it, but don't build it by accident.
 - Text gets one entrance and at most one way out. Add emphasis only to text that comes in plainly, with a fade or no animation.
 - Don't move the picture and the text together. If the picture punches in, let the text land with a hard cut or a fade.
-- A rough budget for a 30-second Short: zero to two transitions (more only when the style says "lots"), punch-ins on at most a third of the talking clips, one style of text entrance, and one emphasis.
+- A rough budget for a 30-second Short: zero to two transitions (more only when the style says "lots"), punch-ins on at most a third of the talking clips, one style of text entrance, and usually no emphasis.
 
-Before you hand it back, read the project with `get_project`. Each clip's line lists its effects, such as in=crossfade 0.60s, out=dip-#ffffff 0.27s, anim-in=pop 0.30s, emphasis=pulse and kf.scale=0:1.04,119:1.12. (A media clip's first in=, right after asset=, is where its footage starts, not a transition.) Look for any clip with two motions at once, and remove the extra with null, or [] for keyframes. Then say plainly what you did, for example: "I added a white dip between the prep and the opening, 8 frames on each side, and a slow push on the three photos. Every other join is still a hard cut." People can undo any change from the editor's Activity list.
+Before you hand it back, read the project with `get_project`. Each clip's line lists its effects, such as in=crossfade 0.60s, out=dip-#ffffff 0.27s, anim-in=pop 0.30s, emphasis=pulse amount 0.5 and kf.scale=0:1.04,119:1.12. (A media clip's first in=, right after asset=, is where its footage starts, not a transition.) Look for any clip with two motions at once, and remove the extra with null, or [] for keyframes. Then say plainly what you did, for example: "I added a white dip between the prep and the opening, 8 frames on each side, and a slow push on the three photos. Every other join is still a hard cut." People can undo any change from the editor's Activity list.
 
 ## Common mistakes
 
